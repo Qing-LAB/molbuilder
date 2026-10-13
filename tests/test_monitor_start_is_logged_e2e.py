@@ -20,7 +20,6 @@ way, because only the SIESTA wrapper asks how its run ended.
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import zipfile
@@ -30,6 +29,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, env_bin
+from support.road import group_words
 
 CONDA_SH = conda_hook()
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -91,14 +91,17 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", *group_words(bundle, "coarse"),
+                "--bundle", bundle,
                 "--target", "this", *(("--np", 1) if siesta else ()),
                 "--cpus-per-task", 1)
     assert r.exit_code == 0, r.output
     ran_in = bundle / "01_coarse" / "run-0" if siesta else bundle
 
     if broken_member:
-        shipped = ran_in / MONITOR_BUNDLE
+        # BROKEN WHERE PREP WROTE IT: a first launch opens its run from the
+        # stage's prepared files (`job-system.md` § 6.0, step 4).
+        shipped = (ran_in.parent if siesta else ran_in) / MONITOR_BUNDLE
         with zipfile.ZipFile(shipped) as z:
             members = {n: z.read(n) for n in z.namelist()}
         assert broken_member in members, sorted(members)

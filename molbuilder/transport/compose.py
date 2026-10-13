@@ -14,13 +14,12 @@ deck** among them (the fdf that actually ran is the truth about a result;
 user ruling 2026-08-28).
 
 Pure composition: everything here reads the tree and returns objects;
-the caller (prep, `jobset.prep._composed_for_prep`) owns what lands on
+the caller (prep, `jobset.transport_rung.composed_for_prep`) owns what lands on
 disk where.
 """
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
@@ -154,8 +153,10 @@ class CitedRun:
     exit_code: Optional[int] = None
     #: what the run's output says it converged -- ``"geometry yes"`` /
     #: ``"geometry NO"`` -- or ``None`` when it says neither
-    #: (`jobset.runstatus.converged_of`).
+    #: (`jobset.runstatus.converged_of`), for showing; and the verdict a
+    #: reader decides on, ``("geometry", ok)`` (`RunStatus.verdict`).
     converged: Optional[str] = None
+    verdict: Optional[Tuple[str, bool]] = None
 
 
 @dataclass(frozen=True)
@@ -232,14 +233,16 @@ def _classify_run(cite_dir: Path) -> CitedRun:
         raise ComposeError(
             f"{cite_dir} holds no run of molbuilder's: {where}.  "
             f"{CITATION_CONDITION}.")
+    # ONE RUN, the one the run door settled (`run.run`), asked of each door:
+    # its launch record, how it ended, its state.
     try:
-        launched = launch_record(cite_dir, run.names) is not None
+        launched = launch_record(cite_dir, run.names, run.run) is not None
     except LaunchRecordError as e:
         raise ComposeError(str(e)) from e
     # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
     # `execution/architecture.md` § 3.2) about THIS run -- never the
     # directory's `run_status`, which can answer for a neighbour stage's run.
-    end = ending(cite_dir, run.basename)
+    end = ending(cite_dir, run.basename, run.run)
     if not launched and not end.concluded:
         raise ComposeError(
             f"{cite_dir} holds the run {run.basename}, but nothing launched "
@@ -249,12 +252,10 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     # so a geometry that did not converge is cited knowingly.
     from ..jobset.runstatus import converged_of
     from ..parse.dirs.rundir import run_state_of
-    try:
-        converged = converged_of(run_state_of(cite_dir, run.names))
-    except Exception:                                      # noqa: BLE001
-        converged = None
+    st = run_state_of(cite_dir, run.names, run.run)
     return CitedRun(path=cite_dir, run=run, concluded=end.line,
-                    exit_code=end.code, converged=converged)
+                    exit_code=end.code, converged=converged_of(st),
+                    verdict=st.verdict)
 
 
 def _classify_pair(path: Path) -> CitedPair:
@@ -885,6 +886,18 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
             f"(engines/transport.md 3.1).")
 
 
+def read_provenance(base_dir) -> Optional[Dict]:
+    """The calculation's ``slot-provenance.json`` -- where each part of the
+    junction came from, written at its first prep
+    (:func:`write_compose_record`) -- through `persist`, or ``None`` before
+    anything was composed.  The one reader of that file: the record's own
+    check below, the transport record, and the frame count
+    (`transport.stages.frames_of`)."""
+    from ..persist import read_json
+    path = Path(base_dir) / PROVENANCE_FILE
+    return read_json(path) if path.is_file() else None
+
+
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
                         why: "Optional[list]" = None,
                         swap_electrodes: bool = False
@@ -923,7 +936,6 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     seed and the leads already ran on what it said then.
     """
     base_dir = Path(base_dir)
-    prov_path = base_dir / PROVENANCE_FILE
     # WHICH FORM decides which files the record needs, and the form is
     # in the provenance -- so read that first, then ask `record_files`
     # for the set.  Incomplete in any of them = NO RECORD, which is the
@@ -933,10 +945,10 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
             why.append(reason)
         return None
 
-    if not prov_path.is_file():
+    provenance = read_provenance(base_dir)
+    if provenance is None:
         return _no(f"there is no {PROVENANCE_FILE} beside it, so nothing "
                    f"here has been composed yet")
-    provenance = json.loads(prov_path.read_text())
     if provenance.get("citation") != citation:
         return _no(f"the record beside it was composed from "
                    f"{provenance.get('citation')!r}, and this task now "

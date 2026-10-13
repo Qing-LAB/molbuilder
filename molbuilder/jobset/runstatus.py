@@ -30,8 +30,8 @@ from ..identity import StageRef
 from ..paths import attempts_in
 from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, shape_of, stage_refs)
 from ..runrecord import LaunchRecordError, launch_record
-from .commands import (block, command, launch_lines, rollback,
-                       words_for)
+from .commands import (block, command, launch_lines, launch_pending,
+                       prep_group_lines, redo_launched)
 from .model import JobSet
 from .plan import resources_text
 
@@ -50,12 +50,9 @@ def _warm_files(engine: str, base):
     not a rung's kind) -- its own copy first, else the engine's
     (`job-contracts.md` § 4.2a).  Resolved AT USE — never at import (C-b):
     one malformed TOML must not kill every entry point with an import-time
-    traceback.  An engine without a rules file simply has no carry rows to
-    report."""
-    try:
-        return _warm_list(engine, None, base).carry
-    except Exception:
-        return ()
+    traceback; a list that does not read is said by status, naming the file
+    (`warmfiles.WarmFilesError`), as prep refuses it."""
+    return _warm_list(engine, None, base).carry
 
 # run_status states we treat as "this stage is done".
 _DONE = "finished"
@@ -72,7 +69,7 @@ class StageStatus:
     ref:        StageRef
     #: The stage's directory, or ``None`` before anything prepared it.
     dir:        Optional[str]
-    #: ready/waiting (not prepared: the ready door's word) or the run's:
+    #: ``described`` (not prepared: the ready door's word) or the run's:
     #: pending/queued/running/failed/finished/unknown.  ``queued`` is
     #: the contract's own word (project-layout.md § 1.6, *"queued as job
     #: 481923"*) for launched-but-no-output-yet, which is exactly the state an
@@ -98,10 +95,9 @@ class StageStatus:
     #: asks too, so the status says what launching it again will do
     #: (`job-system.md` § 5.4, *A stage launched again*).
     relaunch_continues: bool = True
-    #: The group it was prepared in, its members in the ladder's order --
-    #: one job when launched together (`project-layout.md` § 1.6.6) -- or
-    #: ``None``.
-    group: Optional[List[str]] = None
+    #: Its group's number in the description (`engines/stages.md` § 2), or
+    #: ``None`` for a job set with no description beside it.
+    group: Optional[int] = None
     #: Whether anything has prepared it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
     prepared: bool = True
@@ -113,18 +109,21 @@ class StageStatus:
     converged: Optional[str] = None
     #: A rung's points, frames outer and voltages inner -- the point's wire
     #: form (`stages.Point.to_wire`: ``frame``, ``of``, ``bias_v``) with
-    #: ``point`` (its words), ``folder``, ``done``, ``why``,
-    #: ``started_from`` and ``took`` each, read from the point's own files
-    #: (`point_rows`; `engines/transport.md` § 2a.11) -- or ``[]``.
+    #: ``point`` (its words), ``folder``, ``state`` (its run's), ``opened``
+    #: (its folder is there), ``converged`` (its run's verdict), ``done``,
+    #: ``why``, ``started_from`` (``start_unread``, the reader's words, when
+    #: its record does not read) and ``took`` each, read from the point's
+    #: own files (`point_rows`; `engines/transport.md` § 2a.11) -- or ``[]``.
     points: List[Dict[str, Any]] = field(default_factory=list)
     #: What the run GATHERED from the rungs upstream -- ``<file> <- <run>``
     #: each, the run's own ``.gathered-from`` (`runrecord.read_gathered_from`;
     #: `engines/transport.md` § 2a.11) -- or ``[]`` for a stage that gathers
     #: nothing.  A sweep's point adds what it alone took in its own row.
     gathered: List[str] = field(default_factory=list)
-    #: For one not prepared, the ready door's answer whole
-    #: (`ready.readiness`): what its prep would take, one line each, or what
-    #: it waits for -- the refusal prep would print, with its commands.
+    #: The ready door's answer whole (`ready.readiness`), for a stage not
+    #: launched: what its first launch takes, one line each, or what it
+    #: waits for -- the refusal its prep, or its launch, would print, with
+    #: its commands.
     takes: List[str] = field(default_factory=list)
     why: Optional[str] = None
     #: What the stage IS, the plan's columns: its deck, the restart files it declares
@@ -168,9 +167,10 @@ class JobSetStatus:
     stages:          List[StageStatus]
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
     complete:        bool             # every described stage finished
-    #: The ready stages `prep task` offers pre-selected (`ready.preselected`,
-    #: D2) -- the next step when the first incomplete stage is not prepared.
-    offer: List[str] = field(default_factory=list)
+    #: The groups `prep task` offers (`ready.prep_offer`): every one not
+    #: prepared and preparable -- the next step when the first incomplete
+    #: stage is not prepared.
+    offer: List[int] = field(default_factory=list)
     #: The calculation's folder, so the commands the renderers print name it
     #: (`commands.command`).  Not part of the wire form.
     base: Optional[str] = None
@@ -197,15 +197,32 @@ def _warm_present(stage_dir: Path, label: str, engine: str,
     dangling carry symlinks) in this stage's dir -- by the list in effect
     for the calculation in ``base``."""
     out: List[str] = []
+    from ..runfiles import compose
     for ext in _warm_files(engine, base):
-        f = stage_dir / f"{label}{ext}"
+        f = stage_dir / compose(label, ext)
         if f.is_file():                      # follows symlinks; dangling -> False
             out.append(f.name)
     return out
 
 
+#: A RUN A REFUSED SEND OPENED -- the newest folder of a stage launched
+#: before, with no launch record: not a run yet (a refused launch records
+#: nothing), and filled anew by the stage's next launch (`job-system.md`,
+#: *The task*: a run's states).
+REFUSED_OPEN = ("opened by a launch whose send was refused -- not launched; "
+                "its next launch fills it anew")
+
+
+def _pending_detail(attempt, detail: str) -> str:
+    """A run not launched, in words: prep's first run as the run door says
+    it; a later one, opened by a launch whose send was refused."""
+    from ..paths import attempt_index
+    return (REFUSED_OPEN if attempt is not None
+            and attempt_index(Path(attempt).name) else detail)
+
+
 #: A PREPARED stage whose folder is not on disk -- against the design, said
-#: as such (a stage not prepared is the ready door's `ready` / `waiting`).
+#: as such (a stage not prepared is the ready door's `described`).
 MISSING = ("missing", "the job set names this run's folder; it is not on "
                       "disk", None)
 
@@ -227,15 +244,31 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
     pts, running = [], False
     for pdir, pt in points_in(run, task, stage, base=base):
         ok, why = done(pdir, names, launch=launch, products=products)
-        if not ok and pdir.is_dir():
-            running = running or run_status(pdir, names.stem,
-                                             launch=launch).state == "running"
-        src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
-               else None)
+        # ITS RUN'S STATE AND VERDICT, the one status door's -- a point done
+        # finished; decided on these, never on the reason's words.
+        opened = pdir.is_dir()
+        st = run_status(pdir, names.stem, launch=launch) if opened else None
+        state = ("finished" if ok else st.state if st is not None
+                 else "pending")
+        converged = (st.verdict[1] if st is not None
+                     and st.verdict is not None else None)
+        running = running or state == "running"
+        unread = None
+        try:
+            src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
+                   else None)
+            src = str(src) if src is not None else None
+        except LaunchRecordError as exc:
+            # A RECORD THAT DOES NOT READ is said on its point's row, in
+            # its reader's words -- never read as a start, and never the
+            # whole status.
+            src, unread = None, str(exc)
         took = [g for g in _gathered_lines(pdir) if g not in gathered]
         pts.append({**pt.to_wire(),
                     "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
-                    "done": ok, "why": why, "started_from": src,
+                    "state": state, "done": ok, "why": why,
+                    "opened": opened, "converged": converged,
+                    "started_from": src, "start_unread": unread,
                     "took": took})
     return pts, running
 
@@ -312,54 +345,12 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
 
 
 def converged_of(st) -> Optional[str]:
-    """What the run's active output says it converged -- the run door's
-    one scan (`RunStatus.endings`): a relaxation's geometry, else its
-    SCF -- or ``None`` when it says neither yet."""
-    end = (st.endings or {}).get(st.active_source) if st.active_source \
-        else None
-    if end is None:
-        return None
-    if end.relaxed is not None:
-        return "geometry " + ("yes" if end.relaxed else "NO")
-    if end.scf_converged is not None:
-        return "SCF " + ("yes" if end.scf_converged else "NO")
-    return None
-
-
-def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
-                 basename: Optional[str]) -> tuple:
-    """(state, detail) for the directory a stage's run actually happened in.
-
-    ``observed`` is the latest attempt where there is one, and the stage
-    container for a flat run (`project-layout.md` § 1.5) — the caller resolves
-    that, because *where a run happens* is a layout question and this layer
-    only reads.  ``basename`` is THIS rung's run's stem -- the flat shape
-    keeps every stage in one folder, and an attempt may hold several run
-    indexes.
-
-    ``launch`` is the run's launch record. It is what separates *queued* from
-    *never started*, which no amount of looking at an empty directory can do:
-    § 1.6's *"a queued cluster job has produced nothing yet, so 'no output' and
-    'not started' look identical"*, and its promise that status can then say
-    *"queued as job 481923"* rather than guessing from an absence.  The
-    directory door answers both from it (`parse.dirs.job.run_status`).
-    """
-    if not observed.is_dir():
-        return MISSING
-    try:
-        # THROUGH THE PACKAGE THAT OWNS THE QUESTION, never the module
-        # inside it (`model/parse.md` § 5.5, R-RO2: one import surface per
-        # question).
-        from ..parse.dirs import run_status
-        # THE RUNG'S OWN NAME: in the flat shape every stage shares the
-        # directory, and without it every row showed the newest stage's
-        # state.
-        st = run_status(observed, basename, launch=launch)
-    except Exception as e:                    # fail-soft; stay informative
-        return ("unknown", f"could not decode: {e}", None)
-    # The "unknown" fallback lives in the except clause above, which is the
-    # only way this can fail to have an answer.
-    return (st.state, st.detail, converged_of(st))
+    """The converged column's words -- ``geometry yes``, ``SCF NO`` -- for
+    the run's verdict (`RunStatus.verdict`), or ``None`` when its output
+    says neither yet.  For showing; a reader that decides asks the
+    verdict."""
+    v = st.verdict
+    return None if v is None else f"{v[0]} " + ("yes" if v[1] else "NO")
 
 
 def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
@@ -395,39 +386,63 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
     summary = (f"{n_done} of {len(pts)} points done ({n_frames} "
                f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
                f"voltage{'' if n_volts == 1 else 's'})")
-    # CONVERGED, in its own column (`job-system.md`, rule 4): every point
-    # done says yes for a rung with an SCF (`STAGE_FACT`: the transmission
-    # converges nothing); a point that finished without converging says NO;
+    # CONVERGED, in its own column (`job-system.md`, rule 4): yes for a rung
+    # with an SCF (`STAGE_FACT`: the transmission converges nothing) when
+    # every point's output says it converged; NO when one says it did not;
     # otherwise nothing yet.
     from ..transport.stages import STAGE_FACT
     scf_rung = STAGE_FACT.get(job.name, "scf") != "product"
-    converged = ("SCF NO" if any(p["why"].startswith("finished, not converged")
-                                 for p in pts)
-                 else "SCF yes" if scf_rung and pts and n_done == len(pts)
+    converged = ("SCF NO" if any(p["converged"] is False for p in pts)
+                 else "SCF yes" if scf_rung and pts
+                 and all(p["converged"] is True for p in pts)
                  else None)
     if launch is None:
-        state, detail = "pending", "prepared, not launched"
+        state, detail = "pending", _pending_detail(run, "prepared, not "
+                                                        "launched")
     elif running:
         state, detail = "running", summary
-    elif n_done == len(pts):
-        state, detail = "finished", summary
-    elif all(p["why"] == "not run" for p in pts):
+    elif all(p["opened"] and p["state"] in ("pending", "queued")
+             for p in _walked_here(pts, run, base)):
+        # NOTHING THIS RUN WALKS HAS RUN YET -- the points it took over
+        # from an earlier run are that run's, done before it was sent.
         jid = launch.get("job_id")
         state, detail = "queued", (f"queued as job {jid}" if jid
                                    else "launched, nothing run yet")
     else:
-        first = next(p for p in pts if not p["done"])
-        state = "failed"
-        detail = f"{summary}; {first['point']}: {first['why']}"
+        # THE RUN'S STATE IS ITS POINTS' RUNS': finished when every one
+        # finished -- converged or not, which is the converged column's
+        # (`job-system.md`, rule 4) -- else failed; the first point not
+        # done says why.
+        state = ("finished" if all(p["state"] == "finished" for p in pts)
+                 else "failed")
+        first = next((p for p in pts if not p["done"]), None)
+        detail = (summary if first is None
+                  else f"{summary}; {first['point']}: {first['why']}")
     return StageStatus(
         ref=ref, dir=d.name, state=state, detail=detail,
         converged=converged,
         attempt=run.name, attempts=attempts_in(d), launch=launch,
         relaunch_continues=job.relaunch_continues,
-        group=(list(job.group) if job.group else None),
         script=str(job.script), carries=[w.name for w in job.warm],
         resources=resources_text(job.resources), points=pts,
         gathered=_gathered_lines(run))
+
+
+def _taken_over(p, here) -> bool:
+    """Whether a point was taken over from an earlier run -- its record
+    names the run that computed it (one hop, `engines/transport.md`
+    § 2a.11), a run outside ``here`` (`runrecord.RunRef`)."""
+    from ..runrecord import RunRef
+    said = p.get("started_from")
+    return bool(said) and not RunRef.read(said, shared=False).within(here)
+
+
+def _walked_here(pts, run: Path, base: Path) -> list:
+    """The points ``run`` walks itself -- every point but those it took
+    over from an earlier run (:func:`_taken_over`)."""
+    from ..runrecord import RunRef
+    here = RunRef.at(base, run)
+    return [p for p in pts if not (p["done"] and _taken_over(p, here))]
 
 
 def _gathered_lines(folder) -> List[str]:
@@ -435,7 +450,11 @@ def _gathered_lines(folder) -> List[str]:
     (`runrecord.read_gathered_from`), in the order taken; ``[]`` when there
     is none."""
     from ..runrecord import read_gathered_from
-    return [f"{g['file']} <- {g['from']}" for g in read_gathered_from(folder)]
+    try:
+        return [f"{fn} <- {src}" for src, fn in read_gathered_from(folder)]
+    except LaunchRecordError as exc:
+        # SAID ON ITS ROW, in its reader's words -- never the whole status.
+        return [str(exc)]
 
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
@@ -447,7 +466,6 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     # attempt may hold several run indexes.  THE LABEL IS THIS JOB'S, NOT
     # THE JOBSET'S: a trial is relabelled with its point.
     names = run_names(jobset, job, shape)
-    basename = names.stem
     swept = _sweep_status(base, jobset, job, task, d=d, names=names,
                           ref=refs[job.name])
     if swept is not None:
@@ -463,11 +481,19 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     # `run.json`, a trial's at its top, a flat stage's newest run's own in
     # the folder every stage shares.  ONE THAT DOES NOT READ is said, never
     # read as launched or not (`runrecord.launch_record`).
-    try:
-        launch = launch_record(observed, names)
-        state, detail, converged = _stage_state(observed, launch, basename)
-    except LaunchRecordError as e:
-        launch, state, detail, converged = None, "unreadable", str(e), None
+    if not observed.is_dir():
+        launch, (state, detail, converged) = None, MISSING
+    else:
+        # ITS STATE, THROUGH THE ONE DOOR (`rundir.run_state_of`): the
+        # stage's newest run, asked of its launch record and its files --
+        # a record that does not read is the state `unreadable`, said.
+        from ..parse.dirs.rundir import run_state_of
+        st = run_state_of(observed, names)
+        state, detail, converged = st.state, st.detail, converged_of(st)
+        launch = (None if state == "unreadable"
+                  else launch_record(observed, names))
+    if state == "pending":
+        detail = _pending_detail(attempt, detail)
     where = attempt.name if attempt else None
     return StageStatus(
         ref=refs[job.name], dir=d.name, state=state, detail=detail,
@@ -475,7 +501,6 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         attempts=attempts_in(home),
         launch=launch,
         relaunch_continues=job.relaunch_continues,
-        group=(list(job.group) if job.group else None),
         # THE SAME LABEL THE STATE WAS READ WITH -- the stage's names'.
         warm_files=_warm_present(observed, names.label, jobset.engine,
                                  base),
@@ -491,11 +516,12 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
 
 def _not_prepared(ref: StageRef, r) -> StageStatus:
     """A stage the description names and nothing has prepared -- in the
-    ready door's words: ``ready`` with what it would take, or ``waiting``
-    with what for (`ready.readiness`; `job-system.md`, *The task*)."""
+    ready door's words: ``described``, with what its first launch will take,
+    or what it waits for before it can be prepared (`ready.readiness`;
+    `job-system.md`, *The task*)."""
     return StageStatus(
         ref=ref, dir=None, state=r.state, detail=r.detail, prepared=False,
-        takes=list(r.takes), why=r.why)
+        takes=list(r.takes), why=r.why, group=r.group)
 
 
 def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
@@ -528,33 +554,35 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
               "refs": stage_refs(jobset), "shape": sh}
     stages: List[StageStatus] = []
     if task is not None:
-        # ONE KEY for a stage's name, in any case (`identity.stage_key`):
-        # a stage renamed in case only keeps its prepared job.
-        from ..identity import stage_key
-        held = {stage_key(j.name): j for j in (jobset.jobs if jobset is not None
-                                               else ())}
+        # ONE KEY for a stage's name, in any case (`JobSet.job`): a stage
+        # renamed in case only keeps its prepared job.
         from .materialize import ladder_homes
-        from .ready import readiness
-        from ..template import find_template
-        tpl = find_template(base, task.label)
-        text = tpl.read_text(encoding="utf-8") if tpl else None
+        from .ready import task_state
+        # THE READY DOOR'S ANSWERS, read once -- NO VERDICT: status names the
+        # run, not its relaxation, and the table is read far more often than
+        # a stage is prepared or launched.
+        state = task_state(base, task=task, jobset=jobset)
         # THE NUMBERS ARE THE DOOR'S -- what the folders carry (W38 F4), so
         # a row's number is its folder's, not its place in the description.
-        for st, ref in zip(task.stages,
-                           [StageRef(h.seq, h.name)
-                            for h in ladder_homes(base, task)]):
-            job = held.get(stage_key(st.name))
+        for st, ref, r in zip(task.stages,
+                              [StageRef(h.seq, h.name)
+                               for h in ladder_homes(base, task)],
+                              state.stages):
+            job = jobset.job(st.name) if jobset is not None else None
             if job is None:
-                # NO VERDICT: status names the run, not its relaxation --
-                # and the table is read far more often than prepared.
-                stages.append(_not_prepared(ref, readiness(
-                    base, task, st.name, template_text=text,
-                    verdict=False)))
+                stages.append(_not_prepared(ref, r))
                 continue
             # THE DESCRIPTION'S NAME AND NUMBER on its row: the ladder is the
-            # description's, and `status <stage>` finds the row by it.
-            stages.append(dataclasses.replace(
-                _job_status(base, jobset, job, task, **kw), ref=ref))
+            # description's, and `status <stage>` finds the row by it -- and
+            # a stage never launched, the ready door's words for its launch.
+            row = dataclasses.replace(
+                _job_status(base, jobset, job, task, **kw), ref=ref,
+                group=st.group)
+            if not r.launched and row.state == "pending":
+                row = dataclasses.replace(row, detail=r.detail,
+                                          takes=list(r.takes), why=r.why)
+            stages.append(row)
+        offer = state.prep_offer
     else:
         stages = [_job_status(base, jobset, job, None, **kw)
                   for job in jobset.jobs]
@@ -575,19 +603,8 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         complete=(first is None),
         base=str(base),
         bench_of=bench_of,
-        offer=_offer(base, task, stages),
+        offer=(offer if task is not None else []),
     )
-
-
-def _offer(base: Path, task, stages: List[StageStatus]) -> List[str]:
-    """The ready stages `prep task` would offer pre-selected
-    (`ready.preselected`, D2), read off the rows already answered."""
-    if task is None:
-        return []
-    from .ready import Readiness, preselected
-    return preselected(base, task, [
-        Readiness(s.name, prepared=s.prepared, ready=s.state == "ready")
-        for s in stages])
 
 
 def render_status(status: JobSetStatus) -> str:
@@ -604,9 +621,11 @@ def render_status(status: JobSetStatus) -> str:
     # says "finished" without saying finished *when* -- and after a re-run the
     # difference between run-0 and run-2 is the whole question.  `-` for a flat
     # run, which happens in the container itself (project-layout.md § 1.5).
-    hdr = ("seq", "stage", "attempt", "state", "converged", "warm files",
-           "detail")
-    rows = [(s.ref.seq_text, s.ref.name, s.attempt or "-", s.state,
+    hdr = ("seq", "stage", "group", "attempt", "state", "converged",
+           "warm files", "detail")
+    rows = [(s.ref.seq_text, s.ref.name,
+             str(s.group) if s.group is not None else "-",
+             s.attempt or "-", s.state,
              s.converged or "-", ", ".join(s.warm_files) or "-", s.detail)
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
@@ -627,27 +646,25 @@ def render_status(status: JobSetStatus) -> str:
                       if s.name == status.first_incomplete), None)
         if first is not None and not first.prepared:
             # NOTHING TO RE-SUBMIT: the stage has no folder yet, so the next
-            # step is to prepare what is ready -- the stages `prep task`
-            # offers pre-selected, each line saying what it takes
+            # step is to prepare -- the groups `prep task` offers, each
+            # stage's line saying what its first launch takes
             # (`job-system.md`, *The task*).
             if status.offer:
-                rows = {s.name: s for s in status.stages}
                 lines.append(
                     f"First incomplete stage: {first.name}, not prepared "
-                    f"yet.  Ready to prepare:\n    "
-                    + command("prep", *words_for("task", *status.offer),
-                              base=status.base)
-                    + "".join(f"\n      # {n}: {rows[n].detail}"
-                              for n in status.offer))
+                    f"yet.  To prepare:\n"
+                    + block(prep_group_lines(status.offer, base=status.base))
+                    + "".join(f"\n      # {s.name}: {s.detail}"
+                              for s in status.stages
+                              if s.group in status.offer
+                              and not s.prepared))
                 return "\n".join(lines)
             lines.append(
                 f"First incomplete stage: {first.name}, waiting:\n"
                 + textwrap.indent(first.why or first.detail, "    "))
             return "\n".join(lines)
         lines.append(next_step(first, status.first_incomplete,
-                               base=status.base,
-                               pending={s.name for s in status.stages
-                                        if s.state == "pending"}))
+                               base=status.base))
     return "\n".join(lines)
 
 
@@ -655,14 +672,15 @@ def _sweep_took_over(s: StageStatus) -> str:
     """What a sweep's run continued from, read at the point: the points
     taken over from an earlier run, named by that run; a run that took none
     over walked every point (the first launch, or ``--cold``)."""
-    here = f"{s.dir}/{s.attempt}/"
+    from ..runrecord import RunRef
+    here = RunRef.read(f"{s.dir}/{s.attempt}", shared=False)
     taken = [(p["point"], p["started_from"]) for p in s.points
-             if p.get("started_from") and not p["started_from"].startswith(here)]
+             if _taken_over(p, here)]
     if not taken:
         return "nothing taken over -- every point walked"
-    # THE RUN a point was taken over from: `<stage>/run-<n>`, the folders
-    # below it its point's levels.
-    runs = sorted({"/".join(src.split("/")[:2]) for _w, src in taken})
+    # THE RUN a point was taken over from, the run its point lies in.
+    runs = sorted({str(RunRef.read(src, shared=False).run_folder())
+                   for _w, src in taken})
     return (", ".join(w for w, _s in taken) + " taken over from "
             + ", ".join(runs) + "; the rest walked")
 
@@ -687,42 +705,41 @@ def _sweep_next(status: JobSetStatus) -> str:
     return "Every trial has ended -- read what they measured:\n" + read
 
 
-def launch_words(s: Optional[StageStatus], name: str,
-                 pending=frozenset()) -> List[str]:
-    """The stages `launch task` sends for prepared ``name``: A GROUP
-    PREPARED AND NOT LAUNCHED goes as its one job -- every member still
-    ``pending`` (``pending``, the names in that state); a member launched,
-    or launched again, goes alone (D4).  The one rule the status door,
-    `launch task`'s own pick and Task setup's lines ask."""
-    return (list(s.group) if s is not None and s.group
-            and s.state == "pending"
-            and all(g in pending for g in s.group) else [name])
-
-
-def next_step(s: Optional[StageStatus], name: str, *, base,
-              pending=frozenset()) -> str:
+def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     """What to do about a PREPARED stage that has not finished, by its state
     -- each a command that works.  molbuilder does NOT auto-resume; the
-    person decides (`engines/stages.md`)."""
+    person decides (`engines/stages.md`).  A stage never launched goes with
+    its group (`job-system.md`, *The task*), or waits for what it names; one
+    launched goes again alone (D4)."""
     state = s.state if s is not None else "stopped"
-    words = launch_words(s, name, pending)
+    number = s.group if s is not None else None
+    if state == "pending" and s is not None and s.why:
+        return (f"First incomplete stage: {name}, prepared, and its launch "
+                f"waits:\n" + textwrap.indent(s.why, "    "))
     if state == "pending":
-        return (f"First incomplete stage: {name}, prepared and not "
-                f"launched:\n" + block(launch_lines("task", *words, base=base)))
+        # PREP'S RUN goes with its group; one a refused send opened, with the
+        # stage alone again (D4).
+        return (f"First incomplete stage: {name}, {s.detail}:\n"
+                + block(launch_pending(name, number, s.attempt, base=base)))
+    if state == "unreadable":
+        # A RECORD THAT DOES NOT READ is said in its reader's words, which
+        # name the way on: no launch takes the stage until it reads.
+        return (f"First incomplete stage: {name}, its launch record does "
+                f"not read:\n" + textwrap.indent(s.detail, "    "))
     if state in ("queued", "running"):
         return (f"First incomplete stage: {name}, {state} -- let it "
                 f"finish; `{command('status', name, base=base)}` shows its "
                 f"run.")
-    # A PREPARED STAGE IS NOT PREPARED AGAIN (user, 2026-10-02); it is
+    # A LAUNCHED STAGE IS NOT PREPARED AGAIN (user, 2026-10-02); it is
     # launched again, however it ended, warm or cold -- the person's choice
     # (`job-system.md` § 5.4, *A stage launched again*).
     warm = ("it continues from its own latest run"
             if s is None or s.relaunch_continues
             else "it starts over, nothing handed on from a run of its own")
     how = (f"launch it again -- {warm}:\n"
-           + block(launch_lines("task", *words, base=base))
+           + block(launch_lines("task", name, base=base))
            + "\n  or start it over with `--cold`; or, to change it first, "
-           + rollback("its prep", base=base))
+           + redo_launched(name, base=base))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
             f"auto-resume -- you decide: {how}")
 
@@ -746,11 +763,12 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     s = next(x for x in status.stages if x.name == stage_name)
     if not s.prepared:
         # WHAT YOU CAN TYPE (`job-system.md` § 5.3): one waiting is told
-        # what for, with the commands.
-        how = ("It waits:\n" + textwrap.indent(s.why or s.detail, "    ")
-               if s.state == "waiting" else
-               "Prep it:\n    "
-               + command("prep", *words_for("task", s.name), base=status.base)
+        # what for, with the commands; one preparable, its group's prep.
+        how = ("It waits:\n" + textwrap.indent(s.why, "    ") if s.why else
+               "Prep its group:\n"
+               + block(prep_group_lines([s.group], base=status.base)
+                       if s.group is not None else
+                       [command("prep", "task", base=status.base)])
                + "".join(f"\n      # {t}" for t in s.takes))
         return "\n".join([f"STAGE {s.ref.label} -- {s.state}", "",
                           f"  {s.detail}", "", how])
@@ -804,8 +822,9 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         rows.append((f"  {p['point']}",
                      ("done" if p["done"] else f"not done -- {p['why']}")
                      + (f"; from {p['started_from']}" if p.get("started_from")
+                        else f"; {p['start_unread']}" if p.get("start_unread")
                         else "; from what it gathered"
-                        if p["why"] != "not opened" else "")
+                        if p["opened"] else "")
                      + (f"; took {', '.join(p['took'])}" if p.get("took")
                         else "")))
 

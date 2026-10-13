@@ -3,9 +3,11 @@
 independent ladder, and the `relax` run a vibration's force-constant stage
 builds on (`engines/vibration.md` § 5.2a, W38 F9).
 
-**Module:** L2 (jobset).  ONE answer, asked by `prep` before it writes a stage
--- the default, or what a run named by ``--from`` is -- and by `status` for the
-stage it names next, so the two never say different things about the same run.
+**Module:** L2 (jobset).  ONE answer, asked by `launch` at a stage's first
+launch (`job-system.md` § 6.0), by `prep` for the `relax` run a force-constant
+stage's deck is written at -- the default, or what a run named by ``--from``
+is -- and by `status` through the ready door, so none says a different thing
+about the same run.
 Reads the folder; writes
 nothing; raises nothing the person can fix -- a refusal is an answer, which
 `prep` turns into its own error and `status` prints; a bug raises.
@@ -14,13 +16,14 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 @dataclasses.dataclass(frozen=True)
 class Continuation:
     """WHICH RUN A STAGE CONTINUES FROM, and what that run was -- printed by
-    both prep doors and recorded in the decision ledger."""
+    the launch that takes it (a force-constant stage's, by its prep too)
+    and recorded in the decision ledger."""
     #: The stage the run belongs to.
     stage: str
     #: Its attempt, from the calculation folder (``01_coarse/run-0``) --
@@ -39,8 +42,8 @@ class Continuation:
     #: § 5.2a), not a stage continuing from the one before it.
     linked: bool = False
     #: The files it carries into the attempt, by the pair's rule
-    #: (`model.warm_carry`) of what the run holds -- counted where the plan's
-    #: row is (`prep`), ``None`` until then.  On the flat layout nothing is
+    #: (`model.warm_carry`) of what the run holds -- counted against the
+    #: stage's job, ``None`` until then.  On the flat layout nothing is
     #: copied: the files lie in the folder.
     carries: Optional[Tuple[str, ...]] = None
     #: On the flat layout, the run by the name every file of it carries
@@ -50,15 +53,42 @@ class Continuation:
     #: The stage's OWN latest run: a stage launched again (:func:`relaunch`;
     #: `job-system.md` § 5.4, *A stage launched again*).
     own: bool = False
+    #: On the flat layout, the run whose restart files lie in the folder --
+    #: the last run of any stage there (`runrecord.last_run`) -- when it is
+    #: not :attr:`run`; and how it ended, in words.  What the run reads, and
+    #: so what its record names (`job-system.md` § 5.4; user, 2026-10-12).
+    written_by: Optional[str] = None
+    written_by_is: Optional[str] = None
+
+    @property
+    def ref(self):
+        """The run, as its hand-over records it (`runrecord.RunRef`): its
+        attempt's folder, or on the flat layout the run whose restart files
+        lie in the folder -- the last run there -- by its name; ``None`` for
+        a flat stage never launched, which no hand-over takes from."""
+        from ..runrecord import RunRef
+        if self.source is not None:
+            return RunRef.read(self.source, shared=False)
+        name = self.written_by or self.run
+        return RunRef.named(name) if name else None
 
     def where(self) -> str:
         """The run, as a person reads it: its attempt, or -- on the flat
-        layout -- the stage's latest run in the folder, by its name."""
+        layout -- the stage's latest run in the folder, by its name; and when
+        another run was the last here, the restart files that one left,
+        which are what it reads (`job-system.md` § 5.4)."""
         if self.source is not None:
             return self.source
-        return (f"{self.stage}'s latest run"
-                + (f", {self.run}," if self.run else "")
-                + " whose files lie in this folder")
+        # A FORCE-CONSTANT STAGE'S RUN IS THE ONE ITS DECK IS WRITTEN AT, the
+        # run its prep took -- not necessarily `relax`'s latest.
+        which = "run its deck is written at" if self.linked else "latest run"
+        mine = (f"{self.stage}'s {which}"
+                + (f", {self.run}," if self.run else "") + " in this folder")
+        if not self.written_by:
+            return mine
+        return (f"the restart files {self.written_by} left in this folder "
+                f"({self.written_by_is}) -- the last run here; "
+                f"{self.stage}'s {which} is {self.run}")
 
     def line(self, copied=(), *, would: bool = False) -> str:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
@@ -102,8 +132,39 @@ def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
             ", FAILED" if state == "failed" else "")
     return {"pending": "NOT launched yet",
             "queued": "NOT concluded -- queued",
-            "running": "NOT concluded -- still running"}.get(
+            "running": "NOT concluded -- still running",
+            "unreadable": "its launch record does not read -- whether it "
+                          "ran cannot be told"}.get(
         state, "NOT concluded -- stopped without its conclusion marker")
+
+
+def flat_files(base, task, cont: Optional[Continuation]
+               ) -> Optional[Continuation]:
+    """On the flat layout, ``cont`` with the run whose restart files lie in
+    the folder -- the last run of any stage there (`runrecord.last_run`) --
+    when it is not the run the rule took: what the stage reads, and so what
+    its record names, said beside the rule's run (`job-system.md` § 5.4;
+    user, 2026-10-12).  A record there that does not read raises
+    `runrecord.LaunchRecordError`, which each caller says as its refusal."""
+    from ..runfiles import parse_run_name
+    from ..runrecord import last_run
+    if cont is None or cont.source is not None:
+        return cont
+    last = last_run(base, task.label)
+    if last is None or str(last) == cont.run:
+        return cont
+    from .materialize import ladder_homes
+    named = parse_run_name(str(last), task.label)
+    home = next((h for h in ladder_homes(base, task)
+                 if h.token == named.stage), None)
+    if home is None:
+        said = "of a stage this description no longer holds"
+    else:
+        concluded, state, _c, _d = read_run(base, task, home.name,
+                                             Path(base), verdict=False,
+                                             run=named.run)
+        said = _what_it_is(concluded, state)
+    return dataclasses.replace(cont, written_by=str(last), written_by_is=said)
 
 
 def usable(state: Optional[str]) -> bool:
@@ -143,9 +204,8 @@ def done(folder, names, *, launch=None, products=()) -> Tuple[bool, str]:
         return False, "not run"
     if not usable(st.state):
         return False, st.detail or st.state
-    verdict = converged_of(st)
-    if verdict is not None and verdict.endswith("NO"):
-        return False, f"finished, not converged ({verdict})"
+    if st.verdict is not None and not st.verdict[1]:
+        return False, f"finished, not converged ({converged_of(st)})"
     missing = [f for f in products if not (folder / f).is_file()]
     if missing:
         return False, f"finished without {', '.join(missing)}"
@@ -153,7 +213,7 @@ def done(folder, names, *, launch=None, products=()) -> Tuple[bool, str]:
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
-             *, verdict: bool = True
+             *, verdict: bool = True, run: Optional[int] = None
              ) -> Tuple[Optional[str], Optional[str], Optional[bool],
                         Optional[str]]:
     """``(concluded, state, converged, detail)`` of one run of ``stage``
@@ -164,32 +224,28 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     (`parse.contract.relaxation_of`), read from the run's own files in
     either shape, the run door's (`runs.run_of`): its engine output at the
     run's index, then its progress log -- where a PySCF run writes its
-    steps, which its stdout cannot stand in for.  The run is the newest one
-    launched, counted on the launch records.  ``verdict=False``
+    steps, which its stdout cannot stand in for.  The run is the newest in
+    ``attempt`` by the one rule (`runrecord.newest_run`): where a stage's
+    runs share the folder, its newest launched; in a run's own folder, its
+    newest try -- or ``run``, a run named (a force-constant stage's
+    `relax` run, recorded at its prep).  ``verdict=False``
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output."""
     from ..parse.contract import relaxation_of
-    from ..parse.dirs import run_status
-    from ..runfiles import RunNames, latest_run
+    from ..parse.dirs.rundir import run_state_of
+    from ..runfiles import RunNames
     from ..runs import run_of
-    from ..runrecord import LaunchRecordError, ending, launch_record
+    from ..runrecord import ending, newest_run
     from .materialize import stage_home
     token = stage_home(base, task, stage).token
     names = RunNames.of(task.label, token, task.shape)
-    concluded = ending(attempt, names.stem).line
-    try:
-        # THE RUN'S LAUNCH RECORD, in the folder it ran in, named by its
-        # stage's names -- an attempt's `run.json`, a flat stage's newest
-        # run's own (`runrecord.launch_record`).
-        launch = launch_record(attempt, names)
-        st = run_status(attempt, names.stem, launch=launch)
-        state, detail = st.state, st.detail
-    except LaunchRecordError as e:
-        # A record that does not read is said, never taken for a run that
-        # stopped (`runrecord.launch_record`).
-        state, detail = "unreadable", str(e)
-    except Exception:                                    # noqa: BLE001
-        state = detail = None
+    run = run if run is not None else newest_run(attempt, names)
+    concluded = ending(attempt, names.stem, run).line
+    # ITS STATE, through the one door, asked with its launch record -- a
+    # record that does not read is the state `unreadable`, said, never taken
+    # for a run that stopped (`rundir.run_state_of`).
+    st = run_state_of(attempt, names, run)
+    state, detail = st.state, st.detail
     rec = None
     if verdict:
         # THIS STAGE'S RUN, the run door's, in either shape -- an attempt's
@@ -202,18 +258,21 @@ def read_run(base: Path, task, stage: str, attempt: Path,
         # say one verdict.  Where a stage's runs share the folder, the run
         # is the newest launched -- the one whose record was read above.
         _run = run_of(attempt, stage=token)
-        if _run is not None and names.numbered(".run.json"):
-            _run = dataclasses.replace(_run, run=latest_run(
-                attempt, task.label, stage=token, role=".run.json"))
+        if _run is not None and run is not None:
+            _run = dataclasses.replace(_run, run=run)
         paths = ([_run.stdout,
                   _run.file(".molwatch.log",
                             _run.run if names.numbered(".molwatch.log")
                             else None)]
                  if _run is not None else [])
+        from ..parse.errors import ParseError
         for path in (q for q in paths if q is not None):
             try:
                 rec = relaxation_of(path)
-            except Exception:                            # noqa: BLE001
+            except (OSError, ValueError, ParseError):
+                # AN OUTPUT THAT DOES NOT READ says no verdict -- the line
+                # says its state, as the status door gave it; a defect in a
+                # reader is not caught.
                 rec = None
             if rec is not None:
                 break
@@ -229,12 +288,12 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
     First, what cannot be taken at all is refused, before prep writes
-    anything (:func:`_cannot_be_named`): a run that is not one of this
-    calculation's, ``--from`` with ``--cold``, either on the flat layout or
-    a bias sweep.  **Named** (``--from``): taken as said, for any kind -- what
+    anything (:func:`cannot_be_named`): a run that is not one of this
+    calculation's, ``--from`` with ``--cold``, and -- this door answers a
+    first launch -- either on the flat layout or a bias sweep.  **Named** (``--from``): taken as said, for any kind -- what
     the run was is read and reported; `prepare_attempt` refuses only what
     cannot be done (no restart files in it).  **By default**, for a
-    continuing stage of an independent ladder (`_stage_before`): the NEWEST
+    continuing stage of an independent ladder (`stage_before`): the NEWEST
     attempt of the stage before it, which must have ended on its own
     with exit code 0 (:func:`usable`) -- an older one never stands in,
     because a stage re-launched to tighten is the run the person means.  Otherwise the refusal, worded by
@@ -257,14 +316,14 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         try:
             cfg = _stage_config(base, task, stage, template_text)
-        except _unreadable() as exc:
+        except unreadable() as exc:
             return None, (f"what `{stage}` builds on cannot be read: "
                           f"{exc}")
         why = unrelaxed_refusal(
             task, stage, stated=bool(getattr(cfg, "already_relaxed", False)))
         if why:
             return None, why
-    refused = _cannot_be_named(base, task, stage, from_attempt, cold)
+    refused = cannot_be_named(base, task, stage, from_attempt, cold)
     if refused:
         return None, refused
     if cold:
@@ -281,12 +340,12 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                             converged=converged,
                             linked=force_constant_stage(task, stage)), None
     try:
-        prev, linked = _source_stage(base, task, stage, template_text)
+        prev, linked = source_stage(base, task, stage, template_text)
         if prev is None:
             return None, None
         return _by_default(base, task, stage, prev, verdict=verdict,
                            linked=linked, bench=bench)
-    except _unreadable() as exc:
+    except unreadable() as exc:
         # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
         # template prep would refuse is a refusal here too, said.  A
         # `TypeError` is a bug, and looks like one.
@@ -294,7 +353,7 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                       f"{exc}")
 
 
-def _unreadable() -> tuple:
+def unreadable() -> tuple:
     """What a description, its template or a run's records raise when they
     do not read -- the person's to fix, said as a refusal."""
     from ..resolve import ResolveError
@@ -323,10 +382,11 @@ def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
             f"geometry and says whether the statement held.")
 
 
-def _cannot_be_named(base: Path, task, stage: str, from_attempt,
+def cannot_be_named(base: Path, task, stage: str, from_attempt,
                      cold: bool) -> Optional[str]:
-    """Why ``--from`` / ``--cold`` cannot be taken here -- said BEFORE prep
-    writes anything -- or ``None``.  Both doors ask through this."""
+    """Why ``--from`` / ``--cold`` cannot be taken here -- said before
+    anything is written -- or ``None``.  Every door that takes them asks
+    through this."""
     if not (from_attempt or cold):
         return None
     if from_attempt and cold:
@@ -346,11 +406,12 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
             if _independent(task) else "")
     if getattr(task, "calculation", None) == "transport":
         # A TRANSPORT RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
-        # upstream (`prep.gather_sources`), never named.
+        # upstream (`gather.gather_sources`), never named.
         return ("--from / --cold name what a stage continues from; a "
                 "transport rung takes its inputs from the rungs upstream, "
-                "gathered by its kind (engines/transport.md § 6.1), and is "
-                "not prepared again once prepared (job-system.md § 5.0).")
+                "gathered by its kind at its first launch, and anew with "
+                "--gather when it is launched again (engines/transport.md "
+                "§ 6.1, job-system.md § 5.4).")
     if (from_attempt and not _independent(task)
             and not force_constant_stage(task, stage)):
         # A LINKED KIND'S FIRST RUNG -- a vibration's `relax`, PySCF's one
@@ -379,6 +440,19 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
             return (f"--from {from_attempt!r}: {head!r} is not a stage "
                     f"folder of this calculation -- name a run as "
                     f"<NN>_<stage>/run-<n>.")
+        # A RUN THAT WAS NEVER LAUNCHED holds nothing to continue from -- and
+        # one opened by a refused send is the very run this launch fills.
+        from ..runrecord import LaunchRecordError, launch_record
+        from ..runs import run_of
+        r = run_of(base / from_attempt)
+        try:
+            ran = (r is not None and r.run is not None
+                   and launch_record(r.folder, r.names, r.run) is not None)
+        except LaunchRecordError as exc:
+            return f"--from {from_attempt!r}: {exc}"
+        if not ran:
+            return (f"--from {from_attempt!r}: that run was never launched "
+                    f"-- name a run that has run, e.g. '01_coarse/run-0'.")
     # A FORCE-CONSTANT STAGE BUILDS ON ITS LADDER'S `relax`, or on nothing
     # (`engines/vibration.md` § 5.2a's table): a run of `relax` may be
     # named; no other run, and no start from the structure while there is a
@@ -415,24 +489,37 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     § 5.2a), and a benchmark no earlier run (it takes no ``--from``)."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
-    from ..runfiles import compose as rf_compose
     from ..paths import attempts_in
-    from .materialize import latest_attempt
-    from .engines import engine_seam
-    from .materialize import stage_home
+    from .materialize import latest_attempt, stage_home
     sh = Shape.named(task.shape)
-    seam = engine_seam(str(task.engine))
-    token = stage_home(base, task, prev).token
-    sd = sh.stage_dir(token)
-    container = base if sd == "." else base / sd
+    # THE STAGE BEFORE'S HOME, from the one door: its token and its folder.
+    home = stage_home(base, task, prev)
+    token, container = home.token, home.dir
     flat = not sh.keeps_attempts_as_directories
 
     # THE COMMANDS, from the one composer (`commands`): each names the
-    # calculation and states the mode where its config sets none.
-    from .commands import (block, command, launch_lines, run_first,
-                           words_for)
+    # calculation and states the mode where its config sets none.  A choice
+    # of run is said where it is taken: a force-constant stage's at its
+    # prep, any other stage's at its launch (`job-system.md` § 5.4).
+    from ..identity import stage_key
+    from .commands import (block, command, launch_lines, launch_pending,
+                           run_first, words_for)
+    from .group import number_of
     run_prev = block(run_first(prev, base=base))
-    launch_prev = block(launch_lines("task", prev, base=base))
+    g_prev, g_stage = number_of(task, prev), number_of(task, stage)
+    # A CHOICE OF RUN A LAUNCH SAYS FOR ONE STAGE (`job-system.md` § 5.4):
+    # a member of a group of several, whose first launch takes the group
+    # whole, is offered it once it is a group of its own -- a benchmark
+    # measures one stage, never a group.
+    mates = [s.name for s in task.stages if s.group == g_stage
+             and stage_key(s.name) != stage_key(stage)]
+    alone = linked or bench or not mates
+
+    def _taking(*flags) -> List[str]:
+        if linked:
+            return [command("prep", *words_for("task", groups=[g_stage]),
+                            base=base, flags=flags)]
+        return launch_lines("task", stage, base=base, flags=flags)
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
     # names an attempt-less start, which the flat layout -- one folder, no
     # attempts -- refuses; there a stage starts clean by its run card.
@@ -440,8 +527,13 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
              f"or start `{stage}` clean: set its run card's `restart` to "
              f"`clean` (Task setup, or task.json)\n" if flat else
              f"or start `{stage}` from the calculation's structure --\n"
-             + block([command("prep", *words_for("task", stage), base=base,
-                              flags=("--cold",))]) + "\n")
+             + block(_taking("--cold")) + "\n" if alone else
+             f"or choose what `{stage}` starts from -- an earlier run of "
+             f"`{prev}` (--from) or the calculation's structure (--cold): a "
+             f"launch says that for one stage, and `{stage}` is in group "
+             f"{g_stage} with {', '.join(f'`{m}`' for m in mates)}, so give "
+             f"it a group of its own first (Task setup, or task.json) and "
+             f"prepare that group\n")
     rule = ("(engines/vibration.md § 5.2a)" if linked
             else "(job-system.md § 5.4)")
     # WHAT IT BUILDS ON, in the words of the ladder's kind.
@@ -450,15 +542,20 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
 
     run = None
     if flat:
-        if not (base / rf_compose(task.label, seam.suffix, token)).is_file():
+        # PREPARED, by the one door (`ready.job_of`): its row in the plan.
+        from .ready import job_of
+        if job_of(base, prev) is None:
             return None, (f"{lead}, which has not run yet.  Run it "
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = base, None
-        # THE RUN BY ITS NAME, which every file of it carries -- the newest
-        # launched, counted on the launch records, as its state is read.
-        from ..runfiles import latest_run, run_name
-        n = latest_run(base, task.label, stage=token, role=".run.json")
-        run = run_name(task.label, token, n) if n is not None else None
+        # THE RUN BY ITS NAME, which every file of it carries -- the
+        # stage's newest, by the one rule (`runrecord.newest_run`), as its
+        # state is read.
+        from ..runfiles import RunNames
+        from ..runrecord import newest_run
+        names = RunNames.of(task.label, token, task.shape)
+        n = newest_run(base, names)
+        run = names.run_name(n) if n is not None else None
     else:
         latest = latest_attempt(container) if container.is_dir() else None
         if latest is None:
@@ -468,19 +565,33 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     concluded, state, converged, detail = read_run(
         base, task, prev, attempt, verdict=verdict)
     if usable(state):
-        return Continuation(stage=prev, source=source, by_default=True,
-                            concluded=concluded, state=state,
-                            converged=converged, linked=linked,
-                            run=run), None
+        # ON THE FLAT LAYOUT, what it reads is the folder's restart files,
+        # as the last run there left them (:func:`flat_files`) -- a record
+        # of another run that does not read is the refusal, in its words.
+        from ..runrecord import LaunchRecordError
+        try:
+            return flat_files(base, task, Continuation(
+                stage=prev, source=source, by_default=True,
+                concluded=concluded, state=state, converged=converged,
+                linked=linked, run=run)), None
+        except LaunchRecordError as exc:
+            return None, str(exc)
 
     # REFUSED -- worded by what the run's state says, with a command for
-    # each way on (§ 5.3: what molbuilder prints, you can type).
+    # each way on (§ 5.3: what molbuilder prints, you can type): prep's run
+    # not launched goes with its group; a run a refused send opened, and
+    # one launched, with the stage alone again (D4).
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
+    launch_prev = block(launch_pending(prev, g_prev,
+                                       attempt.name if source else None,
+                                       base=base)
+                        if state == "pending"
+                        else launch_lines("task", prev, base=base))
     why, first = state_remedy(concluded, state, launch_prev,
                               detail=detail)
     other = None
-    if not (flat or bench):
+    if not (flat or bench) and alone:
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
         # to build on, typed out -- never a placeholder.  Its ending is the
         # question, not its relaxation.
@@ -491,49 +602,46 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
                 other = str(a.relative_to(base))
                 break
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
-           + block([command("prep", *words_for("task", stage), base=base,
-                            flags=("--from", other))]) + "\n"
+           + block(_taking("--from", other)) + "\n"
            if other else "")
     return None, (f"`{stage}` {'builds on' if linked else 'continues from'} "
                   f"{what} {why}.  {first}\n{alt}{clean}{rule}")
 
 
-def relaunch(base, task, job, *, cold: bool = False
+def relaunch(base, task, job, *, cold: bool = False, ran=None
              ) -> Optional[Continuation]:
     """What ``job``'s stage, LAUNCHED AGAIN, continues from -- the door
     `launch` asks, as prep asks :func:`continuation_answer`
     (`job-system.md` § 5.4, *A stage launched again*).  Any stage is
     launched again, however its last run ended: warm, from its OWN latest
-    run -- its newest attempt, or on the flat layout its latest run in the
-    folder, by the name every file of it carries -- when its kind resumes
-    and it takes something from a run (`Job.relaunch_continues`); cold
-    (``cold``), or a stage that takes nothing, continues from nothing:
-    ``None``.  How that run ended is read in the run door's order
-    (:func:`read_run`) and said, never judged."""
+    run -- ``ran``, its newest attempt launched, as launch found it, or on
+    the flat layout its latest run in the folder, by the name every file of
+    it carries -- when its kind resumes and it takes something from a run
+    (`Job.relaunch_continues`); cold (``cold``), or a stage that takes
+    nothing, continues from nothing: ``None``.  How that run ended is read
+    in the run door's order (:func:`read_run`) and said, never judged."""
     from ..paths import Shape
-    from ..runfiles import latest_run, run_name
-    from .materialize import latest_attempt, stage_home
+    from ..runfiles import RunNames
+    from ..runrecord import newest_run
+    from .materialize import stage_home
     base = Path(base)
     stage = job.name
     if cold or not job.relaunch_continues:
         return None
     home = stage_home(base, task, stage)
     if Shape.named(task.shape).keeps_attempts_as_directories:
-        latest = latest_attempt(home.dir)
-        if latest is None:
-            return None                              # never launched
-        concluded, state, converged, _ = read_run(base, task, stage,
-                                                  latest)
-        return Continuation(stage=stage, source=str(latest.relative_to(base)),
+        concluded, state, converged, _ = read_run(base, task, stage, ran)
+        return Continuation(stage=stage,
+                            source=str(Path(ran).relative_to(base)),
                             by_default=True, concluded=concluded, state=state,
                             converged=converged, own=True)
-    n = latest_run(base, task.label, stage=home.token, role=".run.json")
+    names = RunNames.of(task.label, home.token, task.shape)
+    n = newest_run(base, names)
     concluded, state, converged, _ = read_run(base, task, stage, base)
-    return Continuation(stage=stage, source=None, by_default=True,
-                        concluded=concluded, state=state, converged=converged,
-                        own=True,
-                        run=(run_name(task.label, home.token, n)
-                             if n is not None else None))
+    return flat_files(base, task, Continuation(
+        stage=stage, source=None, by_default=True, concluded=concluded,
+        state=state, converged=converged, own=True,
+        run=names.run_name(n) if n is not None else None))
 
 
 def state_remedy(concluded: Optional[str], state: Optional[str],
@@ -586,22 +694,22 @@ def relax_stage_of(task) -> Optional[str]:
                  if vibration_render_kind(s.name) != "vibration"), None)
 
 
-def _source_stage(base, task, stage: str, template_text: Optional[str] = None
+def source_stage(base, task, stage: str, template_text: Optional[str] = None
                   ) -> Tuple[Optional[str], bool]:
     """``(the stage whose run ``stage`` builds on by default, linked)``: the
-    stage before it in an independent ladder (:func:`_stage_before`), or the
+    stage before it in an independent ladder (:func:`stage_before`), or the
     `relax` a force-constant stage builds on (linked) -- ``(None, ...)``
     when it builds on none."""
     if force_constant_stage(task, stage):
         return relax_stage_of(task), True
-    return _stage_before(base, task, stage, template_text), False
+    return stage_before(base, task, stage, template_text), False
 
 
 def _independent(task) -> bool:
     """An INDEPENDENT ladder, whose stages continue one from another: a kind
     without rung roles (`paths.KIND_ROLES`).  A linked stage's input is
-    its kind's: a transport rung's gather (`prep.gather_sources`),
-    and a force-constant stage builds on `relax` (:func:`_source_stage`)."""
+    its kind's: a transport rung's gather (`gather.gather_sources`),
+    and a force-constant stage builds on `relax` (:func:`source_stage`)."""
     from ..paths import KIND_ROLES
     return task.calculation not in KIND_ROLES
 
@@ -630,7 +738,7 @@ def _stage_config(base, task, stage: str, template_text: Optional[str] = None):
                  if stage_key(n) == stage_key(stage)), None)
 
 
-def _stage_before(base, task, stage: str,
+def stage_before(base, task, stage: str,
                   template_text: Optional[str] = None) -> Optional[str]:
     """The stage ``stage`` continues from by default -- the one
     before it in the ladder, resolved as `prep` resolves it (template ⊕
@@ -653,14 +761,14 @@ def _stage_before(base, task, stage: str,
 
 def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     """What Task setup's **Continue from** offers ``stage`` -- the default
-    and, when prep would refuse it, why; every run of the stage before it
-    with what it was; whether the structure (``--cold``) is a choice here --
-    or ``None`` when the stage continues from nothing by default
-    (`job-system.md` § 5.4, `web/task-setup.md` § 11).  The answer prep acts
-    on, served before it does -- without the relaxation's verdict, which the
-    preview reads (`continuation_answer`): a folder is answered every time it
-    is opened, and parsing each stage's output there is the cost of a
-    preview nobody asked for."""
+    and, when the verb that takes it would refuse it, why; every run of the
+    stage before it with what it was; whether the structure (``--cold``) is
+    a choice here -- or ``None`` when the stage continues from nothing by
+    default (`job-system.md` § 5.4, `web/task-setup.md` § 11).  The answer
+    its first launch acts on -- a force-constant stage's prep -- served
+    before it does, without the relaxation's verdict (`continuation_answer`
+    reads it): a folder is answered every time it is opened, and parsing
+    each stage's output there is the cost of a preview nobody asked for."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
@@ -674,7 +782,7 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
         return ({"from_stage": None, "linked": True, "default": None,
                  "refused": why, "runs": [], "cold": False}
                 if why else None)
-    prev, linked = _source_stage(base, task, stage)
+    prev, linked = source_stage(base, task, stage)
     if prev is None:
         return None
     got, refused = _by_default(base, task, stage, prev, verdict=False,
@@ -682,7 +790,7 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     sh = Shape.named(task.shape)
     runs = []
     if sh.keeps_attempts_as_directories:
-        container = base / sh.stage_dir(stage_home(base, task, prev).token)
+        container = stage_home(base, task, prev).dir
         for n in (reversed(attempts_in(container)) if container.is_dir()
                   else ()):
             a = _adir(container, n)

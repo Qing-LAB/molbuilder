@@ -124,17 +124,15 @@ def collect_sweep(base_dir, task, *,
     from .results import mass_of
     from ..engine_atom_index import from_engine_index
     from ..jobset.commands import rollback
-    from ..jobset.materialize import latest_attempt
-    from molbuilder.runrecord import launch_record
+    from ..jobset.materialize import latest_attempt, stage_home
+    from ..parse.dirs.rundir import run_state_of
     from ..runfiles import RunNames
-    from ..jobset.materialize import stage_home
-    from ..parse.dirs import run_status
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
     from ..parse.errors import ParseError
-    from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
     from ..runfiles import compose
+    from ..runs import run_of
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
     from ..template import catalogue, one
 
@@ -157,7 +155,6 @@ def collect_sweep(base_dir, task, *,
             "layout), so each overwrote the last one's <label>.FC and "
             "spectrum: a sweep needs the hierarchical layout "
             "(engines/vibration.md 5.9)")
-    shape = Shape.named(task.shape)
     by_name = {s.name: s for s in task.stages}
 
     def rel(p: Path) -> str:
@@ -180,8 +177,9 @@ def collect_sweep(base_dir, task, *,
     failed: List[Dict[str, Any]] = []
     loaded = []
     for name in names:
-        token = stage_home(base, task, name).token
-        attempt = latest_attempt(base / shape.stage_dir(token))
+        home = stage_home(base, task, name)
+        token = home.token
+        attempt = latest_attempt(home.dir)
         if attempt is None:
             # NOT PREPARED, in the ready door's words: ready, and what it
             # takes, or waiting, and what for (`jobset.ready`).
@@ -190,11 +188,16 @@ def collect_sweep(base_dir, task, *,
             pending.append({"stage": name, "state": r.state,
                             "detail": r.detail})
             continue
-        spectrum = attempt / spectrum_name
-        if not spectrum.is_file():
-            rn = RunNames.of(task.label, token, task.shape)
-            st = run_status(attempt, rn.stem,
-                            launch=launch_record(attempt, rn))
+        # THE RUN'S OWN FILES, through the run door (`runs.run_of`): a
+        # reader of a run takes its folder.
+        run = run_of(attempt, stage=token)
+        spectrum = run.on_label(".spectra.json") if run is not None else None
+        if spectrum is None:
+            # THE RUN'S STATE, through the one door -- a launch record that
+            # does not read is the state `unreadable`, said (`rundir.
+            # run_state_of`).
+            st = run_state_of(attempt,
+                              RunNames.of(task.label, token, task.shape))
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):
@@ -217,8 +220,7 @@ def collect_sweep(base_dir, task, *,
                                      f"{exc}"})
             continue
         meta = dict(res.engine_metadata or {})
-        fc_file = attempt / str(meta.get("fc_file")
-                                or compose(task.label, ".FC"))
+        fc_file = run.on_label(".FC")
         rx = dict(res.relaxation or {})
         f_eh = rx.get("max_force_eh_bohr")
         overrides = dict(getattr(by_name[name], "overrides", None) or {})
@@ -226,7 +228,7 @@ def collect_sweep(base_dir, task, *,
             "name": name,
             "attempt": rel(attempt),
             "spectrum": rel(spectrum),
-            "fc_file": rel(fc_file) if fc_file.is_file() else None,
+            "fc_file": rel(fc_file) if fc_file is not None else None,
             # WHAT THIS STAGE VARIES, as the description states it -- the
             # stage's own overrides of the calculation's template -- and the
             # unit each value is in, the catalogue's.
@@ -282,10 +284,11 @@ def collect_sweep(base_dir, task, *,
                 f"constants, and this would report the geometry's change as "
                 f"the displacement's.  Each force-constant stage takes the "
                 f"relax stage's newest attempt when it is prepared "
-                f"(engines/vibration.md 5.2a), and a prepared stage is not "
+                f"(engines/vibration.md 5.2a), and a launched stage is not "
                 f"prepared again (job-system.md 5.0): to measure them at the "
                 f"relaxation they should share, "
-                + rollback("their prep", base=base))
+                + rollback("their groups' first launch (stages launched "
+                           "before 2.7.0: before their prep)", base=base))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
     masses = [mass_of(i, ref.equilibrium_elements, ref.equilibrium_masses_amu)
@@ -324,7 +327,7 @@ def collect_sweep(base_dir, task, *,
                             from_engine_index(int(rng[1]), "siesta") + 1))
                  if len(rng) == 2 else [])
     H_ref, ref_why = None, "a force-constant file is missing"
-    if ref_fc_file.is_file() and displaced:
+    if ref_fc_file is not None and displaced:
         try:
             H_ref = (hessian_from_fc(read_fc(ref_fc_file), displaced)
                      / EV_PER_ANG2_TO_HARTREE_PER_BOHR2)
@@ -336,7 +339,7 @@ def collect_sweep(base_dir, task, *,
                                  "relative_change": None}
         if H_ref is None:
             entry["why"] = ref_why
-        elif not fc_file.is_file():
+        elif fc_file is None:
             entry["why"] = "a force-constant file is missing"
         elif (meta.get("fc_range_1based") or []) != rng:
             entry["why"] = "the two runs nudged different atoms"

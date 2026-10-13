@@ -437,13 +437,13 @@ function computationSection(rec) {
     return s;
 }
 
-function deckSection(rec, dir) {
+function deckSection(rec, recordDir) {
     const s = section("Deck");
     s.appendChild(rows(rec.deck));
     const proj = NS.projects;
     if (rec.deck.path && proj && typeof proj.showPreview === "function") {
         const full = rec.deck.path.startsWith("/") ? rec.deck.path
-                   : String(dir || "").replace(/\/$/, "") + "/" + rec.deck.path;
+                   : String(recordDir || "").replace(/\/$/, "") + "/" + rec.deck.path;
         const b = el("button", "rp-view", "View");
         b.type = "button";
         b.title = "Open the deck in the sidebar's text viewer";
@@ -455,7 +455,11 @@ function deckSection(rec, dir) {
 
 /* ---- the panel ------------------------------------------------------------ */
 
-const shown = { record: null, dir: "" };
+/* `dir` is the folder the page is bound to (the scope); `recordDir` the one
+ * the record was read from, whose file names the record gives -- a run picked
+ * off a calculation's ladder is read in its own folder while the page stays
+ * bound to the calculation (results.md § 2.4). */
+const shown = { record: null, dir: "", recordDir: "" };
 let open = false;
 
 function render() {
@@ -478,6 +482,11 @@ function render() {
     head.addEventListener("click", () => {
         open = !open;
         render();
+        // THE PANEL IS DRAWN AGAIN, its toggle with it: focus goes back to
+        // the toggle, so a keyboard user stays where they pressed
+        // (ui-contract.md § 4.1).
+        const again = host.querySelector(".rp-toggle");
+        if (again) again.focus();
     });
     host.appendChild(head);
 
@@ -486,7 +495,7 @@ function render() {
         if (rec.verdict || rec.earlier) body.appendChild(verdictSection(rec));
         if (rec.setup) body.appendChild(setupSection(rec));
         if (rec.computation) body.appendChild(computationSection(rec));
-        if (rec.deck) body.appendChild(deckSection(rec, shown.dir));
+        if (rec.deck) body.appendChild(deckSection(rec, shown.recordDir));
         host.appendChild(body);
     }
     host.hidden = false;
@@ -497,6 +506,7 @@ if (C.EVENT_FILE_SELECTED) {
         const d = (evt && evt.detail) || {};
         shown.record = d.record || null;
         shown.dir = d.dir || "";
+        shown.recordDir = d.record_dir || "";
         render();
     });
 }
@@ -506,6 +516,7 @@ if (C.EVENT_SCOPE_CHANGED) {
         if (shown.record && dir !== shown.dir) {
             shown.record = null;
             shown.dir = dir;
+            shown.recordDir = "";
             render();
         }
     });

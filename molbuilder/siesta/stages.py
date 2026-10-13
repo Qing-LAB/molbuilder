@@ -6,10 +6,10 @@ Three things live here, read by `jobset init` and the engine seam
 
   * :func:`default_siesta_stages` — the shipped ladder as ``Stage`` objects,
     the science stated once in the presets table;
-  * :func:`_warm_declaration` — ``restart: continue`` means ``.XV``, ``.DM``
+  * :func:`warm_for` — ``restart: continue`` means ``.XV``, ``.DM``
     and ``.CG``, the last conditioned on the optimizer (`run-identity.md`
     § 4);
-  * :func:`_traits` — the opaque per-job facts a warm file is conditioned on.
+  * :func:`traits_for` — the opaque per-job facts a warm file is conditioned on.
 
 **Where the ladder comes from, and where it does not.**  An engine config
 carries no stage list (``engines/stages.md`` § 1.1) — the ladder is the
@@ -73,7 +73,7 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
 from ..jobset.model import OPTIMIZER_TRAIT
 
 
-def _traits(eff) -> Dict[str, str]:
+def traits_for(eff) -> Dict[str, str]:
     """The opaque per-job facts a warm file can be conditioned on (§ 4 rule 1).
 
     One entry today: which relaxation algorithm this stage runs. The `jobset`
@@ -87,9 +87,9 @@ def _traits(eff) -> Dict[str, str]:
             str(getattr(eff, "relax_type", "") or "").strip().lower()}
 
 
-def _warm_declaration(label: str, eff,
-                      calculation: str = "optimization",
-                      base_dir=None) -> List[WarmFile]:
+def warm_for(label: str, eff,
+             calculation: str = "optimization",
+             base_dir=None) -> List[WarmFile]:
     """What a stage with this resolved config takes from a run it continues.
 
     THE ROWS COME FROM THE RULES FILE (`job-contracts.md` § 4.2a, U2
@@ -107,10 +107,9 @@ def _warm_declaration(label: str, eff,
     once ``--from`` names the source and both stages are in hand.
     """
     from ..identity import continues
-    from ..warmfiles import warm_list
+    from ..warmfiles import warm_declaration
     if not continues(eff):
         return []
-    return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
-            for r in warm_list("siesta", calculation, base_dir).carry_rules]
+    return warm_declaration("siesta", label, calculation, base_dir)
 
 

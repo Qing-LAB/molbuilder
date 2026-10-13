@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from molbuilder.parse.base import FileParser
-from molbuilder.parse.fdf import _norm
+from molbuilder.parse.fdf import fdf_key
 from molbuilder.parse.types import EngineParamsResult, ParseResult, ParseWarning
 
 #: SIESTA 5 names the log after the moment it opened it
@@ -59,7 +59,7 @@ def read_fdf_log(text: str, source: str = "<text>"
     """``(params, blocks, warnings)`` from an fdf log's text.
 
     ``params`` and ``blocks`` are keyed by fdf's own label rule
-    (`parse/fdf._norm`: case, ``.``, ``-`` and ``_`` ignored), so a deck's
+    (`parse/fdf.fdf_key`: case, ``.``, ``-`` and ``_`` ignored), so a deck's
     ``kgrid_Monkhorst_Pack`` finds the log's ``kgrid.MonkhorstPack``.  Each
     ``params`` entry has ``key`` as the log spells it and, when every reading
     agrees, the reading itself: ``value``, ``number`` and ``unit`` when it is
@@ -87,7 +87,7 @@ def read_fdf_log(text: str, source: str = "<text>"
             continue
         if low.startswith("%block"):
             parts = line.split(None, 1)
-            block = _norm(parts[1].strip()) if len(parts) > 1 else ""
+            block = fdf_key(parts[1].strip()) if len(parts) > 1 else ""
             block_line = line_no
             blocks[block] = []
             continue
@@ -111,7 +111,7 @@ def read_fdf_log(text: str, source: str = "<text>"
                 pass
             if len(rest) == 2 and "number" in reading:
                 reading["unit"] = rest[1]
-        label = _norm(key)
+        label = fdf_key(key)
         spelled.setdefault(label, key)
         read.setdefault(label, []).append(reading)
         last = reading

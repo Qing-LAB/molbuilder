@@ -217,8 +217,8 @@ class TestPartialTrajectoryInspectorEndpoint:
             f"fetch path assumes HTML"
         )
         assert "charset=utf-8" in ctype.lower(), (
-            f"missing charset; non-ASCII content in the partial "
-            f"(none today, but defensive) could be mis-decoded"
+            "missing charset; non-ASCII content in the partial "
+            "(none today, but defensive) could be mis-decoded"
         )
 
     def test_cache_control_is_private_short_max_age(self, web):
@@ -586,7 +586,7 @@ class TestTheContractEndpoint:
         root, client = isolated
         write_machine_record()
         bundle = describe_calculation(tmp_path, monkeypatch)
-        got = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+        got = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                      "--target", "this")
         assert got.exit_code == 0, got.output
 

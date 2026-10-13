@@ -132,7 +132,7 @@ def _a_prepped_stage(tree, monkeypatch, *stated):
                 "--shape", "hierarchical", "--name", "H2")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
-    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,
                 "--target", "this", *stated)
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_coarse" / "run-0"

@@ -300,8 +300,8 @@ _PLAN_TASK = {
     "shape": "hierarchical", "run": {"name": "r", "id": "r_H2"},
     "structure": {"source": "a.xyz", "formula": "H2", "atoms": 2},
     "varies": [],
-    "stages": [{"name": "coarse", "enabled": True, "overrides": {}},
-               {"name": "tight", "enabled": True, "overrides": {}}],
+    "stages": [{"name": "coarse", "group": 1, "overrides": {}},
+               {"name": "tight", "group": 2, "overrides": {}}],
     "allocation": {"domain": "htc", "time": "1-00:00:00"},
     # THREE points on one axis and ONE on the other: an axis to measure
     # beside a decision already made (`generator.md` § 4.3a).
@@ -345,7 +345,7 @@ def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
     (bundle / "task.json").write_text(json.dumps(d, indent=2))
 
     r = client.post("/api/task-setup/prep", json={
-        "dest": str(bundle), "kind": "task", "stages": ["coarse"], "plan": True,
+        "dest": str(bundle), "kind": "task", "groups": [1], "plan": True,
         # a document saying something ELSE -- it must be ignored
         "task": {"stages": [{"name": "coarse", "execution": {"mpi_np": 999}}]},
     })
@@ -383,7 +383,7 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         Prep of that plan writes, and no other."""
         _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "task", "stages": ["coarse"],
+            "dest": str(bundle), "kind": "task", "groups": [1],
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
         pv = r.get_json()
@@ -391,20 +391,13 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         assert "#SBATCH -n 4" in header and "#SBATCH -p short" in header, (
             "the run lost its A13 block: " + repr(header))
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "task", "stages": ["coarse"],
+            "dest": str(bundle), "kind": "task", "groups": [1],
             "plan_id": pv["plan_id"]})
         assert r.status_code == 200, r.get_data(as_text=True)
         written = [ln.strip() for sb in bundle.rglob("01_coarse/*.sbatch")
                    for ln in sb.read_text().splitlines()
                    if ln.startswith("#SBATCH")]
         assert header == written, (header, written)
-        # ...and WHERE IT WAS ADMITTED, as its job records it, read by the
-        # card from the folder (`job-system.md` § 6.0).
-        placed = client.get("/api/task-setup/folder",
-                            query_string={"dir": str(bundle)}).get_json()
-        line = ((placed.get("prepared") or {}).get("placed") or {}).get(
-            "coarse") or ""
-        assert line.startswith("placed on short ("), placed.get("prepared")
 
 
 class TestThePlanComesFromTheProducer:

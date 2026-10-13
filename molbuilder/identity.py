@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 try:                                   # inside molbuilder
     from .runfiles import patterns as _runfile_patterns
@@ -274,6 +274,35 @@ def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
             f"molbuilder checkpoint restore{p}")
 
 
+#: The state a LAUNCHED stage goes back to (`job-system.md`, *How the
+#: checkpoint supports you*): it holds every run the group builds on, and
+#: the group as prepared, never launched.
+LAUNCHED_WAY_BACK = "the state saved before its group's first launch"
+
+
+def way_back_words(launched: Optional[bool],
+                   change: Optional[str] = None) -> str:
+    """How a stage is made as its description gives it now, in the words a
+    text read LATER says -- a run script's banner, a deck's header, a
+    result's remedy, a refusal decided below the job verbs
+    (`job-system.md`, *How the checkpoint supports you*): never launched,
+    its group is prepared again; launched, the state saved before its
+    group's first launch is restored and its group prepared anew.
+    ``launched`` ``None``: the text is read either way, and says both.
+    ``change`` is what the person changes on the way -- said AFTER the
+    restore, which puts the description back as it was.  The printed lines
+    a verb composes, naming the folder, are `jobset.commands.way_back`'s."""
+    again = "prepare its group again"
+    back = f"go back to {LAUNCHED_WAY_BACK} and prepare its group anew"
+    if change:
+        again = f"{change} and {again}"
+        back = (f"go back to {LAUNCHED_WAY_BACK}, {change}, and prepare its "
+                f"group anew")
+    if launched is None:
+        return f"{again} -- once launched, {back}"
+    return back if launched else again
+
+
 def checkpoint_words(folder=None) -> str:
     """The way back, in a sentence's words: which command shows the
     folder's saved states and which restores the one picked
@@ -285,13 +314,26 @@ def checkpoint_words(folder=None) -> str:
 
 
 def deck_launch(stage_token: Optional[str],
-                trial: Optional[str] = None) -> Optional[str]:
-    """How a deck names its own managed launch -- :func:`launch_as_typed`,
-    for the stage its token names; ``None`` for a deck written outside a
-    ladder: it has no stage to name."""
+                trial: Optional[str] = None) -> List[str]:
+    """How a deck names its own managed launch, the lines its header prints
+    (:func:`launch_as_typed`, each with what it does after ``#``): a
+    trial's, its own; a stage's, its group's first launch -- ``launch
+    task``, which offers the group once what it builds on has finished, a
+    group going whole the first time (`job-system.md`, *The task*) -- and
+    the stage alone, launched again or a group of one.  ``[]`` for a deck
+    written outside a ladder: it has no stage to name."""
     if not stage_token:
-        return None
-    return launch_as_typed(command_stage(stage_token), trial)
+        return []
+    stage = command_stage(stage_token)
+    if trial:
+        return [launch_as_typed(stage, trial)]
+    alone = launch_as_typed(stage)
+    group = "molbuilder jobset launch task"
+    width = max(len(group), len(alone))
+    return [f"{group:<{width}}  # its group's first launch, offered once "
+            f"what it builds on has finished",
+            f"{alone:<{width}}  # this stage alone: launched again, or a "
+            f"group of one"]
 
 
 _TOKEN_RE = re.compile(r"(\d{2,})_([A-Za-z0-9_]+)")
@@ -443,24 +485,12 @@ def render_stage_choices(refs: Sequence["StageRef"]) -> str:
     because bash reads an unquoted ``#`` as the start of a comment
     (`job-system.md` § 5.3).
 
-    A sibling of :func:`render_stage_refs`, split on purpose: the table
-    format shows what is ON DISK (the token, ``03_tight``), this shows
-    what the resolver ACCEPTS (name or ``#N`` — user-settled 2026-08-21),
-    and printing the on-disk form in a refusal would offer a spelling
-    that no longer resolves.
+    What the resolver ACCEPTS (name or ``#N`` — user-settled 2026-08-21),
+    not what is on disk (the token, ``03_tight``): printing the on-disk form
+    in a refusal would offer a spelling that no longer resolves.
     """
     return ", ".join(f"{r.name} ('#{r.seq}')" if r.seq is not None else r.name
                      for r in refs)
-
-
-def render_stage_refs(refs: Sequence["StageRef"]) -> str:
-    """The one listing format every surface prints — ``01_coarse, 03_tight``.
-
-    One function so a refusal, a status table and a help string cannot show a
-    user three different vocabularies for one set of jobs. Where there are no
-    ordinals it degrades to the names, which is what a sweep has.
-    """
-    return ", ".join(r.label for r in refs)
 
 
 def is_ours(name: str, label: str) -> bool:
@@ -471,9 +501,7 @@ def is_ours(name: str, label: str) -> bool:
 
     ``label``, not the id: every pattern below is a **filename**, and since
     § 2.0a the stem of a filename is the label. Handing this the composite id
-    would match nothing and report every warm file as the engine's — or, worse
-    in :func:`~molbuilder.validation.identity.warm_files_present`, report that
-    nothing has run at all.
+    would match nothing and report every warm file as the engine's.
 
     **A TRIAL'S LABEL IS A LABEL TOO**, and that is why the patterns are tried
     against two prefixes rather than being written out twice. A benchmark
@@ -608,10 +636,11 @@ def run_id(label: str, formula: str = "", *,
     return f"{stem}_{normalise_id(formula, what='formula')}"
 
 
-__all__ = ["LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES", "OUR_FILE_PATTERNS",
+__all__ = ["LAUNCHED_WAY_BACK", "LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES",
+           "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
            "deck_launch", "is_ours", "launch_as_typed", "normalise_id",
-           "render_stage_choices", "render_stage_refs",
+           "render_stage_choices",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",
-           "stage_token"]
+           "stage_token", "way_back_words"]

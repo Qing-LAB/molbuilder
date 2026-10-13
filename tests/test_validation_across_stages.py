@@ -12,7 +12,6 @@ P2 unit 6.
 """
 from __future__ import annotations
 
-import dataclasses
 
 import numpy as np
 import pytest
@@ -28,14 +27,13 @@ from molbuilder.validation.stages import (
 
 
 @pytest.fixture(autouse=True)
-def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
-    """These tests build a calculation under ``tmp_path`` and hand its path
+def tree(isolated_projects_root):
+    """These tests build a calculation in the projects tree and hand its path
     to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test declares where its tree IS --
-    exactly what a user does when calculations live on scratch.
+    (`job-contracts.md` § 2.5b), so the test builds inside one: the conftest's
+    per-test tree, a folder named ``projects`` like every tree (§ 2.5).
     """
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+    return isolated_projects_root
 
 
 
@@ -286,7 +284,7 @@ def test_it_never_refuses():
 #  A-8 — the sequence findings are REACHABLE, not merely implemented     #
 # --------------------------------------------------------------------- #
 
-def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
+def test_the_sequence_warnings_reach_the_prep_surface(tree):
     """A-8 (final review, 2026-08-13): the sequence checks ride the § 6.6
     preflight when the template is in hand, and `prep` is the surface that
     has both halves.  Pinned through the CLI: the note must reach the person
@@ -299,8 +297,8 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(
             struct, SiestaConfig(system_label="JOB"),
@@ -316,14 +314,15 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
                    # (`architecture.md` § 5.2)
                    execution={"mpi_np": 2, "omp_threads": 1}),
              Stage(name="b", overrides={"mesh_cutoff": 200.0},
-                   execution={"restart": "clean"})],
+                   execution={"restart": "clean", "mpi_np": 2,
+                              "omp_threads": 1})],
             engine="siesta", calculation="optimization", shape="hierarchical",
-            name="JOB", source=str(tmp_path / "h2.xyz")),
+            name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "task", "--stage", "a", "--bundle", str(dest),
+    res = r.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle", str(dest),
                                   "--no-sbatch"])
     assert res.exit_code == 0, res.output
     assert "recomputes" in res.output, res.output

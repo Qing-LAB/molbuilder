@@ -4,9 +4,8 @@
 This module owns TWO facts and the renders that follow from them:
 
 * **The ladder** (:data:`TRANSPORT_STAGES`): the five stages in
-  dependency order.  Fixed by design, not configurable -- the seed is
-  skipped by removing it from the description (its Q4 skip), never by a
-  different ladder.
+  dependency order.  Fixed by design, not configurable -- every
+  description holds all five (`task.fixed_by_kind`).
 * **The per-rung bags, as stages** (:func:`stages_for_transport`).  Which
   rung READS an override is the catalogue's ``stages`` declaration, asked
   through the one door every kind's description check and ``resolve`` ask
@@ -19,7 +18,7 @@ through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
 ``SHAPE_OF_RUNG`` tables the four deck shapes — which is what lets the
 template's items reach them; the electronic contract is resolved by
-``prep._resolve_transport`` from the calculation's own template.
+``transport_rung.resolve_transport`` from the calculation's own template.
 
 The cited relaxation DEFAULTS the electronic description at ``jobset
 init``; it does not seal it (§ 2a.7).  The shared-contract invariant holds
@@ -205,11 +204,8 @@ def frames_of(base) -> int:
     typed (`engines/transport.md` § 2a.9): the composed record's
     (`slot-provenance.json`, written at the calculation's first prep).  No
     record yet means nothing is prepared, so no rung has points on disk: 1."""
-    from .compose import PROVENANCE_FILE
-    from ..persist import read_json
-    prov = Path(base) / PROVENANCE_FILE
-    return int((read_json(prov) or {}).get("frames") or 1) \
-        if prov.is_file() else 1
+    from .compose import read_provenance
+    return int((read_provenance(base) or {}).get("frames") or 1)
 
 
 def rung_points(task, stage: str, *, frames: int) -> Tuple[Point, ...]:
@@ -252,8 +248,7 @@ def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
             for pt in rung_points(task, stage, frames=frames_of(base))]
 
 
-def stage_inputs(stage: str, task_label: str, *,
-                 with_seed: bool = True):
+def stage_inputs(stage: str, task_label: str):
     """The ladder's DAG (§ 1, § 6.1), as data: ``[(upstream stage, filename)]`` this
     stage CONSUMES from the concluded attempts of the stages before it.
 
@@ -262,23 +257,21 @@ def stage_inputs(stage: str, task_label: str, *,
     electrode's label IS its ``.TSHS`` stem (`electrode_hs_stem`, one
     spelling) — so producer and consumer cannot disagree about a name.
 
-    A ladder without its seed (ruling Q4: skippable scaffolding, removed
-    from the description) drops its row: the device SCF then starts from
-    atomic densities.  The
-    electrode and device rows are never optional — they are the physics
+    The seed's density starts the device's SCF (user, 2026-10-12: every
+    ladder keeps its seed); the electrode and device rows are the physics
     (the self-energies, and the converged H the transmission reads).
     """
     from .sort import REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
     from .transiesta import electrode_hs_stem
+    from ..runfiles import compose
     elec = [
-        ("electrode_L",
-         f"{electrode_hs_stem(task_label, REGION_LEFT_ELECTRODE)}.TSHS"),
-        ("electrode_R",
-         f"{electrode_hs_stem(task_label, REGION_RIGHT_ELECTRODE)}.TSHS"),
+        ("electrode_L", compose(electrode_hs_stem(
+            task_label, REGION_LEFT_ELECTRODE), ".TSHS")),
+        ("electrode_R", compose(electrode_hs_stem(
+            task_label, REGION_RIGHT_ELECTRODE), ".TSHS")),
     ]
     if stage == "device":
-        seed = [("seed", f"{task_label}.DM")] if with_seed else []
-        return seed + elec
+        return [("seed", compose(task_label, ".DM"))] + elec
     if stage == "transmission":
         # TBtrans reads the device's converged H -- which SIESTA 5.x
         # writes as <label>.TS.HSX (the sparse container that replaced
@@ -286,11 +279,16 @@ def stage_inputs(stage: str, task_label: str, *,
         # plus the electrode .TSHS the TS.Elec blocks in the (shared)
         # deck text reference.  The .TSDE is NOT consumed: the TS.HSX
         # already carries the bias point's converged potential.
-        return [("device", f"{task_label}.TS.HSX")] + elec
+        return [("device", compose(task_label, ".TS.HSX"))] + elec
     return []
 
 
-def products_of(stage: str, task_label: str, *, with_seed: bool = True,
+def inputs_of(task, stage: str):
+    """:func:`stage_inputs` for ``task``'s ladder."""
+    return stage_inputs(stage, task.label)
+
+
+def products_of(stage: str, task_label: str, *,
                 transmission_product: str = ".TBT.nc",
                 base_dir=None) -> List[str]:
     """What a run of ``stage`` must hold to be DONE: every file a rung
@@ -302,19 +300,19 @@ def products_of(stage: str, task_label: str, *, with_seed: bool = True,
     declares none).  THE ONE LIST `done` is asked with
     (`engines/transport.md` § 2a.11): the gather, the walk and `status`
     read it here and nowhere else."""
+    from ..runfiles import compose
     if stage == "transmission":
-        out = [f"{task_label}{transmission_product}"]
+        out = [compose(task_label, transmission_product)]
     else:
         out = sorted({fn for downstream in TRANSPORT_STAGES
-                      for up, fn in stage_inputs(downstream, task_label,
-                                                 with_seed=with_seed)
+                      for up, fn in stage_inputs(downstream, task_label)
                       if up == stage})
     if base_dir is not None:
         from ..warmfiles import warm_list
         own = {w.name for w in warm_declaration(stage, task_label, base_dir)}
-        out += [f"{task_label}{suf}"
-                for suf in warm_list("siesta", "transport", base_dir).along
-                if f"{task_label}{suf}" in own and f"{task_label}{suf}" not in out]
+        along = [compose(task_label, suf)
+                 for suf in warm_list("siesta", "transport", base_dir).along]
+        out += [f for f in along if f in own and f not in out]
     return out
 
 
@@ -326,7 +324,7 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     rows (`warm-files.toml` [transport]: the ``.DM``, and the ``.TSDE``,
     the NEGF density, read under ``DM.UseSaveDM``, which the device deck
     writes ``.true.``).  A rung takes no
-    ``--from`` at prep (`continuation._cannot_be_named`).
+    ``--from`` at prep (`continuation.cannot_be_named`).
 
     The electrode single-points and the transmission post-processing
     declare NOTHING — re-running them is cheaper than reasoning about a
@@ -335,11 +333,8 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     """
     if stage not in ("seed", "device"):
         return []
-    from ..jobset.model import WarmFile
-    from ..warmfiles import warm_list
-    return [WarmFile(f"{task_label}{r.suffix}",
-                     requires_same=r.requires_same)
-            for r in warm_list("siesta", "transport", base_dir).carry_rules]
+    from ..warmfiles import warm_declaration
+    return warm_declaration("siesta", task_label, "transport", base_dir)
 
 
 #: EACH ENGINE'S NAME ON THE TRANSPORT TAB -- the program that runs the
@@ -385,24 +380,32 @@ def why_no_transport(engine: str) -> Optional[str]:
 RUNG_NOTES = {
     "seed": ("A closed periodic SCF of the whole junction.  It writes the "
              "density every later rung starts from -- a starting guess, "
-             "never truth; skipping it costs the device iterations, not "
-             "correctness."),
-    "electrode_L": ("The left lead as a bulk crystal, sampled densely along "
-                    "the transport axis.  It writes the Hamiltonian the "
-                    "device folds in as the left self-energy -- read as "
-                    "truth."),
-    "electrode_R": ("The right lead, likewise.  Two lead runs even when the "
-                    "leads are identical, so the record stays auditable."),
+             "never truth: it spares the device iterations and changes no "
+             "answer.  k-points: the shared mesh in the electrode plane, "
+             "one along z."),
+    "electrode_L": ("The left lead as a bulk crystal.  It writes the "
+                    "Hamiltonian, overlap and Fermi level the device builds "
+                    "the left self-energy from -- read as truth.  k-points: "
+                    "the shared mesh in the electrode plane, which must be "
+                    "the device's, and many along z (100): the lead's "
+                    "Fermi level depends on them."),
+    "electrode_R": ("The right lead, likewise, on the same k-points.  Two "
+                    "lead runs even when the leads are identical, so the "
+                    "record stays auditable and the Results tab compares "
+                    "their Fermi levels."),
     "device": ("The open-boundary NEGF SCF of the junction between the two "
                "leads, at the bias.  It writes the converged Hamiltonian "
-               "the transmission reads -- one per bias point."),
+               "the transmission reads -- one per bias point.  k-points: "
+               "the shared mesh in the electrode plane, one along z."),
     "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
                      "tbtrans runs no SCF, so this tab has no SCF settings: "
                      "the ones behind this T(E) are the device's and the "
                      "two leads', on their tabs, and T(E) is only as "
-                     "converged as those runs.  Nothing consumes its "
-                     "output, so tuning the window re-runs seconds, never "
-                     "an NEGF cycle."),
+                     "converged as those runs.  k-points: its own, finer "
+                     "mesh in the electrode plane -- three times the shared "
+                     "one unless you set it -- and one along z.  Nothing "
+                     "consumes its output, so tuning the window or the mesh "
+                     "re-runs the transmission alone, never an NEGF cycle."),
 }
 
 

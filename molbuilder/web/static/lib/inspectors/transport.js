@@ -66,57 +66,33 @@ const WORKSPACE_TAG = "results:transport";
                                      { displayModeBar: false });
     }
 
-    /* PANEL TABS -- the page's `.panel-tabs` markup (`ui-contract.md`); a
-     * chart in a panel shown follows its box by itself (`lib/plot-box.js`). */
+    /* PANEL TABS -- the page's `.panel-tabs` markup, driven by the one tab
+     * strip (`lib/tab-strip.js`, ui-contract.md § 4.1); a chart in a panel
+     * shown follows its box by itself (`lib/plot-box.js`). */
     let _tabsSeq = 0;
     function _tabs(names) {
         const bar = _el("div", "panel-tabs");
         bar.setAttribute("role", "tablist");
         const panels = {};
-        const buttons = {};
         const box = _el("div", "transport-tabpanels");
-        // The ARIA tabs pattern (ui-contract.md § 4.1): ids pair each tab
-        // with its panel, one tab stop, the arrows move the selection.
         const prefix = "transport-tab-" + (++_tabsSeq) + "-";
-        const keys = names.map((n) => n[0]);
-        function show(name) {
-            Object.keys(panels).forEach((n) => {
-                const on = n === name;
-                panels[n].hidden = !on;
-                buttons[n].classList.toggle("is-active", on);
-                buttons[n].setAttribute("aria-selected", on ? "true" : "false");
-                buttons[n].tabIndex = on ? 0 : -1;
-            });
-        }
         names.forEach(([key, label]) => {
             const b = _el("button", "panel-tab", label);
             b.type = "button";
             b.id = prefix + key;
+            b.dataset.tab = key;
             b.setAttribute("role", "tab");
             b.setAttribute("aria-controls", prefix + key + "-panel");
-            b.addEventListener("click", () => show(key));
-            b.addEventListener("keydown", (ev) => {
-                const i = keys.indexOf(key);
-                const to = ev.key === "ArrowRight" ? keys[(i + 1) % keys.length]
-                    : ev.key === "ArrowLeft" ? keys[(i - 1 + keys.length) % keys.length]
-                    : ev.key === "Home" ? keys[0]
-                    : ev.key === "End" ? keys[keys.length - 1] : null;
-                if (!to) return;
-                ev.preventDefault();
-                show(to);
-                buttons[to].focus();
-            });
             bar.appendChild(b);
-            buttons[key] = b;
             const p = _el("div", "panel-tabpanel");
             p.id = prefix + key + "-panel";
-            p.setAttribute("role", "tabpanel");
-            p.setAttribute("aria-labelledby", prefix + key);
             box.appendChild(p);
             panels[key] = p;
         });
-        if (names.length) show(names[0][0]);
-        return { bar, box, panels, show };
+        // Built before it is in the page: the strip is told each tab's panel.
+        root.molbuilder.tabStrip.mount(bar, {
+            panelOf: (t) => panels[t.dataset.tab] || null });
+        return { bar, box, panels };
     }
 
     function _card(title, cls) {
@@ -538,6 +514,7 @@ const WORKSPACE_TAG = "results:transport";
                     c.points.forEach((p) => {
                         const bits = [];
                         if (p.started_from) bits.push("from " + p.started_from);
+                        if (p.start_unread) bits.push(String(p.start_unread));
                         /* `took` is the status door's own sentence per
                          * file ("<file> <- <run>"). */
                         (p.took || []).forEach((g) => bits.push(String(g)));

@@ -76,8 +76,9 @@ def _detect_one(path: Path,
         try:
             if cls.can_parse(path):
                 matches.append(cls)
-        except Exception:
-            # A buggy sniffer must not take down the dispatch loop.
+        except (OSError, ValueError):
+            # A FILE A SNIFFER CANNOT READ -- not there, not text -- is not
+            # its kind; a defect in a sniffer is not caught.
             continue
     if len(matches) == 1:
         return matches[0]

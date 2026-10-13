@@ -27,7 +27,8 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
 from molbuilder.jobset.engines import EngineSeam
-from molbuilder.jobset.prep import prep_stage
+from molbuilder.jobset.prep import prep_bench
+from conftest import prep_the_group_of
 from molbuilder.pipeline_log import log_name
 from molbuilder.pyscf.stages import default_pyscf_stages
 from molbuilder.script_emit import Block, DeckSpec
@@ -84,7 +85,7 @@ def _prep(dest, stage, **ask):
     process).  ``ask`` adds to them."""
     from molbuilder.task import read_task
     siesta = read_task(dest / "task.json").engine == "siesta"
-    return prep_stage(dest, "task", stage, allocation=Resources(
+    return prep_the_group_of(dest, stage, allocation=Resources(
         **({"mpi_np": 8} if siesta else {}), cpus_per_task=1, **ask))
 
 
@@ -134,10 +135,10 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     # months later, when the log is long gone (`job-contracts.md` § 3.2,
     # `engines/template.md` § 6.6 obligation 5) -- read through its reader.
     from molbuilder.runfiles import find
-    from molbuilder.script_emit import _extract_provenance_dict
+    from molbuilder.script_emit import read_provenance_block
     from molbuilder.template import SOURCE_WORDS
     (deck, _rf), = find(dest, "BDT", role=".fdf")
-    block = _extract_provenance_dict(deck.read_text(encoding="utf-8"))
+    block = read_provenance_block(deck.read_text(encoding="utf-8"))
     who = {k.split(".", 1)[1]: v
            for k, v in block.items() if k.startswith("parameters.")}
     assert who["relax_type"] == "this stage's override", who
@@ -318,7 +319,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
-            prep_stage(dest, "bench", stages[0],
+            prep_bench(dest, stages[0],
                        allocation=Resources(mpi_np=8))
         else:
             _prep(dest, stages[0])
@@ -357,11 +358,17 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     #    SIESTA's own sentence, through every layer between.
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     tpl = dest / "BDT.template.toml"
-    head, sep, tail = tpl.read_text().partition("[item.use_gpu]")
-    assert sep
-    body, nxt, rest = tail.partition("\n[item.")
-    tpl.write_text(head + sep + body.replace("value = false", "value = true", 1)
-                   + nxt + rest)
+
+    def _set(item, old, new):
+        head, sep, tail = tpl.read_text().partition(f"[item.{item}]")
+        assert sep, item
+        body, nxt, rest = tail.partition("\n[item.")
+        assert old in body, (item, body)
+        tpl.write_text(head + sep + body.replace(old, new, 1) + nxt + rest)
+    # THE GPU ON, AND THE DIAGONALIZER STATED ScaLAPACK -- not ELPA, the
+    # default (`engines/siesta.md` § 7).
+    _set("use_gpu", "value = false", "value = true")
+    _set("diag_algorithm", 'value = "ELPA-1STAGE"', 'value = "ScaLAPACK"')
     with pytest.raises((ValueError, PrepError)) as real:
         _prep(dest, stages[0], gres="gpu:1")    # a GPU run states its GPUs
     assert "ELPA" in str(real.value), real.value
@@ -375,10 +382,10 @@ def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
     """
     from molbuilder.issues import Issue, ValidationError, calling
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.prep import _user_error_as_prep
+    from molbuilder.jobset.prep import user_error_as_prep
 
     with pytest.raises(PrepError) as caught:
-        with _user_error_as_prep():
+        with user_error_as_prep():
             with calling("check_rules", engine="pyscf", where="BDT.py"):
                 raise ValidationError([Issue("error", "deck is wrong",
                                              where="deck.x")])

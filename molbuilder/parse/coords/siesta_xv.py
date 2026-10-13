@@ -182,10 +182,10 @@ def _read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
     the structure portion is :func:`_read_xv`'s responsibility (it
     will raise SiestaXVError on the same file).
 
-    TOLERANT ON PURPOSE, and `validation/identity.py` is why: it asks for
-    the cell ALONE, so a file whose cell rows are sound and whose atom
-    list is corrupt must still answer a cell.  That is why this reads the
-    first three rows and does not touch the atoms.
+    TOLERANT ON PURPOSE: a caller asking for the cell ALONE is answered
+    from a file whose cell rows are sound and whose atom list is corrupt.
+    That is why this reads the first three rows and does not touch the
+    atoms.
 
     Cell rows are in Bohr per SIESTA convention; we convert to Å here.
     Velocity columns (the trailing 3 floats) are discarded.

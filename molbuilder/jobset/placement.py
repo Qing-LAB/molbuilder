@@ -32,7 +32,7 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     needs is stated (`execution/architecture.md` § 5.2; user, 2026-10-02:
     *"explicit job config is the only way allowed"*).
 
-    ONE ANSWER, asked at each moment a launch is written: by `prep_stage`
+    ONE ANSWER, asked at each moment a launch is written: by `prep.plan_stage`
     with the whole assembly in hand, before anything is written -- for a run
     and for a benchmark alike -- and by launch's one request
     (`submit._sbatch_request`) of what it sends, where a launch flag may
@@ -149,11 +149,18 @@ def request_of(resources, *, one_process: bool):
 
 
 def one_process(engine) -> bool:
-    """Whether ``engine`` runs ONE process -- PySCF, whose deck is a Python
-    script -- so its request asks one task (`runwrap._render_sbatch_for`'s
-    rule, by the same fact: the deck's suffix)."""
+    """Whether ``engine`` runs ONE process -- its deck's answer
+    (:func:`deck_runs_one_process`)."""
     from .engines import engine_seam
-    return engine_seam(str(engine)).suffix == ".py"
+    return deck_runs_one_process(engine_seam(str(engine)).suffix)
+
+
+def deck_runs_one_process(suffix: str) -> bool:
+    """Whether a deck of this suffix runs ONE process -- a Python script,
+    PySCF's, with OpenMP threads -- so its request asks one task.  The one
+    rule, asked by an engine's name (:func:`one_process`) or by its deck
+    (`runwrap`)."""
+    return str(suffix).lower() == ".py"
 
 
 #: The values a run's placement records the source of -- its queue, wall
@@ -165,6 +172,7 @@ _PLACED = ("domain", "time", "mem", "mpi_np", "cpus_per_task", "gres")
 _REFUSED = {"walltime": ("time",), "mem": ("mem",),
             "cores": ("mpi_np", "cpus_per_task"),
             "cpus_per_job": ("mpi_np", "cpus_per_task"),
+            "cpus_per_node": ("mpi_np", "cpus_per_task"),
             "gpus": ("gres",)}
 
 
@@ -193,12 +201,11 @@ def admitted(resources, environment, *, one_process: bool, stage=None,
     stands then (`scheduler.md` R9)."""
     from ..runtime_config import routing_of
     from ..scheduler.place import Unplaceable, place
-    from .model import gpu_request
     named = getattr(resources, "domain", None)
     try:
         bound = place(routing_of(environment),
                       request_of(resources, one_process=one_process),
-                      prefer_gpu=gpu_request(resources).uses, named=named)
+                      named=named)
     except Unplaceable as exc:
         # WHERE EACH REFUSED VALUE WAS STATED, read off the fold that
         # filled it (`job-system.md` § 5.0, checkpoint 4: "the file and key

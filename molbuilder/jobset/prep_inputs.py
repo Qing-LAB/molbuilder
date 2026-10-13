@@ -42,7 +42,7 @@ def _declared_execution_pins(task, bench_override=None):
     (§ 4.3a's built rule).
 
     Refused BY NAME, never repaired -- through the ONE shape checker
-    (`validation/task.py::_bench_points_fit_their_items`): an enum value
+    (`validation/task.py::bench_points_fit_their_items`): an enum value
     outside the item's choices, a non-bool on a bool item, a repeated
     point.  The dispatch runs the
     full preflight BEFORE this helper, so on either door of the one prep
@@ -54,14 +54,14 @@ def _declared_execution_pins(task, bench_override=None):
     must be an ``execution`` item, and `validation/task.py`'s
     ``_bench_names_a_speed_knob`` owns that rule -- a non-execution name
     was refused upstream and an unknown name here is simply skipped.
-    Point SHAPES are `read_task`'s (task.py `_bench_from_obj`): every
+    Point SHAPES are `read_task`'s (task.py `bench_from_obj`): every
     value arrives as a non-empty tuple of scalars, so no scalar/empty
     arms exist here.
 
     ``task`` is the description its caller holds -- read once by the prep
     that asks (W55 B1).
     """
-    from ..validation.task import _bench_points_fit_their_items
+    from ..validation.task import bench_points_fit_their_items
     from .. import template as _T
 
     if bench_override is not None:
@@ -69,19 +69,19 @@ def _declared_execution_pins(task, bench_override=None):
         # The task-setup card resolves its grid live, and its edits live in
         # the browser's model until the person saves -- so a live answer
         # read from disk would describe the previous state.  Through
-        # `_bench_from_obj`, the ONE normaliser, so the override arrives
+        # `bench_from_obj`, the ONE normaliser, so the override arrives
         # in the same shape (and earns the same refusals) as a declaration
         # that came off disk.
         import dataclasses as _dc
 
-        from ..task import _bench_from_obj
+        from ..task import bench_from_obj
         task = _dc.replace(task,
-                           bench=_bench_from_obj({"bench": bench_override}))
+                           bench=bench_from_obj({"bench": bench_override}))
     declared = {k: list(v) for k, v in (task.bench or {}).items()}
     if not declared:
         return {}, {}, {}
 
-    shape_errors = [i for i in _bench_points_fit_their_items(task)
+    shape_errors = [i for i in bench_points_fit_their_items(task)
                     if i.severity == "error"]
     if shape_errors:
         raise PrepError(shape_errors[0].message)
@@ -123,28 +123,24 @@ _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
                      "continue_retries": 0, "scf_must_converge": False}
 
 
-def _gpus_per_node(base, routing=None) -> "int | None":
+def _gpus_per_node(routing) -> "int | None":
     """The most GPUs one node of the target's GPU queues holds, or ``None``
     when no queue lists any -- § 4.3a's fallback when the probed node itself
-    has none (a login node).  ``routing`` is the target's own menu when the
-    caller holds its record; else the folder's.
+    has none (a login node).  ``routing`` is the target's own menu, from the
+    record the caller holds.
 
     A COUNT, and no card: which card a node carries is the machine's
     business (`scheduler.md` R2a; user, 2026-10-01).
     """
-    from ..runtime_config import get_routing
     from ..scheduler.place import candidates
-    rows = candidates(routing if routing is not None
-                      else get_routing(project_dir=Path(base)),
-                      prefer_gpu=True)
+    rows = candidates(routing, prefer_gpu=True)
     counts = [d.per_node for r in rows for d in r.devices
               if d.per_node is not None]
     return max(counts) if counts else None
 
 
-def _cells_this_machine_holds(base, plan, *,
-                              local_cores=None, local_gpus=None,
-                              routing=None):
+def _cells_this_machine_holds(plan, *, routing,
+                              local_cores=None, local_gpus=None):
     """Every enumerated bench cell, checked one by one against THIS
     machine's queues -- ``[(fam, (g, k, c), domains, why)]`` in enumeration
     order, ``domains`` naming every queue that would take the cell and
@@ -167,17 +163,9 @@ def _cells_this_machine_holds(base, plan, *,
     topology may bound a cell: on a cluster it measures whichever node the
     probe happened to land on, and R0 says a queue holds many kinds.
     """
-    from ..runtime_config import get_routing
     from ..scheduler.admit import Request, admits
     from ..scheduler.place import candidates
-    if routing is None:
-        try:
-            routing = get_routing(project_dir=Path(base))
-        except Exception:                                   # noqa: BLE001
-            # No readable menu is not a small menu (R3): a record we cannot
-            # read must not cross out work the machine may well run.
-            routing = []
-
+    # ``routing`` is the target's menu, from the record the caller holds.
     if not routing:
         return [(fam, cell, (), _local_refusals(cell, fam,
                                                 local_cores, local_gpus))
@@ -312,13 +300,10 @@ def _cell_shape(g, k, c) -> str:
     return bit + (f" + {g} GPU(s)" if g else "")
 
 
-#: The catalogue's words for a launch field, and `Resources`' own.  Most
-#: agree; these never did.  It is a NAME MAP and nothing else -- no default,
-#: no enumeration, no arithmetic.  PySCF's ``threads`` is SIESTA's
-#: ``omp_threads`` -- the cores one process runs on (`job-contracts.md`
-#: § 6.2) -- and an item missing here is DROPPED by `declared_run_shape`.
-#: `stages.md` § 6.8e -- the run's own wall and queue, carried through the
-#: direct map under their own names (they are already `Resources` fields).
+# THE CATALOGUE'S WORDS FOR A LAUNCH FIELD are mapped to `Resources`' own by
+# the one name map, `model.AS_RESOURCE`; an item whose name maps to no field
+# is DROPPED by `declared_run_shape`.  The run's own wall and queue
+# (`stages.md` § 6.8e) are `Resources` fields under their own names.
 from ..task import LANE_ASKS as _LANE_ASKS
 
 from .model import AS_RESOURCE
@@ -339,7 +324,7 @@ def declared_run_shape(base, task, stage=None):
     a node carries is the machine's business (`scheduler.md` R2a).  The count is the run card's
     own ``gpu_count``, on every engine, carried as stated: whether the run
     uses the GPU is its resolved ``use_gpu``, and the two are asked together
-    by the prep entry, of the job it resolves (`prep._resolve_stage`,
+    by the prep entry, of the job it resolves (`prep.plan_stage`,
     `execution/gpu.md` G5).
     """
     cond = task.run_condition(stage)
@@ -538,7 +523,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     """
     # WHAT A PERSON IS TOLD comes back to the caller, never printed here:
     # the command line prints it, the Task setup tab shows it
-    # (`prep.prep_stage`, `job-system.md` § 5.3).
+    # (`prep.prep_task`, `job-system.md` § 5.3).
     note = notes.append if notes is not None else (lambda _text: None)
     from ..bench.grid import sweep_K, sweep_grid
     from ..resolve import MachineTranslation
@@ -636,7 +621,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # cluster behind it has them (§ 4.3a: the probe records each partition's
     # gres on its domain row).  No card (`scheduler.md` R2a).
     if any(families) and not gpn:
-        gpn = _gpus_per_node(base, menu) or 0
+        gpn = _gpus_per_node(menu) or 0
         if not gpn:
             # NAMED BY THE RECORD THAT ANSWERED, renewed in its own two
             # steps -- `record_and_renewal`, the one spelling.
@@ -779,9 +764,9 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # that decides; and what the person needs on screen is the surviving
     # list, not a sentence about a number.  Both families go through it.
     plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
-    checked = _cells_this_machine_holds(base, plan,
+    checked = _cells_this_machine_holds(plan, routing=menu,
                                         local_cores=cores_total,
-                                        local_gpus=gpn, routing=menu)
+                                        local_gpus=gpn)
     # ...AND WHAT THIS PREP DOES NOT ALLOW: a cell past the person's own ask
     # is crossed out by name, beside the ones no queue holds.
     marked = []
@@ -831,30 +816,27 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             # sentence.  The numbers are fields so callers can read them; the
             # SENTENCE is what a person is shown.
             note(f"    {_cell_label(g, k, c):<11} "
-                 f"{_cell_shape(g, k, c):<37}  "
-                 f"{why[0].message if hasattr(why[0], 'message') else why[0]}")
+                 f"{_cell_shape(g, k, c):<37}  {why[0].message}")
 
     cells = []
     for fam in families:
         fcells = [cell for f, cell, _dom in kept if f == fam]
         if fam and fcells:
-            # Checks 1-3 of the GPU-sharing note (user, 2026-08-23): ALWAYS
-            # state ranks/GPU, warn past MPS's 48-client ceiling, note past
-            # this stack's ~4-rank tuned point.  Check 4 (node-fit) is the
-            # crossing-out above -- this does not re-derive it, only
-            # states the sharing fact for whatever survived it.  ONE
-            # function (`ask.gpu_share_notes`) so this and the submission
-            # display can never disagree about the arithmetic.
-            from .ask import gpu_share_notes
+            # The GPU-sharing note (user, 2026-08-23): ALWAYS state
+            # ranks/GPU -- a cell's K -- warn past MPS's client ceiling, note
+            # past this stack's tuned point.  Whether the cores fit a node is
+            # the crossing-out above.  The two thresholds are the ones
+            # `ask.gpu_share_notes` states at the submission, so the two
+            # displays cannot disagree.
+            from .ask import (GPU_TUNED_RANKS_PER_DEVICE,
+                              MPS_MAX_CLIENTS_PER_DEVICE)
             shares = sorted({(g, k) for g, k, c in fcells})
             bits = []
             for g, k in shares:
-                share = gpu_share_notes(g, k)
-                flag = ""
-                if len(share) > 1:
-                    flag = ("  <- WARNING, past MPS's ceiling"
-                           if "WARNING" in share[1] else
-                           "  <- past the tuned point")
+                flag = ("  <- WARNING, past MPS's ceiling"
+                        if k > MPS_MAX_CLIENTS_PER_DEVICE else
+                        "  <- past the tuned point"
+                        if k > GPU_TUNED_RANKS_PER_DEVICE else "")
                 bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
             note("  GPU sharing in this family: " + ", ".join(bits))
         if fam and not fcells:

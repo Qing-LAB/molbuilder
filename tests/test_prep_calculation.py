@@ -5,7 +5,7 @@ Contract: ``docs/execution/project-layout.md`` § 2.3.1 (the five steps) ·
 ``docs/execution/job-contracts.md`` § 2.5a (the pseudopotentials) ·
 `job-system.md` § 5.0 (the entry).
 
-Every prep here goes through the one entry, `prep.prep_stage` -- what
+Every prep here goes through the one entry, `prep.prep_task` -- what
 `jobset prep` and the Task setup tab call.  The rules a road row holds:
 
 * the deck, its run script, the machine's copy, the plan -- every file the
@@ -29,7 +29,7 @@ from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.model import Resources
-from molbuilder.jobset.prep import prep_stage
+from conftest import prep_the_group_of
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
@@ -54,8 +54,8 @@ def _isolated(monkeypatch, tmp_path_factory):
 def _prep(calc, stage="coarse"):
     """`prep task <stage>`, through the one entry, the launch shape stated
     on the command line."""
-    return prep_stage(calc, "task", stage,
-                      allocation=Resources(mpi_np=8, cpus_per_task=1))
+    return prep_the_group_of(calc, stage,
+                             allocation=Resources(mpi_np=8, cpus_per_task=1))
 
 
 @pytest.fixture

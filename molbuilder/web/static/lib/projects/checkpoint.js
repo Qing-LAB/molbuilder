@@ -59,11 +59,12 @@ const _state = {
 // files), one owner for the exclusivity.
 let elPanel, elSensor, elToggle, elEmpty, elInitBtn, elActions,
     elCommitBtn, elTagBtn, elRefreshBtn, elList, elGraph, elAdvisory,
-    elViewListBtn, elViewGraphBtn, elFileList, elFilterInput;
+    elFileList, elFilterInput;
 
 // Current view mode: "list" (default) or "graph".  Persisted in
 // sessionStorage so a refresh keeps the user's preference.
 let _viewMode = "list";
+let _viewStrip = null;       // the List / Graph strip's handle
 
 // Lazy-loaded @gitgraph/js global.  Loaded on first switch to graph
 // view -- avoids a 96 KB blocking download for users who never use
@@ -85,8 +86,6 @@ function _attach() {
     elList         = document.getElementById("ps-checkpoint-list");
     elGraph        = document.getElementById("ps-checkpoint-graph");
     elAdvisory     = document.getElementById("ps-checkpoint-advisory");
-    elViewListBtn  = document.getElementById("ps-checkpoint-view-list");
-    elViewGraphBtn = document.getElementById("ps-checkpoint-view-graph");
     elFileList     = document.getElementById("ps-list");
     elFilterInput  = document.getElementById("ps-filter-input");
 
@@ -132,10 +131,15 @@ function _attach() {
     // re-read; the Refresh button is the one that asks for certainty.
     elSensor.addEventListener("click", () => _refresh());
     elList.addEventListener("click", _onListClick);
-    if (elViewListBtn)  elViewListBtn.addEventListener("click",
-        () => _setViewMode("list"));
-    if (elViewGraphBtn) elViewGraphBtn.addEventListener("click",
-        () => _setViewMode("graph"));
+    // THE VIEW, through the one tab strip (`lib/tab-strip.js`,
+    // ui-contract.md § 4.1): a click or a key picks it.
+    const viewToggle = document.getElementById("ps-checkpoint-view-toggle");
+    if (viewToggle) {
+        _viewStrip = window.molbuilder.tabStrip.mount(viewToggle, {
+            onChange: (name, meta) => { if (meta.byUser) _setViewMode(name); },
+        });
+        _updateViewButtons();
+    }
 
     return true;
 }
@@ -352,13 +356,7 @@ function _buildRow(state) {
 /* ---------- View mode swap (List <-> Graph) ---------- */
 
 function _updateViewButtons() {
-    if (!elViewListBtn || !elViewGraphBtn) return;
-    elViewListBtn.classList.toggle("is-active",  _viewMode === "list");
-    elViewGraphBtn.classList.toggle("is-active", _viewMode === "graph");
-    elViewListBtn.setAttribute("aria-selected",
-        _viewMode === "list" ? "true" : "false");
-    elViewGraphBtn.setAttribute("aria-selected",
-        _viewMode === "graph" ? "true" : "false");
+    if (_viewStrip) _viewStrip.select(_viewMode);
 }
 
 function _setViewMode(mode) {
@@ -447,22 +445,25 @@ async function _renderGraph(states) {
     };
     const template = GitgraphJS.templateExtend(
         GitgraphJS.TemplateName.Metro, {
+        // THE LANES, from the sidebar's own palette -- each fallback the
+        // token's value (`ui-contract.md` § 2).
         colors:  [
-            cssVar("--ps-accent",   "#4a7aa7"),
-            cssVar("--ps-accent-2", "#7a5b2d"),
-            cssVar("--ps-accent-3", "#2d4a5a"),
-            "#2d4a2d",
-            "#4a2d4a",
+            cssVar("--ps-accent",        "#4f7ab8"),
+            cssVar("--ps-ref-tag-bg",    "#7a5b2d"),
+            cssVar("--ps-ref-branch-bg", "#2d4a5a"),
+            cssVar("--ps-ck-clean-bg",   "#2d4a2d"),
+            cssVar("--ps-graph-lane-5",  "#4a2d4a"),
         ],
         branch:  { spacing: 24, lineWidth: 2 },
         commit:  {
             spacing: 36,
             dot: { size: 6 },
             message: {
-                color:    cssVar("--ps-fg", "#dcdcdc"),
+                color:    cssVar("--ps-fg", "#dddddd"),
                 // The app's font and its densest type step, from the tokens.
                 font:     cssVar("--text-2xs", "0.6875rem") + " "
-                          + cssVar("--font-sans", "system-ui, sans-serif"),
+                          + cssVar("--font-sans", 'system-ui, -apple-system, '
+                                   + '"Segoe UI", sans-serif'),
                 displayAuthor: false,
                 displayHash:   true,
             },

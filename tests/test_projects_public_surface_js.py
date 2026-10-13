@@ -126,7 +126,6 @@ class TestSurfacePresence:
                 navigateTo:                 typeof p.navigateTo,
                 onProjectsRootResolved:     typeof p.onProjectsRootResolved,
                 onCommit:                   typeof p.onCommit,
-                safeSave:                   typeof p.safeSave,
                 isCancelError:              typeof p.isCancelError,
             }));
         ''')
@@ -134,7 +133,7 @@ class TestSurfacePresence:
                    "deleteEntry", "rename", "upload", "setShared",
                    "navigateTo", "onProjectsRootResolved",
                    "onCommit",
-                   "safeSave", "isCancelError"):
+                   "isCancelError"):
             assert out[fn] == "function", f"missing public method: {fn}"
 
 
@@ -1027,157 +1026,6 @@ class TestWriteFileEdgeFields:
         assert out["aborted"] is True
 
 
-class TestSafeSave:
-    """``safeSave`` wraps ``saveToWorkspace`` so the three terminal
-    states are distinct: null (no current dir), {cancelled:true}
-    (user cancel), {ok:true|false, ...} (write outcome).  Tests
-    here cover the shapes its callers actually consume: callers are
-    reviewed for contract compliance, the helper is not hardened
-    against impossible inputs."""
-
-    def test_safeSave_folds_abort_envelope_to_cancelled(self):
-        """The only fold safeSave does: ``{ok:false, aborted:true}``
-        from saveToWorkspace → ``{ok:false, cancelled:true}`` for
-        the call site to branch on."""
-        out = _run_node('''
-            global.fetch = async () => {
-                const err = new Error("aborted");
-                err.name = "AbortError";
-                throw err;
-            };
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects/proj1"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            const ac = new AbortController();
-            const r = await state.projects.safeSave("text", "f.xyz",
-                { overwrite: true, signal: ac.signal });
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert out["cancelled"] is True
-
-    def test_safeSave_signal_propagates_to_fetch(self):
-        """Pin that ``opts.signal`` reaches fetch end-to-end.  A
-        future refactor that drops the signal would deadlock this
-        test (the mock fetch only resolves when the signal fires)."""
-        out = _run_node('''
-            global.fetch = async (url, opts) => {
-                return new Promise((resolve, reject) => {
-                    if (opts && opts.signal) {
-                        if (opts.signal.aborted) {
-                            const e = new Error("aborted");
-                            e.name = "AbortError";
-                            reject(e);
-                            return;
-                        }
-                        opts.signal.addEventListener("abort", () => {
-                            const e = new Error("aborted");
-                            e.name = "AbortError";
-                            reject(e);
-                        });
-                    }
-                    // No signal → no resolution; deadlock by design.
-                });
-            };
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects/proj1"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            const ac = new AbortController();
-            const p = state.projects.safeSave("text", "f.xyz",
-                { signal: ac.signal });
-            await new Promise(r => setImmediate(r));
-            ac.abort();
-            const r = await p;
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert out["cancelled"] is True
-
-    def test_safeSave_returns_null_on_no_current_dir(self):
-        """The null backstop — callers gate on this before calling
-        in practice; the helper preserves the saveToWorkspace
-        contract."""
-        out = _run_node('''
-            global.sessionStorage = {
-                getItem() { return null; },
-                setItem() {},
-            };
-            state.setProjectsRoot("/projects");
-            const r = await state.projects.safeSave("text", "f.xyz");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out is None
-
-    def test_safeSave_returns_null_at_projects_root(self):
-        """current_dir IS the projects/ root → null (no writeable
-        subdir).  Matches saveToWorkspace behaviour."""
-        out = _run_node('''
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            const r = await state.projects.safeSave("text", "f.xyz");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out is None
-
-    def test_safeSave_passes_through_real_failure(self):
-        """Real 409 stays ``{ok:false, error:"..."}``.  Callers
-        check ``r.cancelled`` THEN ``!r.ok`` so the failure path
-        gets the real error text."""
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: false, status: 409,
-                json: async () => ({
-                    ok: false, error: "file already exists: 'f.xyz'",
-                }),
-            });
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects/proj1"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            const r = await state.projects.safeSave("text", "f.xyz");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "already exists" in out["error"]
-        assert "cancelled" not in out
-
-    def test_safeSave_success_passthrough(self):
-        """Success envelope flows through unchanged."""
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true, status: 200,
-                json: async () => ({
-                    ok: true,
-                    path: "/projects/proj1/f.xyz",
-                    size: 7, mtime: 1717174420.5,
-                }),
-            });
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects/proj1"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            const r = await state.projects.safeSave("text", "f.xyz");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is True
-        assert out["path"] == "/projects/proj1/f.xyz"
-        assert "cancelled" not in out
-
-
 class TestIsCancelError:
     """Predicate accepting every shape the cancellation contract
     arrives in across the codebase:
@@ -1186,9 +1034,9 @@ class TestIsCancelError:
         when an AbortSignal aborts (the 4 wrapper-install / pseudo-
         install catches in SIESTA/PySCF/Spectra pipelines).
       - ``{aborted: true}`` — the raw envelope shape returned by
-        api.js / writeFile / saveToWorkspace.
-      - ``{cancelled: true}`` — the post-fold envelope shape
-        returned by safeSave.
+        api.js / writeFile.
+      - ``{cancelled: true}`` — a door's answer for a question the
+        person declined (projects.parser, molview-doors).
       - ``{code: "aborted"}`` — the ViewerError shape produced by
         mol-viewer-embed.
 
@@ -1227,10 +1075,9 @@ class TestIsCancelError:
         ''')
         assert out["hit"] is True
 
-    def test_isCancelError_matches_safeSave_cancelled_envelope(self):
-        """The post-fold envelope shape returned by safeSave.  A
-        maintainer using both safeSave AND isCancelError naturally
-        would pass a safeSave result here; pinning that the match
+    def test_isCancelError_matches_a_cancelled_envelope(self):
+        """A door's answer for a question the person declined.  A
+        caller holding one naturally passes it here; pinning that the match
         works avoids the footgun where mixed use leaks cancels as
         errors."""
         out = _run_node('''

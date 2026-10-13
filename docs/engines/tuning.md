@@ -919,13 +919,13 @@ default**.
 
 **The geometry flows from each stage to the next, and the optimizer history is
 reset at the boundary (§ 5). Both engines flow it the same way: a rung ends, a
-person looks at it, and the next rung is prepared from the run they name.**
+person looks at it, and the next rung's launch takes the run they name.**
 
 ```mermaid
 flowchart LR
     S1["stage 1 · loose"] --> L1{{"you look at it"}}
-    L1 -->|"prep task … --from &lt;attempt&gt;<br/>copies the geometry + density"| S2["stage 2 · publishable"]
-    S2 --> L2{{"you look at it"}} -->|"prep task …"| S3["stage 3 · tight (off)"]
+    L1 -->|"launch task … --from &lt;attempt&gt;<br/>copies the geometry + density"| S2["stage 2 · publishable"]
+    S2 --> L2{{"you look at it"}} -->|"launch task …"| S3["stage 3 · tight (off)"]
 ```
 
 What each engine copies at that boundary is its own vocabulary and the only thing

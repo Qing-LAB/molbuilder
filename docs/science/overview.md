@@ -158,9 +158,10 @@ a lead's `electrode_kz`:
 | a transport calculation's isolated axis sampled more than once while the other transverse axis is periodic (a stripe) | **error** | TranSIESTA stops the device on it — *"found incompatible k-grids"* (`ts_electrode.F90`) — after the seed and both leads have run; refused for now *(user, 2026-09-30)* |
 | a sampled axis above 1 whose images sit ≥ 5 Å apart | warn (hint) | the gap is the real vacuum; images that far apart are usually meant not to interact |
 | an offset on an axis sampled once | warn | it moves that point off Γ (read modulo 1, so 1.0 is Γ again) |
-| a transport calculation's third k component other than 1 (`kgrid`, `tbt_k_grid`), or its offset other than 0 | **error** | that axis is the OPEN boundary on the seed, the device and the transmission, and a lead samples it by `electrode_kz` — no rung reads the component (`kmesh.fixed`, every door) |
-| a count at or below 0; `electrode_kz` at or below 1 | **error** | the items' own limits (`above`, `engines/template.md` § 5.3) — a lead is periodic bulk along transport, and one point there gives a wrong lead Hamiltonian |
-| `electrode_kz` below 20 | warn | its recommended range — a floor, not a convergence proof: only a kz sweep shows the lead's Fermi level has settled |
+| a transport calculation's third k component other than 1 (`kgrid`, `tbt_k_grid`), or its offset other than 0 | **error** | that axis is the open boundary on the device and the transmission — both engines force one point there — the seed's density is only their start, and a lead samples it by `electrode_kz`: no rung reads the component (`kmesh.fixed`, every door; [`engines/transport.md`](?doc=engines/transport.md) § 0.2) |
+| a count at or below 0; `electrode_kz` at or below 1 | **error** | the items' own limits (`above`, `engines/template.md` § 5.3) — a lead is periodic bulk along transport, and one point there gives a wrong lead Hamiltonian and Fermi level, which every self-energy is built from and aligned to |
+| `electrode_kz` below 50 | warn | its recommended range, the SIESTA manual's floor — not a convergence proof: only raising it and seeing the lead's Fermi level stay put shows it has settled |
+| a transmission mesh the person set coarser than the shared mesh along x or y | warn | T(E) needs at least the points the density was converged on, and usually many more; a blank one is three times the shared mesh ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b) |
 
 *(`k = 1` on a periodic axis is checked not at all — the "under-converged"
 warning was retired 2026-08-20. The transport axis's three rows above

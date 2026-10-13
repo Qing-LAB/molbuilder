@@ -32,7 +32,6 @@ as it was.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -147,22 +146,29 @@ def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
     return energies, trans
 
 
+def _ran(run_dir):
+    """What the deck a run ran states (`parse.fdf.parse_fdf_params`) -- its
+    deck found through the run door (`runs.run_of`, `Run.deck`), the input
+    the run used.  A run with no deck of ours is a :class:`RecordError`,
+    never a default: what it ran cannot be said."""
+    from ..parse.fdf import parse_fdf_params
+    from ..runs import run_of
+    run = run_of(run_dir)
+    deck = run.deck if run is not None else None
+    if deck is None:
+        raise RecordError(f"{run_dir} holds no deck of this calculation's "
+                          f"run, so what it ran cannot be read")
+    return parse_fdf_params(deck.read_text(encoding="utf-8",
+                                           errors="replace"),
+                            source=deck.name)
+
+
 def deck_spin(run_dir) -> str:
     """The spin the run's own deck states -- ``non-polarized`` or
-    ``polarized`` -- read from the deck in its run directory, the input the
-    run used (every SIESTA deck molbuilder writes states ``Spin``).  No ``Spin`` line is SIESTA's own default, non-polarized."""
-    from ..parse.fdf import _parse_fdf
-    from ..runfiles import find_by_role
-    # THE FRAMEWORK'S SEARCH for the deck (`project-layout.md` § 4.5), not a
-    # glob of its suffix here.
-    for deck in find_by_role(run_dir, ".fdf"):
-        scalars, _blocks = _parse_fdf(deck.read_text(encoding="utf-8",
-                                                     errors="replace"))
-        said = (scalars.get("spin") or [None])[0]
-        if said:
-            return ("polarized" if str(said).strip().lower() == "polarized"
-                    else "non-polarized")
-    return "non-polarized"
+    ``polarized`` -- in any word SIESTA accepts for it (`parse.fdf`), SIESTA's
+    own default, non-polarized, where the deck states none."""
+    return ("polarized" if _ran(run_dir).spin_treatment == "unrestricted"
+            else "non-polarized")
 
 
 def point_transmission(where, label: str, spin: str) -> Dict:
@@ -245,19 +251,10 @@ def point_currents(where, token: str, spin: str) -> Dict:
 
 def deck_temperature_k(run_dir) -> float:
     """The electronic temperature the point's own deck states, in kelvin
-    (`units.temperature_k`: ``300 K`` or an energy), SIESTA's default 300 K
-    when the deck states none."""
-    from ..parse.fdf import _parse_fdf
-    from ..runfiles import find_by_role
-    from ..units import temperature_k
-    for deck in find_by_role(run_dir, ".fdf"):
-        scalars, _blocks = _parse_fdf(deck.read_text(encoding="utf-8",
-                                                     errors="replace"))
-        said = scalars.get("electronictemperature")
-        if said:
-            return temperature_k(float(said[0]),
-                                 said[1] if len(said) > 1 else "K")
-    return 300.0
+    (`parse.fdf`: ``300 K`` or an energy), SIESTA's default 300 K when the
+    deck states none."""
+    said = _ran(run_dir).electronic_temperature_k
+    return 300.0 if said is None else float(said)
 
 
 def window_short_of(emin_ev: float, emax_ev: float, volts: float,
@@ -512,22 +509,31 @@ def gathered_device_run(base: Path, task) -> Optional[Path]:
     point named there -- or ``None`` while the transmission has gathered
     nothing (`engines/transport.md` § 2a.12: the provenance is what was
     gathered, never the newest run by file time)."""
-    from ..runrecord import read_gathered_from
-    from .stages import frames_of, rung_points
-    device = rung_points(task, "device", frames=frames_of(base))
-    # A DEVICE THAT RUNS PER POINT names its point: the run is as many
-    # folders above it as the point has levels (`f001/v0.2`: two).
-    levels = len(Path(device[0].rel).parts) if device else 0
+    from .stages import inputs_of
+    # THE DEVICE'S FILE, as the DAG names it (`stage_inputs`), and THE RUN
+    # its folder lies in -- a point's folder lies below it
+    # (`RunRef.run_folder`).
+    device = {fn for up, fn in inputs_of(task, "transmission")
+              if up == "device"}
     for _pt, where, _run in result_folders(base, task, "transmission"):
         if where is None:
             continue
-        for g in read_gathered_from(where):
-            if g["file"].endswith(".TS.HSX"):
-                src = base / g["from"]
-                for _ in range(levels):
-                    src = src.parent
-                return src
+        for src, fn in _gathered(where):
+            if fn in device:
+                return src.run_folder().path(base)
     return None
+
+
+def _gathered(folder):
+    """What ``folder``'s run gathered (`runrecord.read_gathered_from`) -- a
+    record that does not read is the record's refusal, a
+    :class:`RecordError` naming it, as every reader of the transport record
+    says one."""
+    from ..runrecord import LaunchRecordError, read_gathered_from
+    try:
+        return read_gathered_from(folder)
+    except LaunchRecordError as exc:
+        raise RecordError(str(exc)) from None
 
 
 def _science(out: Path, answers: str) -> Dict:
@@ -682,13 +688,13 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
     attempt was gathered from, read from its `.gathered-from`
     (`runrecord.read_gathered_from`); a rung that gathered nothing is
     listed with ``[]``."""
-    from ..runrecord import read_gathered_from
     out = []
     for st in stages:
         if not st.get("attempt"):
             continue
         row = {"stage": st["stage"], "attempt": st["attempt"],
-               "gathered": read_gathered_from(base / st["attempt"])}
+               "gathered": [{"file": fn, "from": str(src)} for src, fn
+                            in _gathered(base / st["attempt"])]}
         # A SWEPT RUN'S POINTS, each with what it started from and what it
         # alone took (the status door's reading, carried by the rung's
         # facts) -- a transmission point's device Hamiltonian, a device
@@ -723,7 +729,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..runrecord import LaunchRecordError, launch_record
     from ..frameset import FrameSetError, read as read_frame_set
     from .average import AverageError, mode_average
-    from .compose import PROVENANCE_FILE
+    from .compose import read_provenance
     from .stages import frames_of, rung_points
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
                         spin_dos, tbt_files)
@@ -748,7 +754,6 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     rung = next(f for f in stages if f["stage"] == "transmission")
     opened = False                        # an attempt open: it is prepared
     for pt, where, run in result_folders(base, task, "transmission"):
-        v = pt.bias_v
         # WHICH POINT, on every entry: its frame (``None`` with no frame
         # axis), its folder below the run, and in words.
         at = {**pt.to_wire(), "tokens": pt.rel, "point": pt.words()}
@@ -773,11 +778,11 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             (pending if st.state in ("pending", "queued", "running")
              else failed).append(entry)
             continue
-        spin = deck_spin(where)
         # WHAT TBTRANS WROTE, through the family's one reader -- a point
         # that does not read is that point's failure, said in its words; the
         # other points still read.
         try:
+            spin = deck_spin(where)
             read = point_transmission(where, task.label, spin)
         except (OSError, ValueError, RecordError) as exc:
             failed.append({**at, "attempt": rel, "state": "finished",
@@ -856,10 +861,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             points_out, pending + failed)
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
-    provenance = None
-    prov_file = base / PROVENANCE_FILE
-    if prov_file.is_file():
-        provenance = json.loads(prov_file.read_text())
+    provenance = read_provenance(base)
     # THE DESCRIPTION'S, as stated (`Task.treatment`): a list of several
     # voltages states the switch; one is a single bias.  Never inferred
     # from how many points ran.
@@ -992,7 +994,11 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
     _dev_at, dev = _at("device", run=gathered_device_run(base, task))
-    orb = (dev / f"{task.label}.ORB_INDX") if dev is not None else None
+    # ITS ORBITAL INDEX, the engine's own file on the label, through the run
+    # door (`runs.Run.on_label`).
+    from ..runs import run_of
+    dev_run = run_of(dev) if dev is not None else None
+    orb = dev_run.on_label(".ORB_INDX") if dev_run is not None else None
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.

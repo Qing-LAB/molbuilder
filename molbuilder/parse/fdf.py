@@ -3,7 +3,7 @@
 **What fdf's keyword rule actually is, and why one reader is worth having.**
 fdf matches a keyword case-insensitively AND ignoring ``.``, ``-`` and ``_``,
 so ``SystemLabel``, ``system_label``, ``System.Label`` and ``SYSTEMLABEL`` are
-one keyword.  :func:`_norm` is that rule.
+one keyword.  :func:`fdf_key` is that rule.
 
 **Why it is HERE.**  The fdf format is SIESTA's, not molbuilder's, so reading
 it is `parse/`'s by `model/parse.md` § 1a — the same footing as
@@ -46,11 +46,14 @@ SPIN_WORDS = {
 }
 
 
-def _norm(key: str) -> str:
+def fdf_key(key: str) -> str:
+    """A keyword as fdf matches it: case-blind, and blind to ``.``, ``-``
+    and ``_`` -- the key :func:`read_fdf` files every keyword and block
+    under."""
     return key.lower().replace(".", "").replace("-", "").replace("_", "")
 
 
-def _parse_fdf(text: str) -> Tuple[Dict[str, List[str]],
+def read_fdf(text: str) -> Tuple[Dict[str, List[str]],
                                    Dict[str, List[List[str]]]]:
     """``(scalars, blocks)`` from fdf text; first occurrence wins."""
     scalars: Dict[str, List[str]] = {}
@@ -63,7 +66,7 @@ def _parse_fdf(text: str) -> Tuple[Dict[str, List[str]],
             continue
         low = line.lower()
         if low.startswith("%block"):
-            in_block = _norm(line[len("%block"):].strip())
+            in_block = fdf_key(line[len("%block"):].strip())
             rows = []
             continue
         if low.startswith("%endblock"):
@@ -76,7 +79,7 @@ def _parse_fdf(text: str) -> Tuple[Dict[str, List[str]],
             continue
         toks = line.split()
         if toks:
-            scalars.setdefault(_norm(toks[0]), toks[1:])
+            scalars.setdefault(fdf_key(toks[0]), toks[1:])
     return scalars, blocks
 
 
@@ -160,9 +163,18 @@ class FdfParams:
     scf_energy_converge: Optional[bool] = None
 
 
-def _is_true(toks) -> bool:
-    """fdf's boolean: a keyword present with no value is ``.true.``."""
-    return (not toks) or toks[0].lower() in ("t", "true", ".true.", "yes")
+#: fdf's words for a logical, compared case-blind -- libfdf's own
+#: (``fdf.F90``, ``is_true`` / ``is_false``, SIESTA 5.4.2); any other word
+#: stops SIESTA ("unexpected logical value").
+FDF_TRUE_WORDS = frozenset({"yes", "true", ".true.", "t", "y"})
+FDF_FALSE_WORDS = frozenset({"no", "false", ".false.", "f", "n"})
+
+
+def fdf_true(toks) -> bool:
+    """fdf's boolean of a keyword's value tokens -- the one reading every
+    reader of a deck's switch asks: a keyword present with no value is
+    ``.true.``."""
+    return (not toks) or toks[0].lower() in FDF_TRUE_WORDS
 
 
 def _read_state(sc, p: "FdfParams") -> None:
@@ -186,18 +198,18 @@ def _read_state(sc, p: "FdfParams") -> None:
         word = sc["spin"][0].lower()
         p.spin_treatment = next((t for t, ws in SPIN_WORDS.items()
                                  if word in ws), None)
-    elif "spinorbit" in sc and _is_true(sc["spinorbit"]):
+    elif "spinorbit" in sc and fdf_true(sc["spinorbit"]):
         p.spin_treatment = "spin-orbit"
-    elif "noncollinearspin" in sc and _is_true(sc["noncollinearspin"]):
+    elif "noncollinearspin" in sc and fdf_true(sc["noncollinearspin"]):
         p.spin_treatment = "non-collinear"
-    elif "spinpolarized" in sc and _is_true(sc["spinpolarized"]):
+    elif "spinpolarized" in sc and fdf_true(sc["spinpolarized"]):
         p.spin_treatment = "unrestricted"
     if p.spin_treatment is None:
         p.unpaired_electrons = None
     elif p.spin_treatment == "restricted":
         p.unpaired_electrons = 0
     elif p.spin_treatment != "unrestricted" or not (
-            "spinfix" in sc and _is_true(sc["spinfix"])):
+            "spinfix" in sc and fdf_true(sc["spinfix"])):
         p.unpaired_electrons = "free"
     else:
         total = _to_float((sc.get("spintotal") or ["0"])[0])
@@ -227,11 +239,11 @@ def _read_scf(sc, p: "FdfParams", source: str) -> None:
                 v, toks[1] if len(toks) > 1 else None,
                 what="DM.EnergyTolerance", source=source)
     if "scffreeeconverge" in sc:
-        p.scf_energy_converge = _is_true(sc["scffreeeconverge"])
+        p.scf_energy_converge = fdf_true(sc["scffreeeconverge"])
 
 
 def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
-    sc, bl = _parse_fdf(text)
+    sc, bl = read_fdf(text)
     p = FdfParams()
 
     if "kgridmonkhorstpack" in bl and len(bl["kgridmonkhorstpack"]) >= 3:
@@ -292,8 +304,7 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
 
     # TS.HS.Save / TS.SaveHS / SaveHS  (any truthy => writes .TSHS)
     for k in ("tshssave", "tssavehs", "savehs"):
-        if k in sc and sc[k] and sc[k][0].lower() in ("t", "true", ".true.",
-                                                      "yes"):
+        if k in sc and fdf_true(sc[k]):
             p.saves_ts_hs = True
 
     # ----- geometry: cell + atom z-span -----
@@ -378,7 +389,7 @@ def system_label(text: str) -> Optional[str]:
     **The one spelling-correct reader of this keyword.**  SIESTA names its
     output and warm-restart files from it, which is what its reader -- the
     SIESTA vibration reader (`spectra/siesta_vibration.py`) -- needs.
-    Through :func:`_parse_fdf`, so fdf's real matching rule applies:
+    Through :func:`read_fdf`, so fdf's real matching rule applies:
     ``SystemLabel``, ``system_label`` and ``System.Label`` are one keyword,
     which a regex anchored on the literal word is not.
 
@@ -391,12 +402,12 @@ def system_label(text: str) -> Optional[str]:
     matters for a hand-edited deck -- which is exactly when a reader must
     agree with the engine rather than with the generator.
 
-    Stripped HERE and not in :func:`_parse_fdf`, which returns values as
+    Stripped HERE and not in :func:`read_fdf`, which returns values as
     written: its four other consumers read numbers and enumerations, and
     widening the parser for one string field would change all of them in a
     commit about something else.
     """
-    got = _parse_fdf(text)[0].get("systemlabel")
+    got = read_fdf(text)[0].get("systemlabel")
     if not got:
         return None
     val = got[0]
@@ -405,4 +416,6 @@ def system_label(text: str) -> Optional[str]:
     return val or None
 
 
-__all__ = ["FdfParams", "parse_fdf_params", "system_label"]
+__all__ = ["FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS", "fdf_key",
+           "fdf_true", "read_fdf",
+           "parse_fdf_params", "system_label"]

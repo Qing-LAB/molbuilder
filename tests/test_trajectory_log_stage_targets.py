@@ -57,17 +57,15 @@ def xyz(tmp_path):
 
 
 def _staged(xyz, tmp_path, strategy):
-    """Describe a calculation and `prep` every enabled stage of *strategy*,
-    each through the one entry and from the structure (`--cold`): what each
-    stage's seeded log says is the question, not what it builds on.  In the
-    hierarchy, where a stage can start from the structure (in the flat shape
-    each builds on the run before it).
+    """Describe a calculation and `prep` every stage of *strategy*, each
+    through the one stage entry: what each stage's seeded log says is the
+    question -- what a stage takes from another run is its first launch's.
     """
     from molbuilder import describe as D
     from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import prep_stage
+    from conftest import prep_the_group_of
     from molbuilder.siesta.stages import default_siesta_stages
 
     struct = StructureCodec().load(xyz)
@@ -82,8 +80,8 @@ def _staged(xyz, tmp_path, strategy):
     from conftest import write_pseudos
     write_pseudos(tmp_path, sorted(set(struct.elements)))
     for s in stages:
-        prep_stage(tmp_path, "task", s.name, cold=True,
-                   allocation=Resources(mpi_np=4, cpus_per_task=1))
+        prep_the_group_of(tmp_path, s.name,
+                          allocation=Resources(mpi_np=4, cpus_per_task=1))
     return tmp_path
 
 

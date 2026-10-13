@@ -591,37 +591,30 @@ One field cannot produce either.
 ## 5. What is reported rather than prevented
 
 An identity that tried to prevent every wrong continuation would have to include
-everything, and § 2.1 is about why that is worse. The cases below are real, and
-the answer to each is a message, not a wider pin.
+everything, and § 2.1 is about why that is worse. The cases below are real.
+Most are now closed by how a calculation is laid out — one calculation per
+folder, one folder per run, every file a run takes handed over and recorded —
+and the rest are said, before the launch and as the run starts:
 
-> **Which sayers are live** (honesty note, 2026-08-13): the **wrapper
-> banner** rows run on every launch, and the reader's preflight rows run at
-> `prep` — those surfaces exist.  The rows that name *"the surface, at
-> check time"* describe the web prep surface (P10/P11), whose check-time
-> reader (`validation/identity.check_prior_state`) is built and **not yet
-> called from any production path** — a dormant surface, waiting on its
-> phase, not a shipped one.  The banner row is the one that must never be
-> weakened precisely because it is the always-present layer under that gap.
-
-| Case | Why the id cannot fix it | Who says it, and what |
+| Case | Why the id cannot fix it | What answers it, and where |
 |---|---|---|
-| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum changes the deck and changes nothing about the run | the surface, at check time: *state found, written under different cell parameters — a continue will keep the saved cell* |
-| **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | the **reader**, as a finding at preflight: *this description was written against a different structure* |
-| **prior state from another calculation, different label** | different stem, so the engine will not load it — but the user should know it is there | the **surface** at check time, and the **wrapper banner** at run time: *prior state found, but from a different calculation* |
-| **prior state from another calculation, same label** | **the engine will load it.** Since § 2.0a the formula is not in the stem, so two molecules under one label in one folder share warm files. A differing atom count the engine refuses loudly; an isomer or a substitution it cannot see | the **surface** at check time, by comparing the formula in `task.json` against the structure being generated: *state found, but written for a different molecule*. This row is the price of decision 26 and the reason the formula stays in the id |
-| **prior state that matches** | nothing is wrong; the user should still know before they start | the **surface** at check time, and the **wrapper banner** at run time: *prior state found for this key — the next run continues* |
+| **two calculations under one label in one folder** — a second molecule's run would warm-start from the first's files | since § 2.0a the formula is not in the stem, so two molecules under one label share warm files | **refused**: one calculation per folder — `jobset init` and the Transport tab's describe door refuse a folder that already holds one (`describe.refuse_described`), and Task setup's Save refuses a description whose run id differs from the folder's. The run id keeps the formula for exactly this; two isomers have one formula, which is § 6a's open question 3 |
+| **a label edited between runs** — the warm files no longer match, and a run that should resume starts cold | the label is the half of the id that reaches the engine (§ 2.0a) | **refused**: the label is half of the run id, so Save refuses the change in a described folder, and a `task.json` edited by hand whose name and id disagree is refused on every read (`Task._check_id`) |
+| **files left in a run's folder** — an `.XV` from an earlier fill that the engine would find | the id names the files; it cannot say which fill wrote them | **closed by the layout** on the hierarchical shape: each run is its own folder, holding prep's files and what its launch hands over, and nothing else; a run opened and never launched is emptied whole before it is filled again (`materialize.empty_run`, `project-layout.md` § 1.6.3). **Said** on the flat shape, where a stage's runs share the folder's restart files by design (`project-layout.md` § 1.2): `launch` names the run that left them — the last run in the folder, of any stage — and the run's record names it; the run script's banner names the files lying there as the run starts, `--cold --force` removes them, and a stage whose run card says `restart: clean` has a deck that reads none |
+| **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | **refused at prep** (`job-system.md` R-P16, `prep._structure_for`): the structure put back, or the calculation described anew |
+| **prior state that matches** — the next run continues | nothing is wrong; the person should still know before it starts | **said twice**: `launch` shows which run each stage continues from and every file it copies, asks once, and records it (`.continued-from`, `run.json`; `job-system.md` § 5.4); the run script's banner says it again as the run starts — *WARM-RESTART (silent; engine will load existing* the restart files lying there |
+| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum after a stage ran changes the next stage's deck and changes nothing about its run | **nothing says it today.** A launched stage is not prepared again, so its own runs cannot meet a changed cell; the case is a stage continuing from the one before it, prepared after the cell changed — its first launch copies the earlier run's `.XV`, and the cell that runs is that run's |
 
-**Two authors, on purpose.** The wrapper's banner (`job-contracts.md § 4.4`)
-already says the last two at run time, which is *after* the user committed. The
-surface says them at check time, which is when the choice is still open. Neither
-replaces the other, and neither may say something the other contradicts — the
-banner is the one that is always present, so it is the one that must never be
-weakened. This is the shipped doctrine —
-**molbuilder informs, and the user decides to continue** (`job-system.md § 2`,
-decision 5) — reaching a case it does not cover today: `WARM-RESTART (silent)`
-cannot tell you the state came from a different calculation, because nothing
-beside it recorded which one made it. A description written beside the decks
-closes that.
+**Two moments, on purpose.** `launch` says what each run takes before
+anything is sent, while the choice is still open; the run script's banner
+(`job-contracts.md § 4.4`) says what lies there as the run starts, after the
+person committed. Neither replaces the other, and neither may say something the
+other contradicts — the banner is the one that is always present, so it is the
+one that must never be weakened. This is the shipped doctrine —
+**molbuilder informs, and the person decides to continue** (`job-system.md
+§ 2`, decision 5) — and what made it reach the cases above is that a run now
+records which run its files came from (`.continued-from`, `run.json`'s
+`continued_from`), so the banner's *WARM-RESTART* is never the only witness.
 
 ---
 
@@ -630,12 +623,13 @@ closes that.
 A second generate targets **the directory it is pointed at** — since 2026-08-07
 that is the level-③ name the user typed, not a location the id derives (§ 3.0).
 
-**A prepared stage is not prepared again** *(user, 2026-10-02: "refuse it, redo
-via rollback")*. `prep` refuses a stage the calculation's plan already holds
-and names the way back: the state saved before that prep, restored with
+**A launched stage is not prepared again** *(user, 2026-10-02: "refuse it, redo
+via rollback")*. `prep` prepares a stage never launched again, its group whole
+*(user, 2026-10-11)*, and refuses a launched one, naming the way back: the
+state saved before its group's first launch, restored with
 `molbuilder checkpoint restore`
 ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7), and a prep
-anew — and prep saves that state before it writes (§ 9 there).
+anew — and launch saves that state before a group's first send (§ 9 there).
 Its place among prep's checks is
 [`job-system.md`](?doc=execution/job-system.md) § 5.0.
 

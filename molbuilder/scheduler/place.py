@@ -45,19 +45,13 @@ class Unplaceable(Exception):
     to meet the core cap has been sent round twice (R4, R10).
     """
 
-    def __init__(self, reasons: "Sequence[Refusal]", *, gpu_side: bool):
+    def __init__(self, reasons: "Sequence[Refusal]"):
         # FINDINGS, not prose.  Each carries `where` -- `admit.cores`,
         # `admit.gpus` -- so a caller can say WHICH limit bit without
         # parsing the sentence.
         self.reasons = list(reasons)
-        self.gpu_side = gpu_side
         super().__init__("; ".join(i.message for i in self.reasons)
                          or "no domain admits it")
-
-    @property
-    def limits(self) -> "tuple[str, ...]":
-        """Which limits refused it, e.g. ``("admit.cores", "admit.mem")``."""
-        return tuple(i.where for i in self.reasons)
 
 
 def candidates(routing, *, prefer_gpu: bool) -> List:
@@ -75,7 +69,7 @@ def candidates(routing, *, prefer_gpu: bool) -> List:
 
 
 
-def place(routing, request: Request, *, prefer_gpu: bool,
+def place(routing, request: Request, *,
           named: Optional[str]) -> Optional[Placement]:
     """Bind ``request`` to the queue the job NAMES, admitted on its row.
 
@@ -96,19 +90,17 @@ def place(routing, request: Request, *, prefer_gpu: bool,
             [Refusal("no_domain", "this job",
                      note="it names no queue -- a job names its own "
                           "(allocation.domain, --domain); this machine "
-                          f"offers {', '.join(d.name for d in rows)}")],
-            gpu_side=prefer_gpu)
+                          f"offers {', '.join(d.name for d in rows)}")])
     if not rows:
         raise Unplaceable(
             [Refusal("no_domain", named,
                      note="this machine's record lists no queues to "
-                          "choose from")],
-            gpu_side=prefer_gpu)
+                          "choose from")])
     for d in rows:
         if d.name == named:
             why = admits(d, request)
             if why:
-                raise Unplaceable(why, gpu_side=prefer_gpu)
+                raise Unplaceable(why)
             # The queue's own partition, GPU work included (`scheduler.md` § 4).
             return Placement(domain=d, partition=d.partition, qos=d.qos)
     # A finding like every other refusal (`admit.Refusal`), so
@@ -116,6 +108,5 @@ def place(routing, request: Request, *, prefer_gpu: bool,
     raise Unplaceable(
         [Refusal("no_domain", named,
                  note=f"this machine offers "
-                      f"{', '.join(d.name for d in rows)}")],
-        gpu_side=prefer_gpu)
+                      f"{', '.join(d.name for d in rows)}")])
 

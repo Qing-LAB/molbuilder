@@ -24,20 +24,19 @@ from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.materialize import latest_attempt
 from molbuilder.jobset.errors import PrepError
-from molbuilder.jobset.prep import prep_stage
+from molbuilder.jobset.prep import prep_bench
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 
 @pytest.fixture(autouse=True)
-def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
-    """These tests build a calculation under ``tmp_path`` and hand its path
+def tree(isolated_projects_root):
+    """These tests build a calculation in the projects tree and hand its path
     to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test declares where its tree IS --
-    exactly what a user does when calculations live on scratch.
+    (`job-contracts.md` § 2.5b), so the test builds inside one: the conftest's
+    per-test tree, a folder named ``projects`` like every tree (§ 2.5).
     """
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+    return isolated_projects_root
 
 #: The user's declared matrix, with the catalogue's canonical enum casing
 #: (their saved file spelled "ELPA-1Stage" — the preflight test below pins
@@ -52,7 +51,7 @@ USERS_MATRIX = {
 
 
 @pytest.fixture
-def sol_calc(tmp_path):
+def sol_calc(tree):
     """A described calculation on a Sol-shaped machine: 128-core login
     node, no local GPU, and a probed menu — ``htc`` cpu-only, ``general``
     carrying the a100 inventory and the probed ``max_cores`` cap."""
@@ -60,8 +59,8 @@ def sol_calc(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB",
@@ -70,7 +69,7 @@ def sol_calc(tmp_path):
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
@@ -129,7 +128,7 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     # struck them: the machine prints the whole grid, kept and crossed out,
     # each struck row carrying its own reason.  Nothing is dropped
     # silently -- the notes say it, which both prep doors show
-    # (`prep.prep_stage`).
+    # (`prep.prep_bench`).
     out = "\n".join(notes)
     assert "crossed out" in out
     assert "general" in out and "48" in out
@@ -207,7 +206,7 @@ def _prep(calc):
     """`prep bench coarse`, through the one entry -- what the command line
     and the Task setup tab call; the folders it prepared."""
     from molbuilder.jobset.model import Resources
-    return prep_stage(calc, "bench", "coarse", allocation=Resources(),
+    return prep_bench(calc, "coarse", allocation=Resources(),
                       emit_sbatch=False).dirs
 
 
@@ -496,7 +495,7 @@ def test_preflight_flags_a_typod_choice_per_point(sol_calc):
 
 def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
     """R2-5's named divergence, closed: the shape rules live ONCE
-    (`validation/task.py::_bench_points_fit_their_items`) and prep's
+    (`validation/task.py::bench_points_fit_their_items`) and prep's
     reader calls that same checker.  Before the fold, prep's local copy
     classified allocation entries before checking them, so
     ``mpi_np: [8, 8, 16]`` was refused at describe and ACCEPTED at prep
@@ -509,7 +508,7 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
 
 
 @pytest.fixture
-def flat_sol_calc(tmp_path):
+def flat_sol_calc(tree):
     """The same Sol-shaped machine, FLAT calculation shape — the container
     form the hierarchical fixtures never exercise (R2-8 gap): in flat
     there is no stage directory, so the bench container is the
@@ -518,8 +517,8 @@ def flat_sol_calc(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "flatcalc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "flatcalc"
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB",
@@ -528,7 +527,7 @@ def flat_sol_calc(tmp_path):
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization", shape="flat",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])

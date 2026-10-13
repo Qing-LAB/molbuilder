@@ -89,8 +89,8 @@ def test_projects_root_comes_from_the_one_door(tmp_path, monkeypatch):
     assert projects_root() == molbuilder.repo_root() / PROJECTS_ROOT_NAME
 
     # the env override wins over the default
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "elsewhere-tree"))
-    assert projects_root() == tmp_path / "elsewhere-tree"
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "elsewhere" / "projects"))
+    assert projects_root() == tmp_path / "elsewhere" / "projects"
 
     # an explicit base wins over everything
     assert projects_root(base=tmp_path) == tmp_path / PROJECTS_ROOT_NAME
@@ -223,9 +223,10 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
         (tmp_path / "molbuilder.json").write_text(
-            json.dumps({"paths": {"projects": str(tmp_path / "elsewhere")}}))
+            json.dumps({"paths": {
+                "projects": str(tmp_path / "elsewhere" / "projects")}}))
         pj = self._pj()
-        assert pj.projects_root() == tmp_path / "elsewhere"
+        assert pj.projects_root() == tmp_path / "elsewhere" / "projects"
 
     def test_a_relative_setting_is_read_from_the_molbuilder_root(
             self, tmp_path, monkeypatch):
@@ -238,9 +239,9 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
         (tmp_path / "molbuilder.json").write_text(
-            json.dumps({"paths": {"projects": "shared-tree"}}))
+            json.dumps({"paths": {"projects": "shared/projects"}}))
         pj = self._pj()
-        assert pj.projects_root() == molbuilder.repo_root() / "shared-tree"
+        assert pj.projects_root() == molbuilder.repo_root() / "shared" / "projects"
 
     def test_the_env_override_beats_the_config(self, tmp_path, monkeypatch):
         import json
@@ -248,10 +249,12 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         # and it is not the working directory (configuration.md § 2.1a).
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         (tmp_path / "molbuilder.json").write_text(
-            json.dumps({"paths": {"projects": str(tmp_path / "from-config")}}))
-        monkeypatch.setenv("MOLBUILDER_PROJECTS", str(tmp_path / "from-env"))
+            json.dumps({"paths": {
+                "projects": str(tmp_path / "from-config" / "projects")}}))
+        monkeypatch.setenv("MOLBUILDER_PROJECTS",
+                           str(tmp_path / "from-env" / "projects"))
         pj = self._pj()
-        assert pj.projects_root() == tmp_path / "from-env"
+        assert pj.projects_root() == tmp_path / "from-env" / "projects"
 
     def test_a_malformed_setting_is_refused_not_ignored(
             self, tmp_path, monkeypatch):
@@ -270,6 +273,34 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         with _pytest.raises(RuntimeConfigError) as e:
             pj.projects_root()
         assert "porjects" in str(e.value) and "projects" in str(e.value)
+
+    @pytest.mark.parametrize("door", ["paths.projects", "$MOLBUILDER_PROJECTS"])
+    def test_a_setting_naming_another_folder_is_refused(
+            self, tmp_path, monkeypatch, door):
+        """A setting moves the tree, never renames it.
+
+        The tree is the folder named ``projects`` (`job-contracts.md` § 2.5):
+        a calculation finds its tree by walking up to that name, so a root
+        called anything else would be served while every calculation in it
+        found no tree -- its citations and ``psml_lib`` naming nothing, the
+        failure a person meets only at prep.  Refused at the one door, from
+        either setting, naming the rule and the folder that would do.
+        """
+        import json
+        from molbuilder.runtime_config import RuntimeConfigError
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+        monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
+        mine = tmp_path / "mb"
+        if door == "paths.projects":
+            (tmp_path / "molbuilder.json").write_text(
+                json.dumps({"paths": {"projects": str(mine)}}))
+        else:
+            monkeypatch.setenv("MOLBUILDER_PROJECTS", str(mine))
+        with pytest.raises(RuntimeConfigError) as e:
+            self._pj().projects_root()
+        msg = str(e.value)
+        assert door in msg and "'mb'" in msg and "§ 2.5" in msg, msg
+        assert str(mine / "projects") in msg, msg
 
 
 class TestABundleIsNamedFromTheRootAndStaysInside:

@@ -263,7 +263,9 @@ def seed_document(activation: str, preamble: Optional[str] = None,
     if preamble:
         doc["env_init"]["preamble"] = preamble
     if projects is not None:
-        doc["paths"] = {"projects": str(projects)}
+        from ..projects import named_projects
+        doc["paths"] = {"projects": str(named_projects(
+            Path(projects), "the project tree's path"))}
     return doc
 
 

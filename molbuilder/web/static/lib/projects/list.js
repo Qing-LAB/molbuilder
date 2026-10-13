@@ -8,7 +8,7 @@
  *     Move / Copy / Delete; plus Delete-project / Delete-directory on dir rows).
  *
  * Registers openDir as state.setRefreshHandler(handler) at init time
- * so state.refresh() / state.saveToWorkspace() can ask for a re-list
+ * so state.refresh() / state.writeFile() can ask for a re-list
  * without importing list.js (avoids a circular dep).
  *
  * Spec: docs/web/projects.md § Sidebar interaction rules.
@@ -138,9 +138,37 @@ function _humanSize(n) {
 }
 
 function _markSelected(li) {
-  elList.querySelectorAll(".ps-entry.is-selected")
-        .forEach((n) => n.classList.remove("is-selected"));
-  if (li) li.classList.add("is-selected");
+  elList.querySelectorAll(".ps-entry.is-selected").forEach((n) => {
+    n.classList.remove("is-selected");
+    n.setAttribute("aria-selected", "false");
+  });
+  if (li) {
+    li.classList.add("is-selected");
+    li.setAttribute("aria-selected", "true");
+  }
+}
+
+/* THE KEYBOARD PATH (ui-contract.md § 4.1): the rows are a listbox with
+ * one tab stop -- the selected row, else the first -- the arrows and
+ * Home / End move between them, Enter does what a click does, and Enter
+ * on the selected file commits it, as the second click of a double-click
+ * does. */
+function _rowKey(ev, li, act, commit) {
+  const rows = Array.from(elList.querySelectorAll(".ps-entry"));
+  const i = rows.indexOf(li);
+  const to = ev.key === "ArrowDown" ? rows[i + 1]
+           : ev.key === "ArrowUp" ? rows[i - 1]
+           : ev.key === "Home" ? rows[0]
+           : ev.key === "End" ? rows[rows.length - 1] : null;
+  if (to) {
+    ev.preventDefault();
+    rows.forEach((r) => { r.tabIndex = r === to ? 0 : -1; });
+    to.focus();
+  } else if (ev.key === "Enter" || ev.key === " ") {
+    ev.preventDefault();
+    if (li.classList.contains("is-selected") && commit) commit();
+    else act();
+  }
 }
 
 function _renderBreadcrumb(currentPath) {
@@ -326,6 +354,7 @@ function _buildEntryKebab(entry, fullPath, currentPath) {
   btn.className = "ps-entry-action ps-entry-kebab";
   btn.textContent = "⋯";
   btn.title = "Actions for " + entry.name;
+  btn.setAttribute("aria-label", btn.title);
   btn.setAttribute("aria-haspopup", "menu");
   btn.setAttribute("aria-expanded", "false");
   btn.addEventListener("click", (ev) => {
@@ -623,6 +652,9 @@ function _renderList(entries, currentPath) {
     li.className = "ps-entry";
     li.dataset.path = fullPath;
     li.dataset.kind = e.kind;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", fullPath === selectedFile ? "true" : "false");
+    li.tabIndex = -1;
     if (fullPath === selectedFile) li.classList.add("is-selected");
 
     const icon = document.createElement("span");
@@ -657,7 +689,7 @@ function _renderList(entries, currentPath) {
       li.appendChild(kebab);
     }
 
-    li.addEventListener("click", () => {
+    const act = () => {
       if (e.kind === "directory") {
         openDir(fullPath);
       } else {
@@ -671,7 +703,10 @@ function _renderList(entries, currentPath) {
         // ``projects.onCommit``.
         setShared(currentPath, fullPath);
       }
-    });
+    };
+    li.addEventListener("click", act);
+    li.addEventListener("keydown", (ev) => _rowKey(ev, li, act,
+      e.kind === "file" ? () => publishCommit(currentPath, fullPath) : null));
     // Double-click on a file = commit.  Tabs that subscribe via
     // ``projects.onCommit`` run their "use this file" action
     // (the Molbuilder tab Load, future form-tab structure
@@ -693,6 +728,10 @@ function _renderList(entries, currentPath) {
     });
     elList.appendChild(li);
   }
+  // ONE TAB STOP: the selected row, else the first.
+  const stop = elList.querySelector(".ps-entry.is-selected")
+            || elList.querySelector(".ps-entry");
+  if (stop) stop.tabIndex = 0;
 }
 
 /**

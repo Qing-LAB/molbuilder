@@ -234,14 +234,13 @@ def _why_not(row, ask: Ask, *, cores=None,
                                     mem_gb=ask.mem_gb, gpus=gpus or None)))
 
 
-def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
-                    cores_per_rank: Optional[int] = None,
-                    node_cores: Optional[int] = None) -> List[str]:
+def gpu_share_notes(gpu_count: Optional[int],
+                    mpi_np: Optional[int]) -> List[str]:
     """What a GPU-sharing request means, stated once so the bench-grid
     enumeration and the submission display cannot disagree about it --
     and so neither drifts from what `runwrap.py` actually runs.
 
-    **The four things this states, always in this order:**
+    **The three things this states, always in this order:**
 
     1. ALWAYS -- how many ranks land on one device.  `runwrap.py`'s own
        load-balance line is this exact arithmetic (``_ranks_per_gpu =
@@ -254,12 +253,10 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
        measured sweet spot.  Past it is a real choice a person may have good
        reason to make, so this states both numbers and renders no verdict
        (`docs/execution/submission.md` -- ask, do not derive).
-    4. a node-fit check, ``K * C <= cores / G`` (`engines/tuning.md` § 2.12's
-       own arithmetic, rearranged: ``G*K*C <= node_cores``) -- only when the
-       caller has both ``cores_per_rank`` and ``node_cores`` to check it
-       with.  The bench grid crosses out what no queue of the machine admits
-       (`jobset/prep_inputs._cells_this_machine_holds`); this states it for a
-       caller with a single, non-swept request.
+
+    Whether the cores fit a node is not said here: the bench grid crosses out
+    what no queue of the machine admits
+    (`jobset/prep_inputs._cells_this_machine_holds`).
 
     ``gpu_count`` falsy/``None`` returns no lines -- a CPU-family request,
     nothing here applies.  ``mpi_np`` falsy/``None`` the same -- there is no
@@ -287,14 +284,6 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
             f"  NOTE {ranks_per_gpu} ranks/GPU; this stack's tuned point "
             f"(no NCCL) is ~{GPU_TUNED_RANKS_PER_DEVICE} "
             f"(engines/tuning.md § 2.12).")
-    if cores_per_rank and node_cores:
-        need = gpu_count * ranks_per_gpu * cores_per_rank
-        if need > node_cores:
-            lines.append(
-                f"  WARNING {gpu_count} GPU(s) x {ranks_per_gpu} "
-                f"rank(s)/GPU x {cores_per_rank} core(s)/rank = {need} "
-                f"cores -- more than this node's {node_cores} "
-                f"(engines/tuning.md § 2.12: K x C <= cores / G).")
     return lines
 
 

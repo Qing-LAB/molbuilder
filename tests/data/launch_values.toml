@@ -128,16 +128,15 @@ run_sh_lacks = ["miniconda3"]
 [[case]]
 name = "a calculation set to a machine takes --target naming it again"
 machine = "named"
-before = [["prep", "task", "--stage", "coarse"]]
+before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-prep = ["--cold"]
 
 [[case]]
 name = "...and is refused any other, this machine too -- naming the one it is set to, and a new prep from a saved state"
 machine = "named"
-before = [["prep", "task", "--stage", "coarse"]]
+before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-prep = ["--cold", "--target", "this"]
+prep = ["--target", "this"]
 refused = ["this calculation is set to 'sol'", "To go on with it: --target sol", "and prep again with --target this"]
 
 [[case]]
@@ -173,7 +172,9 @@ header = ["#SBATCH -J H2_01_coarse", "#SBATCH -N 1",
           "#SBATCH -n 2", "#SBATCH -c 1", "#SBATCH -t 0-01:00:00",
           "#SBATCH -p cpu", "#SBATCH -q public", "#SBATCH --mem=8G",
           "#SBATCH -o slurm.%j.out", 'bash H2_01_coarse.run.sh "$@"']
-header_lacks = ["--mail", "--export", "--gres"]
+# NO SITE SETTING AMONG ITS DIRECTIVES -- the comment above them names the
+# hand form, `sbatch --export=ALL,MB_LAUNCHED_BY=manual ...`, which is not one.
+header_lacks = ["#SBATCH --mail", "#SBATCH --export", "#SBATCH --gres"]
 launch = []
 line = ["-p cpu", "-q public", "-t 0-01:00:00", "-n 2", "-c 1", "--mem=8G"]
 run_sh = ["_mpi_np_default=2", "_omp_threads_default=1"]

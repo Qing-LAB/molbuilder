@@ -47,6 +47,7 @@ import json
 import pytest
 
 from _road import conda_hook, env_available
+from support.road import group_words
 from test_siesta_vibration_e2e import (_describe, _jobset,
                                        _the_result, _tick_already_relaxed)
 
@@ -81,10 +82,13 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
     bundle = _describe(tree, monkeypatch,
                        [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
     task = json.loads((bundle / "task.json").read_text())
-    task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
+    # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
+    task["stages"] = [dict(s, group=1) for s in task["stages"]
+                      if s["name"] == "freq"]
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     _tick_already_relaxed(bundle)
-    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle),
+    r = _jobset("prep", "task", *group_words(bundle, "freq"),
+                "--bundle", str(bundle),
                 "--target", "this")
     assert r.exit_code == 0, r.output
     r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),

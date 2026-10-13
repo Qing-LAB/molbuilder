@@ -748,6 +748,7 @@
         const mb = window.molbuilder || {};
         if (!els.engineStrip || !mb.tabStrip) return;
         state.strip = mb.tabStrip.mount(els.engineStrip, {
+            listeners: _listeners,
             onChange: (name, meta) => {
                 state.engine = name === "siesta" ? "siesta" : "pyscf";
                 if (meta && meta.byUser) {
@@ -1372,13 +1373,16 @@
     function copyMethodsText() {
         const text = (els.methodsText && els.methodsText.textContent) || "";
         if (!text) return;
-        const note = (msg, cls) => {
+        // A NOTE ABOUT A CLICK, read and gone: it stays long enough to read.
+        const NOTE_SHOWN_MS = 4000;
+        const note = (msg, kind) => {
             if (!els.methodsNote) return;
-            els.methodsNote.textContent = msg;
-            els.methodsNote.className = "status " + cls;
+            window.molbuilder.status.set(els.methodsNote, msg, kind);
             window.setTimeout(() => {
-                if (els.methodsNote) els.methodsNote.textContent = "";
-            }, 4000);
+                if (els.methodsNote) {
+                    window.molbuilder.status.set(els.methodsNote, "", null);
+                }
+            }, NOTE_SHOWN_MS);
         };
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(text)
@@ -3029,28 +3033,20 @@
      */
     const MODE_TABS = ["table", "viewer", "es", "thermo"];
 
-    function _activateModeTab(name) {
-        if (MODE_TABS.indexOf(name) === -1) return;
+    /* THE MODE TABS, through the one tab strip (`lib/tab-strip.js`,
+     * ui-contract.md § 4.1): the strip shows the panel; this is what the
+     * page does when one is shown. */
+    function _modeTabShown(name) {
         state.modeTab = name;
-        for (const t of MODE_TABS) {
-            const btn   = document.getElementById("mode-tabbtn-" + t);
-            const panel = document.getElementById("mode-tab-" + t);
-            const on    = (t === name);
-            if (btn) {
-                btn.classList.toggle("is-active", on);
-                btn.setAttribute("aria-selected", on ? "true" : "false");
-            }
-            if (panel) panel.hidden = !on;
-        }
         // Now that the box has a size again, let what draws into it catch up.
         if (name === "viewer" && state.vib) {
             try { state.vib.refit(); } catch (_) {}
         }
     }
 
-    function onModeTabClick(ev) {
-        const btn = ev.target.closest ? ev.target.closest("[data-mode-tab]") : null;
-        if (btn) _activateModeTab(btn.dataset.modeTab);
+    function _activateModeTab(name) {
+        if (MODE_TABS.indexOf(name) === -1 || !state.modeStrip) return;
+        state.modeStrip.select(name);
     }
 
     function _stopAnimation() {
@@ -3550,7 +3546,11 @@
             _on(els.animExportCancel,   "click",  onExportCancel);
 
             // Mode-table interactions.
-            _on(els.modeTabs,      "click", onModeTabClick);
+            if (els.modeTabs && window.molbuilder.tabStrip) {
+                state.modeStrip = window.molbuilder.tabStrip.mount(
+                    els.modeTabs, { onChange: _modeTabShown,
+                                    listeners: _listeners });
+            }
             _on(els.modesTheadRow, "click", onTableHeaderClick);
             _on(els.modesTbody,    "click", onTableRowClick);
             _on(els.modesFilter,   "input", onFilterInput);

@@ -14,7 +14,6 @@ Backend contract:  docs/web/web-api.md  §  /api/files/*
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -2724,7 +2723,7 @@ class TestFilesWriteAutoRename:
         happen. The original must also survive -- an auto-rename that clobbers
         is worse than the 409 it replaced.
 
-        `projects.md` § 5 (`safeSave` confirms the `<stem>-2<ext>` the server
+        `projects.md` § 5 (the write confirms the `<stem>-2<ext>` the server
         picked); Phase 6e second review, BOMB #11.
         """
         target = picker_root / "proj"

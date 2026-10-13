@@ -101,7 +101,7 @@
       <h2>3. Calculation parameters</h2>
 
       <div class="tabs" role="tablist" aria-label="Calculation engine">
-        <button class="tab-btn active" role="tab" aria-controls="tab-siesta"
+        <button class="tab-btn" role="tab" aria-controls="tab-siesta"
                 aria-selected="true" data-tab="siesta">
           SIESTA <code>.fdf</code>
         </button>
@@ -112,8 +112,7 @@
       </div>
 
       <!-- ============ SIESTA tab panel ============ -->
-      <div class="tab-panel" id="tab-siesta" role="tabpanel"
-           aria-labelledby="tab-siesta-btn">
+      <div class="tab-panel" id="tab-siesta" role="tabpanel">
       <p class="hint">
         Defaults reproduce a standard small-system DFT setup
         (DZP basis, 300 Ry mesh, GGA-PBE, SCF-only or CG relaxation).
@@ -140,11 +139,11 @@
           <code>.CG</code> restart files.  Keep identical across
           staged runs.
         </p>
-        <details class="hint" style="margin: 0.4em 0 0; font-size: 0.8em;">
-          <summary style="cursor: pointer;">
+        <details class="hint restart-note">
+          <summary>
             <strong>Important:</strong> SIESTA restart-from-folder behavior
           </summary>
-          <div style="margin-top: 0.4em;">
+          <div>
             When <strong>Start from</strong> is set to
             <em>continue</em> &mdash; which emits
             <code>MD.UseSaveXV</code> /
@@ -212,7 +211,7 @@
 
       <!-- ============ PySCF tab panel ============ -->
       <div class="tab-panel" id="tab-pyscf" role="tabpanel"
-           aria-labelledby="tab-pyscf-btn" hidden>
+           hidden>
       <p class="hint">
         Parameters for a PySCF calculation.  Defaults: B3LYP+D3BJ /
         def2-SVP with density fitting and the geomeTRIC optimizer &mdash;
@@ -249,13 +248,13 @@
 
       {#- The hand-off.  This tab collects parameters and produces no artifact,
           so without this the form's work has nowhere to go.  It writes the
-          template + task.1st.json into the sidebar's selected folder and opens
-          Task setup there -- through DISK, never in memory, which is the rule
+          template + task.1st.json into the sidebar's selected folder, for
+          Task setup to open there -- through DISK, never in memory, which is the rule
           tabs.md § 1 states and the reason there is no other "send to tab"
           button in the app. -#}
       <div class="handover-bar">
         <button type="button" id="send-to-task-setup" class="primary">
-          Send to Task setup &rarr;
+          Send to Task setup
         </button>
         <p class="hint" id="handover-hint">
           Writes the structure this is of
@@ -297,7 +296,6 @@
 <script src="{{ url_for('static', filename='lib/chemistry.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='structure-optimization/viewer.js') }}"></script>
 </body>
 </html>

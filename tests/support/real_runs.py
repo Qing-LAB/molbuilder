@@ -178,7 +178,7 @@ def layered(tmp_path_factory) -> RealRun:
         bundle = _described(tree, "P/opt/H2",
                             execution={"mpi_np": 1, "omp_threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
-        _taken(run, "prep coarse", "prep", "task", "--stage", "coarse",
+        _taken(run, "prep coarse", "prep", "task", "--group", "1",
                "--target", "this")
         _script_dry_runs(run, bundle / "01_coarse" / "run-0",
                          tmp_path_factory.mktemp("dry-run"))
@@ -192,7 +192,7 @@ def layered(tmp_path_factory) -> RealRun:
                "coarse", "--mode", "direct", "--yes")
         _taken(run, "launch coarse again cold", "launch", "task", "--stage",
                "coarse", "--mode", "direct", "--yes", "--cold")
-        _taken(run, "prep medium", "prep", "task", "--stage", "medium",
+        _taken(run, "prep medium", "prep", "task", "--group", "2",
                "--target", "this")
         _taken(run, "launch naming no stage", "launch", "task", "--mode",
                "direct", "--yes")

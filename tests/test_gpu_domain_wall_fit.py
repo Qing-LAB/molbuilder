@@ -81,8 +81,7 @@ class TestNoMenuPromisesNothing:
     def test_no_menu_and_no_name_is_not_a_refusal(self):
         """R6: a machine that promised nothing -- no queues, and none named
         -- gets no placement, rather than a refusal it cannot act on."""
-        assert place([], Request(walltime_s=10 ** 6), prefer_gpu=True,
-                     named=None) is None
+        assert place([], Request(walltime_s=10 ** 6), named=None) is None
 
 
 class TestWhatFittingMeans:
@@ -185,18 +184,18 @@ class TestNamingADomainDoesNotSkipTheCheck:
 
     def test_a_named_domain_too_small_is_refused(self):
         with pytest.raises(Unplaceable) as exc:
-            place(SOL, Request(walltime_s=38 * 60), prefer_gpu=True,
+            place(SOL, Request(walltime_s=38 * 60),
                   named="debug")
         assert exc.value.reasons[0].allowed == "00:15:00"
 
     def test_a_named_domain_that_fits_is_used_even_if_not_cheapest(self):
-        got = place(SOL, Request(walltime_s=600), prefer_gpu=True,
+        got = place(SOL, Request(walltime_s=600),
                     named="general")
         assert got.name == "general"      # not `debug`, the cheapest that fits
 
     def test_an_unknown_name_says_what_there_is(self):
         with pytest.raises(Unplaceable) as exc:
-            place(SOL, Request(), prefer_gpu=True, named="nope")
+            place(SOL, Request(), named="nope")
         assert "debug" in exc.value.reasons[0].note
         assert "htc" in exc.value.reasons[0].note
 

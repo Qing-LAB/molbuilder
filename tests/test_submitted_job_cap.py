@@ -51,8 +51,8 @@ class TestTheArithmeticIsSaidBeforeTheAsk:
         """Six shelves at Sol's debug: the note must name the cap, the ask,
         and how many the scheduler will refuse."""
         note = submitted_cap_notes([_shelf() for _ in range(6)])
-        assert len(note) == 1, note
-        said = note[0]
+        assert list(note) == ["debug"], note
+        said = note["debug"]
         assert "debug" in said
         assert "2 submitted job(s)" in said
         assert "this sweep is 6" in said
@@ -69,7 +69,7 @@ class TestTheArithmeticIsSaidBeforeTheAsk:
         scheduler will accept 2" would be the same overclaim this whole
         change exists to remove: more certainty than the evidence carries.
         """
-        said = submitted_cap_notes([_shelf() for _ in range(6)])[0]
+        said = submitted_cap_notes([_shelf() for _ in range(6)])["debug"]
         assert "With nothing of yours already queued" in said, said
         assert "fewer if you already hold some" in said, said
         assert "will accept" not in said, "stated as a prediction"
@@ -80,17 +80,18 @@ class TestTheArithmeticIsSaidBeforeTheAsk:
         row = {"name": "odd", "partition": "p", "qos": "q",
                "max_time": "1:00:00", "max_submit_jobs": True}
         plans = [_Plan(_Placement("odd", Domain.from_row(row)))] * 5
-        assert submitted_cap_notes(plans) == []
+        assert submitted_cap_notes(plans) == {}
 
     def test_a_sweep_that_fits_says_nothing(self):
-        assert submitted_cap_notes([_shelf() for _ in range(2)]) == []
+        assert submitted_cap_notes([_shelf() for _ in range(2)]) == {}
 
     def test_each_domain_is_judged_on_its_own(self):
         """A split sweep sends its CPU and GPU sides to different queues, so
         the count that matters is per domain, not per sweep."""
         plans = [_shelf("debug", 2)] * 3 + [_shelf("htc", 100)] * 3
         notes = submitted_cap_notes(plans)
-        assert len(notes) == 1 and notes[0].startswith("debug takes")
+        assert list(notes) == ["debug"] and notes["debug"].startswith(
+            "debug takes")
 
 
 class TestWhatIsNotALimit:
@@ -101,7 +102,7 @@ class TestWhatIsNotALimit:
         row = {"name": "public", "partition": "public", "qos": "public",
                "max_time": "7-00:00:00", "max_submit_jobs": None}
         plans = [_Plan(_Placement("public", Domain.from_row(row)))] * 50
-        assert submitted_cap_notes(plans) == []
+        assert submitted_cap_notes(plans) == {}
 
 
     def test_no_menu_no_domain_no_note(self):
@@ -110,7 +111,7 @@ class TestWhatIsNotALimit:
         class _Bare:
             placement = None
         assert _domain_name(_Bare()) is None
-        assert submitted_cap_notes([_Bare()] * 9) == []
+        assert submitted_cap_notes([_Bare()] * 9) == {}
 
 
 class TestThePreviewNamesTheDomain:

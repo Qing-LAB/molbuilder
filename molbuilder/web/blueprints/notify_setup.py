@@ -239,6 +239,8 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     path = _dest_path()
     try:
         raw = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        return f"{path.name} is not text ({exc})"
     except OSError:
         return ""
     try:

@@ -612,6 +612,6 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     from molbuilder.projects import PROJECTS_ROOT_ENV
     lone = tmp_path / "lone-calc"
     lone.mkdir()
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "server" / "projects"))
     assert resolve_psml_lib("pseudopotential", dest_dir=lone) == \
-        tmp_path / "tree" / "pseudopotential"
+        tmp_path / "server" / "projects" / "pseudopotential"

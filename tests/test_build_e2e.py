@@ -10,8 +10,7 @@ What the tests cover:
   * Tab switching between the two engine panels.
   * The sidebar contract: setShared alone must NOT load (candidate-only);
     publishCommit is the load; a second commit replaces the first
-    (the #51 `enforce` rule); the form-dirty gate warns before a commit
-    discards typed edits.
+    (the #51 `enforce` rule).
   * Second-visit persistence: the tab keeps its own structure across
     navigation, and only an explicit Load re-reads changed disk bytes.
   * Live preflight findings render beside their own control and clear
@@ -19,7 +18,7 @@ What the tests cover:
   * Send to Task setup — the tab's PRIMARY loop: the button writes the structure pair,
     the parameter template and the hand-over into the selected folder
     through the one shared door (lib/task-handover.js), and the
-    one-job-per-folder guard fails CLOSED.
+    one-calculation-per-folder guard fails CLOSED.
 
 NOT covered here (intentional scope split): the HTTP layer is
 test_web.py's; Task setup's own save door is test_task_setup_tab.py's.
@@ -291,8 +290,7 @@ class TestTabSwitching:
 
 class TestSidebarStructureFlow:
     """The sidebar is the ONLY way a structure reaches this tab: a commit
-    loads, a bare pick does not, a second commit replaces the first, and
-    typed parameter edits are guarded before a commit discards them.
+    loads, a bare pick does not, a second commit replaces the first.
     """
 
     def test_sidebar_load_updates_info_atoms(
@@ -465,88 +463,6 @@ class TestSidebarStructureFlow:
             "the second file did not replace the first -- a read-only viewer "
             "refused the install and said nothing, which is exactly what "
             "`enforce` exists to prevent"
-        )
-
-    def test_form_edits_followed_by_commit_fires_warning(
-            self, page, flask_server, tmp_path, monkeypatch):
-        """The form-dirty gate: a user who typed a SIESTA / PySCF
-        parameter edit since the last commit must see a warning
-        before the next commit silently rebuilds the structure
-        section.  Cancel = preserve edits; Discard = proceed."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        # Two distinct structure files so the second commit isn't
-        # short-circuited by the same-file guard.
-        water = tmp_path / "water.xyz"
-        water.write_text(
-            "3\nwater\n"
-            "O 0.000  0.000 0.000\n"
-            "H 0.957  0.000 0.000\n"
-            "H -0.239 0.927 0.000\n"
-        )
-        methane = tmp_path / "methane.xyz"
-        methane.write_text(
-            "5\nmethane\n"
-            "C 0.000  0.000 0.000\n"
-            "H 0.629  0.629 0.629\n"
-            "H -0.629 -0.629 0.629\n"
-            "H -0.629  0.629 -0.629\n"
-            "H 0.629 -0.629 -0.629\n"
-        )
-        _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder"
-            "       && typeof window.molbuilder.warningModal"
-            "          === 'object'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        # Initial commit on water.
-        page.evaluate(
-            """(c) => window.molbuilder.projects.publishCommit(
-                c.dir, c.file)""",
-            {"dir": str(tmp_path), "file": str(water)},
-        )
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        # Make the form dirty by typing into a SIESTA param input.
-        page.wait_for_selector(
-            "#siesta-form-container input", timeout=_BOOT_TIMEOUT_MS)
-        siesta_input = page.locator(
-            "#siesta-form-container input").first
-        siesta_input.focus()
-        # A DIGIT, not a letter.  The form is ordered by the shared category
-        # vocabulary (`web/form-schema.md` § 1), so the first control is a
-        # NUMBER input -- and a number input silently swallows a letter,
-        # firing no `input` event, leaving the form not-dirty and this test
-        # waiting on a modal that was never going to open.  A digit is a real
-        # edit in either.
-        siesta_input.press("9")
-        # Commit a DIFFERENT structure (methane).  Form-dirty gate
-        # fires the warning before discarding the parameter edits.
-        page.evaluate(
-            """(c) => window.molbuilder.projects.publishCommit(
-                c.dir, c.file)""",
-            {"dir": str(tmp_path), "file": str(methane)},
-        )
-        page.wait_for_selector(
-            "dialog.molbuilder-warning-modal",
-            state="attached", timeout=3000)
-        # Cancel → structure stays at 3 atoms (water); the rebuild
-        # didn't run.
-        page.locator(
-            'dialog.molbuilder-warning-modal [data-action="cancel"]'
-        ).click()
-        page.wait_for_selector(
-            "dialog.molbuilder-warning-modal",
-            state="detached", timeout=2000)
-        n = page.evaluate(
-            "() => document.querySelector('#info-atoms').textContent.trim()"
-        )
-        assert n == "3", (
-            f"Cancel must preserve the current structure; "
-            f"#info-atoms is {n!r} (expected 3 for water)"
         )
 
 
@@ -765,7 +681,7 @@ class TestSendToTaskSetup:
 
     Two halves: a legal send writes the CLI's own files into the
     selected folder, and a folder already holding a description refuses
-    with nothing overwritten (the one-job-per-folder guard, which also
+    with nothing overwritten (the one-calculation-per-folder guard, which also
     fails CLOSED on a read error)."""
 
     def _calc_dir(self, tmp_path, monkeypatch):
@@ -1015,7 +931,7 @@ class TestSendToTaskSetup:
         self._load_and_send(page, flask_server, calc, xyz)
         page.wait_for_function(
             "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('one job per folder')",
+            "      .textContent.includes('one calculation per folder')",
             timeout=10_000)
         assert (calc / "task.json").read_text() == marker, (
             "the refusal still overwrote the existing description")

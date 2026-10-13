@@ -118,8 +118,6 @@ CLASS_SILENT = "silent"
 #: At least one channel was not computed, so the mode cannot be placed.
 CLASS_PARTIAL = "partial"
 
-CLASSES = (CLASS_BOTH, CLASS_IR_ONLY, CLASS_RAMAN_ONLY,
-           CLASS_SILENT, CLASS_PARTIAL)
 
 
 def adaptive_cut(

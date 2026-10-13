@@ -210,13 +210,7 @@ export function init(viewer) {
         if (translateBtn) translateBtn.disabled = locked || _nAtoms() === 0;
     }
 
-    /** The shared `.status` writer (lib/status.js).
-     *
-     *  `#status` is the SHARED status line -- page-shell.css owns `.status`
-     *  -- which is why the severity here is bare `ok` / `error` and not this
-     *  page's `modify-status--*`: they are different elements with different
-     *  owners, and giving them one vocabulary would mean this page renaming a
-     *  shared component. */
+    /** The shared `.status` writer (lib/status.js), for the page's line. */
     function setStatus(msg, kind = null) {
         window.molbuilder.status.set("status", msg, kind);
     }
@@ -366,11 +360,11 @@ export function init(viewer) {
         refreshUndoButton();
     }
 
+    /** The edit band's line, through the same writer: `warn` is an action
+     *  understood that correctly did nothing -- Retract at the oldest kept
+     *  state has nowhere further back to go (workspace.md § 9.1). */
     function setEditStatus(msg, kind = null) {
-        const el = $("edit-status");
-        if (!el) return;
-        el.textContent = msg;
-        el.className = "modify-status" + (kind ? ` modify-status--${kind}` : "");
+        window.molbuilder.status.set("edit-status", msg, kind);
     }
 
     /* NO ADVISORY REGION HERE. What the server says about a structure is shown
@@ -668,21 +662,18 @@ export function init(viewer) {
         /* THE TRANSFORM TAB NEEDS ORDERED PICKS, so it does what the Cell
          * page does: turns the ruler on when reached, and says so (§ 11.6).
          * On the TAB CLICK, never at module load. */
-        const transformTab = document.querySelector('[data-op-tab="transform"]');
-        if (transformTab) {
-            transformTab.addEventListener("click", () => {
-                const d = _data();
-                if (d && d.measurement && d.measurement.requestPicking()) {
-                    const notify = (window.molbuilder || {}).notify;
-                    if (notify && notify.show) {
-                        notify.show({ id: "ruler-on-transform-tab",
-                            level: "info", message: "Measuring is on: the "
-                            + "Transform tab picks atoms with the ruler, in "
-                            + "the order you click them. Turn it off when you "
-                            + "are done here." });
-                    }
+        function _rulerForTransform() {
+            const d = _data();
+            if (d && d.measurement && d.measurement.requestPicking()) {
+                const notify = (window.molbuilder || {}).notify;
+                if (notify && notify.show) {
+                    notify.show({ id: "ruler-on-transform-tab",
+                        level: "info", message: "Measuring is on: the "
+                        + "Transform tab picks atoms with the ruler, in "
+                        + "the order you click them. Turn it off when you "
+                        + "are done here." });
                 }
-            });
+            }
         }
 
         const undoBtn = $("undo-op");
@@ -735,50 +726,18 @@ export function init(viewer) {
         // -- lib/app-notifications.js listens for molbuilder:persist-error, so the
         // Modify tab wires nothing here; see docs/web/notifications.md.)
 
-        // Sub-tabs: click an op-tab button to swap which panel is
-        // visible.  Pure DOM toggle (no state in the IIFE; the
-        // is-active class is the state).
-        document.querySelectorAll(".modify-optab").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                const target = btn.dataset.opTab;
-                document.querySelectorAll(".modify-optab").forEach((b) => {
-                    const on = (b.dataset.opTab === target);
-                    b.classList.toggle("is-active", on);
-                    // Keep aria-selected in sync so screen readers
-                    // announce the active tab; pairs with the
-                    // aria-controls / aria-labelledby links on the
-                    // <button> and <div role="tabpanel"> elements.
-                    b.setAttribute("aria-selected", on ? "true" : "false");
-                });
-                document.querySelectorAll(".modify-optab-panel").forEach((p) => {
-                    p.classList.toggle(
-                        "is-active",
-                        p.dataset.opPanel === target,
-                    );
-                });
-            });
-        });
-
-        // Init-structure tabs: same toggle pattern as the op-tabs above but for the
-        // Init structure card's generator/loader bar.  Each tab
-        // unhides ONE ``.modify-init-panel`` and hides the rest;
-        // ``hidden`` is the canonical "panel not active" state
-        // (matches the role="tabpanel" pattern).
-        document.querySelectorAll(".modify-init-tab").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                const target = btn.dataset.initTab;
-                document.querySelectorAll(".modify-init-tab").forEach((b) => {
-                    const on = (b.dataset.initTab === target);
-                    b.classList.toggle("is-active", on);
-                    b.setAttribute("aria-selected", on ? "true" : "false");
-                });
-                document.querySelectorAll(".modify-init-panel").forEach((p) => {
-                    const on = (p.dataset.initPanel === target);
-                    p.classList.toggle("is-active", on);
-                    p.hidden = !on;
-                });
-            });
-        });
+        // THE TWO STRIPS, through the one tab strip (`lib/tab-strip.js`,
+        // ui-contract.md § 4.1): the operations, and the init sources.  The
+        // Transform tab, reached by click or key, turns the ruler on.
+        const strips = window.molbuilder.tabStrip;
+        const opStrip = document.querySelector(".modify-op-tabs");
+        if (opStrip) {
+            strips.mount(opStrip, { onChange: (name, meta) => {
+                if (name === "transform" && meta.byUser) _rulerForTransform();
+            } });
+        }
+        const initStrip = document.querySelector(".modify-init-tabs");
+        if (initStrip) strips.mount(initStrip, {});
 
         // Restore here (after every event handler is wired so the
         // restored UI behaves identically to a freshly-loaded one).

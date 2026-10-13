@@ -59,8 +59,11 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     from molbuilder.runwrap import _cold_restart_block
 
     block = _cold_restart_block("myjob", engine="pyscf", label="myjob")
+    # THE EXCEPTION ARM: the one holding molbuilder's own names, `*.psml`
+    # among them -- the sweep's other arms keep a run's and another
+    # stage's files, and are not exceptions by name shape.
     line = [l for l in block.splitlines()
-            if l.strip().endswith(") continue ;;")]
+            if l.strip().endswith(") continue ;;") and "*.psml" in l]
     assert len(line) == 1, "the exception case arm moved or multiplied"
     pats = line[0].strip()[:-len(") continue ;;")].split("|")
 
@@ -74,3 +77,31 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     # ...and both spellings are present, because the sweep visits both.
     assert any("_warm_label" in p for p in pats)
     assert any(p.startswith("myjob") for p in pats)
+
+
+def test_a_flat_cold_launch_again_keeps_every_run_and_every_other_stage(
+        tmp_path):
+    """`job-system.md`, *What molbuilder does for you*, 2 -- every run is
+    kept: on the flat layout every stage and run shares one folder, and a
+    stage launched again ``--cold`` (launch passes ``--force``) sweeps the
+    warm state its deck would read -- the label's own files -- and nothing
+    a run or another stage owns: a run's numbered files, another stage's
+    token-named ones.  Run as bash, since which names a ``case`` arm takes
+    is the shell's answer, not the text's.
+
+    API-LEVEL: the generated sweep, run on files a flat folder holds."""
+    import subprocess
+    from molbuilder.runwrap import _cold_restart_block
+    block = _cold_restart_block("H2_01_coarse", engine="pyscf", label="H2")
+    warm = ["H2_optimized.xyz", "H2.chk"]
+    kept = ["H2_01_coarse-run0_geom_optim.xyz",      # an earlier run's own
+            "H2_02_medium-run0_geom_optim.xyz",       # another stage's run
+            "H2_02_medium_scratch.dat",               # another stage's file
+            "H2_01_coarse.py", "H2_01_coarse-run0.out"]   # molbuilder's
+    for name in warm + kept:
+        (tmp_path / name).write_text("x")
+    r = subprocess.run(["bash", "-c", "_cold=1\n_force=1\n" + block],
+                       cwd=tmp_path, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert left == sorted(kept), (left, r.stderr)

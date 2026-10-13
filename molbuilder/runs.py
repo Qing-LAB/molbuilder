@@ -27,7 +27,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
-from molbuilder.paths import attempt_index, trial_label, trial_point
+from molbuilder.paths import (attempt_index, flat_bench_token, trial_label,
+                              trial_point)
 
 
 # --------------------------------------------------------------------- #
@@ -90,8 +91,9 @@ def _position(folder: Path, place: Place
     except ValueError:
         return label, None, False
     for part in parts:
-        if part.startswith("bench_") and parse_token(part[len("bench_"):]):
-            stage = part[len("bench_"):]
+        bench_of = flat_bench_token(part)
+        if bench_of:
+            stage = bench_of
         elif parse_token(part):
             stage = part
         point = trial_point(part)
@@ -105,28 +107,44 @@ def _ordinal(stage: Optional[str]) -> int:
     return got[0] if got else -1
 
 
-def speaking(folder, label: str) -> Tuple[Optional[str], Optional[int]]:
-    """THE RUN A FOLDER SPEAKS FOR -- ``(stage, run index)`` -- by the one
-    rule (`architecture.md` § 3.2, `model/parse.md` § 5.1): the highest
-    stage that was launched -- its launch records, one per launched run,
-    each carrying its run's number -- then that stage's highest launched
-    run; with none launched yet, the folder's one stage with a deck.  A
-    file's time decides nothing: a copied or restored folder reorders
-    times, never runs."""
-    ran: Dict[Optional[str], int] = {}
+def _last_here(folder, label: str) -> Optional[Tuple[str, int]]:
+    """``(stage, run)`` of the last run in a folder a calculation's stages
+    share -- the run its record names (`runrecord.last_run`), whose restart
+    files and results lie there -- or ``None`` while none has started."""
+    from molbuilder.runrecord import last_run
+    ref = last_run(folder, label)
+    if ref is None:
+        return None
+    rec = _rf.parse_run_name(ref.name, label)
+    return rec.stage, rec.run
+
+
+def speaking(folder, label: str) -> Optional[str]:
+    """THE STAGE A FOLDER SPEAKS FOR, by the one rule (`architecture.md`
+    § 3.2, `model/parse.md` § 5.1): where the calculation's stages share it,
+    its last run's -- the run whose results lie there, by its record
+    (`runrecord.last_run`); else the highest stage that was launched -- one
+    with a launch record -- and with none launched yet, the folder's one
+    stage with a deck; its run is that stage's newest
+    (`runrecord.newest_run`, asked by :func:`run_of`).  A file's time
+    decides nothing: a copied or restored folder reorders times, never
+    runs."""
+    last = _last_here(folder, label)
+    if last is not None:
+        return last[0]
+    ran = set()
     decks = set()
     deck_roles = set(_rf.deck_roles())
     for _p, rec in _rf.find(Path(folder), label):
         if rec.role == ".run.json" and rec.run is not None:
-            ran[rec.stage] = max(ran.get(rec.stage, -1), rec.run)
+            ran.add(rec.stage)
         if rec.role in deck_roles:
             decks.add(rec.stage)
     if ran:
-        stage = max(ran, key=_ordinal)
-        return stage, ran[stage]
+        return max(ran, key=_ordinal)
     if len(decks) == 1:
-        return next(iter(decks)), None
-    return None, None
+        return next(iter(decks))
+    return None
 
 
 # --------------------------------------------------------------------- #
@@ -172,10 +190,11 @@ class Run:
                 and (run is None or rec.run == run)]
         return hits[-1][0] if hits else None
 
-    def carried(self, role: str) -> Optional[Path]:
-        """This run's CARRIED file in ``role`` -- named on its label with no
-        stage token (`runfiles`: a carried file crosses rungs, SIESTA's
-        ``<label>.XV`` / ``.DM``) -- in its own folder, or ``None``."""
+    def on_label(self, role: str) -> Optional[Path]:
+        """This run's file in ``role`` named on its label alone, with no
+        stage token -- as an engine names its own (SIESTA's ``<label>.FC``,
+        ``.ORB_INDX``) and a run its result (``<label>.spectra.json``) -- in
+        its own folder, or ``None``."""
         hits = [p for p, rec in _rf.find(self.folder, self.label, role=role)
                 if rec.stage is None]
         return hits[-1] if hits else None
@@ -297,12 +316,18 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
             stage = stage or rec.stage
             run = rec.run
     if stage is None:
-        stage, newest = speaking(folder, label)
-        run = run if run is not None else newest
-    elif run is None:
-        runs = [rec.run for _p, rec in _rf.find(folder, label, stage=stage)
-                if rec.run is not None]
-        run = max(runs) if runs else None
+        # THE RUN THE FOLDER SPEAKS FOR: where the stages share it, the
+        # last run there, by its record -- its stage and its number.
+        last = _last_here(folder, label)
+        stage, run = last if last is not None else (speaking(folder, label),
+                                                     None)
+    if stage is not None and run is None:
+        # THE STAGE'S NEWEST RUN, by the one rule (`runrecord.newest_run`):
+        # its newest launched where its runs share the folder, its newest
+        # try in a folder of the run's own.
+        from molbuilder.runrecord import newest_run
+        run = newest_run(folder, _rf.RunNames.of(
+            label, stage, place.task.shape, trial=trial))
     return Run(place=place, folder=folder, label=label, stage=stage,
                run=run, trial=trial)
 
@@ -373,9 +398,9 @@ def declared(run: Run) -> Declared:
     except OSError:
         return Declared(deck=deck)
     from molbuilder.deck_record import extract_engine_offset
-    from molbuilder.script_emit import _extract_atom_metadata_dict
+    from molbuilder.script_emit import read_atom_metadata_block
     return Declared(deck=deck,
-                    atom_metadata=_extract_atom_metadata_dict(text),
+                    atom_metadata=read_atom_metadata_block(text),
                     engine_offset=extract_engine_offset(text))
 
 
@@ -503,7 +528,7 @@ def _openable(folder: Path, label: str, stage: Optional[str],
     calculation produces (`runfiles.result_roles`) in which the folder's run
     has a file -- the run it speaks for, at its newest run index -- that a
     parser claims (`model/parse.md` § 5.2)."""
-    from molbuilder.parse.dirs.rundir import _claimed
+    from molbuilder.parse.dirs.rundir import claimed
     staged = {a.role: a.staged for a in _rf.ON_THE_LABEL}
     for role in _rf.result_roles(calculation):
         hits = [p for p, _rec in _rf.find(
@@ -513,7 +538,7 @@ def _openable(folder: Path, label: str, stage: Optional[str],
             continue
         attempts.append(f"*{role} -> {len(hits)} of this run's")
         for cand in reversed(hits):
-            if _claimed(str(cand)):
+            if claimed(str(cand)):
                 attempts.append(f"*{role} -> {cand.name}")
                 return str(cand)
             attempts.append(f"*{role} -> {cand.name}: no parser claims it, "
@@ -537,7 +562,7 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
     if place.role == calcdirs.CONTAINER:
         return _container_product(d, place, label, stage, attempts), attempts
     if place.role == calcdirs.RUN and stage is None:
-        stage, _n = speaking(d, label)
+        stage = speaking(d, label)
     return _openable(d, label, stage, place.task.calculation,
                      attempts), attempts
 
@@ -552,12 +577,12 @@ def _container_product(folder: Path, place: Place, label: str,
     its ``job-set.json``; ``<label>.transport.json`` is `summarize task`'s
     copy for the command line.  Any other container: the first result role
     the calculation produces that is present (`_openable`)."""
-    from molbuilder.parse.dirs.rundir import _claimed
+    from molbuilder.parse.dirs.rundir import claimed
     is_root = place.root is not None \
         and folder.resolve() == Path(place.root).resolve()
     if is_root and place.task.calculation == "transport":
         handle = folder / _rf.TASK_FILE
-        if _claimed(str(handle)):
+        if claimed(str(handle)):
             attempts.append(f"*{_rf.TASK_FILE}: a transport calculation's "
                             f"report, composed on read from this folder")
             return str(handle)
@@ -608,11 +633,12 @@ def folder_answer(directory) -> Dict[str, Any]:
             run = run_of(d)
             chosen = _openable(d, run.label, run.stage, calc, attempts)
             if run.stage is not None:
-                st = run_state_of(run.folder, run.names)
+                st = run_state_of(run.folder, run.names, run.run)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}
-                record = run_record(run.folder, names=run.names, status=st,
+                record = run_record(run.folder, names=run.names, run=run.run,
+                                    status=st,
                                     engine=engine, calculation=calc,
                                     stage_deck=run.stage_deck)
             else:

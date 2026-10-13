@@ -112,7 +112,7 @@ whole node.
 |---|---|---|---|
 | **`use_gpu`** | **the person** | catalogue · `staging` · `read_by=[wrapper]` | run the solve on a GPU or not |
 | `diag_algorithm` | **the person** | catalogue · `budget` · SIESTA only | the eigensolver — **and nothing else** |
-| `gpu_count` | **the person** | catalogue · `allocation` · `staging` · both engines | how many GPUs a run or a trial **asks** for — no default (G5) |
+| `gpu_count` | **the person** | catalogue · `allocation` · `staging` · both engines | how many GPUs a run or a trial **asks** for — no default (G5); read by the rungs that read `use_gpu` (`stages`: never a transport ladder's transmission, whose `tbtrans` has no GPU path) |
 | `gres` | **derived at prep** | `Resources` | the `--gres=gpu:<n>` string — a count; molbuilder names no card (`scheduler.md` R2a) |
 | `gpu_binding` | **the person**, to turn it off | `task.json` · `allocation` → `Resources` | whether the ask carries `--gres-flags=enforce-binding` (G9) |
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |

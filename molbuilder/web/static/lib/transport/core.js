@@ -107,7 +107,7 @@ const WORKSPACE_TAG = "transport";
      * disabled tab, so it is never this. */
     function _engine() {
         var b = root.document.querySelector(
-            "#transport-engine-tabs .tab-btn.active");
+            "#transport-engine-tabs .tab-btn[aria-selected=\"true\"]");
         return (b && b.dataset.tab) || "";
     }
 
@@ -137,6 +137,12 @@ const WORKSPACE_TAG = "transport";
         });
     }
 
+    /* A RUNG'S NAME AS EVERY SURFACE HERE SAYS IT -- its tab, its panel's
+     * note and the rail's stage list: the ladder index and the name, "1 ·
+     * seed".  One spelling, kept apart from the cards' "1." steps, so the
+     * page's two numberings never read as one. */
+    function _rungLabel(r) { return r.index + " \u00b7 " + r.name; }
+
     /* THE RAIL'S STAGE LIST is the rung list the tab strip is built from
      * -- name, ladder index, one-line note (transport/stages.py
      * RUNG_NOTES) -- so the two say the same thing from one answer. */
@@ -146,7 +152,7 @@ const WORKSPACE_TAG = "transport";
         while (host.firstChild) host.removeChild(host.firstChild);
         rungs.forEach(function (r) {
             host.appendChild(_el("li", null,
-                _el("strong", null, r.index + " \u00b7 " + r.name),
+                _el("strong", null, _rungLabel(r)),
                 " \u2014 " + r.note));
         });
     }
@@ -172,13 +178,14 @@ const WORKSPACE_TAG = "transport";
                 if (!body || !body.ok) {
                     throw new Error((body && body.error) || "schema fetch failed");
                 }
-                if (seq !== _rungsSeq) return;
+                if (seq !== _rungsSeq) return false;
                 var rungs = body.rungs || [];
                 _renderStageFlow(rungs);
                 // A REBUILD KEEPS THE TAB the person is on (the form is
                 // rebuilt when the junction changes): read the active rung
                 // off the strip being replaced, fall back to the first.
-                var was = formContainer.querySelector(".tab-btn.active");
+                var was = formContainer.querySelector(
+                    '.tab-btn[aria-selected="true"]');
                 var keep = (was && was.dataset.tab) || (rungs[0] && rungs[0].name);
                 while (formContainer.firstChild) {
                     formContainer.removeChild(formContainer.firstChild);
@@ -192,12 +199,12 @@ const WORKSPACE_TAG = "transport";
                     strip.appendChild(_el("button", {
                         type: "button", "class": "tab-btn", role: "tab",
                         "data-tab": r.name, "aria-controls": pid,
-                        "aria-selected": "false" }, r.index + " \u00b7 " + r.name));
+                        "aria-selected": "false" }, _rungLabel(r)));
                     var host = _el("div", { "class": "param-grid" });
                     var panel = _el("div", { "class": "tab-panel", id: pid,
                                              role: "tabpanel", hidden: "" },
                         _el("p", { "class": "hint" },
-                            _el("strong", null, r.index + ". " + r.name + " \u2014 "),
+                            _el("strong", null, _rungLabel(r) + " \u2014 "),
                             r.note),
                         host);
                     panels.push({ rung: r.name, panel: panel, host: host });
@@ -219,7 +226,7 @@ const WORKSPACE_TAG = "transport";
                                            folded: _foldedUnlessOwned,
                                            holds: "overrides" })
                         .then(function (b) {
-                            if (!b || seq !== _rungsSeq) return;
+                            if (!b || seq !== _rungsSeq) return false;
                             _rungSchemas[p.rung] = b.schema;
                             _rungHosts[p.rung] = p.host;
                             _restoreFormValues(p.host, b.schema, formSchema,
@@ -227,13 +234,27 @@ const WORKSPACE_TAG = "transport";
                                                    return seq === _rungsSeq;
                                                });
                             _wirePersistence(p.host, b.schema, formSchema, p.rung);
+                            return true;
                         });
-                }));
+                })).then(function (drew) {
+                    // THE NEWEST DRAW SETTLES DESCRIBE: drawn when every
+                    // rung's tab drew; a draw superseded since says
+                    // nothing -- the newer one settles it.
+                    if (seq !== _rungsSeq) return false;
+                    _panelsDrawn = drew.every(Boolean);
+                    _refreshSendButton();
+                    return _panelsDrawn;
+                });
             })
             .catch(function (e) {
                 _renderErrorParagraph(formContainer,
                     "Could not load the rung forms: "
                     + (e && e.message ? e.message : String(e)));
+                if (seq === _rungsSeq) {
+                    _panelsDrawn = false;
+                    _refreshSendButton();
+                }
+                return false;
             });
     }
 
@@ -357,11 +378,15 @@ const WORKSPACE_TAG = "transport";
     var _junctionStructure = null;    // the composed structure envelope
 
     /* The composite's send gate: a citation is the ONE thing the
-     * describe cannot go without (transport.md § 3.1). */
+     * describe cannot go without (transport.md § 3.1) -- and its panels
+     * drawn for it, since Describe sends what they hold: before the shared
+     * panel and the rungs' tabs answer for a new citation, they still hold
+     * the last one's values. */
+    var _panelsDrawn = false;
     function _refreshSendButton() {
         var btn = _$("transport-send-btn");
         if (!btn) return;
-        btn.disabled = !_junction;
+        btn.disabled = !_junction || !_panelsDrawn;
     }
 
     // The mounted MolView handle (null until the first structure is committed
@@ -463,7 +488,11 @@ const WORKSPACE_TAG = "transport";
             // The SAME flow a pick takes: re-describe, then adopt --
             // one adoption path, so a restored citation and a fresh
             // one cannot drift apart.
-            return _describeAttempt(note.junction).then(function (b) {
+            // The rename is not kept: a reload starts it over (tabs.md).
+            var mine = ++_citeSeq;
+            return _describeAttempt(note.junction, false)
+                    .then(function (b) {
+                if (mine !== _citeSeq) return;     // a citation made since
                 _adoptCitation(b, "Restored your last session: ");
             });
         }).catch(function (e) {
@@ -535,12 +564,18 @@ const WORKSPACE_TAG = "transport";
      * description (`swap_electrodes: true`), and every describe of the
      * citation is read WITH it, so the viewer, the findings and the meta
      * line show the junction as this calculation will compose it.  The cited
-     * junction is never written. */
+     * junction is never written.  The choice is about ONE citation: a pick
+     * of a junction starts without it, and the value held is the one the
+     * adopted answer echoes (`_adoptCitation`). */
     var _swapElectrodesChoice = false;
-    function _describeAttempt(rel) {
+    /* THE NEWEST CITATION ASKED FOR -- a restore, a pick or a swap: an
+     * answer for an earlier one that lands late is dropped, never adopted
+     * over the person's latest choice. */
+    var _citeSeq = 0;
+    function _describeAttempt(rel, swap) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, ""))
-                          + (_swapElectrodesChoice ? "&swap_electrodes=1" : ""))
+                          + (swap ? "&swap_electrodes=1" : ""))
             .then(function (r) { return r.json(); })
             .then(function (b) {
                 if (!b || b.ok === false) {
@@ -620,20 +655,22 @@ const WORKSPACE_TAG = "transport";
          * reading of its labels is not, and every answer (viewer, findings,
          * meta line) comes from the server's composition with the swap --
          * never from patching what the page already had. */
-        _swapElectrodesChoice = !_swapElectrodesChoice;
-        _describeAttempt(citation)
+        var want = !_swapElectrodesChoice;
+        var mine = ++_citeSeq;
+        _describeAttempt(citation, want)
             .then(function (d) {
-                _adoptCitation(d, (_swapElectrodesChoice
+                if (mine !== _citeSeq) return;     // a citation made since
+                _adoptCitation(d, (want
                     ? "L-electrode and R-electrode trade names in this "
                       + "calculation (swap_electrodes: true).  Re-cited: "
                     : "The rename is withdrawn.  Re-cited: "));
             })
             .catch(function (e) {
-                _swapElectrodesChoice = !_swapElectrodesChoice;
                 _failed("The swap failed: " + e);
             });
     }
 
+    var _adoptSeq = 0;             // the newest citation adopted
     function _adoptCitation(described, statusPrefix) {
         var vf = (root.molbuilder || {}).validationFindings;
         var fpanel = _$("transport-junction-findings");
@@ -648,12 +685,33 @@ const WORKSPACE_TAG = "transport";
         }
         _junction = described.citation;
         _junctionStructure = described.structure || null;
+        _swapElectrodesChoice = !!described.swap_electrodes;
         // BOTH SURFACES FOLLOW THE CITATION: the shared panel holds what the
         // citation answers (3.8.1), and each rung's tab shows what
         // that rung runs -- drawn from the template the panel describes, so
-        // after it.
+        // after it.  Describe waits for both (`_refreshSendButton`); a newer
+        // citation's draw supersedes this one's.
+        // The last citation's schemas go with it: nothing reads a panel
+        // through a schema it was not drawn from.
+        var drawn = ++_adoptSeq;
+        // ...AND EVERY RUNG DRAW STILL IN FLIGHT is the last citation's:
+        // superseded, it settles nothing (`_fetchAndRender`).
+        _rungsSeq++;
+        _panelsDrawn = false;
+        _refreshSendButton();
+        _sharedSchema = null;
+        _rungSchemas = {};
+        _rungHosts = {};
+        // THE RUNGS' NEWEST DRAW SETTLES DESCRIBE; a shared panel that did
+        // not draw leaves it waiting, and says why in its own place.
         _fetchAndRenderShared(root.molbuilder && root.molbuilder.formSchema)
-            .then(_renderRungs);
+            .then(function (ok) {
+                if (ok && drawn === _adoptSeq) _renderRungs();
+            }, function (e) {
+                if (drawn !== _adoptSeq) return;
+                _setStatus("The shared panel did not draw: "
+                    + (e && e.message ? e.message : String(e)), "error");
+            });
         var out = _$("transport-junction-readout");
         if (out) out.textContent = _junction;
         var meta = _$("transport-junction-meta");
@@ -717,7 +775,7 @@ const WORKSPACE_TAG = "transport";
                         + ".xyz -- a frame set's included.  \u25b8 expands.",
                     mode: "any",
                     describe: function (path) {
-                        return _describeAttempt(toRel(path))
+                        return _describeAttempt(toRel(path), false)
                             .then(function (b) { return b.summary || ""; });
                     },
                     confirmLabel: "Cite this",
@@ -725,8 +783,13 @@ const WORKSPACE_TAG = "transport";
             }).then(function (picked) {
                 if (!picked) return;
                 var rel = toRel(picked);
-                return _describeAttempt(rel).then(function (b) {
-                    _adoptCitation(b);
+                var dropped = _swapElectrodesChoice;
+                var mine = ++_citeSeq;
+                return _describeAttempt(rel, false).then(function (b) {
+                    if (mine !== _citeSeq) return; // a citation made since
+                    _adoptCitation(b, dropped && b && b.citation
+                        ? "The electrode rename stayed with the last "
+                          + "citation.  Cited " : null);
                 });
             }).catch(function (e) {
                 _setStatus("Picker failed: "
@@ -887,7 +950,7 @@ const WORKSPACE_TAG = "transport";
      * renders blank: not chosen (3.8.3). */
     function _fetchAndRenderShared(formSchema) {
         var host = _$("transport-shared-container");
-        if (!host || !formSchema) return Promise.resolve();
+        if (!host || !formSchema) return Promise.resolve(false);
         // A RUNG'S VALUE CAN FOLLOW A SHARED ONE -- the transmission grid
         // starts at the SCF's -- so a change here draws the rungs' tabs
         // again from what the panel now holds.  One listener for the host,
@@ -928,7 +991,7 @@ const WORKSPACE_TAG = "transport";
         return _fetchSurface("shared", host, formSchema, null, null,
                              function () { return seq === _sharedSeq; })
                 .then(function (body) {
-            if (seq !== _sharedSeq) return;
+            if (seq !== _sharedSeq) return false;
             var restored = Promise.resolve();
             if (body) {
                 _sharedSchema = body.schema;
@@ -939,7 +1002,10 @@ const WORKSPACE_TAG = "transport";
                     host, body.schema, formSchema, "shared",
                     function () { return seq === _sharedSeq; });
             }
-            return restored.then(function () { _paintShared(body); });
+            return restored.then(function () {
+                _paintShared(body);
+                return !!body;          // drawn, or the form did not load
+            });
         });
     }
 
@@ -997,7 +1063,7 @@ const WORKSPACE_TAG = "transport";
     function _renderRungs() {
         var fc = _$("transport-form-container");
         var fs = root.molbuilder && root.molbuilder.formSchema;
-        if (fc && fs) return _fetchAndRender(fc, fs);
+        return (fc && fs) ? _fetchAndRender(fc, fs) : Promise.resolve(false);
     }
 
     /** The bias list as typed: volts, in order. */

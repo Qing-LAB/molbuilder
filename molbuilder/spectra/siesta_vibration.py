@@ -61,7 +61,8 @@ try:                                        # inside molbuilder
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
     from ..parse.engines.siesta_reader import SiestaReader
-    from ..parse.fdf import _norm, _parse_fdf, parse_fdf_params, system_label
+    from ..parse.fdf import fdf_key, read_fdf, parse_fdf_params, system_label
+    from ..runfiles import compose
     from ..deck_record import extract_engine_offset, extract_vibration_record
     from ..engine_atom_index import from_engine_index, siesta_atom_index
     from ..sidecars.spectra import dump_spectra_json
@@ -75,7 +76,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
     from siesta_reader import SiestaReader
-    from fdf import _norm, _parse_fdf, parse_fdf_params, system_label
+    from fdf import fdf_key, read_fdf, parse_fdf_params, system_label
+    from runfiles import compose
     from deck_record import extract_engine_offset, extract_vibration_record
     from engine_atom_index import from_engine_index, siesta_atom_index
     from spectra_sidecar import dump_spectra_json
@@ -176,15 +178,15 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     label = system_label(text)
     if not label:
         raise FinishError(f"{deck.name} states no SystemLabel")
-    scalars, blocks = _parse_fdf(text)
+    scalars, blocks = read_fdf(text)
 
     # THE ATOMS, as the deck wrote them: each row's species index names a
     # (Z, label) pair in ChemicalSpeciesLabel.
     species = {}
-    for row in blocks.get(_norm("ChemicalSpeciesLabel")) or ():
+    for row in blocks.get(fdf_key("ChemicalSpeciesLabel")) or ():
         if len(row) >= 3:
             species[int(row[0])] = (int(row[1]), row[2])
-    rows = blocks.get(_norm("AtomicCoordinatesAndAtomicSpecies")) or ()
+    rows = blocks.get(fdf_key("AtomicCoordinatesAndAtomicSpecies")) or ()
     try:
         picked = [species[int(r[3])] for r in rows]
     except (KeyError, IndexError, ValueError):
@@ -199,8 +201,8 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
 
     # WHICH ATOMS WERE NUDGED: the range the run was told.
     try:
-        first = int(scalars[_norm("FC.First")][0])
-        last = int(scalars[_norm("FC.Last")][0])
+        first = int(scalars[fdf_key("FC.First")][0])
+        last = int(scalars[fdf_key("FC.Last")][0])
     except (KeyError, IndexError, ValueError):
         raise FinishError(f"{deck.name} states no FC.First / FC.Last: it is "
                           f"not a force-constant deck") from None
@@ -244,7 +246,9 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
             f"atoms")
     build = reading.get("runtime_info", {}).get("siesta_build") or {}
 
-    fc_path = attempt / f"{label}.FC"
+    # THE ENGINE'S NAME ON THE LABEL, composed by the one grammar
+    # (`runfiles.compose`), which travels beside the job too.
+    fc_path = attempt / compose(label, ".FC")
     if not fc_path.is_file():
         raise FinishError(f"no {fc_path.name} in {attempt}: the "
                           f"force-constant run left no force constants")
@@ -341,7 +345,7 @@ def finish(deck, output) -> Path:
 def _finished(deck, output):
     run = read_force_constant_run(deck, output)
     res = result_of(run)
-    out = Path(deck).parent / f"{run.label}.spectra.json"
+    out = Path(deck).parent / compose(run.label, ".spectra.json")
     dump_spectra_json(res, out)
     return run, res, out
 

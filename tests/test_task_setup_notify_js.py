@@ -218,8 +218,9 @@ def test_no_destination_or_credential_can_reach_the_description():
 # --------------------------------------------------------------------- #
 
 def test_an_unparseable_document_loses_nothing():
-    """Mid-edit the editor holds bytes that are not JSON.  The card must
-    say nothing rather than overwrite the text somebody is typing."""
+    """Mid-edit the editor holds bytes that are not JSON.  The card's write
+    is refused and said, and the text somebody is typing is left as typed
+    (`task-setup.md` § 9a)."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -233,6 +234,8 @@ def test_an_unparseable_document_loses_nothing():
         # `applyNotifyToDoc` calls it, so the harness needs it too.
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
+        # `patchDoc` refuses through it.
+        _slice(src, "function refuseUnparsed()", "async function syncFromModel()"),
     ])
     harness = f"""
         const _els = {json.dumps(_controls(scf=True))};
@@ -245,18 +248,22 @@ def test_an_unparseable_document_loses_nothing():
         // which is also what it does on a page that has not mounted yet.
         const document = {{ querySelector: () => null }};
         const requestAnimationFrame = (f) => f();
+        const _said = [];
+        function setState(kind) {{ _said.push(kind); }}
         let _doc = "{{ not json at all";
         const _cm = {{ getValue: () => _doc, setValue: (t) => {{ _doc = t; }},
                       getCursor: () => null, setCursor: () => {{}} }};
         {fns}
         applyNotifyToDoc();
-        console.log(JSON.stringify({{doc: _doc}}));
+        console.log(JSON.stringify({{doc: _doc, said: _said}}));
     """
     proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
                           capture_output=True, text=True, timeout=20)
     assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout.strip().splitlines()[-1])["doc"] \
-        == "{ not json at all", "the page rewrote text it could not parse"
+    got = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert got["doc"] == "{ not json at all", \
+        "the page rewrote text it could not parse"
+    assert got["said"] == ["refuse"], "the refused write was not said"
 
 
 # --------------------------------------------------------------------- #

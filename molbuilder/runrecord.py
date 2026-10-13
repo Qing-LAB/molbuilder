@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional
+from pathlib import Path, PurePosixPath
+from typing import List, Optional, Tuple
 
 # IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`): the monitor
 # reports how a run ended with `parse.dirs.job.run_status`, whose state is
@@ -49,26 +49,77 @@ class LaunchRecordError(ValueError):
     § 3.2)."""
 
 
+@dataclass(frozen=True)
+class RunRef:
+    """A RUN OF THIS CALCULATION, AS A RECORD NAMES IT -- the one spelling
+    `.continued-from`, `.gathered-from` and `run.json`'s ``continued_from``
+    hold (`job-system.md` § 5.4): the run's ``folder`` from the
+    calculation's (``01_coarse/run-0``; a point's ``04_device/run-0/v0.2``)
+    -- or, where a stage's runs share the calculation's folder, the run's
+    own ``name``, which every file of it carries (``H2_01_coarse-run1``),
+    its folder the calculation's own (``.``).  Written and read one way:
+    ``str(ref)``, and :meth:`read` with the layout the record lies in."""
+    folder: PurePosixPath = PurePosixPath(".")
+    name: Optional[str] = None
+
+    def __str__(self) -> str:
+        return self.name if self.name is not None else self.folder.as_posix()
+
+    @classmethod
+    def at(cls, base, folder) -> "RunRef":
+        """The run in ``folder``, named from the calculation's ``base``."""
+        return cls(PurePosixPath(Path(folder).relative_to(base).as_posix()))
+
+    @classmethod
+    def named(cls, name: str) -> "RunRef":
+        """A run of a stage whose runs share the calculation's folder, by
+        its own name (`runfiles.RunNames.run_name`)."""
+        return cls(name=name)
+
+    @classmethod
+    def read(cls, text: str, *, shared: bool) -> "RunRef":
+        """``text`` as a record holds it -- a run's name where the record's
+        runs share the folder (``shared``), else a folder."""
+        text = text.strip()
+        return cls(name=text) if shared else cls(PurePosixPath(text))
+
+    def path(self, base) -> Path:
+        """The folder its files lie in."""
+        return Path(base) / self.folder
+
+    def within(self, other: "RunRef") -> bool:
+        """It lies inside ``other``'s folder -- a point of that run."""
+        return (self.name is None and other.name is None
+                and other.folder in self.folder.parents)
+
+    def run_folder(self) -> "RunRef":
+        """The run it lies in -- itself, or for a point of a run of points
+        the run folder above it (`paths.run_folder_of`, the one reading of
+        which run a point belongs to)."""
+        if self.name is not None:
+            return self
+        from .paths import run_folder_of      # inside molbuilder only
+        got = run_folder_of(self.folder)
+        return self if got is None else RunRef(PurePosixPath(got.as_posix()))
+
+
 def continued_from_marker(where: Path, names: "_rf.RunNames",
                           run: int) -> Path:
-    """Where the run a stage continues from is left -- by `prep`, or by
-    `launch` for a flat stage launched again -- for the launch record (`project-layout.md` § 1.6.3) -- named by
-    the stage's names (`runfiles.RunNames`): an attempt's
-    ``.continued-from``, or, where a stage's runs share a folder, run
-    ``run``'s own ``<stem>-run<N>.continued-from``, named for the run that
-    continues (user, 2026-10-01: the flat layout records it too; each run
-    its own, plan W57 decision 2)."""
+    """Where the run a run continues from is recorded (`project-layout.md`
+    § 1.6.3) -- named by the stage's names (`runfiles.RunNames`): an
+    attempt's ``.continued-from``, or, where a stage's runs share a folder,
+    run ``run``'s own ``<stem>-run<N>.continued-from``, named for the run
+    that continues (user, 2026-10-01: the flat layout records it too; each
+    run its own, plan W57 decision 2)."""
     return Path(where) / names.name(".continued-from", run)
 
 
-def write_continued_from(where, source, *, names: "_rf.RunNames", run: int,
-                         plan=None) -> Path:
-    """THE ONE WRITER of the run a stage continues from -- every hand-over is
-    one `Continuation`, and this is its record beside the run
-    (`job-system.md` § 5.4): ``source``, an attempt from the calculation
-    folder -- or on the flat layout the run's own name -- as run ``run``'s
-    :func:`continued_from_marker`, through `persist`, or into ``plan``
-    (`jobset.planned.Plan`)."""
+def write_continued_from(where, source: RunRef, *, names: "_rf.RunNames",
+                         run: int, plan=None) -> Path:
+    """THE ONE WRITER of the run a run continues from -- a hand-over's
+    record beside the run (`materialize.hand_over`, `job-system.md` § 5.4):
+    ``source`` as run ``run``'s :func:`continued_from_marker`, through
+    `persist`, or into ``plan`` (`jobset.planned.Plan`)."""
     marker = continued_from_marker(where, names, run)
     data = (str(source) + "\n").encode("utf-8")
     if plan is not None:
@@ -79,21 +130,21 @@ def write_continued_from(where, source, *, names: "_rf.RunNames", run: int,
 
 
 def read_continued_from(where, names: "_rf.RunNames",
-                        run: int) -> Optional[str]:
+                        run: int) -> Optional[RunRef]:
     """The run :func:`write_continued_from` recorded for run ``run``, or
-    ``None`` when there is no marker -- the run started from the structure.
-    A marker that is there and does not read is a :class:`LaunchRecordError`
-    naming it."""
+    ``None`` when there is no marker -- the run started from the structure,
+    or from what it gathered.  A marker that is there and does not read is
+    a :class:`LaunchRecordError` naming it."""
     marker = continued_from_marker(where, names, run)
     try:
         text = marker.read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise LaunchRecordError(
             f"{marker} does not read ({exc}) -- what this run continues "
-            f"from cannot be told, so it is not launched.") from None
-    return text.strip() or None
+            f"from cannot be told.") from None
+    return RunRef.read(text, shared=names.shared) if text.strip() else None
 
 
 def read_concluded(text: Optional[str]) -> Optional[dict]:
@@ -151,7 +202,7 @@ def ending(where, basename: str, run: Optional[int] = None) -> Ending:
     **Molbuilder's own marker first** -- ``<basename>-run<N>.concluded``,
     the wrapper's last act on its main path: an engine error still reaches
     it, a kill never does, and it carries the exit code.  It counts at the
-    newest run index any file of the run reached (`runfiles.at_latest_run`):
+    newest run index any file of the run reached (`runfiles.at_run`):
     an earlier index's marker beside a newer run is that run's goodbye.
 
     **Nothing else**: a run molbuilder's wrapper did not run is not a run of
@@ -166,8 +217,11 @@ def ending(where, basename: str, run: Optional[int] = None) -> Ending:
     if latest:
         try:
             text = latest[0].read_text(encoding="utf-8")
-        except OSError:
-            return Ending()
+        except (OSError, UnicodeDecodeError) as exc:
+            # A MARKER THAT IS THERE AND DOES NOT READ: the run concluded --
+            # the wrapper wrote it -- with an exit code no one can tell, as
+            # an empty one; said, never read as a run still going.
+            return Ending(f"rc=? ({latest[0].name} does not read: {exc})")
         line = (text.splitlines() or [""])[0].strip() or "rc=?"
         said = read_concluded(line)
         return Ending(line, None if said is None else said["code"])
@@ -196,23 +250,63 @@ def _launched_runs(where: Path, names: "_rf.RunNames") -> List[int]:
     return sorted(out)
 
 
+def newest_run(where, names: "_rf.RunNames") -> Optional[int]:
+    """THE STAGE'S NEWEST RUN IN ``where`` -- the one rule every reader of
+    a run asks (`model/parse.md` § 5.1, `project-layout.md` § 1.6.1): where
+    a stage's runs share the folder, its newest LAUNCHED run, by its launch
+    records -- a warm retry's included -- ``None`` before its first launch,
+    since prep seeds its first run's progress log before it runs; in a
+    folder of the run's own, its newest TRY, the highest index any file of
+    it reached (`runfiles.latest_run`) -- the folder's one launch record
+    answers for every try in it."""
+    if names.shared:
+        runs = _launched_runs(Path(where), names)
+        return runs[-1] if runs else None
+    return _rf.latest_run(Path(where), names.label, stage=names.stage)
+
+
+def last_run(where, label: str) -> Optional["RunRef"]:
+    """THE LAST RUN IN A FOLDER A CALCULATION'S STAGES SHARE -- the run whose
+    restart files and results lie there, since every run of every stage
+    writes the same ones (`job-system.md`, *What molbuilder does for you*,
+    2): what ``<label>.last-run`` names, the record its run script wrote the
+    moment its engine started (user, 2026-10-12: *"there should be a record
+    manifest of the last run"*) -- never worked out from when the launch
+    records were written.  ``None`` while no run has started there.  A
+    record that does not read, or names no run of ``label``, is a
+    :class:`LaunchRecordError`, never passed over."""
+    p = Path(where) / _rf.compose(label, ".last-run")
+    try:
+        text = p.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LaunchRecordError(
+            f"{p} does not read ({exc}) -- which run last wrote this folder "
+            f"cannot be told.") from None
+    if _rf.parse_run_name(text, label) is None:
+        raise LaunchRecordError(
+            f"{p} names {text!r}, which is no run of {label!r} -- which run "
+            f"last wrote this folder cannot be told.")
+    return RunRef.named(text)
+
+
 def next_run(where, names: "_rf.RunNames") -> int:
     """THE NUMBER A NEW RUN TAKES (`project-layout.md` § 1.6.1) -- decided
     by `launch`, which hands it to the run script (`--run N`): where a
-    stage's runs share a folder, one past its newest launched run, else 0;
-    in a folder of the run's own, 0 -- it is launched once.  Counted on the
-    launch records, never on the files beside them: prep seeds a stage's
-    first run's progress log before it runs."""
+    stage's runs share a folder, one past its newest run (:func:`newest_run`,
+    counted on the launch records), else 0; in a folder of the run's own,
+    0 -- it is launched once."""
     if not names.shared:
         return _rf.FIRST_ATTEMPT
-    runs = _launched_runs(Path(where), names)
-    return runs[-1] + 1 if runs else _rf.FIRST_ATTEMPT
+    newest = newest_run(where, names)
+    return newest + 1 if newest is not None else _rf.FIRST_ATTEMPT
 
 
 def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
                  mode: str, command: List[str],
                  job_id: Optional[str] = None,
-                 continued_from: Optional[str] = None,
+                 continued_from: Optional[RunRef] = None,
                  launched_at: Optional[str] = None,
                  placed_on: Optional[dict] = None,
                  retry_of: Optional[int] = None) -> Path:
@@ -284,7 +378,8 @@ def record_retry(where, names: "_rf.RunNames", retried: int) -> Path:
     return write_launch(
         Path(where), names=names, run=retried + 1, mode=said["mode"],
         command=said["command"], job_id=said["job_id"],
-        continued_from=names.run_name(retried), placed_on=said["placed_on"],
+        continued_from=RunRef.named(names.run_name(retried)),
+        placed_on=said["placed_on"],
         retry_of=retried)
 
 
@@ -294,16 +389,20 @@ def _refuse_unnumbered(where: Path, names: "_rf.RunNames") -> None:
     had before each run carried its own (plan W57 decision 2) -- was written
     by an older molbuilder: refused, naming the verb that numbers them,
     never read as another run's, or as none."""
-    old = [f.name for f in (Path(where) / (names.stem + role)
+    old = [f.name for f in (Path(where) / names.unnumbered(role)
                             for role in _rf.shared_numbered_roles())
            if f.is_file()]
     if old:
+        # A LAYER BELOW `jobset` prints its line by the composer's rules
+        # (`job-system.md` § 5.3): the folder quoted as a shell needs it.
+        import shlex
         raise LaunchRecordError(
             f"{', '.join(old)}: a flat stage's run files carry their run's "
             f"number (`<stem>-run<N>`), and these carry none -- which run "
             f"each is cannot be told from the name.  Number them for the "
             f"stage's newest run with:\n"
-            f"    molbuilder jobset migrate --bundle {Path(where)}")
+            f"    molbuilder jobset migrate --bundle "
+            f"{shlex.quote(str(Path(where)))}")
 
 
 def launch_record(where, names: "_rf.RunNames",
@@ -330,10 +429,9 @@ def launch_record(where, names: "_rf.RunNames",
     if names.numbered(".run.json"):
         _refuse_unnumbered(where, names)
         if run is None:
-            runs = _launched_runs(where, names)
-            if not runs:
+            run = newest_run(where, names)
+            if run is None:
                 return None
-            run = runs[-1]
     p = launch_record_path(where, names, run)
     if not p.is_file():
         return None
@@ -383,18 +481,21 @@ def retried_main(argv) -> int:
     return 0
 
 
-#: What a gathered rung took from which upstream attempt, one ``<file> <-
-#: <attempt>`` line each -- an attempt's own file, beside ``run.json``:
-#: written by `prep`'s gather (:func:`write_gathered_from`) and read by the
-#: run record's provenance (:func:`read_gathered_from`, `model/parse.md`
-#: § 5d.4).
+#: What a run took from which upstream run, one ``<file> <- <run>`` line
+#: each -- a run's own file, or a point's: written by launch's one
+#: hand-over (`materialize.hand_over`, :func:`write_gathered_from`) and read
+#: by status, the transport record and the run record's provenance
+#: (:func:`read_gathered_from`, `model/parse.md` § 5d.4).
 GATHERED_FROM_FILE = _rf.GATHERED_FROM_FILE   # the catalogue's name
 
 
-def write_gathered_from(attempt_dir, gathered, *, plan=None) -> None:
-    """``gathered`` -- ``[(source attempt, filename), ...]`` in the order
-    taken -- as the attempt's ``.gathered-from``, through `persist`, or into
-    ``plan`` (`jobset.planned.Plan`)."""
+def write_gathered_from(attempt_dir, gathered: "List[Tuple[RunRef, str]]",
+                        *, plan=None) -> None:
+    """THE ONE WRITER of what a run gathered -- a hand-over's record beside
+    the run (`materialize.hand_over`): ``gathered``, ``[(the run it came
+    from, filename), ...]`` in the order taken, as the run's
+    ``.gathered-from``, through `persist`, or into ``plan``
+    (`jobset.planned.Plan`)."""
     data = "".join(f"{fn} <- {src}\n" for src, fn in gathered).encode("utf-8")
     if plan is not None:
         plan.bytes(Path(attempt_dir) / GATHERED_FROM_FILE, data)
@@ -402,20 +503,28 @@ def write_gathered_from(attempt_dir, gathered, *, plan=None) -> None:
     _persist().write_bytes(Path(attempt_dir) / GATHERED_FROM_FILE, data)
 
 
-def read_gathered_from(attempt_dir) -> List[dict]:
-    """``[{"file", "from"}]`` -- what this attempt was gathered from, in the
-    order it was taken; ``[]`` when it gathered nothing."""
+def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
+    """``[(the run it came from, filename), ...]`` -- what this run was
+    gathered from, in the order it was taken, as :func:`write_gathered_from`
+    wrote it; ``[]`` when it gathered nothing.  A record that is there and
+    does not read is a :class:`LaunchRecordError` naming it.  A gather is
+    made on the hierarchical layout alone, so each run is named by its
+    folder."""
     p = Path(attempt_dir) / GATHERED_FROM_FILE
     try:
         text = p.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return []
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LaunchRecordError(
+            f"{p} does not read ({exc}) -- what this run gathered cannot be "
+            f"told.") from None
     out = []
     for line in text.splitlines():
         name, sep, src = line.partition(" <- ")
         if sep and name.strip() and src.strip():
-            out.append({"file": name.strip(), "from": src.strip()})
+            out.append((RunRef.read(src, shared=False), name.strip()))
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

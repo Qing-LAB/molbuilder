@@ -1138,7 +1138,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                         && isFinite(allMax)) {
                     current.appendChild(document.createElement("br"));
                     const span2 = document.createElement("span");
-                    span2.style.color = "var(--text-muted)";
+                    span2.className = "muted";
                     span2.textContent = "max |F| (all atoms)  = "
                         + allMax.toFixed(4) + " eV/Å";
                     current.appendChild(span2);
@@ -1301,16 +1301,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
             margin: { l: 8, r: 12, t: 32, b: 32 },
             // No fixed dtick: let Plotly pick a sparse number of
             // ticks (~5-7) and skip integer labels at high frame
-            // counts.  tickformat=".6~r" gives "shortest unique"
-            // numbers (drops trailing zeros), so e.g. an energy
-            // like -2073.1000 shows as "-2073.1" instead of
-            // "-2073.1000" -- big lateral-space win.
+            // counts; the energy's ticks are every energy chart's
+            // (`plot-theme.js`).
             xaxis: { title: { text: "CG step", standoff: 4 },
                      zeroline: false, automargin: true,
                      nticks: 6 },
-            yaxis: { title: { text: "E_KS (eV)", standoff: 4 },
-                     tickformat: ".6~r", zeroline: false,
-                     automargin: true, nticks: 5 },
+            yaxis: Object.assign({ title: { text: "E_KS (eV)", standoff: 4 },
+                                   zeroline: false, automargin: true,
+                                   nticks: 5 }, window.molbuilder.energyAxis),
         }, theme), { displayModeBar: false });
 
         // Two traces when the engine reports both.

@@ -16,7 +16,7 @@ needs before it can offer to prepare anything.
   on the TARGET            on YOUR machine                 on the TARGET
   ─────────────            ───────────────                 ─────────────
   jobset probe             (copy the record over)
-    --write --name sol  ─────────────────────────►  jobset prep task --stage <stage>
+    --write --name sol  ─────────────────────────►  jobset prep task --group <N>  
                                                       --target sol
                                                           │
                                                     rsync the bundle  ───►  ./…run.sh
@@ -84,7 +84,7 @@ silently-dropped record looks exactly like one that was never copied.
 **Then prepare, and send it:**
 
 ```
-molbuilder jobset prep task --stage coarse --bundle Au-BDT-Au/optimization/Relax --target sol
+molbuilder jobset prep task --group 1 --bundle Au-BDT-Au/optimization/Relax --target sol
 rsync -a Au-BDT-Au/optimization/Relax/ cluster:~/molbuilder/projects/Au-BDT-Au/optimization/Relax/
 ```
 

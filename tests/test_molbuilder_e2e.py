@@ -947,7 +947,8 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
     text = status.inner_text()
     assert "Retracted to state" not in text, \
         f"retract claimed a move that did not happen: {text!r}"
-    assert "modify-status--warn" in (status.get_attribute("class") or ""), \
+    # The shared status vocabulary (ui-contract.md § 5): `.status.warn`.
+    assert {"status", "warn"} <= set((status.get_attribute("class") or "").split()), \
         "a refusal styled as success reads as success"
     # And it really did not move.
     assert "#1" in page.locator("#timeline-status").inner_text()
@@ -1127,7 +1128,8 @@ def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
     """
     _open(page, flask_server)
     page.locator("#optab-btn-slab").click()
-    page.wait_for_selector("#optab-panel-slab.is-active", timeout=_ACT_MS)
+    page.wait_for_selector("#optab-panel-slab", state="visible",
+                           timeout=_ACT_MS)
 
     box = page.locator("#slab-orthogonal").bounding_box()
     txt = page.locator('label[for="slab-orthogonal"]').bounding_box()
@@ -1191,7 +1193,8 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
     """
     _open(page, flask_server)
     page.locator("#optab-btn-slab").click()
-    page.wait_for_selector("#optab-panel-slab.is-active", timeout=_ACT_MS)
+    page.wait_for_selector("#optab-panel-slab", state="visible",
+                           timeout=_ACT_MS)
     # The panel's menu is in: the element the measurement names is Au.
     page.wait_for_function(
         "() => document.getElementById('slab-element').value === 'Au'",

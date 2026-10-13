@@ -791,13 +791,18 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
         d = {"schema": SCHEMA, "engine": {"name": engine},
              "shape": "hierarchical", "run": {"name": "J", "id": "J_H2"},
              "varies": [], "calculation": calculation,
-             "stages": [{"name": "s", "enabled": True, "overrides": {}}],
+             "stages": [{"name": "s", "group": 1, "overrides": {}}],
              "notify": {"on_scf_converged": False, "every_hours": None,
                         "channels": ["*"], "report": report}}
         if calculation == "transport":
-            # its identity is the junction it cites (run-identity.md 2.0a)
+            # its identity is the junction it cites (run-identity.md 2.0a),
+            # and its stages are its rungs (engines/transport.md § 3.8.2a)
             d["slots"] = {"junction": "p/optimization/relax"}
             d["run"]["id"] = "J_p_optimization_relax"
+            d["stages"] = [{"name": n, "group": g, "overrides": {}}
+                           for n, g in (("seed", 1), ("electrode_L", 1),
+                                        ("electrode_R", 1), ("device", 2),
+                                        ("transmission", 3))]
         else:
             d["structure"] = {"source": "h2.xyz", "formula": "H2", "atoms": 2}
         return Task.from_dict(d)

@@ -206,7 +206,7 @@ conductor:
 | **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed and round-tripped through the record's codec in a scratch folder outside the calculation, removed at once — so this prep renders from the record every later one reads — and the record's text kept in the plan; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
 | **3 · decks** (*data files* … *declare*) | the data files listed and screened; each deck rendered, validated, merged with the reader's own section as it stands on disk, and checked — the very text that will be written | transport — **points**: one deck per bias point |
 | **4 · wrappers** | `.run.sh` and `.sbatch` rendered from the deck's text and the job's placement | — |
-| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the `Continuation`'s files | transport — **gather**: each rung's inputs, from the runs upstream it builds on |
+| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the stage's own files; what its first launch will take, said (the `Continuation`'s files and a transport rung's gather are copied by that launch, [`job-system.md`](?doc=execution/job-system.md) § 6.0) | a force-constant stage — the `relax` run its deck is written at |
 | ***the writing*** | every file of the plan written, the attempt opened, `job-set.json` last | — |
 
 **Transport is not a second conductor.** Its five rungs are prepared by these
@@ -1000,9 +1000,10 @@ Two rules make that table readable.
   a run: nothing has been committed to disk when the list turns out to have nine
   elements instead of one.
 - **Step 5 copies; it never renders.** The attempt receives copies of what
-  steps 3 and 4 wrote in the stage's folder, and of the warm files it continues
-  from — the engine writes to those filenames, and a run directory holds
-  everything it needs (`project-layout.md` § 1.0, § 1.6.5).
+  steps 3 and 4 wrote in the stage's folder; the warm files it continues from
+  arrive at its first launch — the engine writes to those filenames, and a run
+  directory holds everything it needs before it starts (`project-layout.md`
+  § 1.0, § 1.6.5).
 
 ## 6. A worked example
 

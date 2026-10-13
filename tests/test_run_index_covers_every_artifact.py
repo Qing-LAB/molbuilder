@@ -49,7 +49,7 @@ def _a_prepared_calculation(tmp_path: Path, monkeypatch) -> Path:
     """
     from support.road import describe_calculation, jobset
     bundle = describe_calculation(tmp_path, monkeypatch, shape="flat")
-    r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
     stage = bundle

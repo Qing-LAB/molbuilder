@@ -56,14 +56,18 @@
   {% endif %}
 </header>
 
-<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
+{#- THE PAGES, as links (`ui-contract.md` § 4.1): a link that goes to a page
+    is not a tab -- the page you are on is `aria-current`. -#}
+<nav class="app-tabs" aria-label="molbuilder sections">
   {% for tab in tabs -%}
   <a href="{{ tab.path }}"
      class="app-tab{% if active_tab == tab.key %} is-active{% endif %}"
-     role="tab"
      {% if active_tab == tab.key %}aria-current="page"{% endif %}>{{ tab.label }}</a>
   {% endfor -%}
 </nav>
+{#- THE ONE TAB STRIP every page's strips are mounted with (`lib/tab-strip.js`,
+    § 4.1), loaded once here, where every page includes it. -#}
+<script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
 
 {#- App-wide system-notification bar (docs/web/notifications.md): ONE
     consistent surface for system-level messages that span tabs -- debuting with

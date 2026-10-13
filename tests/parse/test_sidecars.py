@@ -138,7 +138,8 @@ def _task(tmp_path, calculation):
         bias=(0.0, 0.2) if transport else (),
         low_bias_approximation=False if transport else None,
         varies=(), execution={"mpi_np": 4, "omp_threads": 1},
-        stages=tuple(Stage(name=n, overrides={}) for n in stages)))
+        stages=tuple(Stage(name=n, overrides={}, group=g) for n, g in
+                     zip(stages, (1, 1, 1, 2, 3) if transport else (1,)))))
     return dest / "task.json"
 
 

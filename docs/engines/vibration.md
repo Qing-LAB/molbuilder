@@ -186,8 +186,8 @@ modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
 flowchart LR
   M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine on the strip<br/>(a periodic structure defaults to SIESTA),<br/>set parameters (the catalogue's form per engine),<br/>read the live checks"]
   S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
-  T -->|"prep task --stage freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
-  P -->|"launch task --stage freq"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
+  T -->|"prep task"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
+  P -->|"launch task"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
   R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 7"]
   A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
 ```
@@ -197,8 +197,8 @@ The CLI walks the same road without the browser:
 ```bash
 molbuilder jobset init --structure P/structure/x.xyz --bundle P/frequency/F \
     --engine pyscf|siesta --calculation vibration --name X --shape hierarchical
-molbuilder jobset prep task --stage freq --bundle P/frequency/F --target this
-molbuilder jobset launch task --stage freq --bundle P/frequency/F --mode direct --yes
+molbuilder jobset prep task --bundle P/frequency/F --target this
+molbuilder jobset launch task --bundle P/frequency/F --mode direct --yes
 ```
 
 The launch ends with `<label>.spectra.json` in the attempt on both engines
@@ -1005,7 +1005,7 @@ SIESTA takes no second derivative. A **force-constant run** nudges each atom of
 one contiguous range by a fixed displacement along x, y and z, both ways, runs
 an SCF at each displaced geometry, and writes the forces on every atom to
 `<SystemLabel>.FC`. The keywords, with the spellings SIESTA 5.4.2 honours
-(matched the way fdf matches, `parse/fdf.py::_norm` — never against `strings`
+(matched the way fdf matches, `parse/fdf.py::fdf_key` — never against `strings`
 on the binary, whose concatenated keyword table matches any prefix; `FC.Displ`
 "matched" four times and is not a keyword):
 
@@ -1145,8 +1145,18 @@ vacuum box, and the offset stated `0` with it (`model/structure-periodicity.md`
 deck re-centres the atoms in their new span, and a relaxed geometry moved
 against the real-space grid is not stationary on that grid any more.
 
+**It is the one stage of every kind whose deck is written from another stage's
+result** *(2026-10-11, `execution/job-system.md`, *The task*)*: every other
+hand-over is files the next run reads when it starts, taken at that stage's
+first launch, so its deck is prepared any time; this deck holds `relax`'s
+coordinates and cell, so **it is prepared once `relax` has finished**, its
+source decided at its prep. It cannot be a file: a force-constant run writes
+its last displacement into `.XV`, so a deck reading one would take a nudged
+geometry as the stationary point on a re-run (§ 5.3).
+
 **And the hand-over carries that run's restart files, as every hand-over
-does**: its density, which the force-constant deck reads (`DM.UseSaveDM
+does — copied at the stage's first launch, from the run its prep took**: its
+density, which the force-constant deck reads (`DM.UseSaveDM
 .true.`, § 5.3), so the reference step's SCF starts from the relaxed density —
 fewer iterations, the same answer — and its records, which the run appends to,
 as on the flat layout, where the two stages share a folder and the files are
@@ -1163,7 +1173,7 @@ vibration:
 
 | the ladder | asked | the geometry | the files | recorded |
 |---|---|---|---|---|
-| a `relax` in the ladder — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have finished — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
+| a `relax` in the ladder — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have finished — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule, copied at the first launch | the run on the stage's job (prep); `.continued-from`, the ledger's `continues`, `run.json` at launch |
 | | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only what cannot be done: a run holding none of the files the hand-over carries, an output that holds no geometry, or one whose atoms are not this calculation's in this order | that run's | the same |
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
 | | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, remove `relax` and state the structure relaxed | — | — |
@@ -1174,7 +1184,7 @@ vibration:
 | the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have finished | nothing copied: they lie in the folder | the run's `<basename>-run<N>.continued-from` |
 | a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | the ledger's `continues`, and both doors say which run |
 
-A displacement sweep's stages each take the same rows; a stage prepared is not
+A displacement sweep's stages each take the same rows; a launched stage is not
 prepared again ([`job-system.md`](?doc=execution/job-system.md) § 5.0), so the
 `relax` run a stage was measured at is the one its record names.
 
@@ -1385,10 +1395,10 @@ did. To run the force constants again, launch the stage again: a
 force-constant stage takes nothing from a run of its own, so it runs again
 from its deck alone, from `FC.First`
 ([`job-system.md`](?doc=execution/job-system.md) § 5.4, *A stage launched
-again*); to change it first, go back to the state saved before its prep and
-prep it anew. An attempt prepared before 2026-09-28 carries neither the bundle nor
-the deck's `vibration` block: prepare the stage anew from the state saved
-before its preparation ([`execution/job-system.md`](?doc=execution/job-system.md)
+again*); to change it first, go back to the state saved before its group's
+first launch and prep it anew. An attempt prepared before 2026-09-28 carries
+neither the bundle nor the deck's `vibration` block: prepare the stage again
+(never launched), or from the state saved before its group's first launch ([`execution/job-system.md`](?doc=execution/job-system.md)
 § 5.0), and launch it. **A benchmark
 trial of a force-constant stage is not finished**: it measures how long a
 setting takes under capped SCFs, and modes derived from those would be a
@@ -1440,7 +1450,7 @@ a `.FC` whose row count is not `6·N·n_free`, a range whose length disagrees
 with the free set, a permutation whose two directions are not inverse
 bijections, a deck whose free atoms are not one trailing run, a `vibration`
 block that states no `temperature_K` (format v1, prepared before 2026-09-28 —
-prepare the stage anew from the state saved before its preparation) or no
+prepare the stage anew from the state saved before its group's first launch) or no
 `masses_amu` (format v2, prepared before 2026-10-10 — the same) or a mass count other than its atoms', and an output whose reference step describes other
 atoms. The modes are at **Γ** (R3) — the
 centre of the Brillouin zone, `q = 0`, where every cell moves in phase: a
@@ -1478,9 +1488,10 @@ convention the PySCF deck's own check uses (§ 4.3). Above it the block carries 
 the one remedy for how the geometry was reached — **one text,
 `vibrational_analysis.nonstationary_remedy`, which `prep` (§ 5.8) and the
 PySCF deck (§ 4.3) write too**, each leading with the step that can always
-be taken first — if this stage is prepared, go back to the state saved before
-its prep (a prepared stage is not prepared again,
-[`job-system.md`](?doc=execution/job-system.md) § 5.0): when the ladder's stage
+be taken first — if this stage has been launched, go back to the state saved
+before its group's first launch (a launched stage is not prepared again,
+[`job-system.md`](?doc=execution/job-system.md) § 5.0; one never launched is
+prepared again): when the ladder's stage
 relaxed it (the block's `relaxation_stage`), launch that stage again — it
 continues from its newest attempt — and prep this one once it has finished;
 when the person stated it relaxed, relax first — or keep the run knowing that.
@@ -1587,11 +1598,12 @@ moot once the `relax` stage has run — and the stage is told that stage's
 outcome instead (§ 5.2a): its largest remaining force on the moved atoms
 against this calculation's tolerance, as information when within it and as a
 **warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — in the order it can be done: if
-this stage is prepared, go back to the state saved before its prep (a prepared
-stage is not prepared again, [`job-system.md`](?doc=execution/job-system.md)
-§ 5.0; a preview's has not been), launch the `relax` stage again — it
-continues from its newest attempt, at the geometry it stopped at — and prep
-this stage once it has finished; and a
+this stage has been launched, go back to the state saved before its group's
+first launch (a launched stage is not prepared again,
+[`job-system.md`](?doc=execution/job-system.md) § 5.0; one never launched — a
+preview's — needs no restore), launch the `relax` stage again — it continues
+from its newest attempt, at the geometry it stopped at — and prep this stage
+again once it has finished; and a
 held set changed between the two stages, which leaves free atoms that
 relaxation never balanced *(plan V1.36, the user's word 2026-09-29)*. A bench
 trial of that stage is written at the same geometry and told the same
@@ -1654,7 +1666,7 @@ root; it adds only what the comparison derives:
 | `modes[]` | per mode of the reference stage (the first with a result): its frequency at every stage, the matched mode's index there, the shapes' overlap, the change from the reference, the spread across stages, and a flag when a tolerance was given | modes matched **by shape**: the overlap of the mass-weighted eigenvectors over the free atoms, assigned one-to-one so the total overlap is largest (`scipy.optimize.linear_sum_assignment`) — ranks swap between displacements when two modes are near-degenerate, and matching by rank would compare different motions |
 | `force_constants[]` | per stage against the reference: the largest change of any force constant over the block both nudged, in eV/Å², and that change relative to the largest constant | `H(δ)` from each stage's raw `.FC`, through the one reader (`parse/engines/siesta_fc.py`) |
 | `tolerance_cm1` | the threshold a person gave (`summarize task --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
-| `pending[]` | stages whose result is still to come: the stage, its attempt, its state (`ready` / `waiting` before its prep, the ready door's; `pending`, `queued`, `running`) and the detail of the door that answered | |
+| `pending[]` | stages whose result is still to come: the stage, its attempt, its state (described — a force-constant stage waiting for `relax` before its prep; prepared and not launched — *ready to launch* or *waits for*, the ready door's; `queued`, `running`) and the detail of the door that answered | |
 | `failed[]` | stages whose run ended without a readable result: the stage, its attempt, its state (`failed`, `finished` without the spectrum, `unreadable`) and why | |
 
 `stages[]` also carries `varies_units` — the catalogue's unit for each value
@@ -2233,12 +2245,12 @@ flowchart TB
     CAT["catalogue narrowed to (engine, vibration)<br/>→ the form · → &lt;label&gt;.template.toml"]
     TJ["task.json: calculation vibration,<br/>engine, the ladder (freq; relax + freq)"]
   end
-  subgraph prep["prep task --stage freq"]
+  subgraph prep["prep task"]
     G["validate(struct, cfg, calculation)<br/>PySCF checks #124; SIESTA checks #124; refuse"]
     SORT["SIESTA: sort a copy held-first,<br/>write atom-permutation.json"]
     D["spec_for(…, calculation='vibration') → prepare_deck<br/>PySCF: the script · SIESTA: the .fdf"]
   end
-  subgraph run["launch task --stage freq"]
+  subgraph run["launch task"]
     PY["PySCF script: relax → SCF → Hessian(free) →<br/>modes → strengths → thermo → ES → .spectra.json"]
     SI["SIESTA: SCF + 6·n_free displaced SCFs → .FC"]
   end

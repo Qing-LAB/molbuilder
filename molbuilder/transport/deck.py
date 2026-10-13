@@ -467,8 +467,7 @@ def _emit_seed_header(struct, cfg) -> str:
         "#  An ordinary periodic SIESTA single point on the composed,",
         "#  SORTED junction (engines/transport.md 4.2, stage 1).  Its",
         f"#  converged {label}.DM starts the device NEGF SCF; scaffolding",
-        "#  for convergence, no effect on the converged answer",
-        "#  (skippable -- ruling Q4).",
+        "#  for convergence, no effect on the converged answer.",
         "# ================================================================== #",
         "",
         f"SystemLabel            {label}",
@@ -492,7 +491,7 @@ def _emit_geometry_block(struct, cfg, frame=None) -> str:
 
     # NO `emit_atom_metadata` CALL HERE.  The FRAMEWORK emits that fence
     # once, in the record section (`script_emit.py`, the only caller among
-    # the engines): `_extract_atom_metadata_dict` stops at the first END
+    # the engines): `read_atom_metadata_block` stops at the first END
     # marker, so a second copy here would win over the framework's.
     # `cfg` THROUGH, because the species order is a value a person may set
     # and this block writes `ChemicalSpeciesLabel` (`model/chemistry.md` § 3a).
@@ -594,7 +593,9 @@ _TRANSVERSE_ADVICE = (
     "# under-converged, and the error lands in the interface charge the",
     "# device SCF then has to reproduce.  The pair is the cited junction's",
     "# own until you change it in the template, and one pair serves every",
-    "# SCF rung; the transmission's TBT.k is its own item, tbt_k_grid.",
+    "# SCF rung -- TranSIESTA stops on a lead sampled otherwise.  The",
+    "# transmission's TBT.k is its own item, tbt_k_grid: three times this",
+    "# pair unless you set it (engines/transport.md 0.2).",
 )
 
 
@@ -622,7 +623,7 @@ def transport_spec(struct: Structure, cfg, *,
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
     calculation's own template ⊕ this rung's overrides, as
-    :func:`molbuilder.jobset.prep._resolve_transport` resolves it (TR4) —
+    :func:`molbuilder.jobset.transport_rung.resolve_transport` resolves it (TR4) —
     because the sections above name catalogue rows and
     :func:`~molbuilder.script_emit.parameter` resolves a row by
     ``getattr(config, name)``.  That is not a preference: an item whose name

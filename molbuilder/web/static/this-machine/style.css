@@ -45,12 +45,12 @@
     border-radius: var(--radius-sm);
 }
 
-.tm-row-name { font-weight: 600; }
+.tm-row-name { font-weight: var(--weight-semibold); }
 
 .tm-row-where {
     min-width: 0;
     overflow-x: auto;
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-secondary);
     white-space: nowrap;
@@ -113,7 +113,7 @@
 
 .tm-input {
     min-width: 0;                    /* or a long url forces the card wide */
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: var(--text-sm);
 }
 /* A NAME IS SHORT AND AN ADDRESS IS NOT.  Sizing the name box to the value

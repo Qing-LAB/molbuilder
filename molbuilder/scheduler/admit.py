@@ -6,7 +6,6 @@ graph this is the innermost branch of).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from ..issues import Issue
 from typing import Any, List, Mapping, Optional, Tuple
 
 from .record import UNSET
@@ -30,7 +29,8 @@ class Refusal:
 
     The numbers are the answer; the sentence is a rendering of them.
     """
-    limit:   str          # "walltime" | "cores" | "cpus_per_job" | "mem"
+    limit:   str          # "walltime" | "cores" | "cpus_per_job"
+                          # | "cpus_per_node" | "mem"
                           # | "gpus" | "no_queue" | "no_domain"
     domain:  str
     asked:   "Any" = None
@@ -55,9 +55,6 @@ class Refusal:
         tail = f" ({self.note})" if self.note else ""
         return (f"needs {self.asked}{unit} but {self.domain} allows "
                 f"{self.allowed}{unit}{tail}")
-
-    def as_issue(self) -> Issue:
-        return Issue("error", self.message, self.where)
 
 
 def _compare(row, *, cores: Optional[int] = None,
@@ -135,7 +132,10 @@ def _compare(row, *, cores: Optional[int] = None,
             except (TypeError, ValueError):
                 pol = None                 # unreadable is not small (R3)
             if pol is not None and pol < cores:
-                why.append(Refusal("cpus_per_job", row.name, unit="cores", asked=cores, allowed=pol, note="policy"))
+                # NAMED FOR THE CAP THAT REFUSED: per job, or per node.
+                why.append(Refusal(cap_field[len("max_"):], row.name,
+                                   unit="cores", asked=cores, allowed=pol,
+                                   note=f"policy, {phrase}"))
 
     if mem_gb is not None and row.max_mem_gb:
         try:
@@ -257,8 +257,6 @@ def domain_ceiling_s(row) -> Optional[int]:
     except ValueError:
         return None
 
-
-from .quantities import parse_mem_gb            # noqa: F401
 
 
 @dataclass(frozen=True)

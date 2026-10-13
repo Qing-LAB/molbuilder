@@ -189,7 +189,7 @@ and memory too (`--domain`, `--time`, `--mem`):
 ```bash
 molbuilder jobset init --structure P/structure/hemeC.xyz --bundle P/optimization/hemeC \
     --engine siesta --calculation optimization --shape flat --psml-lib pseudopotential
-molbuilder jobset prep task --stage coarse --bundle P/optimization/hemeC --target this \
+molbuilder jobset prep task --group 1 --bundle P/optimization/hemeC --target this \
     --np 4 --cpus-per-task 1
 ```
 
@@ -418,17 +418,18 @@ axis was forced to 1 in six places, and one fact carried two severities.)*
 
 | the axis | role | count | offset | answered by |
 |---|---|---|---|---|
-| periodic | sampled | `kgrid[i]` — on `tbtrans`, `tbt_k_grid[i]` | `kgrid_displacement[i]` | the template |
+| periodic | sampled | `kgrid[i]` — on `tbtrans`, `tbt_k_grid[i]`, and when that is blank three times `kgrid[i]` above 1 (`kmesh.transmission_start`; [`transport.md`](?doc=engines/transport.md) § 0.3b) | `kgrid_displacement[i]` | the template — a blank transmission mesh, its rule (`KMesh.derived`) |
 | isolated | gamma | the same item | the same item | the template — above 1 it samples images of vacuum, and is warned |
-| a transport calculation's transport axis, on the seed, the device and the transmission | open | **1** | **0** | the axis: it is the open boundary, and the leads' self-energies stand in for the sum along it ([`transport.md`](?doc=engines/transport.md) § 0.2) |
-| the same axis on an electrode rung | lead | `electrode_kz` | **0** | the lead's own item: a lead is periodic bulk along transport |
+| a transport calculation's transport axis, on the seed, the device and the transmission | open | **1** | **0** | the axis: on the device and the transmission it is the open boundary, the leads' self-energies standing in for the sum along it; on the seed, a long cell whose density is only the device's start ([`transport.md`](?doc=engines/transport.md) § 0.2) |
+| the same axis on an electrode rung | lead | `electrode_kz` | **0** | the lead's own item: a lead is periodic bulk along transport, and its Hamiltonian and Fermi level are what the device's self-energy is built from; TranSIESTA compares its offset with the device's on every axis ([`transport.md`](?doc=engines/transport.md) § 0.2) |
 | an axis declared `transport` in any other calculation — relaxing a junction | sampled | as periodic | as periodic | the template: the deck is periodic along it *(user, 2026-09-30)* |
 
 A transport calculation's transport axis is the cell's third, `c` (A3): the
 composition states it (`transport/compose.py`, `kmesh.TRANSPORT_AXIS`). **The
-seed is open too**: its density matrix is the device's starting point, and the
-device samples one point along transport. The engines agree where they force
-it: TranSIESTA's NEGF step and `tbtrans` put that axis at one point with zero
+seed takes one point too**: it is periodic along transport, but its cell is
+long there and its density matrix is only the device's starting point
+([`transport.md`](?doc=engines/transport.md) § 0.2). The engines agree where
+they force it: TranSIESTA's NEGF step and `tbtrans` put that axis at one point with zero
 offset whatever a deck says (`ts_kpoint_scf.F90`, `process_k_cell_displ`, in TS
 mode; `m_tbt_kpoint.F90`, `read_kgrid`: *"We MUST kill all k-points in this
 direction"*). The seed, a plain SIESTA run, and the device's own periodic start
@@ -449,7 +450,7 @@ SCF block, which `tbtrans` reads only when `TBT.k` is absent — kept as the dec
 keeps the other shared settings (plan TD12).
 
 **What reads the mesh.** `Diag.ParallelOverK`'s automatic answer — *more than
-one point* — is counted on the mesh the deck writes: an electrode's `kx ky 40`,
+one point* — is counted on the mesh the deck writes: an electrode's `kx ky 100`,
 not the template's `kx ky 1`. The dipole advisory reads no mesh: it asks the
 axes SIESTA computes on, a box of vacuum on every one
 ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1;
@@ -478,7 +479,8 @@ not judged — that refusal stands alone).
 | an offset on an axis sampled once | warn — it moves that point off Γ (SIESTA and `tbtrans` read the offset modulo 1, so 1.0 is Γ again) | `kmesh.check` |
 | a component a kind fixes, holding another value | refused | `kmesh.fixed` through `template.why_not` — every door |
 | a count at or below 0; `electrode_kz` at or below 1 | refused | the items' own limits, `above` (`template.md` § 5.3) — every door |
-| `electrode_kz` below 20 | warn — a floor, not a convergence proof: only a sweep shows the lead's Fermi level has settled | its recommended `range` |
+| `electrode_kz` below 50 | warn — the SIESTA manual's floor ("at least >50 should easily be reachable"), not a convergence proof: only raising it and seeing the lead's Fermi level stay put shows it has settled | its recommended `range` |
+| on a transport calculation, a transmission mesh the person set **coarser than the SCF mesh** along x or y | warn — T(E) needs at least the points the density was converged on, and usually many more (the manual: "much denser"); a blank one is three times the SCF mesh and never coarser ([`transport.md`](?doc=engines/transport.md) § 0.3b) | `kmesh.check`, the settings gate, on the transmission's deck, which carries both meshes |
 
 `k = 1` on a periodic axis states nothing and is checked not at all *(user,
 2026-08-20; the "under-converged" warning it replaced is retired)*.
@@ -508,7 +510,10 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
 1. **`Diag.Algorithm` — the eigensolver, independent of hardware.** `ScaLAPACK`
    (SIESTA's default divide-and-conquer) / `ELPA-1STAGE` / `ELPA-2STAGE` (**ELPA** =
    a dense-matrix eigensolver library). **ELPA runs on CPU *and* GPU.** Affinity
-   (a hint, not a rule): GPU favours 1STAGE, CPU favours 2STAGE.
+   (a hint, not a rule): GPU favours 1STAGE, CPU favours 2STAGE. **molbuilder's
+   default is `ELPA-1STAGE`**, not SIESTA's own ScaLAPACK *(user, 2026-10-12:
+   "we know that works better for most cases")* — so a deck states
+   `Diag.Algorithm ELPA-1stage` unless the person picks another.
 2. **`cfg.use_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
@@ -758,7 +763,8 @@ right threshold for the running stage, and `# frozen_atoms: <i> ...`, the atoms
 the run holds (`model/parse.md` § 5.3).
 
 A verbose "Run with" header names the managed way first — `molbuilder jobset
-launch task --stage <stage>`, or the wrapper beside the deck by hand — and then the plain
+launch task`, its group's first launch, and `launch task --stage <stage>`, the
+stage alone (`identity.deck_launch`); or the wrapper beside the deck by hand — and then the plain
 `mpirun -np N siesta < <deck>.fdf > <deck>.out`, whose names come from
 `runfiles` like every name a deck prints. The Results tab opens the run's own
 `.out` before the seeded `.molwatch.log`

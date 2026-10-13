@@ -58,7 +58,9 @@ forbid.
 > **What this cost before it was a rule.** An inventory on 2026-08-02 found 20
 > rules in `results/style.css` styling `.inspector-card*` — elements built
 > entirely in JavaScript by `lib/inspectors/`. A module whose appearance was
-> half-owned by a page that could not see it.
+> half-owned by a page that could not see it. They live in
+> `lib/inspectors/inspector-card.css` since 2026-10-12, and the Results
+> fallback's markup reuses the card's title and note as they are.
 
 A page that needs a module to look different asks the module for a token or an
 option. It does not reach in — the same answer a tab gets when it wants the
@@ -149,13 +151,19 @@ so between those widths the page docked a sidebar and then had less room than
 its content declared it needed — the viewer card, correctly refusing to shrink
 past its floor, overflowed its host by exactly the shortfall. A media query
 cannot read a custom property, so the literal stays; the arithmetic lives
-beside it in `page-shell.css`. Also **720px**
-(the parameter grid flattens to one column so labels sit above inputs), plus the
-module-specific ones: **960px** (task-setup), **768px** (markdown),
-**480px** (the load monitor and MolView) and **40rem** (form-schema). *(The
-spectra inspector's **900px** went on 2026-10-10: it stacked the two
-thermochemistry figures by the window's width, which a sidebar changes
-nothing of; a `min()` grid floor stacks them by the panel's.)* All animation honors `prefers-reduced-motion`.
+beside it in `page-shell.css`, and the narrow side of it (`max-width:
+785px`) is also where a few pages trim their own padding. Also **960px**
+(form-components' two-column page, `.page-cols`, stacks its rail), **720px**
+(Task setup's rows and the Documents tab), **768px** (markdown), **480px**
+(the load monitor and MolView) and **40rem** (form-schema's recommended-value
+rows, Task setup's fit row). *(The spectra inspector's **900px** went on
+2026-10-10: it stacked the two thermochemistry figures by the window's width,
+which a sidebar changes nothing of; a `min()` grid floor stacks them by the
+panel's.)* All animation honors `prefers-reduced-motion`.
+
+*(Recounted 2026-10-12. Task setup's two — a row inside a card in a column
+beside the sidebar — are the `.ts-asks` case above, and want a container
+query.)*
 
 *(Recounted 2026-08-25. This listed `1100`, which is in no stylesheet, and
 omitted three that are — a doc inventory drifts silently because nothing
@@ -293,9 +301,25 @@ a `title` is a tooltip, not a name. Every action a click performs has a
 `div` or a table row with a click handler alone. A tab strip follows the
 ARIA tabs pattern — `role="tablist"` / `tab` / `tabpanel`, each tab with an
 `id` and `aria-controls`, the panel `aria-labelledby` its tab, one tab stop
-with the arrow keys moving the selection (page-shell's markup contract). A
+with the arrow keys moving the selection (page-shell's markup contract) — and
+it is **one implementation**, `lib/tab-strip.js`, loaded once by the shared
+header, which mounts every strip in the app: a page names its tabs
+(`data-tab`) and says what it does when one is chosen; the strip keeps
+`aria-selected`, the tab stop, the keys and the ids, and each strip's sheet
+keys its look on `[aria-selected="true"]` *(2026-10-12; seven strips each
+carried their own copy until then)*. A strip inside a module that is disposed
+registers its listeners through its owner's listener scope (`listeners`, the
+inspector's `inspectorLifecycle.listeners()`), so the owner's dispose removes
+them with its own. A link that goes to another page is not
+a tab: the app's page links are a `nav` whose current page is
+`aria-current="page"`. MolView's panel switch is a radio group, which the
+browser already gives one tab stop and the arrow keys. A
 tree's rows are focusable `treeitem`s carrying `aria-expanded` and
-`aria-selected`, Enter picking, the arrows moving and opening. A control that
+`aria-selected`, Enter picking, the arrows moving and opening. The projects
+sidebar's rows are a `listbox` of `option`s with one tab stop: the arrows and
+Home / End move, Enter does what a click does — opens a folder, selects a
+file — and Enter on the selected file commits it, as the second click of a
+double-click does *(2026-10-13; the rows took a click alone until then)*. A control that
 holds a state says so with `aria-pressed`. *(Written 2026-10-08 — B8 F7 /
 U14 / R1-12: the browser driver the walks use and a screen reader have the
 same blind spot, and a control without a name was found by both.)*
@@ -550,15 +574,22 @@ try   { ... the operation ... }
 finally { pageBusy.release(); }
 ```
 
-While claimed, a full-window cover shows the reason, a spinner, and a
-**Cancel** button.  The whole window is covered, so *everything* — tabs,
-sidebar, forms — is blocked by construction; nothing is wired per-control.
+While claimed, a full-window cover shows the reason, a spinner, and — when
+the operation can be cancelled — a **Cancel** button.  The whole window is
+covered, so *everything* — tabs, sidebar, forms — is blocked by
+construction; nothing is wired per-control.  **The keyboard is fenced
+too**: a key pressed anywhere but on the cover, or in a dialog the operation
+itself opened, does nothing — Enter on the button just clicked does not send
+again — and focus rests on the cover until the release puts it back,
+neither move scrolling the page: what the operation brought into view, a
+refusal beside its field, stays in view.
 
 **The recovery contract** (carried over from the sidebar lock, verbatim):
 `release()` sits in a `finally`, so a thrown operation still releases;
-the cancelers abort the in-flight request; and Cancel is the human
-override, always clickable — it runs the cancelers but does **not**
-release (the operation's own `finally` does, after its abort unwinds).
+the cancelers abort the in-flight request; and Cancel, shown when there
+are cancelers, is the human override, always clickable — it runs them but
+does **not** release (the operation's own `finally` does, after its abort
+unwinds).
 There is no silent stuck state.  `claim()` while claimed **throws** —
 one heavy operation at a time is the design, not a limitation.
 

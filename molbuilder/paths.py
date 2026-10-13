@@ -69,6 +69,17 @@ KIND_ROLES: Dict[str, Tuple[str, ...]] = {
     "vibration": ("relaxation", "force_constants"),
 }
 
+#: NAMED SETS OF THOSE ROLES, which a catalogue item's ``stages`` cites by
+#: name (`engines/template.md` § 6.4) -- a fact many items share, stated
+#: once.  ``scf``: every rung that runs an SCF -- transport's seed, leads and
+#: device, a vibration's relaxation and force-constant runs -- and never the
+#: transmission, whose ``tbtrans`` runs none and has no GPU path
+#: (`engines/transport.md` § 6.1b).
+ROLE_SETS: Dict[str, Tuple[str, ...]] = {
+    "scf": ("seed", "electrode_L", "electrode_R", "device", "relaxation",
+            "force_constants"),
+}
+
 
 @dataclass(frozen=True)
 class Shape:
@@ -146,6 +157,17 @@ def attempt_dir(container, n: int) -> Path:
     return Path(container) / attempt_name(n)
 
 
+def run_folder_of(path) -> Optional[Path]:
+    """The run folder ``path`` lies in -- ``04_device/run-1`` of
+    ``04_device/run-1/f001/v0.2``: its parts up to its ``run-<n>``
+    (:func:`attempt_index`) -- or ``None`` when no part is one.  The one
+    reading of which run a file, or a point's folder, belongs to."""
+    parts = Path(path).parts
+    at = next((i for i, part in enumerate(parts)
+               if attempt_index(part) is not None), None)
+    return None if at is None else Path(*parts[:at + 1])
+
+
 def attempt_index(name: str) -> Optional[int]:
     """The ``n`` in ``run-<n>``, or ``None`` when this is not one.
 
@@ -196,8 +218,8 @@ def trial_name(point: str) -> str:
     """What the trial for *point* is called -- ``bench-<point>``.
 
     `job-contracts.md` § 6.3 is the authority: ``bench-`` plus the coordinate
-    as ONE qualifier.  The composer half of the pair; :func:`trials_in` is
-    the finder.
+    as ONE qualifier.  The composer half of the pair; :func:`trial_point`
+    is its reader.
     """
     return f"{TRIAL_PREFIX}{point}"
 
@@ -267,6 +289,15 @@ def stages_in(root, shape: "Shape", label: str = ""
     return sorted(found)
 
 
+#: A flat calculation's benchmark container is its stage's token after this
+#: (`bench_01_coarse`): composed by :func:`bench_container`, read back by
+#: :func:`flat_bench_token`.
+FLAT_BENCH_PREFIX = "bench_"
+#: A hierarchical stage's benchmark container, inside the stage's folder
+#: (`<NN>_<stage>/bench`).
+BENCH_DIRNAME = "bench"
+
+
 def bench_container(shape: "Shape", token: str) -> str:
     """Where a stage's bench state lives, **relative to the calculation root**.
 
@@ -288,8 +319,20 @@ def bench_container(shape: "Shape", token: str) -> str:
                          "token was given")
     sd = shape.stage_dir(token)
     if sd == ".":
-        return f"bench_{token}"
-    return f"{sd}/bench"
+        return f"{FLAT_BENCH_PREFIX}{token}"
+    return f"{sd}/{BENCH_DIRNAME}"
+
+
+def flat_bench_token(name: str) -> Optional[str]:
+    """The stage token a flat calculation's benchmark container is named
+    for -- ``01_coarse`` of ``bench_01_coarse`` -- or ``None`` when ``name``
+    is not one: the reader for :func:`bench_container`'s flat spelling, per
+    § 4.5.  Takes a bare folder NAME."""
+    if not name.startswith(FLAT_BENCH_PREFIX):
+        return None
+    token = name[len(FLAT_BENCH_PREFIX):]
+    from .identity import parse_token
+    return token if parse_token(token) else None
 
 
 def bench_containers_in(root, shape: "Optional[Shape]" = None
@@ -329,31 +372,17 @@ def bench_containers_in(root, shape: "Optional[Shape]" = None
     except OSError:
         return out
     if shape.keeps_attempts_as_directories:
+        from .identity import parse_token
         for d in entries:
-            if d.is_dir() and (d / "bench").is_dir():
-                out.append((f"{d.name}/bench", d.name))
+            if (d.is_dir() and parse_token(d.name)
+                    and (d / BENCH_DIRNAME).is_dir()):
+                out.append((f"{d.name}/{BENCH_DIRNAME}", d.name))
         return out
     for d in entries:
-        token = d.name[len("bench_"):] if d.name.startswith("bench_") else ""
+        token = flat_bench_token(d.name)
         if d.is_dir() and token:
             out.append((d.name, token))
     return out
-
-
-def trials_in(container) -> "list[str]":
-    """Every trial POINT present in *container*, sorted -- :func:`trial_name`'s
-    search.
-
-    Returns the points, not the paths: a caller that wants a path composes one,
-    and a caller listing a sweep wants the coordinates.  `materialize.trials_in`
-    returns paths for its own callers and is the other half of the same pair.
-    """
-    c = Path(container)
-    try:
-        found = [trial_point(d.name) for d in c.iterdir() if d.is_dir()]
-    except OSError:
-        return []
-    return sorted(p for p in found if p is not None)
 
 
 __all__ = [
@@ -361,8 +390,9 @@ __all__ = [
     "SHAPES", "Shape",
     # the bench container and the trial -- ④'s qualifier, not a level
     "TRIAL_PREFIX", "trial_name", "trial_point", "bench_container",
-    "bench_containers_in", "trials_in",
+    "FLAT_BENCH_PREFIX", "BENCH_DIRNAME", "flat_bench_token",
+    "bench_containers_in",
     # the attempt -- composer, reader, finder (§ 4.5's pairing)
-    "ATTEMPT_PREFIX", "attempt_name", "attempt_dir",
+    "run_folder_of", "ATTEMPT_PREFIX", "attempt_name", "attempt_dir",
     "attempt_index", "attempts_in",
 ]

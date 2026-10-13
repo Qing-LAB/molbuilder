@@ -34,7 +34,6 @@ Package layout (see ``docs/science/validation.md`` § 10):
 
 from __future__ import annotations
 
-import math
 import sys
 from contextvars import ContextVar
 from typing import Callable, Dict, List, Optional, Type
@@ -44,20 +43,13 @@ import numpy as np
 from ..issues import Issue, ValidationError
 from ..structure import Structure
 
-# Re-exported, so callers import these names from the package.
-from .chemistry import (_check_metal_basis_adequacy,
-                        check_electronic_state)
-from .geometry import (_check_polymer_orientation,
-                       _min_image_distance,
-                       validate_geometry)
+# The checks this entry point runs.
+from .chemistry import check_electronic_state
+from .geometry import validate_geometry
 from .metadata import (_check_fixed_on_every_rung, _check_values,
                        _validate_config_metadata, not_carried)
 from .pyscf import _validate_pyscf
-from .sidecar import _check_frozen_atoms_consumed
-from .siesta import (_check_siesta_charged_makov_payne_notice,
-                     _check_siesta_mesh_cutoff,
-                     _check_siesta_pseudo_coverage,
-                     _validate_siesta)
+from .siesta import _validate_siesta
 
 
 # --------------------------------------------------------------------- #
@@ -71,20 +63,6 @@ from .siesta import (_check_siesta_charged_makov_payne_notice,
 
 
 _ENGINE_VALIDATORS: Dict[Type, Callable[[Structure, object, Optional[np.ndarray]], List[Issue]]] = {}
-
-
-def _register_engine_validator(cfg_cls: Type):
-    """Decorator: register a validator for a specific config class.
-
-    The validator receives (struct, cfg, cell) and returns a list of
-    Issues.  ``cell`` may be None for engines that don't have a
-    periodic cell concept (PySCF gas-phase / PCM); each registered
-    validator decides what to do with it.
-    """
-    def deco(fn):
-        _ENGINE_VALIDATORS[cfg_cls] = fn
-        return fn
-    return deco
 
 
 # --------------------------------------------------------------------- #
@@ -468,7 +446,7 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     # (`kmesh.py`, `engines/siesta.md` § 6.1): the third
     # component of `kgrid` and `tbt_k_grid` is one a transport calculation
     # fixes, and a lead's count is refused at 1 by its own limit and warned
-    # below 20 by its range -- every door, through `template.why_not`.
+    # below 50 by its range -- every door, through `template.why_not`.
 
     # ---- I12: no vacuum where the crystal continues (§ 5, § 6.1c) ----
     #

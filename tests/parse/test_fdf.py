@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.constants import BOHR_ANGSTROM as _B
-from molbuilder.parse.fdf import (_norm, _parse_fdf, parse_fdf_params,
+from molbuilder.parse.fdf import (fdf_key, read_fdf, parse_fdf_params,
                                   system_label)
 
 
@@ -26,7 +26,7 @@ class TestTheKeywordRuleIsTheFormatS:
         assert system_label(f"{spelling}  bdt\n") == "bdt"
 
     def test_norm_is_that_rule_and_nothing_else(self):
-        assert _norm("System.Label") == _norm("system_label") == "systemlabel"
+        assert fdf_key("System.Label") == fdf_key("system_label") == "systemlabel"
 
 
 class TestAQuotedValueReadsAsSIESTAReadsIt:
@@ -70,7 +70,7 @@ class TestRepeatedKeywords:
         hand-edited or another tool wrote, which is exactly what this reader is
         pointed at.
         """
-        assert _parse_fdf("MeshCutoff 300 Ry\nMeshCutoff 500 Ry\n")[0][
+        assert read_fdf("MeshCutoff 300 Ry\nMeshCutoff 500 Ry\n")[0][
             "meshcutoff"] == ["300", "Ry"]
 
     def test_a_comment_is_not_a_value(self):

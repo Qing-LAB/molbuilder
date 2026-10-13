@@ -347,13 +347,15 @@ SET_AFTER = {
 #: WHO ANSWERS AN OPTIONAL ITEM NOBODY SET -- the table's words after *not
 #: chosen*.  For these the deck writes a value molbuilder works out: the
 #: electronic state's (ES1, `science/chemistry-correctness.md` § 2a; the
-#: deck's own note says from what), the k-point split from the mesh and a
-#: Nosé run's target from its initial temperature (`siesta/input.py`).
+#: deck's own note says from what), the k-point split from the mesh, the
+#: transmission's mesh from the SCF's (`kmesh.mesh_for`) and a Nosé run's
+#: target from its initial temperature (`siesta/input.py`).
 #: Every other is the engine's own default, which the deck's not-set line
 #: names (`engines/template.md` § 6.6 obligation 4).
 BLANK_ANSWERED_BY = {
     **{name: "the electronic state decides it" for name in STATE_ITEMS},
     "parallel_over_k": "worked out from the k-point mesh",
+    "tbt_k_grid": "three times the k-point mesh in the electrode plane",
     "md_target_temperature": "the initial temperature, on a Nose run",
 }
 BLANK_ENGINE = "the engine's own default"

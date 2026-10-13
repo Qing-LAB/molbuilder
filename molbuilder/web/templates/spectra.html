@@ -105,7 +105,7 @@
        panel. #}
     <div class="tabs" id="spectra-engine-strip" role="tablist"
          aria-label="Calculation engine">
-      <button class="tab-btn active" role="tab" type="button"
+      <button class="tab-btn" role="tab" type="button"
               aria-controls="spectra-tab-pyscf"
               aria-selected="true" data-tab="pyscf">
         PySCF
@@ -165,8 +165,9 @@
       Hands the description over — the same flow as the Optimization
       tab: writes the parameter template, the structure files and
       <code>task.1st.json</code> into the folder selected in the
-      sidebar, then opens <strong>Task setup</strong> to finish shape
-      and stages.  Frozen atoms travel with the structure (set them in
+      sidebar.  Nothing runs, and nothing opens: go to
+      <strong>Task setup</strong> and pick that folder, which is where
+      the shape and the stages are asked for.  Frozen atoms travel with the structure (set them in
       the viewer above, or load a structure whose sidecar carries
       them); the checks above run live, and the same gate runs again
       at prep.
@@ -211,7 +212,6 @@
    load-bearing: this MUST precede spectra/viewer.js so the bootstrap
    finds the mount API. #}
 <script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
 

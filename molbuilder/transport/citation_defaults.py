@@ -48,18 +48,17 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
     here, where the value is born, so the template states what every rung
     writes rather than a component the form would show refused.
 
-    The transmission grid starts at three times that pair along each
-    direction it samples more than once (`kmesh.transmission_start`;
-    `engines/transport.md` § 0.3b): a grid converged for the density is
-    routinely too coarse for a transmission, and a finer one re-runs no SCF.
-    The grid is KNOWN at this moment, so it is written down -- a starting
-    point the person converges, not an answer.
+    The transmission's grid is NOT written here: left blank, it is three
+    times this pair in the electrode plane, worked out when its deck is
+    written (`kmesh.mesh_for`; `engines/transport.md` § 0.3b), so it follows
+    the shared mesh whenever that changes and is never recorded as the
+    citation's or the person's.
 
     The OFFSET is carried: every rung writes it, and TranSIESTA stops on a
     lead whose offset differs from the device's.  A record that states none
     leaves the item unanswered -- the documented default fills it at prep.
     """
-    from ..kmesh import transmission_start, with_fixed
+    from ..kmesh import with_fixed
     try:
         counts = tuple(int(v) for v in kgrid)
     except (TypeError, ValueError):
@@ -67,8 +66,6 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
     if len(counts) != 3:
         return
     kw["kgrid"] = with_fixed("kgrid", counts, "transport")
-    kw["tbt_k_grid"] = with_fixed("tbt_k_grid", transmission_start(counts),
-                                  "transport")
     try:
         offset = tuple(float(v) for v in shifts) if shifts else None
     except (TypeError, ValueError):
@@ -236,11 +233,8 @@ def check_pseudopotentials(cited, psml_lib) -> None:
 
 
 def _the_persons(chosen) -> Dict[str, Any]:
-    """What the person chose on the shared panel, with what follows from it
-    by the one k-mesh rule (:func:`_apply_kgrid`): a k-point mesh they set
-    starts the transmission grid at three times its in-plane counts, as the
-    cited one does.  Without it, a changed SCF mesh would leave the transmission on
-    the cited one."""
+    """What the person chose on the shared panel, a k-point mesh they set
+    laid out by the one k-mesh rule (:func:`_apply_kgrid`)."""
     mine = {k: v for k, v in chosen.items() if v is not None}
     if mine.get("kgrid") is not None:
         _apply_kgrid(mine, mine["kgrid"])

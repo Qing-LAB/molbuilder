@@ -61,7 +61,7 @@ def _owned_rules() -> "list[tuple[str, str, str]]":
     rules = [
         (ATTEMPT_PREFIX, "paths.attempt_dir / paths.attempts_in",
          "the attempt directory (project-layout.md § 1.5)"),
-        (TRIAL_PREFIX, "materialize.trial_dir / materialize.trials_in",
+        (TRIAL_PREFIX, "materialize.trial_dir / paths.trial_point",
          "a trial's directory"),
         ("-run", "runfiles.compose(run=…) / runfiles.find",
          "the -run<N> counter (job-contracts.md § 6.3)"),
@@ -113,12 +113,6 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
         ("door - a finder, not a caller",
          "`environments/<name>.json` -- this IS the door every caller asks, "
          "and the name it searches for is the file's own"),
-    ("molbuilder/validation/identity.py", "warm_files_present", "{label}*"):
-        ("door - a finder, not a caller",
-         "THE SUBTRACTION ITSELF (`job-contracts.md` § 4.2): everything named "
-         "after the label that `runfiles.is_ours` does not claim came from the "
-         "engine.  It searches for OUR name in order to answer about what is "
-         "NOT ours, and it is the door `check_id_change` and `runstatus` ask"),
     ("molbuilder/web/blueprints/workspace_storage.py", "_state_indices",
      "{ws_id}.*.wc.json"):
         ("door - a finder, not a caller",
@@ -173,16 +167,6 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
          "install actually ships, and an install missing them is refused by "
          "name.  Replaced `x3dna_utils cp_std`, whose ruby dependency this "
          "removed entirely (#80, 2026-09-09)"),
-    ("molbuilder/validation/identity.py", "_foreign_state", "*{suffix}"):
-        ("foreign - not a name we compose",
-         "THE ENGINE'S WARM-RESTART SUFFIXES, and the vocabulary already comes "
-         "from its one home (`warmfiles.inventory`, U3) -- what is spelled "
-         "here is only the loop over it.  No door, because molbuilder does not "
-         "compose `.XV` or `.DM`; `find_by_role` refuses a role outside "
-         "`WRITTEN` on purpose, so that a typo is a refusal and not an empty "
-         "list.  The question is also the mirror of `warm_files_present`: "
-         "files keyed by SOME OTHER id, which needs the suffix list to tell an "
-         "orphaned restart file from an unrelated one"),
     ("molbuilder/envs/abi.py", "installed_package_version", "{name}-*.json"):
         ("foreign - not a name we compose",
          "conda-meta's own naming, read to learn a package's version"),

@@ -11,8 +11,8 @@ Shared information is modeled in exactly two sanctioned channels:
   * ``JobSet.shared``  — static package files, identical for every job
     (pseudopotentials, geometry); copied into each job dir as real files.
   * ``WarmFile``       — *what this job would take from a run it continues*,
-    with the source left OPEN, because `--from` names it at prep
-    (`project-layout.md` § 1.6).
+    with the source left OPEN, because the launch that takes it names it
+    -- by default, or ``--from`` (`project-layout.md` § 1.6).
 Nothing reaches across jobs outside these two.
 
 **A JobSet has no edges**: whether a later stage should pick up an earlier
@@ -211,7 +211,7 @@ class Resources:
         unknown = [k for k in d if k not in known]
         if unknown:
             raise ValueError(
-                f"resources: unknown key(s) "
+                "resources: unknown key(s) "
                 + ", ".join(repr(k) for k in sorted(unknown))
                 + f" (known keys: {', '.join(sorted(known))})")
         return cls(**{k: v for k, v in d.items() if k in known})
@@ -275,7 +275,7 @@ def gpu_request(resources) -> GpuRequest:
     ``gres``.  An unstated ``use_gpu`` is the item's default, no GPU
     (`gpu.md` § 1.1).  Raises :class:`GpuRequestError` when the two
     disagree; prep asks, of the job its stage resolves to, before anything
-    is written (`prep._resolve_stage`), so a job it wrote never does.
+    is written (`prep.plan_stage`), so a job it wrote never does.
     """
     from ..scheduler.quantities import parse_gres_flag
     gres = getattr(resources, "gres", None)
@@ -291,8 +291,8 @@ class WarmFile:
     **Not an edge.**  An edge -- *take X from job Y* -- is only answerable
     once you have decided who Y is.  Stages do not chain
     (`project-layout.md` § 1.6), so at produce time nobody knows: the run a
-    stage continues from is named at `prep`, by a person who has just looked
-    at it, and it may be any finished attempt -- ``02_medium/run-1``,
+    stage continues from is named at its launch, by a person who has just
+    looked at it, and it may be any finished attempt -- ``02_medium/run-1``,
     ``01_coarse/run-0``, or an earlier attempt of this same stage (§ 2.3.4's
     *"a redo is the same instruction"*).  So what a job can state in advance is
     **its own half**: which files it would take, and the condition on each.
@@ -336,11 +336,11 @@ class Job:
     is the per-job input filename (e.g. the rendered ``.fdf``).
 
     **A Job names no other Job as its source or its dependency** -- its
-    ``group`` names the stages it shares one queue wait with, never a file.
+    ``members`` names the stages it shares one queue wait with, never a file.
     What a job declares instead is ``warm``: *what would this job take from a run it
-    continues, whichever run that turns out to be* -- which is what `prep`
-    reads, because `--from` names the source and a produce-time edge cannot
-    (see :class:`WarmFile`).  ``traits`` are the opaque per-job values a
+    continues, whichever run that turns out to be* -- which is what its
+    launch reads, because the launch names the source and a produce-time
+    edge cannot (see :class:`WarmFile`).  ``traits`` are the opaque per-job values a
     ``WarmFile.requires_same`` is compared against; SIESTA puts its optimizer
     there.
     """
@@ -376,10 +376,24 @@ class Job:
     #: `job-system.md` § 6.0) -- what its header renders and launch sends to.
     #: ``None`` with no queue: a trial, a machine with no scheduler.
     placement:  Optional[Dict[str, Any]] = None
-    #: THE GROUP IT WAS PREPARED IN: the stages that share one job, named
-    #: together at prep, in that order -- this one among them
-    #: (`project-layout.md` § 1.6.6); ``None`` for a stage prepared alone.
-    group:      Optional[List[str]] = None
+    #: THE MEMBERS OF THE JOB IT WAS PREPARED IN: the stages that share one
+    #: job -- its group's members in the description (`engines/stages.md`
+    #: § 2), in ladder order, this one among them (`project-layout.md`
+    #: § 1.6.6); ``None`` for a group of one.
+    members:    Optional[List[str]] = None
+    #: THE RUN ITS DECK IS WRITTEN AT: a SIESTA force-constant stage's
+    #: `relax` run, decided at its prep -- its attempt (``02_relax/run-0``),
+    #: or on the flat layout the run by its name -- whose files its first
+    #: launch copies (`engines/vibration.md` § 5.2a).  ``None`` for every
+    #: other stage, whose hand-over is taken at its first launch.
+    written_at: Optional[str] = None
+    #: WHAT ITS PREP WAS TOLD BESIDE THE DESCRIPTION -- ``allocation``, the
+    #: launch values said on prep's command line (each over the run card and
+    #: the description, `prep._fold_allocation`), ``env`` and
+    #: ``emit_sbatch``; ``{}`` for a trial.  Launch plans the stage again
+    #: with it to check the prepared stage is still what the description
+    #: gives (`job-system.md` § 6.0).
+    asked:      Dict[str, Any] = field(default_factory=dict)
 
     @property
     def relaunch_continues(self) -> bool:
@@ -393,8 +407,9 @@ class Job:
 
     def to_dict(self) -> Dict[str, Any]:
         # EVERY KEY, EVERY JOB (`job-contracts.md` § 6.1): `point` empty for
-        # a job that is no trial, `finish`, `placement` and `group` null
-        # where there is none, `resumes` true or false.
+        # a job that is no trial, `finish`, `placement`, `members` and
+        # `written_at` null where there is none, `asked` empty, `resumes`
+        # true or false.
         return {
             "name": self.name,
             "script": self.script,
@@ -407,7 +422,10 @@ class Job:
             "placement": ({k: (dict(v) if isinstance(v, dict) else v)
                            for k, v in self.placement.items()}
                           if self.placement is not None else None),
-            "group": (list(self.group) if self.group is not None else None),
+            "members": (list(self.members) if self.members is not None
+                        else None),
+            "written_at": self.written_at,
+            "asked": dict(self.asked),
         }
 
     @classmethod
@@ -434,14 +452,17 @@ class Job:
             resumes=bool(d["resumes"]),
             placement=(dict(d["placement"]) if d["placement"] is not None
                        else None),
-            group=([str(n) for n in d["group"]] if d["group"] is not None
-                   else None),
+            members=([str(n) for n in d["members"]]
+                     if d["members"] is not None else None),
+            written_at=(str(d["written_at"]) if d["written_at"] is not None
+                        else None),
+            asked=dict(d["asked"]),
         )
 
 
 #: The trait a warm file may be conditioned on, spelled ONCE.
 #:
-#: It is a string in three places that must agree -- each engine's ``_traits``
+#: It is a string in three places that must agree -- each engine's ``traits_for``
 #: producer and every ``requires_same`` row of a ``warm-files.toml`` -- and a
 #: typo on any of them reads as *"the optimizers disagree"*, which withholds
 #: the file silently rather than failing.  The rules files are data and say it
@@ -463,8 +484,9 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     A producer states rows one and two on the job itself — they are properties
     of the destination alone — and row three as a :class:`WarmFile` condition.
     **This function is the only place the third is evaluated**, because it is
-    the only place both stages are known: `--from` names the source at `prep`,
-    and it need not be the ladder's next-door neighbour — continuing `tight`
+    the only place both stages are known: the launch names the source -- by
+    default, or ``--from`` -- and it need not be the ladder's next-door
+    neighbour — continuing `tight`
     from `01_coarse` skips `medium` entirely, and comparing `tight` against
     `medium` would then answer a question nobody asked.
 
@@ -499,7 +521,8 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 #: Every key a job in `job-set.json` carries, always (`job-contracts.md`
 #: § 6.1) -- the one list the writer's dict and the reader's check share.
 JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
-            "finish", "resumes", "placement", "group")
+            "finish", "resumes", "placement", "members", "written_at",
+            "asked")
 
 
 class WrittenBefore(ValueError):
@@ -560,19 +583,23 @@ class JobSet:
         return write_json(path, self.to_dict())
 
     @classmethod
-    def load(cls, path) -> "JobSet":
+    def load(cls, path, *, plan=None) -> "JobSet":
         """Read a ``job-set.json`` back into a JobSet (schema checked by name
         and major -- persist.check_schema
-        via ``from_dict``).  One written before every job key was is refused
+        via ``from_dict``) -- as it lies on disk, or as ``plan``
+        (`jobset.planned.Plan`) leaves it: what a prep planned into it before
+        writing.  One written before every job key was is refused
         naming the command that rewrites it, its calculation by its folder --
         found where the layout puts it: this folder, or one or two above
         (a flat stage's bench folder, a hierarchical one's)."""
+        import json
         from ..persist import read_json
         from ..runfiles import TASK_FILE
         from .commands import command
         path = Path(path)
         try:
-            return cls.from_dict(read_json(path))
+            return cls.from_dict(json.loads(plan.read_text(path))
+                                 if plan is not None else read_json(path))
         except WrittenBefore as exc:
             calc = next((d for d in (path.parent, *list(path.parents)[1:3])
                          if (d / TASK_FILE).is_file()), None)
@@ -582,7 +609,15 @@ class JobSet:
                    "it lies in no described calculation")
             raise WrittenBefore(
                 f"{path}: {exc} -- written before every job key was "
-                f"(2026-10-06); {way}.") from None
+                f"(the last, `written_at` and `asked`, 2026-10-11); "
+                f"{way}.") from None
+
+    def job(self, stage: str) -> "Optional[Job]":
+        """The job ``stage`` is prepared as -- matched as every reader
+        matches a stage's name (`identity.stage_key`) -- or ``None``."""
+        from ..identity import stage_key
+        key = stage_key(stage)
+        return next((j for j in self.jobs if stage_key(j.name) == key), None)
 
     # ----- structural validation ------------------------------------- #
 
@@ -629,4 +664,4 @@ class JobSet:
         return errors
 
 
-__all__ = ["Resources", "WarmFile", "Job", "JobSet", "SCHEMA"]
+__all__ = ["FILENAME", "Resources", "WarmFile", "Job", "JobSet", "SCHEMA"]

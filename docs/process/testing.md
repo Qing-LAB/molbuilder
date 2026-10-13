@@ -93,8 +93,8 @@ steps:
    and refuses it: what a scheduler answers is read here, never typed into a
    basic test *(the stand-in answered in SLURM's words until 2026-10-06)*.
 2. **A field run.** The smallest real job, on the road, on the target: `jobset
-   init` a held H2, `jobset prep task --stage coarse --target <name>`, then on the target
-   `jobset launch task --stage coarse` with its mode, `jobset status`, and the Results tab.
+   init` a held H2, `jobset prep task --group 1 --target <name>`, then on the target
+   `jobset launch task --group 1` with its mode, `jobset status`, and the Results tab.
    It shows the run script enters the target's environments, the header is one
    its scheduler takes, and the run's records read back -- the job id, the
    queue, wall and memory it was sent with, `queued as job <id>` while it
@@ -385,8 +385,8 @@ pass; if it is wrong they all fail together — **four tests carrying one bit**.
 A caller earns its own test when it adds a rule of its own — and those are worth
 a lot, because that is where the real defects were:
 
-- `runstatus._stage_state` deciding *queued* vs *pending* from which roles are
-  present — the policy is the caller's, and a finished PySCF rung reported
+- the status door deciding *queued* vs *pending* from which roles are
+  present (then `runstatus`'s own, now `parse.dirs.run_status`) — the policy is the caller's, and a finished PySCF rung reported
   **queued** because `.pyscf.log` was not in the set it asked for;
 - `runrecord.ending` **degrading rather than raising** on a deck
   name it was handed — a reporter's contract, not the grammar's;

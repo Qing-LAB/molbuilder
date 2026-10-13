@@ -25,21 +25,41 @@ from typing import List, Optional
 PROG = "molbuilder jobset"
 
 #: THE KINDS a verb acts on (`job-system.md` § 5.3): the calculation as a
-#: TASK, its stages named with ``--stage``; a BENCHMARK of one stage, named
-#: by position.
+#: TASK, its groups named with ``--group`` and a stage alone with
+#: ``--stage``; a BENCHMARK of one stage, named by position.
 TASK, BENCH = "task", "bench"
 
 
-def words_for(kind: str, *stages) -> tuple:
-    """A verb's words for ``kind`` and the ``stages`` it names -- the ONE
-    spelling every printed line takes: ``task --stage a --stage b`` (a
-    task's stages, the answer to the question its verbs ask), ``bench a
-    [trial]`` (a benchmark's stage and trial by position).  A stage that is
-    ``None`` is left out."""
+def words_for(kind: str, *stages, groups=()) -> tuple:
+    """A verb's words for ``kind`` and what it names -- the ONE spelling
+    every printed line takes: ``task --group 1 --group 2`` (a task's
+    groups, the answer to the question its verbs ask), ``task --stage a``
+    (a member launched again alone, D4), ``bench a [trial]`` (a benchmark's
+    stage and trial by position).  A stage that is ``None`` is left out."""
     named = [s for s in stages if s is not None]
     if kind == TASK:
-        return (TASK, *(x for s in named for x in ("--stage", s)))
+        return (TASK, *(x for g in groups for x in ("--group", str(g))),
+                *(x for s in named for x in ("--stage", s)))
     return (kind, *named)
+
+
+def stage_group(base, stage: str) -> Optional[int]:
+    """The group ``stage`` is in, as the calculation's description numbers
+    it (`engines/stages.md` § 2), or ``None`` -- a description that does
+    not read is its reader's to refuse, where it is read."""
+    from ..task import FILENAME, read_task
+    from .group import number_of
+    try:
+        task = read_task(Path(base) / FILENAME)
+    except (OSError, ValueError):
+        return None
+    return number_of(task, stage)
+
+
+def prep_group_lines(numbers, *, base) -> List[str]:
+    """The prep of the groups ``numbers`` -- one command."""
+    return [command("prep", *words_for(TASK, groups=list(numbers)),
+                    base=base)]
 
 
 def bundle_flag(base) -> str:
@@ -75,10 +95,10 @@ def command(verb: str, *words, base, flags=()) -> str:
 def configured_mode() -> Optional[str]:
     """The launch mode this machine's config states, or ``None`` --
     `runtime_config.get_launch_mode`, the reader `launch` falls back on."""
-    from ..runtime_config import get_launch_mode
+    from ..runtime_config import RuntimeConfigError, get_launch_mode
     try:
         return get_launch_mode() or None
-    except Exception:                                    # noqa: BLE001
+    except RuntimeConfigError:
         return None          # a malformed config is `launch`'s to refuse
 
 
@@ -115,7 +135,8 @@ def launches_here(base, target: Optional[str] = None) -> bool:
 QUEUE_FLAGS = ("--domain", "--time", "--mem", "--gpu-domain", "--only")
 
 
-def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
+def launch_with(kind: str, *words, base, mode: str, typed=(),
+                groups=()) -> str:
     """The launch of ``words`` with ``mode`` stated, and the flags it was
     typed with (``typed``, ``(flag, value)`` pairs as the verb records them,
     a switch's value ``True``)
@@ -128,12 +149,13 @@ def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
             if not (mode == "direct" and flag in QUEUE_FLAGS)
             for x in ((flag,) if value is True
                       else (flag, shlex.quote(str(value))))]
-    return command("launch", *words_for(kind, *words), base=base,
-                   flags=(*kept, "--mode", mode))
+    return command("launch", *words_for(kind, *words, groups=groups),
+                   base=base, flags=(*kept, "--mode", mode))
 
 
 def launch_lines(kind: str, *words, base,
-                 target: Optional[str] = None, flags=()) -> List[str]:
+                 target: Optional[str] = None, flags=(),
+                 groups=()) -> List[str]:
     """The launch of ``words`` as a person types it: the bare line where the
     calculation is launched on this machine and this machine's config names
     a mode -- `launch` takes it -- else one line per mode the calculation's
@@ -141,17 +163,18 @@ def launch_lines(kind: str, *words, base,
     ``--mode submit|direct``, which bash reads as a pipe).  A calculation
     set to another machine is launched there, whose config this one does
     not read: its lines state their mode.  ``flags`` are switches every
-    line carries (``--cold``)."""
+    line carries (``--cold``); ``groups`` the groups it names."""
     if configured_mode() and launches_here(base, target):
-        return [command("launch", *words_for(kind, *words), base=base,
-                        flags=flags)]
+        return [command("launch", *words_for(kind, *words, groups=groups),
+                        base=base, flags=flags)]
     typed = [(f, True) for f in flags]
-    here = (launch_with(kind, *words, base=base, mode="direct", typed=typed)
+    here = (launch_with(kind, *words, base=base, mode="direct", typed=typed,
+                        groups=groups)
             + "   # here")
     if not takes_a_queue(base, target):
         return [here]
     return [here, launch_with(kind, *words, base=base, mode="submit",
-                              typed=typed)
+                              typed=typed, groups=groups)
             + "   # to the queue"]
 
 
@@ -165,10 +188,13 @@ def lines(verb: str, kind: str, *words, base) -> List[str]:
 
 
 def run_first(stage: str, *, base) -> List[str]:
-    """Run ``stage`` first -- its prep, then its launch: the remedy every
-    refusal that waits on another stage gives."""
-    return lines("prep", TASK, stage, base=base) + launch_lines(
-        TASK, stage, base=base)
+    """Run ``stage`` first -- its group's prep, then its group's launch: the
+    remedy every refusal that waits on a stage not prepared gives."""
+    g = stage_group(base, stage)
+    if g is None:
+        return launch_lines(TASK, stage, base=base)
+    return prep_group_lines([g], base=base) + launch_lines(
+        TASK, base=base, groups=[g])
 
 
 def name_a_stage(verb: str, kind: str, refs, *, base) -> str:
@@ -184,25 +210,106 @@ def name_a_stage(verb: str, kind: str, refs, *, base) -> str:
 
 
 def block(text_lines, pad: str = "    ") -> str:
-    """Lines indented as a command block under a sentence."""
+    """Lines indented as a command block under a sentence -- a sentence
+    ending ``--`` that introduces them (``Launch it --``)."""
     return "\n".join(pad + ln for ln in text_lines)
+
+
+def reason_of(refusal: str) -> str:
+    """A refusal's reason in one line, for a row beside others: its first
+    line, less the sentence that ends ``--`` introducing the commands of
+    its :func:`block` below -- the commands are the next step's to print
+    (`runstatus.next_step`)."""
+    first = refusal.splitlines()[0] if refusal else ""
+    if not first.rstrip().endswith("--"):
+        return first
+    reason, sep, _intro = first.rpartition(".  ")
+    return reason + "." if sep else first.rstrip(" -")
 
 
 def rollback(what: str, *, base) -> str:
     """How ``what`` is redone: the state saved before it, restored, and a
-    prep anew -- a prepared stage is not prepared again (user, 2026-10-02:
-    *"refuse it, redo via rollback"*; `job-system.md` § 5.0).
+    prep anew -- a launched stage is not prepared again (user, 2026-10-02:
+    *"refuse it, redo via rollback"*; `job-system.md` § 5.0); its way back
+    is the state saved before its group's first launch.
 
     WHICH STATE is the person's to pick, so it is asked for in words, never
     a ``<state>``; the list that shows them is a command, and both verbs
     name the folder -- by its path, `checkpoint`'s ``-p`` -- every time,
     as every printed line names its calculation (:func:`bundle_flag`)."""
+    return (f"go back to the state saved before {what}, and prep anew -- "
+            + _saved_states(base))
+
+
+def _saved_states(base) -> str:
+    """The folder's saved states, and how one is restored -- the command
+    that lists them and the one that restores the one picked, each naming
+    the folder."""
     from ..identity import checkpoint_as_typed
     shown, restore = checkpoint_as_typed(Path(base).resolve())
-    return (f"go back to the state saved before {what}, and prep anew -- "
-            f"the folder's saved states:\n"
-            + block([shown])
+    return ("the folder's saved states:\n" + block([shown])
             + f"\n  then `{restore}` with the id of the one you pick.")
+
+
+def redo_launched(stage: Optional[str], *, base, task=None) -> str:
+    """How a LAUNCHED stage is changed (`job-system.md` § 5.0): the state
+    saved before its group's first launch restored -- every run it builds on
+    is in it, and there it is prepared, never launched -- and a prep anew.
+    The group is named by the members it was launched with, as the state's
+    note named them (`group.named`, at the launch): the description may
+    hold other members now, and a number shifts when a stage above it is
+    removed.  A stage launched before 2.7.0, whose launch saved no state,
+    goes back to the state saved before its prep.  ``task`` is the
+    description as the caller read it; with none it is read here."""
+    from .group import (group_members, members_of, named, number_of,
+                        same_members)
+    from .ready import job_of
+    if task is None and stage is not None:
+        from ..task import FILENAME, read_task
+        try:
+            task = read_task(Path(base) / FILENAME)
+        except (OSError, ValueError):
+            task = None
+    g = (number_of(task, stage)
+         if task is not None and stage is not None else None)
+    job = job_of(base, stage) if stage is not None else None
+    ran = members_of(job) if job is not None else None
+    what = ("the first launch of its group" if g is None else
+            f"the first launch of {named(task, g)}"
+            if ran is None or same_members(ran, group_members(task, g)) else
+            f"the first launch of its group as it was launched "
+            f"({', '.join(ran)})")
+    return (f"go back to the state saved before {what} -- for a stage "
+            f"launched before 2.7.0, the one saved before its prep -- and "
+            f"prep anew -- " + _saved_states(base))
+
+
+def way_back(stage: str, *, base, task, launched: bool) -> str:
+    """How a prepared stage is made as the description gives it now
+    (`job-system.md`, *The task*) -- the one composer of a stage's way back:
+    never launched, its group prepared again; launched,
+    :func:`redo_launched`.  ``launched`` is the caller's answer from the one
+    rule (`materialize.ever_launched`)."""
+    from .group import number_of
+    g = number_of(task, stage) if task is not None else None
+    if not launched and g is not None:
+        return ("prepare its group again -- it was never launched:\n"
+                + block(prep_group_lines([g], base=base)))
+    return redo_launched(stage, base=base, task=task)
+
+
+def launch_pending(stage: str, group: Optional[int], attempt: Optional[str],
+                   *, base) -> List[str]:
+    """The launch that sends ``stage``'s run that is opened and not launched
+    -- ``attempt``, its folder's name (``None`` on the flat layout, which
+    opens no run before its launch): prep's first run goes with its group,
+    which goes whole the first time; a run a refused send opened for a stage
+    launched before goes with the stage alone, launched again (D4)."""
+    from ..paths import attempt_index
+    n = attempt_index(attempt) if attempt else None
+    if n or group is None:
+        return launch_lines(TASK, stage, base=base)
+    return launch_lines(TASK, base=base, groups=[group])
 
 
 def target_flags(base, target: Optional[str]) -> tuple:
@@ -221,32 +328,52 @@ def target_flags(base, target: Optional[str]) -> tuple:
     return ("--target", target)
 
 
-def stage_lines(kind: str, stages, *, base, from_attempt=None,
-                cold: bool = False, target: Optional[str] = None,
-                prepared: bool = False) -> List[str]:
-    """What a person types next for ``stages`` -- one, or several picked as
-    one group: their prep -- what it continues from and the machine, as
-    chosen -- unless they are ``prepared`` already, which prep would refuse
-    (`job-system.md` § 5.0); then their launch, and for a benchmark the
-    verdict's read.  The lines Task setup shows, composed here as the
-    terminal composes its own (`task-setup.md` § 11; W55 B4: the page
-    composes none)."""
-    stages = list(stages)
-    out = []
-    if not prepared:
-        flags = ((("--from", from_attempt) if from_attempt else ())
-                 + (("--cold",) if cold else ())
-                 + target_flags(base, target))
-        out.append(command("prep", *words_for(kind, *stages), base=base,
-                           flags=flags))
-    out += launch_lines(kind, *stages, base=base, target=target)
+def stage_lines(kind: str, *, base, groups=(), stages=(),
+                from_attempt=None, cold: bool = False,
+                target: Optional[str] = None, prepared: bool = False,
+                from_at_prep: bool = False) -> List[str]:
+    """What a person types next -- the lines Task setup shows, composed here
+    as the terminal composes its own (`task-setup.md` § 11; W55 B4: the page
+    composes none).  For a task's ``groups``: their prep -- the machine,
+    and a force-constant stage's `relax` run (``from_attempt`` with
+    ``from_at_prep``) -- unless ``prepared``; then, for one group, its
+    launch, with what a group of one continues from (``from_attempt``,
+    ``cold``).  For
+    ``stages`` (one): a benchmark's prep, launch and read; a task's member
+    launched again alone, with what it continues from."""
+    out: List[str] = []
     if kind == BENCH:
+        if not prepared:
+            out.append(command("prep", *words_for(kind, *stages), base=base,
+                               flags=target_flags(base, target)))
+        out += launch_lines(kind, *stages, base=base, target=target)
         out.append(command("summarize", BENCH, *stages, base=base))
+        return out
+    # WHAT IT CONTINUES FROM, said at its launch -- a force-constant
+    # stage's `relax` run is its prep's.
+    launch_flags = ((() if from_at_prep or not from_attempt
+                     else ("--from", from_attempt))
+                    + (("--cold",) if cold else ()))
+    if stages:
+        return launch_lines(kind, *stages, base=base, target=target,
+                            flags=launch_flags)
+    if not prepared:
+        out.append(command(
+            "prep", *words_for(kind, groups=list(groups)), base=base,
+            flags=((("--from", from_attempt)
+                    if from_attempt and from_at_prep else ())
+                   + target_flags(base, target))))
+    if len(groups) > 1:
+        # SEVERAL GROUPS PICKED FOR ONE PREP: each launched as its own job.
+        return out
+    out += launch_lines(kind, base=base, target=target, groups=list(groups),
+                        flags=launch_flags)
     return out
 
 
 __all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
-           "configured_mode",
+           "configured_mode", "stage_group", "prep_group_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",
-           "block", "rollback", "stage_lines", "takes_a_queue",
-           "target_flags"]
+           "block", "reason_of", "rollback", "redo_launched", "way_back",
+           "launch_pending",
+           "stage_lines", "takes_a_queue", "target_flags"]

@@ -29,7 +29,8 @@ import json
 
 import pytest
 
-from support.road import a_machine_with_queues, calls_made, describe_calculation, jobset
+from support.road import (a_machine_with_queues, calls_made, describe_calculation,
+                          group_words, jobset)
 
 
 def _queues(gpu: bool = False):
@@ -69,7 +70,8 @@ def cluster(tmp_path, monkeypatch):
 
 
 def _prep(bundle, stage="coarse", *more):
-    r = jobset("prep", "task", "--stage", stage, "--bundle", bundle, "--target", "this",
+    r = jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle,
+               "--target", "this",
                *more)
     assert r.exit_code == 0, r.output
     return r
@@ -99,17 +101,19 @@ def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
     stage's row (medium sent to coarse's `debug`)."""
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
-    r = jobset("prep", "task", "--stage", "medium", "--bundle", bundle,
-               "--target", "this", "--cold")
+    r = jobset("prep", "task", "--group", "2", "--bundle", bundle,
+               "--target", "this")
     assert r.exit_code != 0, r.output
     assert "(the target's record lists: debug, htc)" in r.output, r.output
-    _prep(bundle, "medium", "--cold", "--domain", "htc")
+    _prep(bundle, "medium", "--domain", "htc")
     r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "submit", "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "debug", r.output
+    # MEDIUM'S FIRST LAUNCH from the structure (`--cold`): coarse has not
+    # run, and what medium would take from it is not this test's question.
     r = jobset("launch", "task", "--stage", "medium", "--bundle", bundle,
-               "--mode", "submit", "--dry-run")
+               "--mode", "submit", "--dry-run", "--cold")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "public", r.output
 

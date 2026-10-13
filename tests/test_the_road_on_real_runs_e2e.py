@@ -39,6 +39,18 @@ def _said(run, step, *words):
         assert w in said.output, f"{step}: {w!r} not in:\n{said.output}"
 
 
+def _records(run, source: str) -> None:
+    """The run in ``run`` records ``source`` as the run it continues from --
+    its `.continued-from` and its launch record, read through their doors
+    (`checkpointing.md` S3; `job-system.md` § 5.4)."""
+    from molbuilder.runrecord import RunRef, launch_record, read_continued_from
+    from molbuilder.runs import run_of
+    names = run_of(run).names
+    assert read_continued_from(run, names, 0) == RunRef.read(
+        source, shared=False)
+    assert launch_record(run, names)["continued_from"] == source
+
+
 def _decided(bundle):
     """The decisions the calculation's ledger holds: each one's decision,
     and its verb's (``launch continues``)."""
@@ -95,6 +107,7 @@ def test_launched_again_warm_it_continues_from_its_own_latest_run(
           "(its own latest run; concluded rc=0", "copied H2.XV")
     for name in ("H2.XV", ".continued-from"):
         assert (b / "01_coarse" / "run-1" / name).is_file(), name
+    _records(b / "01_coarse" / "run-1", "01_coarse/run-0")
     assert "launch continues" in _decided(b)
 
 
@@ -112,20 +125,26 @@ def test_launched_again_cold_it_takes_nothing_of_its_own(real_h2_layered):
 
 def test_the_next_stage_builds_on_the_newest_run_of_the_stage_before_it(
         real_h2_layered):
-    """`medium` continues from `coarse`'s newest run, which finished -- the
-    cold one -- and says what it carried under the plan's table, whose
-    column is each stage's declaration."""
+    """`medium` is prepared taking nothing -- its prep and the plan's table
+    say what its first launch will take, and from which stage -- and its
+    first launch continues from `coarse`'s newest run, which finished (the
+    cold one), saying so and what it copied (`job-system.md` § 5.0, § 6.0
+    step 1)."""
     from molbuilder.jobset.plan import FILENAME as PLAN_FILE
     b = real_h2_layered.bundle
-    _said(real_h2_layered, "prep medium", "continues from 01_coarse/run-2")
+    _said(real_h2_layered, "prep medium",
+          "at launch: takes", "from `coarse`'s newest run, which must have "
+          "finished")
     plan = (b / PLAN_FILE).read_text()
     for words in ("restart files it declares",
-                  "This prep: `medium` continues from 01_coarse/run-2 "
-                  "(the stage before it; concluded rc=0",
-                  ": copied H2.XV"):
+                  "This prep: `medium` at launch: takes"):
         assert words in plan, (words, plan)
+    _said(real_h2_layered, "launch naming no stage",
+          "continues from 01_coarse/run-2 (the stage before it; concluded "
+          "rc=0", ": copied H2.XV")
     for name in ("H2.XV", ".continued-from"):
         assert (b / "02_medium" / "run-0" / name).is_file(), name
+    _records(b / "02_medium" / "run-0", "01_coarse/run-2")
 
 
 def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):

@@ -7,6 +7,8 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 """
 from __future__ import annotations
 
+from support.road import group_words
+
 import json
 import re
 import pathlib
@@ -21,7 +23,7 @@ from molbuilder.scheduler import Environment, Topology
 from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.model import Resources
 from molbuilder.jobset.errors import PrepError
-from molbuilder.jobset.prep import prep_stage
+from molbuilder.jobset.prep import prep_bench
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
@@ -43,16 +45,13 @@ def _artifacts(calc, point, stage="01_coarse"):
 
 
 @pytest.fixture(autouse=True)
-def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
-    """These tests build a calculation under ``tmp_path`` and hand its path
+def tree(isolated_projects_root):
+    """These tests build a calculation in the projects tree and hand its path
     to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test says where its tree IS rather
-    than handing over a path from outside one -- which is exactly what a
-    user does when their calculations live on scratch: set
-    ``paths.projects`` / ``$MOLBUILDER_PROJECTS`` and the fence follows.
+    (`job-contracts.md` § 2.5b), so the test builds inside one: the conftest's
+    per-test tree, a folder named ``projects`` like every tree (§ 2.5).
     """
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+    return isolated_projects_root
 
 
 def _one_stage():
@@ -89,7 +88,7 @@ def _sandbox(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture
-def calc(tmp_path):
+def calc(tree):
     """A GPU calculation, described, on a machine whose probe found one a100.
 
     ``use_gpu=True`` is stated here rather than assumed, because it is the
@@ -100,8 +99,8 @@ def calc(tmp_path):
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB", use_gpu=True,
@@ -110,7 +109,7 @@ def calc(tmp_path):
                             engine="siesta",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
-                            source=str(tmp_path / "h2.xyz")),
+                            source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
@@ -139,7 +138,7 @@ def calc(tmp_path):
 def _prep_bench(calc):
     """`prep bench coarse`, through the one entry -- what the command line
     and the Task setup tab call -- this prep's ask bounding the cells."""
-    prep_stage(calc, "bench", "coarse",
+    prep_bench(calc, "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8),
                emit_sbatch=False)
     # The sweep's OWN record lives in the stage's bench/ container
@@ -481,8 +480,9 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     r = CliRunner()
     # `medium` before `coarse` has run: it starts from the structure, said
     # out loud (`job-system.md` § 5.4) -- what this is about is the plan
-    for stage, more in (("coarse", ()), ("medium", ("--cold",))):
-        res = r.invoke(jobset_group, ["prep", "task", "--stage", stage,
+    for stage, more in (("coarse", ()), ("medium", ())):
+        res = r.invoke(jobset_group, ["prep", "task",
+                                      *group_words(calc, stage),
                                       "--bundle", str(calc), "--no-sbatch",
                                       *more])
         assert res.exit_code == 0, res.output
@@ -499,7 +499,7 @@ def test_a_sweeps_record_never_touches_the_root_plan(calc):
     from molbuilder.jobset._cli import jobset_group
     _prep_bench(calc)
     assert not (calc / "job-set.json").exists()
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "coarse",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1",
                                           "--bundle", str(calc),
                                           "--no-sbatch"])
     assert r.exit_code == 0, r.output
@@ -626,7 +626,7 @@ class TestTheRunsOwnCondition:
 
         from molbuilder.jobset._cli import jobset_group
         r = CliRunner().invoke(jobset_group,
-                               ["prep", "task", "--stage", stage, "--bundle", str(calc),
+                               ["prep", "task", *group_words(calc, stage), "--bundle", str(calc),
                                 "--no-sbatch", *extra])
         assert r.exit_code == 0, r.output
         jobs = json.loads((calc / "job-set.json").read_text())["jobs"]
@@ -670,7 +670,7 @@ class TestTheRunsOwnCondition:
             # The GPU count on the prep: this calculation runs on a GPU, and
             # a GPU run states how many (`gpu.md` G5) -- a count, not a shape.
             r = CliRunner().invoke(jobset_group,
-                                   ["prep", "task", "--stage", "coarse", "--bundle",
+                                   ["prep", "task", "--group", "1", "--bundle",
                                     str(calc), "--no-sbatch", "--gpus", "1"])
             assert r.exit_code != 0 and "ranks (mpi_np)" in r.output, (
                 bench, r.output)
@@ -688,7 +688,7 @@ class TestTheRunsOwnCondition:
         assert (first["mpi_np"], first["cpus_per_task"]) == (2, 2)
         # the second before the first has run: from the structure, said out
         # loud (`job-system.md` § 5.4)
-        second = self._run(calc, stages[1]["name"], "--cold")["resources"]
+        second = self._run(calc, stages[1]["name"])["resources"]
         assert (second["mpi_np"], second["cpus_per_task"]) == (1, 2)
 
     def test_the_whole_condition_reaches_the_launch_and_the_deck(self, calc):
@@ -760,7 +760,7 @@ class TestTheRunsOwnCondition:
         assert run["domain"] == "public", f"the run lost its queue: {run}"
         assert run["mem"] == "256G", "mem does not ride `execution`"
 
-        other = self._run(calc, "medium", "--cold")["resources"]
+        other = self._run(calc, "medium")["resources"]
         assert other["time"] == "0-04:00:00", "a rung with no `execution` "\
             "of its own must keep the calculation's"
 
@@ -869,9 +869,8 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
     r = CliRunner()
     # `medium` with nothing run before it: from the structure, said out loud
     # (`job-system.md` § 5.4) -- the declaration is what this is about
-    res = r.invoke(jobset_group, ["prep", "task", "--stage", "medium",
-                                  "--bundle", str(calc), "--no-sbatch",
-                                  "--cold"])
+    res = r.invoke(jobset_group, ["prep", "task", "--group", "2",
+                                  "--bundle", str(calc), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     js = json.loads((calc / "job-set.json").read_text())
     warm = {w["name"] for j in js["jobs"] if j["name"] == "medium"
@@ -884,7 +883,7 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
     assert f"warm-files: {calc / 'warm-files.toml'}" in plan
 
 
-def test_a_one_stage_calculation_is_one_named_stage(tmp_path):
+def test_a_one_stage_calculation_is_one_named_stage(tree):
     """R1 (review-4 keystone): the single-parameter-set calculation is a
     FIRST-CLASS run, one NAMED, tokened stage (§ 6.5): prep, launch's plan
     and status all reach it, one rung deep, with no dangling link anywhere
@@ -899,14 +898,14 @@ def test_a_one_stage_calculation_is_one_named_stage(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
@@ -924,14 +923,16 @@ def test_a_one_stage_calculation_is_one_named_stage(tmp_path):
     assert not (dest / "01_coarse").exists(), \
         "the bare verb guessed the lone stage and prepared it"
 
-    res = r.invoke(jobset_group, ["prep", "task", "--stage", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     rung = dest / "01_coarse"                 # the one rung, tokened
     assert (rung / "run-0").is_dir()          # its attempt
     assert not (dest / "run-0").exists()      # never at the root
     assert not (dest / "bench-JOB").exists()  # nor named for a benchmark
-    assert "launch task --stage coarse --mode" in res.output
+    # ITS NEXT LINE, the launch with nothing named (`job-system.md`, *The
+    # task*): it sends the group that can go.
+    assert "launch task --mode" in res.output
     # Every link in the attempt RESOLVES: existence of a symlink proves
     # nothing -- resolve it.
     links = [p for p in (rung / "run-0").iterdir()]
@@ -951,7 +952,7 @@ def test_a_one_stage_calculation_is_one_named_stage(tmp_path):
     assert res.exit_code == 0, res.output
 
 
-def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
+def test_a_charged_decks_promised_script_ships_with_it(tree):
     """E6 (redo 2026-08-12): a charged deck's header instructs
     ``python3 makov_payne_correction.py``, so prep ships that script beside
     it (the seam's sibling_artifacts hook)."""
@@ -961,20 +962,20 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB",
                                                  net_charge=1), _one_stage(),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         dest, struct=struct)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     _state_the_run(dest)
     res = CliRunner().invoke(jobset_group,
-                             ["prep", "task", "--stage", "coarse", "--bundle", str(dest),
+                             ["prep", "task", "--group", "1", "--bundle", str(dest),
                               "--no-sbatch"])
     assert res.exit_code == 0, res.output
     _deck_path = next(dest.glob("01_coarse/*.fdf"))     # L1: in the stage dir
@@ -994,7 +995,7 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
         f"beside the deck")
 
 
-def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
+def test_a_one_stage_calculation_can_be_benchmarked(tree):
     """A4 (redo 2026-08-12): a one-stage calculation can be benchmarked,
     and it is benchmarked the way every rung is -- ``prep bench <stage>``,
     trials in THAT stage's container."""
@@ -1004,14 +1005,14 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
@@ -1073,13 +1074,13 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     assert res.exit_code != 0, res.output
     assert "every stage is prepared already" in res.output, res.output
     # the same on a longer ladder -- one rule, not a per-length one
-    ladder = tmp_path / "laddered"
+    ladder = tree / "laddered"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         ladder)
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
                                   "--no-sbatch"])
@@ -1087,7 +1088,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     assert "name one" in res.output
 
 
-def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
+def test_two_flat_stages_benchmarks_do_not_collide(tree):
     """A5 (redo 2026-08-12): FLAT has no stage directory for `bench/` to
     nest inside, so unqualified, two stages' benchmarks shared one root
     container and each prep overwrote the other's job-set, plan and
@@ -1098,15 +1099,15 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization",
                             shape="flat", name="JOB",
-                            source=str(tmp_path / "h2.xyz")),
+                            source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
@@ -1117,7 +1118,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                                       gpu_type="a100"),
                     env_init=_ENTERS).to_json() + "\n")
     for stage in ("coarse", "medium"):
-        prep_stage(dest, "bench", stage,
+        prep_bench(dest, stage,
                    allocation=Resources(mpi_np=8, cpus_per_task=8),
                    emit_sbatch=False)
     coarse = dest / "bench_01_coarse" / "job-set.json"
@@ -1140,7 +1141,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                 f"trial {j['name']} not in {cont}/")
 
 
-def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
+def test_a_flat_one_stage_calculation_preps_to_completion(tree):
     """A2 (redo 2026-08-12): FLAT prep is COMPLETE without an attempt --
     only an explicit ``--from``/``--cold`` (an attempt ask flat cannot
     serve) reaches prepare_attempt's refusal."""
@@ -1153,28 +1154,30 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
                             engine="siesta",
                             calculation="optimization", shape="flat",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
+                            name="JOB", source=str(tree / "h2.xyz")),
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     _state_the_run(dest)
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "task", "--stage", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     assert "no attempt to open" in res.output
     assert "launch task" in res.output
     assert not (dest / "run-0").exists()
-    # an attempt ASK on flat is still the one refusal, with its story
-    res = r.invoke(jobset_group, ["prep", "task", "--stage", "coarse", "--bundle",
-                                  str(dest), "--no-sbatch", "--cold"])
+    # an attempt ASK on flat is still the one refusal, with its story --
+    # said where it is asked, at the first launch (`job-system.md` § 5.4)
+    res = r.invoke(jobset_group, ["launch", "task", "--group", "1",
+                                  "--bundle", str(dest), "--mode", "direct",
+                                  "--dry-run", "--cold"])
     assert res.exit_code != 0
     assert "flat" in res.output
 
@@ -1373,7 +1376,7 @@ def test_a_bench_row_never_reaches_the_run_deck(calc):
 
     _describe_cpu(calc)
     _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"]})
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "coarse",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
     deck = next((calc / "01_coarse").glob("run-*/JOB*.fdf"))
@@ -1383,7 +1386,7 @@ def test_a_bench_row_never_reaches_the_run_deck(calc):
         "help comments)")
 
 
-def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
+def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
     """E-J1 (restored 2026-08-21): the bench lane speaks SIESTA's
     vocabulary -- its measurement pins name SiestaConfig fields, and the
     GPU question is read under `use_gpu`.  A PySCF description used
@@ -1396,15 +1399,15 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "pycalc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "pycalc"
     D.write_description(
         D.build_description(struct, PySCFConfig(job_name="JOB"),
                             [Stage(name="only", overrides={})],
                             engine="pyscf",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
-                            source=str(tmp_path / "h2.xyz")),
+                            source=str(tree / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
@@ -1419,7 +1422,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
         "the refusal blames measurement pins the user never wrote")
 
 
-def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
+def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
     """PySCF's run card names its cores ``threads``; the launch shape gets
     them as ``cpus_per_task``, as SIESTA's ``omp_threads`` does -- the job's
     record, which a direct launch hands the wrapper as ``-omp``
@@ -1440,8 +1443,8 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "pycalc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    dest = tree / "pycalc"
     D.write_description(
         D.build_description(struct, PySCFConfig(job_name="JOB"),
                             [Stage(name="only", overrides={},
@@ -1449,13 +1452,13 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
                             engine="pyscf",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
-                            source=str(tmp_path / "h2.xyz")),
+                            source=str(tree / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init=_ENTERS).to_json() + "\n")
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "only", "--bundle",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                           str(dest), "--no-sbatch"])
     assert r.exit_code == 0, r.output
     job = json.loads((dest / "job-set.json").read_text())["jobs"][0]
@@ -1563,7 +1566,7 @@ def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
     assert warn_lines, ("the bench pins (SCF capped, steps zeroed) must "
                         "produce warnings, or this test tests nothing")
     assert len(warn_lines) == len(set(warn_lines)), (
-        f"the same finding printed more than once:\n" +
+        "the same finding printed more than once:\n" +
         "\n".join(l for l in warn_lines if warn_lines.count(l) > 1))
     assert "each warning shown once" in err, (
         "suppression must be SAID, not silent")
@@ -1609,6 +1612,3 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
         f"allowed; it said: {shown!r}")
 
 
-def test_a_container_that_is_not_there_is_empty_not_an_error(tmp_path):
-    from molbuilder.jobset.materialize import trials_in
-    assert trials_in(tmp_path / "nope") == []

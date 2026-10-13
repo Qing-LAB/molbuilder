@@ -164,11 +164,14 @@ def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
     path = Path(output)
     if not path.is_file():
         return None
+    from .errors import ParseError
     from .registry import detect
     try:
         if traj is None:
             traj = detect(path).parse(str(path))
-    except Exception:                                       # noqa: BLE001
+    except (OSError, ValueError, ParseError):
+        # AN OUTPUT THAT DOES NOT READ says no relaxation; a defect in a
+        # reader is not caught.
         return None
     return relaxation_of_output(path, traj, engine=engine_of(path.parent))
 
@@ -357,15 +360,15 @@ def _declared_in_provenance(directory: Path) -> set:
     both, and each states its engine (`script_emit.render_deck` writes the
     deck's, transport decks included).
     """
-    from molbuilder.script_emit import _extract_provenance_dict
-    # THE THREE ROLES COME FROM THE CATALOGUE.  `.run.sh`, `.fdf` and `.py`
-    # are all `runfiles.WRITTEN` rows, so the search is the catalogue's.
-    from ..runfiles import find_by_role
+    from molbuilder.script_emit import read_provenance_block
+    # THE ROLES COME FROM THE CATALOGUE: what every prepared run carries
+    # (`runfiles.prepared_roles`), so the search is the catalogue's.
+    from ..runfiles import find_by_role, prepared_roles
     out = set()
-    for role in (".run.sh", ".fdf", ".py"):
+    for role in prepared_roles():
         for f in find_by_role(directory, role):
             try:
-                block = _extract_provenance_dict(
+                block = read_provenance_block(
                     f.read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue

@@ -45,8 +45,9 @@ from .record import (  # noqa: F401
     topology_field_types,
 )
 from .admit import (  # noqa: F401
-    Request, admits, parse_mem_gb, domain_ceiling_s, domain_serves_gpu,
+    Request, admits, domain_ceiling_s, domain_serves_gpu,
 )
+from .quantities import parse_mem_gb  # noqa: F401
 
 __all__ = [
     "SCHEMA", "FILENAME",

@@ -8,9 +8,10 @@ source -- and **a blank field stays blank**: nothing is filled in.  Typing a
 charge changes the card.  The chip on each form's Profile card says the same.
 
 Driven the way a person drives it: the file picked in the sidebar, the Load
-button, a field typed into; on the Transport tab, a cited junction restored
-the way a returning person's tab restores it.  Headless chromium through
-pytest-playwright; no engine runs.
+button, a field typed into.  Headless chromium through pytest-playwright; no
+engine runs.  The Transport tab's card answers for a cited junction, which
+only a real relaxation makes: it is asked on the real junction's road
+(`test_transport_on_a_real_junction_e2e.py`).
 """
 from __future__ import annotations
 
@@ -227,7 +228,7 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
         "#spectra-form-container input, #spectra-form-container select",
         timeout=15000)
     assert page.evaluate(
-        "() => document.querySelector('#spectra-engine-strip .tab-btn.active').dataset.tab"
+        "() => document.querySelector('#spectra-engine-strip .tab-btn[aria-selected=\"true\"]').dataset.tab"
     ) == "pyscf"
     page.evaluate(
         "(p) => window.molbuilder.projects.setShared("
@@ -237,7 +238,7 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
         timeout=5000)
     page.locator("#load-from-sidebar-btn").click()
     page.wait_for_function(
-        "() => document.querySelector('#spectra-engine-strip .tab-btn.active')"
+        "() => document.querySelector('#spectra-engine-strip .tab-btn[aria-selected=\"true\"]')"
         "        .dataset.tab === 'siesta'",
         timeout=15000)
     assert not page.evaluate(
@@ -251,68 +252,3 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
     _answered(page, "a repeating cell")
     assert "a repeating cell" in _blocks(page)["SIESTA"]
 
-
-# --------------------------------------------------------------------- #
-#  The Transport tab                                                     #
-# --------------------------------------------------------------------- #
-
-def test_the_transport_card_answers_for_the_cited_junction(
-        page, flask_server, isolated_projects_root):
-    """The Transport tab's card: the junction the tab cited, the SHARED
-    panel's spin, the charge 0 by rule.  The citation records no spin, so the
-    panel's is blank and the junction decides it -- metallic gold in a
-    repeating cell, a closed shell.  Stating unrestricted on the panel moves
-    the card, and the count floats: a repeating cell has no count to pin.
-
-    Cited the way a returning person's tab cites: the tab's session note,
-    restored through the same describe-and-adopt path a pick takes
-    (`lib/transport/core.js` `_restoreSession`) -- the tree picker's pop-out
-    is not what this pins."""
-    import numpy as np
-
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    junction = Structure(
-        elements=["Au", "Au", "S", "Au", "Au"],
-        positions=np.array([[0., 0, z] for z in (0, 2.4, 5.0, 7.6, 10.0)]),
-        cell=np.diag([12., 12., 14.4]),
-        axis_kind=("periodic", "periodic", "transport"),
-        regions={"L-electrode": [0, 1], "bridge": [2],
-                 "R-electrode": [3, 4]})
-    folder = isolated_projects_root / "J" / "structure" / "cite"
-    folder.mkdir(parents=True)
-    StructureCodec().write(junction, folder / "junction.xyz")
-
-    page.goto(f"{flask_server}/transport-calculation",
-              wait_until="domcontentloaded")
-    page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.workspace "
-        "      && typeof window.molbuilder.workspace.persist === 'function'",
-        timeout=10000)
-    assert page.evaluate(
-        """async (j) => {
-             const ws = window.molbuilder.workspace;
-             const id = {workspace_id: ws.workspaceId('transport:panel'),
-                         state_index: 0};
-             ws.persist('transport:panel', {v: 3, junction: j}, id);
-             for (let i = 0; i < 50; i++) {
-               const n = await ws.readState(id);
-               if (n && n.junction === j) return true;
-               await new Promise(r => setTimeout(r, 100));
-             }
-             return false;
-           }""", "J/structure/cite"), "the session note never landed"
-    page.reload(wait_until="domcontentloaded")
-    _answered(page, "SIESTA")
-    blocks = _blocks(page)
-    assert list(blocks) == ["SIESTA"], "transport runs on SIESTA alone"
-    card = blocks["SIESTA"]
-    assert "0 — rule: a transport junction is neutral" in card, card
-    assert "restricted (closed shell, 2S = 0)" in card, card
-    assert "detected: metallic Au in a repeating cell" in card, card
-
-    page.select_option("#t-spin-treatment", "unrestricted")
-    _answered(page, "the moment floats")
-    card = _blocks(page)["SIESTA"]
-    assert "unrestricted, the moment floats (free) — stated" in card, card

@@ -29,7 +29,8 @@ _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
 
 def _stages():
-    return tuple(Stage(name=n, overrides={}) for n in _STAGES)
+    return tuple(Stage(name=n, overrides={}, group=g)
+                 for n, g in zip(_STAGES, (1, 1, 1, 2, 3)))
 
 
 def test_round_trip_and_no_structure_block():
@@ -51,6 +52,32 @@ def test_round_trip_and_no_structure_block():
     assert t2.slots == t.slots and t2.bias == (0.0, 0.2)
     assert t2.structure is None
     assert [s.name for s in t2.stages] == list(_STAGES)
+
+
+@pytest.mark.parametrize("names", [
+    ("electrode_L", "electrode_R", "device", "transmission"),
+    ("electrode_L", "seed", "electrode_R", "device", "transmission"),
+], ids=["without-the-seed", "out-of-order"])
+def test_a_ladder_is_its_five_rungs_every_one(names):
+    """`engines/transport.md` § 3.8.2a, `task.fixed_by_kind` (user,
+    2026-10-12: "Always keep the seed"): a transport description's stages
+    are the five rungs, every one, in order -- the reader refuses any other
+    list, naming the five.  Without the seed the device's SCF would start
+    from atomic densities, and nothing downstream would say so; the codec is
+    the one door every road reads a description through.
+
+    MUTATION THIS MUST FAIL AGAINST: the reader letting the seed be left out
+    (ruling Q4's skip, withdrawn)."""
+    stages = tuple(Stage(name=n, overrides={}, group=i + 1)
+                   for i, n in enumerate(names))
+    with pytest.raises(ValueError) as got:
+        Task(engine="siesta", shape="hierarchical",
+             run=Run(name="T", id=run_id("T", _CITE, stage_names=names)),
+             structure=None, calculation="transport",
+             slots={"junction": _CITE}, bias=(0.0, 0.2),
+             low_bias_approximation=False, varies=(), stages=stages)
+    assert ("stages are its five rungs, every one, in order -- seed, "
+            "electrode_L, electrode_R, device, transmission") in str(got.value)
 
 
 @pytest.fixture

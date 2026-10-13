@@ -103,7 +103,8 @@ class TestTheCallerWithNoCalculation:
         """The server's own tree -- which is `projects_root()`, the one
         door, NOT the working directory."""
         from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
+        monkeypatch.setenv(PROJECTS_ROOT_ENV,
+                           str(tmp_path / "server" / "projects"))
         monkeypatch.chdir(tmp_path)          # deliberately irrelevant now
         assert resolve_psml_lib("pseudopotential") == \
             projects_root() / "pseudopotential"
@@ -124,9 +125,10 @@ class TestACalculationOutsideAnyTree:
         loose = tmp_path / "scratch" / "run1"
         loose.mkdir(parents=True)
         assert find_projects_root(loose) is None
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
+        monkeypatch.setenv(PROJECTS_ROOT_ENV,
+                           str(tmp_path / "server" / "projects"))
         assert resolve_psml_lib("pseudopotential", dest_dir=loose) == \
-            tmp_path / "tree" / "pseudopotential"
+            tmp_path / "server" / "projects" / "pseudopotential"
 
 
 class TestTheRefusalNamesWhatWasAskedFor:
@@ -164,10 +166,11 @@ class TestTheRefusalNamesWhatWasAskedFor:
     def test_no_calculation_yet_anchors_at_the_root_and_says_so(
             self, tmp_path, monkeypatch):
         from molbuilder.projects import PROJECTS_ROOT_ENV
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
+        monkeypatch.setenv(PROJECTS_ROOT_ENV,
+                           str(tmp_path / "server" / "projects"))
         msg = describe_psml_anchor("psml")
         assert "tree root" in msg
-        assert str(tmp_path / "tree" / "psml") in msg
+        assert str(tmp_path / "server" / "projects" / "psml") in msg
 
 
 class TestPrepRefusesWithTheRealPlace:
@@ -184,10 +187,10 @@ class TestPrepRefusesWithTheRealPlace:
             self, calc, tmp_path, monkeypatch):
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.jobset.errors import PrepError
-        from molbuilder.jobset.engines import _siesta_provide_pseudos
+        from molbuilder.jobset.engines import siesta_provide_pseudos
         monkeypatch.chdir(calc)          # stand where the failure happened
         with pytest.raises(PrepError) as e:
-            _siesta_provide_pseudos(
+            siesta_provide_pseudos(
                 self._struct(),
                 SiestaConfig(system_label="x", psml_lib="pseudopotential"),
                 calc)
@@ -204,7 +207,6 @@ class TestPrepRefusesWithTheRealPlace:
     def test_it_finds_the_library_that_is_really_there(
             self, calc, tmp_path, monkeypatch):
         """The other half: the rule must also SUCCEED from anywhere."""
-        from molbuilder.config.siesta import SiestaConfig
         from molbuilder.siesta.input import copy_pseudopotentials
         lib = tmp_path / "projects" / "pseudopotential"
         lib.mkdir(parents=True)

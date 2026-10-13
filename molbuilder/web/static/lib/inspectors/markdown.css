@@ -28,7 +28,7 @@
 }
 
 .md-toolbar-title {
-    font-weight:       600;
+    font-weight: var(--weight-semibold);
     font-size: var(--text-sm);
     color:             var(--ps-fg, #dddddd);
 }
@@ -51,7 +51,7 @@
     cursor:            pointer;
 }
 .md-save-btn:disabled {
-    background:        var(--ps-bg-tile, #2a2a2a);
+    background:        var(--ps-bg-tile, #1c1c1c);
     color:             var(--ps-fg-muted, #999999);
     cursor:            not-allowed;
 }
@@ -169,12 +169,13 @@
     margin: 1.5em 0;
 }
 
+/* The bar the editor's status line sits in; the line is a `.status`, its
+ * tones page-shell's (`ui-contract.md` § 5). */
 .md-status {
     padding: var(--space-sm) var(--space-sm2);
     border-top:        1px solid var(--ps-border, #2a2a2a);
     background:        var(--ps-bg-tile, #1c1c1c);
-    color:             var(--ps-fg-muted, #999999);
-    font-size: var(--text-xs);
+    margin: 0;
     flex-shrink:       0;
 }
 

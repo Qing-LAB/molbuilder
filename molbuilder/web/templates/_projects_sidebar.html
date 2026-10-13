@@ -139,11 +139,12 @@
         Wiring: lib/projects/checkpoint.js. -#}
     <button type="button" id="ps-checkpoint-toggle"
             class="ps-checkpoint-toggle" data-state="uninit"
-            aria-pressed="false" hidden
+            aria-pressed="false" hidden aria-label="Run history"
             title="Run history">●</button>
   </div>
 
-  <ul class="ps-list" id="ps-list" aria-live="polite">
+  <ul class="ps-list" id="ps-list" role="listbox"
+      aria-label="Folder contents" aria-live="polite">
     <!-- Current-directory entries inserted by projects-sidebar.js. -->
   </ul>
 
@@ -194,22 +195,22 @@
         Tag HEAD…
       </button>
       <button type="button" id="ps-checkpoint-refresh-btn"
-              class="ps-checkpoint-action"
+              class="ps-checkpoint-action" aria-label="Refresh the run history"
               title="Re-read checkpoint state + history (no background polling; refresh after a run or checkpoint operation)">
         ↻
       </button>
-      <span class="ps-checkpoint-view-toggle"
+      <span class="ps-checkpoint-view-toggle" id="ps-checkpoint-view-toggle"
             role="tablist"
             aria-label="Run history view">
         <button type="button" id="ps-checkpoint-view-list"
-                class="ps-checkpoint-view-btn is-active"
-                data-view="list"
+                class="ps-checkpoint-view-btn"
+                data-tab="list"
                 role="tab"
                 aria-selected="true"
                 title="Show checkpoint list">List</button>
         <button type="button" id="ps-checkpoint-view-graph"
                 class="ps-checkpoint-view-btn"
-                data-view="graph"
+                data-tab="graph"
                 role="tab"
                 aria-selected="false"
                 title="Show commit graph">Graph</button>

@@ -40,17 +40,15 @@ html, body { height: 100%; }
 #generate-card fieldset {
     margin: var(--space-lg) 0;
 }
-#generate-card fieldset:first-of-type { margin-top: 0.4rem; }
+#generate-card fieldset:first-of-type { margin-top: var(--space-sm); }
+/* Where the card's hints sit; their look is form-components' `.hint`. */
 #generate-card .hint,
 #generate-card p.hint {
     margin: var(--space-sm) 0 var(--space-sm2);
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    line-height: 1.5;
 }
 
 @media (max-width: 785px) {
-    #generate-card { padding: 0.9rem 1rem; }
+    #generate-card { padding: var(--space-sm2) var(--space-md); }
 }
 
 /* ---- Status base (index variant; severity modifiers live in page-shell) ---- */
@@ -59,15 +57,7 @@ html, body { height: 100%; }
  * page also loads — do not re-declare those here (framework vs tab, symmetry). */
 .status {
     margin-top: var(--space-sm);
-    min-height: 1.2em;
-}
-
-/* Disabled compatibility-locked inputs inside index fieldsets. */
-fieldset input:disabled,
-fieldset select:disabled {
-    cursor: not-allowed;
-    background: var(--bg-fieldset);
-    color: var(--text-muted);
+    min-height: 1lh;            /* one line, at its own line height */
 }
 
 /* ---- Footer — index only ---- */
@@ -95,13 +85,8 @@ label[title] > input,
 label[title] > select { cursor: auto; }
 
 
-/* A recommendation-diff row's parameter name.  Machine text beside a value,
- * so it is monospace and may break anywhere — a catalogue key has no spaces
- * to break at. */
-.rec-diff-name {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-mono);
-    overflow-wrap: anywhere;
-}
-
+/* The restart note under the run directory's hint (index.html): a step
+ * below the hint, its body a step below its summary, which opens it. */
+.restart-note { margin: var(--space-xs) 0 0; }
+.restart-note > summary { cursor: pointer; }
+.restart-note > div { margin-top: var(--space-xs); }

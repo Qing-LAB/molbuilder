@@ -87,7 +87,8 @@ if (window.molbuilder.runtime
  * class on ``<body>``.  The CSS in ``lib/projects/projects-sidebar.css``
  * keys off that class to slide the sidebar in.  At wider
  * viewports the toggle button + backdrop are display:none, so
- * this wiring is inert above 640 px.
+ * this wiring is inert where the sidebar docks (786 px and wider,
+ * the stylesheet's own media query).
  *
  * Behaviour:
  *   * Button click toggles the class + flips aria-expanded on the
@@ -95,7 +96,7 @@ if (window.molbuilder.runtime
  *   * Backdrop click closes the drawer (modal-overlay convention).
  *   * Escape key closes the drawer (matches standard modal
  *     dismissal pattern).
- *   * Viewport resize past the 640 px breakpoint auto-closes the
+ *   * Viewport resize past the breakpoint auto-closes the
  *     drawer so users don't end up with a stale "open" state when
  *     they rotate from portrait to landscape.
  *
@@ -273,12 +274,22 @@ function initMobileDrawer() {
   if (!toggle || !backdrop) return;
 
   const CLASS = "has-mobile-sidebar-open";
-  const MOBILE_BREAKPOINT = 640;
+  const aside = document.getElementById("projects-sidebar");
 
+  /* A CLOSED DRAWER IS OFF SCREEN, AND OUT OF THE TAB ORDER: ``inert``
+   * while the drawer is in force and closed, so the keyboard never lands on
+   * a control nobody can see (ui-contract.md § 4.1).  Docked, the sidebar
+   * is always reachable. */
+  function syncInert() {
+    if (!aside) return;
+    const drawer = getComputedStyle(toggle).display !== "none";
+    aside.inert = drawer && !document.body.classList.contains(CLASS);
+  }
   function setOpen(open) {
     document.body.classList.toggle(CLASS, open);
     toggle.setAttribute("aria-expanded", String(open));
     backdrop.setAttribute("aria-hidden", String(!open));
+    syncInert();
   }
   function toggleOpen() {
     setOpen(!document.body.classList.contains(CLASS));
@@ -293,10 +304,14 @@ function initMobileDrawer() {
   // Resize past the breakpoint -> drawer becomes desktop sidebar; the
   // ``has-mobile-sidebar-open`` class is harmless at wide widths
   // (display:none on the affected elements), but clearing it keeps
-  // ARIA + class state honest for screen readers.
+  // ARIA + class state honest for screen readers.  WHETHER THE DRAWER IS
+  // IN FORCE is the stylesheet's answer -- its media query shows the
+  // toggle (ui-contract.md § 3's 786 px) -- never a second number here.
   window.addEventListener("resize", () => {
-    if (window.innerWidth > MOBILE_BREAKPOINT) setOpen(false);
+    if (getComputedStyle(toggle).display === "none") setOpen(false);
+    else syncInert();
   });
+  syncInert();
 }
 
 

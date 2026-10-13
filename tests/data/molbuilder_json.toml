@@ -45,7 +45,7 @@ line = ["-p cpu", "-q public"]
 name = "...but the launch printed for a calculation set to another machine states its mode: it is typed there, where this file does not speak"
 machine = "named"
 machine_config = { launch = { mode = "submit" } }
-said = ["molbuilder jobset launch task --stage coarse --mode direct", "molbuilder jobset launch task --stage coarse --mode submit"]
+said = ["molbuilder jobset launch task --mode direct", "molbuilder jobset launch task --mode submit"]
 
 [[case]]
 name = "no --mode and no launch.mode is refused, naming the key -- and saying the launch with each mode its machine takes, whole commands"

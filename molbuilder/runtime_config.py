@@ -1445,14 +1445,21 @@ def config_provenance(project_dir: Optional[Path] = None, *,
             "shadow": shadow, "mode_warning": mode_warning}
 
 
-def format_provenance(prov: Mapping[str, Any]) -> str:
+def format_provenance(prov: Mapping[str, Any], *, written=()) -> str:
     """The ONE rendering of :func:`config_provenance` — the CLI echo and
-    STAGE-PLAN.md both use it, so they cannot drift."""
+    STAGE-PLAN.md both use it, so they cannot drift.  ``written`` are the
+    files the verb that read them writes itself -- a calculation's machine
+    record, copied at its first prep -- said so beside *absent*, since the
+    page that lists them is read once they are there."""
     lines = ["config:"]
+    here = {Path(w).resolve() for w in written}
     # Width from the WIDEST scope name present, not a literal.
     width = max([len(s["scope"]) for s in prov["sources"]] + [8]) + 1
     for s in prov["sources"]:
-        state = "found" if s["found"] else "absent"
+        state = ("found" if s["found"] else
+                 "absent -- this prep writes it, a copy of the record that "
+                 "answered" if Path(s["path"]).resolve() in here
+                 else "absent")
         via = f", via {s['via']}" if s["found"] and s.get("via") else ""
         lines.append(f"  {s['scope']:<{width}}{s['path']}  ({state}{via})")
     for key in sorted(prov["effective"]):

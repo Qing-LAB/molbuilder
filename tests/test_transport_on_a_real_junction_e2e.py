@@ -338,7 +338,12 @@ def junction(tmp_path_factory):
                                      template_with_values)
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
-    from support.road import jobset
+    from support.road import group_words, jobset
+
+    def seed_and_leads(on):
+        # ONE GROUP, ONE JOB (`engines/stages.md` § 2): the defaults put
+        # the seed and the two leads in group 1.
+        return group_words(on.bundle, "seed", "electrode_L", "electrode_R")
     with _on_the_road(tmp_path_factory, "junction") as tree:
         # THE RELAXATION -- an ordinary optimization, one stage.
         r = jobset("init", "--structure", _write_junction(tree),
@@ -353,8 +358,8 @@ def junction(tmp_path_factory):
             config_from_template(path.read_text(), SiestaConfig),
             **RELAXED_WITH)
         path.write_text(template_with_values(cfg, engine="siesta"))
-        _taken(relax, "prep", "prep", "task", "--stage", "coarse",
-               "--target", "this")
+        _taken(relax, "prep", "prep", "task",
+               *group_words(relax.bundle, "coarse"), "--target", "this")
         _taken(relax, "launch", "launch", "task", "--stage", "coarse",
                "--mode", "direct", "--yes")
         cite = "P/opt/J/01_coarse/run-0"
@@ -368,7 +373,7 @@ def junction(tmp_path_factory):
         from molbuilder.runs import run_of
         pair = "P/structure/relaxed.xyz"
         r = CliRunner().invoke(cli.cli, [
-            "xv2xyz", str(run_of(tree / cite).carried(".XV")),
+            "xv2xyz", str(run_of(tree / cite).on_label(".XV")),
             str(tree / pair), "--from-run"])
         assert r.exit_code == 0, r.output
 
@@ -435,15 +440,14 @@ def junction(tmp_path_factory):
                        "--slot", f"junction={cite}", *extra)
             run.said[step] = Said(r.exit_code, r.output)
 
-        # THE LADDER.
-        leads = ("--stage", "seed", "--stage", "electrode_L",
-                 "--stage", "electrode_R")
-        _taken(run, "prep seed and leads", "prep", "task", *leads,
-               "--target", "this")
-        _taken(run, "launch seed and leads", "launch", "task", *leads,
-               "--mode", "direct", "--yes")
-        _taken(run, "prep device", "prep", "task", "--stage", "device",
-               "--target", "this")
+        # THE LADDER, a group at a time, each prepared once the one before
+        # it has run.
+        _taken(run, "prep seed and leads", "prep", "task",
+               *seed_and_leads(run), "--target", "this")
+        _taken(run, "launch seed and leads", "launch", "task",
+               *seed_and_leads(run), "--mode", "direct", "--yes")
+        _taken(run, "prep device", "prep", "task",
+               *group_words(run.bundle, "device"), "--target", "this")
         _taken(run, "launch device", "launch", "task", "--stage", "device",
                "--mode", "direct", "--yes")
         _taken(run, "status device", "status", "device")
@@ -452,8 +456,8 @@ def junction(tmp_path_factory):
         _taken(run, "launch device cold", "launch", "task", "--stage",
                "device", "--mode", "direct", "--yes", "--cold")
         _taken(run, "status device after cold", "status", "device")
-        _taken(run, "prep transmission", "prep", "task", "--stage",
-               "transmission", "--target", "this")
+        _taken(run, "prep transmission", "prep", "task",
+               *group_words(run.bundle, "transmission"), "--target", "this")
         _taken(run, "launch transmission", "launch", "task", "--stage",
                "transmission", "--mode", "direct", "--yes")
         _taken(run, "summarize", "summarize", "task")
@@ -471,12 +475,14 @@ def junction(tmp_path_factory):
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
         _run_card(vib.bundle)
         vt = json.loads((vib.bundle / "task.json").read_text())
-        vt["stages"] = [s for s in vt["stages"] if s["name"] == "freq"]
+        # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
+        vt["stages"] = [dict(s, group=1) for s in vt["stages"]
+                        if s["name"] == "freq"]
         (vib.bundle / "task.json").write_text(json.dumps(vt, indent=2))
         for name, value in {**RELAXED_WITH, "already_relaxed": True}.items():
             _set_by_the_person(vib.bundle / "V.template.toml", name, value)
-        _taken(vib, "prep freq", "prep", "task", "--stage", "freq",
-               "--target", "this")
+        _taken(vib, "prep freq", "prep", "task",
+               *group_words(vib.bundle, "freq"), "--target", "this")
         _taken(vib, "launch freq", "launch", "task", "--stage", "freq",
                "--mode", "direct", "--yes")
         vibration = "P/frequency/V/01_freq/run-0"
@@ -502,20 +508,45 @@ def junction(tmp_path_factory):
         run.pair_template = (from_pair.bundle / "F.template.toml").read_text()
         _set_by_the_person(from_pair.bundle / "F.template.toml",
                            "spin_treatment", "restricted")
-        _taken(from_pair, "prep seed and leads", "prep", "task", *leads,
-               "--target", "this")
-        _taken(from_pair, "launch seed and leads", "launch", "task", *leads,
-               "--mode", "direct", "--yes")
-        _taken(from_pair, "prep device", "prep", "task", "--stage", "device",
-               "--target", "this")
+        _taken(from_pair, "prep seed and leads", "prep", "task",
+               *seed_and_leads(from_pair), "--target", "this")
+        _taken(from_pair, "launch seed and leads", "launch", "task",
+               *seed_and_leads(from_pair), "--mode", "direct", "--yes")
+        _taken(from_pair, "prep device", "prep", "task",
+               *group_words(from_pair.bundle, "device"), "--target", "this")
         _taken(from_pair, "launch device", "launch", "task", "--stage",
                "device", "--mode", "direct", "--yes")
         _taken(from_pair, "status device", "status", "device")
-        _taken(from_pair, "prep transmission", "prep", "task", "--stage",
-               "transmission", "--target", "this")
+        _taken(from_pair, "prep transmission", "prep", "task",
+               *group_words(from_pair.bundle, "transmission"),
+               "--target", "this")
         _taken(from_pair, "launch transmission", "launch", "task", "--stage",
                "transmission", "--mode", "direct", "--yes")
         _taken(from_pair, "summarize", "summarize", "task")
+
+        # ONE VOLTAGE -- a device that runs once, no points: launched, then
+        # again warm (its own density stands), then again --cold, which still
+        # takes the inputs its first launch gathered (`job-system.md` § 5.4).
+        r = jobset("init", "--calculation", "transport", "--engine", "siesta",
+                   "--shape", "hierarchical", "--bundle", "P/transport/S",
+                   "--slot", f"junction={cite}", "--bias", "0.0")
+        assert r.exit_code == 0, r.output
+        single = RealRun(tree=tree, bundle=tree / "P" / "transport" / "S")
+        _run_card(single.bundle)
+        _set_by_the_person(single.bundle / "S.template.toml",
+                           "spin_treatment", "restricted")
+        _taken(single, "prep seed and leads", "prep", "task",
+               *seed_and_leads(single), "--target", "this")
+        _taken(single, "launch seed and leads", "launch", "task",
+               *seed_and_leads(single), "--mode", "direct", "--yes")
+        _taken(single, "prep device", "prep", "task",
+               *group_words(single.bundle, "device"), "--target", "this")
+        for step, extra in (("launch device", ()),
+                            ("launch device again", ()),
+                            ("launch device cold", ("--cold",))):
+            _taken(single, step, "launch", "task", "--stage", "device",
+                   "--mode", "direct", "--yes", *extra)
+        run.single = single
 
         # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
         # the good set with one change each, cited at `jobset init`, the door
@@ -544,8 +575,8 @@ def junction(tmp_path_factory):
             _run_card(c.bundle)
             _set_by_the_person(c.bundle / f"C{k}.template.toml",
                                "spin_treatment", "restricted")
-            _taken(c, "prep seed and leads", "prep", "task", *leads,
-                   "--target", "this")
+            _taken(c, "prep seed and leads", "prep", "task",
+                   *seed_and_leads(c), "--target", "this")
             got = client.get(f"/api/transport/record?path={c.bundle}")
             run.definition_said[case["name"]] = (got.status_code,
                                                  got.get_json())
@@ -682,6 +713,58 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
             assert one(tmpl, name).source == "cited", name
 
 
+def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
+                                                           monkeypatch):
+    """The Transport tab's chemistry card, on the relaxation it cites
+    (`science/chemistry-correctness.md` § 2.5, § 2a.1a): the charge 0 by
+    rule; the spin the cited run's -- unrestricted (ES7) -- its count
+    floating, since a transport rung cannot hold a fixed one (ES6); and
+    stating restricted on the shared panel moves the card to a closed
+    shell.  Cited as a returning person's tab cites: its session note,
+    restored through the describe-and-adopt path a pick takes
+    (`lib/transport/core.js` `_restoreSession`).
+
+    MUTATION THIS MUST FAIL AGAINST: the card asked without the panel's
+    spin (the analyze door dropping it) -- stating restricted leaves the
+    card where the cited run's record put it."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    from test_chemistry_card_e2e import _answered, _blocks
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    with serve() as base:
+        page.goto(f"{base}/transport-calculation",
+                  wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.workspace "
+            "      && typeof window.molbuilder.workspace.persist "
+            "         === 'function'", timeout=10000)
+        assert page.evaluate(
+            """async (j) => {
+                 const ws = window.molbuilder.workspace;
+                 const id = {workspace_id: ws.workspaceId('transport:panel'),
+                             state_index: 0};
+                 ws.persist('transport:panel', {v: 3, junction: j}, id);
+                 for (let i = 0; i < 50; i++) {
+                   const n = await ws.readState(id);
+                   if (n && n.junction === j) return true;
+                   await new Promise(r => setTimeout(r, 100));
+                 }
+                 return false;
+               }""", junction.cite), "the session note never landed"
+        page.reload(wait_until="domcontentloaded")
+        _answered(page, "SIESTA")
+        blocks = _blocks(page)
+        assert list(blocks) == ["SIESTA"], "transport runs on SIESTA alone"
+        card = blocks["SIESTA"]
+        assert "0 — rule: a transport junction is neutral" in card, card
+        assert "unrestricted, the moment floats (free)" in card, card
+
+        page.select_option("#t-spin-treatment", "restricted")
+        _answered(page, "closed shell")
+        card = _blocks(page)["SIESTA"]
+        assert "restricted (closed shell, 2S = 0)" in card, card
+
+
 def test_describe_is_one_act_and_refuses_a_described_folder(junction):
     """`engines/transport.md` § 3.8.2a: the describe door writes a
     description into a folder that holds none and refuses one that holds one
@@ -710,8 +793,11 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
     by_run = read_template(junction.template_at_init)
     by_pair = read_template(junction.pair_template)
     def cited(tmpl):
+        # THE RECORDED CONTRACT'S ANSWERS -- the pseudopotentials apart: a
+        # cited run's travel with it, a pair's are the person's directory
+        # (§ 3.1; asserted below).
         return {it.name: it.value for it in select(tmpl, engine="siesta")
-                if it.source == "cited"}
+                if it.source == "cited" and it.name != "psml_lib"}
     assert "mixing_weight" in cited(by_run) and "mesh_cutoff" in cited(by_run)
     assert cited(by_pair) == cited(by_run)
     psml = one(by_pair, "psml_lib")
@@ -794,13 +880,23 @@ def _point(run, rung, n, v):
 
 def test_a_sweep_is_one_run_its_points_inside(junction):
     """The device's run holds a folder per voltage, each with what the rungs
-    downstream take from it; `status` says how many points are done."""
+    downstream take from it; `status` says how many points are done.  Each
+    point's progress log is in the run's point, which writes it, and none
+    is left in the point's folder below the stage, where nothing writes to
+    it again (`project-layout.md` § 1.0)."""
+    from molbuilder.runfiles import WRITTEN, role_of
     from molbuilder.task import read_task
     label = read_task(junction.bundle / "task.json").label
+    progress = {a.role for a in WRITTEN if a.output == "progress"}
     for v in _BIAS:
         p = _point(junction, "04_device", 0, v)
         for suffix in (".TS.HSX", ".TSDE"):
             assert (p / f"{label}{suffix}").is_file(), (p, suffix)
+        assert any(role_of(f.name) in progress for f in p.iterdir()), p
+        prepared = junction.bundle / "04_device" / f"v{v:g}"
+        left = [f.name for f in prepared.iterdir()
+                if role_of(f.name) in progress]
+        assert left == [], (prepared, left)
     _said(junction, "status device", "2 of 2 points done")
 
 
@@ -822,15 +918,34 @@ def test_launched_cold_every_point_runs_again(junction):
     from molbuilder.runrecord import read_gathered_from
     zero = _point(junction, "04_device", 1, _BIAS[0])
     assert not (zero / ".continued-from").exists()
-    assert any(g["from"] == "01_seed/run-0"
-               for g in read_gathered_from(zero)), zero
+    assert any(str(src) == "01_seed/run-0"
+               for src, _fn in read_gathered_from(zero)), zero
     start = (_point(junction, "04_device", 1, _BIAS[1])
              / ".continued-from").read_text()
     assert "run-1" in start and f"v{_BIAS[0]:g}" in start, start
 
 
+def test_a_device_launched_warm_then_cold_keeps_the_seeds_density(junction):
+    """One voltage, so one run per launch: run 1, launched again warm,
+    continues from run 0's own density and records only what the gather
+    gave it beside that; run 2, launched again --cold, still takes every
+    input its first launch gathered -- the seed's density and each lead's
+    Hamiltonian, each from the run that made it (`job-system.md` § 5.4,
+    *either way a transport rung keeps the inputs its first launch
+    gathered*)."""
+    from molbuilder.runrecord import read_gathered_from
+    device = junction.single.bundle / "04_device"
+    first = {fn: str(src) for src, fn in read_gathered_from(device / "run-0")}
+    cold = {fn: str(src) for src, fn in read_gathered_from(device / "run-2")}
+    assert cold == first, (first, cold)
+    assert any(fn.endswith(".DM") and src == "01_seed/run-0"
+               for fn, src in cold.items()), cold
+
+
 def test_the_transmission_takes_the_devices_newest_run_whole(junction):
-    _said(junction, "prep transmission", "04_device/run-1")
+    """Its first launch gathers from the device's newest run, and says
+    which (`job-system.md` § 6.0, step 1)."""
+    _said(junction, "launch transmission", "04_device/run-1")
     for v in _BIAS:
         assert (_point(junction, "05_transmission", 0, v)).is_dir(), v
 
@@ -915,10 +1030,10 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
     for f in range(_N_FRAMES):
         first = _frame_point(run, "04_device", f, _BIAS[0])
         assert read_continued_from(first, names, 0) is None, first
-        assert any(g["from"] == "01_seed/run-0"
-                   for g in read_gathered_from(first)), first
+        assert any(str(src) == "01_seed/run-0"
+                   for src, _fn in read_gathered_from(first)), first
         nxt = _frame_point(run, "04_device", f, _BIAS[1])
-        assert read_continued_from(nxt, names, 0) == str(
+        assert str(read_continued_from(nxt, names, 0)) == str(
             first.relative_to(run.bundle)), nxt
 
 
@@ -931,7 +1046,7 @@ def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
     for f in range(_N_FRAMES):
         for v in _BIAS:
             got = read_gathered_from(_frame_point(run, "05_transmission", f, v))
-            hsx = [g["from"] for g in got if g["file"].endswith(".TS.HSX")]
+            hsx = [str(src) for src, fn in got if fn.endswith(".TS.HSX")]
             assert hsx == [str(_frame_point(run, "04_device", f, v)
                                .relative_to(run.bundle))], (f, v, got)
 

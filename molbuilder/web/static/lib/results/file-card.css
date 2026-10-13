@@ -18,5 +18,5 @@
 }
 .fc-name {
     color: var(--text-primary);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }

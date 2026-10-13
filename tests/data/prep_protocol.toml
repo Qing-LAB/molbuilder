@@ -1,8 +1,11 @@
 # THE PREP PROTOCOL -- `docs/execution/job-system.md` § 5.0.
 #
-# A prepared stage is not prepared again: a redo is a rollback -- the state
-# saved before its prep, restored -- and a prep anew (user, 2026-10-02:
-# "refuse it, redo via rollback").  Before prep writes, it saves the folder's
+# Prep prepares the groups picked (`--group N`), each one job; a group
+# prepared and never launched is prepared again, whole (user, 2026-10-11); a
+# launched stage is not -- its way back is the state saved before its
+# group's first launch.  What a stage takes from another stage's run is its
+# first launch's: launch refuses, before anything is sent, a stage whose
+# upstream has not finished.  Before prep writes, it saves the folder's
 # state -- always, the note led by the time it was taken -- and says so
 # (`checkpointing.md` § 9; user, 2026-10-03).  Every check and every decision
 # is made before anything is written, so a refused prep writes nothing but its
@@ -19,6 +22,9 @@
 [run_base.siesta]
 mpi_np = 2
 omp_threads = 1
+
+[run_base.pyscf]
+threads = 1
 
 [allocation_base]
 domain = "cpu"
@@ -43,20 +49,31 @@ gpu = { a100 = 4 }
 node_types = [{ cores = 48, nodes = 5, gpu = { a100 = 4 } }]
 
 # ===================================================================== #
-#  A PREPPED STAGE IS NOT PREPPED AGAIN                                 #
+#  A GROUP PREPARED AND NEVER LAUNCHED IS PREPARED AGAIN               #
 # ===================================================================== #
 
 [[case]]
-name = "a prepared stage is not prepared again -- the refusal names the way back, a rollback"
-before = [["prep", "task", "--stage", "coarse"]]
-refused = ["stage 'coarse' is already prepared", "a prepared stage is not prepared again", "molbuilder checkpoint list"]
+name = "a group prepared and never launched is prepared again -- its first run reused, said"
+before = [["prep", "task", "--group", "1"]]
+said = ["prepared coarse: 01_coarse/run-0  (reused -- not launched yet)"]
 
 [[case]]
-name = "a later prep leaves an earlier stage's files as that stage's own prep wrote them -- its deck, its run script, its monitor"
-before = [["prep", "task", "--stage", "coarse"]]
+name = "a later group's prep leaves an earlier stage's files as that stage's own prep wrote them -- its deck, its run script, its monitor"
+before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-prep = ["--cold"]
 kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh", "01_coarse/mb_monitor.pyz"]
+
+[[case]]
+name = "every group is prepared before anything has run -- what a stage takes from the stage before it is its first launch's, said"
+stage = ["coarse", "medium"]
+made = ["01_coarse/run-0", "02_medium/run-0"]
+said = ["at launch: takes", "from `coarse`'s newest run, which must have finished"]
+
+[[case]]
+name = "...each file it names by the rule its launch copies by -- the optimizer's history only between stages that run one optimizer: `medium` (Broyden) takes no `.CG` from `coarse` (CG)"
+stage = ["coarse", "medium"]
+said = ["at launch: takes H2.XV, H2.DM"]
+said_lacks = ["H2.CG from `coarse`"]
 
 [[case]]
 name = "...a prepared benchmark too"
@@ -83,10 +100,31 @@ reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
 # ===================================================================== #
 
 [[case]]
-name = "a stage described and not prepared is refused at launch by name, with its prep and its launch -- as status says"
+name = "a stage described and not prepared is refused at launch by name, with its group's prep and launch -- as status says"
 launch = []
 launch_stage = "medium"
-launch_refused = ["stage 'medium' is not prepared yet", "molbuilder jobset prep task --stage medium"]
+launch_refused = ["stage 'medium' is not prepared yet", "molbuilder jobset prep task --group 2"]
+
+[[case]]
+name = "a stage's first launch waits for the stage before it -- refused before anything is sent, in the status door's words, naming the group to launch first"
+stage = ["coarse", "medium"]
+launch = []
+launch_stage = "medium"
+launch_refused = ["`medium` continues from the newest attempt of `coarse`", "which has not been launched", "molbuilder jobset launch task --group 1"]
+launch_writes_nothing = true
+
+[[case]]
+name = "a prepared stage is still what the description gives at its first launch -- a run card changed since its prep is refused, naming its group's prep again"
+saved = { execution = { mpi_np = 4, omp_threads = 1 } }
+launch = []
+launch_refused = ["`coarse` was prepared from the description as it stood then", "H2_01_coarse.run.sh", "prepare its group again -- it was never launched", "molbuilder jobset prep task --group 1"]
+
+[[case]]
+name = "a group's first launch saves the folder's state at the send, before anything is written, and says which -- the state a redo of the group restores, named though the scheduler then refuses the send -- empties its run whole and gives prep's own files back as they lie, and records what each stage took: the first stage, nothing"
+launch = []
+launch_sends = true
+launch_refused = ["sbatch failed", "the folder's state was saved first:", "· before launch task group 1 (coarse)"]
+after_launch = { made = ["01_coarse/run-0/H2_01_coarse.molwatch.log", "01_coarse/run-0/H2_01_coarse.fdf"], saved_states = ["{stamp} · before launch task group 1 (coarse)", "{stamp} · before prep task group 1 (coarse)"], ledger_holds = ["launch saved", { decision = "launch starts-cold", asked = false }] }
 
 # ===================================================================== #
 #  A CALCULATION THAT HAS PRODUCED KEEPS ITS SHAPE                      #
@@ -113,14 +151,14 @@ save_refused = ["shape is fixed once it has produced", "coarse is prepared"]
 
 [[case]]
 name = "before it writes, prep saves the folder's state -- its first, when it has none -- the note led by the time it was taken, and says so"
-said = ["the folder's state was saved first:", "before prep task coarse"]
-saved_states = ["{stamp} · before prep task coarse"]
+said = ["the folder's state was saved first:", "before prep task group 1 (coarse)"]
+saved_states = ["{stamp} · before prep task group 1 (coarse)"]
 
 [[case]]
 name = "...a new state when the folder changed since the one it stands at"
-before = [["prep", "task", "--stage", "medium", "--cold"]]
+before = [["prep", "task", "--group", "2"]]
 said = ["the folder's state was saved first:"]
-saved_states = ["{stamp} · before prep task coarse", "{stamp} · before prep task medium"]
+saved_states = ["{stamp} · before prep task group 1 (coarse)", "{stamp} · before prep task group 2 (medium)"]
 
 [[case]]
 name = "...and none when nothing changed: the state it stands at is named"
@@ -139,17 +177,16 @@ saved_states = ["set up"]
 
 [[case]]
 name = "a stage removed after its prep leaves every later number as it was -- #2 is still the folder 02_medium"
-before = [["prep", "task", "--stage", "coarse", "--cold"], ["prep", "task", "--stage", "medium", "--cold"]]
+before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
 removed = ["coarse"]
 stage = "#2"
-refused = ["stage 'medium' is already prepared (02_medium/)"]
+said = ["prepared medium: 02_medium/run-0  (reused -- not launched yet)"]
 
 [[case]]
 name = "a stage added after production takes the next number -- the stage with files keeps its own"
-before = [["prep", "task", "--stage", "coarse", "--cold"]]
+before = [["prep", "task", "--group", "1"]]
 added = [{ name = "extra", at = 0 }]
 stage = "extra"
-prep = ["--cold"]
 made = ["01_coarse/run-0", "02_extra/run-0"]
 made_lacks = ["01_extra"]
 
@@ -167,13 +204,13 @@ deck = ["MD.TypeOfRun CG", "MD.MaxForceTol 0.05", "# Stage 01_coarse --", "# run
 [[case]]
 name = "...a later stage its own"
 stage = "medium"
-prep = ["--cold"]
 deck = ["MD.TypeOfRun Broyden", "MD.MaxForceTol 0.04", "# Stage 02_medium --"]
 
 [[case]]
-name = "a stage the ladder does not hold is refused by name"
-stage = "nonesuch"
-refused = ["nonesuch"]
+name = "a group the description does not hold is refused by its number, naming the ones it does"
+stage = ""
+prep = ["--group", "9"]
+refused = ["group 9: the description holds groups 1, 2"]
 made_lacks = ["job-set.json"]
 
 [[case]]
@@ -229,14 +266,82 @@ bench = { mpi_np = [1, 2] }
 refused = ["declares mpi_np and not omp_threads", "Declare omp_threads's points too"]
 
 # ===================================================================== #
-#  A GROUP: STAGES THAT SHARE ONE JOB -- `project-layout.md` § 1.6.6    #
+#  A GROUP: STAGES THAT SHARE ONE JOB -- `engines/stages.md` § 2        #
 # ===================================================================== #
 
 [[case]]
-name = "stages named together where one builds on another are refused, by name, before anything is written"
+name = "a description whose group holds a stage and the one it builds on is refused at prep, naming both and why, before anything is written"
+groups = [1, 1]
+refused = ["`medium` is in group 1 with `coarse`, which it builds on", "Give `medium` a new group"]
+made_lacks = ["job-set.json", "01_coarse"]
+
+[[case]]
+name = "a group goes whole the first time -- a member launched alone before its group has run is refused, naming the group's launch"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+said = ["group 1 -- one job: coarse, medium, one after another; its header: launch/H2_group-01_coarse-02_medium.sbatch"]
+made = ["launch/H2_group-01_coarse-02_medium.sbatch"]
+launch = []
+launch_stage = "medium"
+launch_refused = ["`medium` was never launched, and its group 1 holds `coarse` too", "molbuilder jobset launch task --group 1"]
+
+[[case]]
+name = "a PySCF group's one job runs one process at a time -- its header, rendered for the members' shared request, asks one task, and its first launch is planned whole"
+engine = "pyscf"
+stage_strategy = "publishable"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+said = ["group 1 -- one job: coarse, medium, one after another; its header: launch/H2_group-01_coarse-02_medium.sbatch"]
+made = ["launch/H2_group-01_coarse-02_medium.sbatch"]
+launch = []
+launch_stage = ["coarse", "medium"]
+listing = ["launch/H2_group-01_coarse-02_medium.sbatch"]
+
+[[case]]
+name = "...and its first launch, named by its group, is planned whole -- each member still what the description gives, the members on its rows the group's to check -- and sends the group's one header"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+launch = []
+launch_stage = ["coarse", "medium"]
+listing = ["launch/H2_group-01_coarse-02_medium.sbatch"]
+
+[[case]]
+name = "groups are matched by their members -- a prepared job whose members are now two groups is formed again in one prep, naming only one of them refused"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+regrouped = [1, 2]
 stage = "coarse"
-prep = ["--stage", "medium"]
-refused = ["`medium` builds on `coarse`, so they cannot share one job", "Prep them apart"]
+refused = ["group 2 holds stages prepared in one job with the groups picked", "molbuilder jobset prep task --group 1 --group 2"]
+
+[[case]]
+name = "...and naming both forms each again, each its own job"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+regrouped = [1, 2]
+stage = ["coarse", "medium"]
+said = ["prepared coarse: 01_coarse/run-0  (reused -- not launched yet)", "prepared medium: 02_medium/run-0  (reused -- not launched yet)"]
+made_lacks = ["launch/H2_group-01_coarse-02_medium.sbatch"]
+
+[[case]]
+name = "...and a member the description no longer holds is among them: the old header, named by its members' own files, is removed"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+removed = ["coarse"]
+stage = "medium"
+made_lacks = ["launch/H2_group-01_coarse-02_medium.sbatch"]
+
+[[case]]
+name = "a group's one job is admitted at prep -- its members' walls summed, refused when the queue it names allows less"
+groups = [1, 1]
+stage_run = { coarse = { time = "20:00:00" }, medium = { restart = "clean", time = "20:00:00" } }
+stage = ["coarse", "medium"]
+refused = ["group 1's one job -- coarse, medium, their walls summed and the largest memory", "does not fit the queue 'cpu'"]
 made_lacks = ["job-set.json", "01_coarse"]
 
 # ===================================================================== #
@@ -244,7 +349,7 @@ made_lacks = ["job-set.json", "01_coarse"]
 # ===================================================================== #
 
 [[case]]
-name = "a prep naming no stage shows the ladder and, with nobody to ask, is refused naming the line that picks the ready stage -- writing nothing"
+name = "a prep naming no group shows the groups and, with nobody to ask, is refused naming the line that picks them -- writing nothing"
 stage = ""
-refused = ["the task's stages:", "coarse", "ready", "nobody to ask which stage(s) to prepare", "prep task --stage coarse"]
+refused = ["the task's groups:", "group 1", "coarse", "nobody to ask which groups to prepare", "prep task --group 1 --group 2"]
 made_lacks = ["job-set.json", "01_coarse"]

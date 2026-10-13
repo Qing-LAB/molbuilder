@@ -4,7 +4,7 @@ it, the stage that builds on it (`engines/vibration.md` § 5.2a), and the
 vibration gate's verdicts on a structure that carries it (§ 2.2, the record
 table).
 
-``jobset init --calculation vibration`` (hierarchical) -> ``prep task --stage relax``
+``jobset init --calculation vibration`` (hierarchical) -> ``prep task --group 1``
 -> ``launch task --stage relax --mode direct``, on an H2 in a 10 Å box, isolated, its
 first atom held: the `relax` stage of the kind's own ladder, at the kind's
 own tight tolerance.
@@ -66,10 +66,10 @@ def _tolerance(bundle: Path) -> float:
 def _deck_geometry(bundle: Path):
     """The structure as the deck hands it to SIESTA -- its own coordinate
     block, read by fdf's label rule."""
-    from molbuilder.parse.fdf import _norm, _parse_fdf
+    from molbuilder.parse.fdf import fdf_key, read_fdf
     from molbuilder.structure import Structure
-    rows = _parse_fdf(_deck(bundle).read_text())[1][
-        _norm("AtomicCoordinatesAndAtomicSpecies")]
+    rows = read_fdf(_deck(bundle).read_text())[1][
+        fdf_key("AtomicCoordinatesAndAtomicSpecies")]
     return Structure(elements=["H", "H"],
                      positions=np.array([[float(x) for x in r[:3]]
                                          for r in rows]))

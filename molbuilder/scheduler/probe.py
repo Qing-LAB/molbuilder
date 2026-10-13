@@ -15,7 +15,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import (TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional,
+                    Set, Tuple)
+
+if TYPE_CHECKING:
+    from .record import Domain
 
 from .quantities import parse_walltime
 
@@ -92,10 +96,6 @@ class Partition:
     #: what lets the record write ``max_cpus_per_node: null`` (asked, no
     #: cap stated) instead of omitting the key (never asked).
     policy_queried: bool = False
-
-    @property
-    def has_gpu(self) -> bool:
-        return bool(self.gpu_types)
 
 
 # --------------------------------------------------------------------- #

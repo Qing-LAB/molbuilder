@@ -281,7 +281,7 @@ def spec_for(struct: Structure,
         if _launch:
             out.append("Run with -- the managed way, and the usual one, from "
                        "the calculation's folder:")
-            out.append(f"    {_launch}")
+            out.extend(f"    {line}" for line in _launch)
             out.append(f"    {LAUNCH_MODE_NOTE}")
         else:
             out.append("Run with:")
@@ -895,6 +895,7 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
     out.append("import json as _mb_json")
     from ..deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
     out.append('print("' + begin_marker(BLOCK_PARAMETERS) + '")')
+    out.append(f"print({_sc.PARAMETER_COLUMNS_LINE!r})")
     out.append("for _k, (_d, _r, _e) in _MB_PARAMS.items():")
     out.append(f"    print({_sc.PARAMETER_ROW_PREFIX!r} + _mb_json.dumps("
                f"[_k, _d, _r, _e], default=repr))")

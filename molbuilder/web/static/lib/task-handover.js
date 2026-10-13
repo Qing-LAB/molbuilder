@@ -53,7 +53,28 @@
 (function () {
     "use strict";
 
+    /* ONE HEAVY CLICK AT A TIME (`ui-contract.md` § 10): the fence covers
+     * the window from the folder check to the last write, so a click on
+     * another folder mid-send cannot split the files between two folders,
+     * and its Cancel aborts the request in flight.  A transport Describe
+     * offers none: its door writes the description in one act on the
+     * server, which an aborted request does not stop.  Inside an outer
+     * claim the outer cover already blocks what this one would. */
     async function send(opts) {
+        const fence = window.molbuilder && window.molbuilder.pageBusy;
+        if (!fence || fence.isClaimed()) return await sendUnder(opts, undefined);
+        const ctl = new AbortController();
+        const describe = !!(opts && opts.calculation === "transport");
+        fence.claim(describe ? "Describing\u2026" : "Sending to Task setup\u2026",
+                    describe ? [] : [() => ctl.abort()]);
+        try {
+            return await sendUnder(opts, ctl.signal);
+        } finally {
+            fence.release();
+        }
+    }
+
+    async function sendUnder(opts, signal) {
         const o = opts || {};
         const projects = o.projects;
         const say = (typeof o.say === "function") ? o.say : function () {};
@@ -106,8 +127,8 @@
         }
         /* A CALCULATION LIVES UNDER A TOPIC (`job-contracts.md` § 2.5): the
          * tree is project / topic / calculation, and the three levels above
-         * the calculation are organisational.  `safeSave` refuses only at the
-         * projects ROOT, so without this a Send into a bare project or topic
+         * the calculation are organisational.  The file layer refuses only at
+         * the projects ROOT, so without this a Send into a bare project or topic
          * folder would put a calculation where one may not live.
          *
          * Measured against the projects root rather than by counting slashes,
@@ -124,7 +145,7 @@
             return;
         }
 
-        /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1) -- for a
+        /* ONE CALCULATION PER FOLDER (`job-contracts.md` § 2.1 Rule 1) -- for a
          * hand-over, whose bytes this module writes.  A transport describe
          * is written by its server door, which refuses a described folder
          * and one inside the citation itself, as `jobset init` does
@@ -138,11 +159,15 @@
          * {ok:false, error} envelope), so with missingOk a genuine
          * absence is {ok:true, exists:false} and ok===false is ALWAYS a
          * real failure -- a 403/500/network drop, and it refuses: a
-         * one-job-per-folder check that fails OPEN overwrites the folder
+         * one-calculation-per-folder check that fails OPEN overwrites the folder
          * it could not read. */
         const prior = isTransport ? null
             : await projects.readFile(dest + "/task.json",
-                                      { missingOk: true });
+                                      { missingOk: true, signal: signal });
+        if (prior && prior.aborted) {
+            say("muted", "Cancelled — nothing written.");
+            return;
+        }
         if (prior && prior.ok === false) {
             say("error", "Could not check the folder for an existing "
                 + "description: " + (prior.error || "read failed")
@@ -154,7 +179,8 @@
             say("error",
                 "That folder already holds a task.json — it is a described "
                 + "calculation. Sending here would overwrite it. Pick or "
-                + "make another folder in the sidebar; one job per folder.");
+                + "make another folder in the sidebar; one calculation per "
+                + "folder.");
             return;
         }
 
@@ -213,6 +239,7 @@
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(req),
+                signal: signal,
             });
             out = await r.json();
             if (!r.ok || !out || out.ok === false) {
@@ -226,17 +253,21 @@
                 return;
             }
         } catch (e) {
+            if (projects.isCancelError(e)) {
+                say("muted", "Cancelled — nothing written.");
+                return;
+            }
             say("error", "Could not reach the server: "
                 + (e && e.message ? e.message : e));
             return;
         }
 
         /* A HAND-OVER'S BYTES go through the content-blind file layer, never
-         * a fetch of our own (`web/projects.md` § 1).  `safeSave` writes into
-         * the folder the user selected, refuses at the projects root,
-         * re-lists the sidebar afterwards, and returns the four-way shape
-         * below.  A transport description was written by its door: there is
-         * nothing to write, and the sidebar is re-listed to show it. */
+         * a fetch of our own (`web/projects.md` § 1), into `dest` -- the
+         * folder checked above, not whatever the sidebar holds when each
+         * write lands.  `writeFile` re-lists the sidebar afterwards.  A
+         * transport description was written by its door: there is nothing
+         * to write, and the sidebar is re-listed to show it. */
         say("muted", "Writing…");
         /* The STRUCTURE goes first, and the order is deliberate: the hand-over
          * NAMES those files, so writing it before them would leave a folder
@@ -249,19 +280,32 @@
         if (isTransport && typeof projects.refresh === "function") {
             await projects.refresh();
         }
+        const done = [];
         for (const [name, text] of toWrite) {
-            // safeSave(TEXT, FILENAME, opts) -- text first.
-            const wrote = await projects.safeSave(text, name, { overwrite: true })
+            // writeFile(PATH, TEXT, opts) -- path first.
+            const wrote = await projects.writeFile(
+                dest.replace(/\/$/, "") + "/" + name, text,
+                { overwrite: true, signal: signal })
                 .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
-            if (wrote && wrote.cancelled) {
-                say("muted", "Cancelled — nothing written.");
+            if (wrote && wrote.aborted) {
+                // THE WRITE IN FLIGHT MAY HAVE LANDED -- an aborted request
+                // does not stop one the server already took -- so the folder
+                // is listed again and the line says so.
+                if (typeof projects.refresh === "function") {
+                    await projects.refresh();
+                }
+                say("muted", "Cancelled while writing " + name + " — "
+                    + (done.length ? "after " + done.join(" and ") + "; " : "")
+                    + "it may have been written: the sidebar shows the "
+                    + "folder as it is.");
                 return;
             }
             if (!wrote || !wrote.ok) {
                 say("error", "Could not write " + name + ": "
-                    + ((wrote && wrote.error) || "no folder selected"));
+                    + ((wrote && wrote.error) || "the write failed"));
                 return;
             }
+            done.push(name);
         }
         const written = isTransport ? (out.written || [])
                                     : toWrite.map(([n]) => n);
@@ -277,11 +321,13 @@
         if (showFindings) showFindings(beside(notices));
         // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, said whether or
         // not something came back: a notice is read, not a stop.
-        const transportNext = "Next: prep task — the seed and both leads "
-            + "are offered together, one job (the CLI, or Task setup's Prep "
-            + "on this folder); launch task sends it; prep task again "
-            + "offers each stage once what it builds on has finished; "
-            + "summarize task writes the I–V record.";
+        const transportNext = "Next: prep task prepares every stage at "
+            + "once (the CLI, or Task setup's Prep on this folder); each "
+            + "launch task sends the next group whose upstream has finished "
+            + "— first the seed and both leads as one job, then, run again, "
+            + "the device, and again the transmission — each taking what it "
+            + "needs from the runs before it at its first launch; summarize "
+            + "task writes the I–V record.";
         const described = "Described — wrote " + written.join(" and ")
             + " into " + (rel || "the selected folder") + ".";
         if (notices.length) {

@@ -65,3 +65,12 @@
     padding-right: var(--space-md);
 }
 
+/* The stages card's list: each item is headed by the rung's own number, the
+ * one its tab shows ("1 · seed"), so the list draws no number of its own. */
+.transport-stage-flow {
+    list-style: none;
+    padding-left: 0;
+}
+.transport-stage-flow li + li {
+    margin-top: var(--space-xs);
+}

@@ -6,7 +6,7 @@ wrong, or a bound read off the wrong end, makes every caller agree with
 the deck for the wrong reason and nothing goes red.
 
 Only the logic is covered. The thin delegations to
-``molbuilder.parse.fdf._parse_fdf`` are that module's to test.
+``molbuilder.parse.fdf.read_fdf`` are that module's to test.
 """
 from __future__ import annotations
 

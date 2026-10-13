@@ -93,8 +93,8 @@ def preflight(task, config_cls=None, *,
     # comparison the benchmark exists to make says nothing, and it says
     # nothing silently, which is why this is an error rather than a warning.
     out.extend(_bench_names_a_speed_knob(task, cls))
-    out.extend(_execution_names_a_speed_knob(task))
-    out.extend(_bench_points_fit_their_items(task))
+    out.extend(_run_card_names_what_its_rung_reads(task))
+    out.extend(bench_points_fit_their_items(task))
     out.extend(_described_values_may_stand(task))
 
     # -- 3. every named field exists in the schema ------------------------
@@ -127,6 +127,15 @@ def preflight(task, config_cls=None, *,
     # the description resolves it.
     stepless = check_a_relaxation_takes_a_step(ladder, engine=_engine,
                                                kind=_kind)
+    # NO STAGE SHARES A GROUP WITH ONE IT BUILDS ON (§ 6.6): the ladder's
+    # links, asked with the template -- an independent ladder's are its
+    # resolved stages' `restart`, so they are asked of a ladder that
+    # resolves; one that does not is refused above, or by prep.
+    if ladder:
+        from ..jobset.group import check_groups
+        why = check_groups(None, task, template_text)
+        if why:
+            out.append(Issue("error", why, where="stages.group"))
 
     # -- 4. every value is inside the schema's bounds ---------------------
     #  ...which begins with being a value that field can HOLD: `relax_steps:
@@ -176,21 +185,27 @@ def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
     return out
 
 
-def _execution_names_a_speed_knob(task) -> List[Issue]:
+def _run_card_names_what_its_rung_reads(task) -> List[Issue]:
     """`stages.md` § 6.8d: every name in an ``execution`` block -- the
-    calculation's or a stage's -- is an `execution` catalogue item.
+    calculation's or a stage's -- is an `execution` catalogue item the kind
+    carries, and on a stage's own card one its rung reads.
 
     THE SAME MEMBERSHIP `bench` USES, asked here because the two blocks are
     one vocabulary at two arities.  A name outside it would be carried to
     prep and refused there, or worse, carried into a deck as a value nobody
-    can read back.
+    can read back.  And a stage's own value is one ITS RUNG READS
+    (`template.reads`, the door an override is asked through): a GPU count
+    on a transport ladder's transmission, which runs on no GPU, is refused
+    by name where the description is written, never met as G5's refusal
+    naming a switch that rung does not have (`web/task-setup.md` § 6.2b).
     """
-    from ..template import catalogue, select
-    blocks = [("execution", getattr(task, "execution", None) or {})]
+    from ..template import catalogue, reads, select, why_unread
+    blocks = [("execution", getattr(task, "execution", None) or {}, None)]
     for st in (getattr(task, "stages", None) or ()):
         if getattr(st, "execution", None):
-            blocks.append((f"stage {st.name!r} execution", dict(st.execution)))
-    if not any(b for _w, b in blocks):
+            blocks.append((f"stage {st.name!r} execution",
+                           dict(st.execution), st.name))
+    if not any(b for _w, b, _s in blocks):
         return []
     # THE CATALOGUE'S `execution` ITEMS, PLUS THE TWO LANE ASKS.  `time` and
     # `domain` are not catalogue items -- an engine has no opinion about a
@@ -203,12 +218,26 @@ def _execution_names_a_speed_knob(task) -> List[Issue]:
              if "execution" in (i.category or ())}
     # ...THAT THIS KIND CARRIES: a run card's value is read by the kind's
     # decks or by nothing (`template.md` § 6.3), as an override is (K4).
-    known = {i.name for i in select(catalogue(), engine=task.engine,
-                                     calculation=kind)
-             if "execution" in (i.category or ())} | set(LANE_ASKS)
+    carried = {i.name: i for i in select(catalogue(), engine=task.engine,
+                                         calculation=kind)
+               if "execution" in (i.category or ())}
+    known = set(carried) | set(LANE_ASKS)
+    engine = str(task.engine)
     out: List[Issue] = []
-    for where, block in blocks:
+    for where, block, stage in blocks:
         for name in sorted(block):
+            if (stage is not None and name in carried
+                    and not reads(carried[name], engine, kind, stage)):
+                out.append(Issue(
+                    "error",
+                    f"stage {stage!r} states {name} = {block[name]!r} on its "
+                    f"run card, " + why_unread(
+                        name, engine, kind, stage,
+                        then="remove it from that run card -- on Task "
+                             "setup, the × beside it")
+                    + ".",
+                    where=f"task.{where}.{name}"))
+                continue
             if name in known:
                 continue
             if name in every:
@@ -260,7 +289,7 @@ def _described_values_may_stand(task) -> List[Issue]:
     return out
 
 
-def _bench_points_fit_their_items(task) -> List[Issue]:
+def bench_points_fit_their_items(task) -> List[Issue]:
     """`generator.md` § 4.3a's shape half at DESCRIBE time: every declared
     point must fit its item -- a bool item takes true/false, an enum point
     must be one of the item's choices, and a repeated point would measure
@@ -699,4 +728,4 @@ def refuse_on_error(issues: List[Issue]) -> List[Issue]:
     return issues
 
 
-__all__ = ["preflight", "refuse_on_error"]
+__all__ = ["bench_points_fit_their_items", "preflight", "refuse_on_error"]

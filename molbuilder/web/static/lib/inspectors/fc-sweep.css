@@ -45,15 +45,15 @@
     border-bottom: 1px solid var(--border-subtle);
 }
 
-.fcsweep-table th { color: var(--text-muted); font-weight: 600; }
+.fcsweep-table th { color: var(--text-muted); font-weight: var(--weight-semibold); }
 
 /* A stage that has not finished is not a failure — the record is written by a
  * reader. */
 .fcsweep-pending td { color: var(--text-muted); font-style: italic; }
 
 /* A mode whose spread exceeds the person's tolerance. */
-.fcsweep-flagged td { font-weight: 600; }
+.fcsweep-flagged td { font-weight: var(--weight-semibold); }
 
 /* A stage whose run failed, or ended without its result -- stated, and apart
  * from the pending ones, which are not failures. */
-.fcsweep-failed td { font-weight: 600; }
+.fcsweep-failed td { font-weight: var(--weight-semibold); }

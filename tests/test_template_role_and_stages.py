@@ -130,6 +130,9 @@ class TestStages:
         # sets, which tbtrans compiles nothing to read (2026-10-11).
         scf |= {"block_size", "parallel_over_k", "diag_algorithm", "use_gpu",
                 "write_coor_xmol", "write_hs"}
+        # ...and the GPU count, which only `use_gpu` asks for (2026-10-12,
+        # `execution/gpu.md` G5): tbtrans has no GPU path.
+        scf |= {"gpu_count"}
         assert scf.isdisjoint(owned["transmission"])
         assert scf <= owned["seed"] and owned["seed"] == scf, (
             "the seed owns nothing of its own but the SCF it runs")

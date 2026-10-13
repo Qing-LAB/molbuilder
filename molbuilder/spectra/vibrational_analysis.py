@@ -45,7 +45,8 @@ import numpy as np
 try:                                        # inside molbuilder
     from ..atom_permutation import Permutation
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    from ..identity import LAUNCH_MODE_NOTE, checkpoint_words, launch_as_typed
+    from ..identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
+                            checkpoint_words, launch_as_typed)
     from ..sidecars.spectra import structure_hash_text
     from .methods import extract_citation_keys
     from .normal_modes import (display_form, frequencies_cm1,
@@ -56,7 +57,8 @@ try:                                        # inside molbuilder
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import Permutation
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    from identity import LAUNCH_MODE_NOTE, checkpoint_words, launch_as_typed
+    from identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
+                          checkpoint_words, launch_as_typed)
     from spectra_sidecar import structure_hash_text
     from methods import extract_citation_keys
     from normal_modes import (display_form, frequencies_cm1,
@@ -269,33 +271,34 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         # the decks' own wording): this remedy is written into a result and
         # read wherever it was copied, so it names no folder, and says what
         # the mode means rather than leaving a line `launch` refuses (W52).
-        # IN THE ORDER IT CAN BE DONE: a prepared stage is not prepared again
-        # -- a redo is the state saved before its prep, restored
-        # (`job-system.md` § 5.0) -- and restoring it after `relax`'s new
-        # attempt would take that attempt away, so the restore comes first.
-        # The words are `identity`'s, imported the module's two ways: this
-        # runs beside the job too, in the finish's `_stationarity`.
+        # IN THE ORDER IT CAN BE DONE: a launched stage is not prepared
+        # again -- a redo is the state saved before its group's first launch,
+        # restored (`job-system.md`, *How the checkpoint supports you*) --
+        # and restoring it after `relax`'s new run would take that run away,
+        # so the restore comes first.  The words are `identity`'s, imported
+        # the module's two ways: this runs beside the job too, in the
+        # finish's `_stationarity`.
         s = str(relaxation_stage)
-        return (f"If this stage is prepared, first go back to the state saved "
-                f"before its prep{_RESTORE}; launch the `{s}` stage again "
+        return (f"If this stage was launched, first go back to "
+                f"{LAUNCHED_WAY_BACK}{_RESTORE}; launch the `{s}` stage again "
                 f"from the calculation's folder -- `{launch_as_typed(s)}` "
                 f"{LAUNCH_MODE_NOTE} -- it continues from its newest "
-                f"attempt, at the geometry it stopped at; then prep this "
-                f"stage once it has finished.")
+                f"run, at the geometry it stopped at; then prepare this "
+                f"stage's group again once it has finished.")
     first = ("untick `already_relaxed` and add the `relax` stage before "
              "this one (Task setup, or task.json)"
              if str(engine).lower() == "siesta" else
              "untick `already_relaxed` so the calculation relaxes first")
-    return (f"Relax first -- if this stage is prepared, first go back to the "
-            f"state saved before its prep{_RESTORE}; then {first}, or relax "
+    return (f"Relax first -- if this stage was launched, first go back to "
+            f"{LAUNCHED_WAY_BACK}{_RESTORE}; then {first}, or relax "
             f"elsewhere at this level of theory and hand the result over -- "
             f"or keep this run knowing that.")
 
 
-#: How the state saved before a prep is restored -- the words both remedies
-#: say, a text read later naming no folder.  A prepared stage is not prepared
-#: again (`job-system.md` § 5.0), and a preview of one has not been: so the
-#: restore is said conditionally.
+#: How a saved state is restored -- the words both remedies say, a text read
+#: later naming no folder.  A launched stage is not prepared again
+#: (`job-system.md` § 5.0), and a preview of one has not been launched: so
+#: the restore is said conditionally.
 _RESTORE = f" ({checkpoint_words()})"
 
 

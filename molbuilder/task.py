@@ -106,17 +106,16 @@ _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 def fixed_by_kind(calculation: str) -> Optional[Dict[str, Any]]:
     """WHAT A CALCULATION KIND FIXES, so its description states it and no
     surface offers another (`engines/transport.md` § 3.8.2a,
-    `web/task-setup.md` § 5.3; user, 2026-10-11): ``{"shape", "stages",
-    "optional"}`` for transport -- hierarchical; its five rungs in order;
-    the seed the one a description may leave out, which is how a ladder
-    skips it (ruling Q4, `engines/stages.md` § 2) -- and ``None`` for a
-    kind that fixes neither.  The reader's check asks it, and Task setup's
-    folder answer serves it, so the two cannot disagree."""
+    `web/task-setup.md` § 5.3; user, 2026-10-11): ``{"shape", "stages"}``
+    for transport -- hierarchical; its five rungs, every one, in order (the
+    seed among them: the leads and the device start from its density, user
+    2026-10-12) -- and ``None`` for a kind that fixes neither.  The reader's
+    check asks it, and Task setup's folder answer serves it, so the two
+    cannot disagree."""
     if calculation != "transport":
         return None
     from .paths import KIND_ROLES
-    return {"shape": "hierarchical", "stages": KIND_ROLES["transport"],
-            "optional": ("seed",)}
+    return {"shape": "hierarchical", "stages": KIND_ROLES["transport"]}
 
 
 #: A slot citation names its junction explicitly, by its tree-relative
@@ -315,6 +314,11 @@ class Stage:
     #: block FIELD BY FIELD.  A rung naming only `mpi_np` keeps the
     #: calculation's solver and its thread count.
     execution: Mapping[str, Any] = field(default_factory=dict)
+    #: THE JOB THIS STAGE RUNS IN (§ 2, plan § 5aa): the stages with one
+    #: number are one job.  Every description on disk states it; ``None``
+    #: is a producer's ladder before it is numbered (`group.numbered`),
+    #: which the writer refuses.
+    group: Optional[int] = None
 
     def __post_init__(self) -> None:
         """The name rule holds for the object too, not only for the file.
@@ -329,6 +333,12 @@ class Stage:
                 f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
                 "becomes a filename and a shell word "
                 "(engines/stages.md 6.6)")
+        if self.group is not None and (not isinstance(self.group, int)
+                                       or isinstance(self.group, bool)
+                                       or self.group < 1):
+            raise ValueError(
+                f"stage {self.name!r}: group {self.group!r} must be a whole "
+                f"number from 1 -- the job it runs in (engines/stages.md 2)")
 
 
 @dataclass(frozen=True)
@@ -500,13 +510,12 @@ class Task:
                     f"shape has no directories to hold "
                     f"(engines/transport.md § 2a.11)")
             names = tuple(st.name for st in (self.stages or ()))
-            if names != tuple(n for n in fixed["stages"]
-                              if n not in fixed["optional"] or n in names):
+            if names != tuple(fixed["stages"]):
                 raise ValueError(
-                    f"task: a transport calculation's stages are its "
-                    f"rungs, in order -- {', '.join(fixed['stages'])}, the "
-                    f"{' and '.join(fixed['optional'])} the one it may "
-                    f"leave out (got {', '.join(names) or 'none'}) "
+                    f"task: a transport calculation's stages are its five "
+                    f"rungs, every one, in order -- "
+                    f"{', '.join(fixed['stages'])} (got "
+                    f"{', '.join(names) or 'none'}) "
                     f"(engines/transport.md § 3.8.2a)")
         else:
             if self.slots:
@@ -609,6 +618,29 @@ class Task:
                     f"directory, its deck and its status row -- two stages "
                     f"sharing one silently hand one the other's files "
                     f"(engines/stages.md 6.6)")
+            # THE GROUPS' SHAPE (§ 2): every stage states one or none does
+            # (a producer's ladder before `group.numbered`); the first is 1,
+            # each later one the number above or one more.  Whether a stage
+            # may share a group is the ladder's links, asked at resolve
+            # (`group.check_groups`, § 6.6).
+            stated = [s.group is not None for s in self.stages]
+            if any(stated) and not all(stated):
+                raise ValueError(
+                    f"task: stage(s) "
+                    f"{', '.join(repr(s.name) for s in self.stages if s.group is None)}"
+                    f" state no group while the others do -- every stage "
+                    f"states the job it runs in (engines/stages.md 2)")
+            above = 0
+            for s in self.stages if all(stated) else ():
+                if s.group not in (above, above + 1):
+                    raise ValueError(
+                        f"task: stage {s.name!r} is in group {s.group}"
+                        + (f", after group {above}" if above else "")
+                        + " -- the first stage is group 1, and each later "
+                          "one repeats the number above it or adds one, so "
+                          "the groups run in the ladder's order "
+                          "(engines/stages.md 2)")
+                above = s.group
         self._check_id()
 
     # ----- the run card (stages.md 6.8d) ------------------------------- #
@@ -886,7 +918,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "Give it a single entry: "
                 '"stages": [{"name": "coarse", "overrides": {}}]')
 
-    bench = _bench_from_obj(obj)
+    bench = bench_from_obj(obj)
     execution = _execution_from_obj(obj)
 
     raw_stages = obj["stages"]
@@ -917,7 +949,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 swap_electrodes=swap_electrodes)
 
 
-def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
+def bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
     """§ 6.8's ``bench`` -- field name -> the points to try.
 
     Absent is a real state and the common one: no benchmark planned.  Present
@@ -1114,7 +1146,7 @@ def _execution_from_obj(obj: Mapping[str, Any], *, where: str = "") -> Dict[str,
     looking for a typo instead of to the other lane.
 
     MEMBERSHIP is not this function's question, exactly as it is not
-    `_bench_from_obj`'s: a name must be an `execution` catalogue item, and
+    `bench_from_obj`'s: a name must be an `execution` catalogue item, and
     `validation/task.py` owns that because deciding what a name MEANS takes
     the vocabulary and this module is L1.  Shape is checked here.
     """
@@ -1159,6 +1191,16 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     if not STAGE_NAME_RE.fullmatch(name):
         _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
                 "a filename (engines/stages.md 6.6)")
+    # THE JOB IT RUNS IN, stated by every description (§ 2): one written
+    # before 2026-10-11 has none, and `jobset migrate` writes it.
+    if "group" not in obj:
+        _refuse("no 'group' -- every stage states the job it runs in "
+                "(engines/stages.md 2, 2026-10-11); `molbuilder jobset "
+                "migrate` writes it", where=where)
+    group = obj["group"]
+    if not isinstance(group, int) or isinstance(group, bool) or group < 1:
+        _refuse(f"group {group!r} must be a whole number from 1 -- the job "
+                "this stage runs in (engines/stages.md 2)", where=where)
 
     execution = _execution_from_obj(obj, where=where)
     overrides = dict(_as_object(obj.get("overrides") or {},
@@ -1184,7 +1226,8 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "promoted, or a demoted parameter leaves a value hiding "
                 "(engines/stages.md 6.2)", where=where)
 
-    return Stage(name=name, overrides=overrides, execution=execution)
+    return Stage(name=name, overrides=overrides, execution=execution,
+                 group=group)
 
 
 def varies_for(overrides_seq) -> Tuple[str, ...]:
@@ -1242,34 +1285,42 @@ def derive_run(name: str, formula: str = "", *, created: str = "",
 
 def read_task(path) -> Task:
     """Read and parse ``task.json``.  One written before every description
-    stated its kind and its notify block whole (2026-10-06) is refused naming
-    the command that rewrites it, the calculation by its folder."""
+    stated its kind and its notify block whole (2026-10-06), or every stage
+    its group (2026-10-11), is refused naming the command that rewrites it,
+    the calculation by its folder."""
     obj = read_json(path)
-    if isinstance(obj, Mapping) and _written_before(obj):
+    before = _written_before(obj) if isinstance(obj, Mapping) else []
+    if before:
         from .jobset.commands import command
         raise ValueError(
-            f"{path} was written before every description stated its "
-            f"`calculation`, and its notify block whole with null for never "
-            f"(2026-10-06): `{command('migrate', base=Path(path).parent)}` "
-            f"rewrites it, every value kept and the old file beside the "
-            f"new.")
+            f"{path} was written before every description stated "
+            f"{' and '.join(before)}: "
+            f"`{command('migrate', base=Path(path).parent)}` rewrites it, "
+            f"every value kept and the old file beside the new.")
     return Task.from_dict(obj)
 
 
-def _written_before(obj: Mapping[str, Any]) -> bool:
-    """Whether a description is written as before 2026-10-06 -- no
-    `calculation`, a notify block short of its four, or a period of ``0``
-    for never (``null`` since)."""
+def _written_before(obj: Mapping[str, Any]) -> List[str]:
+    """What a description written before a rule leaves out, said as
+    :func:`read_task` says it -- no `calculation`, a notify block short of
+    its four or a period of ``0`` for never (``null`` since; 2026-10-06), a
+    stage without its `group` (2026-10-11) -- or ``[]``."""
+    out: List[str] = []
     raw = obj.get("notify")
-    if "calculation" not in obj:
-        return True
     # an empty block was refused before as now -- the reader's to refuse
-    if not isinstance(raw, Mapping) or not raw:
-        return False
-    hours = raw.get("every_hours")
-    return (any(k not in raw for k in _NOTIFY_KEYS)
-            or (isinstance(hours, (int, float))
-                and not isinstance(hours, bool) and hours == 0))
+    if "calculation" not in obj or (
+            isinstance(raw, Mapping) and raw
+            and (any(k not in raw for k in _NOTIFY_KEYS)
+                 or (isinstance(raw.get("every_hours"), (int, float))
+                     and not isinstance(raw.get("every_hours"), bool)
+                     and raw.get("every_hours") == 0))):
+        out.append("its `calculation`, and its notify block whole with null "
+                   "for never (2026-10-06)")
+    stages = obj.get("stages")
+    if isinstance(stages, (list, tuple)) and any(
+            isinstance(st, Mapping) and "group" not in st for st in stages):
+        out.append("every stage's `group`, the job it runs in (2026-10-11)")
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -1340,11 +1391,18 @@ def _task_to_dict(task: Task) -> dict:
             "report": ["*"] if n.report is None else list(n.report),
         }
     if task.stages:
+        # EVERY STAGE STATES ITS GROUP on disk (§ 2): a producer's ladder is
+        # numbered before it is written (`group.numbered`).
+        if any(s.group is None for s in task.stages):
+            raise ValueError(
+                "task: a description is written with every stage's group "
+                "-- number the ladder first (jobset.group.numbered; "
+                "engines/stages.md 2)")
         out["varies"] = list(task.varies or ())
         out["stages"] = [
             # `execution` omitted when empty, like every other block here:
             # a rung that runs at the calculation's own answer says nothing.
-            {"name": s.name,
+            {"name": s.name, "group": s.group,
              "overrides": dict(s.overrides),
              **({"execution": dict(s.execution)} if s.execution else {})}
             for s in task.stages]
@@ -1359,7 +1417,7 @@ def write_task(path, task: Task):
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Allocation",
            "Run", "StructureRef", "Stage", "Task",
-           "derive_run", "read_task", "varies_for",
+           "bench_from_obj", "derive_run", "read_task", "varies_for",
            "write_task"]
 
 

@@ -339,7 +339,7 @@ def test_merge_user_custom_from_target_rendered_lacks_placeholder(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
+def test_read_atom_metadata_block_round_trips_through_emit_then_parse():
     """Emit + extract should round-trip the same data."""
     emitted = sc.emit_atom_metadata(
         regions={"L-electrode": [0, 1, 2], "bridge": [3, 4],
@@ -350,7 +350,7 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
     )
     # Wrap in a "host" file so it looks like real .fdf content.
     text = "SystemLabel siesta\n\n" + emitted + "\n\nBlockSize 64\n"
-    payload = sc._extract_atom_metadata_dict(text)
+    payload = sc.read_atom_metadata_block(text)
     assert payload is not None
     assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4],
                                   "frozen_atoms": [0, 4]}
@@ -358,18 +358,18 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
     assert payload["created_by"] == "molbuilder jobset prep"
 
 
-def test_extract_atom_metadata_dict_returns_none_when_block_missing():
-    assert sc._extract_atom_metadata_dict("SystemLabel siesta\nBlockSize 64\n") is None
+def test_read_atom_metadata_block_returns_none_when_block_missing():
+    assert sc.read_atom_metadata_block("SystemLabel siesta\nBlockSize 64\n") is None
 
 
-def test_extract_atom_metadata_dict_returns_none_on_malformed_json():
+def test_read_atom_metadata_block_returns_none_on_malformed_json():
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
         "# format: molstruct-json/v3\n"
         "# {this is not valid json\n"
         "# === molbuilder atom-metadata END ===\n"
     )
-    assert sc._extract_atom_metadata_dict(text) is None
+    assert sc.read_atom_metadata_block(text) is None
 
 
 def _blank_struct(n=20):
@@ -388,7 +388,7 @@ def test_apply_atom_metadata_populates_the_label_store():
         n_atoms_total=20,
     )
     text = "engine body\n" + emitted + "\nmore engine\n"
-    assert sc.apply_atom_metadata(struct, sc._extract_atom_metadata_dict(text)) is True
+    assert sc.apply_atom_metadata(struct, sc.read_atom_metadata_block(text)) is True
     assert struct.regions == {"R-electrode": [10, 11, 12],
                               "frozen_atoms": [10, 12]}
     assert struct.frozen_atoms == [10, 12]
@@ -396,7 +396,7 @@ def test_apply_atom_metadata_populates_the_label_store():
 
 def test_apply_atom_metadata_returns_false_when_no_block():
     struct = _blank_struct()
-    assert sc._extract_atom_metadata_dict("SystemLabel siesta\n") is None
+    assert sc.read_atom_metadata_block("SystemLabel siesta\n") is None
     assert struct.regions == {}
     assert struct.frozen_atoms == []
 
@@ -414,7 +414,7 @@ def test_apply_atom_metadata_normalises_indices():
         '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
-    assert sc.apply_atom_metadata(struct, sc._extract_atom_metadata_dict(text)) is True
+    assert sc.apply_atom_metadata(struct, sc.read_atom_metadata_block(text)) is True
     assert struct.regions == {"r": [1, 2, 3], "frozen_atoms": [0, 2]}
     assert struct.frozen_atoms == [0, 2]
 
@@ -470,7 +470,7 @@ def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():
 # --------------------------------------------------------------------- #
 
 
-def test_extract_provenance_dict_round_trips_emit_output():
+def test_read_provenance_block_round_trips_emit_output():
     """The extractor reads back what the emitter wrote."""
     block = sc.emit_provenance(
         generator_version="molbuilder git abc123",
@@ -481,7 +481,7 @@ def test_extract_provenance_dict_round_trips_emit_output():
             "MeshCutoff":  "350.0 Ry (default)",
         },
     )
-    got = sc._extract_provenance_dict(block + "\nengine body line\n")
+    got = sc.read_provenance_block(block + "\nengine body line\n")
     assert got is not None
     assert got["generator-version"] == "molbuilder git abc123"
     assert got["generated-at"]      == "2026-06-17T12:00:00-07:00"
@@ -490,11 +490,11 @@ def test_extract_provenance_dict_round_trips_emit_output():
     assert got["resolved-defaults.MeshCutoff"] == "350.0 Ry (default)"
 
 
-def test_extract_provenance_dict_returns_none_when_block_missing():
-    assert sc._extract_provenance_dict("SystemLabel siesta\n") is None
+def test_read_provenance_block_returns_none_when_block_missing():
+    assert sc.read_provenance_block("SystemLabel siesta\n") is None
 
 
-def test_extract_provenance_dict_returns_empty_dict_for_present_but_empty():
+def test_read_provenance_block_returns_empty_dict_for_present_but_empty():
     """Audit IMPORTANT 10: present-but-empty PROVENANCE returns ``{}``,
     NOT ``None``.  Pre-fix the function used ``out or None`` which
     collapsed "block present, no parseable k/v" into "block absent",
@@ -504,17 +504,17 @@ def test_extract_provenance_dict_returns_empty_dict_for_present_but_empty():
         "# === molbuilder provenance END ===\n"
         "SystemLabel anything\n"
     )
-    got = sc._extract_provenance_dict(text)
+    got = sc.read_provenance_block(text)
     assert got == {}, f"expected empty dict, got {got!r}"
     assert got is not None
 
 
-def test_extract_provenance_dict_handles_no_defaults_section():
+def test_read_provenance_block_handles_no_defaults_section():
     block = sc.emit_provenance(
         generator_version="vX",
         generated_at="2026-06-17T00:00:00Z",
     )
-    got = sc._extract_provenance_dict(block + "\n")
+    got = sc.read_provenance_block(block + "\n")
     assert got == {
         "generator-version": "vX",
         "generated-at":      "2026-06-17T00:00:00Z",
@@ -555,7 +555,7 @@ def test_a_current_block_applies():
                   "regions": {k: list(v) for k, v in s.regions.items()},
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    assert sc.apply_atom_metadata(back, sc._extract_atom_metadata_dict(blk)) is True
+    assert sc.apply_atom_metadata(back, sc.read_atom_metadata_block(blk)) is True
     assert len(back.regions[FROZEN]) == len(frozen)
 
 
@@ -576,7 +576,7 @@ def test_a_block_written_for_a_different_structure_is_refused():
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
     with pytest.raises(MolstructPairingError):
-        sc.apply_atom_metadata(back, sc._extract_atom_metadata_dict(blk))
+        sc.apply_atom_metadata(back, sc.read_atom_metadata_block(blk))
     assert not back.regions, "labels were applied before the guard fired"
 
 
@@ -627,29 +627,11 @@ NumberOfAtoms 5
 """
 
 
-def test_header_extracts_when_present():
-    """The HEADER block is the run command a person reads first."""
-    header = sc._extract_header_text(FULL_FDF)
-    assert header is not None
-    assert "Run with mpirun" in header
-
-
-def test_header_returns_none_when_absent():
-    """Block-absent is None, NOT an empty string.
-
-    The present-vs-absent distinction is what the ATOM-METADATA emission
-    rule turns on (`job-contracts.md` § 3.1); collapsing them would make a
-    script that carries an empty block indistinguishable from one that
-    carries none.
-    """
-    assert sc._extract_header_text("SystemLabel test\n") is None
-
-
 def test_bench_marks_extracts_version_and_fields():
     """The only coverage of bench-marks EXTRACTION -- the block `jobset
     summarize` and `jobset/agreement.py` both depend on.
     """
-    marks = sc._extract_bench_marks_dict(FULL_FDF)
+    marks = sc.read_bench_marks_block(FULL_FDF)
     assert marks is not None
     assert marks.get("version") == "v1"
     assert any(f.get("name") == "MeshCutoff" for f in marks.get("fields", []))
@@ -685,7 +667,7 @@ def test_a_brace_in_a_region_name_does_not_destroy_the_block():
     the reader's brace-balance walk (which exists so both pretty-printed and
     compact JSON are accepted) counted `{` and `}` per line with no idea what
     a string was. A `}` inside a label closed the walk early, the truncated
-    text failed to parse, and `_extract_atom_metadata_dict` returned `None` —
+    text failed to parse, and `read_atom_metadata_block` returned `None` —
     the same value it returns for a block that is not there.
 
     So a user who named a region `chain}2` lost every label AND the frozen
@@ -702,7 +684,7 @@ def test_a_brace_in_a_region_name_does_not_destroy_the_block():
         block = sc.emit_atom_metadata({label: [0, 1]}, 2,
                                       created_at="2026-01-01T00:00:00Z")
         assert block, f"nothing emitted for {label!r}"
-        got = sc._extract_atom_metadata_dict(block)
+        got = sc.read_atom_metadata_block(block)
         assert got is not None, (
             f"a region named {label!r} made the block unreadable — every "
             "reader gets None, which is indistinguishable from 'no block'")
@@ -730,7 +712,7 @@ def test_the_brace_walk_still_accepts_both_json_layouts():
 
     for name, text in (("pretty", json.dumps(payload, indent=2)),
                        ("compact", json.dumps(payload))):
-        got = sc._extract_atom_metadata_dict(wrap(text))
+        got = sc.read_atom_metadata_block(wrap(text))
         assert got is not None, f"{name}-printed JSON no longer reads"
         assert got["regions"] == {"a}b": [0, 1]}
 

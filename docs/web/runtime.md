@@ -119,7 +119,9 @@ the same everywhere:
 It fires when an action would overwrite the canvas *and* the canvas is dirty —
 clicking **Load** on the load-from-project panel, or **Generate** on any
 generator panel. The modal blocks the triggering action; only *Discard and
-continue* proceeds. `tests/test_structure_warning_modal_js.py` pins all four
+continue* proceeds. A tab whose viewer is read-only — Structure optimization,
+Spectrum — has no canvas to lose: loading a structure replaces it without
+asking, and the parameters stay as typed *(user, 2026-10-12)*. `tests/test_structure_warning_modal_js.py` pins all four
 strings against this table, so a wording change has to update both together.
 
 *(A browser-level `beforeunload` guard was part of the original design, was

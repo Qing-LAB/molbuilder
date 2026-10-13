@@ -5,8 +5,8 @@
 **Companions:** [`running-a-job.md`](?doc=execution/running-a-job.md) § 6 — the
 guide: what to type and what the buttons do, which this document never repeats;
 [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1 — the file formats;
-[`engines/stages.md`](?doc=engines/stages.md) § 7 — the folder being saved and the
-two moments a save is offered;
+[`engines/stages.md`](?doc=engines/stages.md) § 7 — the folder being saved;
+§ 9 below — the moments a save is taken;
 [`project-layout.md`](?doc=execution/project-layout.md) § 6 — where the history
 sits in the project tree; [`run-identity.md`](?doc=execution/run-identity.md) —
 the id every state and tag carries.
@@ -693,26 +693,16 @@ words for how a deck is written, not properties of a snapshot.
 
 So the caller owns three things: **noticing** the moment, **saving** before it
 changes anything, and **saying so** — it knows what it is about to change, so
-the note names it, after the time the state was taken:
-`2026-10-03 14:05:12 · before prep task tight`. A state is then found by when
-and by what.
+the note names it, after the time the state was taken. A state is then found
+by when and by what.
 
-**The moments are `prep` and Task setup's Save, because each is a change** —
-and each saves first, always *(user, 2026-10-03: "always save through
+**Every `prep`, a group's first `launch` and Task setup's Save is a change,
+and each saves first, always** *(user, 2026-10-03: "always save through
 checkpoint, notify user, and make sure name of the checkpoint clearly shows
 timestamp. the checkpoint save is notified after the build is decided and
-checked")*. Prep saves once every check has passed — what it will build is
-decided — and before it writes anything; Task setup's Save before it writes the
-description. Both call one function, `checkpoint.save_before`. A folder with
-no history gets its first state; one whose state is saved and unchanged keeps
-standing where it stands, and that state is named. A save that fails stops the
-act: that state is the one a redo restores.
-*(Until 2026-10-03 prep offered the save and you answered — the terminal's
-answer defaulted to no, the tab's box started unticked — and Task setup's Save
-had a box of its own. A prepped stage is not prepped again since 2026-10-02 —
-a redo restores a state saved before the stage's prep
-([`job-system.md`](?doc=execution/job-system.md) § 5.0) — so an offer you
-could decline was a restore point you might not have.)*
+checked")* — where each saves, and the note it writes, are the table below.
+All call one function, `checkpoint.save_before`. A save that fails stops the
+act, since that state is the one a redo restores.
 
 > **What the confirmation buys you** is the promise in § 1: this state is one you
 > can return to, retune, and run again from — and save *that* as a new state if
@@ -720,17 +710,19 @@ could decline was a restore point you might not have.)*
 
 | | |
 |---|---|
-| **Where it saves** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — after its checks and before it writes; Task setup's Save, before it writes the description |
+| **Where it saves** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — once every check has passed (what it will build is decided) and before it writes anything; a group's first `launch`, once its plan stands and before it copies anything in or sends — the state a launched stage's way back restores, every run its group builds on in it ([`job-system.md`](?doc=execution/job-system.md) § 6.0, step 4); Task setup's Save, before it writes the description |
 | **Who decides** | the act that changes the folder: it always saves, and says so — the terminal prints the state and its note, the tab shows them |
-| **The note** | the time the state was taken, then what the act is about to change: `2026-10-03 14:05:12 · before prep task tight` |
+| **The note** | the time the state was taken, then what the act is about to change, each group by its number and its members (a group is its members, never its number — [`engines/stages.md`](?doc=engines/stages.md) § 2): `2026-10-03 14:05:12 · before prep task group 1 (coarse), group 2 (medium, tight)`, `… · before launch task group 2 (medium, tight)`, `… · before saving the description` |
+| **No history yet** | the folder gets its first state |
 | **Nothing changed** | no new state: the one the folder stands at is named |
 | **The last stage** | nothing asks, because nothing follows. A surface showing a finished, unsaved run should say it is unsaved |
 
-**Never at run or submit time**, which may be a queued job — a prompt would block
-a queue, and submitting starts something new rather than changing something that
-exists. *(It added "never on the compute node, which would need git there
-(I4)" until 2026-10-04: every env molbuilder installs has declared `git` since 2026-06-25 (`envs/recipes.py`, [`ops/env-framework.md`](?doc=ops/env-framework.md)), so a job's env carries git; I4 is
-retired, below.)*
+**Never during a run**, which may be a queued job — a prompt would block a queue
+(no save asks anything, but a run changes nothing a person decided). **A send
+saves only at a group's first launch**, on the machine that launches it,
+because that launch changes the folder — it copies in what the group takes —
+and its state is the one a redo of the group restores; a launch again opens a
+new run beside the old and saves nothing.
 
 > **The launcher points here; it does not act** *(user, 2026-08-18)*. A run
 > started with `--cold` removes the prior state before the engine starts. The
@@ -1207,7 +1199,7 @@ deck tells an engine to look for prior state is not a property of a snapshot).
 premise was a compute node without git, which `running-a-job.md § 2` was said
 to forbid; every env molbuilder installs has declared `git` since 2026-06-25 (`envs/recipes.py`, [`ops/env-framework.md`](?doc=ops/env-framework.md)), and § 2 asks only that a job need
 nothing beyond its folder and its env. When a save is taken is § 9's rule —
-prep and Save, never a running job. User, 2026-10-04: "we have ... included
+every prep, a group's first launch and Task setup's Save, never a running job. User, 2026-10-04: "we have ... included
 git in env ... long time ago".)*
 
 **S2 — shared state lives above; a stage writes only inside its own directory.**
@@ -1437,7 +1429,7 @@ conclude there is nothing to do.
 | **I4** | *retired 2026-10-04* — its premise, a compute node without git, is false: every env ships git | — |
 | **A1** | build, verify, publish — create if absent, never overwrite | ✅ |
 | **A2** | verify before mutating, in order | ✅ |
-| **A3** | the save precedes the change | ✅ `prep` and Task setup's Save call `checkpoint.save_before` once every check has passed and before anything is written — prep's plan is written after it (`Plan.carry_out`), its ledger line too (§ 9) |
+| **A3** | the save precedes the change | ✅ `prep`, a group's first launch and Task setup's Save call `checkpoint.save_before` once every check has passed and before anything is written — prep's plan and the launch's (`Plan.carry_out`, in `submit.send_launch` before it copies anything in or sends) are written after it, their ledger lines too (§ 9) |
 | **A4** | a restore is whole or does not happen | ✅ on every surface — the HTTP route refuses `include_binaries` rather than ignoring it |
 | **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; at a terminal you are **asked** and `--force` answers for a script; removes what the target lacks; the warning is answered by content while the display is not (§ 7.2) |
 | **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
@@ -1634,7 +1626,7 @@ lands.
 
 | Rule | Waits on |
 |---|---|
-| **A3** the save precedes the change | nothing: `prep` and Task setup's Save call `checkpoint.save_before` before they write (§ 9) — the test is owed (plan § 2, W45) |
+| **A3** the save precedes the change | nothing: `prep`, a group's first launch and Task setup's Save call `checkpoint.save_before` before they write (§ 9) — the test is owed (`plans/plan.md`) |
 | **S2** a stage writes only inside its own directory | a real staged folder to run a stage in (plan § 2, W45) |
 | **S3** a run records what it started from | nothing: `run.json`'s `continued_from` and the run's `.continued-from` (`runrecord.write_launch`, `write_continued_from`) — the test is owed (plan § 2, W45) |
 | **S4** the description is never modified | `task.json` reaching a produced folder (plan § 2, W45) |
@@ -1694,8 +1686,8 @@ the rows above it as well, naming three test files that no longer exist —
   unbuilt (archive pruning, `checkpoint diff`) —
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 6.
 - **The file formats** — [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1.
-- **The folder being saved, and the two moments a save is offered** —
-  [`engines/stages.md`](?doc=engines/stages.md) § 7.
+- **The folder being saved** — [`engines/stages.md`](?doc=engines/stages.md)
+  § 7; the moments a save is taken are § 9's.
 - **Phasing and what is built when** —
   [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
   [`plans/plan.md`](?doc=plans/plan.md) — `conventions.md`'s R3.

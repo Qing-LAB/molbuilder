@@ -86,6 +86,9 @@
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: center;
+    /* ROWS PACKED AT THE TOP: a field beside a taller one is stretched to
+     * the row's height, and its own rows must not spread down it. */
+    align-content: start;
     gap: var(--space-xs) var(--space-sm);
     cursor: pointer;
     /* Checkbox-style labels get padding so the whole row is a
@@ -282,9 +285,12 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     grid-column: span 2;
 }
 @container (max-width: 34rem) {
-    /* One track: a span-2 item would overflow it. */
-    .schema-section > label {
-        grid-column: auto !important;
+    /* One track: a span-2 item would overflow it.  The same selectors, so
+     * the later rule wins on its own (no `!important`). */
+    .schema-section > label:has(> .schema-int-triple),
+    .schema-section > label:has(> input[type="text"]),
+    .schema-section > label:has(> textarea) {
+        grid-column: auto;
     }
 }
 
@@ -342,7 +348,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     content: "•";
     color: var(--accent);
     margin-right: var(--space-xs);
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     opacity: 0.6;
 }
 /* A field this kind's Send refuses without (`required`, form-schema.md
@@ -350,7 +356,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 .schema-field.is-required > .schema-field-text::after {
     content: " · required";
     color: var(--error);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .schema-field.is-required.is-empty input {
     border-color: var(--error);
@@ -634,9 +640,17 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 .rec-diff > summary {
     cursor: pointer;
     color: var(--rec-flag);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 
+/* A row's parameter name.  Machine text beside a value, so it is monospace
+ * and may break anywhere — a catalogue key has no spaces to break at. */
+.rec-diff-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-mono);
+    overflow-wrap: anywhere;
+}
 .rec-diff-list {
     list-style: none;
     margin: var(--space-sm) 0 0;

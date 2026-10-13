@@ -251,6 +251,10 @@ def k_mesh_lines(mesh, *, notes: bool = True) -> list:
         names.append("kgrid_displacement")
         for name in names:
             out += parameter(name, "siesta").note()
+        if mesh.derived:
+            out.append("# tbt_k_grid left blank: three times the shared k-point "
+                       "mesh in the electrode plane, one along z "
+                       "(kmesh.transmission_start).")
     out += kmesh.write(mesh)
     return out
 
@@ -465,7 +469,7 @@ def check_rules(text: str, struct=None, cfg=None):
     and an index with no species is a startup failure after the queue wait.
     """
     from ..issues import Issue
-    from ..parse.fdf import _norm as _fdf_norm
+    from ..parse.fdf import fdf_key
 
     out = []
     code = [ln.split("#", 1)[0].rstrip() for ln in text.splitlines()]
@@ -487,7 +491,7 @@ def check_rules(text: str, struct=None, cfg=None):
         # fdf's keyword rule, from the one module that owns it.  A gate
         # that enforces "one keyword, one line" must agree with the reader
         # about what ONE KEYWORD means, or it polices a different rule.
-        norm = _fdf_norm(key)
+        norm = fdf_key(key)
         value = " ".join(ln.split()[1:])
         if norm in seen and seen[norm][1] != value:
             out.append(Issue(

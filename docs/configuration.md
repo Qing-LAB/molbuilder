@@ -371,6 +371,9 @@ and frequent diagnosis. Two rules make it a readable one:
   first `prep --target sol` the plan named this machine's record, and never
   sol's, which had answered)*. It is safe for logs by construction: paths and
   presence always, values only for the sections flagged printable (§ 4).
+  A file the same prep writes — the calculation's copy of the record, at its
+  first prep — is said so beside *absent*, since `STAGE-PLAN.md` is read once
+  it is there.
 
 ```text
 config:
@@ -380,6 +383,9 @@ config:
   launch.mode = 'submit'   <- machine
   environment.domains: general
 ```
+
+At a calculation's first prep the second line reads
+`environment /work/calc/environment.json  (absent -- this prep writes it, a copy of the record that answered)`.
 
 The `environment` rows are listed in precedence order, so the record that
 won is the first one marked found — here the calculation's, which is why the
@@ -888,7 +894,7 @@ that column cannot disagree with the code.
 | `envs.<category>` | which conda environment a backend's work runs in, when it is not the default name. Categories: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter` — the host env is always `molbuilder` (§ 2.1c) | `diagnostics.Capabilities.env_for_category` ← the run script, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `envs.manager` | the absolute path of the conda-compatible command (`mamba`, `micromamba`, `conda`) when the one on PATH is not the one to use | `runtime_config.get_env_manager` ← the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `env_init.activation` · `env_init.preamble` | how a shell on THIS machine enters a conda environment — `conda activate` or `source activate`, with no default — and the shell run before it (`module load mamba`, or sourcing conda's hook). Asked by `envs init-config`; `jobset probe --write` copies both into every record it writes, and refuses without the activation; prep reads them from the target's record | `runtime_config.get_env_init` ← `jobset probe` | no | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
-| `paths.projects` | where the project tree is | `projects.projects_root` ← every surface | yes | § 2.1d |
+| `paths.projects` | where the project tree is: a folder named `projects`, which this setting (and `$MOLBUILDER_PROJECTS`, which beats it) moves and never renames — a value naming another folder is refused ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5) | `projects.projects_root` ← every surface | yes | § 2.1d |
 | `tls.cert` · `tls.key` | the paths of the server's HTTPS certificate and key | `serve` | no | [`ops/deployment.md`](?doc=ops/deployment.md) § 5 |
 | `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. `providers` is written by `molbuilder auth-setup`, which leaves `trust_proxy` as it is | `web/auth.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |
 | `admin.emails` | who may use the operator-only web actions: restarting the server, the rate limiter's block list | `runtime_config.get_admin_emails` ← `web/admin.py` | no | [`ops/access-control.md`](?doc=ops/access-control.md) § 5–6 |

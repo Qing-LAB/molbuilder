@@ -814,7 +814,7 @@ class SiestaConfig:
         "expands":     ("Diag.ELPA.GPU",),
         "engine_key":  "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)",
     })
-    diag_algorithm: str = field(default="ScaLAPACK", metadata={
+    diag_algorithm: str = field(default="ELPA-1STAGE", metadata={
         "category": ("execution",),
         # NO ``read_by``, and that is the finding rather than an omission.
         # Measured: the packaged SIESTA runs both ELPA stages on CPU (ELPA is compiled in through ELSI), so the
@@ -838,8 +838,10 @@ class SiestaConfig:
         #     Runs in the PACKAGED env too: conda-forge's SIESTA carries
         #     ELPA through ELSI and both stages work on CPU (measured
         #     2026-08-13).  No environment follows from this choice.
-        # Default ScaLAPACK = SIESTA's own default; ELPA is a freely
-        # selectable upgrade, gated by neither GPU nor a source build.
+        # DEFAULT ELPA-1STAGE, not SIESTA's own ScaLAPACK (user, 2026-10-12:
+        # "we know that works better for most cases"): on CPU in the
+        # packaged env, and on the GPU when ``use_gpu`` asks -- gated by
+        # neither GPU nor a source build.
         "engine_key":  'Diag.Algorithm',
         "choices":   ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"),
         "tier":      "advanced",
@@ -935,7 +937,10 @@ class SiestaConfig:
         "tier":        "basic",
     })
 
-    tbt_k_grid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
+    # BLANK IS THE RULE'S: three times the shared mesh in the electrode plane,
+    # worked out when the deck is written (`kmesh.mesh_for`), so it follows
+    # `kgrid` until the person sets it (`engines/transport.md` § 0.3b).
+    tbt_k_grid: Optional[Tuple[int, int, int]] = field(default=None, metadata={
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
@@ -943,6 +948,7 @@ class SiestaConfig:
         "engine_key":  "TBT.k",
         "range":       (1, 64),
         "tier":        "basic",
+        "null_label":  "(3 x the shared k-point mesh)",
     })
 
     tbt_spin: int = field(default=0, metadata={
@@ -1175,9 +1181,10 @@ class SiestaConfig:
         "workflow_group": "stage",
         "label":       "Lead k-points along the transport direction (z)",
         "engine_key":  "%block kgrid_Monkhorst_Pack",
-        # A RECOMMENDATION from 20 (warned below); 1 and under is the item's
-        # hard limit, refused on every door (`above`, engines/siesta.md 6.1).
-        "range":       (20, 200),
+        # A RECOMMENDATION from 50 (warned below: the SIESTA manual's "at
+        # least >50"); 1 and under is the item's hard limit, refused on every
+        # door (`above`, engines/transport.md § 0.3b).
+        "range":       (50, 200),
         "tier":        "basic",
     })
 

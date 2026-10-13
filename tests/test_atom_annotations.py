@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from molbuilder.structure import (FROZEN_LABEL, Structure, AtomChannel,
-                                   copy_annotations, remap_annotations)
+                                   remap_annotations)
 from molbuilder import modify
 
 
@@ -139,7 +139,7 @@ def test_atom_metadata_block_roundtrips_annotations():
     assert f"molstruct-json/v{SCHEMA_VERSION}" in block
     assert '"annotations"' in block
     back = _struct(5)
-    assert sc.apply_atom_metadata(back, sc._extract_atom_metadata_dict(block)) is True
+    assert sc.apply_atom_metadata(back, sc.read_atom_metadata_block(block)) is True
     assert back.regions == {"bridge": [1], FROZEN_LABEL: [4]}
     assert back.frozen_atoms == [4]
     assert back.get_channel("charge").data == {0: -1.0, 2: 0.5}   # int keys
@@ -154,7 +154,7 @@ def test_atom_metadata_block_annotations_only():
                                   annotations=s.annotations, n_atoms_total=3)
     assert block is not None
     back = _struct(3)
-    assert sc.apply_atom_metadata(back, sc._extract_atom_metadata_dict(block)) is True
+    assert sc.apply_atom_metadata(back, sc.read_atom_metadata_block(block)) is True
     assert back.get_channel("tail").data == [2]
 
 

@@ -9,7 +9,7 @@
  *   4. Show the charge and spin each form's calculation will carry, and why
  *      — the chemistry card (`lib/chemistry.js`, POST /api/structure/analyze).
  *   5. HAND THE DESCRIPTION OVER — POST /api/task-setup/handover, then write
- *      the returned files through the projects file layer (`safeSave`).  That
+ *      the returned files through the projects file layer (`writeFile`).  That
  *      is `task.1st.json` (`stages.md` § 6.5a): a partial description the Task
  *      Setup tab finishes.
  *
@@ -617,38 +617,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // available when this classic-script viewer.js's IIFE runs.  If the
     // runtime isn't loaded, the wiring is skipped so the rest of viewer.js
     // still works.
-    // ----- Form-dirty tracking (B.5.3) ------------------------------
-    //
-    // Per the universal sidebar interaction model: sidebar commit
-    // (dblclick) on a structure file should rebuild this form's
-    // structure section.  But if the user has already typed
-    // SIESTA/PySCF parameters, a silent rebuild discards those.
-    // Track "the user has edited the param section since the last
-    // commit/Generate" and gate the next commit through a warning.
-    //
-    // Listens on both engine containers — the `input` event covers
-    // text inputs + textareas + sliders; `change` covers selects +
-    // checkboxes.  Each container's inputs are repopulated by
-    // form-schema rendering on engine switch, which we deliberately
-    // do NOT treat as a user edit (the events fire synchronously
-    // during the programmatic .value assignments and would set
-    // _formDirty=true spuriously); we reset _formDirty AFTER each
-    // rebuild via the same mechanism as a successful sidebar commit.
-    // The session restore writes through `setValues`, which fires both
-    // events, and holds `_ignoreFormChanges` while it does.
-    let _formDirty = false;
-    let _ignoreFormChanges = false;
-    function _wireFormDirtyTracking() {
-        const cIds = ["siesta-form-container", "pyscf-form-container"];
-        for (const id of cIds) {
-            const c = document.getElementById(id);
-            if (!c) continue;
-            const handler = () => { if (!_ignoreFormChanges) _formDirty = true; };
-            c.addEventListener("input",  handler);
-            c.addEventListener("change", handler);
-        }
-    }
-    document.addEventListener("DOMContentLoaded", _wireFormDirtyTracking);
 
     if (window.molbuilder && window.molbuilder.runtime
         && typeof window.molbuilder.runtime.whenReady === "function") {
@@ -688,17 +656,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 // does the card's answer, which is about that structure.
                 return;
             }
-            // Form-dirty gate: if the user has typed parameter
-            // edits since the last commit/Generate, ask before
-            // discarding them via the shared warning modal.
-            const modal = window.molbuilder
-                       && window.molbuilder.warningModal;
-            if (_formDirty && modal
-                && typeof modal.confirmDiscardUnsaved === "function") {
-                const proceed = await modal.confirmDiscardUnsaved();
-                if (!proceed) return;
-            }
-            _formDirty = false;
+            // NO DISCARD QUESTION: a load replaces the read-only viewer's
+            // structure and leaves the parameters as typed, so nothing is
+            // lost (`runtime.md`: the question is for an edited canvas).
             _sidebarLastFile = f;
             const mySeq = ++_sidebarLoadSeq;
             const filename = f.split("/").pop();
@@ -1126,21 +1086,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         try { saved = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
         catch (_) { return; }
         if (!saved || !fs) return;
-        // A RESTORE IS NOT AN EDIT: `setValues` fires `input` and `change`
-        // (so each field's caption follows), and the form-dirty gate would
-        // read them as the person's -- the next structure load would stop
-        // at "discard unsaved changes?" over values nobody had touched.
-        _ignoreFormChanges = true;
-        try {
-            for (const engine of ["siesta", "pyscf"]) {
-                const sch = formSchemas[engine];
-                const host = $(engine + "-form-container");
-                if (!sch || !host || !saved[engine]
-                        || typeof saved[engine] !== "object") continue;
-                fs.setValues(host, sch, saved[engine]);
-            }
-        } finally {
-            _ignoreFormChanges = false;
+        for (const engine of ["siesta", "pyscf"]) {
+            const sch = formSchemas[engine];
+            const host = $(engine + "-form-container");
+            if (!sch || !host || !saved[engine]
+                    || typeof saved[engine] !== "object") continue;
+            fs.setValues(host, sch, saved[engine]);
         }
     }
 
@@ -1202,8 +1153,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         const n = document.getElementById("handover-status");
         if (!n) return;
         n.hidden = false;
-        n.className = "status " + kind;      // page-shell owns the severities
-        n.textContent = text;
+        // THE ONE STATUS WRITER (`lib/status.js`); page-shell owns the look.
+        window.molbuilder.status.set(n, text, kind);
     }
 
     async function _sendToTaskSetup() {

@@ -1,7 +1,7 @@
 """Rewrite a calculation an older molbuilder wrote: its records written whole
-(2026-10-06), a flat calculation's run files numbered (2026-10-06), its
-template's electronic-state items (2026-09-28), and its template's zeros that
-meant *not set* (2.1.0).
+(2026-10-06), its stages' groups (2026-10-11), a flat calculation's run files
+numbered (2026-10-06), its template's electronic-state items (2026-09-28),
+and its template's zeros that meant *not set* (2.1.0).
 
 **The run files** (`_migrate_run_numbers`): in the flat shape each run's
 files -- every row the catalogue numbers where a stage's runs share a
@@ -12,16 +12,23 @@ is renamed for its stage's newest run, and said.
 
 **The records** (`_migrate_records`): `task.json` states its `calculation`
 and a notify block its four values, and every job in a `job-set.json` its
-`point`, `finish`, `resumes` and `placement` since 2026-10-06, and its
-`group` since 2026-10-07 -- the readers refuse a file that does not, naming
-this command (plan W57, decision 7).  Each key an older file left out is
-written with the meaning its absence had -- `optimization`, every channel and
-every field (`["*"]`), off, an empty point, no finish, resumes, no placement,
-prepared alone -- and each is printed; the old file
+`point`, `finish`, `resumes` and `placement` since 2026-10-06, its `group`
+since 2026-10-07, and its `written_at` and `asked` since 2026-10-11 -- the
+readers refuse a file that does not, naming this command (plan W57, decision
+7).  Each key an older file left out is written with the meaning its absence
+had -- `optimization`, every channel and every field (`["*"]`), off, an empty
+point, no finish, resumes, no placement, prepared alone, no `relax` run on
+record, nothing said beside the description -- and each is printed; the old
+file
 is kept beside the new as ``<name>.pre-w57``.  A key a release retired is
 removed and said: `task.json`'s `centre_junction` (2.6.0, the junction enters
 its calculation centred), the old file kept as ``<name>.pre-2.6.0`` when that
-is all that changed.
+is the earliest change.
+
+**The groups** (`_migrate_groups`): every stage states the job it runs in
+since 2026-10-11 (`engines/stages.md` § 2) -- a prepared stage its job's, the
+rest the number above where the ladder allows it -- the old file kept as
+``<name>.pre-2.7.0`` when that is the only change.
 
 **The template**, as follows.
 
@@ -64,7 +71,7 @@ rewrites it too).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class MigrateError(ValueError):
@@ -179,13 +186,105 @@ _TASK_ABSENT = {"calculation": "optimization"}
 _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
                   "channels": ["*"], "report": ["*"]}
 _JOB_ABSENT = {"point": {}, "finish": None, "resumes": True,
-               "placement": None, "group": None}
+               "placement": None, "members": None, "written_at": None,
+               # A PREP BEFORE 2026-10-11 recorded nothing it was told:
+               # launch's check plans it as told nothing beside the
+               # description, and one told flags is refused there, naming
+               # its prep again.
+               "asked": {"allocation": {}, "env": None,
+                         "emit_sbatch": True}}
+#: A job's key an older file wrote under another name -- renamed, its value
+#: kept: the members of the job it was prepared in (2.7.0).
+_JOB_RENAMED = {"group": "members"}
 
 
 def _never_as_zero(hours) -> bool:
     """Whether a period is the older spelling of never, ``0``."""
     return (isinstance(hours, (int, float)) and not isinstance(hours, bool)
             and hours == 0)
+
+
+def _migrate_groups(base: Path, obj: dict) -> List[str]:
+    """Every stage's `group` (2026-10-11, plan § 5aa M1), written into the
+    raw description ``obj`` -- a line saying the numbers, or ``[]`` when
+    every stage states one.  A stage prepared takes the group its job
+    records (`Job.members`; prepared alone, a group of its own); one not
+    prepared repeats the number above only where the stage above is not
+    prepared either, no stage of that group is one it builds on
+    (`group.upstream_of`) and their run cards share one allocation
+    (`group.card_shares`) -- else one more.  A prepared group whose
+    members are not one after another in the ladder cannot be stated by a
+    number, and is refused by name: which jobs to keep is the person's."""
+    stages = obj.get("stages")
+    if not isinstance(stages, list) or all(
+            not isinstance(st, dict) or "group" in st for st in stages):
+        return []
+    from ..identity import stage_key
+    from ..persist import read_json
+    from ..task import Task
+    from ..template import find_template
+    from .commands import rollback
+    from .group import may_join
+    from .model import FILENAME as JOBSET_FILENAME
+    # THE LADDER'S LINKS do not depend on the numbers: read on the
+    # description with each stage a group of its own.
+    task = Task.from_dict({**obj, "stages": [
+        {**st, "group": i + 1} for i, st in enumerate(stages)]})
+    try:
+        tpl = find_template(base, task.label)
+    except ValueError as exc:
+        raise MigrateError(str(exc)) from exc
+    text = tpl.read_text(encoding="utf-8") if tpl is not None else None
+    if tpl is not None:
+        # THE TEMPLATE AS THIS MIGRATION WRITES IT (:func:`_migrate_template`)
+        # -- every decision before any write -- since the links are read on
+        # the ladder it resolves, and an older template's items are refused.
+        try:
+            text = _migrate_template(base, task)[1][0][1]
+        except _NothingInTheTemplate:
+            pass
+    # THE JOB SET AS AN OLDER PREP WROTE IT -- a description with no group
+    # is one 2.7.0 never prepared, and before it a job's members were
+    # written under `group` (`_JOB_RENAMED`).
+    js = base / JOBSET_FILENAME
+    jobs = {stage_key(j["name"]): [stage_key(n) for n in (j.get("group")
+                                                            or [j["name"]])]
+            for j in ((read_json(js).get("jobs") or [])
+                      if js.is_file() else [])}
+    names = [st.name for st in task.stages]
+    groups: List[int] = []
+    members: List[str] = []
+    for i, name in enumerate(names):
+        job = jobs.get(stage_key(name))
+        above = names[i - 1] if i else None
+        if job is not None and job[0] != stage_key(name):
+            # a later member of a prepared job: the stage above is its
+            # member before it, or the job cannot be stated by a number
+            if above is None or stage_key(above) not in job:
+                raise MigrateError(
+                    f"`{name}` was prepared in one job with "
+                    f"{', '.join(f'`{n}`' for n in job if n != stage_key(name))}"
+                    f", which the ladder does not hold one after another -- "
+                    f"a group is stages one after another (engines/stages.md "
+                    f"§ 2), so no number states that job.  Which to keep "
+                    f"is yours, the migration run again after: remove the "
+                    f"stage between from the description, or "
+                    + rollback("that prep", base=base))
+            groups.append(groups[-1])
+            members.append(name)
+            continue
+        joins = (job is None and above is not None
+                 and jobs.get(stage_key(above)) is None
+                 and may_join(base, task, name, members, text))
+        groups.append(groups[-1] if joins else (groups[-1] + 1 if groups
+                                                else 1))
+        members = members + [name] if joins else [name]
+    for st, g in zip(stages, groups):
+        st["group"] = g
+    return [f"stages' groups {' '.join(map(str, groups))} (2026-10-11: "
+            f"each stage states the job it runs in -- a prepared one its "
+            f"job's, the rest the number above where the ladder allows it "
+            f"and the run cards share one allocation)"]
 
 
 def _migrate_records(base: Path):
@@ -238,39 +337,66 @@ def _migrate_records(base: Path):
         if _never_as_zero(notify.get("every_hours")):
             notify["every_hours"] = None
             lines.append("notify.every_hours = None (0 was never)")
+    records = len(lines) - retired
+    from ..resolve import ResolveError
+    try:
+        grouped = _migrate_groups(base, obj)
+    except MigrateError:
+        raise
+    except (ValueError, ResolveError) as exc:
+        # THE LADDER'S LINKS ARE READ ON THE DESCRIPTION AND ITS TEMPLATE: one
+        # either refuses as it stands is said in its reader's words.
+        raise MigrateError(f"{task_path.name}: its stages' groups cannot be "
+                           f"decided, so nothing was written: {exc}") from None
+    lines += grouped
     try:
         task = Task.from_dict(obj)
     except ValueError as exc:
         raise MigrateError(f"{task_path.name} rewritten would still be "
                            f"refused, so nothing was written: {exc}")
     if lines:
-        # KEPT AS WHAT IT WAS WRITTEN BEFORE: the release whose retirement
-        # alone rewrote it, else the records' change (W57).
+        # KEPT AS WHAT IT WAS WRITTEN BEFORE: the earliest rule it was
+        # written before -- the records' (W57), the release that retired a
+        # key (2.6.0), the groups (2.7.0).
         writes.append((task_path, json_text(task.to_dict()),
-                       ".pre-2.6.0" if retired and len(lines) == 1
-                       else ".pre-w57"))
+                       ".pre-w57" if records else
+                       ".pre-2.6.0" if retired else ".pre-2.7.0"))
         said += [f"{TASK_FILENAME}: {ln}" for ln in lines]
 
     for js_path in [base / JOBSET_FILENAME, *sweep_set_paths(base)]:
         if not js_path.is_file():
             continue
         d = read_json(js_path)
-        filled = 0
+        filled, missing, renamed = 0, set(), set()
         for job in d.get("jobs") or []:
+            old = {o: n for o, n in _JOB_RENAMED.items()
+                   if o in job and n not in job}
+            for o, n in old.items():
+                job[n] = job.pop(o)
             gaps = {k: v for k, v in _JOB_ABSENT.items() if k not in job}
-            if gaps:
+            if gaps or old:
                 job.update(gaps)
                 filled += 1
+                missing |= set(gaps)
+                renamed |= set(old)
         if filled:
             try:
                 body = JobSet.from_dict(d).to_dict()
             except ValueError as exc:
                 raise MigrateError(f"{js_path} rewritten would still be "
                                    f"refused, so nothing was written: {exc}")
-            writes.append((js_path, json_text(body), ".pre-w57"))
-            said.append(f"{js_path.relative_to(base)}: {filled} job(s) given "
-                        f"every key -- {', '.join(_JOB_ABSENT)} "
-                        f"(those left out, as their absence meant)")
+            # KEPT AS WHAT IT WAS WRITTEN BEFORE: the records' rule (W57,
+            # the members 2026-10-07), else the groups' release (2.7.0).
+            writes.append((js_path, json_text(body),
+                           ".pre-2.7.0" if missing <= {"written_at", "asked"}
+                           else ".pre-w57"))
+            said.append(f"{js_path.relative_to(base)}: {filled} job(s) -- "
+                        + "; ".join(
+                            ([f"given {', '.join(k for k in _JOB_ABSENT if k in missing)}"
+                              f" (left out, as their absence meant)"]
+                             if missing else [])
+                            + [f"`{o}` renamed `{_JOB_RENAMED[o]}`"
+                               for o in sorted(renamed)]))
     return said, writes, task
 
 
@@ -286,13 +412,13 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
 
     **What it cannot fix is said too**: such a stage was prepared before
     launch gave each run its number, so its run script takes no ``--run`` --
-    to launch it again, it is prepared anew, from the state saved before its
-    prep (`project-layout.md` § 1.6.1)."""
+    to launch it, its group is prepared again; launched, from the state
+    saved before its group's first launch (`project-layout.md` § 1.6.1)."""
     if task.shape != "flat":
         return [], []
     from ..runfiles import (FIRST_ATTEMPT, RunNames, latest_run,
                             shared_numbered_roles)
-    from .commands import rollback
+    from .commands import way_back
     from .materialize import ladder_homes
     said: List[str] = []
     moves: List[Tuple[Path, Path]] = []
@@ -300,27 +426,77 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
         names = RunNames.of(task.label, home.token, task.shape)
         newest = latest_run(base, task.label, stage=home.token)
         n = FIRST_ATTEMPT if newest is None else newest
-        stage_moves = [(base / (names.stem + role),
+        stage_moves = [(base / names.unnumbered(role),
                         base / names.name(role, n))
                        for role in shared_numbered_roles()
-                       if (base / (names.stem + role)).is_file()]
+                       if (base / names.unnumbered(role)).is_file()]
         if not stage_moves:
             continue
         moves += stage_moves
         said += [f"{old.name} -> {new.name} (run {n}, the stage's newest)"
                  for old, new in stage_moves]
+        # LAUNCHED, whether its launch record is numbered yet or not: one
+        # written before the numbering is the unnumbered `run.json` moved
+        # here.
+        launched = (newest is not None
+                    or (base / names.unnumbered(".run.json")).is_file())
         said.append(f"{home.name}: its run script was written before launch "
-                    f"gave each run its number (--run N) -- to launch it "
-                    f"again, prep it anew: " + rollback("its prep",
-                                                        base=base))
+                    f"gave each run its number (--run N) -- "
+                    + ("to launch it again, " if launched
+                       else "to launch it, ")
+                    + way_back(home.name, base=base, task=task,
+                               launched=launched))
     return said, moves
+
+
+def _migrate_last_run(base: Path, task, moves
+                      ) -> Tuple[List[str], Optional[Tuple[Path, str]]]:
+    """A flat calculation whose runs were launched before its folder recorded
+    its last run (2.7.0): ``<label>.last-run`` written for the run its
+    readers took as the last until then -- the newest launch record, by when
+    it was written, then its stage's place in the ladder, then its run's
+    number -- read where each record will lie once ``moves`` (the run
+    numbering) are made.  Decided, never done here: returns what it says and
+    the write; nothing for a folder that holds the record, or launched no
+    run."""
+    if task.shape != "flat":
+        return [], None
+    from ..identity import parse_token
+    from ..persist import read_json
+    from ..runfiles import compose, find_by_role, parse, run_name
+    target = base / compose(task.label, ".last-run")
+    if target.is_file():
+        return [], None
+    renamed = dict(moves)
+    best, key = None, None
+    for f in find_by_role(base, ".run.json"):
+        rec = parse(renamed.get(f, f).name, task.label)
+        if rec is None or rec.stage is None or rec.run is None:
+            continue
+        try:
+            body = read_json(f)
+        except (OSError, ValueError) as exc:
+            raise MigrateError(
+                f"{f} does not read ({exc}) -- which run last wrote this "
+                f"folder cannot be told; nothing was written.") from None
+        token = parse_token(rec.stage)
+        k = (str((body or {}).get("launched_at") or ""),
+             token[0] if token else -1, rec.run)
+        if key is None or k > key:
+            best, key = run_name(task.label, rec.stage, rec.run), k
+    if best is None:
+        return [], None
+    return ([f"{target.name}: {best} -- the last run here, by the rule that "
+             f"held before 2.7.0 (its newest launch record)"],
+            (target, best + "\n"))
 
 
 def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base``; return what changed, line by line
     -- its records (:func:`_migrate_records`: the readers refuse a file
     written before they were whole), a flat calculation's run files numbered
-    (:func:`_migrate_run_numbers`), its template's electronic-state
+    (:func:`_migrate_run_numbers`) and its last run recorded
+    (:func:`_migrate_last_run`), its template's electronic-state
     items and its zeros, and its stages', that meant *not set* before 2.1.0
     (:func:`_migrate_template`), all decided before any is written.  Each old file rewritten is
     kept beside its new one; a renamed one is its new one.
@@ -333,10 +509,11 @@ def migrate_state(base) -> List[str]:
     # calculation as it was, never half rewritten.
     said, writes, task = _migrate_records(base)
     n_said, moves = _migrate_run_numbers(base, task)
+    l_said, l_write = _migrate_last_run(base, task, moves)
     try:
         t_said, t_writes, t_task = _migrate_template(base, task)
     except _NothingInTheTemplate:
-        if not said and not moves:
+        if not said and not moves and l_write is None:
             raise MigrateError(
                 f"{base} holds nothing an older molbuilder wrote -- its "
                 f"records are whole, its run files carry their run's "
@@ -361,13 +538,27 @@ def migrate_state(base) -> List[str]:
         raise MigrateError(
             f"{', '.join(p.name for p in taken)} already exist -- a run file "
             f"cannot be numbered over another; nothing was written.")
+    # A KEPT FILE IS NEVER WRITTEN OVER: it is the only copy of what the
+    # file was before an earlier migration.
+    held = [path.with_name(path.name + keep)
+            for path, _text, keep in writes + t_writes
+            if path.with_name(path.name + keep).exists()]
+    if held:
+        raise MigrateError(
+            f"{', '.join(str(p) for p in held)} already "
+            f"{'holds' if len(held) == 1 else 'hold'} an earlier version -- "
+            f"a kept file is never written over; nothing was written.  Move "
+            f"{'it' if len(held) == 1 else 'them'} aside and run the "
+            f"migration again.")
     for path, text, keep in writes + t_writes:
         kept = path.with_name(path.name + keep)
         kept.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
         path.write_text(text, encoding="utf-8")
     for old, new in moves:
         old.rename(new)
-    said += n_said + t_said
+    if l_write is not None:
+        l_write[0].write_text(l_write[1], encoding="utf-8")
+    said += n_said + l_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",

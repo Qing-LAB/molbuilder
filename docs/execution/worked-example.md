@@ -180,7 +180,7 @@ earlier one's `.XV`, and it is why the formula stays out of the filename (§ 3).
 > left on disk afterwards, and § 7 is where that difference stops being cosmetic.
 
 ✅ **Gap 2 — CLOSED 2026-08-11** (plan steps 3–4). `prep` is per-stage
-(`jobset prep task --stage <stage>`) and renders each deck on the target, one per
+(`jobset prep task --group <N>`) and renders each deck on the target, one per
 element of the resolved `ParameterSet`, allocation in hand.
 And read the relationship the right way round:
 **`prep` is the framework and benchmarking is one thing you prep**
@@ -257,7 +257,7 @@ a rank count is a machine fact the description must never carry
 (`engines/template.md` § 7).  `summarize bench` writes the verdict into the
 terminal as the report `summarize` prints, which **no code
 reads**: you read the winner and write it into `task.json`'s `execution`, and
-that is what `prep task --stage <stage>` uses
+that is what `prep task --group <N>` uses
 *(interactive `use it? [y/N]` until 2026-08-19; an editable `run-config.toml`
 `prep` folded in until 2026-09-02 — the answer moved into the
 tree)*.  (The `bench prep-run`/`run-production.sh` chain this gap described
@@ -362,8 +362,7 @@ unattended: `--chain` was deleted the same day, in both modes.
 So the entry point is:
 
 ```bash
-molbuilder jobset prep   task --stage tight --from 01_coarse/run-0   # or --cold
-molbuilder jobset launch task --stage tight --mode direct            # or --mode submit
+molbuilder jobset launch task --group 2 --from 01_coarse/run-0 --mode direct   # or --cold; or --mode submit
 ```
 
 `job-system.md` § 5.3 is now the authority for the commands, and the ordering

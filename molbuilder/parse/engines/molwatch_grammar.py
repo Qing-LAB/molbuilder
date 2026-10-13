@@ -49,7 +49,6 @@ FROZEN_ATOMS = re.compile(r"^#\s*frozen_atoms:\s*(.*)$")
 BLOCK_BEGIN = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
 BLOCK_END = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
 #: The block's one-value lines, as `trajectory_log.emitter` writes them.
-STEP_INDEX = "step_index:"
 KIND = "kind:"
 ENERGY = "energy (eV):"
 MAX_FORCE = "max_force (eV/Ang):"

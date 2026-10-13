@@ -75,6 +75,24 @@
     let rootSel = null;
     let pickedRun = false;
     let pickedFile = "";        // the file the picked run opened
+    let pickSeq = 0;            // the newest pick; a later answer wins
+
+    /* WHAT THE LADDER SAYS under its table -- a pick that failed, or how to
+     * reach a transmission point when the report is not on screen.  Held
+     * here, not on the element: every announcement redraws the ladder, and
+     * the click that asks for the line announces too.  Any announcement
+     * clears it; what sets it does so after its own. */
+    let ladderSaid = ["", null];      // [the words, their severity]
+    let ladderSaidEl = null;
+    function _sayOnLadder(text, kind) {
+        ladderSaid = [text || "", kind || null];
+        if (ladderSaidEl) {
+            // THE ONE STATUS WRITER (`lib/status.js`), with its severity.
+            window.molbuilder.status.set(ladderSaidEl, ladderSaid[0],
+                                         ladderSaid[1]);
+            ladderSaidEl.hidden = !ladderSaid[0];
+        }
+    }
 
     /* PICK A RUN IN PLACE: ask the run door for that run's folder -- the
      * same answer the picker builds a folder's menu from -- and announce
@@ -83,12 +101,19 @@
      * moved. */
     function _pickRun(file) {
         const folder = _dirOf(file);
+        const mine = ++pickSeq;
+        const name = file.split("/").pop();
         fetch("/api/results/dir?path=" + encodeURIComponent(folder),
               { cache: "no-store" })
             .then((r) => r.json())
             .then((body) => {
-                if (!body || body.ok !== true) return;
-                const name = file.split("/").pop();
+                if (mine !== pickSeq) return;
+                if (!body || body.ok !== true) {
+                    _sayOnLadder("Could not open " + name + ": "
+                        + ((body && body.error) || "the folder did not answer")
+                        + ".", "error");
+                    return;
+                }
                 const hit = (body.files || []).find((f) => f.name === name);
                 pickedRun = true;
                 pickedFile = file;
@@ -103,11 +128,16 @@
                         dir: rootDir, diverged: false,
                         ladder: rootSel ? rootSel.ladder : null,
                         record: body.record, files: body.files,
+                        record_dir: folder,
                         force: true,
                         picked_run: true,
                     } }));
             })
-            .catch(() => { /* the folder answered nothing; the ladder stays */ });
+            .catch((e) => {
+                if (mine !== pickSeq) return;
+                _sayOnLadder("Could not open " + name + ": "
+                    + (e && e.message ? e.message : e) + ".", "error");
+            });
     }
 
     function _backToRoot() {
@@ -248,12 +278,10 @@
         // A TRANSMISSION ROW'S "open" SHOWS THE REPORT AT ITS POINT -- when
         // the report is what the panel shows; when another file is, this
         // says what to do.
-        const reportFirst = document.createElement("p");
-        reportFirst.className = "status";
-        reportFirst.hidden = true;
-        reportFirst.textContent = "To see this point, open the report "
-            + "first: choose task.json in the Result file menu above, then "
-            + "click \u201copen\u201d on this row again.";
+        const said = document.createElement("p");
+        said.className = "status";
+        ladderSaidEl = said;
+        _sayOnLadder(ladderSaid[0], ladderSaid[1]);
         // THE COLUMNS, named -- the state and whether the run converged are
         // two facts (`runstatus.StageStatus.converged`), side by side.
         const head = document.createElement("tr");
@@ -327,13 +355,15 @@
                         if (r.bias_v == null) return;
                         if (currentHandle
                                 && typeof currentHandle.selectPoint === "function") {
-                            reportFirst.hidden = true;
                             currentHandle.selectPoint({ frame: r.frame,
                                                         bias: Number(r.bias_v) });
                         } else {
                             // THE REPORT IS NOT ON SCREEN -- another file
                             // of the calculation is -- so say how to get there.
-                            reportFirst.hidden = false;
+                            _sayOnLadder("To see this point, open the report "
+                                + "first: choose task.json in the Result "
+                                + "file menu above, then click \u201copen\u201d "
+                                + "on this row again.", "warn");
                         }
                     });
                     result.appendChild(open);
@@ -364,7 +394,7 @@
             });
         });
         host.appendChild(table);
-        host.appendChild(reportFirst);
+        host.appendChild(said);
         if (pickedRun) {
             const back = document.createElement("button");
             back.type = "button";
@@ -443,10 +473,12 @@
         const ladder = (sel && sel.ladder) || null;
         const scope = { dir: (sel && sel.dir) || "",
                         diverged: !!(sel && sel.diverged) };
+        _sayOnLadder("");
         /* THE PICKER'S ANNOUNCEMENT OF A ROOT is remembered whole, so a run
          * picked off the ladder can be left again; a picked run's own
          * announcement never replaces it. */
         if (!(sel && sel.picked_run)) {
+            ++pickSeq;              // a pick still in flight is overtaken
             pickedRun = false;
             pickedFile = "";
             if (ladder) { rootSel = sel; rootDir = scope.dir; }

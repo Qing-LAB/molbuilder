@@ -210,9 +210,9 @@ def gitignore_is_current(root: Path, always_large=()) -> bool:
 #: the directories it found and says to put a description at the root, which is
 #: what a real staged calculation has anyway.  Dot-directories are skipped
 #: before this is consulted, which is what stopped `.venv/` tripping it.
-#: What says "somebody's working directory".  Roles, looked up through
-#: `runfiles.find_by_role` -- all three are `runfiles.WRITTEN` rows.
-_NESTED_WORKING_DIR_ROLES = (".fdf", ".py", ".run.sh")
+#: What says "somebody's working directory": what every prepared run carries
+#: (`runfiles.prepared_roles`), looked up through `runfiles.find_by_role`.
+from .runfiles import prepared_roles as _prepared_roles  # noqa: E402
 
 
 # --------------------------------------------------------------------- #
@@ -416,7 +416,7 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
             try:
                 marked = any(
                     _rf_find_by_role(entry, _role)
-                    for _role in _NESTED_WORKING_DIR_ROLES)
+                    for _role in _prepared_roles())
             except OSError:
                 marked = False            # unreadable: not our problem, as above
             if marked:
@@ -1895,9 +1895,10 @@ def save_before(path, what: str, *, engine: Optional[str] = None,
 
     The ONE door every act that changes a calculation's folder calls first --
     `prep`, at both its doors, once its checks have passed; Task setup's
-    Save, before it writes the description.  The note is the time the state
-    was taken, then what the act is about to change
-    (``2026-10-03 14:05:12 · before prep task tight``), so a state is found by
+    Save, before it writes the description; a group's first launch, before
+    it sends.  The note is the time the state was taken, then what the act
+    is about to change (``2026-10-03 14:05:12 · before prep task group 2 (medium)``),
+    so a state is found by
     when and by what.  A folder with no history gets its first state; one
     whose state is saved and unchanged keeps standing where it stands, and
     that state is returned.  Raises :class:`CheckpointError` when the state

@@ -26,10 +26,9 @@ from ..pseudos import PSEUDO_DIRNAME
 from ..identity import StageRef, parse_token, resolve_stage_ref
 from ..runfiles import FIRST_ATTEMPT, parse as _rf_parse
 from .model import JobSet, warm_carry
-from ..paths import (attempt_dir, attempts_in,
+from ..paths import (attempt_dir, attempt_index, attempts_in,
                      trial_label as _paths_trial_label,
                      trial_name as _paths_trial_name,
-                     trials_in as _paths_trials_in,
                      bench_containers_in as _bench_containers_in,
                      bench_container as _paths_bench_container)
 
@@ -127,21 +126,6 @@ def trial_dir(shape, stage_token: str, job_name: str) -> str:
     lookup.
     """
     return f"{_paths_bench_container(shape, stage_token)}/{_paths_trial_name(job_name)}"
-
-
-def trials_in(container) -> "List[Path]":
-    """The trial directories in a bench container — :func:`trial_dir`'s search.
-
-    `project-layout.md` § 4.5: for every name it composes, the framework owns
-    the search.  A caller wanting the trials globbed ``bench-*`` itself, which
-    is this module's prefix spelled somewhere else.
-    """
-    c = Path(container)
-    # The PREFIX is not spelled here: `paths.trial_point` is the reader for
-    # `paths.trial_name`, and asking it is what keeps the pair in step.  This
-    # returns PATHS where `paths.trials_in` returns the points -- two callers,
-    # one rule (N4, 2026-09-09).
-    return [c / _paths_trial_name(pt) for pt in _paths_trials_in(c)]
 
 
 def trial_work_dir(container, shape, names: "RunNames") -> Path:
@@ -365,7 +349,7 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
     the jobs named in ``only`` (a set of job names), or every job.
 
     Returns the list of created job directories (in JobSet order).  Idempotent:
-    re-running refreshes the copies without duplicating anything.  Raises
+    a copy already there is kept, never written twice.  Raises
     ``ValueError`` if the JobSet is structurally invalid (so a bad carry /
     duplicate name can't produce a broken tree).
 
@@ -521,21 +505,41 @@ def resolve_attempt(stage_dir: Path, names: "RunNames") -> Tuple[Path, bool]:
     return attempt_dir(stage_dir, FIRST_ATTEMPT), True
 
 
+def ever_launched(jobset: JobSet, base_dir, job) -> bool:
+    """Whether ``job``'s stage has been launched -- any run of it
+    (`project-layout.md` § 1.6.1): where its runs are folders, every
+    ``run-<n>`` but the newest was, and the newest when its launch record
+    says so (:func:`resolve_attempt`'s rule); where its runs share a
+    folder, its newest launched run's record.  A record that does not read
+    raises, as the one door does (`runrecord.launch_record`)."""
+    base = Path(base_dir)
+    sh = shape_of(jobset, base)
+    names = run_names(jobset, job, sh)
+    container = base / job_dir_names(jobset, sh)[job.name]
+    if not sh.keeps_attempts_as_directories:
+        return runrecord.launch_record(container, names) is not None
+    ns = attempts_in(container)
+    return len(ns) > 1 or (bool(ns) and runrecord.launch_record(
+        attempt_dir(container, ns[-1]), names) is not None)
+
+
 @dataclass(frozen=True)
 class Attempt:
-    """One try at a stage: the directory, and what was put in it.
-
-    ``fresh`` is False when an unlaunched attempt was **reused** rather than
-    opened (:func:`resolve_attempt`). ``continued_from`` is **None** when
-    this run starts from the structure.
-    """
+    """One try at a stage: the directory, and what was put in it -- the
+    stage's own files (``brought``) and what it continues from, one
+    hand-over (``hand``, ``None`` when it takes nothing).  ``fresh`` is
+    False when an unlaunched attempt was **reused** rather than opened
+    (:func:`resolve_attempt`)."""
     stage:          str
     dir:            Path
     fresh:          bool
     brought:        List[str]
-    copied:         List[str]
-    continued_from: Optional[str]
-    cold:           bool
+    hand:           Optional["HandOver"] = None
+
+    @property
+    def copied(self) -> List[str]:
+        """The files it took from the run it continues from."""
+        return self.hand.names_taken if self.hand is not None else []
 
 
 #: Why ``--from`` and ``--cold`` mean nothing on the flat layout -- said by
@@ -646,33 +650,183 @@ class SweepRun:
 
 
 def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
-                   plan, shape=None, next_run: bool = False) -> SweepRun:
+                   plan, shape=None, frames: Optional[int] = None
+                   ) -> SweepRun:
     """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
     folder, holding copies of that point's prepared files (its deck, run
     script and the shared package; :func:`bring_files`).  The run is the
-    stage's newest when it has not been launched (prep's), else the next
-    (``next_run``: a launch again, `job-system.md` § 5.4, rule 3).  Each point
+    stage's newest when it has not been launched -- reused, and emptied
+    whole first (:func:`empty_run`) -- else the next (a launch again,
+    `job-system.md` § 5.4, rule 3).  Each point
     folder is a run folder (`open_run`); the run above them is their
-    container.  What the points take from upstream is the caller's
-    (`prep`'s gather), and what each starts from the walk's."""
-    from ..transport.stages import point_folders, points_in
+    container.  ``frames`` is the junction's count when the caller holds it
+    (prep, composing it in the same plan); else the record's.  What the
+    points take from upstream is the caller's (launch's gather), and what
+    each starts from the walk's."""
+    from ..transport.stages import point_folders
     base = Path(base_dir)
     sh = shape if shape is not None else shape_of(jobset, base_dir)
-    job = next(j for j in jobset.jobs if j.name == stage_name)
-    stage_dir = base / job_dir_names(jobset, sh)[stage_name]
+    job = jobset.job(stage_name)
+    stage_dir = base / job_dir_names(jobset, sh)[job.name]
     rn = run_names(jobset, job, sh)
-    if next_run:
-        ns = attempts_in(stage_dir)
-        run, fresh = attempt_dir(stage_dir, (ns[-1] + 1) if ns else
-                                 FIRST_ATTEMPT), True
-    else:
-        run, fresh = resolve_attempt(stage_dir, rn)
-    sources = dict((pt, d) for d, pt in point_folders(base, task, stage_name))
-    points = points_in(run, task, stage_name, base=base)
+    run, fresh = resolve_attempt(stage_dir, rn)
+    sources = dict((pt, d) for d, pt in point_folders(base, task, stage_name,
+                                                      frames=frames))
+    points = [(run / pt.rel, pt) for pt in sources]
+    if not fresh:
+        empty_run(run, plan)
     for pdir, pt in points:
         open_run(base, pdir, plan)
         bring_files(jobset, job, base, sources[pt], pdir, rn, plan)
     return SweepRun(stage=stage_name, dir=run, points=points, fresh=fresh)
+
+
+def empty_run(run, plan) -> List[str]:
+    """A run never launched, emptied whole -- every file in it and every
+    folder below it -- for the prep or the launch that fills it again
+    (`job-system.md` § 5.0, 2a: *its first run emptied of anything put
+    there before*; a run a refused send opened, § 6.0 step 4).  A link is
+    removed, never followed.  Returns the paths taken out, from ``run``."""
+    run = Path(run)
+    out: List[str] = []
+    for here, dirs, files in os.walk(run, topdown=False):
+        here = Path(here)
+        for name in sorted(files):
+            plan.remove(here / name)
+            out.append(str((here / name).relative_to(run)))
+        for name in sorted(dirs):
+            d = here / name
+            if d.is_symlink():
+                plan.remove(d)
+            else:
+                plan.remove_folder(d)
+            out.append(str(d.relative_to(run)) + "/")
+    return out
+
+
+def empty_old_points(stage_dir, points, plan, *, keep=()) -> List[str]:
+    """A swept rung prepared again: the folders prep rendered below its
+    stage for points the description no longer holds, taken out whole --
+    its files rendered again (`job-system.md` § 5.0, 2a).  ``points`` are
+    the points prepared now (``Point.rel``); a run folder (``run-<n>``) and
+    the folders ``keep`` names -- the stage's benchmark container, the walk
+    a launch writes -- are never touched.  Returns the folders taken out,
+    from ``stage_dir``."""
+    stage_dir = Path(stage_dir)
+    wanted = {str(Path(r)) for r in points}
+    above = {str(parent) for r in wanted for parent in Path(r).parents
+             if str(parent) != "."}
+    out: List[str] = []
+
+    def gone(folder: Path) -> None:
+        for here, dirs, files in os.walk(folder, topdown=False):
+            for name in sorted(files):
+                plan.remove(Path(here) / name)
+            for name in sorted(dirs):
+                d = Path(here) / name
+                if d.is_symlink():
+                    plan.remove(d)
+                else:
+                    plan.remove_folder(d)
+        plan.remove_folder(folder)
+        out.append(str(folder.relative_to(stage_dir)) + "/")
+
+    def walk(folder: Path) -> None:
+        for d in sorted(p for p in folder.iterdir()
+                        if p.is_dir() and not p.is_symlink()):
+            rel = str(d.relative_to(stage_dir))
+            if folder == stage_dir and (attempt_index(d.name) is not None
+                                        or d.name in keep):
+                continue
+            if rel in wanted:
+                continue
+            if rel in above:
+                walk(d)
+            else:
+                gone(d)
+
+    if stage_dir.is_dir():
+        walk(stage_dir)
+    return out
+
+
+#: A hand-over's two records (`job-system.md` § 5.4): the one run a run
+#: continues from (`.continued-from`), and a transport rung's inputs, each
+#: from its run (`.gathered-from`).
+CONTINUED, GATHERED = "continued", "gathered"
+
+
+@dataclass(frozen=True)
+class HandOver:
+    """WHAT ONE RUN TAKES FROM OTHER RUNS, AND THE RECORD THAT SAYS SO --
+    every hand-over's one shape (`job-system.md` § 5.4), whoever decided it:
+    the continuation door, the gather door, a launch again keeping what its
+    last run was given, the points' walk.
+
+    ``target`` is the run that takes -- an attempt, a point of a run of
+    points, or a flat calculation's folder -- named by its stage's
+    ``names`` as run ``run``; ``files`` each file it takes, with the run it
+    comes from; ``record`` which record says so: :data:`CONTINUED` -- the
+    one run it continues from, ``source`` (a taken-over point's is the run
+    that COMPUTED it, one hop, whatever folder its files are copied from)
+    -- or :data:`GATHERED`, each file with its run.  ``walk``: copied by the
+    walk just before the run starts (a point's start, which the point
+    before it may finish in the same walk), not with the plan."""
+    target: Path
+    names: "RunNames"
+    run: int
+    record: str
+    files: Tuple[Tuple["runrecord.RunRef", str], ...] = ()
+    source: Optional["runrecord.RunRef"] = None
+    walk: bool = False
+
+    def __post_init__(self):
+        if self.record not in (CONTINUED, GATHERED):
+            raise ValueError(f"a hand-over's record is {CONTINUED!r} or "
+                             f"{GATHERED!r}, not {self.record!r}")
+        if (self.record == CONTINUED) != (self.source is not None):
+            raise ValueError("a continued hand-over names the run it "
+                             "continues from; a gathered one names a run "
+                             "per file")
+
+    @property
+    def names_taken(self) -> List[str]:
+        """The files it takes, by name, in order."""
+        return [name for _src, name in self.files]
+
+    def walk_copies(self, base, cwd) -> List[Tuple[str, str]]:
+        """What the walk copies just before the run starts: ``(file, folder)``
+        pairs, each from ``cwd``, the folder the walk runs in."""
+        dst = os.path.relpath(self.target, cwd)
+        return [(os.path.relpath(src.path(base) / name, cwd), dst)
+                for src, name in self.files]
+
+
+def hand_over(base, h: HandOver, plan=None) -> List[str]:
+    """CARRY ONE HAND-OVER OUT -- the one function every hand-over goes
+    through (`job-system.md` § 5.4): its files copied into its run -- as
+    real files, never linked, since the engine writes to those very names
+    (`project-layout.md` § 1.6.5) -- unless the walk copies them
+    (``h.walk``), and its record written beside the run
+    (`runrecord.write_continued_from`, `write_gathered_from`).  Into
+    ``plan`` (`jobset.planned.Plan`); with none, now -- a flat run's
+    record, written with its launch record.  Returns the files copied."""
+    from .planned import Plan
+    own = plan is None
+    plan = Plan() if own else plan
+    copied: List[str] = []
+    if not h.walk:
+        for src, name in h.files:
+            plan.copy(src.path(base) / name, Path(h.target) / name)
+            copied.append(name)
+    if h.record == CONTINUED:
+        runrecord.write_continued_from(h.target, h.source, names=h.names,
+                                       run=h.run, plan=plan)
+    else:
+        runrecord.write_gathered_from(h.target, list(h.files), plan=plan)
+    if own:
+        plan.carry_out()
+    return copied
 
 
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
@@ -685,14 +839,14 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     ``plan`` receives the attempt's folder and everything put in it, and is
     read for the stage's files it already holds -- `prep` opens the attempt
-    as part of its plan, written after the save (`job-system.md` § 5.0); a
-    caller with none (`launch`, opening the next attempt of a launched
-    stage) has it written now.  ``shape`` is the layout as the caller read
+    as part of its plan, written after the save (`job-system.md` § 5.0),
+    and `launch` fills it as part of its own, written at the send; a caller
+    with none has it written now.  ``shape`` is the layout as the caller read
     it (:func:`shape_of`); with none it is asked here.
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
-    `prep`, by default (`job-system.md` § 5.4) -- so a refusal
-    quotes what was typed, never a ``--from`` nobody typed.
+    the launch, by default (`job-system.md` § 5.4) -- so a refusal quotes
+    what was typed, never a ``--from`` nobody typed.
 
     The five steps § 1.6 names: **resolve** the next ``run-<n>``, **create**
     it, **copy** the deck / monitor / shared package in, **copy** whatever this
@@ -703,17 +857,16 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     ``continue_from`` is a bundle-relative attempt directory —
     ``"01_coarse/run-0"``. **Which run is never a guess** (§ 1.6):
     continuing from ``run-0`` and from ``run-2`` are different scientific
-    choices, so the callers pass one they can name -- `prep`, by default,
-    the stage before it's newest attempt, which must have finished, or the
-    one a person named (`continuation.continuation_answer`,
-    `job-system.md` § 5.4); the
-    submission door, re-submitting a launched stage, the SAME stage's latest
+    choices, so the callers pass one they can name -- a first launch, by
+    default, the stage before it's newest attempt, which must have
+    finished, or the one a person named (`continuation.continuation_answer`,
+    `job-system.md` § 5.4); a launch again, the SAME stage's latest
     (user, 2026-08-21).  ``cold=True`` means start
     clean, and with a directory per attempt that is simply *skip the copy* —
     there is nothing to move aside, because a fresh attempt is empty unless
-    something is put in it.  Re-preparing a REUSED attempt, either statement
-    first takes away what an earlier one carried in; saying neither leaves
-    the attempt's carry as it is.
+    something is put in it.  A REUSED attempt -- never launched -- is
+    emptied whole first (:func:`empty_run`), whoever fills it: prep
+    preparing it again, or the launch that sends it.
 
     ``carry`` names the files to copy; it defaults to :func:`warm_carry` for
     **this pair** — the stage being prepared and the stage that produced the
@@ -733,7 +886,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     refs = stage_refs(jobset)
     stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
                                    stage_name).name
-    job = next(j for j in jobset.jobs if j.name == stage_name)
+    job = jobset.job(stage_name)
 
     # WHAT IT CONTINUES FROM, CHECKED BEFORE ANYTHING IS WRITTEN (W52), so a
     # refusal leaves no attempt opened or stripped.
@@ -749,6 +902,14 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     plan.folder(stage_dir)
     rn = run_names(jobset, job, sh)
     attempt, is_new = resolve_attempt(stage_dir, rn)
+    # AN ATTEMPT NEVER LAUNCHED, REUSED -- prepared again, or filled at the
+    # launch after a refused send: what was put into it before is taken
+    # out first, so it starts from what this one takes.  A changed mind
+    # that left an `.XV` lying there would change nothing -- the engine
+    # finds it and warm-starts anyway, the *"present but not honoured"*
+    # failure wearing its other face, and silent.
+    if not is_new:
+        empty_run(attempt, plan)
     # THE ONE OPENER (`open_run`): the attempt and every container down to
     # it, each saying what it is, which is not recoverable later: a bench trial's
     # directory is structurally identical to a stage's own, and § 1.4 calls
@@ -757,46 +918,18 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     brought = bring_files(jobset, job, base, stage_dir, attempt, rn, plan)
 
-    # Re-preparing an attempt that was already carried into: UNDO the previous
-    # carry first.  § 1.6 makes re-prep *"changing your mind about the setup"*,
-    # and a mind changed from ``--from A`` to ``--cold`` that leaves A's ``.XV``
-    # lying in the directory has changed nothing -- the engine finds it and
-    # warm-starts anyway.  That is the *"present but not honoured"* failure
-    # wearing its other face, and it is silent.  Only files the marker says we
-    # carried in are removed, and never a symlink, so nothing a user put here
-    # by hand is touched.
-    #
-    # ONLY WHEN THE CALLER SAYS WHAT IT NOW CONTINUES FROM -- a run, or
-    # ``cold``.  A caller that says neither changes nothing.
-    marker = runrecord.continued_from_marker(attempt, rn, FIRST_ATTEMPT)
-    if not is_new and plan.is_file(marker) and (cold or continue_from):
-        # The WHOLE declared set, not the pair-filtered one: the previous prep
-        # may have named a different source and so copied a conditional file
-        # this one would not, and a mind changed from `--from A` to `--cold`
-        # that leaves A's `.CG` behind has changed nothing.
-        for w in job.warm:
-            f = attempt / w.name
-            if plan.is_file(f) and not f.is_symlink():
-                plan.remove(f)
-        plan.remove(marker)
-
-    copied: List[str] = []
+    # WHAT IT CONTINUES FROM, ONE HAND-OVER (`job-system.md` § 5.4): the
+    # files the run holds of what the stage takes, and the record of the
+    # run they came from, beside the run.
+    hand = None
     if continue_from and not cold:
-        src = base / continue_from
-        for name in names:
-            f = src / name
-            if f.is_file():
-                plan.copy(f, attempt / name)
-                copied.append(name)
-
-    # Leave the provenance where ``launch`` can find it: prep is what knows
-    # which attempt this one continues from, and submit writes the launch
-    # record.  A
-    # marker file beats threading the value through a launch argument that
-    # every caller would have to remember to pass.
-    if copied:
-        runrecord.write_continued_from(attempt, continue_from, names=rn,
-                                       run=FIRST_ATTEMPT, plan=plan)
+        source = runrecord.RunRef.read(continue_from, shared=False)
+        took = tuple((source, name) for name in names
+                     if (source.path(base) / name).is_file())
+        if took:
+            hand = HandOver(attempt, rn, FIRST_ATTEMPT, CONTINUED,
+                            files=took, source=source)
+            hand_over(base, hand, plan)
     if own:
         plan.carry_out()
 
@@ -805,10 +938,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         dir=attempt,
         fresh=is_new,
         brought=brought,
-        copied=copied,
-        continued_from=(None if (cold or not continue_from)
-                        else str(continue_from)),
-        cold=bool(cold),
+        hand=hand,
     )
 
 
@@ -821,7 +951,8 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
     files for this pair (:func:`warm_carry`), and the attempt holds at least
     one of them.  Raises ``ValueError`` otherwise, worded for who chose the
     run: the person, by ``--from`` (``named``), or the door that chose it --
-    `prep`'s default, `launch` re-launching a stage (`job-system.md` § 5.4).
+    a first launch's default, or a launch again's own latest run
+    (`job-system.md` § 5.4).
 
     ONE CHECK, asked by :func:`prepare_attempt` before it writes anything
     and by `launch` before it shows what it will send -- so a run that
@@ -838,7 +969,10 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
             f"{said}: no such attempt under "
             f"{base}. Name an attempt directory that has already run, "
             f"e.g. '01_coarse/run-0'.")
-    job = next(j for j in jobset.jobs if j.name == stage_name)
+    job = jobset.job(stage_name)
+    if job is None:
+        raise ValueError(f"{stage_name!r} is not prepared -- it has no job "
+                         f"to carry its files.")
     # The pair, resolved here and nowhere else -- `--from` is what names
     # the source, so this is the first moment both stages are known.
     dir_of = job_dir_names(jobset, shape if shape is not None
@@ -883,11 +1017,13 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 
 
 __all__ = [
-    "StageHome", "stage_home", "ladder_homes", "described_refs", "Attempt", "bench_owner", "bench_stage_of", "trial_dir",
+    "StageHome", "stage_home", "ladder_homes", "described_refs", "Attempt",
+    "CONTINUED", "GATHERED", "HandOver", "hand_over",
+    "bench_owner", "bench_stage_of", "trial_dir",
            "trial_work_dir",
-           "trials_in",
            "materialize", "job_dir_names", "stage_refs",
            "latest_attempt", "run_dir",
-           "resolve_attempt",
-           "prepare_attempt", "open_run", "open_container",
+           "resolve_attempt", "ever_launched", "empty_run",
+           "empty_old_points", "prepare_attempt", "open_sweep_run",
+           "open_run", "open_container",
            ]

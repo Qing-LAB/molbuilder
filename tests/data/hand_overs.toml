@@ -3,7 +3,9 @@
 # § 3.2 (`ending`, `usable`, `continuation`), `docs/web/results.md` § 4.1.
 #
 # Every row here prepares and launches nothing: what prep decides from the
-# folder as it stands.  What a stage builds on from a run that finished,
+# folder as it stands -- the one value hand-over, a force-constant stage's
+# `relax` run.  What every other stage takes is its first launch's
+# (`tests/data/prep_protocol.toml`).  What a stage builds on from a run that finished,
 # failed or was launched again is read off real runs (`tests/test_the_road_on_real_runs_e2e.py`,
 # plan § 5y): a test that reads what an engine wrote is an end-to-end test,
 # made with the engine (`process/testing.md` § 0).
@@ -23,16 +25,9 @@ omp_threads = 1
 [[case]]
 name = "a vibration's force-constant stage builds on its relax: refused while relax's newest run has not been launched, naming the command"
 calculation = "vibration"
-before = [["prep", "task", "--stage", "relax"]]
+before = [["prep", "task", "--group", "1"]]
 stage = "freq"
 refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which has not been launched", "Launch it"]
-
-[[case]]
-name = "...and it never starts from the structure while the ladder holds a relax: --cold refused, saying how to measure the structure as given"
-calculation = "vibration"
-stage = "freq"
-prep = ["--cold"]
-refused = ["--cold: `freq` builds on `relax`", "remove `relax` and state the structure relaxed"]
 
 [[case]]
 name = "...and with no relax it measures the structure as given only when stated relaxed: not stated, it is refused by the one hand-over door, so status says so before the prep"
@@ -42,7 +37,3 @@ stage = "freq"
 refused = ["is not stated to be relaxed", "Either add the `relax` stage before `freq`"]
 status_says = ["First incomplete stage: freq, waiting", "is not stated to be relaxed"]
 
-[[case]]
-name = "a first stage starts from the structure: its prep records it in the ledger, unasked"
-stage = "coarse"
-ledger_holds = [{ decision = "prep starts-cold", asked = false }]

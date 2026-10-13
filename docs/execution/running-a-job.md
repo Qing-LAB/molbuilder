@@ -217,7 +217,7 @@ itself passes the same test: it needs the activated environment and this
 run's own output.
 
 > **Nothing arrives at a run directory needing to be resolved.** What a stage
-> continues from is a **real file, copied in at `prep`** from the run you name
+> continues from is a **real file, copied in at its first launch** from the run it takes
 > ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6) — present and
 > local before the wrapper starts. There is nothing for bash to dereference,
 > localize or wait for.
@@ -617,8 +617,8 @@ run_status(run_dir, basename, *, launch=<not asked>) -> RunStatus   # parse/dirs
 
 | caller | `launch` | `match` |
 |---|---|---|
-| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the attempt's — each point's, for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — or a trial's; none for a flat stage | the rung's glob |
-| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runs.run_answer` — the viewers | the run's | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
+| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `parse.dirs.rundir.run_state_of` — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), a trial's, or a flat stage's newest run's own `<basename>-run<N>.run.json` | the stage's stem |
+| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runs.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
 | the monitor's closing line | not asked | its run's stem |
 
 `run_status` has no answer *there is no run here*: asked without `launch`, a
@@ -756,7 +756,7 @@ stateDiagram-v2
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
 | a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
-| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); the ready door's `ready` / `waiting` for one not prepared | `jobset/runstatus.py` |
+| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); for a prepared stage not launched, the ready door's *ready to launch* / *waits for*; for one not prepared, `described` — a force-constant stage waiting for `relax` with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
 | the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, asked after it writes its closing record |
 
@@ -779,6 +779,7 @@ run goes:
 | the `.out` stopped on `SCF_NOT_CONV … (required)`; the warm retry's `-run1.out` is printing | `running` — `-run1.out` speaks: same stage, newer |
 | killed at walltime: no ending in the `.out`, no `.concluded` | `failed` — stopped before its end: no ending in its output and no exit recorded (the monitor's closing record); launching it again, warm or `--cold`, is yours |
 | no `.out` (SIESTA died before its first line); `-run0.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
+| `-run0.concluded` is there and does not read (unreadable, or not text) | `failed` — the run concluded, the wrapper wrote it, with an exit code no one can tell: `rc=? (… does not read: …)`, as an empty marker's `rc=?` (`runrecord.ending`) |
 
 #### Which engine ran — `engine_of`
 

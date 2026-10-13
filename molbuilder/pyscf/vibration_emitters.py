@@ -144,7 +144,7 @@ def _emit_header_docstring(struct: Structure,
     if _launch:
         out.append("Run it the way it was prepared (the described route), "
                    "from the calculation's folder:")
-        out.append(f"    {_launch}")
+        out.extend(f"    {line}" for line in _launch)
         out.append(f"    {LAUNCH_MODE_NOTE}")
         out.append("    -- the wrapper beside this deck activates the env and "
                    "logs the run.")

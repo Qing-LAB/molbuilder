@@ -28,7 +28,7 @@ def test_one_deck_reader_and_it_takes_the_first_match(tmp_path):
                     "BlockSize 256\n")
     assert deck_value(deck, "Diag.Algorithm") == "ELPA-1STAGE"
     assert deck_value(deck, "BlockSize") == "256"
-    # `_norm` folds separators and case: one keyword, many spellings.
+    # `fdf_key` folds separators and case: one keyword, many spellings.
     assert deck_value(deck, "diag_algorithm") == "ELPA-1STAGE"
     assert deck_value(deck, "MeshCutoff") is None
     assert deck_value(tmp_path / "absent.fdf", "BlockSize") is None

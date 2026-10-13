@@ -46,7 +46,7 @@ class TestKnownAdvisorySitesAreHTTP200:
     """
 
     def test_an_uncitable_directory_is_answered_not_refused(
-            self, web_client, tmp_path, monkeypatch):
+            self, web_client, isolated_projects_root):
         """The advisory rule, exercised THROUGH THE ROUTE.
 
         `web-api.md` § 1: a validator hard-fail is answered with HTTP **200**
@@ -54,11 +54,9 @@ class TestKnownAdvisorySitesAreHTTP200:
         question and the answer is "no, and here is what is missing".  A
         rule about what a caller RECEIVES is checked by calling.
         """
-        from molbuilder.projects import PROJECTS_ROOT_ENV
-        d = tmp_path / "notcitable"
+        d = isolated_projects_root / "notcitable"
         d.mkdir()
         (d / "readme.txt").write_text("nothing citable here")
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
 
         r = web_client.get("/api/transport/describe_attempt?path=notcitable")
         assert r.status_code == 200, (

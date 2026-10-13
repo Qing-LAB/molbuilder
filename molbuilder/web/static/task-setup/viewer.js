@@ -155,7 +155,10 @@ function renderStages(task) {
     thead.textContent = "";
     tbody.textContent = "";
 
-    const hrow = el("tr", null, el("th", null, "Stage"));
+    const hrow = el("tr", null, el("th", null, "Stage"),
+                    el("th", { title: "the job each stage runs in -- the "
+                               + "stages with one number are one job "
+                               + "(engines/stages.md \u00a7 2)" }, "Group"));
     for (const col of varies) {
         const x = el("button", {
             type: "button",
@@ -171,33 +174,20 @@ function renderStages(task) {
     thead.appendChild(hrow);
 
     /* WHAT THE KIND FIXES (`task-setup.md` § 5.3): a transport folder's
-     * rows are its ladder's rungs -- numbered as the Transport tab numbers
-     * them, never renamed or moved, only the optional ones removed or added
-     * back.  The folder answer's `fixed`, the reader's own rule. */
+     * rows are its ladder's rungs, every one -- numbered as the Transport
+     * tab numbers them, never renamed, moved or removed.  The folder
+     * answer's `fixed`, the reader's own rule. */
     const fixed = _fs.fixed;
     stages.forEach((st, i) => {
         const name = (st && st.name) || "(unnamed)";
 
         if (fixed) {
             const at = fixed.stages.indexOf(name);
-            const optional = fixed.optional.indexOf(name) !== -1;
-            let dropRung = null;
-            if (optional) {
-                dropRung = el("button", {
-                    type: "button", class: "ts-rowbtn ts-rowbtn-drop",
-                    title: "Leave this rung out -- the ladder skips it",
-                    "aria-label": "Remove stage " + name,
-                }, "\u00d7");
-                dropRung.addEventListener("click", () => removeStage(i));
-            }
-            const ranRung = _fs.runs[name];
             const row = el("tr", null, el("td", null,
                 el("span", { class: "ts-cell-name" },
                    (at === -1 ? "" : (at + 1) + " \u00b7 ") + name),
-                dropRung,
-                ranRung === undefined ? null
-                    : el("span", { class: "ts-ran" },
-                         ranRung ? ranRung + "\u00d7" : "\u2014")));
+                ranMark(name)));
+            row.appendChild(groupCell(stages, i));
             appendCells(row, st, i, name);
             tbody.appendChild(row);
             return;
@@ -250,22 +240,16 @@ function renderStages(task) {
             });
         }
 
-        const ran = _fs.runs[name];
-        const ranEl = (ran === undefined) ? null
-            : el("span", { class: "ts-ran",
-                           title: ran ? ran + " attempt(s) on disk"
-                                      : "nothing has run for this stage yet" },
-                 ran ? ran + "\u00d7" : "\u2014");
-
         const tr = el("tr", null,
-            el("td", null, nameInput, drop, preset, ranEl));
+            el("td", null, nameInput, drop, preset, ranMark(name)),
+            groupCell(stages, i));
         appendCells(tr, st, i, name);
         tbody.appendChild(tr);
     });
 
     const actions = $("ts-stage-actions");
     if (actions) actions.hidden = false;
-    paintStageWords(stages);
+    paintStageWords();
     card.hidden = false;
 
     /* One row's cells, a column each -- the same for every kind. */
@@ -345,24 +329,106 @@ function renderStages(task) {
     }
 }
 
+/** How many attempts a stage has on disk, beside its name -- every row's
+ *  one marker, with its words. */
+function ranMark(name) {
+    const ran = _fs.runs[name];
+    return ran === undefined ? null
+        : el("span", { class: "ts-ran",
+                       title: ran ? ran + " attempt(s) on disk"
+                                  : "nothing has run for this stage yet" },
+             ran ? ran + "\u00d7" : "\u2014");
+}
+
+/** A row's GROUP (`task-setup.md` § 5): the first row's is 1; every
+ *  other row repeats the number above (*same as above*) or adds one (*new
+ *  group*).  A row the rule forbids to repeat -- it builds on a stage in
+ *  the group above as edited, or that group was launched -- offers only
+ *  *new group* and says why: the rule applied here to the stages each
+ *  builds on, as the folder answer gives them (`groups`, asked of
+ *  `group.upstream_of` by the server); a launched stage's group is
+ *  fixed. */
+function groupCell(stages, i) {
+    const st = stages[i] || {};
+    const g = st.group;
+    if (i === 0) return el("td", { class: "ts-group" }, String(g || 1));
+    const above = (stages[i - 1] || {}).group || 1;
+    const rowOf = (name) => (_fs.groups.stages || []).find(
+        (r) => r.stage === name) || null;
+    const said = rowOf(st.name);
+    const mates = stages.slice(0, i).filter((o) => o.group === above)
+        .map((o) => o.name);
+    const fed = mates.filter(
+        (n) => ((said && said.builds_on) || []).indexOf(n) !== -1);
+    const ran = mates.some((n) => (rowOf(n) || {}).launched);
+    const whyNot = fed.length
+        ? "`" + st.name + "` builds on "
+          + fed.map((n) => "`" + n + "`").join(", ") + ", in the group "
+          + "above: one job runs its members one after another with "
+          + "nothing handed between them"
+          // THE OTHER WAY OUT, where there is one: an independent stage
+          // builds on the stage before it only while it continues.
+          + (said && said.linked === false
+             ? " -- or, for it to start from its own deck, set its run "
+               + "card's `restart` to `clean`"
+             : "")
+        : ran ? "group " + above + " was launched -- its members are fixed"
+        : null;
+    const sel = el("select", { class: "ts-cell",
+                               "aria-label": "group of " + st.name });
+    const same = el("option", { value: "same" },
+                    above + " \u2014 same as above");
+    const fresh = el("option", { value: "new" },
+                     (above + 1) + " \u2014 new group");
+    sel.append(same, fresh);
+    sel.value = g === above ? "same" : "new";
+    let note = null;
+    if (whyNot) {
+        same.disabled = true;
+        note = el("small", { class: "ts-row-note" }, whyNot);
+    }
+    if (said && said.launched) {
+        sel.disabled = true;
+        sel.title = "launched -- its group is fixed; to change it, restore "
+            + "the state saved before its group's first launch "
+            + "(job-system.md \u00a7 5.0)";
+    }
+    sel.addEventListener("change", () => setGroup(i, sel.value));
+    return el("td", { class: "ts-group" }, sel, note);
+}
+
+/** Row ``i`` repeats the number above (``"same"``) or adds one (``"new"``);
+ *  every row below keeps its own choice, renumbered from it. */
+function setGroup(i, rel) {
+    const stages = (_task && _task.stages) || [];
+    const rels = stages.map((st, j) => j === 0 ? "new"
+        : (st.group === stages[j - 1].group ? "same" : "new"));
+    rels[i] = rel;
+    let n = 0;
+    stages.forEach((st, j) => { n += rels[j] === "same" ? 0 : 1;
+                                st.group = n; });
+    syncFromModel();
+}
+
+/** The numbers again from 1, each stage keeping who it shares a job with
+ *  -- after a stage is removed (a number is a position, `stages.md` § 2). */
+function compressGroups(stages) {
+    const seen = [];
+    for (const st of stages) {
+        if (seen.indexOf(st.group) === -1) seen.push(st.group);
+    }
+    for (const st of stages) st.group = seen.indexOf(st.group) + 1;
+}
+
 /** The card's words and its add button, as the kind has them (§ 5.3): on a
- *  kind that fixes its rungs, the rung sentence and an add button only for
- *  an optional rung that is left out -- added back in its place. */
-function paintStageWords(stages) {
-    const fixed = _fs.fixed;
-    const names = (stages || []).map((st) => st && st.name);
-    const missing = fixed
-        ? fixed.optional.filter((n) => names.indexOf(n) === -1) : [];
+ *  kind that fixes its rungs, the rung sentence and no add button. */
+function paintStageWords() {
+    const fixed = !!_fs.fixed;
     const show = (id, on) => { const n = $(id); if (n) n.hidden = !on; };
     show("ts-stages-hint", !fixed);
-    show("ts-stages-rungs", !!fixed);
+    show("ts-stages-rungs", fixed);
     show("ts-add-stage-hint", !fixed);
-    const add = $("ts-add-stage");
-    if (add) {
-        add.hidden = !!fixed && !missing.length;
-        add.textContent = fixed && missing.length
-            ? "+ Add " + missing[0] : "+ Add stage";
-    }
+    show("ts-add-stage", !fixed);
 }
 
 /* ---------- what this machine would actually run ---------- */
@@ -406,17 +472,18 @@ function freshFolderState() {
         extraRunRows: new Map(),  // rows added to a run card, per stage
         fitBench:     {},         // the bench card's last posted axes
         pendingDrop:  "",         // the armed column drop
-        stepTab:      "",         // which rung's tab was open
+        stepTab:      null,       // which group's tab was open (its number)
         queue:        "",         // the chosen domain -> `allocation`
         benchRefusal: null,       // why `prep bench` refuses here, or null
         continueFrom: {},         // stage -> what it can continue from (W37)
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
         answers:      {},         // "task" / "bench:<stage>" -> the last prep answer shown
         setTo:        null,       // the machine its first prep set, or null (M-3)
-        prepared:      { task: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
+        prepared:      { bench: {} },  // stage -> prep's own sentence, a benchmark's
         ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
-        prepPick:     null,       // the stages picked for the task's Prep; null = the offer
-        fixed:        null,       // what the kind fixes -- shape, stages, optional (§ 5.3)
+        groups:       { stages: [], groups: [], shared: [] },  // each stage's group, each group's state
+        prepPick:     null,       // the groups picked for the task's Prep; null = the offer
+        fixed:        null,       // what the kind fixes -- shape, stages (§ 5.3)
     };
 }
 
@@ -441,6 +508,10 @@ function scheduleFitRefresh(bench) {
 async function refreshFit() {
     const host = $("ts-machine-fit");
     if (!host) return;
+    /* STALE ANSWERS ARE DROPPED -- counted before any early return, so a
+     * request still in flight for another folder, or for this one before an
+     * edit emptied its grid, never paints here. */
+    const seq = ++_fitSeq;
     const bench = _fs.fitBench || {};
     /* ONLY A REAL DESCRIPTION HAS A GRID.  In handover mode `task.json`
      * does not exist yet, and the door reads it -- so this would fire a
@@ -448,10 +519,9 @@ async function refreshFit() {
     if (_mode !== "description") { host.hidden = true; return; }
     if (!_dir || !Object.keys(bench).length) { host.hidden = true; return; }
 
-    /* STALE ANSWERS ARE DROPPED.  Typing outruns the network, and an
-     * earlier reply landing after a later one would leave the card showing
-     * a grid for axes that no longer exist. */
-    const seq = ++_fitSeq;
+    /* Typing outruns the network, and an earlier reply landing after a
+     * later one would leave the card showing a grid for axes that no
+     * longer exist. */
     let body;
     try {
         const r = await fetch("/api/task-setup/bench-grid", {
@@ -560,16 +630,6 @@ function extraRunRows(stage) {
     return set;
 }
 
-/** This rung's condition: the calculation's block with the stage's over it,
- *  field by field -- `Task.run_condition` on the server, same rule. */
-function runConditionOf(task, stage) {
-    const out = Object.assign({}, (task && task.execution) || {});
-    for (const st of ((task && task.stages) || [])) {
-        if (st && st.name === stage) Object.assign(out, st.execution || {});
-    }
-    return out;
-}
-
 
 /* THE RUN'S OWN SCHEDULER ASKS (`stages.md` § 6.8e).  A bench and a run want
  * different wall clocks -- a trial's steps are cut so it wants minutes, the
@@ -588,24 +648,38 @@ const LANE_ASKS = [
       placeholder: "public" },
 ];
 
-/** The parameters this card offers: the launch rows the catalogue stands on
- *  every card (`run_card`, on the rungs that read them -- `task-setup.md`
- *  § 6.2b), every setting the bench declares, whatever the condition
- *  already states, and any the person added here.
+/** The rows that STAND on every run card (`task-setup.md` § 6.2b): the
+ *  launch rows the catalogue marks `run_card`, every setting the bench
+ *  declares, and every one the calculation states, on any stage or for all
+ *  of them -- whether or not a card's members read it, which its row says.
+ *  A standing row is cleared by its blank, and has no ×.
  *
  *  OFFERED, NEVER READ (user, 2026-09-02): the bench's own points do not
  *  reach this card's values -- what the run uses is `execution`, and the
  *  grid is only what is worth deciding about.
  */
-function runRowNames(task, stage) {
+function standingRows(task) {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
     for (const it of (_sweep || [])) {
-        if (it && it.run_card && readsHere(it.name, stage)) add(it.name);
+        if (it && it.run_card) add(it.name);
     }
     for (const n of Object.keys((task && task.bench) || {})) add(n);
-    for (const n of Object.keys(runConditionOf(task, stage))) add(n);
-    for (const n of extraRunRows(stage)) add(n);
+    for (const n of Object.keys((task && task.execution) || {})) add(n);
+    for (const st of ((task && task.stages) || [])) {
+        for (const n of Object.keys((st && st.execution) || {})) add(n);
+    }
+    return out;
+}
+
+/** The rows a run card holds: the standing ones, and any the person added
+ *  on this card (``members``) and has not filled yet -- the one kind of row
+ *  the card's × removes. */
+function runRowNames(task, members) {
+    const out = standingRows(task);
+    for (const m of members) {
+        for (const n of extraRunRows(m)) if (out.indexOf(n) === -1) out.push(n);
+    }
     return out;
 }
 
@@ -618,12 +692,15 @@ function stageExecutionOf(stage, make) {
     return st.execution || (st.execution = {});
 }
 
-function setRunValue(name, raw, stage) {
+/** ``name`` set to ``raw`` on each of ``members`` -- a stage's own card,
+ *  or every stage of a group for a shared row (`task-setup.md` § 6.2b). */
+function setRunValue(name, raw, members) {
     return underFence("Writing " + name + "\u2026", async () => {
         const v = coercePoint(raw);
         const blank = (v === null || raw === "");
-        const box = stageExecutionOf(stage, !blank);
-        if (box) {
+        for (const stage of members) {
+            const box = stageExecutionOf(stage, !blank);
+            if (!box) continue;
             // BLANK IS A STATE: the calculation's own value, or unstated --
             // which prep refuses for a launch value (architecture.md § 5.2).
             if (blank) delete box[name]; else box[name] = v;
@@ -636,11 +713,12 @@ function setRunValue(name, raw, stage) {
     });
 }
 
-function dropRunRow(name, stage) {
+function dropRunRow(name, members) {
     return underFence("Removing " + name + "\u2026", async () => {
-        extraRunRows(stage).delete(name);
-        const box = stageExecutionOf(stage, false);
-        if (box) {
+        for (const stage of members) {
+            extraRunRows(stage).delete(name);
+            const box = stageExecutionOf(stage, false);
+            if (!box) continue;
             delete box[name];
             if (!Object.keys(box).length) {
                 const st = _task.stages.find((x) => x && x.name === stage);
@@ -651,125 +729,226 @@ function dropRunRow(name, stage) {
     });
 }
 
-/** THE RUN CARD, built per rung and placed beside that rung's `prep task`
- *  button (user, 2026-09-02: "that selection panel card should be next to
- *  the prep for run button such that it's obvious that this is designed for
- *  the run.  This is not mixed up with the existing functional bench
- *  setup.").
+/** THE ORDER EVERY RUN CARD LISTS ITS ROWS IN -- the same on every card
+ *  (`task-setup.md` § 6.2b): the catalogue's run-card items, then the other
+ *  settings the bench lane speaks, each in the catalogue's order, then the
+ *  run's own asks; a name none of those holds after them, by name. */
+function runRowOrder(names) {
+    const rank = new Map();
+    (_sweep || []).forEach((it, i) => {
+        if (it && it.name) rank.set(it.name, (it.run_card ? 0 : 1000) + i);
+    });
+    LANE_ASKS.forEach((a, i) => rank.set(a.name, 2000 + i));
+    const at = (n) => (rank.has(n) ? rank.get(n) : 3000);
+    return names.slice().sort((x, y) => at(x) - at(y) || x.localeCompare(y));
+}
+
+/** THE RUN CARD -- a rung's, or a group's, built in its tab beside its
+ *  `prep task` (user, 2026-09-02: "that selection panel card should be next
+ *  to the prep for run button such that it's obvious that this is designed
+ *  for the run").
  *
- *  ONE VALUE EACH, never a combination.  The settings offered are the
- *  bench's own vocabulary -- compute resources AND the other execution
- *  knobs, the diagonaliser among them -- because what is worth measuring is
- *  what is worth deciding.  What it WRITES is this stage's `execution`
- *  block; it never touches `bench`.
- */
-function stageRunCard(task, stage) {
+ *  THE JOB'S CONTAINER OF SETTINGS (`task-setup.md` § 6.2b; user,
+ *  2026-10-12: "the list here is a container that have all parameters
+ *  here"): the same rows on every card (`runRowNames`), in one order, each
+ *  written only into the members that READ it (the item's `stages`, by
+ *  role) -- a row some member does not read names it, and a value stated
+ *  on a member that does not read it is shown with a way to remove it.  A
+ *  blank row shows what the run uses.  The wall is each
+ *  member's own, a row each, the job asking their sum.  ONE VALUE EACH,
+ *  never a combination; what it writes is the members' `execution`, never
+ *  `bench`. */
+function runCard(task, members) {
+    const group = members.length > 1;
     const box = el("div", { class: "ts-runcard" });
     box.appendChild(el("h3", { class: "ts-reports-head" },
-                       "What this run will use"));
-    box.appendChild(el("p", { class: "hint" },
-        "One value each \u2014 not a grid. Blank takes the calculation's "
-        + "own value; a launch value stated nowhere is refused at prep. A "
-        + "benchmark reports here but never fills this in."));
+                       group ? "What this job will use"
+                             : "What this run will use"));
+    box.appendChild(el("p", { class: "hint" }, group
+        ? "One job runs " + members.join(", ") + " one after another. One "
+          + "value each, written into every stage that reads it; the wall is "
+          + "each stage's own, the job asking their sum. A blank row uses "
+          + "the value shown in it; a launch value stated nowhere is "
+          + "refused at prep."
+        : "One value each \u2014 not a grid. A blank row uses the value "
+          + "shown in it; a launch value stated nowhere is refused at prep. "
+          + "A benchmark reports here but never fills this in."));
+    const ownOf = (m) => (((task && task.stages) || [])
+        .find((x) => x && x.name === m) || {}).execution || {};
+    const names = runRowOrder(runRowNames(task, members));
+    // A ROW ADDED HERE AND NOT FILLED is the only one a × removes.
+    const standing = standingRows(task);
+    const removal = (n) => (standing.indexOf(n) === -1
+        ? () => dropRunRow(n, members) : null);
     const rows = el("div", { class: "ts-rows" });
     box.appendChild(rows);
-
-    const bench = (task && task.bench) || {};
-    // WHAT THE RUNG ITSELF SAYS is what the field holds; the calculation's
-    // own block is the PLACEHOLDER behind it, because `setRunValue("")` and
-    // `dropRunRow` both write `stages[i].execution`.
-    const own = (((task && task.stages) || [])
-        .find((x) => x && x.name === stage) || {}).execution || {};
-    const inherited = (task && task.execution) || {};
-    const names = runRowNames(task, stage);
-
-    for (const name of names) {
-        const value = own[name];
-        const from = inherited[name];
-        const legal = legalValues(name);
-        let input;
-        if (legal) {
-            input = el("select", { class: "ts-runval",
-                                   "aria-label": "value for " + name });
-            input.appendChild(el("option", { value: "" },
-                from === undefined ? "\u2014 not stated"
-                                   : "\u2014 " + String(from)
-                                     + " (every stage)"));
-            for (const v of legal) {
-                const o = el("option", { value: String(v) }, String(v));
-                if (value !== undefined && String(value) === String(v)) {
-                    o.selected = true;
-                }
-                input.appendChild(o);
-            }
-        } else {
-            // A LANE ASK SHOWS AN EXAMPLE when nothing is stated: "not
-            // stated" is true but useless for a field whose format
-            // (`D-HH:MM:SS`) is the thing people get wrong.
-            const lane = LANE_ASKS.find((a) => a.name === name);
-            input = el("input", { type: "text", class: "ts-runval",
-                                  placeholder: from !== undefined
-                                      ? "\u2014 " + String(from)
-                                        + " (every stage)"
-                                      : (lane ? "e.g. " + lane.placeholder
-                                              : "\u2014 not stated"),
-                                  "aria-label": "value for " + name });
-            input.value = value === undefined ? "" : String(value);
-        }
-        input.addEventListener("change",
-                               () => setRunValue(name, input.value, stage));
-
-        // THE BENCH'S POINTS, as information.  Grey, beside the field,
-        // filling nothing -- what is being measured, while you type what
-        // you want.  The two blocks never read each other.
-        const pts = Array.isArray(bench[name]) ? bench[name] : [];
-        const measured = pts.length
-            ? el("small", { class: "ts-row-note" },
-                 "measuring: " + pts.join(", "))
-            : null;
-
-        const drop = el("button", { type: "button",
-                                    class: "ts-rowbtn ts-rowbtn-drop",
-                                    title: "Stop stating " + name,
-                                    "aria-label": "Stop stating " + name }, "\u00d7");
-        drop.addEventListener("click", () => dropRunRow(name, stage));
-
-        rows.appendChild(el("div", { class: "ts-row",
-                                     "data-kind": value !== undefined
-                                         ? "chosen"
-                                         : (from !== undefined ? "inherited"
-                                                              : "unstated") },
-            el("div", { class: "ts-row-name", title: helpText(name) }, name,
-               measured),
-            el("div", { class: "ts-points" }, input),
-            drop));
+    const walls = group && names.indexOf("time") !== -1;
+    for (const n of names) {
+        if (walls && n === "time") continue;
+        const readers = members.filter((m) => readsHere(n, m));
+        const stray = members.filter((m) => readers.indexOf(m) === -1
+                                          && ownOf(m)[n] !== undefined);
+        rows.appendChild(runRow(task, n, readers, {
+            unread: members.filter((m) => readers.indexOf(m) === -1),
+            stray: stray, remove: removal(n) }));
+    }
+    // THE WALL IS EACH MEMBER'S OWN; the job asks their sum, which the
+    // server works out (`group.envelope`) and the preview's header shows.
+    if (walls) {
+        for (const m of members) rows.appendChild(runRow(task, "time", [m],
+            { label: "time \u00b7 " + m, remove: removal("time") }));
+        rows.appendChild(el("p", { class: "hint" },
+            "the job's wall is its members' summed \u2014 Preview shows the "
+            + "header it asks for"));
     }
     if (!names.length) {
         rows.appendChild(el("p", { class: "hint" },
             "Nothing stated \u2014 prep refuses a run whose launch values "
             + "are stated nowhere. Add a setting to decide it here."));
     }
+    box.appendChild(addSetting(task, members, names));
+    // WHETHER IT FITS THE MACHINE is the preview's to say, from the job the
+    // prep would write (`job-system.md` § 5.0's checkpoint 4).
+    return box;
+}
 
+/** One row of a run card: the value ``name`` holds on ``members`` -- the
+ *  stages of the card that read it -- what they state, what a blank uses
+ *  the placeholder behind it, writing into each one's
+ *  `stages[i].execution`; a member that states another value is shown
+ *  beside it.  ``opts.unread`` names the card's stages that do not read it,
+ *  ``opts.stray`` those of them that state it anyway (each with a way to
+ *  remove it), ``opts.remove`` removes a row added on the card and not
+ *  filled (its ×), ``opts.label`` the row's own name where it is not the
+ *  setting's alone (a member's wall). */
+function runRow(task, name, members, opts) {
+    const o = opts || {};
+    const unread = o.unread || [];
+    const stray = o.stray || [];
+    const bench = (task && task.bench) || {};
+    const ownOf = (m) => (((task && task.stages) || [])
+        .find((x) => x && x.name === m) || {}).execution || {};
+    const said = members.map((m) => ownOf(m)[name]);
+    const value = said.every((v) => v !== undefined
+                             && String(v) === String(said[0]))
+        ? said[0] : undefined;
+    const differ = members.length > 1 && value === undefined
+        ? members.filter((m, k) => said[k] !== undefined)
+                 .map((m, k) => m + ": " + String(ownOf(m)[name]))
+        : [];
+    // BLANK SAYS WHAT THE RUN USES (§ 6.2b): the calculation's own block,
+    // else the template's value -- the empty stage cell's rule and helper
+    // (§ 5.1, `defaultText`); a launch value neither holds is not stated,
+    // which prep refuses; and a row no stage of the card reads, nothing.
+    const from = ((task && task.execution) || {})[name];
+    const fallback = defaultText(name);
+    const behind = !members.length ? "\u2014 not read here"
+        : from !== undefined
+        ? "\u2014 " + String(from) + " (every stage)"
+        : (fallback ? "\u2014 " + fallback + " ("
+                      + (name in _tmpl.values ? "template" : "default") + ")"
+                    : "");
+    const legal = legalValues(name);
+    let input;
+    if (legal) {
+        input = el("select", { class: "ts-runval",
+                               "aria-label": "value for " + name });
+        input.appendChild(el("option", { value: "" },
+                             behind || "\u2014 not stated"));
+        for (const v of legal) {
+            const o = el("option", { value: String(v) }, String(v));
+            if (value !== undefined && String(value) === String(v)) {
+                o.selected = true;
+            }
+            input.appendChild(o);
+        }
+    } else {
+        // A LANE ASK SHOWS AN EXAMPLE when nothing is stated: "not stated"
+        // is true but useless for a field whose format (`D-HH:MM:SS`) is
+        // the thing people get wrong.
+        const lane = LANE_ASKS.find((a) => a.name === name);
+        input = el("input", { type: "text", class: "ts-runval",
+                              placeholder: behind
+                                  || (lane ? "e.g. " + lane.placeholder
+                                           : "\u2014 not stated"),
+                              "aria-label": "value for " + name });
+        input.value = value === undefined ? "" : String(value);
+    }
+    // NO STAGE OF THE CARD READS IT: shown, never written -- the stated
+    // value is removable below.
+    if (!members.length) input.disabled = true;
+    input.addEventListener("change",
+                           () => setRunValue(name, input.value, members));
+    // THE BENCH'S POINTS, as information.  Grey, beside the field, filling
+    // nothing -- what is being measured, while you type what you want.
+    const pts = Array.isArray(bench[name]) ? bench[name] : [];
+    const notes = [];
+    if (pts.length) notes.push("measuring: " + pts.join(", "));
+    if (differ.length) notes.push("stated apart \u2014 " + differ.join(", "));
+    // A STAGE NAMED ONCE: one that states the value is said below, with
+    // its way out; the rest that do not read it, here.
+    const quiet = unread.filter((m) => stray.indexOf(m) === -1);
+    if (quiet.length) notes.push("not read by " + quiet.join(", "));
+    // A VALUE STATED WHERE ITS STAGE DOES NOT READ IT is refused by Save
+    // and by prep, as an override there is (`template.reads`); said, with
+    // its own way out.
+    const strays = stray.map((m) => {
+        const x = el("button", { type: "button",
+                                 class: "ts-rowbtn ts-rowbtn-drop",
+                                 title: "Stop stating " + name + " on " + m,
+                                 "aria-label": "Stop stating " + name
+                                               + " on " + m }, "\u00d7");
+        x.addEventListener("click", () => dropRunRow(name, [m]));
+        return el("small", { class: "ts-row-note" },
+                  "stated on " + m + ", which does not read it \u2014 "
+                  + "refused until removed ", x);
+    });
+    // THE ROW'S OWN ×, only on a row added here and not filled: it removes
+    // what the field cannot.  A standing row is cleared by its blank.
+    let drop = null;
+    if (o.remove) {
+        drop = el("button", { type: "button",
+                              class: "ts-rowbtn ts-rowbtn-drop",
+                              title: "Remove the row " + name,
+                              "aria-label": "Remove the row " + name }, "\u00d7");
+        drop.addEventListener("click", o.remove);
+    }
+    return el("div", { class: "ts-row",
+                       "data-kind": value !== undefined ? "chosen"
+                           : (members.length && behind ? "inherited"
+                                                       : "unstated") },
+        el("div", { class: "ts-row-name", title: helpText(name) },
+           o.label || name,
+           notes.length ? el("small", { class: "ts-row-note" },
+                             notes.join("; ")) : null,
+           ...strays),
+        el("div", { class: "ts-points" }, input),
+        drop);
+}
+
+/** The card's "+ Add setting": a row for ``members`` -- every setting the
+ *  bench lane speaks that at least one of them reads, and the run's own two
+ *  asks (`stages.md` § 6.8e) -- not one already listed in ``names``. */
+function addSetting(task, members, names) {
     const sel = el("select", { class: "ts-pick",
-                               "aria-label": "add a setting for " + stage });
+                               "aria-label": "add a setting for "
+                                             + members.join(", ") });
     const go = el("button", { type: "button", class: "btn" }, "+ Add setting");
     go.addEventListener("click", () => {
         if (!sel.value) return;
-        extraRunRows(stage).add(sel.value);
+        for (const m of members) extraRunRows(m).add(sel.value);
         sel.value = "";
         renderNext(_task || task);
     });
-    box.appendChild(el("div", { class: "ts-actions" }, sel, go));
     // THE BENCH'S VOCABULARY, PLUS THE RUN'S OWN TWO.  Every sweepable
     // execution item, resources and solver alike -- and `time`/`domain`,
     // which are not sweepable and never will be (a benchmark that swept its
     // own wall clock would be measuring the queue), but which a RUN owns
     // separately from the bench (`stages.md` § 6.8e).
-    fillPicker(sel, (_sweep || []).concat(LANE_ASKS), names,
+    fillPicker(sel, (_sweep || []).filter((it) => it && members.some(
+                   (m) => readsHere(it.name, m))).concat(LANE_ASKS), names,
                "every setting is already listed");
-    // WHETHER IT FITS THE MACHINE is the preview's to say, from the job the
-    // prep would write (`job-system.md` § 5.0's checkpoint 4).
-    return box;
+    return el("div", { class: "ts-actions" }, sel, go);
 }
 
 function renderMachine(task) {
@@ -954,6 +1133,14 @@ async function _bootEditor() {
         clearTimeout(_reparse);
         _reparse = setTimeout(() => {
             renderStages(_task);
+            /* THE CARDS THAT WRITE A BLOCK READ IT BACK from the hand edit,
+             * so their next change starts from it, never writes an older
+             * value over it (§ 9a). */
+            if (_mode === "description") {
+                readAsksFromTask(_task);
+                readNotifyFromTask(_task);
+                renderQueues();
+            }
             refreshSave();
         }, 400);
     });
@@ -1021,6 +1208,9 @@ function _resetPerFolderState(keep) {
      * both cards stay hidden until this folder's description paints them. */
     if (_planTimer) { clearTimeout(_planTimer); _planTimer = null; }
     _planSeq++;
+    /* ...AND THE GRID'S FIT, which is this folder's too. */
+    if (_fitTimer) { clearTimeout(_fitTimer); _fitTimer = null; }
+    _fitSeq++;
     { const plan = $("ts-plan"); if (plan) plan.hidden = true; }
     hideWritten();
     /* WHAT CAME OVER IS THIS FOLDER'S TOO: hidden until its description
@@ -1058,7 +1248,17 @@ async function loadFolder(projects, dir, opts) {
     /* AND IF WE HAVE MOVED ON, THIS ANSWER IS NOT OURS.  `dir` on the
      * answer is what makes that checkable -- `calcdir.json`'s rule
      * (project-layout.md § 1.4a) on the wire. */
-    if (!said || said.dir !== _dir) return;
+    if (dir !== _dir) return;
+    /* NO ANSWER FOR THE FOLDER STILL SELECTED: said, and nothing of the
+     * last folder left on the page for Save to write here (§ 6.2b: a check
+     * that cannot run says so). */
+    if (!said) {
+        await refuseFolder("This folder could not be read",
+                           "The server's answer for it did not arrive or "
+                           + "did not read. Pick the folder again.");
+        return;
+    }
+    if (said.dir !== _dir) return;
 
     // The resolved-config view is per FOLDER (the folder's own machine
     // record is one of its sources), so it paints from this folder's answer
@@ -1119,9 +1319,10 @@ async function loadFolder(projects, dir, opts) {
                  + "citation; the structure is the cited junction, "
                  + "composed at prep");
     }
-    const structName = String(ref.source || "").split("/").pop();
-    const sideName = structName
-        ? structName.replace(/\.[^.]+$/, "") + ".molstruct.json" : "";
+    // THE PAIR BY ITS RULE'S ONE HOME: the folder answer names both files.
+    const pair = said.structure_pair || {};
+    const structName = pair.geometry || "";
+    const sideName = pair.sidecar || "";
     if (structName) $("ts-f-struct-name").textContent = structName;
     if (sideName)   $("ts-f-side-name").textContent = sideName;
     markFile("ts-f-struct", structName && names.has(structName),
@@ -1131,7 +1332,9 @@ async function loadFolder(projects, dir, opts) {
 
     // A hand-over: the parameters arrived, the description has not been
     // finished.  Show the file so it can be read, and say what is missing.
-    if (!taskText && overText) {
+    // WHICH OF THE THREE IS THE FOLDER ANSWER'S (`mode`), never worked out
+    // again here.
+    if (said.mode === "handover") {
         let over = null;
         try { over = JSON.parse(overText); } catch (_) { /* shown raw below */ }
         const awaiting = "Still needed: "
@@ -1167,7 +1370,7 @@ async function loadFolder(projects, dir, opts) {
         return;
     }
 
-    if (!taskText) {
+    if (said.mode === "empty") {
         _mode = "empty"; _handover = null;
         renderCameOver(null);
         $("ts-shape-card").hidden = true;
@@ -1188,27 +1391,22 @@ async function loadFolder(projects, dir, opts) {
         return;
     }
 
-    let task = null;
-    try {
-        task = JSON.parse(taskText);
-    } catch (e) {
-        // Show the bytes anyway: a file you cannot parse is exactly the one
-        // you want to look at.
-        setState("refuse", "task.json is here but does not parse",
-                 String(e && e.message ? e.message : e));
-        $("ts-stages-card").hidden = true;
-        { const c = $("ts-notify-card"); if (c) c.hidden = true; }
-        $("ts-machine-card").hidden = true;
-        await setEditorText(taskText, { fromDisk: true });
+    // The folder answer serves the description as its reader read it --
+    // an object, or `{error}` -- so the text is always JSON.
+    const task = JSON.parse(taskText);
+
+    /* A DESCRIPTION ITS READER REFUSES -- one written before a rule, which
+     * names `jobset migrate`, or one that breaks a rule -- is the folder
+     * answer's `{error}`, said in the reader's own words; the page edits
+     * nothing it cannot read (`task.read_task`). */
+    if (task && typeof task.error === "string"
+            && Object.keys(task).length === 1) {
+        await refuseFolder("task.json is here and its reader refuses it",
+                           task.error);
         return;
     }
 
-    const run  = (task && task.run) || {};
-    const name = run.name || run.id || "(unnamed)";
-    setState("loaded", `Loaded — ${name}`,
-             `engine ${(task.engine && task.engine.name) || "?"}`
-             + ` · shape ${task.shape || "?"}`
-             + ` · ${(task.stages || []).length} stage(s)`);
+    sayLoaded(task);
 
     _mode = "description"; _handover = null; _task = task;
     renderCameOver(task, said.treatment, said.frame_set,
@@ -1248,6 +1446,7 @@ async function loadFolder(projects, dir, opts) {
      * each stage prepared, ready or waiting -- and the pick starts again
      * from the offer, since what is ready changes with every prep. */
     _fs.ladder = said.ladder || { stages: [], offer: [] };
+    _fs.groups = said.groups || { stages: [], groups: [], shared: [] };
     _fs.prepPick = null;
     applySetMachine();
     _shape = String(task.shape || "");
@@ -1282,16 +1481,21 @@ async function loadFolder(projects, dir, opts) {
 /* ---------- the table edits the description ---------- */
 
 /** Push the model into the buffer and repaint. */
+/** A CARD NEVER WRITES OVER TEXT THAT DOES NOT PARSE: that text is a hand
+ *  edit in progress, and the model is older than it.  The card's change is
+ *  refused, said, and the editor left as typed -- every card's write alike
+ *  (`syncFromModel`, `patchDoc`). */
+function refuseUnparsed() {
+    setState("refuse", "The editor's text does not parse",
+             "A card cannot change the description while the text below "
+             + "is not valid JSON -- it would write over your edit. Fix "
+             + "the text (or revert it), then make the change again.");
+}
+
 async function syncFromModel() {
     if (!_task) return;
-    // A CARD NEVER WRITES OVER TEXT THAT DOES NOT PARSE: that text is a hand
-    // edit in progress, and the model is older than it.  The card's change
-    // is refused, said, and the editor left as typed.
     if (_cm && !_bufferParses) {
-        setState("refuse", "The editor's text does not parse",
-                 "A card cannot change the description while the text below "
-                 + "is not valid JSON -- it would write over your edit. Fix "
-                 + "the text (or revert it), then make the change again.");
+        refuseUnparsed();
         return;
     }
     await setEditorText(JSON.stringify(_task, null, 2) + "\n");
@@ -1318,6 +1522,7 @@ function removeStage(i) {
         return;
     }
     _task.stages.splice(i, 1);
+    compressGroups(_task.stages);
     syncFromModel();
 }
 
@@ -1327,29 +1532,17 @@ function removeStage(i) {
 function addStage() {
     if (!_task) return;
     const stages = _task.stages || (_task.stages = []);
-    /* A KIND THAT FIXES ITS RUNGS (§ 5.3) takes back a left-out optional
-     * rung, in its ladder place, with no values of its own -- it is a rung,
-     * not a refinement of the one before it. */
-    const fixed = _fs.fixed;
-    if (fixed) {
-        const names = stages.map((x) => x && x.name);
-        const name = fixed.optional.find((n) => names.indexOf(n) === -1);
-        if (!name) return;
-        const at = fixed.stages.indexOf(name);
-        const before = stages.findIndex(
-            (x) => fixed.stages.indexOf(x && x.name) > at);
-        stages.splice(before === -1 ? stages.length : before, 0,
-                      { name, overrides: {} });
-        syncFromModel();
-        return;
-    }
     const prev = stages[stages.length - 1];
     let name = "stage" + (stages.length + 1);
     const taken = new Set(stages.map((x) => String(x.name || "").toLowerCase()));
     let n = stages.length + 1;
     while (taken.has(name.toLowerCase())) { n += 1; name = "stage" + n; }
+    /* A NEW GROUP: a new stage continues from the one above, and a stage
+     * never shares a job with one it builds on -- the row's choice offers
+     * *same as above* where the rule allows it. */
     stages.push({
         name,
+        group: ((prev && prev.group) || 0) + 1,
         overrides: Object.assign({}, (prev && prev.overrides) || {}),
     });
     syncFromModel();
@@ -1731,6 +1924,36 @@ let _tmpl = { name: null, values: Object.create(null),
  * `_tmpl` is filled here rather than by its own fetch: the template's
  * values are a fact about the folder, so they arrive with the rest of
  * them and cannot land separately after a move. */
+/** THE FOLDER'S OWN LINE in the state box -- what is loaded -- which a
+ *  card's question gives way to once it is answered. */
+function sayLoaded(task) {
+    const run  = (task && task.run) || {};
+    const name = run.name || run.id || "(unnamed)";
+    setState("loaded", `Loaded — ${name}`,
+             `engine ${(task.engine && task.engine.name) || "?"}`
+             + ` · shape ${task.shape || "?"}`
+             + ` · ${(task.stages || []).length} stage(s)`);
+}
+
+/** A FOLDER THE PAGE CANNOT DESCRIBE -- no answer for it, or a
+ *  description its reader refuses: said in the state box, every card
+ *  hidden, the editor emptied and Save held, so nothing of another folder
+ *  stays on the page to be written here (`task-setup.md` § 2.1, § 6.2b). */
+async function refuseFolder(title, why) {
+    _mode = "refused"; _handover = null; _task = null;
+    renderCameOver(null);
+    for (const id of ["ts-shape-card", "ts-queue-card", "ts-next-card",
+                      "ts-stages-card", "ts-notify-card", "ts-machine-card"]) {
+        const c = $(id);
+        if (c) c.hidden = true;
+    }
+    setState("refuse", title, why);
+    _diskText = "";
+    await setEditorText("", { fromDisk: true });
+    refreshSave();
+}
+
+
 async function loadFolderAnswer(dir) {
     _tmpl = { name: null, values: Object.create(null),
               said: Object.create(null) };
@@ -1905,10 +2128,10 @@ function removeColumn(name) {
 
     if (_fs.pendingDrop !== name) {
         _fs.pendingDrop = name;
-        // The value the LAST stage carries is the one § 9 keeps —
-        // it is the production stage, and the value a single run would use.
-        // This page cannot write it into the template, so it says so rather
-        // than implying the value survives somewhere.
+        // EVERY STAGE'S VALUE GOES: this page edits task.json, not the
+        // template, so it names the last stage's value -- the production
+        // stage's -- for the person to set there, and says so before the
+        // click rather than implying the value survives somewhere.
         setState("refuse", "Remove the column " + name + "?",
                  (survivor === undefined
                     ? "No stage overrides it, so nothing is lost. "
@@ -1927,6 +2150,7 @@ function removeColumn(name) {
     for (const st of stages) {
         if (st && st.overrides) delete st.overrides[name];
     }
+    sayLoaded(_task);           // the question is answered
     syncFromModel();
 }
 
@@ -2140,64 +2364,69 @@ function renderNext(task) {
     });
     if (!rungs.length) { card.hidden = true; return; }
 
-    /* ONE BLOCK PER STAGE, and both things you can do with it
-     * (`task-setup.md` § 11).  A stage is either something to MEASURE or
-     * something to RUN, and which one is a decision only the user has.
-     *
-     * The bench axes are declared once for the calculation, so ANY stage can
-     * be measured; which is worth measuring is a judgement, and
-     * the page hints rather than choosing. */
+    /* A STAGE IS SOMETHING TO MEASURE OR SOMETHING TO RUN, and which is a
+     * decision only the user has (`task-setup.md` § 11).  The bench axes
+     * are declared once for the calculation, so ANY stage can be measured;
+     * which is worth measuring is a judgement, and the page hints rather
+     * than choosing. */
     const benchKeys = Object.keys((task && task.bench) || {});
     // VARYING AND DECLARED ARE DIFFERENT THINGS: a one-point axis fixes
     // its value (`generator.md` § 4.3a), and only a longer one varies.
     const benchVarying = benchKeys.filter(
         (k) => ((task.bench[k] || []).length || 0) > 1);
 
-    /* ONE TAB PER RUNG (§ 11, user 2026-09-01: "we can make the stage axis
-     * as a tab to organize the cards for prep bench and run so the whole
-     * page won't extend too long").  The alternative grows the page by one
-     * block per stage, and a five-rung ladder becomes a page nobody
-     * scrolls to the bottom of. */
     /* THE TASK'S PREP, ONE FOR THE LADDER (`job-system.md`, *The task*):
-     * the stages, where each stands, the ready ones to pick -- the same
-     * question `prep task` asks at the terminal. */
+     * the groups, where each stands, the ones to pick -- the same question
+     * `prep task` asks at the terminal. */
     host.appendChild(taskPrepCard(task));
+    /* ONE TAB PER GROUP (§ 11; user 2026-09-01: "we can make the stage axis
+     * as a tab to organize the cards for prep bench and run so the whole
+     * page won't extend too long"): a group is one job, so its run card,
+     * its lines and its members' benchmarks are one tab -- the description
+     * as edited, its numbers the Stages card's. */
+    const groups = [];
+    for (const e of rungs) {
+        const g = e.st.group;
+        if (!groups.length || groups[groups.length - 1].number !== g) {
+            groups.push({ number: g, members: [] });
+        }
+        groups[groups.length - 1].members.push(e.st.name || "");
+    }
     const nav = el("nav", { class: "ts-steptabs", role: "tablist",
-                            "aria-label": "stages to prepare" });
+                            "aria-label": "groups to prepare" });
     const panels = el("div", { class: "ts-steppanels" });
     host.appendChild(nav);
     host.appendChild(panels);
-    const names = rungs.map((e) => e.st.name || "");
     // THE CHOICE SURVIVES A REPAINT.  Every edit re-renders this card, and
-    // snapping back to the first rung would lose the tab a person was
+    // snapping back to the first group would lose the tab a person was
     // reading each time they typed.
-    if (names.indexOf(_fs.stepTab) === -1) _fs.stepTab = names[0] || "";
+    if (!groups.some((g) => g.number === _fs.stepTab)) {
+        _fs.stepTab = groups[0].number;
+    }
+    const launched = {};
+    for (const r of ((_fs.ladder || {}).stages || [])) {
+        launched[r.stage] = r.state === "launched";
+    }
 
-    rungs.forEach((e, i) => {
-        const name = e.st.name || "";
-        const runs = _fs.runs[name];
-        const active = name === _fs.stepTab;
+    groups.forEach((g, i) => {
+        const active = g.number === _fs.stepTab;
         const tab = el("button", {
             type: "button", class: "ts-steptab", role: "tab",
             id: "ts-steptab-" + i, "aria-controls": "ts-steppanel-" + i,
-            "aria-selected": active ? "true" : "false" }, name);
-        if (active) tab.classList.add("is-active");
-        tab.addEventListener("click", () => { _fs.stepTab = name;
-                                              renderNext(_task || task); });
-        if (runs) tab.appendChild(el("span", { class: "ts-ran" },
-                                     runs + "\u00d7"));
+            "data-tab": String(g.number),
+            "aria-selected": active ? "true" : "false" },
+            "group " + g.number + " \u00b7 " + g.members.join(", "));
         nav.appendChild(tab);
 
         const block = el("div", {
-            class: "ts-next-step", role: "tabpanel",
-            id: "ts-steppanel-" + i, "aria-labelledby": "ts-steptab-" + i });
+            class: "ts-next-step", id: "ts-steppanel-" + i });
         block.hidden = !active;
 
-        /* MEASURE first.  The order is shown because it is load-bearing --
-         * but the middle step is now a PERSON: `summarize` reports, and what
-         * the run uses is what you then write in the card below
-         * (`architecture.md` § 5.2).  Skipping it does not fail; it runs at
-         * the target's full width, having measured nothing.
+        /* MEASURE first, PER MEMBER: a benchmark measures one stage, never
+         * a group.  The order is shown because it is load-bearing -- but the
+         * middle step is a PERSON: `summarize` reports, and what the run
+         * uses is what you then write in the card below
+         * (`architecture.md` § 5.2).
          *
          * OFFERED WITH NO AXES TOO: the target machine then proposes the grid
          * (`generator.md` § 4.3a), as `prep bench` does at the terminal --
@@ -2208,116 +2437,158 @@ function renderNext(task) {
         if (!_fs.benchRefusal) {
             block.appendChild(el("p", { class: "hint" },
                 (benchVarying.length
-                    ? "Measure it \u2014 varying " + benchVarying.join(", ")
-                      + ". "
+                    ? "Measure a stage \u2014 varying "
+                      + benchVarying.join(", ") + ". "
                     : benchKeys.length
-                    ? "Measure it \u2014 at the one declared cell. "
-                    : "Measure it \u2014 no axes are declared, so the target "
-                      + "machine proposes the grid from its own record. ")
+                    ? "Measure a stage \u2014 at the one declared cell. "
+                    : "Measure a stage \u2014 no axes are declared, so the "
+                      + "target machine proposes the grid from its own "
+                      + "record. ")
                 + "Worth doing on the cheapest rung that still has the "
                 + "expensive stage's shape; the verdict is reported, and you "
-                + "write it into the card below."));
-            block.appendChild(el("p", { class: "hint" },
-                "Then launch it — one job per resource shelf; wait for the "
-                + "queue — and summarize it, which writes the record and a "
-                + "report for you to read."));
-            block.appendChild(commandsFor("bench", [name]));
-            block.appendChild(prepButton("bench", [name]));
+                + "write it into the card below. Then launch it \u2014 one "
+                + "job per resource shelf \u2014 and summarize it."));
+            for (const name of g.members) {
+                block.appendChild(el("h4", { class: "ts-reports-head" },
+                                     "measure " + name));
+                block.appendChild(commandsFor("bench", { stages: [name] }));
+                block.appendChild(prepButton("bench", [name]));
+            }
         }
 
-        /* WHAT THIS RUN WILL USE, IMMEDIATELY ABOVE THE COMMAND THAT USES
+        /* WHAT THIS JOB WILL USE, IMMEDIATELY ABOVE THE COMMAND THAT USES
          * IT (user, 2026-09-02: "that selection panel card should be next to
          * the prep for run button such that it's obvious that this is
-         * designed for the run.  This is not mixed up with the existing
-         * functional bench setup").  One value each, this rung's own, and it
-         * writes `stages[i].execution` -- never `bench`. */
-        block.appendChild(stageRunCard(task, name));
+         * designed for the run").  One value each, written into the
+         * members' `execution` -- never `bench`. */
+        block.appendChild(runCard(task, g.members));
 
         block.appendChild(el("p", { class: "hint" },
             "Run it \u2014 at what the card above says, prepared with the "
             + "task's Prep at the top. A launch value no row states is "
             + "refused at prep; --np / --cpus-per-task / --time on the "
             + "command line state one, or override the card."));
-        /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): what this stage
-         * starts from -- by default the stage before it's newest run, which
-         * must have finished; a run of it, named; or the calculation's
-         * structure.  The folder's answer, the one prep acts on, so the
-         * choice shows what prep would take; the command and the buttons
-         * follow it. */
-        const cf = _fs.continueFrom[name];
-        if (cf && !cf.error) block.appendChild(continueFromChoice(task, name, cf));
+        /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): for a group of
+         * one stage that continues from the stage before it -- its launch's
+         * choice -- or a force-constant stage, whose `relax` run is its
+         * prep's.  The folder's answer, the one the verb acts on. */
+        const chooser = g.members.length === 1 ? g.members[0]
+            : g.members.find((n) => (_fs.continueFrom[n] || {}).linked);
+        const cf = chooser ? _fs.continueFrom[chooser] : null;
+        if (cf && !cf.error) {
+            block.appendChild(continueFromChoice(task, chooser, cf));
+        }
         // THE LINES THE TERMINAL WOULD PRINT, from its own composer
-        // (`jobset/commands.stage_lines`, W55 B4): the calculation named
-        // from the projects root, what it continues from and the machine as
-        // chosen, and a launch line per mode where the config sets none.
-        block.appendChild(commandsFor("task", [name]));
+        // (`jobset/commands.stage_lines`, W55 B4): the group's prep and its
+        // one launch, and each member launched before, again alone (D4).
+        block.appendChild(commandsFor("task", { groups: [g.number] }));
+        for (const name of g.members.filter((n) => launched[n])) {
+            block.appendChild(el("p", { class: "hint" },
+                name + " launched again alone, warm or --cold:"));
+            block.appendChild(commandsFor("task", { stages: [name] }));
+        }
         panels.appendChild(block);
     });
+    // THE ONE TAB STRIP (`lib/tab-strip.js`, ui-contract.md § 4.1): it shows
+    // the group's panel; the page keeps which group is chosen, so a repaint
+    // stays on it.
+    window.molbuilder.tabStrip.mount(nav, { onChange: (name) => {
+        _fs.stepTab = Number(name);
+    } });
 
     card.hidden = false;
 }
 
-/** The task's Prep (`job-system.md`, *The task*): the ladder as the ready
- *  door answers it -- each stage prepared, ready with what it takes, or
- *  waiting with what for -- the ready ones to pick, the offer (D2) picked
- *  at first; then the command for the pick and the Preview / Prep that do
- *  what it does.  Several picked are one group, one job; a stage's own
- *  Continue-from choice goes with it when it is picked alone. */
+/** The task's Prep (`job-system.md`, *The task*; `task-setup.md` § 11):
+ *  every group with its stages, as the folder's answer gives them -- not
+ *  prepared; prepared and never launched, then prepared again whole;
+ *  launched; a force-constant stage not preparable yet, what it waits for
+ *  -- each stage's ready-door words beside it.  Every group not prepared,
+ *  and every prepared one whose members changed, is ticked when the folder
+ *  opens; under them the command for the pick and the Preview / Prep that
+ *  do what it does.  Each ticked group is one job. */
 function taskPrepCard(task) {
     const wrap = el("div", { class: "ts-task-prep" });
+    const gs = _fs.groups || {};
     const lad = _fs.ladder || {};
-    if (lad.error) {
+    const err = gs.error || lad.error;
+    if (err) {
         const p = el("p", { class: "hint" },
-                     "The task's stages cannot be read: " + lad.error);
+                     "The task's groups cannot be read: " + err);
         p.setAttribute("data-state", "bad");
         wrap.appendChild(p);
         return wrap;
     }
-    const rows = lad.stages || [];
-    /* PICKABLE: a ready stage -- and a waiting one whose tab names the run
-     * it continues from, or a cold start, which prep takes as said
-     * (`job-system.md` § 5.4: both doors offer the same choice). */
-    const pickable = (r) => r.state === "ready"
-        || (r.state === "waiting" && !!_fs.continueChoice[r.stage]);
-    const ready = rows.filter(pickable).map((r) => r.stage);
+    const groups = gs.groups || [];
+    const said = {};
+    for (const r of (lad.stages || [])) said[r.stage] = r;
+    /* PICKABLE: a group never launched that can be prepared -- or whose
+     * force-constant stage's Continue from names the `relax` run its deck
+     * is written at, which prep takes as said (`job-system.md` § 5.4). */
+    const pickable = (g) => g.state !== "launched" && (g.preparable
+        || g.members.some((st) => !!_fs.continueChoice[st]));
+    /* TICKED WHEN THE FOLDER OPENS: the groups `prep task` offers -- every
+     * one not prepared as described, a prepared one whose members changed
+     * among them (`ready.prep_offer`). */
     if (_fs.prepPick === null) _fs.prepPick = (lad.offer || []).slice();
-    _fs.prepPick = _fs.prepPick.filter((st) => ready.indexOf(st) !== -1);
+    _fs.prepPick = _fs.prepPick.filter(
+        (n) => groups.some((g) => g.number === n && pickable(g)));
     wrap.appendChild(el("p", { class: "hint" },
-        "Prepare the task \u2014 pick the ready stage(s). Several picked "
-        + "together share one job; a stage that builds on another is ready "
-        + "once that one's newest run has finished."));
+        "Prepare the task \u2014 pick the groups. Each group is one job; a "
+        + "group prepared and never launched is prepared again whole, and a "
+        + "launched one is fixed. What a stage takes from another stage's run "
+        + "is taken when it is launched."));
     // THE PLAN LIST'S OWN ROWS (`ts-planlist`), a box column added.
     const list = el("ul", { class: "ts-planlist" });
-    for (const r of rows) {
+    for (const g of groups) {
         const box = el("input", { type: "checkbox",
-                                  "aria-label": "prepare " + r.stage });
-        box.checked = _fs.prepPick.indexOf(r.stage) !== -1;
-        box.disabled = !pickable(r);
+                                  "aria-label": "prepare group " + g.number });
+        box.checked = _fs.prepPick.indexOf(g.number) !== -1;
+        box.disabled = !pickable(g);
         box.addEventListener("change", () => {
-            const at = _fs.prepPick.indexOf(r.stage);
-            if (box.checked && at === -1) _fs.prepPick.push(r.stage);
+            const at = _fs.prepPick.indexOf(g.number);
+            if (box.checked && at === -1) _fs.prepPick.push(g.number);
             if (!box.checked && at !== -1) _fs.prepPick.splice(at, 1);
             renderNext(_task || task);
         });
-        const detail = el("span", { class: "ts-plan-detail" },
-                          r.detail || "");
-        if (r.why) detail.title = r.why;
+        const state = g.state === "prepared" && !g.matches
+            ? "prepared \u2014 its members changed, prepare it again"
+            : g.state === "prepared" ? "prepared, never launched" : g.state;
+        const members = el("ul", { class: "ts-planlist" });
+        for (const st of g.members) {
+            const r = said[st] || {};
+            const detail = el("span", { class: "ts-plan-detail" },
+                              r.detail || "");
+            if (r.why) detail.title = r.why;
+            members.appendChild(el("li", {},
+                el("span", { class: "ts-planrow" },
+                   el("span", { class: "ts-plan-stage" }, st),
+                   // THE ONE STATE CHIP (`lib/state-chip.js`).
+                   window.molbuilder.stateChip(r.state || "described"),
+                   detail)));
+        }
         list.appendChild(el("li", {},
             el("label", { class: "ts-planrow ts-planrow--pick" }, box,
-               el("span", { class: "ts-plan-stage" }, r.stage),
-               // THE ONE STATE CHIP (`lib/state-chip.js`).
-               window.molbuilder.stateChip(r.state),
-               detail)));
+               el("span", { class: "ts-plan-stage" }, "group " + g.number),
+               el("span", { class: "ts-plan-detail" }, state)),
+            members));
     }
     wrap.appendChild(list);
-    // IN LADDER ORDER, as a group's job walks them.
-    const picks = rows.map((r) => r.stage)
-        .filter((st) => _fs.prepPick.indexOf(st) !== -1);
+    // IN THE DESCRIPTION'S ORDER, as prep prepares them.
+    const picks = groups.map((g) => g.number)
+        .filter((n) => _fs.prepPick.indexOf(n) !== -1);
     if (!picks.length) {
-        wrap.appendChild(el("p", { class: "hint" }, ready.length
-            ? "Pick a ready stage to prepare."
-            : "No stage is ready to prepare \u2014 each is prepared, or "
-              + "waits for what it says."));
+        // EVERY ONE PREPARED AS DESCRIBED is the ordinary state after a
+        // prep: the next step is the launch, and preparing again a choice.
+        const ready = groups.filter(pickable);
+        wrap.appendChild(el("p", { class: "hint" },
+            !ready.length
+                ? "No group to prepare \u2014 each is launched, or waits "
+                  + "for what it says."
+                : ready.every((g) => g.state === "prepared" && g.matches)
+                ? "Every group is prepared as described \u2014 launch at the "
+                  + "terminal; pick a group to prepare it again."
+                : "Pick a group to prepare."));
         /* THE LAST ANSWER STAYS until a new preview replaces it. */
         const kept = _fs.answers.task;
         if (kept) {
@@ -2329,7 +2600,9 @@ function taskPrepCard(task) {
         }
         return wrap;
     }
-    wrap.appendChild(commandsFor("task", picks));
+    /* THE LINES THE PREP BOX'S PREP RUNS: its prep always -- a group
+     * prepared and never launched, ticked, is prepared again. */
+    wrap.appendChild(commandsFor("task", { groups: picks, prep: true }));
     wrap.appendChild(prepButton("task", picks));
     return wrap;
 }
@@ -2337,7 +2610,8 @@ function taskPrepCard(task) {
 /** The Continue-from choice for one stage (plan W37): a select over the
  *  default, every run of the stage before it with what it was, and the
  *  structure where `--cold` is a choice -- and under it what the choice
- *  means: the default's own line, or why prep refuses it for now. */
+ *  means: the default's own line, or why it is refused for now -- by its
+ *  launch, or for a force-constant stage by its prep. */
 function continueFromChoice(task, name, cf) {
     const wrap = el("div", { class: "ts-continue-from" });
     if (!cf.from_stage) {
@@ -2380,22 +2654,26 @@ function continueFromChoice(task, name, cf) {
         note.textContent = "starts from the calculation's structure — nothing "
             + "is carried in";
     } else {
-        note.textContent = "named: taken as it is — prep says what it was";
+        note.textContent = "named: taken as it is — "
+            + (cf.linked ? "its prep" : "its launch") + " says what it was";
     }
     wrap.append(el("label", {}, "Continue from ", sel), note);
     return wrap;
 }
 
-/** The command lines for ``stages`` -- the server's, from the terminal's own
- *  composer (`/api/task-setup/commands`, W55 B4): its prep as chosen (what
- *  it continues from, the machine), its launch, a benchmark's summarize.
- *  The block is filled when the answer lands; a block rebuilt since is no
- *  longer on the page, and its late answer fills nothing anyone sees. */
-function commandsFor(kind, stages) {
+/** The command lines for ``pick`` -- ``{groups}`` or ``{stages}`` -- the
+ *  server's, from the terminal's own composer (`/api/task-setup/commands`,
+ *  W55 B4): a group's prep as chosen (the machine, a force-constant stage's
+ *  `relax` run) and its launch (what a group of one continues from); the
+ *  prep of several groups picked; a benchmark's lines; a member's launch
+ *  again alone.  The block is filled when the answer lands; a block
+ *  rebuilt since is no longer on the page, and its late answer fills
+ *  nothing anyone sees. */
+function commandsFor(kind, pick) {
     const pre = el("pre", { class: "ts-cmd", "data-state": "loading" }, "…");
-    const body = Object.assign({ dest: _dir, kind, stages,
+    const body = Object.assign({ dest: _dir, kind,
                                  target: _machine || null },
-                               _continueOf(kind, stages));
+                               pick, _continueOf(kind, pick));
     fetch("/api/task-setup/commands", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2409,18 +2687,43 @@ function commandsFor(kind, stages) {
     return pre;
 }
 
-/** The choice as the prep door's fields -- the CLI's two flags. */
+/** The choice as the fields the prep and commands routes take -- the
+ *  CLI's two flags. */
 function continueBody(name) {
     const c = _fs.continueChoice[name] || "";
     return c === "--cold" ? { cold: true } : c ? { from: c } : {};
 }
 
-/** What ``stages`` continue from, as the door takes it: a run's stage
- *  picked alone carries its choice; a group's stages each start as the
- *  description says (`project-layout.md` § 1.6.6). */
-function _continueOf(kind, stages) {
-    return kind === "task" && stages.length === 1
-        ? continueBody(stages[0]) : {};
+/** The members of the groups numbered ``numbers``, in order. */
+function membersOf(numbers) {
+    return (_fs.groups.groups || [])
+        .filter((g) => numbers.indexOf(g.number) !== -1)
+        .flatMap((g) => g.members);
+}
+
+/** The Continue-from choice a force-constant stage among ``numbers`` holds
+ *  -- the `relax` run its deck is written at, its prep's to take
+ *  (`engines/vibration.md` § 5.2a) -- as the prep door's field, or ``{}``. */
+function _prepFrom(numbers) {
+    const st = membersOf(numbers).find(
+        (n) => (_fs.continueFrom[n] || {}).linked && _fs.continueChoice[n]);
+    return st ? continueBody(st) : {};
+}
+
+/** What ``pick`` takes, as the command door takes it: a force-constant
+ *  stage's choice goes to its group's prep; a group of one stage's, to its
+ *  launch; a member launched again alone carries its own; a group's stages
+ *  each start as the description says (`job-system.md` § 5.3). */
+function _continueOf(kind, pick) {
+    if (kind !== "task") return {};
+    if (pick.stages) {
+        return pick.stages.length === 1 ? continueBody(pick.stages[0]) : {};
+    }
+    const linked = _prepFrom(pick.groups);
+    if (Object.keys(linked).length) return linked;
+    const members = membersOf(pick.groups);
+    return pick.groups.length === 1 && members.length === 1
+        ? continueBody(members[0]) : {};
 }
 
 //: Every prep widget on the page, so the machine choice can reach them.
@@ -2428,8 +2731,8 @@ function _continueOf(kind, stages) {
 //: a push from `prepButton` before this line would throw.
 const _PREP_WIDGETS = [];
 
-/** The Preview / Prep pair for ``stages`` -- the task's pick (one stage,
- * or several as one group) or a benchmark's stage.
+/** The Preview / Prep pair for ``picks`` -- the task's groups picked, by
+ * number, each one job; or a benchmark's one stage.
  *
  * **Prep, never launch** (user, 2026-08-24).  `prep` writes files into the
  * calculation and can be run again; `launch` spends a queue slot and
@@ -2441,7 +2744,7 @@ const _PREP_WIDGETS = [];
  * scheduler for -- and shows it; the second click runs it.  The same rule
  * the launch door keeps (`submission.md` S4), for the same reason.
  */
-function prepButton(kind, stages) {
+function prepButton(kind, picks) {
     /* TWO BUTTONS, AND ONE ENABLES THE OTHER.
      *
      * Each button does ONE thing, always.  `renderNext` rebuilds every stage
@@ -2451,8 +2754,9 @@ function prepButton(kind, stages) {
     const wrap = el("div", { class: "ts-prep" });
     const say = el("div", { class: "ts-prep-say" });
     // ONE ANSWER FOR THE TASK'S PREP, whatever it picked; a bench's per stage.
-    const key = kind === "task" ? "task" : kind + ":" + stages.join("+");
-    const what = kind + " " + stages.join(", ");
+    const key = kind === "task" ? "task" : kind + ":" + picks.join("+");
+    const what = kind === "task" ? "group " + picks.join(", ")
+                                 : kind + " " + picks.join(", ");
     const btnPreview = el("button", { type: "button", class: "btn" },
                           "Preview " + kind);
     const btnWrite = el("button", { type: "button", class: "btn", disabled: "" },
@@ -2464,7 +2768,7 @@ function prepButton(kind, stages) {
     /* WHAT BOTH MUST ANSWER BEFORE EITHER RUNS.  Returns a reason, or null. */
     function blocked() {
         /* PREP READS `task.json` FROM DISK -- the door takes a FOLDER, not a
-         * document (the one prep entry, `prep.prep_stage`), because one
+         * document (the one prep entry, `prep.prep_task`), because one
          * assembly serves the CLI and the browser alike (A12) and the CLI has
          * only the file.  An unsaved card is not in the document prep reads,
          * so its preview would show a plan the card does not say. */
@@ -2528,52 +2832,66 @@ function prepButton(kind, stages) {
                  * what the attempt would receive, whether the deck agrees
                  * with its launch -- or the refusal with what it pointed at.
                  * Prep is not offered for a plan prep refuses. */
-                const r = await _prepCall(kind, stages, true);
+                const r = await _prepCall(kind, picks, true);
                 _showPrepAnswers(wrap, say, r);
                 if (!r.ok) return;
                 planned = r.plan_id || null;
                 const several = r.answers.length > 1;
-                /* EACH PICKED STAGE'S END POINT AND FILES, in order -- a
-                 * group's members one after another. */
-                for (const a of r.answers) {
-                    /* A13 -- THE END POINT, as the plan holds it, line for line:
-                     * the header where a scheduler runs the job -- the run script
-                     * takes its counts from the allocation there -- else the run
-                     * script's stated counts.  Nothing worked out again
-                     * (`architecture.md` § 5.2). */
-                    const launch = a.launch || {};
-                    const lines = (launch.header || []).length
-                        ? launch.header : (launch.run_script || []);
-                    if (lines.length) {
-                        const box = el("div", { class: "ts-emitted" });
-                        box.appendChild(el("div", { class: "ts-emitted-head" },
-                            "What " + (several ? a.stage : "this run")
-                            + " will actually be launched with"));
-                        // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
-                        // and saying so is the difference between a contradiction
-                        // and a fact.
-                        box.appendChild(el("div", { class: "hint" },
-                            "from the saved task.json — save the card above to "
-                            + "change these"));
-                        for (const line of lines) {
-                            box.appendChild(el("div", { class: "ts-emitted-line" },
-                                el("code", {}, line)));
-                        }
-                        wrap.appendChild(box);
+                /* A13 -- THE END POINT, as the plan holds it, line for line:
+                 * the header where a scheduler runs the job -- the run script
+                 * takes its counts from the allocation there -- else the run
+                 * script's stated counts.  Nothing worked out again
+                 * (`architecture.md` § 5.2). */
+                function endPoint(who, lines) {
+                    if (!lines.length) return;
+                    const box = el("div", { class: "ts-emitted" });
+                    box.appendChild(el("div", { class: "ts-emitted-head" },
+                        "What " + who + " will actually be launched with"));
+                    // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
+                    // and saying so is the difference between a contradiction
+                    // and a fact.
+                    box.appendChild(el("div", { class: "hint" },
+                        "from the saved task.json — save the card above to "
+                        + "change these"));
+                    for (const line of lines) {
+                        box.appendChild(el("div", { class: "ts-emitted-line" },
+                            el("code", {}, line)));
                     }
-                    /* WHAT IT WOULD WRITE, every file the plan leaves
-                     * (`job-system.md` § 5.0), folded: the count is the glance,
-                     * the list the check. */
-                    const writes = a.writes || [];
-                    if (writes.length) {
-                        const det = el("details", { class: "ts-prep-writes" });
-                        det.appendChild(el("summary", {},
-                            (several ? a.stage + " " : "") + "writes "
-                            + writes.length + " file"
-                            + (writes.length === 1 ? "" : "s")));
-                        det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
-                                           writes.join("\n")));
-                        wrap.appendChild(det);
+                    wrap.appendChild(box);
+                }
+                /* WHAT IT WOULD WRITE, every file the plan leaves
+                 * (`job-system.md` § 5.0), folded: the count is the glance,
+                 * the list the check. */
+                function writesFold(who, writes) {
+                    if (!writes.length) return;
+                    const det = el("details", { class: "ts-prep-writes" });
+                    det.appendChild(el("summary", {},
+                        (who ? who + " " : "") + "writes " + writes.length
+                        + " file" + (writes.length === 1 ? "" : "s")));
+                    det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
+                                       writes.join("\n")));
+                    wrap.appendChild(det);
+                }
+                /* EACH PICKED STAGE'S END POINT AND FILES, in order -- a
+                 * group's members one after another, then the group's one
+                 * job: where its header is written, a first launch sends
+                 * that header, not a member's own, so it alone is shown
+                 * (`job-system.md` § 5.0, checkpoint 6). */
+                for (const a of r.answers) {
+                    const g = a.group;
+                    const job = g && g.launch.header.length ? g : null;
+                    if (!job) {
+                        const launch = a.launch || {};
+                        endPoint(several ? a.stage : "this run",
+                                 (launch.header || []).length
+                                     ? launch.header : (launch.run_script || []));
+                    }
+                    writesFold(several ? a.stage : "", a.writes || []);
+                    if (g && a.stage === g.members[g.members.length - 1]) {
+                        const who = "group " + g.number + " ("
+                                  + g.members.join(", ") + ")";
+                        if (job) endPoint(who, job.launch.header);
+                        writesFold("group " + g.number, g.writes);
                     }
                 }
 
@@ -2597,7 +2915,7 @@ function prepButton(kind, stages) {
             try {
                 say.textContent = "Preparing\u2026";
                 say.setAttribute("data-state", "ok");
-                const r = await _prepCall(kind, stages, false, planned);
+                const r = await _prepCall(kind, picks, false, planned);
                 if (!r.ok) retire();
                 _showPrepAnswers(wrap, say, r);
                 if (r.ok) {
@@ -2655,18 +2973,14 @@ function prepButton(kind, stages) {
             + String(unread);
         say.setAttribute("data-state", "bad");
     }
-    const prepared = !unread && stages.map((st) => (_fs.prepared[kind] || {})[st])
-        .find(Boolean);
+    /* A BENCHMARK PREPARED is not prepared again (`job-system.md` § 5.0); a
+     * task's groups are the Prep box's to offer, each where it may go. */
+    const prepared = !unread && kind === "bench"
+        && picks.map((st) => (_fs.prepared[kind] || {})[st]).find(Boolean);
     if (prepared) {
         btnPreview.disabled = true;
         say.textContent = String(prepared);
         say.setAttribute("data-state", "warn");
-        /* ...AND WHERE IT WAS ADMITTED, as its job records it -- the line
-         * both prep doors print (`job-system.md` § 6.0). */
-        const placed = (_fs.prepared.placed || {})[stages[0]];
-        if (kind === "task" && placed) {
-            wrap.appendChild(el("div", { class: "hint" }, String(placed)));
-        }
     }
     /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
      * `disabled = !machine` on everything it holds -- so registering the
@@ -2707,13 +3021,16 @@ function _syncPrepButtons() {
     }
 }
 
-async function _prepCall(kind, stages, plan, planId) {
-    const body = { dest: _dir, kind, stages, plan };
+async function _prepCall(kind, picks, plan, planId) {
+    const body = Object.assign({ dest: _dir, kind, plan },
+                               kind === "task" ? { groups: picks }
+                                               : { stages: picks });
     // THE PREVIEW'S PLAN, NAMED: prep refuses a plan that differs from the
     // one previewed -- the folder changed between (`job-system.md` § 5.0).
     if (planId) body.plan_id = planId;
-    // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
-    Object.assign(body, _continueOf(kind, stages));
+    // THE `relax` RUN a force-constant stage's deck is written at, as
+    // chosen -- the one choice prep takes; every other is its launch's.
+    if (kind === "task") Object.assign(body, _prepFrom(picks));
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.  A FOLDER SET TO ITS MACHINE names none:
@@ -2746,9 +3063,16 @@ function _showPrepAnswers(wrap, say, r) {
                         all.length > 1 ? a.stage : null);
     }
     if (all.length > 1 && say.getAttribute("data-state") === "ok") {
+        /* EACH GROUP ONE JOB, as the saved description groups them. */
+        const named = all.map((a) => a.stage);
+        const jobs = (_fs.groups.groups || [])
+            .filter((g) => g.members.some((st) => named.indexOf(st) !== -1))
+            .map((g) => "group " + g.number + " (" + g.members.join(", ")
+                        + ")");
         say.textContent = (all[0].preview ? "Previewed " : "Prepared ")
-            + all.map((a) => a.stage).join(", ") + " as one job for "
-            + all[0].machine
+            + (jobs.length ? jobs.join(", ") + ", each one job,"
+                           : named.join(", "))
+            + " for " + all[0].machine
             + (all[0].preview ? " — nothing is written until Prep." : ".");
     }
     /* WHAT COMES NEXT, as the terminal's prep ends: the launch of what was
@@ -2814,38 +3138,29 @@ function _showPrepAnswer(wrap, say, r, head) {
           + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
     const a = r.attempt;
-    /* WHAT IT CONTINUES FROM, AS THE TERMINAL SAYS IT (`job-system.md`
-     * § 5.4; the W37 review): which run, by default or named, what it was --
-     * its verdict among it -- and what came across.  The line is the
-     * server's (`Continuation.line`); a flat folder has no attempt and still
-     * continues. */
-    if (r.continuation) line(r.continuation.line);
     if (a) {
         line((would ? "would open attempt " : "Attempt ") + a.dir
              + (a.fresh ? "" : " (reused — not launched yet)"));
         line((would ? "would bring in: " : "brought in: ")
              + (a.brought || []).join(", "));
-        // WHAT IT STARTS FROM when it continues from no run -- the
-        // terminal's own words, off the same answer: a cold start asked
-        // for, the files a transport rung gathered (said below), or nothing
-        // from another run -- a linked stage's too: its kind's first rung,
-        // or the structure as given.
-        if (!r.continuation && !(r.gathered || []).length) {
-            line(r.cold ? "cold start — nothing copied in"
-                 : "takes nothing from another run"
-                   + (r.linked ? "" : " (the first stage, or one that starts clean)"));
-        }
     }
-    const took = would ? "would gather: " : "gathered: ";
     for (const p of (r.points || [])) {
         /* THE POINT IT IS, named as everywhere in the UI (point-words.js):
          * its frame and its voltage. */
         const at = pointWords(p.frame, p.of, p.bias_v);
         line((would ? "would open attempt " : "Attempt ") + p.attempt
              + (at ? " @ " + at : ""));
-        for (const g of (p.gathered || [])) line(took + g.file + " ← " + g.from);
     }
-    for (const g of (r.gathered || [])) line(took + g.file + " ← " + g.from);
+    /* A FORCE-CONSTANT STAGE'S `relax` RUN, its deck written at it -- the
+     * server's line (`Continuation.line`, `engines/vibration.md` § 5.2a). */
+    if (r.continuation) line("written at: " + r.continuation.line);
+    /* WHAT ITS FIRST LAUNCH WILL TAKE, the terminal's own lines
+     * (`job-system.md` § 5.0, *a preview*): nothing is copied at prep. */
+    for (const t of (r.takes || [])) line(t.line);
+    if (!(r.takes || []).length && !r.continuation) {
+        line("takes nothing from another run"
+             + (r.linked ? "" : " (the first stage, or one that starts clean)"));
+    }
     /* WHERE IT WAS ADMITTED, and where each value came from -- the
      * server's line, the one the terminal prints (`job-system.md` § 6.0). */
     if (r.placement && r.placement.line) line(r.placement.line);
@@ -2960,11 +3275,13 @@ function proposedFromHandover(over, shape, varies) {
     if (kind === "vibration") {
         stages = [];
         if (engineName === "siesta" && !relaxed) {
-            stages.push({ name: "relax", overrides: {} });
+            stages.push({ name: "relax", group: 1, overrides: {} });
         }
-        stages.push({ name: "freq", overrides: {} });
+        // ITS OWN GROUP: the force-constant stage builds on `relax`.
+        stages.push({ name: "freq", group: stages.length + 1,
+                      overrides: {} });
     } else {
-        stages = [{ name: "coarse", overrides: {} }];
+        stages = [{ name: "coarse", group: 1, overrides: {} }];
     }
     const out = {
         schema:    "molbuilder/task@1",
@@ -3030,6 +3347,9 @@ function setMachine(name) {
     // the asks from a ceiling this machine never stated).
     _fs.queue = "";
     renderQueues();
+    /* THE GRID'S FIT IS THE MACHINE'S TOO (`task-setup.md` § 2.1: it
+     * changes when either the folder or the machine moves). */
+    if (_fs.fitBench) scheduleFitRefresh(_fs.fitBench);
     _syncPrepButtons();      // the prep buttons wait on this answer
     /* THE CONFIG CARD IS NOT REPAINTED HERE: it shows this machine's
      * `molbuilder.json`, which no machine choice changes.  Which machine
@@ -3185,7 +3505,11 @@ function renderQueues() {
     const needs = $("ts-queue-needs");
     if (!card || !host) return;
     const qs = _queuesOf(_machine);
-    card.hidden = false;
+    /* SHOWN ONCE THERE IS A DESCRIPTION, as the notify card is: the card
+     * writes `task.json`'s `allocation` (`task-setup.md`), and a hand-over
+     * has none for a choice to land in. */
+    card.hidden = _mode !== "description";
+    if (card.hidden) return;
     host.innerHTML = "";
     if (!_machine) {
         needs.hidden = false;
@@ -3370,7 +3694,8 @@ function patchDoc(change) {
     try {
         task = JSON.parse(_cm.getValue());
     } catch (e) {
-        return false;        // mid-edit and unparseable; say nothing, lose nothing
+        refuseUnparsed();    // mid-edit: said, and the text left as typed
+        return false;
     }
     if (!task || typeof task !== "object") return false;
     if (change(task) === false) return false;
@@ -3809,6 +4134,7 @@ function refreshSave() {
     let blocked = "";
     if (!_dir)                                    blocked = "Pick a folder first.";
     else if (_mode === "empty")                   blocked = "Nothing to save — this folder carries no description and no hand-over.";
+    else if (_mode === "refused")                 blocked = "Nothing to save — this folder could not be described; the reason is above.";
     else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
     btn.disabled = !!blocked;
     if (why) {
@@ -3872,6 +4198,11 @@ async function _save() {
                      || "the server refused."), "bad");
             setState("refuse", "Not written", (body && body.error)
                      || ("save failed (" + r.status + ")"));
+            // EVERY FINDING THE REFUSAL CARRIES, its warnings too: nothing
+            // is dropped (`ui-contract.md` § 5.1).
+            if (body && Array.isArray(body.findings) && body.findings.length)
+                renderFindings(body.findings,
+                               { panel: $("ts-state-findings") });
             refreshSave();
             return;
         }

@@ -115,7 +115,7 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
                                plan=plan)
 
 
-def _pseudo_dir(base: Path, plan=None) -> Path:
+def pseudo_dir(base: Path, plan=None) -> Path:
     """THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
     pseudopotential copies live in ``pseudos/``, one folder, instead of
     N ``<El>.psml`` entries loose at the root.  Root strays -- put there
@@ -152,7 +152,7 @@ def _pseudo_dir(base: Path, plan=None) -> Path:
     return pdir
 
 
-def _siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
+def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     """Put the pseudopotentials this deck needs into the calculation.
 
     SIESTA opens ``<element>.psml`` in the directory it runs from and has no
@@ -195,12 +195,12 @@ def _siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     species = species_order(struct.elements)
     if not species:
         return
-    pdir = _pseudo_dir(base, plan)
+    pdir = pseudo_dir(base, plan)
     # THE FOLDER WINS, by the one rule the settings gate asks too.
     want = [s for s, d in psml_sources(species, dest_dir=base).items()
             if d is None]
     if not want:
-        _screen_pseudos(species, cfg, pdir)
+        screen_pseudos(species, cfg, pdir)
         return
 
     lib_raw = getattr(cfg, "psml_lib", None)
@@ -236,10 +236,10 @@ def _siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
             f"<element>.psml in the directory it runs from and has no search "
             f"path, so it would refuse at startup.  Put the file in the "
             f"library, or point `psml_lib` at one that has it.")
-    _screen_pseudos(species, cfg, pdir)
+    screen_pseudos(species, cfg, pdir)
 
 
-def _screen_pseudos(species, cfg, base: Path) -> None:
+def screen_pseudos(species, cfg, base: Path) -> None:
     """`science/pseudopotentials.md` § 1, run on the calculation's own files.
 
     Same engine (`pseudos.check_coverage`), same severity set
@@ -279,20 +279,20 @@ def engine_seam(engine: str) -> EngineSeam:
     if engine == "siesta":
         from ..config.siesta import SiestaConfig
         from ..siesta.input import spec_for as _siesta_spec
-        from ..siesta.stages import _traits, _warm_declaration
+        from ..siesta.stages import traits_for, warm_for
         return EngineSeam(config_cls=SiestaConfig, spec_for=_siesta_spec,
                           suffix=".fdf",
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, system_label=label),
-                          warm_for=_warm_declaration, traits_for=_traits,
+                          warm_for=warm_for, traits_for=traits_for,
                           sibling_artifacts=_siesta_sibling_artifacts,
-                          provide_data=_siesta_provide_pseudos,
+                          provide_data=siesta_provide_pseudos,
                           shared_package=_siesta_shared_package)
     if engine == "pyscf":
         from ..config.pyscf import PySCFConfig
         from ..pyscf.input import spec_for as _pyscf_spec
-        from ..pyscf.stages import _traits as _pyscf_traits
-        from ..pyscf.stages import _warm_declaration as _pyscf_warm
+        from ..pyscf.stages import traits_for as _pyscf_traits
+        from ..pyscf.stages import warm_for as _pyscf_warm
         # NO ``provide_data`` and NO ``sibling_artifacts``, and both absences
         # are ANSWERS rather than omissions (`script-preparation.md` § 4, W5):
         # PySCF's basis sets ship inside PySCF, so there is no file to put in
@@ -317,7 +317,7 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
     and the atom-permutation record when its decks are written from a sorted
     copy.
 
-    The same files ``_siesta_provide_pseudos`` stages, named by the engine
+    The same files ``siesta_provide_pseudos`` stages, named by the engine
     that staged them (`script-preparation.md` § 4, the data-files step),
     under ``pseudos/``.
 
@@ -338,4 +338,5 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
                       if view.is_file(base / PERMUTATION_FILE) else [])
 
 
-__all__ = ["EngineSeam", "engine_seam"]
+__all__ = ["EngineSeam", "engine_seam", "pseudo_dir", "screen_pseudos",
+           "siesta_provide_pseudos"]

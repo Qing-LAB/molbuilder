@@ -48,7 +48,7 @@ def described(isolated_projects_root, web_client):
         "run": {"name": "JOB", "id": "JOB_H2"},
         "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
         "varies": [],
-        "stages": [{"name": "coarse", "enabled": True, "overrides": {}}],
+        "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
         # THE RUN CARD STATES THE LAUNCH SHAPE (`architecture.md` § 5.2) --
         # a run whose shape is stated nowhere is refused at prep.
         "execution": {"mpi_np": 2, "omp_threads": 1},
@@ -94,11 +94,14 @@ def _make_preppable(calc):
         _T.template_with_values(cfg, engine="siesta"))
 
 
-def _post(client, *, stage, **body):
-    """One stage's Prep, as the page sends it -- ``stages``, the pick -- and
-    its answer: the refusal, or that stage's own answer (``answers``' one
-    entry) with the pick's ``plan_id``."""
-    r = client.post("/api/task-setup/prep", json=dict(body, stages=[stage]))
+def _post(client, *, stage=None, group=None, **body):
+    """One Prep, as the page sends it -- a task's ``groups``, the pick (one
+    group of one stage here), or a benchmark's ``stages`` -- and its
+    answer: the refusal, or that stage's own answer (``answers``' one entry)
+    with the pick's ``plan_id``."""
+    pick = ({"groups": [group]} if body.get("kind") == "task"
+            else {"stages": [stage]})
+    r = client.post("/api/task-setup/prep", json=dict(body, **pick))
     j = r.get_json() or {}
     if r.status_code != 200:
         return r.status_code, j
@@ -120,7 +123,7 @@ def test_it_refuses_a_folder_with_no_description(web_client, described,
                                                  isolated_projects_root):
     bare = isolated_projects_root / "bare"
     bare.mkdir()
-    st, j = _post(web_client, dest=str(bare), kind="task", stage="coarse",
+    st, j = _post(web_client, dest=str(bare), kind="task", group=1,
                   target=LOCAL_TARGET, plan=True)
     assert st == 400 and "task.json" in j["error"]
 
@@ -130,7 +133,7 @@ def test_silence_about_the_machine_is_still_refused(web_client, described):
     asked of a calculation prep would otherwise take, so the refusal is the
     machine's."""
     _make_preppable(Path(described))
-    st, j = _post(web_client, dest=described, kind="task", stage="coarse",
+    st, j = _post(web_client, dest=described, kind="task", group=1,
                   plan=True)
     assert st == 400 and "none was named" in j["error"], j
 
@@ -165,7 +168,7 @@ def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
     from molbuilder.jobset.ledger import LEDGER_FILE
 
     _make_preppable(Path(described))
-    st, j = _prep(web_client, dest=described, kind="task", stage="coarse",
+    st, j = _prep(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200, j
 
@@ -200,7 +203,7 @@ def test_the_reserved_name_cannot_be_taken_by_a_record():
 
 def test_an_unknown_machine_is_refused_by_name(web_client, described):
     _make_preppable(Path(described))
-    st, j = _post(web_client, dest=described, kind="task", stage="coarse",
+    st, j = _post(web_client, dest=described, kind="task", group=1,
                   target="no-such-box", plan=True)
     assert st == 400 and "no-such-box" in j["error"], j
 
@@ -267,7 +270,7 @@ def test_two_preps_at_once_leave_the_servers_stderr_as_they_found_it(
 
     def prep(calc):
         try:
-            P.prep_stage(calc, "task", "coarse", target=LOCAL_TARGET)
+            P.prep_task(calc, "task", groups=[1], target=LOCAL_TARGET)
         except Exception as exc:          # said below, with the rest
             failed.append(exc)
 
@@ -308,8 +311,8 @@ def _a_ladder_the_preflight_warns_about(calc):
     desc = Path(calc) / TASK_FILENAME
     d = json.loads(desc.read_text())
     d["varies"] = []
-    d["stages"] = [{"name": "coarse", "enabled": True, "overrides": {}},
-                   {"name": "tight", "enabled": True, "overrides": {},
+    d["stages"] = [{"name": "coarse", "group": 1, "overrides": {}},
+                   {"name": "tight", "group": 2, "overrides": {},
                     "execution": {"restart": "clean"}}]
     desc.write_text(json.dumps(d))
 
@@ -320,15 +323,14 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
     before the save -- nothing saved, written or recorded; a Prep naming the
     preview's plan takes it, one naming a plan the folder no longer makes is
     refused, writing nothing but its ledger line, and one naming none is not
-    taken.  The stage is the
-    entry's to resolve -- ``#1``, or the name in any case (D15).
+    taken.  The group is the entry's to resolve (D15).
 
     API-LEVEL: the browser's door, which no `jobset` verb reaches; what the
     plan holds is the entry's, and the prep protocol's table."""
     calc = Path(described)
     _make_preppable(calc)
     before = sorted(p.relative_to(calc) for p in calc.rglob("*"))
-    st, pv = _post(web_client, dest=described, kind="task", stage="#1",
+    st, pv = _post(web_client, dest=described, kind="task", group=1,
                    target=LOCAL_TARGET, plan=True)
     assert st == 200 and pv["preview"] and pv["stage"] == "coarse", pv
     assert pv["plan_id"] and pv["writes"], pv
@@ -348,19 +350,19 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
     d = json.loads(was)
     d["execution"]["omp_threads"] = 2
     (calc / TASK_FILENAME).write_text(json.dumps(d))
-    st, j = _post(web_client, dest=described, kind="task", stage="COARSE",
+    st, j = _post(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET, plan_id=pv["plan_id"])
     assert st == 400 and "differs from the plan you previewed" in j["error"], j
     assert not (calc / "01_coarse").exists(), "a refused prep wrote"
     (calc / TASK_FILENAME).write_text(was)
     # ...and a Prep that names no plan at all is not taken: nothing is
     # prepared unseen.
-    st, j = _post(web_client, dest=described, kind="task", stage="coarse",
+    st, j = _post(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 400 and "preview first" in j["error"], j
     assert not (calc / "01_coarse").exists(), "an unseen prep wrote"
 
-    st, j = _post(web_client, dest=described, kind="task", stage="coarse",
+    st, j = _post(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET, plan_id=pv["plan_id"])
     assert st == 200 and j["saved"] and not j["preview"], j
 
@@ -376,10 +378,10 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
     twin = _twin(calc, "calc-cli")
 
     # the save, answered up front: no, as the terminal's silence is
-    st, j = _prep(web_client, dest=str(calc), kind="task", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200, j
-    r = _cli("prep", "task", "--stage", "coarse", "--bundle", str(twin),
+    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
 
@@ -401,7 +403,7 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
     for f in j["deck_findings"]:
         assert f["message"] in r.output, f["message"]
     # ...and the terminal says what was found BEFORE the decks are written,
-    # as it always has (`prep_stage`'s ``on_found``).
+    # as it always has (the entry's ``on_found``).
     assert r.output.index(f"note: {notes[0]}") < min(
         r.output.index(f["message"]) for f in j["deck_findings"]), r.output
 
@@ -427,18 +429,18 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
     _make_preppable(calc)
     twin, kept = _twin(calc, "calc-cli"), _twin(calc, "calc-save")
 
-    st, j = _prep(web_client, dest=str(calc), kind="task", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200 and j["dirs"], j
     assert j["saved"].startswith("the folder's state was saved first:"), j
-    r = _cli("prep", "task", "--stage", "coarse", "--bundle", str(twin),
+    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
     assert "the folder's state was saved first:" in r.output, r.output
     for d in (calc, twin):
         notes = [x.note for x in Repo(str(d)).states()]
         assert len(notes) == 1 and re.match(
-            stamped + "prep task coarse$", notes[0]), notes
+            stamped + r"prep task group 1 \(coarse\)$", notes[0]), notes
         assert ('"decision": "saved"'
                 in (d / "jobset-decisions.log").read_text()), d
 
@@ -512,7 +514,7 @@ def _pyscf_calc(root, name):
         "run": {"name": "JOB", "id": "JOB_H2"},
         "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
         "varies": [],
-        "stages": [{"name": "coarse", "enabled": True, "overrides": {}}],
+        "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
         "execution": {"threads": 1},
     }))
     (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
@@ -529,7 +531,7 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
     both doors.  A PySCF deck is such a deck."""
     web = _pyscf_calc(isolated_projects_root, "py-web")
     cli = _pyscf_calc(isolated_projects_root, "py-cli")
-    st, j = _prep(web_client, dest=str(web), kind="task", stage="coarse",
+    st, j = _prep(web_client, dest=str(web), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 200, j
     assert j["agreement"] is None and j["attempt"], j
@@ -537,7 +539,7 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
     # script's stated count, read back by its writer's reader.
     assert j["launch"]["header"] == [], j["launch"]
     assert "_omp_threads_default=1" in j["launch"]["run_script"], j["launch"]
-    r = _cli("prep", "task", "--stage", "coarse", "--bundle", str(cli),
+    r = _cli("prep", "task", "--group", "1", "--bundle", str(cli),
              "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
     assert "rendered for mpi_np" not in r.output
@@ -563,11 +565,11 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
     desc.write_text(json.dumps(d))
     twin = _twin(calc, "calc-cli")
 
-    st, j = _prep(web_client, dest=str(calc), kind="task", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 400 and "fails its own preflight" in j["error"], j
     assert any("starts clean" in f["message"] for f in j["findings"]), j
-    r = _cli("prep", "task", "--stage", "coarse", "--bundle", str(twin),
+    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
     assert r.exit_code != 0, r.output
     assert r.output.index("starts clean") < r.output.index(
@@ -588,10 +590,10 @@ def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
     _make_preppable(calc)
     shutil.copy(calc / "JOB.template.toml", calc / "OLD.template.toml")
     twin = _twin(calc, "calc-cli")
-    st, j = _prep(web_client, dest=str(calc), kind="task", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
                   target=LOCAL_TARGET)
     assert st == 400 and "holds 2 templates" in j["error"], j
-    r = _cli("prep", "task", "--stage", "coarse", "--bundle", str(twin),
+    r = _cli("prep", "task", "--group", "1", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
     assert isinstance(r.exception, SystemExit), r.exception
     assert r.exit_code == 1 and "holds 2 templates" in r.output, r.output

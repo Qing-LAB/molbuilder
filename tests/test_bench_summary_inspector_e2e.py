@@ -29,34 +29,33 @@ from molbuilder import describe as D                       # noqa: E402
 from molbuilder import diagnostics                         # noqa: E402
 from molbuilder.config.siesta import SiestaConfig          # noqa: E402
 from molbuilder.jobset.model import Resources              # noqa: E402
-from molbuilder.jobset.prep import prep_stage              # noqa: E402
+from molbuilder.jobset.prep import prep_bench              # noqa: E402
 from molbuilder.scheduler import Environment, Topology     # noqa: E402
 from molbuilder.siesta.stages import default_siesta_stages  # noqa: E402
 from molbuilder.structure import Structure                 # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _sandbox(tmp_path, tmp_path_factory, monkeypatch):
+def _sandbox(isolated_projects_root, tmp_path_factory, monkeypatch):
     """cwd + HOME + projects-root isolation, the pattern the prep tests
     use: without it the run reads the developer's own config cascade."""
-    from molbuilder.projects import PROJECTS_ROOT_ENV
     box = tmp_path_factory.mktemp("sandbox")
     monkeypatch.chdir(box)
     monkeypatch.setenv("HOME", str(box / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (box / "home").mkdir()
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
 
 
 @pytest.fixture
-def sweep(tmp_path, monkeypatch):
+def sweep(isolated_projects_root, monkeypatch):
     """A prepared GPU sweep, nothing run — returns
     ``(job_set_path, first_trial_label, n_trials)``."""
+    tree = isolated_projects_root
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    calc = tmp_path / "calc"
+    (tree / "h2.xyz").write_text(struct.to_xyz())
+    calc = tree / "calc"
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB", use_gpu=True,
@@ -65,7 +64,7 @@ def sweep(tmp_path, monkeypatch):
                             engine="siesta",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
-                            source=str(tmp_path / "h2.xyz")),
+                            source=str(tree / "h2.xyz")),
         calc)
     from conftest import write_pseudos
     write_pseudos(calc, ["H"])
@@ -77,7 +76,7 @@ def sweep(tmp_path, monkeypatch):
                     env_init={"activation": "conda activate",
                                        "preamble": "true"}).to_json() + "\n")
 
-    prep_stage(calc, "bench", "coarse",
+    prep_bench(calc, "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8),
                emit_sbatch=False)
     bench = calc / "01_coarse" / "bench"
@@ -88,7 +87,7 @@ def sweep(tmp_path, monkeypatch):
     caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
                                     conda_envs=frozenset())
     monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
+                        lambda self: ((tree.resolve(), "projects"),))
     diagnostics.set_capabilities(caps)
     return bench / "job-set.json", winner, len(js["jobs"])
 
@@ -188,7 +187,7 @@ def test_it_really_re_polls(page, server, sweep):
     page.wait_for_function("() => window.molbuilder"
                            " && window.molbuilder.inspectors"
                            "        .benchSummaryInspector")
-    n = page.evaluate("""(p) => {
+    page.evaluate("""(p) => {
         window.__fetches = 0;
         const realFetch = window.fetch;
         window.fetch = (...a) => {

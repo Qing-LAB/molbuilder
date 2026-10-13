@@ -9,13 +9,13 @@ permutation is what puts the answer back in the input order.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.projects import PROJECTS_ROOT_ENV
 from molbuilder.script_emit import render_deck
 from molbuilder.siesta.input import spec_for
 from molbuilder.structure import Structure
@@ -26,10 +26,10 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 @pytest.fixture
-def in_tree_psml(monkeypatch):
-    """The fixture pseudopotential library, made 'inside the projects tree'
+def in_tree_psml(isolated_projects_root):
+    """The fixture pseudopotential library, copied inside the projects tree
     the way the validator requires."""
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(FIXTURES))
+    shutil.copytree(FIXTURES / "psml", isolated_projects_root / "psml")
     return "psml"
 
 

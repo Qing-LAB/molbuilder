@@ -729,3 +729,75 @@
   % for every bias.  Cite for electrode_kz and tbt_k_grid.
 }
 % @verified 2026-10-09 the page
+
+% ----- Transport: how a lead's self-energy is built, and what each grid
+% decides (engines/transport.md 0.2 -- checked against Crossref 2026-10-13;
+% the manual and the source read at SIESTA 5.4.2 on this machine.)
+
+@article{Brandbyge2002,
+  author  = {Brandbyge, Mads and Mozos, Jos{\'e}-Luis and Ordej{\'o}n, Pablo
+             and Taylor, Jeremy and Stokbro, Kurt},
+  title   = {Density-functional method for nonequilibrium electron
+             transport},
+  journal = {Physical Review B},
+  volume  = {65},
+  number  = {16},
+  pages   = {165401},
+  year    = {2002},
+  doi     = {10.1103/PhysRevB.65.165401}
+  % TranSIESTA: the NEGF density, the contour, the bias; the leads'
+  % self-energies from separate bulk calculations by the recursion method.
+}
+% @verified 2026-10-13 Crossref
+
+@article{LopezSancho1985,
+  author  = {Lopez Sancho, M. P. and Lopez Sancho, J. M. and Sancho, J. M. L.
+             and Rubio, J.},
+  title   = {Highly convergent schemes for the calculation of bulk and
+             surface {Green} functions},
+  journal = {Journal of Physics F: Metal Physics},
+  volume  = {15},
+  number  = {4},
+  pages   = {851--858},
+  year    = {1985},
+  doi     = {10.1088/0305-4608/15/4/009}
+  % The iteration TranSIESTA and tbtrans build a lead's surface Green
+  % function with (m_ts_electrode.F90 names it): the semi-infinite lead
+  % summed exactly from its H00/H01 -- no k sampling along transport.
+}
+% @verified 2026-10-13 Crossref
+
+@article{Thygesen2005b,
+  author  = {Thygesen, K. S. and Jacobsen, K. W.},
+  title   = {Molecular transport calculations with {Wannier} functions},
+  journal = {Chemical Physics},
+  volume  = {319},
+  number  = {1--3},
+  pages   = {111--125},
+  year    = {2005},
+  doi     = {10.1016/j.chemphys.2005.05.032}
+  % Benzenedithiol between Au(111) leads of a 3 x 3 cross-section: 1, 8
+  % and 18 irreducible in-plane k-points; "The Gamma-point transmission
+  % fluctuates very much compared to the converged result"; 8 used
+  % (sec. V, Fig. 10).  Cite for the transmission's starting mesh.
+}
+% @verified 2026-10-13 Crossref; the passage read in the arXiv text
+
+@manual{SiestaManual542,
+  title        = {{SIESTA} 5.4.2 User's Guide: {TranSIESTA} and {TBtrans}},
+  organization = {The SIESTA project},
+  year         = {2025},
+  howpublished = {\url{https://gitlab.com/siesta-project/siesta/-/tree/5.4.2/Docs}},
+  note         = {Docs/tex/sections/TranSIESTA (Description, Electrodes,
+                  Convergence, K\_point\_sampling) and Docs/tbtrans.tex, tag
+                  5.4.2; read 2026-10-13}
+  % The developers' guidance: "If in doubt, use 100 k-points along the
+  % semi-infinite direction" (Electrodes); "at least >50 should easily be
+  % reachable" and the same parameters in lead and device "except the
+  % number of k points for the electrode calculations along their
+  % respective semi-infinite directions" (Convergence); "the k-point
+  % sampling need typically be much higher in a tbtrans calculation"
+  % (Description).  Its Convergence item also prints "N_k^TS >= N_k^tbtrans",
+  % which contradicts "much denser" beside it -- read as a typo.
+}
+% @verified 2026-10-13 the manual source at tag 5.4.2 on this machine

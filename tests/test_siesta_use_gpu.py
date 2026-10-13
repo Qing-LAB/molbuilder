@@ -49,11 +49,11 @@ def test_use_gpu_metadata_is_present():
 
 def test_diag_algorithm_field_metadata():
     """A dropdown with three choices (ScaLAPACK + the two ELPA variants),
-    default ScaLAPACK (safe on the precompiled CPU env), always shown (NOT
-    gated behind GPU)."""
+    default ELPA-1STAGE (`engines/siesta.md` § 7: molbuilder's default, on
+    CPU in the packaged env), always shown (NOT gated behind GPU)."""
     field = SiestaConfig.__dataclass_fields__["diag_algorithm"]
     md = field.metadata
     assert md["workflow_group"] == "budget"
     assert md["choices"] == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
     assert md["engine_key"] == "Diag.Algorithm"
-    assert SiestaConfig().diag_algorithm == "ScaLAPACK"
+    assert SiestaConfig().diag_algorithm == "ELPA-1STAGE"

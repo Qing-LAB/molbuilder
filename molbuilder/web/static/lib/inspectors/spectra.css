@@ -332,6 +332,10 @@
 .viewer-controls input[type="range"] {
     width: var(--sp-viewer-range-w);
 }
+/* A number box is the chart controls' one width, the viewer's as well. */
+.viewer-controls input[type="number"] {
+    width: var(--sp-number-w);
+}
 /* ---- Electronic structure: the level diagram and its numbers ----
  *
  * ONE FIGURE, TWO HALVES.  The diagram shows the SHAPE of the change -- which

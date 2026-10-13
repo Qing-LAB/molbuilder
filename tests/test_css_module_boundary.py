@@ -11,16 +11,11 @@ direction only, on purpose: it checks that PAGE sheets do
 not name MODULE classes.  It does not read the module sheets to judge them,
 because that is exactly the reach it exists to forbid.
 
-WHAT IT WOULD HAVE CAUGHT, and does not yet: the inventory of 2026-08-02 found
-20 rules in ``results/style.css`` styling ``.inspector-card*`` — elements built
-entirely in JavaScript by ``lib/inspectors/``.  That is a module whose appearance
-lives in a page's sheet, so mounting an inspector anywhere else renders it
-unstyled (the module loads on /results, /molbuilder AND /spectra; only /results
-loads the sheet).  It is a real defect, its fix is a MODULE change — repatriating
-those rules to ``lib/inspectors/`` — and until that lands the prefix stays on the
-KNOWN list below with its reason.  A guard that fails on a known, recorded defect
-teaches people to skip the suite; one that records it keeps the number honest and
-falls to zero when the work is done.
+WHAT IT CATCHES: the inventory of 2026-08-02 found 20 rules in
+``results/style.css`` styling ``.inspector-card*`` — elements built entirely in
+JavaScript by ``lib/inspectors/`` — a module whose appearance lived in a page's
+sheet.  They live in ``lib/inspectors/inspector-card.css`` since 2026-10-12, and
+``inspector-`` is a module prefix like the others.
 """
 from __future__ import annotations
 
@@ -40,19 +35,12 @@ MODULE_PREFIXES = (
     "vibview",         # VibrationView (lib/vibrationview/) — its box is the
                        # host's, everything inside it is the module's
     "sysload-",        # the system-load monitor
+    "inspector-",      # the inspector card (lib/inspectors/)
 )
 
 #: Prefixes a page sheet DOES still name, each with the reason and the fix.
-#: Shrink this list; never grow it without recording why here.
-KNOWN: dict[str, str] = {
-    "inspector-": (
-        "results/style.css holds the inspectors module's entire appearance — "
-        ".inspector-card/-header/-title/-note/-actions/-link are built in JS by "
-        "lib/inspectors/ and styled by no other sheet.  Fix is a MODULE change "
-        "(repatriate to lib/inspectors/, linked by every page that mounts one); "
-        "see archive/2026-09-01-css-system-plan.md § 3.2 + § 7."
-    ),
-}
+#: Empty; never grow it without recording why here.
+KNOWN: dict[str, str] = {}
 
 #: Sheets owned by a module.  Listed so the test knows what is NOT a page sheet;
 #: never read.
@@ -63,6 +51,7 @@ MODULE_SHEETS = {
     "lib/inspectors/spectra.css",
     "lib/vibrationview/_style.css",
     "lib/inspectors/markdown.css",
+    "lib/inspectors/inspector-card.css",
     "lib/system-load-monitor.css",
     "lib/app-notifications.css",
 }
@@ -129,10 +118,10 @@ def test_the_retired_embed_stylesheet_stays_deleted() -> None:
 def test_the_known_list_is_shrinking_not_growing() -> None:
     """Every entry is a recorded defect with a named fix, not a permanent carve-out.
 
-    One entry today.  If this number goes up, the boundary is being renegotiated
+    None today.  If this number goes up, the boundary is being renegotiated
     by whoever is in a hurry — which is how it was lost the first time.
     """
-    assert len(KNOWN) <= 1, (
+    assert not KNOWN, (
         "the module-boundary exception list grew: "
         + ", ".join(sorted(KNOWN))
         + " — each entry needs a reason and a fix recorded beside it."

@@ -33,13 +33,16 @@
      * anything else disarms; a mis-click costs a second, not a channel. */
     var armed = null;
 
+    /* HOW LONG AGO, in the unit a person reads it in: each unit until one
+     * and a half of the next (90 s, 90 min, 36 h). */
+    var MINUTE = 60, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
     function ago(seconds) {
         if (!seconds) return "";
         var d = Math.max(0, Date.now() / 1000 - seconds);
-        if (d < 90) return "just now";
-        if (d < 5400) return Math.round(d / 60) + "m ago";
-        if (d < 129600) return Math.round(d / 3600) + "h ago";
-        return Math.round(d / 86400) + "d ago";
+        if (d < 1.5 * MINUTE) return "just now";
+        if (d < 1.5 * HOUR) return Math.round(d / MINUTE) + "m ago";
+        if (d < 1.5 * DAY) return Math.round(d / HOUR) + "h ago";
+        return Math.round(d / DAY) + "d ago";
     }
 
     /* ---------- channels ---------- */
@@ -84,7 +87,7 @@
         var t = document.createElement("button");
         t.type = "button";
         t.textContent = "Test";
-        t.addEventListener("click", function () { testChannel(c.name); });
+        t.addEventListener("click", function () { testChannel(c.name, t); });
         var d = document.createElement("button");
         d.type = "button";
         d.className = "danger";
@@ -180,9 +183,11 @@
         }
     }
 
-    async function testChannel(name) {
+    async function testChannel(name, button) {
         armed = null;
         say("tm-form-note", "sending one report to " + name + "…", "muted");
+        // ONE REPORT PER CLICK: the button waits for its answer.
+        if (button) button.disabled = true;
         try {
             var d = await (await fetch(
                 CHANNELS + "/" + encodeURIComponent(name) + "/test",
@@ -194,6 +199,7 @@
             say("tm-form-note",
                 d.error || d.hint || ("it answered " + d.status), "error");
         } catch (e) { say("tm-form-note", String(e), "error"); }
+        finally { if (button) button.disabled = false; }
     }
 
     async function removeChannel(name) {
@@ -209,6 +215,10 @@
             var d = await (await fetch(
                 CHANNELS + "/" + encodeURIComponent(name),
                 { method: "DELETE" })).json();
+            if (!d.ok) {
+                say("tm-form-note", d.error || "could not remove", "error");
+                return;
+            }
             paintChannels(d);
             say("tm-form-note", "Removed " + name + ".", "ok");
         } catch (e) { say("tm-form-note", String(e), "error"); }

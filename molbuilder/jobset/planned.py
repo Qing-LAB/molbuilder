@@ -69,6 +69,11 @@ class _Folder:
     path: Path
 
 
+@dataclass(frozen=True)
+class _Unfolder:
+    path: Path
+
+
 #: What a path holds in the plan: bytes, a file on disk it copies, or
 #: ``None`` -- removed.
 _Held = Union[bytes, Path, None]
@@ -153,6 +158,10 @@ class Plan:
         self._ops.append(_Folder(p))
         return p
 
+    def remove_folder(self, path) -> None:
+        """``path``, a folder this plan has emptied, will be gone."""
+        self._ops.append(_Unfolder(_at(path)))
+
     # -- the folder as it will be -------------------------------------------
 
     def is_file(self, path) -> bool:
@@ -207,6 +216,8 @@ class Plan:
         for op in self._ops:
             if isinstance(op, _Folder):
                 out.append(f"makes the folder {op.path}")
+            elif isinstance(op, _Unfolder):
+                out.append(f"removes the folder {op.path}")
             elif isinstance(op, _Remove):
                 out.append(f"removes {op.path}")
             elif isinstance(op, _Put):
@@ -250,6 +261,10 @@ class Plan:
         for op in self._ops:
             if isinstance(op, _Folder):
                 op.path.mkdir(parents=True, exist_ok=True)
+                continue
+            if isinstance(op, _Unfolder):
+                if op.path.is_dir():
+                    op.path.rmdir()
                 continue
             if isinstance(op, _Remove):
                 if op.path.is_symlink() or op.path.is_file():

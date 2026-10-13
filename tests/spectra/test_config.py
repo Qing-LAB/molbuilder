@@ -8,7 +8,6 @@ Pinned here: its defaults and its validation-facing metadata.
 
 from __future__ import annotations
 
-import dataclasses
 
 import pytest
 
@@ -103,7 +102,7 @@ class TestSpectraFieldMetadata:
                     "created": "2026-08-22T00:00:00-07:00"},
             "structure": {"source": "w.xyz", "formula": "H2O", "atoms": 3},
             "varies": ["dispersion"],
-            "stages": [{"name": "coarse", "enabled": True,
+            "stages": [{"name": "coarse", "group": 1,
                         "overrides": {"dispersion": "d5"}}]}))
         issues = preflight(read_task(tmp_path / "task.json"), PySCFConfig)
         bad = [i for i in issues

@@ -3,7 +3,7 @@
  * Owns:
  *   * sessionStorage slots (current_dir / current_file)
  *   * the public ``window.molbuilder.projects.*`` API
- *   * the writeFile primitive + the saveToWorkspace convenience
+ *   * the writeFile primitive
  *   * the subscriber pattern (onChange) for selection mutations
  *   * the refresh handler registration (list.js plugs in here)
  *
@@ -114,7 +114,7 @@ const commitSubscribers = new Set();
  * and a bench that the folder no longer had. */
 const folderSubscribers = new Set();
 // list.js registers itself here at init time; state's refresh() and
-// saveToWorkspace() invoke this to ask the list module to re-list
+// writeFile() invoke this to ask the list module to re-list
 // the current directory + re-render.  Single handler (not a set)
 // because there's exactly one list view per page.
 let refreshHandler = null;
@@ -321,7 +321,7 @@ export function relativeToProjects(path) {
 /** True when ``dir`` is the projects/ root itself (or unset).
  *  Used by callers that need to gate "no operation at depth 0"
  *  behaviour: ``+ New subdir`` visibility, ``+ Upload`` visibility,
- *  saveToWorkspace's silent-skip, etc.  Centralised here so every
+ *  a Save that has no folder to write into, etc.  Centralised here so every
  *  caller agrees on what "at the root" means (handles trailing-
  *  slash edge cases). */
 export function atProjectsRoot(dir) {
@@ -395,10 +395,6 @@ async function refresh(opts) {
  *     400 bad path, 403 perm denied, etc.).  Callers display
  *     ``error`` verbatim to the user; backend messages already
  *     say what to do.
- *
- * Use this when you have the *exact* path to write.  For the
- * "write into current_dir/<filename>"
- * pattern, use :func:`saveToWorkspace` instead.
  */
 export async function writeFile(path, text, opts) {
   // Binary path.  Blob | File only — TypedArray /
@@ -487,40 +483,10 @@ export async function writeFile(path, text, opts) {
 }
 
 /**
- * Convenience: write into ``<current_dir>/<filename>`` via writeFile.
- *
- * Returns:
- *   * ``null`` silently when current_dir is unset or at the projects/
- *     root.  Callers fall back to local Download / Copy without
- *     showing an error.
- *   * Otherwise the result of writeFile (``{ok:true,...}`` or
- *     ``{ok:false, error}``).
- */
-async function saveToWorkspace(text, filename, opts) {
-  const dir = readSelectionSlot(SS_DIR);
-  if (atProjectsRoot(dir)) return null;
-  const path = dir.replace(/\/$/, "") + "/" + filename;
-  return await writeFile(path, text, opts);
-}
-
-/**
- * Cancel-aware save helper.  See docs/web/projects.md
- * § 6.3 for the contract, the canonical caller pattern, and the
- * four-way return shape (null / cancelled / ok / error).  Live
- * examples: viewer.js _runSaveFdfPipeline + _runSavePyscfPipeline,
- * lib/spectra/core.js saveSpectraToCurrentDir.
- */
-async function safeSave(text, filename, opts) {
-  const w = await saveToWorkspace(text, filename, opts);
-  if (w == null) return null;
-  if (w.aborted) return { ok: false, cancelled: true };
-  return w;
-}
-
-/**
  * Predicate matching every cancellation shape in the codebase
- * (AbortError thrown by fetch, raw envelope ``aborted``, safeSave
- * envelope ``cancelled``, embed ViewerError ``code:"aborted"``).
+ * (AbortError thrown by fetch, raw envelope ``aborted``, a door's
+ * ``cancelled`` for a question the person declined, embed ViewerError
+ * ``code:"aborted"``).
  * Does NOT match ``code:"disposed"`` (host-teardown is not user
  * cancellation).  See docs/web/projects.md
  */
@@ -769,11 +735,9 @@ export const projects = {
   // has resolved /api/files/roots.
   getProjectsRoot:     () => getProjectsRoot() || "",
   // True when ``current_dir`` is unset or equals the projects/ root.
-  // Consumers (Build + Spectra Save buttons) use this to gate "are
-  // we in a state where saveToWorkspace will succeed?" -- raw ``!!dir``
-  // truthy-checks would enable Save at the projects root, then
-  // saveToWorkspace would silently return null and the click would
-  // produce a confusing "no current_dir" error.
+  // Consumers (the Save buttons) use this to gate "is there a folder to
+  // write into?" -- a raw ``!!dir`` truthy-check would enable Save at the
+  // projects root, where nothing may be written.
   atRoot:              () => atProjectsRoot(
                           readSelectionSlot(SS_DIR)),
   onChange: (cb) => {
@@ -821,9 +785,6 @@ export const projects = {
   relativeToProjects,
   refresh,
   writeFile,
-  saveToWorkspace,
-  // Cancel-aware save helpers.
-  safeSave,
   isCancelError,
   // ---- Public mutator + navigation surface ---------------------- //
   // External callers (the /results tab-level file-picker dropdown at

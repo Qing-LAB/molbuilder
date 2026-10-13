@@ -176,6 +176,28 @@ def test_stage_name_outside_the_set_is_refused(example, bad):
     assert "A-Za-z0-9_" in str(e.value)
 
 
+@pytest.mark.parametrize("groups,said", [
+    ((1, None), "jobset migrate"),
+    ((2, 2), "the first stage is group 1"),
+    ((1, 3), "repeats the number above it or adds one"),
+    ((1, 0), "whole number from 1"),
+    ((1, True), "whole number from 1"),
+], ids=["absent", "first-not-1", "skips-one", "zero", "a-switch"])
+def test_a_group_outside_the_rule_is_refused_naming_it(example, groups, said):
+    """§ 2 / § 6.6: every stage states its group -- the first 1, each later
+    one the number above it or one more -- and one written before the rule
+    names the command that writes it.  A skipped or unordered number would
+    prepare and launch the jobs out of the ladder's order."""
+    for st, g in zip(example["stages"], groups):
+        if g is None:
+            del st["group"]
+        else:
+            st["group"] = g
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    assert said in str(e.value)
+
+
 def test_missing_shape_is_refused_saying_so(example):
     """§ 6.7: required, no default, never inferred."""
     del example["shape"]
@@ -278,7 +300,7 @@ def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
     looking at."""
     p = tmp_path / FILENAME
     one = dict(example)
-    one["stages"] = [{"name": "coarse", "enabled": True, "overrides": {}}]
+    one["stages"] = [{"name": "coarse", "group": 1, "overrides": {}}]
     one["varies"] = []
     write_task(p, Task.from_dict(one))
     written = json.loads(p.read_text())
@@ -460,9 +482,9 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
                                formula="H2", atoms=2),
         varies=("mesh_cutoff",),
         stages=(Stage(name="coarse", overrides={"mesh_cutoff": 150},
-                      execution={"restart": "clean"}),
+                      execution={"restart": "clean"}, group=1),
                 Stage(name="tight", overrides={"mesh_cutoff": 300},
-                      execution={"restart": "continue"})),
+                      execution={"restart": "continue"}, group=2)),
     )
     p = write_task(tmp_path / FILENAME, task)
     assert read_task(p) == task

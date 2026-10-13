@@ -29,6 +29,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, env_bin
+from support.road import group_words
 from support.results_export import save_to_project, wait_for_viewer
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -72,7 +73,8 @@ def _ran(bundle, run_dir, *prep_args):
     asked of the run's own door, because a direct launch whose job failed
     still exits 0 (plan W40)."""
     from molbuilder.parse.dirs import run_status
-    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", *group_words(bundle, "coarse"),
+                "--bundle", bundle,
                 "--target", "this", *prep_args)
     assert r.exit_code == 0, r.output
     r = _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,

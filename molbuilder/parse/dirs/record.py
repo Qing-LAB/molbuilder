@@ -98,7 +98,7 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
         return ""
 
 
-def run_files(directory, *, names, status=None,
+def run_files(directory, *, names, run: Optional[int] = None, status=None,
               engine: Optional[str] = None,
               calculation: Optional[str] = None,
               stage_deck: Optional[Path] = None) -> Optional[RunFiles]:
@@ -109,7 +109,8 @@ def run_files(directory, *, names, status=None,
     **The caller says which run** -- the run door (`runs.run_of`,
     `execution/architecture.md` § 3.2), which reads the label from the
     description and decides the run a folder speaks for: the highest stage
-    launched, then its newest run index (`model/parse.md` § 5.1).
+    launched, then its newest run (`model/parse.md` § 5.1) -- ``run``;
+    with none, the stage's newest by the one rule (`runrecord.newest_run`).
     This floor knows no calculation (§ 2.1).
 
     ``status`` and ``engine`` are the run's `run_status` and engine, passed
@@ -119,10 +120,14 @@ def run_files(directory, *, names, status=None,
     from ...runfiles import deck_roles, find
     from .job import run_status
 
+    from ...runrecord import newest_run
     d = Path(directory)
     label, stage = names.label, names.stage
+    # THE RUN IT READS, one for every part: the caller's, else the stage's
+    # newest by the one rule (`runrecord.newest_run`).
+    n = run if run is not None else newest_run(d, names)
     if status is None:
-        status = run_status(d, names.stem)
+        status = run_status(d, names.stem, run=n)
     engine = engine or engine_of(str(d))
     # ONE LISTING of this run's files, filtered below -- `find` lists and
     # reads every name in the directory on each call, and a flat directory
@@ -139,7 +144,6 @@ def run_files(directory, *, names, status=None,
         return hits[-1] if hits else None
 
     runs = sorted({rf.run for _p, rf in listing if rf.run is not None})
-    n = runs[-1] if runs else None
 
     def this_run(role: str) -> Optional[Path]:
         """Run ``n``'s file in ``role`` -- the folder's own where the
@@ -169,7 +173,7 @@ def run_files(directory, *, names, status=None,
             section_text = _first_section_text(text)
 
     earlier = tuple((k, one(".out", k) or one(".pyscf.log", k))
-                    for k in runs[:-1])
+                    for k in runs if n is not None and k < n)
     return RunFiles(
         directory=d, engine=engine, status=status,
         deck=deck, names=names, run=n, out=out, out_head=out_head,
@@ -424,9 +428,9 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     its stage's names (`runrecord.launch_record`)."""
     from ...runrecord import launch_record
     rec = launch_record(f.directory, f.names, f.run) or {}
-    # `continued_from`: the run this attempt continued from, as prep took it
-    # (`job-system.md` § 5.4, plan W37) -- written by the launch from the
-    # attempt's `.continued-from`.  EVERY KEY AS THE RECORD STATES IT: its
+    # `continued_from`: the run this one continued from, as its launch took it
+    # (`job-system.md` § 5.4, plan W37) -- the launch's own hand-over,
+    # written with the record.  EVERY KEY AS THE RECORD STATES IT: its
     # nulls are answers -- no job id for a run here, no queue, started from
     # the structure (`job-contracts.md` § 6.1) -- not "could not check".
     if not rec:
@@ -475,7 +479,8 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
         deck["current"] = bool(same_calculation(text, _read(stage_deck)))
     gathered = read_gathered_from(f.directory)
     if gathered:
-        deck["gathered_from"] = gathered
+        deck["gathered_from"] = [{"file": fn, "from": str(src)}
+                                 for src, fn in gathered]
     return {"deck": deck}
 
 
@@ -597,7 +602,7 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
             into[key] = val
 
 
-def run_record(directory, *, names, status=None,
+def run_record(directory, *, names, run: Optional[int] = None, status=None,
                engine: Optional[str] = None,
                calculation: Optional[str] = None,
                stage_deck: Optional[Path] = None
@@ -606,7 +611,7 @@ def run_record(directory, *, names, status=None,
     -- the one its caller names, through the run door -- or ``None`` when
     no deck of it is here (§ 5d).  The rest as :func:`run_files` takes
     them."""
-    f = run_files(directory, names=names, status=status,
+    f = run_files(directory, names=names, run=run, status=status,
                   engine=engine, calculation=calculation,
                   stage_deck=stage_deck)
     if f is None:

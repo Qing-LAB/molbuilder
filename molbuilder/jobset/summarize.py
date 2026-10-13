@@ -55,16 +55,16 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
     label that matches (``do while ((.not. fdf_locate) .and. ...)``), so
     a deck that names a keyword twice is read with its FIRST value.
 
-    Comparison is through ``_norm``, so ``Diag.Algorithm`` /
+    Comparison is through ``fdf_key``, so ``Diag.Algorithm`` /
     ``diag_algorithm`` / ``DIAGALGORITHM`` are one keyword.
     """
     if not deck.is_file():
         return None
     # One deck reader: `parse/fdf.py`.  It also tracks `%block`, so a
     # block's first token is never read as a keyword.
-    from ..parse.fdf import _parse_fdf
-    scalars, _blocks = _parse_fdf(_read(deck))
-    got = scalars.get(_norm(keyword))
+    from ..parse.fdf import read_fdf
+    scalars, _blocks = read_fdf(_read(deck))
+    got = scalars.get(fdf_key(keyword))
     return got[0] if got else None
 
 
@@ -102,9 +102,12 @@ def parse_point(label: str, run, engine: str,
         """
         if path is None:
             return {}
+        from molbuilder.parse.errors import ParseError
         try:
             return dict(_parse(Path(path)).metrics)
-        except Exception:                            # noqa: BLE001
+        except (OSError, ValueError, ParseError):
+            # A REPORTER DEGRADES on a file it cannot read; a defect in a
+            # reader is not caught.
             return {}
 
     # SECONDS PER ITERATION from the trial's stamped SCF rows, by the one
@@ -196,55 +199,21 @@ def _read_environment(bundle: Path) -> Dict:
     return env.to_dict() if env is not None else {}
 
 
-#: FDF KEYWORD MATCHING, FROM THE MODULE THAT OWNS IT.  `parse/fdf.py::_norm`
+#: FDF KEYWORD MATCHING, FROM THE MODULE THAT OWNS IT.  `parse/fdf.py::fdf_key`
 #: is fdf's real rule -- case-insensitive and blind to ``.``, ``-`` and ``_``,
 #: so SIESTA reads ``MeshCutoff``, ``Mesh.Cutoff`` and ``mesh_cutoff`` as one
 #: keyword.
-from ..parse.fdf import _norm   # noqa: E402  -- fdf's own matching rule
+from ..parse.fdf import fdf_key   # noqa: E402  -- fdf's own matching rule
 
 
 def _read_system(bundle: Path) -> Dict:
-    """Minimal system descriptor (engine + atom count).
-
-    From the DESCRIPTION first: ``task.json``'s witness records exactly
-    these two facts, and a described sweep always has one.
-    Description-less bundles fall back to any root deck; like every reader in this
-    module, absence degrades rather than raises — this is a reporter.
-    """
+    """The system a sweep measured -- its engine and atom count -- from the
+    DESCRIPTION, whose witness records exactly these two facts
+    (`task.read_task`): ``bundle`` is the calculation's folder, and a
+    description that does not read is said in its reader's words."""
     from ..task import FILENAME, read_task
-    desc = Path(bundle) / FILENAME
-    if desc.is_file():
-        try:
-            t = read_task(desc)
-            return {"engine": t.engine, "n_atoms": t.structure.atoms}
-        except Exception:
-            pass    # malformed description: fall through to the decks
-    sysd: Dict = {"engine": "siesta"}
-    # Decks are born in their stage directories.  This is already the
-    # degraded path (a malformed description), so breadth beats precision
-    # here.
-    from ..runfiles import find_by_role
-    _root = Path(bundle)
-    try:
-        _subs = [s for s in _root.iterdir() if s.is_dir()]
-    except OSError:
-        # A MISSING BUNDLE DEGRADES.  `find_by_role` tolerates one; a bare
-        # `iterdir()` does not.
-        _subs = []
-    _decks = (find_by_role(_root, ".fdf")
-              + [d for sub in _subs for d in find_by_role(sub, ".fdf")])
-    for fdf in sorted(_decks):
-        for line in _read(fdf).splitlines():
-            toks = line.split("#", 1)[0].split()
-            if len(toks) >= 2 and _norm(toks[0]) == "numberofatoms":
-                try:
-                    sysd["n_atoms"] = int(float(toks[1]))
-                except ValueError:
-                    pass
-                break
-        if "n_atoms" in sysd:
-            break
-    return sysd
+    t = read_task(Path(bundle) / FILENAME)
+    return {"engine": t.engine, "n_atoms": t.structure.atoms}
 
 
 def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
@@ -307,8 +276,8 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     if not text:
         return {}
     mech: Dict = {}
-    from ..script_emit import _extract_bench_marks_dict
-    marks = _extract_bench_marks_dict(text) or {}
+    from ..script_emit import read_bench_marks_block
+    marks = read_bench_marks_block(text) or {}
     if "gpu_mode" in marks:
         mech["use_gpu"] = str(marks["gpu_mode"]).lower() == "true"
     # Through the ONE deck reader.
@@ -626,14 +595,19 @@ def summary_text(res: BenchResult, out_path: Path, *,
             # ONE COMMAND A LINE, the step's sentence above it (`commands`):
             # the calculation named when it is known, the mode stated where
             # its config sets none.
-            from .commands import command, launch_lines, words_for
-            lines.append("    2. prep the stage's run -- it uses what you "
+            from .commands import (command, launch_lines, prep_group_lines,
+                                   stage_group)
+            g = stage_group(base, stage)
+            lines.append("    2. prep the stage's group -- it uses what you "
                          "wrote, and nothing else:")
-            lines.append("         " + command("prep", *words_for("task", stage),
-                                                base=base))
+            lines.append("         " + (prep_group_lines([g], base=base)[0]
+                                        if g is not None else
+                                        command("prep", "task", base=base)))
             lines.append("    3. then launch it:")
             lines += ["         " + ln
-                      for ln in launch_lines("task", stage, base=base)]
+                      for ln in (launch_lines("task", base=base, groups=[g])
+                                 if g is not None else
+                                 launch_lines("task", stage, base=base))]
         else:
             lines.append("    2. prep the stage's run, then launch it -- "
                          "`prep task` reads what you wrote, and nothing else")
@@ -667,11 +641,13 @@ def bundle_for_sweep_file(jobset, path) -> Path:
     from .materialize import job_dir_names, shape_of
     start = Path(path).parent
     candidates = [start, *list(start.parents)[:_BUNDLE_SEARCH_DEPTH]]
+    from ..task import FILENAME as TASK_FILENAME
     for cand in candidates:
-        try:
-            dirs = job_dir_names(jobset, shape_of(jobset, cand))
-        except Exception:
+        # A FOLDER THAT IS NO CALCULATION is passed over; one that is, and
+        # whose description does not read, is said (`shape_of`).
+        if not (cand / TASK_FILENAME).is_file():
             continue
+        dirs = job_dir_names(jobset, shape_of(jobset, cand))
         if dirs and all((cand / d).is_dir() for d in dirs.values()):
             return cand
     raise ValueError(

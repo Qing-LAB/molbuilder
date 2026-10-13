@@ -341,7 +341,7 @@ a uniform `{ ok, … }` result — they never throw.
 | `showPreview(path?)` | open the preview pop-up on `path`, or on the current pick when it is omitted. A tab binding this to `onCommit` **passes `sel.file`**: `setShared` publishes its payload even when the sessionStorage write throws, so the pick can be empty while the payload is right |
 | `handOffSelection(route, dir, file)` | write ANOTHER tab's per-tab slots (§ 2), so "Open in Molbuilder"-style links land the target where they point |
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
-| `onProjectsRootResolved(cb)` / `onLockChange(cb)` | one-shot / lock notifications |
+| `onProjectsRootResolved(cb)` | the projects root, once it is resolved (a subscriber after that is called at once) |
 
 **Taking a state — `projects.checkpoint`** (added 2026-08-16)
 
@@ -375,7 +375,6 @@ does not decide for the user.
 | `readRange(path, offset, maxBytes)` | read a byte window (for large files) |
 | `listDir(path)` | list a folder for a consumer (e.g. the Results file picker) |
 | `writeFile(path, text\|Blob)` | write a file (string → write, Blob → upload) |
-| `saveToWorkspace(text, name)` / `safeSave(…)` | write into the current folder (Cancel-aware) |
 | `isCancelError(err)` | tell a user-cancel apart from a real error |
 
 **Organizing files** (each refreshes the sidebar on success)

@@ -160,7 +160,3 @@ class Directives:
         if self.mem:
             return [f"{prefix}--mem={self.mem}"]
         return []
-
-    def queue(self):
-        """``(partition, qos)`` — what both spellings must agree on."""
-        return (self.partition, self.qos)

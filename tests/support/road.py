@@ -219,7 +219,9 @@ def calls_made(calls: Path):
 #      `line_lacks`); a benchmark's trials (`bench_gres`,
 #      `bench_header_lacks`).
 #
-# INPUTS: `engine` (siesta | pyscf); `run` -- the run card, task.json
+# INPUTS: `engine` (siesta | pyscf); `groups` -- each stage's group, in
+# order, over the ones `jobset init` gave; `stage_run` -- a stage's own run
+# card, `{name = {...}}`; `run` -- the run card, task.json
 # `execution`, over the table's `run_base` for the engine (a row with
 # `bench`: its own `run` alone); `allocation` --
 # task.json `allocation`, over the table's `allocation_base` where the
@@ -251,16 +253,17 @@ def calls_made(calls: Path):
 # `env_init` -- unless `machine_config` gives the file;
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
-# first, each a list of words (`["prep", "task", "--stage", "coarse"]`), the calculation
+# first, each a list of words (`["prep", "task", "--group", "1"]`), the calculation
 # and the target named as the row's own prep names them; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
-# absent), through the same Save; `own_warm_files` -- the calculation's own restart-file
+# absent), through the same Save; `regrouped` -- each stage's group set
+# anew, one number a stage, through the same Save; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` / `resumes`
 # (`_road_own_warm_files`),
 # before anything is prepared; `stage` -- the
-# stage the
-# row's prep names, `coarse` unless given; `answers` -- what
+# stage (or a list of stages) the row's prep names, `coarse` unless given --
+# typed as the group each is in; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
 # `calculation` -- the kind `jobset init` describes, an optimization unless
 # given; `shape` -- the shape it describes, hierarchical unless given;
@@ -403,8 +406,35 @@ def _road_ladder_edited(case, bundle) -> None:
     gone = set(case.get("removed", ()))
     task["stages"] = [st for st in task["stages"] if st["name"] not in gone]
     for new in case.get("added", ()):
+        # A NEW STAGE, A NEW GROUP, every stage below it moved one on -- as
+        # the page adds one (`task-setup.md` § 5.3).
         at = new.get("at", len(task["stages"]))
-        task["stages"].insert(at, {"name": new["name"]})
+        g = task["stages"][at - 1]["group"] + 1 if at else 1
+        for st in task["stages"][at:]:
+            st["group"] += 1
+        task["stages"].insert(at, {"name": new["name"], "group": g})
+    # THE NUMBERS AGAIN FROM 1, each stage keeping who it shares a job with.
+    seen = []
+    for st in task["stages"]:
+        if st["group"] not in seen:
+            seen.append(st["group"])
+    for st in task["stages"]:
+        st["group"] = seen.index(st["group"]) + 1
+    r = create_app(config={}).test_client().post(
+        "/api/task-setup/save",
+        json={"dest": str(bundle), "text": json.dumps(task)})
+    assert r.status_code == 200, (r.get_json() or {}).get("error")
+
+
+def _road_regrouped(groups, bundle) -> None:
+    """Each stage's group set anew -- ``groups``, one number a stage, in
+    order -- through Task setup's Save, as the page's Group column writes
+    them."""
+    import json
+    from molbuilder.web.app import create_app
+    task = json.loads((bundle / "task.json").read_text())
+    for st, g in zip(task["stages"], groups):
+        st["group"] = g
     r = create_app(config={}).test_client().post(
         "/api/task-setup/save",
         json={"dest": str(bundle), "text": json.dumps(task)})
@@ -638,6 +668,14 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
         path.write_text(template_with_values(cfg, engine=engine,
                                              calculation=calculation))
     task = json.loads((bundle / "task.json").read_text())
+    # THE GROUPS THE ROW STATES, one number a stage, in order -- and each
+    # stage's own run card, by name.
+    for st, g in zip(task["stages"], case.get("groups", ())):
+        st["group"] = g
+    for st in task["stages"]:
+        if st["name"] in case.get("stage_run", {}):
+            st["execution"] = {**st.get("execution", {}),
+                               **case["stage_run"][st["name"]]}
     scheduled = case.get("machine", table.get("machine", "this")) \
         != "workstation"
     blocks = {
@@ -739,15 +777,43 @@ def _one_line(text) -> str:
     return " ⏎ ".join(ln.strip() for ln in text.splitlines() if ln.strip())
 
 
-def _named(kind: str, stage) -> tuple:
-    """How a row's stage is typed: a task's by ``--stage`` (a list, several),
-    a benchmark's by position (`job-system.md` § 5.3)."""
+def _named(kind: str, stage, bundle, *, verb: str = "prep") -> tuple:
+    """How a row's stage is typed (`job-system.md` § 5.3): a benchmark's by
+    position; a task's prep by the group each stage is in, as the
+    calculation's own description numbers it (``--group``); a task's launch
+    by ``--stage`` for one stage, by its group for several.  A name the
+    description does not hold is typed as named, for its refusal."""
     if not stage:
         return ()
     stages = stage if isinstance(stage, list) else [stage]
     if kind == "bench":
         return tuple(stages)
-    return tuple(x for s in stages for x in ("--stage", s))
+    if verb == "launch" and len(stages) == 1:
+        return ("--stage", stages[0])
+    # THE STAGE AS EVERY VERB RESOLVES IT -- a name in any case, or `#N`,
+    # the number its folder carries (`identity.resolve_stage_ref`).
+    from molbuilder.identity import StageRef, resolve_stage_ref
+    from molbuilder.jobset.materialize import ladder_homes
+    from molbuilder.task import read_task
+    task = read_task(Path(bundle) / "task.json")
+    refs = [StageRef(h.seq, h.name) for h in ladder_homes(Path(bundle), task)]
+    groups = []
+    for s in stages:
+        try:
+            name = resolve_stage_ref(refs, s).name
+        except ValueError:
+            return tuple(x for s in stages for x in ("--stage", s))
+        g = next(st.group for st in task.stages if st.name == name)
+        if g not in groups:
+            groups.append(g)
+    return tuple(x for g in groups for x in ("--group", str(g)))
+
+
+def group_words(bundle, *stages) -> tuple:
+    """``--group N`` for the groups ``stages`` are in, as the calculation's
+    own description numbers them -- how a person names them to `prep task`
+    (`job-system.md` § 5.3)."""
+    return _named("task", list(stages), bundle)
 
 
 def run_road_case(table, case, tmp_path, monkeypatch) -> None:
@@ -773,10 +839,12 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
+    if "regrouped" in case:
+        _road_regrouped(case["regrouped"], bundle)
     kind = "bench" if "bench" in case else "task"
     kept = {where: _as_written(bundle / where)
             for where in case.get("kept", [])}
-    named = _named(kind, case.get("stage", "coarse"))
+    named = _named(kind, case.get("stage", "coarse"), bundle)
     r = jobset("prep", kind, *named, "--bundle", bundle,
                "--target", target, *case.get("prep", []),
                input=case.get("answers"))
@@ -853,7 +921,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
         stage_typed = case.get("launch_stage", "coarse")
-        r = jobset("launch", kind, *_named(kind, stage_typed or None),
+        r = jobset("launch", kind, *_named(kind, stage_typed or None, bundle,
+                                           verb="launch"),
                    "--bundle", bundle, *(("--mode", mode) if mode else ()),
                    *(() if case.get("launch_sends") else ("--dry-run",)),
                    "--yes", *case["launch"])

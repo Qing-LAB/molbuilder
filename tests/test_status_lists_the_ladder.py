@@ -33,7 +33,7 @@ def _jobset(*args):
 
 
 def _row(output, name):
-    """The status table's row for ``name``: ``[seq, stage, attempt, state,
+    """The status table's row for ``name``: ``[seq, stage, group, attempt, state,
     ...]``."""
     return next(ln.split() for ln in output.splitlines()
                 if ln.split()[1:2] == [name])
@@ -62,7 +62,7 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     assert "continues from cannot be read" in r.output, r.output
     template.write_text(kept)
 
-    assert jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    assert jobset("prep", "task", "--group", "1", "--bundle", bundle,
                   "--target", "this").exit_code == 0
 
     task = json.loads((bundle / "task.json").read_text())
@@ -73,7 +73,7 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     assert r.status_code == 200, r.get_json()
     r = jobset("status", "--bundle", bundle)
     assert r.exit_code == 0, r.output
-    assert _row(r.output, "COARSE")[3] == "pending", r.output
+    assert _row(r.output, "COARSE")[4] == "pending", r.output
 
     r = jobset("status", "--bundle", bundle / "01_coarse")
     assert r.exit_code != 0, r.output

@@ -767,7 +767,7 @@
  * for, so it is the line that reads first. */
 .molviewer-measure-line.molviewer-measure-result {
     color: var(--molviewer-color-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 /* The literature value beside the measured one.  Dim and unemphasised on
  * purpose: it is context, not the answer the click asked for, and giving it
@@ -849,7 +849,7 @@
 
 .molviewer-selection-count {
     color: var(--molviewer-color-panel-text);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     font-variant-numeric: tabular-nums;
 }
 
@@ -960,8 +960,6 @@
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: var(--molviewer-radius-sm);
-    padding: 0.18rem var(--molviewer-space-sm);
-    font: var(--molviewer-control-font) var(--molviewer-font-ui);
 }
 
 /* Filter-mode action row: + Add filter (left) + Apply filter
@@ -984,8 +982,7 @@
 }
 .molviewer-selection-apply-filter-btn {
     flex: 1;
-    padding: 0.18rem var(--molviewer-space-sm);
-    font: 600 var(--molviewer-control-font)/1.15 var(--molviewer-font-ui);
+    font-weight: var(--weight-semibold);          /* size, family, line: the panel's control rule */
     background: var(--molviewer-color-pick-bg-mid);
     color: var(--molviewer-color-pick-text);
     border: 1px solid var(--molviewer-color-pick);
@@ -1030,8 +1027,6 @@
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: var(--molviewer-radius-sm);
-    padding: 0.18rem var(--molviewer-space-sm);
-    font: var(--molviewer-control-font) var(--molviewer-font-ui);
     min-width: 0;
 }
 
@@ -1040,8 +1035,6 @@
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: var(--molviewer-radius-sm);
-    padding: 0.18rem var(--molviewer-space-sm);
-    font: var(--molviewer-control-font) var(--molviewer-font-mono);
     min-width: 0;
 }
 
@@ -1114,7 +1107,7 @@
 .molviewer-atoms-table th {
     text-align: left;
     padding: var(--molviewer-space-xs) var(--molviewer-space-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     color: var(--molviewer-color-panel-text-dim);
     font-family: var(--molviewer-font-ui);
     font-size: var(--molviewer-control-font);
@@ -1143,7 +1136,7 @@
 
 .molviewer-atoms-table .molviewer-atoms-column-check { width: 1.6em; }
 .molviewer-atoms-table .molviewer-atoms-column-idx   { width: 3em;   text-align: right; }
-.molviewer-atoms-table .molviewer-atoms-column-el    { width: 2.5em; font-weight: 600; }
+.molviewer-atoms-table .molviewer-atoms-column-el    { width: 2.5em; font-weight: var(--weight-semibold); }
 .molviewer-atoms-table .molviewer-atoms-column-res   { width: 4em; color: var(--molviewer-color-panel-text-dim); }
 
 .molviewer-atoms-table .molviewer-atoms-column-labels {
@@ -1198,9 +1191,6 @@
  * chip that came from MolView's own list should not weigh the same as one the
  * user invented.
  * ==================================================================== */
-.molviewer-label-predefined {
-    font-weight: 700;
-}
 .molviewer-label-predefined--1 {                      /* violet */
     background: #38215c; /* exempt: predefined-label tone */
     color:      #d3a6ff; /* exempt: predefined-label tone */
@@ -1228,7 +1218,7 @@
 }
 /* The one with a meaning: amber, the tone a warning wears. */
 .molviewer-label-frozen {
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     background: #4a3410; /* exempt: frozen-label tone */
     color:      #ffc247; /* exempt: frozen-label tone */
     border:     1px solid #8a6316; /* exempt: frozen-label tone */
@@ -1279,8 +1269,7 @@
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge-strong);
     border-radius: var(--molviewer-radius-sm);
-    padding: 0.18rem var(--molviewer-space-sm);
-    font: 600 var(--molviewer-control-font)/1.15 var(--molviewer-font-ui);
+    font-weight: var(--weight-semibold);          /* size, family, line: the panel's control rule */
     letter-spacing: 0.02em;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -1377,11 +1366,12 @@
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: var(--molviewer-radius-sm);
-    padding: 0.18rem var(--molviewer-space-sm);
-    font: var(--molviewer-control-font) var(--molviewer-font-ui);
     min-width: 0;
 }
-.molviewer-selection-new-label {
+/* A name typed, in the panel's mono -- scoped as the panel's control rule
+   is, which an unscoped class would lose to. */
+.molviewer-panel .molviewer-selection-new-label,
+.molviewer-panel .molviewer-filter-text {
     font-family: var(--molviewer-font-mono);
 }
 
@@ -1671,7 +1661,7 @@
     color:          var(--molviewer-color-text);
     border:         1px solid transparent;
     border-radius:  var(--molviewer-radius-sm);
-    font-weight:    500;
+    font-weight: var(--weight-medium);
     cursor:         pointer;
     user-select:    none;
     transition:     background 120ms ease, border-color 120ms ease;
@@ -1739,7 +1729,7 @@
 .molviewer-menu-heading {
     margin:         0 0 var(--molviewer-space-xs) 0;
     font-size:      var(--molviewer-text-2xs);
-    font-weight:    600;
+    font-weight: var(--weight-semibold);
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color:          var(--molviewer-color-text-faint);
@@ -1775,7 +1765,7 @@
     background:     var(--molviewer-color-accent);
     color:          var(--molviewer-color-accent-on);
     border-color:   var(--molviewer-color-accent);
-    font-weight:    500;
+    font-weight: var(--weight-medium);
 }
 
 /* Radius / scale slider — sits below the style button row and scales
@@ -2191,7 +2181,7 @@
           var(--molviewer-font-mono, monospace);
 }
 .molviewer-info-block > .molviewer-info-head .molviewer-info-key {
-    font-weight: 500;
+    font-weight: var(--weight-medium);
     font-size: var(--molviewer-text-xs);
 }
 .molviewer-info-fields {

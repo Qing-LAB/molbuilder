@@ -19,6 +19,8 @@ Nothing here launches an engine: prep writes the decks and stops.
 """
 from __future__ import annotations
 
+from support.road import group_words
+
 
 from click.testing import CliRunner
 
@@ -29,7 +31,7 @@ from support.junction import _isolated, _junction_struct  # noqa: F401
 
 def _prep(dest, rung, *, refused=False):
     """`jobset prep task <rung>`; what it said when ``refused``."""
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", rung, "--bundle",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", *group_words(dest, rung), "--bundle",
                                           str(dest), "--no-sbatch"])
     if refused:
         assert r.exit_code != 0, r.output
@@ -82,17 +84,22 @@ def test_a_transport_meshs_start_and_its_one_point_warning():
     API-level, because a transport calculation cites a finished relaxation,
     which only a real run makes (this module's head):
 
-    * the transmission's mesh starts at three times the SCF's count along
-      each in-plane direction the SCF samples, a count of one kept and the
-      transport axis one (`kmesh.transmission_start`);
+    * the transmission's mesh, left blank, is three times the SCF's count
+      along each in-plane direction the SCF samples, a count of one kept and
+      the transport axis one (`kmesh.transmission_start`), worked out by the
+      one derivation (`kmesh.mesh_for`) so it FOLLOWS the SCF's mesh; a mesh
+      the person set is theirs, as given (§ 0.3b, 2026-10-13);
     * one point along a direction the electrodes repeat in is warned on a
       transport mesh -- the shared SCF mesh on every SCF rung, the
-      transmission's own on the transmission -- and never on a direction
-      that does not repeat, nor on a count above one (`kmesh.check`).
+      transmission's own on the transmission when the person set it -- and
+      never on a direction that does not repeat, nor on a count above one;
+      a transmission mesh the person set coarser than the SCF's, above one,
+      is warned too (`kmesh.check`).
 
     MUTATIONS THIS MUST FAIL AGAINST: the transmission starting at the SCF's
-    counts; a one kept multiplied; the warning dropped, or said on an
-    isolated direction."""
+    counts; a one kept multiplied; a blank mesh not following the SCF's (or
+    left at Gamma); the warnings dropped, or said on an isolated direction;
+    the coarser warning said of a blank mesh or beside the one-point one."""
     from types import SimpleNamespace
 
     from molbuilder import kmesh
@@ -120,3 +127,22 @@ def test_a_transport_meshs_start_and_its_one_point_warning():
     assert said((4, 4, 1), (1, 1, 1), slab, "transmission") == \
         [("warn", "config.tbt_k_grid")] * 2
     assert said((4, 4, 1), (12, 12, 1), slab, "transmission") == []
+    # A mesh the person set COARSER than the SCF's, above one: warned, x
+    # then y; at the SCF's own counts, not.
+    assert said((4, 4, 1), (3, 3, 1), slab, "transmission") == \
+        [("warn", "config.tbt_k_grid")] * 2
+    assert said((4, 4, 1), (4, 4, 1), slab, "transmission") == []
+    # BLANK IS THE RULE'S: three times the SCF's mesh, following it, never
+    # the person's -- so neither warning names it; the SCF's own one-point
+    # finding speaks for a Gamma SCF mesh.
+    for kgrid, want in (((4, 4, 1), (12, 12, 1)), ((5, 5, 1), (15, 15, 1)),
+                        ((1, 4, 1), (1, 12, 1))):
+        cfg = SimpleNamespace(kgrid=kgrid, tbt_k_grid=None, electrode_kz=100,
+                              kgrid_displacement=(0.0, 0.0, 0.0))
+        tbt = kmesh.mesh_for(cfg, slab, kind="transport", rung="transmission",
+                             program="tbtrans")
+        assert tbt.counts == want and tbt.derived, (kgrid, tbt)
+        assert kmesh.write(tbt)[0] == "%block TBT.k"
+    assert said((4, 4, 1), None, slab, "transmission") == []
+    assert said((1, 1, 1), None, slab, "transmission") == \
+        [("warn", "config.kgrid")] * 2

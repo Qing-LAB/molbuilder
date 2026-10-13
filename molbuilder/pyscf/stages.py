@@ -17,7 +17,7 @@ from ..jobset.model import WarmFile
 
 
 
-def _traits(eff) -> Dict[str, str]:
+def traits_for(eff) -> Dict[str, str]:
     """The per-job facts a warm file can be conditioned on -- none on PySCF.
 
     SIESTA conditions its ``.CG`` on the optimizer both rungs use
@@ -29,9 +29,9 @@ def _traits(eff) -> Dict[str, str]:
     return {}
 
 
-def _warm_declaration(label: str, eff,
-                      calculation: str = "optimization",
-                      base_dir=None) -> List[WarmFile]:
+def warm_for(label: str, eff,
+             calculation: str = "optimization",
+             base_dir=None) -> List[WarmFile]:
     """What a PySCF stage takes from a run it continues.
 
     **The rows come from the rules file**, ``pyscf/warm-files.toml``
@@ -47,11 +47,10 @@ def _warm_declaration(label: str, eff,
     of the pair.
     """
     from ..identity import continues
-    from ..warmfiles import warm_list
+    from ..warmfiles import warm_declaration
     if not continues(eff):
         return []
-    return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
-            for r in warm_list("pyscf", calculation, base_dir).carry_rules]
+    return warm_declaration("pyscf", label, calculation, base_dir)
 
 
 def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:

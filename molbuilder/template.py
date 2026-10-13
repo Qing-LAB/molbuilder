@@ -49,10 +49,11 @@ import types
 import typing
 from pathlib import Path as _Path
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple, Union
+from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
+                    Tuple, Union)
 
 from .identity import stage_key
-from .paths import KIND_ROLES
+from .paths import KIND_ROLES, ROLE_SETS
 from .persist import check_schema
 
 
@@ -1510,6 +1511,21 @@ def _offered_from(name: str, raw, type_: str, choices,
     return tuple(out)
 
 
+def _stages_from(name: str, raw) -> Tuple[str, ...]:
+    """``stages`` as read (§ 6.4): a list of rung roles, or the name of a
+    set of them (:data:`ROLE_SETS` -- ``"scf"``, every rung that runs an
+    SCF), read as its roles.  A name no set has is refused, naming the sets."""
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        if raw not in ROLE_SETS:
+            _refuse(f"stages names the set {raw!r}, which is not one -- the "
+                    f"sets are {', '.join(sorted(ROLE_SETS))}; or list the "
+                    f"roles (engines/template.md § 6.4)", where=name)
+        return ROLE_SETS[raw]
+    return tuple(raw)
+
+
 def _tightens_from(name: str, raw) -> str:
     """``tightens`` as read: ``"up"``, ``"down"``, or absent (plan § 5w K4).
     Any other word is refused -- a direction the ladder check cannot read
@@ -1775,7 +1791,7 @@ def _item_from(name: str, body: Any) -> Item:
                                 example='role_values = { device = "transiesta" }'),
         shared=tuple(body.get("shared", ()) or ()),
         required=tuple(body.get("required", ()) or ()),
-        stages=tuple(body.get("stages", ()) or ()),
+        stages=_stages_from(name, body.get("stages")),
         null_label=str(body.get("null_label", "") or ""),
         not_set=str(body.get("not_set", "") or ""),
     )
@@ -2002,9 +2018,12 @@ def unread_overrides(engine: str, kind: str, stage: str, names) -> List[str]:
             and not reads(items[n], engine, kind, stage)]
 
 
-def why_unread(name: str, engine: str, kind: str, stage: str) -> str:
+def why_unread(name: str, engine: str, kind: str, stage: str, *,
+               then: str = "set it there") -> str:
     """Why the rung ``stage`` does not read ``name`` -- the clause both doors
-    give after *"stage <s> overrides <name>"*."""
+    give after *"stage <s> overrides <name>"*, ending in the way out
+    ``then``: an override is set on a rung that reads it, a run-card value
+    removed from the card it is stated on."""
     it = one(catalogue(), name, engine=engine)
     if it.calculations and kind not in it.calculations:
         return (f"which {a_kind(kind)} does not carry -- no rung of it reads "
@@ -2015,7 +2034,7 @@ def why_unread(name: str, engine: str, kind: str, stage: str) -> str:
     rung = repr(stage) if role == stage else f"{stage!r} (its {role} rung)"
     return (f"which only the {who} rung{'s' if len(it.stages) > 1 else ''} "
             f"of {a_kind(kind)} read{'' if len(it.stages) > 1 else 's'}, not "
-            f"{rung} -- set it there (engines/template.md 6.4, the `stages` "
+            f"{rung} -- {then} (engines/template.md 6.4, the `stages` "
             f"declaration)")
 
 
@@ -2390,7 +2409,7 @@ def zeros_written_before(tmpl: "Template", stages=()) -> List[str]:
 def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
     """The refusal of :func:`zeros_written_before`'s answer -- one sentence
     for the template reader and the stage door alike."""
-    return (f"template written by "
+    return ("template written by "
             + (f"molbuilder {tmpl.written_by}" if tmpl.written_by
                else f"a molbuilder from before {ZERO_MEANING_CHANGED_AT}")
             + f": {', '.join(where)} holds 0, which before "

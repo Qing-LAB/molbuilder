@@ -419,7 +419,7 @@ def _parallel_facts(cfg, mesh) -> dict:
 
     ``over_k``'s automatic answer is *more than one point* on ``mesh``,
     the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
-    § 6.1): an electrode's ``kx ky 40``, never the template's ``kx ky 1``.
+    § 6.1): an electrode's ``kx ky 100``, never the template's ``kx ky 1``.
     """
     # ---- Parallel execution (MPI) -------------------------------
     # BlockSize is a THROUGHPUT knob, not a crash guard: the empirical
@@ -1004,7 +1004,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 out.append("# The managed way, and the usual one -- from the "
                            "calculation's folder:")
             if _launch:
-                out.append(f"#     {_launch}")
+                out.extend(f"#     {line}" for line in _launch)
                 out.append(f"#     {LAUNCH_MODE_NOTE}")
             out.append(f"#     bash {names.name('.run.sh')} --run 0"
                        "    # the same wrapper, by hand: its run's number,"
@@ -1056,19 +1056,21 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                         "# force-constant run starts from its deck's "
                         "coordinates (its restart keys, below).")
                 elif continues(cfg):
-                    # WHERE THOSE FILES COME FROM (plan W37): `prep` copies the
-                    # run it continues from into the folder this deck runs in
-                    # -- the stage before it, newest, by default -- and the
-                    # flat layout's are where that stage left them.
+                    # WHERE THOSE FILES COME FROM (`job-system.md`, *What a
+                    # stage takes, and when*): its group's first launch
+                    # copies in those of the run it continues from -- the
+                    # stage before it, newest, by default -- and the flat
+                    # layout's are where that stage left them.
                     out.append(
                         "# This stage CONTINUES: SIESTA reads any .XV / .DM "
                         "under the same SystemLabel in the")
                     out.append(
-                        "# folder it runs in -- prep copies in those of the "
-                        "run it continues from (job-system.md")
+                        "# folder it runs in -- its first launch copies in "
+                        "those of the run it continues from")
                     out.append(
-                        "# 5.4), none for a first stage; on the flat layout "
-                        "they lie where the stage before left them.")
+                        "# (job-system.md 5.4), none for a first stage; on "
+                        "the flat layout they lie where the stage")
+                    out.append("# before left them.")
                 else:
                     out.append(
                         "# This stage starts CLEAN: the restart group below is "

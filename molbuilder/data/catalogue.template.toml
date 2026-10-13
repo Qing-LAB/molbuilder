@@ -160,7 +160,7 @@ SIESTA's own default is PZ, the LDA parameterisation that goes with its LDA defa
 """
 
 [item.solution_method]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 # role: a transport rung's SOLVER is its identity -- a closed periodic warm-up, a bulk lead, an NEGF device.
 role = ["transport"]
 role_values = { device = "transiesta" }
@@ -188,7 +188,7 @@ Which solver produces the density matrix each SCF step.
 """
 
 [item.mixing_weight]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)
 kind = "engine"
 category = ["convergence"]
@@ -211,7 +211,7 @@ Organic molecules with no metal converge happily at 0.1-0.25 and will run in far
 """
 
 [item.pulay_history]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)
 kind = "engine"
 category = ["convergence"]
@@ -233,7 +233,7 @@ SIESTA's own default is 2.  This catalogue starts at 8 because the manual puts 2
 """
 
 [item.dm_tolerance]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)
 kind = "engine"
 category = ["accuracy"]
@@ -262,7 +262,7 @@ SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.
 """
 
 [item.dm_energy_tolerance]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)
 kind = "engine"
 category = ["accuracy"]
@@ -285,7 +285,7 @@ It only has an effect when the switch 'Also require the free energy to settle' i
 """
 
 [item.scf_energy_converge]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)
 kind = "engine"
 category = ["accuracy"]
@@ -309,7 +309,7 @@ The AND-combination, the per-criterion defaults and the gating are from SIESTA 5
 
 
 [item.max_scf_iter]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -330,7 +330,7 @@ This is a runaway guard, not a budget -- the budget is wall time and continue_re
 """
 
 [item.scf_must_converge]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
+stages = "scf"
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -402,8 +402,9 @@ A crystal or a slab repeats, and its electrons' waves repeat with it, shifted a 
   4 4 1      a slab or a surface -- sampled across it, 1 along the vacuum
   6 6 6      a 3D crystal
 A small cell needs more points than a big one: a cell twice as wide needs about half the count along that axis.  To check it, raise the counts about 1.5x per axis; when the total energy moves by less than 1 meV per atom, the grid is fine enough.
-IN A TRANSPORT CALCULATION (the shared panel): this is the grid IN THE PLANE OF THE ELECTRODES (x and y), perpendicular to the transport direction, for the seed, both leads and the device -- the electrodes are infinite surfaces, so the cell repeats sideways, one molecule in each copy; one grid for all four, one grid for all four, because each lead is attached to the device point by point and both must be sampled at the same points.  Its third count, along the transport direction (z), is always 1 there: that direction is open, not repeated.  Two more grids sit on the rungs' tabs: each lead's own count along the transport direction ("Lead k-points along the transport direction (z)"), and the transmission's grid in the electrode plane ("Transmission k-points in the electrode plane (x, y)"), which may be finer than this one.
-  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 100 on each lead's tab, and the transmission's grid starts at 12 12 1 -- three times this one along each direction it samples.  One point along a direction the electrodes repeat in is warned (engines/transport.md 0.3b).
+IN A TRANSPORT CALCULATION (the shared panel): this is the grid IN THE PLANE OF THE ELECTRODES (x and y), perpendicular to the transport direction, for the seed, both leads and the device -- the electrodes are infinite surfaces, so the cell repeats sideways, one molecule in each copy.  One grid for all four, because the device uses each lead's Hamiltonian as the bulk of its own electrode region, and the two are the same metal only when their densities were computed on the same points: TranSIESTA compares each lead's grid and offset with the device's and stops on "found incompatible k-grids" (ts_electrode.F90; the manual: "the scattering region forces the electrodes to use equivalent k points").  Its third count, along the transport direction (z), is always 1 here: the device's NEGF cycle forces it (ts_kpoint_scf.F90), and the seed's density is only a starting point.  Two more grids sit on the rungs' tabs: each lead's own count along z ("Lead k-points along the transport direction (z)"), and the transmission's grid in the electrode plane ("Transmission k-points in the electrode plane (x, y)"), which is finer than this one -- three times it, unless you set it.
+  To converge it: raise each count about 1.5 times, re-run the leads and the device, and see that the leads' Fermi level and the device's T(E) at the Fermi level do not move.
+  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 100 on each lead's tab, and the transmission's grid 12 12 1 -- three times this one along each direction it samples.  One point along a direction the electrodes repeat in is warned (engines/transport.md 0.2).
 """
 
 [item.kgrid_displacement]
@@ -427,7 +428,7 @@ Shifts the k-point mesh off Gamma, one value per axis, in units of the mesh spac
   0.5    The classic Monkhorst-Pack shift. Use on even meshes -- it samples better than a Gamma-centred grid of the same size, and matters most for metals.
 Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves the third on Gamma, which is what a slab wants when the third axis is vacuum.
 On a hexagonal cell -- an Au(111) surface -- keep it Gamma-centred: 0.5 does not respect the six-fold symmetry.  SIESTA folds only k with -k, so nothing is computed wrong; the sampling is lopsided and converges more slowly.
-In a transport calculation the transport direction is sampled with no offset on every rung -- one point on the seed, the device and the transmission, electrode_kz points on the leads -- so that component is fixed at 0 and shown locked.  Across it the offset is one value for every rung, cited from the relaxation: TranSIESTA refuses a lead whose offset differs from the device's (engines/siesta.md 6.1).
+In a transport calculation the transport direction is sampled with no offset on every rung -- one point on the seed, the device and the transmission, electrode_kz points on the leads -- so that component is fixed at 0 and shown locked: TranSIESTA forces the device's to 0 and compares each lead's offset with the device's on all three axes, z included (ts_kpoint_scf.F90, ts_electrode.F90).  Across it the offset is one value for every rung, cited from the relaxation: TranSIESTA refuses a lead whose offset differs from the device's (engines/transport.md 0.2).
 """
 
 [item.relax_type]
@@ -731,7 +732,7 @@ ITS SIDE EFFECT ON ANOTHER KEYWORD: WriteMDXmol (the .ANI animation file) defaul
 """
 
 [item.write_coor_xmol]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
+stages = "scf"
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -790,7 +791,7 @@ MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates come from <label>.MD
 """
 
 [item.write_hs]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
+stages = "scf"
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -841,7 +842,9 @@ For a run by hand the run script takes ``bash <stem>.run.sh --run N -np M``, to 
 
 [item.gpu_count]
 # BOTH ENGINES (`execution/gpu.md` § 1.1): how many GPUs a run asks for is
-# stated, on every engine, and has no default.
+# stated, on every engine, and has no default.  READ WHERE `use_gpu` IS: a
+# count without the GPU is refused (G5).
+stages = "scf"
 kind = "wrapper"
 run_card = true
 category = ["execution"]
@@ -858,7 +861,7 @@ PySCF: one process, on the GPUs the job is given.
 """
 
 [item.block_size]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
+stages = "scf"
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]
@@ -881,7 +884,7 @@ It does not fix ``propor: ERROR: IMAX = 0``. BS = 1, 2 and 4 all crash at the sa
 """
 
 [item.parallel_over_k]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
+stages = "scf"
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]
@@ -935,7 +938,7 @@ How much memory this run may use.  Left blank -- the normal state -- there is no
 Each engine applies a number its own way: SIESTA's run script caps the run with `ulimit -v` (the deck records the number in a comment); PySCF's deck passes it to mol.max_memory, which PySCF consults to choose in-core versus out-of-core.  Blank, the PySCF deck writes `max_memory = None` and PySCF keeps its own setting (PYSCF_MAX_MEMORY, else 4000 MB).
 """
 [item.use_gpu]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
+stages = "scf"
 # ONE item for both engines' one question: DOES THIS RUN USE A GPU?
 # (ruled 2026-08-13, template.md 6.3).
 #
@@ -969,7 +972,7 @@ PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf exte
 """
 
 [item.diag_algorithm]
-stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
+stages = "scf"
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]
@@ -978,16 +981,16 @@ engine_key = "Diag.Algorithm"
 manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "enum"
 choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
-value = "ScaLAPACK"
-default = "ScaLAPACK"
+value = "ELPA-1STAGE"
+default = "ELPA-1STAGE"
 group = "budget"
 label = "Diagonalizer"
 tier = "advanced"
 help = """
 Which library performs the matrix diagonalization at the heart of every SCF step -- usually the single largest cost of the run.  ELPA works on CPU as well as GPU; it is not GPU-only.  The hardware affinity below is a performance hint, not a restriction.
 
-  - ScaLAPACK: SIESTA's built-in Divide-and-Conquer, no ELPA needed.  The safe default.
-  - ELPA-1STAGE: direct tridiagonalisation in one step.  Faster on NVIDIA GPUs (arXiv:2502.02460 reports ~3x over 2-stage on A100).  Best for GPU.
+  - ScaLAPACK: SIESTA's built-in Divide-and-Conquer, no ELPA needed -- SIESTA's own default, written as nothing in the deck.
+  - ELPA-1STAGE: direct tridiagonalisation in one step.  molbuilder's default -- it works better in most of the runs we have made -- on CPU in the packaged env, and on the GPU with ``Use GPU``.  Faster on NVIDIA GPUs (arXiv:2502.02460 reports ~3x over 2-stage on A100).
   - ELPA-2STAGE: tridiagonalise via a banded form; the band-reduction exposes more BLAS-3 work, so it is typically faster on CPU.  Best for CPU.
 
 The two ELPA entries are strategies, not versions -- one library ships both, and either runs on CPU in the packaged ``molbuilder-siesta`` env, so this choice needs no particular environment.  Turn ``Use GPU`` on to run that ELPA solve on the GPU (GPU-only, no CPU fallback) -- that is what needs the source-built ``molbuilder-siesta-gpu``.
@@ -2256,19 +2259,20 @@ anchor = "TBT.k"
 engine_key = "TBT.k"
 manual = "SIESTA 5.4.2 TBtrans §'k-point sampling'"
 type = "int3"
-value = [1, 1, 1]
-default = [1, 1, 1]
 range = [1, 64]
 above = { value = 0, why = "each is a k-point count along its axis, and 0 samples nothing" }
 group = "stage"
 label = "Transmission k-points in the electrode plane (x, y)"
 tier = "basic"
+optional = true
+null_label = "(3 x the shared k-point mesh)"
+not_set = "worked out before the deck is written: three times the shared k-point mesh's count along each direction in the electrode plane it samples more than once, one along z (kmesh.transmission_start) -- so it follows the shared mesh whenever that changes"
 help = """
-How many sample points the transmission takes in the plane of the electrodes (x and y) -- the directions perpendicular to the current -- when it computes T(E), the chance that an electron of energy E crosses.  The electrodes are infinite surfaces, so the cell repeats sideways and these points sample the metal surface's bands.  The third count, along the transport direction (z), is always 1: nothing repeats along z.
-The seed, the leads and the device use the shared grid on the shared panel ("k-point mesh"); that grid only has to be fine enough for the electron density, which is smooth.  The transmission is not smooth -- it can change quickly from one point to the next in that plane -- so it usually needs a finer grid.  It can have one: the transmission rebuilds the device and the leads at whatever points you ask for, without running any of them again.  And it is cheap: raising it re-runs the transmission alone.
-It starts at three times the shared grid's count along each direction the shared grid samples more than once -- 4 4 1 starts it at 12 12 1 -- a starting point, not an answer: check it by laying T(E) from two grids over each other, raising both counts together until T(E) at the Fermi level moves by less than about 1 % (engines/transport.md 0.3b).  One grid serves every voltage, so the points of a bias sweep are compared on one sampling.
-  Example: shared grid 4 4 1 -- the transmission starts at 12 12 1; try 16 16 1 to see it has settled.
-A finer grid here cannot rescue a shared grid that was too coarse: the device itself would then be wrong.  Settle the shared grid first, then this one.
+How many sample points the transmission takes in the plane of the electrodes (x and y) -- the directions perpendicular to the current -- when it computes T(E), the chance that an electron of energy E crosses.  The electrodes are infinite surfaces, so the cell repeats sideways and these points sample the metal surface's bands.  The third count, along the transport direction (z), is always 1: tbtrans forces it (m_tbt_kpoint.F90).
+WHY IT IS ITS OWN GRID, AND FINER.  The seed, the leads and the device share one grid in this plane (the shared panel's "k-point mesh"), because TranSIESTA requires the leads and the device to be sampled alike.  That grid converges the electron density, which is smooth.  T(E) is not smooth from point to point in this plane: the leads' band edges put sharp features into it, and a coarse grid shows them as false peaks.  The SIESTA manual: "Importantly(!) the k-point sampling need typically be much higher in a tbtrans calculation to achieve a converged transmission function."  It may differ because tbtrans rebuilds each lead's self-energy at its own points from the lead's stored Hamiltonian (tbt_init.F90) and checks nothing against the SCF grid -- and raising it re-runs the transmission alone, no SCF.
+LEFT BLANK, it is three times the shared grid's count along each direction that grid samples more than once -- 4 4 1 gives 12 12 1 -- worked out when the deck is written, so it follows the shared grid whenever that changes.  Three is molbuilder's starting point, not a converged answer: published gold-benzenedithiol junctions converged at 4 x 4 (Strange et al. 2008) and at 8 points of a 3 x 3 cell (Thygesen and Jacobsen 2005), below three times a typical shared grid.
+TO CONVERGE IT: run the transmission at the start, then again with each count about 1.5 times larger (12 -> 18), and lay the two T(E) over each other.  It has settled when T(E) at the Fermi level moves by less than about 1 % and no peak moves; a peak that moves or vanishes with the grid is an artefact of the sampling.  Then keep that one grid for every voltage, so the points of a bias sweep are compared on one sampling (Papior, SIESTA Launchpad 686603).  Once you set it, it is yours and stays; it is warned if it falls below the shared grid.
+A finer grid here cannot rescue a shared grid that was too coarse: the device itself would then be wrong.  Settle the shared grid first, then this one (engines/transport.md 0.2).
 """
 
 [item.tbt_spin]
@@ -2774,15 +2778,15 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
 type = "int"
 value = 100
 default = 100
-range = [20, 200]
-above = { value = 1, why = "a lead is periodic bulk along transport: one k-point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it -- a wrong transmission with no runtime error (engines/siesta.md 6.1)" }
+range = [50, 200]
+above = { value = 1, why = "a lead is periodic bulk along transport: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error (engines/transport.md 0.2)" }
 group = "stage"
 label = "Lead k-points along the transport direction (z)"
 tier = "basic"
 help = """
 How many sample points each LEAD's calculation takes along the transport direction (z) -- the direction the current flows.
-A lead is bulk metal that goes on for ever along z, so along z it is a crystal and needs many points for its electrons, and its Fermi level, to come out right.  The device does not repeat along z -- it is the one piece between the two leads -- so the device, the seed and the transmission use 1 there.  This is the one direction where the leads and the device deliberately differ.  SIESTA's own default is 1 point, which a lead cannot use.
-What it feeds: the device attaches each lead as an endless crystal built from this run.  Too few points here and every transmission is built on a wrong lead -- with no error message.
-In the plane of the electrodes (x and y) the leads use the shared grid on the shared panel ("k-point mesh"), the same as the device, and they must.
-  Example: 100, the default -- what TranSIESTA's developers advise ("a very high number (like 100)"), and cheap: only the lead runs grow with it (engines/transport.md 0.3b).  What counts is points x the lead's length along z: a lead of three gold layers (about 7 A) is already well sampled at 40, a thinner one less so.
+A lead's run is an ordinary periodic calculation of bulk metal, and along z it is a crystal: its density, its bands and its Fermi level come out right only with many points there.  The device does not repeat along z -- it is the one piece between the two leads -- so the seed, the device and the transmission use 1 there.  This is the one direction where the leads and the device deliberately differ (the SIESTA manual: the same parameters in the lead and the device calculations "except the number of k points for the electrode calculations along their respective semi-infinite directions").
+WHY IT MATTERS SO MUCH.  The device never samples z: it attaches each lead through a self-energy built from this run's Hamiltonian and overlap, at each energy and in-plane point, with the endless rest of the lead summed exactly (Lopez Sancho et al. 1985; m_ts_electrode.F90) -- and shifted to this run's own Fermi level (H - E_F S, m_ts_electrode.F90).  So this count does not smooth the self-energy; it decides the Hamiltonian and the Fermi level the self-energy is made of.  Too few points and every self-energy, and so every T(E), sits on a wrong lead -- with no error message.
+In the plane of the electrodes (x and y) the leads use the shared grid on the shared panel ("k-point mesh"), the same as the device, and they must: TranSIESTA stops on "found incompatible k-grids" otherwise (ts_electrode.F90).
+  Example: 100, the default -- the manual's ("If in doubt, use 100 k-points along the semi-infinite direction"), warned below 50 ("at least >50 should easily be reachable").  It is cheap: only the lead runs grow with it.  To check it, raise it and see that the lead's Fermi level -- on the Results tab, each lead's beside the other's -- does not move (engines/transport.md 0.2).
 """

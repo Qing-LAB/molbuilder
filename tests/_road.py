@@ -119,7 +119,7 @@ def h2_relaxed_for_vibration(tree: Path) -> Path:
     task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
                          "omp_threads": 1}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = jobset("prep", "task", "--stage", "relax", "--bundle", bundle, "--target", "this")
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
     r = jobset("launch", "task", "--stage", "relax", "--bundle", bundle,
                "--mode", "direct", "--yes")

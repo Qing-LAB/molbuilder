@@ -93,7 +93,7 @@
     margin: 0 0 var(--space-sm);
     font-size: var(--text-xs);
     color: var(--error);
-    min-height: 1.2em;
+    min-height: 1lh;            /* one line, at its own line height */
 }
 
 .mb-dialog-actions {
@@ -113,6 +113,10 @@
  * what the selection means when the caller can say. */
 .molbuilder-tree-picker-dialog {
     min-width: min(80vw, 34rem);
+    /* ANCHORED AT ITS TOP: the meta line under the tree grows with each
+     * selection, and a centred dialog grows both ways -- the rows moved
+     * under the pointer between the two clicks of a double-click. */
+    margin-block: var(--space-xl) auto;
 }
 .tp-tree {
     max-height: min(55vh, 24rem);
@@ -195,7 +199,10 @@
     color: var(--text-secondary);
     font-style: italic;
 }
+/* Its line is reserved, as `.mb-dialog-error`'s: a selection never moves
+ * what is under the pointer.  Empty, it draws nothing. */
 .tp-meta {
+    min-height: 1lh;
     margin: var(--space-sm) 0 0;
     padding: var(--space-xs) var(--space-sm);
     border-left: 2px solid var(--accent);
@@ -203,4 +210,8 @@
     font-size: var(--text-xs);
     color: var(--text-secondary);
     white-space: pre-wrap;   /* an fdf summary may carry line breaks */
+}
+.tp-meta:empty {
+    border-left-color: transparent;
+    background: transparent;
 }

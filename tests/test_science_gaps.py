@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
 
 from molbuilder.siesta import SiestaConfig
 
@@ -110,7 +109,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
     def prep(answers=None):
-        r = run.invoke(jobset_group, ["prep", "task", "--stage", "freq", "--bundle",
+        r = run.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                       str(bundle)], input=answers)
         assert r.exit_code == 0, r.output
         return r.output, next(bundle.rglob("A*.py")).read_text()

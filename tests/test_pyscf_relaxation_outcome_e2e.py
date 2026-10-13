@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
+from support.road import group_words
 
 CONDA_SH = conda_hook()
 
@@ -94,7 +95,8 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    r = _jobset("prep", "task", "--stage", stage.name, "--bundle", bundle,
+    r = _jobset("prep", "task", *group_words(bundle, stage.name),
+                "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code == 0, r.output
     _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,

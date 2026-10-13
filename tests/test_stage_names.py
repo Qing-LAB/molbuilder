@@ -20,6 +20,8 @@ Nothing here launches an engine.
 """
 from __future__ import annotations
 
+from support.road import group_words
+
 import json
 import re
 
@@ -92,7 +94,7 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     from molbuilder.jobset.ledger import LEDGER_FILE
     bundle = _described(tmp_path, monkeypatch, engine, calculation)
     stage = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
-    r = _jobset("prep", "task", "--stage", stage, "--bundle", bundle, "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
     token = next(p.name for p in bundle.iterdir()
                  if p.is_dir() and p.name.endswith(f"_{stage}"))
@@ -134,7 +136,7 @@ def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
         json={"dest": str(bundle), "text": json.dumps(task)})
     assert r.status_code == 200, r.get_json()
 
-    r = _jobset("prep", "task", "--stage", "Relax", "--bundle", bundle,
+    r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code == 0, r.output
     deck = (bundle / "01_Relax" / "H2_01_Relax.fdf").read_text()
@@ -143,7 +145,7 @@ def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
         "the relaxation rung rendered the force-constant deck: "
         + (run_type.group(0) if run_type else "no MD.TypeOfRun"))
 
-    r = _jobset("prep", "task", "--stage", "freq", "--bundle", bundle,
+    r = _jobset("prep", "task", "--group", "2", "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code != 0, r.output
     assert "`freq` builds on the newest attempt of `Relax`" in r.output, \

@@ -95,7 +95,7 @@ def _prep(bundle: str, *extra):
             st["execution"] = {"restart": "clean"}
     tj.write_text(json.dumps(d, indent=2))
     return r.invoke(jobset_group,
-                    ["prep", "task", "--stage", "coarse", "--bundle", bundle, *extra])
+                    ["prep", "task", "--group", "1", "--bundle", bundle, *extra])
 
 
 def _prep_next(bundle: str, *extra):
@@ -104,7 +104,7 @@ def _prep_next(bundle: str, *extra):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     return CliRunner().invoke(jobset_group, [
-        "prep", "task", "--stage", "medium", "--bundle", bundle, *extra])
+        "prep", "task", "--group", "2", "--bundle", bundle, *extra])
 
 
 class TestTheUserChoosesTheMachine:

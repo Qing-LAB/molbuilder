@@ -524,7 +524,7 @@
         if (f.fixed) {
             for (const lab of Object.keys(f.fixed)) {
                 labelEl.appendChild(el("span", { class: "lock-reason" },
-                    "\u21b3 " + lab + " is fixed at " + f.fixed[lab].value
+                    lab + " is fixed at " + f.fixed[lab].value
                     + ": " + f.fixed[lab].why));
             }
         }

@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import json
 
-from support.road import describe_calculation, jobset
+from support.road import describe_calculation, group_words, jobset
 
 
 def _prep(bundle, stage, *more):
-    return jobset("prep", "task", "--stage", stage, "--bundle", bundle,
+    return jobset("prep", "task", *group_words(bundle, stage), "--bundle", bundle,
                   "--target", "this", *more)
 
 

@@ -50,8 +50,10 @@ _ROW_KEYS = ("suffix", "carry", "requires_same", "honoured_by")
 _CARRY_VALUES = ("when-continuing",)
 
 
-class WarmFilesError(Exception):
-    """The rules file is malformed, missing, or names nothing usable."""
+class WarmFilesError(ValueError):
+    """The rules file is malformed, missing, or names nothing usable -- a
+    file that does not read, which every reader says by name, as it says a
+    launch record that does not read (`runrecord.LaunchRecordError`)."""
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,19 @@ class WarmList:
     def suffixes(self) -> Tuple[str, ...]:
         """EVERY RESTART FILE: every row's suffix."""
         return tuple(r.suffix for r in self.rules)
+
+
+def warm_declaration(engine: str, label: str, kind: Optional[str] = None,
+                     base=None) -> list:
+    """What a run of ``kind`` would take from a run it continues -- the warm
+    list's carry rows (:func:`warm_list`), each file named by the run's
+    ``label`` through the one composer (`runfiles.compose`, which refuses a
+    suffix that is no role) -- a job's ``warm`` (`jobset.model.WarmFile`).
+    The one declaration every engine's stages hand their jobs."""
+    from .jobset.model import WarmFile
+    from .runfiles import compose
+    return [WarmFile(compose(label, r.suffix), requires_same=r.requires_same)
+            for r in warm_list(engine, kind, base).carry_rules]
 
 
 def warm_list(engine: str, kind: Optional[str] = None,

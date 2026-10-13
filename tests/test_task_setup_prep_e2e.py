@@ -31,7 +31,6 @@ after the axes have moved on.
 from __future__ import annotations
 
 import json
-import shutil
 
 import pytest
 
@@ -230,13 +229,14 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         + json.dumps(on_disk["stages"][0]))
 
     # ── PREVIEW ENABLES PREP, AND NOT THE OTHER WAY ROUND ──────────────
-    panel = "[id^=ts-steppanel]"
-    prep_sel = (f"{panel} .ts-prep button:has-text('Prep run here')")
+    # The task's one Prep, its group ticked as the folder opens.
+    box = ".ts-task-prep"
+    prep_sel = (f"{box} .ts-prep button:has-text('Prep task here')")
     assert page.locator(prep_sel).first.is_disabled(), (
         "Prep was live before anything had been previewed")
-    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
+    page.locator(f"{box} .ts-prep button:has-text('Preview task')") \
         .first.click()
-    page.wait_for_selector(f"{panel} .ts-emitted-line", timeout=30000)
+    page.wait_for_selector(f"{box} .ts-emitted-line", timeout=30000)
     assert not page.locator(prep_sel).first.is_disabled(), (
         "a successful preview did not enable Prep")
 
@@ -282,13 +282,13 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
 
 def test_the_tab_saves_the_folder_first_and_says_so(
         page, flask_server, unprepped_dir):
-    """`task-setup.md` § 11.1, `checkpointing.md` § 9: Prep run here saves
+    """`task-setup.md` § 11.1, `checkpointing.md` § 9: Prep task here saves
     the folder's state before it writes -- always, the note led by the time
     it was taken -- and the answer says so.  An unsaved edit is not in the
-    task.json prep reads, so Prep refuses it first (§ 7a).  The stage,
-    prepared, is not prepared again (`job-system.md` § 5.0): opened again, it
-    shows the prep entry's own sentence, offers neither button, and its
-    lines are its launch (W55 B4)."""
+    task.json prep reads, so Prep refuses it first (§ 7a).  The group,
+    prepared and never launched, is shown so when the folder opens again
+    (`task-setup.md` § 11): its box unticked, so nothing is prepared until
+    it is picked again, and its tab's lines are its launch (W55 B4)."""
     import re
     from molbuilder.checkpoint import Repo
     calc = unprepped_dir
@@ -298,16 +298,16 @@ def test_the_tab_saves_the_folder_first_and_says_so(
         "() => { for (const b of document.querySelectorAll('button'))"
         "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
         "    { b.click(); return; } }")
-    panel = "[id^=ts-steppanel]"
-    preview = f"{panel} .ts-prep button:has-text('Preview run')"
-    prep_sel = f"{panel} .ts-prep button:has-text('Prep run here')"
+    box = ".ts-task-prep"
+    preview = f"{box} .ts-prep button:has-text('Preview task')"
+    prep_sel = f"{box} .ts-prep button:has-text('Prep task here')"
 
     def ready():
         page.locator(preview).first.click()
         page.wait_for_function(
             "(sel) => Array.from(document.querySelectorAll(sel)).some("
-            "b => /Prep run here/.test(b.textContent) && !b.disabled)",
-            arg=f"{panel} .ts-prep button", timeout=30000)
+            "b => /Prep task here/.test(b.textContent) && !b.disabled)",
+            arg=f"{box} .ts-prep button", timeout=30000)
 
     # AN UNSAVED EDIT IS NOT IN THE task.json PREP READS, so Prep refuses it
     # and nothing renders.
@@ -334,27 +334,29 @@ def test_the_tab_saves_the_folder_first_and_says_so(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
         " .some(n => /Prepared for/.test(n.textContent))", timeout=60000)
     said = page.eval_on_selector_all(
-        f"{panel} .ts-prep-answer-line", "els => els.map(e => e.textContent)")
+        f"{box} .ts-prep-answer-line", "els => els.map(e => e.textContent)")
     assert any(t.startswith("the folder's state was saved first:")
                for t in said), said
     notes = [x.note for x in Repo(str(calc)).states()]
     assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · before "
-                    r"prep task --stage coarse$", notes[0]), notes
+                    r"prep task group 1 \(coarse\)$", notes[0]), notes
     assert (calc / "01_coarse" / "run-0").is_dir()
 
-    # PREPPED, AND NOT PREPPED AGAIN: the folder opened again says so in
-    # the entry's own words, offers neither button, and gives its launch
+    # PREPARED, NEVER LAUNCHED: the folder opened again says so, ticks
+    # nothing -- a Prep again is a group picked -- and gives its launch
     _open(page, flask_server, calc)
     page.wait_for_function(
         "(sel) => Array.from(document.querySelectorAll(sel)).some("
-        "n => /already prepared/.test(n.textContent))",
-        arg=f"{panel} .ts-prep-say", timeout=30000)
-    assert page.locator(preview).first.is_disabled(), (
-        "a prepared stage was offered a Preview of a prep the entry refuses")
-    assert page.locator(prep_sel).first.is_disabled()
+        "n => /prepared, never launched/.test(n.textContent))",
+        arg=f"{box} .ts-plan-detail", timeout=30000)
+    assert not page.locator(f"{box} input[type=checkbox]").first.is_checked()
+    assert page.locator(prep_sel).count() == 0, (
+        "a prepared group was ticked for a Prep nobody asked for")
     lines = [ln for b in _commands_shown(page) for ln in b.splitlines()]
-    assert not [ln for ln in lines if " prep task --stage coarse" in ln], lines
-    assert [ln for ln in lines if " launch task --stage coarse" in ln], lines
+    assert not [ln for ln in lines
+                if " prep task --group 1 " in ln + " "], lines
+    assert [ln for ln in lines if " launch task --group 1 " in ln + " "], \
+        lines
 
 
 def test_a_stage_with_no_axes_offers_the_machines_proposal(
@@ -407,11 +409,11 @@ def test_a_description_prep_bench_refuses_offers_no_measure_step(
     _open(page, flask_server, d)
     panel = "[id^=ts-steppanel]"
     page.wait_for_selector(
-        f"{panel} .ts-prep button:has-text('Prep run here')",
+        ".ts-task-prep .ts-prep button:has-text('Prep task here')",
         state="attached", timeout=20000)
     hints = page.eval_on_selector_all(
         "p.hint", "els => els.map(e => e.textContent).join('\\n')")
-    assert "Measure it" not in hints, hints
+    assert "Measure a stage" not in hints, hints
     assert not page.locator(
         f"{panel} .ts-prep button:has-text('Prep bench here')").count()
 
@@ -479,7 +481,8 @@ def filled_dir(isolated_projects_root_module):
                "stages": (Stage(name="coarse",
                                 overrides={"mesh_cutoff": 200},
                                 execution={"omp_threads": 4,
-                                           "time": "2-00:00:00"}),)}))
+                                           "time": "2-00:00:00"},
+                                group=1),)}))
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
@@ -591,8 +594,11 @@ def _rows(page):
         "   if (!n || !i) continue;"
         "   const name = (n.childNodes[0] || {}).textContent || '';"
         "   out[name.trim()] = { kind: r.getAttribute('data-kind'),"
-        "     value: i.value, placeholder: i.placeholder || '',"
-        "     note: (r.querySelector('.ts-row-note') || {}).textContent || '' };"
+        "     value: i.value,"
+        "     placeholder: i.tagName === 'SELECT' ? i.options[0].text"
+        "                                         : i.placeholder || '',"
+        "     note: (r.querySelector('.ts-row-note') || {}).textContent || '',"
+        "     drop: !!r.querySelector(':scope > .ts-rowbtn-drop') };"
         " } return out; }")
 
 
@@ -606,8 +612,8 @@ def test_a_folder_opens_showing_what_it_already_states(
     says WHICH of the two `execution` blocks answered each row.
 
     **The empty field on an inherited row is the load-bearing half.** Filling
-    it with the merged value would make blank and `×` unreachable: both write
-    this rung's own block, so with nothing there they write nothing and the
+    it with the merged value would make blank unreachable: clearing writes
+    this rung's own block, so with nothing there it writes nothing and the
     field snaps back.
     """
     _open(page, flask_server, filled_dir)
@@ -626,10 +632,17 @@ def test_a_folder_opens_showing_what_it_already_states(
     # marked so you can tell it from something you typed.
     assert rows["mpi_np"]["kind"] == "inherited", rows["mpi_np"]
     assert rows["mpi_np"]["value"] == "", (
-        "an inherited row filled its field, so blank and × cannot be "
+        "an inherited row filled its field, so blank cannot be "
         f"reached: {rows['mpi_np']}")
     assert "16" in rows["mpi_np"]["placeholder"], rows["mpi_np"]
     assert "every stage" in rows["mpi_np"]["placeholder"], rows["mpi_np"]
+    # ...or the TEMPLATE's value, for a row no block states: the GPU switch,
+    # a launch row on every card, which the run takes from the template --
+    # never "not stated", which says prep will refuse it (measured
+    # 2026-10-12: the diagonaliser read so, and its template answered).
+    assert rows["use_gpu"]["kind"] == "inherited", rows["use_gpu"]
+    assert rows["use_gpu"]["placeholder"] == "\u2014 false (template)", (
+        rows["use_gpu"])
 
     # A LANE ASK is an ordinary chosen row -- `time` is the RUN's own, and
     # `allocation.time` beside it is the calculation's and the bench's
@@ -693,6 +706,37 @@ def test_what_you_typed_is_still_there_when_you_come_back(
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
     assert _rows(page)["omp_threads"]["value"] == "6", (
         "the value did not survive a page reload")
+
+
+def test_a_row_has_a_remove_button_only_where_its_blank_cannot_remove_it(
+        page, flask_server, filled_dir):
+    """§ 6.2b *(user, 2026-10-12: "i clicked "x" and it stayed, just the
+    value being cleared")*: a row that stands -- a launch row, one the
+    calculation states -- has no ×, its blank clears it; a row added by
+    *+ Add setting* and not filled has one, and it removes the row.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a × on every row (the standing rows
+    carry one that can only clear); the added row's × not removing it."""
+    _open(page, flask_server, filled_dir)
+    page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
+    rows = _rows(page)
+    assert {"mpi_np", "omp_threads", "time", "use_gpu"} <= set(rows), rows
+    assert not [n for n, r in rows.items() if r["drop"]], (
+        "a standing row carries a × that can only clear it: " + repr(rows))
+
+    page.evaluate(
+        "() => { const c = document.querySelector('.ts-runcard');"
+        "  const s = c.querySelector('select.ts-pick');"
+        "  s.value = 'block_size';"
+        "  s.dispatchEvent(new Event('change', {bubbles: true}));"
+        "  for (const b of c.querySelectorAll('button'))"
+        "    if (/Add setting/.test(b.textContent)) { b.click(); return; } }")
+    field = '.ts-runcard [aria-label="value for block_size"]'
+    page.wait_for_selector(field, timeout=10000)
+    assert _rows(page)["block_size"]["drop"], "the added row has no ×"
+    page.click(".ts-runcard .ts-row:has([aria-label=\"value for "
+               "block_size\"]) > .ts-rowbtn-drop")
+    page.wait_for_selector(field, state="detached", timeout=10000)
 
 
 def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
@@ -988,10 +1032,10 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     the card renders.
 
     The claims, all of them about what a person is TOLD:
-      * every enabled stage offers both things you can do with it -- the card
-        once hardwired `prep bench` to `enabled[0]`, a guess dressed as an
-        answer;
-      * each command names ITS OWN stage;
+      * every group's tab offers each member's benchmark and the group's
+        own prep -- the card once hardwired `prep bench` to `enabled[0]`, a
+        guess dressed as an answer;
+      * each command names ITS OWN stage, or its own group;
       * the bench order is shown in order, because skipping `summarize` does
         not fail -- it quietly preps a run with no measured verdict behind it;
       * `launch` never carries `--target`, because launching happens ON the
@@ -1004,14 +1048,15 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     blocks = _commands_shown(page)
     joined = "\n".join(blocks)
 
-    # ── every stage, not only the first ────────────────────────────────
+    # ── every stage, not only the first; every group ───────────────────
     for stage in ("coarse", "tight"):
         assert f"prep bench {stage}" in joined, (
             f"the card offers no bench command for {stage!r} -- the axes are "
             "declared once for the calculation, so every enabled stage can "
             "be measured")
-        assert f"prep task {stage}" in joined, (
-            f"the card offers no run command for {stage!r}")
+    for number in (1, 2):
+        assert f"prep task --group {number}" in joined, (
+            f"the card offers no prep of group {number}")
 
     # ── the order is load-bearing, and is shown ────────────────────────
     bench = next(b for b in blocks if "prep bench coarse" in b)
@@ -1027,8 +1072,8 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     # ── and each half says what it is for, in the page's own component ──
     hints = page.eval_on_selector_all(
         "p.hint", "els => els.map(e => e.textContent).join('\\n')")
-    assert "Measure it" in hints and "Run it" in hints, (
-        "the per-stage blocks do not explain themselves")
+    assert "Measure a stage" in hints and "Run it" in hints, (
+        "the group tabs do not explain themselves")
     # A person who filled the card and then wants something else for ONE prep
     # needs to know a flag wins -- otherwise the only visible path is editing
     # `task.json` again.
@@ -1086,15 +1131,15 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
 
     blocks = _commands_shown(page)
 
-    for stage in ("coarse", "tight"):
-        for verb in ("bench", "run"):
-            line = next((l for b in blocks for l in b.splitlines()
-                         if f"prep {verb} {stage}" in l), None)
-            assert line, f"the card offers no `prep {verb} {stage}` command"
-            assert f"--target {a_named_machine}" in line, (
-                f"a machine is chosen and the command a person copies is "
-                f"{line.strip()!r} -- it preps for THIS machine while the "
-                f"card says {a_named_machine!r}")
+    for words in ("prep bench coarse", "prep bench tight",
+                  "prep task --group 1", "prep task --group 2"):
+        line = next((l for b in blocks for l in b.splitlines()
+                     if words in l), None)
+        assert line, f"the card offers no `{words}` command"
+        assert f"--target {a_named_machine}" in line, (
+            f"a machine is chosen and the command a person copies is "
+            f"{line.strip()!r} -- it preps for THIS machine while the "
+            f"card says {a_named_machine!r}")
 
     for b in blocks:
         for line in b.splitlines():
@@ -1115,14 +1160,14 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     this = page.locator('#ts-target-choice .opt[data-machine="(this machine)"]')
     this.wait_for(state="visible", timeout=20000)
     this.click()
-    panel = "[id^=ts-steppanel]"
-    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
+    box = ".ts-task-prep"
+    page.locator(f"{box} .ts-prep button:has-text('Preview task')") \
         .first.click()
     page.wait_for_function(
         "(sel) => Array.from(document.querySelectorAll(sel)).some("
-        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
-        arg=f"{panel} .ts-prep button", timeout=30000)
-    page.locator(f"{panel} .ts-prep button:has-text('Prep run here')") \
+        "b => /Prep task here/.test(b.textContent) && !b.disabled)",
+        arg=f"{box} .ts-prep button", timeout=30000)
+    page.locator(f"{box} .ts-prep button:has-text('Prep task here')") \
         .first.click()
 
     page.wait_for_selector("#ts-target-set:not([hidden])", timeout=60000)
@@ -1265,10 +1310,11 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
 def test_no_rung_is_taught_a_from_by_default(
         page, flask_server, two_stage_dir):
     """By default the page composes no `--from`, even for a rung whose run
-    card says it continues: which run a stage continues from is then prep's
-    answer -- the newest attempt of the stage before it, which must have
-    concluded (`job-system.md` § 5.4, plan W37) -- and a `--from` is taken
-    as said, unchecked, so it appears only when a person chooses a run.
+    card says it continues: which run a stage continues from is then its
+    first launch's answer -- the newest attempt of the stage before it,
+    which must have finished (`job-system.md` § 5.4, plan W37) -- and a
+    `--from` is taken as said, so it appears only when a person chooses a
+    run.
 
     MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again.
     """

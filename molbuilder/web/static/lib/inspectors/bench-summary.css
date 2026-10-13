@@ -85,7 +85,7 @@
     gap: var(--space-sm);
     flex-wrap: wrap;
 }
-.bench-trial-label { font-weight: 600; }
+.bench-trial-label { font-weight: var(--weight-semibold); }
 .bench-siter {
     margin-left: auto;
     font-variant-numeric: tabular-nums;

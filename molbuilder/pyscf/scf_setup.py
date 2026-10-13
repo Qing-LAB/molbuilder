@@ -186,7 +186,7 @@ def emit_solvent_lines(cfg) -> List[str]:
     method = str(getattr(cfg, "solvent_method", "IEF-PCM") or "IEF-PCM")
     return [
         "# PCM solvation -- continuum model (cheaper than ddCOSMO).",
-        f"mf = mf.PCM()",
+        "mf = mf.PCM()",
         f'mf.with_solvent.method = "{method}"',
         f"mf.with_solvent.eps = {eps}    # {solvent} dielectric",
     ]

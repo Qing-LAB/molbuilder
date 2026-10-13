@@ -53,33 +53,33 @@
     </header>
 
     <nav class="modify-init-tabs" role="tablist" aria-label="Init structure source">
-      <button class="modify-init-tab is-active" data-init-tab="load"
+      <button class="modify-init-tab" data-tab="load" aria-controls="init-panel-load"
               role="tab" type="button" aria-selected="true">
         Load from project
       </button>
-      <button class="modify-init-tab" data-init-tab="smiles"
+      <button class="modify-init-tab" data-tab="smiles" aria-controls="init-panel-smiles"
               role="tab" type="button" aria-selected="false">
         SMILES
       </button>
-      <button class="modify-init-tab" data-init-tab="name"
+      <button class="modify-init-tab" data-tab="name" aria-controls="init-panel-name"
               role="tab" type="button" aria-selected="false">
         Name lookup
       </button>
-      <button class="modify-init-tab" data-init-tab="dna"
+      <button class="modify-init-tab" data-tab="dna" aria-controls="init-panel-dna"
               role="tab" type="button" aria-selected="false">
         DNA
       </button>
-      <button class="modify-init-tab" data-init-tab="rna"
+      <button class="modify-init-tab" data-tab="rna" aria-controls="init-panel-rna"
               role="tab" type="button" aria-selected="false">
         RNA
       </button>
-      <button class="modify-init-tab" data-init-tab="peptide"
+      <button class="modify-init-tab" data-tab="peptide" aria-controls="init-panel-peptide"
               role="tab" type="button" aria-selected="false">
         Peptide
       </button>
     </nav>
 
-    <div class="modify-init-panel is-active" data-init-panel="load"
+    <div class="modify-init-panel" id="init-panel-load"
          role="tabpanel">
       <div class="modify-source-body">
         <p class="modify-source-hint">
@@ -97,7 +97,7 @@
       </div>
     </div>
 
-    <div class="modify-init-panel" data-init-panel="smiles" role="tabpanel" hidden>
+    <div class="modify-init-panel" id="init-panel-smiles" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
           Build a 3-D structure from a SMILES string via RDKit.
@@ -115,7 +115,7 @@
       </div>
     </div>
 
-    <div class="modify-init-panel" data-init-panel="name" role="tabpanel" hidden>
+    <div class="modify-init-panel" id="init-panel-name" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
           Look up a molecule by IUPAC or common name (PubChem) and
@@ -134,7 +134,7 @@
       </div>
     </div>
 
-    <div class="modify-init-panel" data-init-panel="dna" role="tabpanel" hidden>
+    <div class="modify-init-panel" id="init-panel-dna" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
           Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
@@ -190,7 +190,7 @@
       </div>
     </div>
 
-    <div class="modify-init-panel" data-init-panel="rna" role="tabpanel" hidden>
+    <div class="modify-init-panel" id="init-panel-rna" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
           Build single-stranded RNA from a 1-letter sequence (ACGU)
@@ -230,7 +230,7 @@
       </div>
     </div>
 
-    <div class="modify-init-panel" data-init-panel="peptide" role="tabpanel" hidden>
+    <div class="modify-init-panel" id="init-panel-peptide" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
           Build a peptide from a one-letter amino-acid sequence
@@ -347,7 +347,7 @@
         § 6.8): a cell notice under the Cell rows it is about, everything else on
         one line above the tabs.  Wired in modify/viewer.js. -#}
     <div class="modify-messages" role="status" aria-live="polite">
-      <p id="edit-status" class="modify-status"></p>
+      <p id="edit-status" class="modify-status status" role="status"></p>
     </div>
 
     <div class="modify-body">
@@ -365,26 +365,26 @@
            panel is visible at a time so the edit column doesn't
            sprawl down the page. -->
       <nav class="modify-op-tabs" role="tablist" aria-label="Operations">
-        <button class="modify-optab is-active" data-op-tab="atom"
+        <button class="modify-optab" data-tab="atom"
                 role="tab" type="button"
                 id="optab-btn-atom" aria-controls="optab-panel-atom"
                 aria-selected="true">Atom</button>
-        <button class="modify-optab" data-op-tab="transform"
+        <button class="modify-optab" data-tab="transform"
                 role="tab" type="button"
                 id="optab-btn-transform" aria-controls="optab-panel-transform"
                 aria-selected="false">Transform</button>
-        <button class="modify-optab" data-op-tab="slab"
+        <button class="modify-optab" data-tab="slab"
                 role="tab" type="button"
                 id="optab-btn-slab" aria-controls="optab-panel-slab"
                 aria-selected="false">Slab</button>
-        <button class="modify-optab" data-op-tab="cell"
+        <button class="modify-optab" data-tab="cell"
                 role="tab" type="button"
                 id="optab-btn-cell" aria-controls="optab-panel-cell"
                 aria-selected="false">Cell</button>
       </nav>
 
       <!-- Atom edits: delete + add (M3 ops). -->
-      <div class="modify-optab-panel is-active" data-op-panel="atom" role="tabpanel"
+      <div class="modify-optab-panel" role="tabpanel"
            id="optab-panel-atom" aria-labelledby="optab-btn-atom">
 
       <!-- Delete: enabled when at least one atom is selected.
@@ -446,14 +446,14 @@
         </button>
       </fieldset>
 
-      </div><!-- /.optab-panel data-op-panel="atom" -->
+      </div><!-- /#optab-panel-atom -->
 
       <!-- Transform: move / rotate / align the atoms WITHOUT changing
            the atom set or indices.  Translate, Center, and Rotate act
            on the current selection, or on the whole structure when
            nothing is selected; Orient uses the two selected atoms to
            define the axis and aligns the whole structure to it. -->
-      <div class="modify-optab-panel" data-op-panel="transform" role="tabpanel"
+      <div class="modify-optab-panel" role="tabpanel" hidden
            id="optab-panel-transform" aria-labelledby="optab-btn-transform">
 
       <p class="hint">
@@ -580,7 +580,7 @@
         </button>
       </fieldset>
 
-      </div><!-- /.optab-panel data-op-panel="transform" -->
+      </div><!-- /#optab-panel-transform -->
 
       {#- Cell: the periodicity editor.  MolView only DISPLAYS periodicity; the edits
           live here and are sent by one Apply as the gate's `block` op
@@ -590,7 +590,7 @@
       {#-  Slab -- one fcc slab, placed ABSOLUTELY                      -#}
       {#-  (archive/2026-09-01-modify-redesign-plan.md § 3)                          -#}
       {#- ============================================================ -#}
-      <div class="modify-optab-panel" data-op-panel="slab" role="tabpanel"
+      <div class="modify-optab-panel" role="tabpanel" hidden
            id="optab-panel-slab" aria-labelledby="optab-btn-slab">
 
         <fieldset class="modify-op-block">
@@ -717,9 +717,9 @@
         </fieldset>
 
         <button id="slab-apply" class="full-btn" type="button">Add slab</button>
-      </div><!-- /.optab-panel data-op-panel="slab" -->
+      </div><!-- /#optab-panel-slab -->
 
-      <div class="modify-optab-panel" data-op-panel="cell" role="tabpanel"
+      <div class="modify-optab-panel" role="tabpanel" hidden
            id="optab-panel-cell" aria-labelledby="optab-btn-cell">
 
         <p class="modify-op-hint" id="pv-empty-hint">Load a structure to edit its cell.</p>
@@ -913,7 +913,7 @@
           </button>
         </div>
 
-      </div><!-- /.optab-panel data-op-panel="cell" -->
+      </div><!-- /#optab-panel-cell -->
     </div>
   </aside>
 

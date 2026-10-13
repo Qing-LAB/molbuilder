@@ -82,7 +82,7 @@ def test_ask_reads_the_targets_answer_and_submits_nothing(tmp_path,
     task = json.loads((bundle / "task.json").read_text())
     task["allocation"] = {"domain": queue, "time": "0-00:05:00", "mem": "1G"}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
 

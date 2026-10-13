@@ -232,32 +232,6 @@ def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
     return out
 
 
-_SACCT_MEM = re.compile(r"\bmem=([0-9.]+)([KMGT])", re.IGNORECASE)
-_SACCT_UNIT = {"K": 1 / 1048576, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
-
-
-def parse_sacct_mem(sacct_text: str) -> Optional[float]:
-    """Peak memory in GB from ``sacct`` output -- the ``mem=<n><unit>`` in
-    a ``TRESUsageInMax`` field (the most robust place; Sol leaves the bare
-    ``MaxRSS`` column blank for some jobs).  Takes the max seen.
-
-    CONTRACT: the caller's ``sacct -o`` format MUST include
-    ``TRESUsageInMax`` (not only ``MaxRSS``) -- a bare ``MaxRSS`` column
-    has no ``mem=`` token and is deliberately NOT scanned (a generic
-    ``<n><unit>`` scan would also match ``ReqMem``/``MaxVMSize`` and
-    over-report).  When nothing matches this returns ``None`` and the
-    caller's recommendation simply omits ``mem_gb`` (visibly absent, not
-    silently wrong)."""
-    peak = None
-    for val, unit in _SACCT_MEM.findall(sacct_text):
-        try:
-            gb = float(val) * _SACCT_UNIT[unit.upper()]
-        except (ValueError, KeyError):
-            continue
-        peak = gb if peak is None else max(peak, gb)
-    return None if peak is None else round(peak, 1)
-
-
 # --------------------------------------------------------------------- #
 #  Data model (§ 5.3)                                                   #
 # --------------------------------------------------------------------- #
@@ -426,7 +400,6 @@ def build_bench_result(points: List[BenchPoint], *,
 
 __all__ = [
     "SCHEMA", "BenchPoint", "BenchResult",
-    "parse_sacct_mem",
     "parse_effective_run", "compare_asked_to_ran",
     "mismatch_phrase", "choose_winner",
     "build_bench_result",

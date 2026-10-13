@@ -59,9 +59,9 @@ Then, on the machine that will run it (or with this tab's Prep, for a machine
 chosen in § 6):
 
 ```bash
-molbuilder jobset prep task --stage coarse      # resolves this machine, renders the
+molbuilder jobset prep task --group 1        # resolves this machine, renders the
                                        # deck and wrapper, builds the attempt
-molbuilder jobset launch task --stage coarse
+molbuilder jobset launch task --group 1
 ```
 
 **There is no "run all stages" button, and that is deliberate.** A stage is a
@@ -91,7 +91,7 @@ Three states, and the third is a refusal:
 |---|---|
 | **no `task.json`** | writes a new job here |
 | **a `task.json` for *this* calculation** | its stages load into the table; saving updates them |
-| **a `task.json` for a *different* calculation** | **refused.** One job per folder, or every later step is guessing which one the folder is (`job-contracts.md § 2.1` Rule 1). The message names the calculation it found |
+| **a `task.json` for a *different* calculation** | **refused.** One calculation per folder, or every later step is guessing which one the folder is (`job-contracts.md § 2.1` Rule 1). The message names the calculation it found |
 
 > **Why refuse rather than offer a subfolder.** Creating a folder to escape a
 > collision is a decision about where your work lives, and the sidebar is where
@@ -285,6 +285,27 @@ check and `resolve` refuse such an override on every road *(by role for every
 kind since 2026-09-30, plan § 5w K4; for transport's rungs, by name, since
 2026-09-24)*.
 
+**Every row states its group** *(user, 2026-10-11:
+"the stages should have a group number assigned to it, either repeat the last
+group number or add one")*. Beside each stage's name, its **group** — the job
+it runs in ([`stages.md`](?doc=engines/stages.md) § 2) — with two choices on
+every row but the first: *same as above* (repeat the number) or *new group*
+(add one). A row that may not repeat — it builds on a stage in the group
+above as the card stands, edits included — says why beside it and offers only
+*new group*: the page applies the rule to the stages each row builds on, as
+the folder answer gives them (`groups`: each stage's number, the stages it
+builds on — `builds_on`, asked of `group.upstream_of` by the server —
+whether that is its kind's, `linked`, and whether it was launched), and
+Save's check (`group.check_groups`) refuses what the rule forbids. Both name
+the ways out: a new group — or, for an independent ladder's stage, its run
+card's `restart` set to `clean`, so it builds on nothing.
+A new description arrives with the defaults (repeat wherever allowed); Save
+writes the numbers into `task.json`. **Changing a group of stages that are
+prepared and never launched** marks those groups for preparing again (§ 11);
+a launched stage's group is fixed and its row's choices are disabled, naming
+the restore that changes it — and no row joins it: the row below a launched
+group offers only *new group*, saying why.
+
 ### 5.1 An empty cell shows the number, and it comes from the folder
 
 An empty cell says *"the template's value"* — so it **shows that value**, greyed,
@@ -381,11 +402,12 @@ case-insensitively, because they key filenames
 
 A transport calculation's stages are not refinements designed here: they are
 the ladder's five rungs — `seed`, `electrode_L`, `electrode_R`, `device`,
-`transmission` — fixed by the kind, in that order, the seed the one a
-description may leave out, which is how a ladder skips it (ruling Q4,
+`transmission` — fixed by the kind, in that order, every one: the leads and
+the device start from the seed's density, so no description leaves it out
+(user, 2026-10-12, withdrawing ruling Q4's skip;
 [`engines/stages.md`](?doc=engines/stages.md) § 2;
 [`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a); the reader
-refuses any other list. Their values are each rung's OWN over the template:
+refuses any other list, naming the five. Their values are each rung's OWN over the template:
 the Transport tab's rung tabs state them first, at Describe; once the
 description is written it is this page's to edit, as every kind's is
 ([`handover-procedure.md`](?doc=web/handover-procedure.md) § 6) — Describe is
@@ -394,7 +416,7 @@ the Stages card has:
 
 | | |
 |---|---|
-| **rows** | the rungs, numbered as the Transport tab numbers them (*1 · seed* … *5 · transmission*); none is renamed or moved and no preset is offered; only the seed may be removed, and, once removed, added back in its place, with no values of its own |
+| **rows** | the rungs, numbered as the Transport tab numbers them (*1 · seed* … *5 · transmission*); none is renamed, moved, removed or added, and no preset is offered; each with its group — the defaults 1 1 1 2 3, the device and the transmission never sharing the group above, since each builds on it |
 | **columns** | the items a rung may own (the column rule above); the picker names, beside each item, the rung or rungs that read it (*read by transmission*), and a column's cells on the other rungs are disabled, as on every kind |
 | **words** | *each rung's own values over the template — set first on the Transport tab, changed here after Describe*, in place of the refinement sentence of § 9's *add a stage* |
 
@@ -616,8 +638,8 @@ implicit, in addition, expose gpu enable and gpu number too")*: the items the
 catalogue marks `run_card` — for SIESTA the ranks, the threads per rank, the
 GPU switch and the GPU count; for PySCF its threads, the GPU switch and the
 GPU count — each a row whether or not a benchmark names it, **blank until
-stated** and nothing proposed, on the rungs that read it (the item's `stages`,
-by role, as the stage table's cells follow them). Before
+stated** and nothing proposed, written on the rungs that read it (the item's
+`stages`, by role, as the stage table's cells follow them). Before
 2026-10-11 the rows were the bench's, the condition's and those added by hand
 only, so a calculation with no benchmark — every transport calculation —
 showed none, and the values prep requires were met first as its refusal. The
@@ -632,6 +654,45 @@ or a queue, and a benchmark that swept its own wall would be measuring the
 queue (`stages.md` § 6.8e). They are what makes *"the bench keeps the
 calculation's short wall, this run asks for two days"* sayable in one file.
 **`mem` is not among them**, and its absence is a decision, not a gap.
+
+**A group's card is one card, and every card is drawn the same way** *(user,
+2026-10-11: "even though the stages can be selected to appear to be combined
+into one prep, the prep UI clearly still treats each stage separately ... this
+creates confusion"; 2026-10-12: "the list here is a container that have all
+parameters here")*. The stages of a group run as one job, so they share one
+allocation ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6).
+Their tab (§ 11) holds **one run card for the job — its container of
+settings**: **the same rows on every card, in one order** — the catalogue's
+run-card items, every setting the bench declares, every one the calculation
+states on any stage or for all of them, and any added on this card; ordered
+the catalogue's run-card items first, then the other settings the bench lane
+speaks, then the run's own `time` and `domain` — and setting a row writes
+that value into **every member that reads it** — the item's `stages`, by
+role, as the stage table's cells follow them. A row some member does not read
+says so (*not read by transmission*), and a row no member reads is shown and
+not editable: the GPU switch and count on the transmission's card, which runs
+on no GPU. A value stated on a member that does not read it is shown on its
+row (*stated on transmission, which does not read it*) with its own × to
+remove it — Save and prep refuse it by name until it is removed, as they
+refuse an override on a rung that does not read it (`template.reads`, the one
+door; `validation.task`). A member whose value
+differs is shown beside the field (*electrode_L: 8*), never overwritten unasked,
+and for a value the job shares prep refuses the disagreement by name until it
+is settled. **The wall is the members' own** — a row per member, the job asking
+their sum, shown beneath — and the memory the calculation's (`allocation.mem`,
+the largest of what the job holds). *+ Add setting* offers what at least one
+member reads. **A row that stands has no ×** — a launch row, a benchmark's, or
+one the calculation states: its blank clears it (the select's blank option,
+an emptied box), one way to clear rather than two; a row added on the card and
+not yet filled has one, which removes the row, and a value stated on a member
+that does not read it has its own *(user, 2026-10-12: "i clicked "x" and it
+stayed, just the value being cleared")*. A group of one stage is the same card
+with one member.
+*(Measured 2026-10-12 on `AuBDTAu/transport/lowbias`: each card listed only
+the rows its members read, so the transmission's card had no GPU switch; it
+offered a GPU count — every rung read `gpu_count` then — and prep's G5
+refusal named the switch that card could not show; a blank row read *not
+stated* where the template answered.)*
 
 **A run needs no benchmark.** Not executed, not summarized, not declared. Open
 a fresh calculation, type what you want, prep the run. That is the complaint
@@ -653,22 +714,20 @@ styling: the row carries the state and the CSS reads it.
 | the row is | the field holds | it looks | because |
 |---|---|---|---|
 | **chosen** | this rung's own value, from `stages[i].execution` | ordinary | you decided it here |
-| **inherited** | *empty*, with the calculation-wide value as the placeholder, marked *(every stage)* | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank and `×` unreachable |
-| **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a deck item keeps the template's value; a launch value stated nowhere is refused at prep, and the card says so |
+| **inherited** | *empty*, with what a blank uses as the placeholder: the calculation-wide value, marked *(every stage)*, else the template's, marked *(template)* — the empty stage cell's rule and helper (§ 5.1) | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank unreachable |
+| **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a launch value, which no template holds: stated nowhere, it is refused at prep, and the card says so |
 
 That the field is left EMPTY for an inherited row is the load-bearing half: an
 inherited value shown as text is indistinguishable from one you typed, and
-`×` and clear-to-blank both write this rung's own block — so with the merged
-value in the field they would write nothing and the field would snap back.
+clearing to blank writes this rung's own block — so with the merged value in
+the field it would write nothing and the field would snap back.
 
 **Whether it fits the machine is the preview's to say** (§ 11.1): the one
 prep entry, stopped before the save, admits the run the stage resolves to on
 the queue it names — its cores, GPUs, memory and wall, on the target's record
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4) — and
 answers the plan, or the refusal naming what was asked and what the queue
-offers. *(Until 2026-10-05 this card asked the bench grid with one-point axes
-as you typed — a second answer to a question the entry answers, W55 B3 — and
-for a few hours after, nothing answered it before launch.)*
+offers.
 
 > **A check that cannot run says so.** *"I don't know, and here is why"* is
 > one of the three answers, beside *fits* and *does not fit* — never a blank.
@@ -765,7 +824,7 @@ directory's wrapper will carry.
 from the same producer `prep` runs — flat and hierarchical name directories
 differently (§ 4), and a page that composed them would be free to disagree with
 the thing it is describing. What it adds is that you see all of it at once,
-before you copy a command, rather than one stage at a time in § 11's tabs.
+before you copy a command, rather than one group at a time in § 11's tabs.
 
 ### 7.2 What this calculation writes *(user, 2026-09-07)*
 
@@ -918,7 +977,7 @@ looks.
 | | |
 |---|---|
 | **1 · save the folder's current state** | a first state if the folder has none, otherwise a state of what is there right now — so whatever you are about to change can be brought back |
-| **2 · write the description** | `task.json` and the template, together |
+| **2 · write the description** | `task.json` — the template is the hand-over's, which arrives with it, and Save leaves it as it is (`/api/task-setup/save`, `task.write_task`) |
 
 **The checkpoint is always taken, by the server, and said**
 ([`checkpointing.md § 9`](?doc=execution/checkpointing.md); user, 2026-10-03,
@@ -954,10 +1013,10 @@ it; columns and cells work as they do on every kind.
 | Operation | What it does | The rule that keeps it safe |
 |---|---|---|
 | **add a parameter column** | adds it to `varies` | **seeds every stage with the template's current value**, so adding a column changes nothing on screen. It is a statement about *structure*, never about values |
-| **remove a column** | drops it from `varies` | the stages disagree and one value must survive: **the last stage wins**, because that is the production stage and the value a single run would use. The page says which value it kept, and says it *before* the click |
+| **remove a column** | drops it from `varies` | **every stage's value for it goes** — the page edits `task.json`, not the template — and the page says so *before* the click, a second click removing it: it names the last stage's value, the production stage's and the one a single run would use, to set in the template if it is to stay |
 | **add a stage** | appends a row | **copies the previous stage's overrides.** A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
 | **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
-| **reorder** | moves a stage | the files are written in order and `restart` reads that order, so this is a real edit, not a display preference |
+| **no reorder** | — | a stage's number is assigned once and stages append ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2): its folder, its files and its runs carry it, so moving a stage would rename what it already wrote |
 | **edit a cell** | sets one stage's value | nothing else moves |
 | **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* **And a preset fills only what the row's rung reads**: on a vibration ladder the `freq` row takes none of the relaxation tier's values, which the `relax` row alone reads (plan § 5w K4). |
 | **add a measurement point** | turns a value into an axis | the value becomes the first point, so measuring never discards what you chose |
@@ -988,7 +1047,10 @@ language is one row there rather than a second copy per surface.
 
 **Editing here is not saving.** The editor is where you check and correct the
 description before it is written; § 8 is what writes it. An edited buffer that
-has not been saved says so.
+has not been saved says so. **A card never writes over text that does not
+parse**: while the editor holds something that is not valid JSON — an edit in
+progress — a card's change is refused, said at the top of the page, and the
+text is left as typed.
 
 ### 9a.1 Folded by default, and in the column with everything else
 
@@ -1110,43 +1172,49 @@ that resolves to nothing is silent by design.
   folder's answer names it (`set_to`), and the card shows it chosen, offers
   no other and says why — the way to another machine is the state saved
   before the first prep, and a prep anew. Its commands carry no `--target`
-  then: the calculation's copy of the record answers *(W55 D12,
-  2026-10-03 — the card offered every machine, and Prep refused all but
-  one)*.
+  then: the calculation's copy of the record answers.
 
 ---
 
-## 11. Preparing, stage by stage — one tab per rung
+## 11. Preparing, group by group — one tab per group
 
 *(user, 2026-09-01: "we can make the stage axis as a tab to organize the cards
 for prep bench and run so the whole page won't extend too long".)*
 
-The page launches nothing (§ 10). What it does, per stage, is show what will
+The page launches nothing (§ 10). What it does, per group, is show what will
 be prepared, prepare it for the chosen machine, and hand you the exact command
-— and it does that **in a tab strip keyed by stage**, because the alternative grows the page by one block per
-rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
+— and it does that **in a tab strip keyed by group**, because a group is one
+job — what prep writes and launch sends — and a page keyed by stage would ask
+the same job's values once per stage.
 
-**The task's one Prep, above the tabs** *(Q13, 2026-10-08;
-[`job-system.md`](?doc=execution/job-system.md), *The task*)*. It lists every
-stage as the ready door answers it — *prepared*; *ready*, with what its prep
-would take; *waiting*, with what for — the folder's `ladder`, the answer `prep
-task` shows before it asks. The ready stages have a box each, the ones `prep
-task` offers pre-selected (D2: a transport ladder's seed and both leads) ticked
-when the folder opens; under them the command for the pick
-(`prep task --stage … --stage …`) and the Preview / Prep pair that does what it
-does. Several ticked are one group, one job (`project-layout.md` § 1.6.6); a
-stage ticked alone takes the Continue-from choice its tab shows — and a stage
-waiting for its default becomes one to tick once its tab names a run to
-continue from, or `--cold`, which prep takes as said, as at the terminal
-(`--from`). After a Prep
-the folder is read again, and the boxes start again from the new offer.
+**The task's one Prep, above the tabs**
+([`job-system.md`](?doc=execution/job-system.md), *The task*). It lists every
+**group** with its stages, as the folder's answer gives them (`ladder`, the
+answer `prep task` shows before it asks) — *not prepared*; *prepared, its
+members changed*; *prepared, never launched*; *launched* — and for a
+force-constant stage not preparable yet, what it waits for. **Every group has
+a box.** A group `prep task` offers — not prepared as described, and
+preparable (`ready.prep_offer`;
+[`job-system.md`](?doc=execution/job-system.md), *The task*, `prep task`, 2)
+— is **ticked when the folder opens**. A group **prepared and never launched**
+has a box you can tick: Prep prepares it again, whole — the way a change made
+after looking reaches a group not yet launched. A **launched** group's box is
+disabled, and so is the box of a group not preparable yet, until its
+force-constant stage's Continue from names a `relax` run. Under them the
+command for the pick (`prep task --group … --group …`) and the Preview / Prep
+pair that does what it does. Each ticked group is one
+job (`project-layout.md` § 1.6.6). After a Prep the folder is read again, and
+the boxes start again from the new offer. Beside each prepared group, what its
+launch will take and whether it can go now — *ready to launch*, or *waits for
+electrode_R to finish* — the ready door's answer.
 
-**One tab per stage.** Inside a tab, everything else you do with that rung:
+**One tab per group.** Inside a tab, everything else you do with that job and
+its stages:
 
 | | |
 |---|---|
-| **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
-| **run it** | the run card, the Continue-from choice, and the lines `prep task --stage <stage>` → `launch task --stage <stage>` — prepared with the task's Prep above; a stage prepared in a group launches as `jobset status` says, the group's one job while every member waits and alone after (D4, `runstatus.launch_words`) *(2026-10-11; until then the tab named the stage alone)*; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5; the `summarize run freq` line this printed from 2026-09-24 went with the host read-back, 2026-09-28) |
+| **measure it** | per member: `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring — a benchmark measures one stage, never a group |
+| **run it** | the group's one run card (§ 6.2b), the Continue-from choice for a group of one stage, and the lines `prep task --group <N>` → `launch task --group <N>` — prepared with the task's Prep above; then, per member, its launch again alone once the group has run; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:
@@ -1155,37 +1223,40 @@ meant, and a per-tab copy would show you one line of it at a time. The rail
 stays on screen while you work through the tabs, so both are visible at once
 without either being duplicated.
 
-**What the run will use is asked HERE, in the rung's own tab**, immediately
+**What the run will use is asked HERE, in the group's own tab**, immediately
 above the `prep task` line that consumes it *(user, 2026-09-02: "that selection
 panel card should be next to the prep for run button such that it's obvious
 that this is designed for the run. This is not mixed up with the existing
 functional bench setup")*. It writes that rung's `stages[i].execution`
-(`stages.md` § 6.8d); a field left blank takes the calculation's own block,
-which the field shows as its placeholder.
+(`stages.md` § 6.8d) — for a group, every member's; a field left blank takes
+the calculation's own block, which the field shows as its placeholder.
 
-There is exactly one such card per rung and none anywhere else — it stood in
+There is exactly one such card per group and none anywhere else — it stood in
 the main column for part of 2026-09-02, two cards away from the button it
 decides for, which reads as part of the bench setup.
 
-**What the rung continues from is chosen in its tab too** *(plan W37,
-2026-10-01)*. A rung that continues from the stage before it — a continuing
-stage of an independent ladder ([`job-system.md`](?doc=execution/job-system.md)
-§ 5.4), or a vibration's force-constant stage, which builds on `relax` — shows
-a **Continue from** choice above its `prep task` line: *the stage before it, its
+**What the rung continues from is chosen in its tab too.** A group of one stage that
+continues from the stage before it — a continuing stage of an independent
+ladder ([`job-system.md`](?doc=execution/job-system.md) § 5.4), whose choice
+goes on its **launch** line, the first launch taking it — or a vibration's
+force-constant stage, which builds on `relax` and whose choice goes on its
+**prep** line, its deck being written at that run — shows a **Continue from**
+choice: *the stage before it, its
 newest run* (the default — *the relaxation it builds on* for a force-constant
 stage), each run of that stage with what it was, or the
 calculation's structure (`--cold`, where the layout has one and the stage may
 start from it — a force-constant stage may not while the ladder holds a
 `relax`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a). Under
 it, what the choice means: the default's own line — *continues from
-01_coarse/run-1 (the stage before it; concluded rc=0 …)* — or, while prep would
-refuse it, why, whole, with the commands it names. It is the folder's answer
-(`continue_from`), the one prep acts on, given each time the folder is opened
-and so without the run's relaxation verdict, which Preview reads; the command
-line follows the choice (`--from <run>`, `--cold`), and Preview and Prep send
-it to the same prep. A transport rung and a rung that starts clean show no
-choice: prep takes their input itself, or none — and a choice the folder no
-longer offers (a stage set clean since) is dropped, never sent. A
+01_coarse/run-1 (the stage before it; concluded rc=0 …)* — or, while the
+launch (a force-constant stage: the prep) would refuse it, why, whole, with
+the commands it names. It is the folder's answer (`continue_from`), the one
+the launch — or a force-constant stage's prep — acts on, given each time the
+folder is opened and so without the run's relaxation verdict, which that verb
+reads; the command line follows the choice (`--from <run>`, `--cold`). A
+transport rung and a rung that starts clean show no choice: their first launch
+takes their input itself, or none — and a choice the folder no longer offers
+(a stage set clean since) is dropped, never sent. A
 force-constant stage with no `relax` shows, instead of a choice, why prep
 refuses it while its structure is not stated relaxed.
 
@@ -1213,16 +1284,14 @@ Skipping the middle step is no longer silent: the rows are right there, filled
 or blank, above the command that consumes them — and a blank launch row
 reads as *prep will refuse this* rather than as nothing.
 
-**The command lines are the terminal's own** *(W55 B4, 2026-10-03)*. Each
+**The command lines are the terminal's own.** Each
 tab's lines come from the server — `/api/task-setup/commands`, composed by
 `jobset/commands.stage_lines`, the composer every printed command shares
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3, *what molbuilder
 prints, you can type*): the calculation named from the projects root, what the
 rung continues from and the machine as chosen, and a launch line per mode
 the calculation's machine takes where this machine's `molbuilder.json` sets no
-`launch.mode` — the queue's only where that machine names one. The page composed
-them itself until 2026-10-03, and its one launch line, with no mode, was
-refused when typed (D11). **A stage already prepared** — a benchmark's — shows the prep entry's
+`launch.mode` — the queue's only where that machine names one. **A stage already prepared** — a benchmark's — shows the prep entry's
 own sentence under its two buttons, neither enabled — the way back in it —
 and, for one prepared for a queue, where it was admitted and where each value
 came from, read from its job's record ([`job-system.md`](?doc=execution/job-system.md)
@@ -1249,22 +1318,24 @@ one per mode the calculation's machine takes where it sets none.
 ### 11.1 What a Prep button shows — the command line's answer, whole
 
 **Preview is the one prep entry, stopped before the save**
-([`job-system.md`](?doc=execution/job-system.md) § 5.0, W55 B3): the plan —
+([`job-system.md`](?doc=execution/job-system.md) § 5.0): the plan —
 what the rung builds on, with the run's verdict and the files it carries; what
 the job will be launched with, line for line as the plan holds it — the header
-where a scheduler runs it, else the run script's stated counts (A13,
+where a scheduler runs it (a group of several, its one header, once for the
+group: its first launch sends that, not a member's own), else the run script's stated counts (A13,
 [`architecture.md`](?doc=execution/architecture.md) § 5.2); every file it would write, folded under their count — all of it the
 answer a Prep gives, through the same renderer, said as what it would do: what
 the description's checks and each deck's own found, the attempt it would open
-and what it would bring in, what a transport rung would gather, whether the
+and what it would bring in, what each stage's first launch will take and from
+which stage, whether the
 deck agrees with its launch, and which config files answered (the first found
 is the record that won, [`configuration.md`](?doc=configuration.md) § 2.2) —
 or the refusal prep would give, in its words, with what it had found (below),
 and Prep is not offered. Nothing is saved, written or
 recorded. A new Preview retires the last one's answer, and Prep with it until
 it answers. A stage already prepared says so before any click: the task's Prep
-lists it as prepared, with no box to tick, and a benchmark's tab carries the
-prep entry's own sentence, the way back in it, with neither button enabled. Preview and Prep each hold the page's fence while they run
+lists its group as prepared, never launched — its box there to tick, to
+prepare it again whole — or launched, its box disabled; and a benchmark's tab carries the prep entry's own sentence, the way back in it, with neither button enabled. Preview and Prep each hold the page's fence while they run
 (§ 7a): a Save, a stage tab or another folder cannot be taken under them. A
 calculation already set to its machine is prepared with no machine named — its
 own copy of the record answers, as the terminal's prep with no `--target`.
@@ -1272,9 +1343,7 @@ The task's **Prep** and **Prep bench here** reach the same entry
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3) **naming the preview's
 plan**: when the plan it makes now differs — the folder, the machine's record or
 a library file it takes, or molbuilder itself, changed between — it is refused,
-saying to preview again; the door takes no Prep that names none. *(Until 2026-10-05 the route assembled its
-preview from pieces of the entry, and refused `#N` and a stage name in another
-case, which the entry takes — D15.)* So the tab shows what the terminal prints,
+saying to preview again; the door takes no Prep that names none. So the tab shows what the terminal prints,
 from the same answer:
 
 * **the description's preflight notes**, each with its severity — an error
@@ -1285,26 +1354,24 @@ from the same answer:
   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
   its note, led by the time it was taken. Unsaved edits are not in the
   `task.json` prep reads, so the tab refuses a Preview or a Prep while the
-  editor holds them — "Save first" (§ 7a). A stage
-  already prepared is refused instead, naming the way back
+  editor holds them — "Save first" (§ 7a). A launched stage is refused
+  instead, naming the way back
   ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
-  attempt** — opened, what was brought in, what it starts from (the
-  run it continues from, a cold start you asked for, what a transport rung
-  gathered, or nothing from another run), what was copied from which
-  attempt — or, on a transport rung that runs per point, one attempt per
-  point, each named by its frame and its voltage as the UI names a point
+  attempt** — opened, and what was brought in: the stage's own files — or, on
+  a transport rung that runs per point, one folder per point, each named by its
+  frame and its voltage as the UI names a point
   (`lib/results/point-words.js`);
-* **what a transport rung gathered** from the newest finished runs upstream;
+* **what each stage's first launch will take** — the stage before it's newest
+  run, a transport rung's gather, a force-constant stage's `relax` run (whose
+  geometry its deck holds) — copied at that launch, never at prep;
 * **the resources** the stage will launch with, and **whether the deck
   agrees**: a deck rendered for another width is said here, before `launch`
-  refuses it — and redone by going back to the state saved before this prep;
+  refuses it — and redone by preparing its group again, never launched;
 * **what comes next** — after a Prep, the line that launches what it
-  prepared, as the terminal's prep ends with it: a group's one job by its
-  members (`launch task --stage seed --stage electrode_L --stage
-  electrode_R`), typed at the terminal *(2026-10-11; until then a Prep's
-  answer stopped at its resources, and a group's launch was shown nowhere —
-  each rung's tab names its own stage alone)*.
+  prepared, as the terminal's prep ends with it: the launch with nothing
+  named (`launch task`), which sends the group that can go, typed at the
+  terminal.
 
 **A refusal shows what it had found** — the preflight's notes and what the
 inputs said — beside its own sentence: a bench refused because *no cell
@@ -1319,7 +1386,3 @@ transport calculation, an engine the bench lane does not speak — has no
 Measure step: the folder answer carries the entry's own reason
 (`bench_refusal`, [`job-system.md`](?doc=execution/job-system.md) § 5.3), and
 the page asks it rather than keeping a list of its own.
-*(Until 2026-09-29 this door called the five steps alone: it skipped the
-preflight, the question, the agreement and their ledger lines, refused an
-axis-less bench — and offered no bench button without axes — and showed only
-the folders — plan W38 F7.)*

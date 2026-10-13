@@ -21,19 +21,12 @@
 
 html, body { height: 100%; }
 
-/* The canonical body rules live in lib/page-shell.css.  Header rules
- * below stay per-page (the modify header uses different padding +
- * border treatment than the shared default). */
+/* The canonical body and banner rules live in lib/page-shell.css; this page
+ * says only how much room its banner takes. */
 
 /* ---- Header ---- */
 .app-header {
     padding: var(--space-xl) var(--space-xl) var(--space-lg);
-    border-bottom: 1px solid var(--border-soft);
-}
-.app-header h1 {
-    margin: 0;
-    font: var(--weight-bold) var(--text-xl)/1.2 var(--font-sans);
-    color: var(--text-primary);
 }
 
 /* ---- Init-structure card body ----
@@ -116,14 +109,11 @@ html, body { height: 100%; }
 
 /* Workspace layout: the fused molview card (viewer + selection/cell
  * panel) beside the Modify op-controls card.  The reflow is the shared, content-driven
- * `.card-row` primitive (page-shell.css) -- NO page-specific media breakpoint.  This rule
- * only adds the page's own max-width/centring; each card declares its width policy via the
- * three --card-* vars, so the row wraps the modify card below the instant both min-widths
- * stop fitting (never crushing one card into the other).  See docs/web/ui-contract.md. */
-.modify-grid {
-    /* the cap and the centring are .modify-main's, the one container both
-       top-level blocks share. */
-}
+ * `.card-row` primitive (page-shell.css) -- NO page-specific media breakpoint.  The cap
+ * and the centring are .modify-main's, the one container both top-level blocks share;
+ * each card declares its width policy via the three --card-* vars, so the row wraps the
+ * modify card below the instant both min-widths stop fitting (never crushing one card
+ * into the other).  See docs/web/ui-contract.md. */
 /* Primary card: wide + heavy grow; min == the fused card's own stacked min-width.
  * Targets .modify-viewer-section -- the direct grid child that wraps molview.mount's built
  * .molviewer-card (the module builds its own card into the section's bare host, so the grid
@@ -148,19 +138,13 @@ html, body { height: 100%; }
     padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--border-soft);
 }
+/* The edit line is a `.status` (page-shell owns its look and its severities,
+ * `ui-contract.md` § 5); this page says only where it sits and that it keeps
+ * its line, so the band does not jump. */
 .modify-status {
     margin: 0;
-    min-height: 1.2em;            /* reserve a line so the band doesn't jump */
-    font-size: var(--text-base);
-    color: var(--text-muted);
+    min-height: 1lh;            /* one line, at its own line height */
 }
-.modify-status.modify-status--ok    { color: var(--text-primary); }
-.modify-status.modify-status--error { color: var(--error); }
-/* `warn` = the action was understood and correctly did nothing: Retract at the
- * oldest kept state has nowhere further back to go (workspace.md § 9.1).  Not
- * `error` -- nothing failed and the user did nothing wrong -- and not `ok`,
- * which would read as "it happened". */
-.modify-status.modify-status--warn  { color: var(--warn); }
 
 /* NO ADVISORY ROWS HERE. What the server says about a structure is shown by
  * MolView, in its own panel (molview.md § 6.8) -- a cell notice under the Cell
@@ -228,7 +212,7 @@ html, body { height: 100%; }
 .modify-actions__reset { grid-area: reset; width: 100%; }
 
 @media (max-width: 785px) {
-    .modify-main { padding: 6px; gap: 6px; }
+    .modify-main { padding: var(--space-sm); gap: var(--space-sm); }
     .modify-init-card { margin: 0; padding: var(--space-sm) var(--space-md); }
     .app-header          { padding: var(--space-md) var(--space-lg) var(--space-sm); }
 }
@@ -266,7 +250,7 @@ html, body { height: 100%; }
     cursor: pointer;
 }
 .modify-init-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
-.modify-init-tab.is-active {
+.modify-init-tab[aria-selected="true"] {
     color: var(--text-primary);
     background: var(--bg-card-hover);
     border-color: var(--accent);
@@ -419,17 +403,12 @@ html, body { height: 100%; }
     color: var(--text-primary);
     background: var(--bg-card-hover);
 }
-.modify-edit-panel .modify-optab.is-active {
+.modify-edit-panel .modify-optab[aria-selected="true"] {
     color: var(--accent);
     border-bottom-color: var(--accent);
     background: var(--accent-bg);
 }
-.modify-edit-panel .modify-optab-panel {
-    display: none;
-}
-.modify-edit-panel .modify-optab-panel.is-active {
-    display: block;
-}
+/* A panel is shown by the tab strip's `hidden`; nothing here sets a display. */
 
 /* A fieldset DRAWS a surface -- background, border, radius -- so its own inset
    is the second and last one on this card, and it reads as what it is: this
@@ -507,7 +486,7 @@ html, body { height: 100%; }
 }
 .modify-edit-panel .modify-slider-row > span:first-child {
     color: var(--accent);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     text-align: right;
 }
 .modify-edit-panel input[type="range"] {
@@ -635,7 +614,7 @@ footer a:hover { color: var(--accent-hover); }
 }
 .modify-cell-tag {
     color: var(--text-muted);
-    font-weight: 400;
+    font-weight: var(--weight-normal);
     font-size: var(--text-xs);
     margin-left: var(--space-sm);
 }

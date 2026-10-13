@@ -879,6 +879,18 @@ _PSML_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 </psml>
 """
 
+def prep_the_group_of(base, stage, **kw):
+    """`prep task --group N` for the group ``stage`` is in -- through the one
+    entry the command line and the Task setup tab call (`prep.prep_task`)
+    -- and ``stage``'s answer."""
+    from molbuilder.jobset.group import number_of
+    from molbuilder.jobset.prep import prep_task
+    from molbuilder.task import read_task
+    task = read_task(Path(base) / "task.json")
+    answers = prep_task(base, "task", groups=[number_of(task, stage)], **kw)
+    return next(a for a in answers if a.stage == stage)
+
+
 def write_pseudos(dest, elements) -> None:
     """Put the ``.psml`` files a SIESTA calculation needs into *dest*.
 

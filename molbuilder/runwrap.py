@@ -28,7 +28,7 @@ from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them.
-from .identity import checkpoint_words
+from .identity import checkpoint_words, way_back_words
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
 from .runtime_info import THREAD_SOURCES
@@ -54,12 +54,11 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
 # Rather than escape every interpolation (fragile + makes the bash
 # unreadable for the user, who is meant to be able to read and edit
 # the wrapper), we restrict the input to a safe alphabet at
-# emission time.  Matches the ``_BASENAME_RE`` rule in
-# ``molbuilder/config/siesta.py`` (SystemLabel validation) and
-# ``molbuilder/config/pyscf.py`` (job_name): letters, digits, dot,
-# underscore, hyphen.  The dot is allowed because PySCF emits files
-# like ``<basename>.molwatch.log`` and SIESTA's user-named
-# SystemLabel often contains dots.
+# emission time: letters, digits, dot, underscore, hyphen -- a FILE
+# name's alphabet, the dot included for the deck's own suffix
+# (``<stem>.fdf``).  Wider than a label's (`runfiles`: no dot), which the
+# names passed here already keep; this is the shell's guard, not the
+# grammar.
 _SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
 
@@ -155,6 +154,24 @@ def _bash_name(names, role: str) -> str:
     return out
 
 
+def _last_run_block(names) -> str:
+    """The line that names THIS RUN as the folder's last run -- written the
+    moment its engine starts, because from then on the restart files and the
+    results lying in the folder are this run's (`job-system.md` § 5.4;
+    `runrecord.last_run` reads it).  Where a stage's runs share the
+    calculation's folder; a run in a folder of its own needs none."""
+    if not names.shared:
+        return ""
+    role = ".concluded"
+    run = _bash_name(names, role)[:-len(role)]      # the run's own name
+    rec = names.name(".last-run")
+    return (
+        "# THE LAST RUN IN THIS FOLDER, said as its engine starts\n"
+        "# (job-system.md 5.4): the restart files and results here are\n"
+        "# this run's from now on.\n"
+        f"printf '%s\\n' \"{run}\" > \"{rec}\"\n")
+
+
 def _retry_record_block(names) -> str:
     """The lines a warm retry writes ITS OWN LAUNCH RECORD with, before it
     re-runs -- where the stage's names say a run's record is its own (the
@@ -240,13 +257,13 @@ def _monitor_block(names, notify_on_scf: bool,
     head = (
         # A '# ---' header in the EMITTED text: § 2.6's anatomy guard reads
         # blocks by these headers (D9, user decision 2026-08-13).
-        f"# --- Background job monitor ---------------------------\n"
-        f'_monitor_pid=""\n'
+        "# --- Background job monitor ---------------------------\n"
+        '_monitor_pid=""\n'
         # The interpreter is PROBED (python3 first, python second): bare
         # `python` does not exist on python3-only hosts, and a backgrounded
         # launch would swallow the 127 (R9).  Probed whether or not a
         # monitor starts: the wrapper's `_mb_ending` asks with it.
-        f'_mb_py="$(command -v python3 || command -v python || true)"\n'
+        '_mb_py="$(command -v python3 || command -v python || true)"\n'
     )
     return head + (
         f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
@@ -262,8 +279,8 @@ def _monitor_block(names, notify_on_scf: bool,
         + ("--shared " if names.shared else "")
         + f'--run "$_run_n" --util --cores "{cores}" '
         + ("--gpu " if gpu else "")
-        + f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
-        + (f'--notify-on-scf ' if notify_on_scf else "")
+        + '--interval "${MB_MONITOR_INTERVAL:-10}" '
+        + ('--notify-on-scf ' if notify_on_scf else "")
         + (f'--notify-every-hours {notify_every_hours:g} '
            if notify_every_hours > 0 else "")
         # ABSENT is "nothing set up, nothing sent", `*` is every channel this
@@ -417,67 +434,59 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
         # instructs.  Whether the ENGINE also picks up prior state is said
         # where the deck is known -- the usage text in each engine's own
         # branch.
-        f"# --- Continuation flags (shared SIESTA / PySCF) --------\n"
-        f"# ``--run N``:             this run's number, which\n"
-        f"#                          'molbuilder jobset launch' decides\n"
-        f"#                          and gives every run it starts\n"
-        f"#                          (project-layout.md 1.6.1).\n"
-        f"# ``--continue`` / ``-c``: this start continues the run\n"
-        f"#                          before it -- a warm retry's; whether\n"
-        f"#                          the engine resumes is the deck's to\n"
-        f"#                          say (see -h).\n"
-        f"# ``--force``    / ``-f``: say yes to --cold's refusal.\n"
-        f"# ``--cold`` / ``--from-scratch``:\n"
-        f"#                          start purely from the .fdf/.py,\n"
-        f"#                          REMOVING everything named after\n"
-        f"#                          the run's id first -- minus what\n"
-        f"#                          molbuilder itself wrote.  Names\n"
-        f"#                          them and refuses; --force\n"
-        f"#                          removes them.\n"
-        f"# Self-identity for the warm-retry re-exec: an ABSOLUTE path to\n"
-        f"# this wrapper.  Under ``bash x.run.sh`` $0 is a bare relative\n"
-        f"# name -- bash's ``exec`` PATH-searches slash-less words (never\n"
-        f"# the cwd), so ``exec \"$0\"`` would die with 127.  readlink -f\n"
-        f"# (GNU, cluster-standard) resolves it without cd'ing (the\n"
-        f"# wrapper never changes cwd -- that is a tested contract).\n"
-        f'_mb_self="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"\n'
-        f'_run_n=""\n'
-        f"_continue=0\n"
-        f"_force=0\n"
-        f"_cold=0\n"
-        f"# We take --run / --continue / --force / --cold out of $@ here,\n"
-        f"# leaving the rest for the engine-specific arg loop below\n"
-        f"# (-np for SIESTA; nothing for PySCF).\n"
-        f"_argv_remaining=()\n"
-        f'while [ $# -gt 0 ]; do\n'
-        f'    case "$1" in\n'
-        f"        --run)\n"
-        f'            if [ $# -lt 2 ]; then\n'
-        f'                echo "ERROR: --run requires the run\'s number" >&2\n'
-        f"                exit 1\n"
-        f"            fi\n"
-        f'            _run_n="$2"; shift 2 ;;\n'
-        f"        --continue|-c)        _continue=1; shift ;;\n"
-        f"        --force|-f)           _force=1;    shift ;;\n"
-        f"        --cold|--from-scratch) _cold=1;    shift ;;\n"
-        f'        *)                    _argv_remaining+=("$1"); shift ;;\n'
-        f"    esac\n"
-        f"done\n"
-        f"# THE ENGINE'S OWN ARGUMENTS, kept for a warm retry, which runs\n"
-        f"# this script again with the same -np/--omp and the next run's\n"
-        f"# number (running-a-job.md 3.5).\n"
-        f'_mb_engine_args=(${{_argv_remaining[@]+"${{_argv_remaining[@]}}"}})\n'
-        f'set -- "${{_argv_remaining[@]+\"${{_argv_remaining[@]}}\"}}"\n'
-        f"\n"
+        "# --- Continuation flags (shared SIESTA / PySCF) --------\n"
+        "# ``--run N``:             this run's number, which\n"
+        "#                          'molbuilder jobset launch' decides\n"
+        "#                          and gives every run it starts\n"
+        "#                          (project-layout.md 1.6.1).\n"
+        "# ``--continue`` / ``-c``: this start continues the run\n"
+        "#                          before it -- a warm retry's; whether\n"
+        "#                          the engine resumes is the deck's to\n"
+        "#                          say (see -h).\n"
+        "# ``--force``    / ``-f``: say yes to --cold's refusal.\n"
+        "# ``--cold`` / ``--from-scratch``:\n"
+        "#                          start purely from the .fdf/.py,\n"
+        "#                          REMOVING everything named after\n"
+        "#                          the run's id first -- minus what\n"
+        "#                          molbuilder itself wrote.  Names\n"
+        "#                          them and refuses; --force\n"
+        "#                          removes them.\n"
+        "# Self-identity for the warm-retry re-exec: an ABSOLUTE path to\n"
+        "# this wrapper.  Under ``bash x.run.sh`` $0 is a bare relative\n"
+        "# name -- bash's ``exec`` PATH-searches slash-less words (never\n"
+        "# the cwd), so ``exec \"$0\"`` would die with 127.  readlink -f\n"
+        "# (GNU, cluster-standard) resolves it without cd'ing (the\n"
+        "# wrapper never changes cwd -- that is a tested contract).\n"
+        '_mb_self="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"\n'
+        '_run_n=""\n'
+        "_continue=0\n"
+        "_force=0\n"
+        "_cold=0\n"
+        "# We take --run / --continue / --force / --cold out of $@ here,\n"
+        "# leaving the rest for the engine-specific arg loop below\n"
+        "# (-np for SIESTA; nothing for PySCF).\n"
+        "_argv_remaining=()\n"
+        'while [ $# -gt 0 ]; do\n'
+        '    case "$1" in\n'
+        "        --run)\n"
+        '            if [ $# -lt 2 ]; then\n'
+        '                echo "ERROR: --run requires the run\'s number" >&2\n'
+        "                exit 1\n"
+        "            fi\n"
+        '            _run_n="$2"; shift 2 ;;\n'
+        "        --continue|-c)        _continue=1; shift ;;\n"
+        "        --force|-f)           _force=1;    shift ;;\n"
+        "        --cold|--from-scratch) _cold=1;    shift ;;\n"
+        '        *)                    _argv_remaining+=("$1"); shift ;;\n'
+        "    esac\n"
+        "done\n"
+        "# THE ENGINE'S OWN ARGUMENTS, kept for a warm retry, which runs\n"
+        "# this script again with the same -np/--omp and the next run's\n"
+        "# number (running-a-job.md 3.5).\n"
+        '_mb_engine_args=(${_argv_remaining[@]+"${_argv_remaining[@]}"})\n'
+        'set -- "${_argv_remaining[@]+\"${_argv_remaining[@]}\"}"\n'
+        "\n"
     )
-
-
-#: THE RESTART FILES A RUN SCRIPT KNOWS are the list in effect for its
-#: calculation (`job-contracts.md` § 4.2a, `warmfiles.warm_list`, every
-#: section -- a hint about the directory, safe to over-include), handed in
-#: when ``prep`` renders the script (:func:`render_run_wrapper`'s ``warm``).
-#: PySCF's are SUFFIXES rather than extensions -- ``_optimized.xyz`` -- which
-#: no plain extension match would catch.
 
 
 def _run_usage_entry() -> str:
@@ -538,12 +547,6 @@ def _cold_usage_entry(*, warm_examples: str) -> str:
     )
 
 
-#: The charset a wrapper may put in a filename, checked at prep where the
-#: label is known; a label outside it falls back to the basename, and the run
-#: script says so.
-_WRAPPER_LABEL_RE = re.compile(r"[A-Za-z0-9._-]+")
-
-
 def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     """Bash snippet that NAMES the prior state a cold run removes.
 
@@ -589,33 +592,9 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     if engine not in ("siesta", "pyscf"):   # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
 
-    # DECIDED HERE, TOLD AT LAUNCH -- `_orbitals_per_rank_notice`'s shape,
-    # and for the same reason.
-    #
-    # `label` falls back to the basename when it is empty or not usable in a
-    # filename.
-    #
-    # **But the fallback must still be VISIBLE**: a label that cannot be
-    # used in a filename would otherwise sweep under the wrong name in
-    # silence -- `--cold` would find nothing, report nothing to clean, and
-    # the engine would warm-start off files the person believed were gone.
-    # The notice is BAKED here rather than re-derived at launch -- G7 governs
-    # where the DECISION is made, not whether the person hears about it.
-    _lbl = label or basename
-    _label_notice = ""
-    if not _WRAPPER_LABEL_RE.fullmatch(_lbl):
-        _keyword = "SystemLabel" if engine == "siesta" else "JOB"
-        _label_notice = (
-            # Single quotes around the name INSIDE the double-quoted echo:
-            # an apostrophe is literal there, needs no escaping, and does not
-            # end the string.
-            f"echo \"molbuilder: NOTE -- {_keyword} in the deck is not "
-            f"usable in a filename; using '{basename}' for the name sweep. "
-            f"Files written under the deck's own name will NOT be found by "
-            f"--cold.\" >&2\n"
-        )
-        _lbl = basename
-    label_extract = _label_notice + '_warm_label="' + _lbl + '"\n'
+    # The label was checked when its names were made (`runfiles.stem`: one
+    # [A-Za-z0-9_-]+ token), so it goes into the bash as it is.
+    label_extract = '_warm_label="' + label + '"\n'
     # § 4.1's "except what molbuilder wrote", derived from the ONE
     # enumeration (identity.OUR_FILE_PATTERNS, E-1) rather than hand-spelled
     # here in a second language -- anchored on the run's OWN id, not widened
@@ -638,17 +617,17 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
          for anchor in ('"$_warm_label"', basename)}
         | {"*.psml"}))
     return (
-        f"# --- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP ------\n"
-        f"# --cold starts the engine from the deck alone, so everything\n"
-        f"# named after the run's id is removed first -- the deck reads\n"
-        f"# what lies there.  This NAMES those files and refuses; --force\n"
-        f"# removes them.\n"
-        f"#\n"
-        f"# Keeping a state is `molbuilder checkpoint save` and it is\n"
-        f"# never automatic (`checkpointing.md` § 2).\n"
-        f"#\n"
-        f"# No list of engine extensions: a list is a snapshot of one\n"
-        f"# build, and a file nobody listed is a file --cold walks past.\n"
+        "# --- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP ------\n"
+        "# --cold starts the engine from the deck alone, so everything\n"
+        "# named after the run's id is removed first -- the deck reads\n"
+        "# what lies there.  This NAMES those files and refuses; --force\n"
+        "# removes them.\n"
+        "#\n"
+        "# Keeping a state is `molbuilder checkpoint save` and it is\n"
+        "# never automatic (`checkpointing.md` § 2).\n"
+        "#\n"
+        "# No list of engine extensions: a list is a snapshot of one\n"
+        "# build, and a file nobody listed is a file --cold walks past.\n"
         # THE ONE label assignment (F13): outside the --cold guard, so the
         # status banner below reads THIS value.
         + label_extract +
@@ -666,6 +645,14 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
         f"            # molbuilder-written, by name shape (4.1's exception;\n"
         f"            # derived from identity.OUR_FILE_PATTERNS)\n"
         f"            {_exceptions}) continue ;;\n"
+        f"            # A RUN'S OWN FILES, named with its number, are kept:\n"
+        f"            # every run is (job-system.md, What molbuilder does\n"
+        f"            # for you, 2).\n"
+        f"            *-run[0-9]*) continue ;;\n"
+        f"            # THIS STAGE'S names are swept; ANOTHER STAGE'S, which\n"
+        f"            # share the flat layout's folder, never.\n"
+        f"            {basename}.*|{basename}_*) ;;\n"
+        f'            "$_warm_label"_[0-9]*) continue ;;\n'
         f"        esac\n"
         f'        if [ "$_clobber" = "0" ]; then\n'
         f'            echo "[molbuilder] --cold would REMOVE prior state:" >&2\n'
@@ -783,28 +770,13 @@ def _runtime_status_block(
     geometry will start from.
     """
     if engine == "siesta":
-        # Warm-start files, from the restart list in effect (``warm``).
-        # SIESTA writes them keyed on the ``SystemLabel`` from inside the
-        # .fdf -- NOT on the .fdf's filename basename.  So a second-stage
-        # .fdf with ``SystemLabel  foo`` writes ``foo.DM`` etc., regardless
-        # of the script being named ``foo_02_tight.fdf``.  Test both label
-        # patterns (SystemLabel-keyed AND basename-keyed) for the
-        # warm-start detection so the Mode line is accurate.
-        warmstart_exts = tuple(s.lstrip(".") for s in warm)
-        warmstart_test_pieces = []
-        for ext in warmstart_exts:
-            # `_mb_has_state`, not `[ -e ]` -- warm state is CONTENT.  See
-            # the helper's own comment in `_runtime_status_block`.
-            warmstart_test_pieces.append(f'_mb_has_state "$_warm_label.{ext}"')
-            warmstart_test_pieces.append(f'_mb_has_state "{basename}.{ext}"')
-        warmstart_test = " || ".join(warmstart_test_pieces)
-        # Awk that:
+        # The held atoms, counted from the deck.  Awk that:
         #   * lower-cases the first token for case-insensitive
         #     ``%block`` / ``%endblock`` / ``position`` matching
         #     (portable; replaces gawk's IGNORECASE).
         #   * squashes ``.``, ``-`` and ``_`` out of the block name
         #     before comparing, which is fdf's keyword rule and what
-        #     ``parse/fdf.py::_norm`` does on the Python side.
+        #     ``parse/fdf.py::fdf_key`` does on the Python side.
         # Two passes so ``_ncon_lines`` and ``_ncon_indices`` come
         # from the same logical scan.  ``|| true`` keeps awk's exit
         # code from aborting under ``set -euo pipefail``.
@@ -841,27 +813,7 @@ def _runtime_status_block(
             f"    fi\n"
             f"fi\n"
         )
-        # DERIVED from the one list, like the detection above it (R9).
-        warm_files_label = "/".join(x.lstrip(".") for x in warm)
     elif engine == "pyscf":
-        # PySCF's ``mf.chkfile`` is keyed on ``JOB`` (a Python
-        # variable in the .py script), same naming-mismatch risk as
-        # SIESTA's SystemLabel.  Mirror the dual test.
-        # DERIVED, mirroring SIESTA: the restart list in effect, so a run
-        # whose only warm file is ``<JOB>_optimized.xyz`` does not announce
-        # a clean start.
-        # BRACED, not bare: a suffix may start with "_" (`_optimized.xyz`),
-        # so an unbraced "$_warm_label_optimized.xyz" parses as one variable
-        # name -- unbound under set -u, killing EVERY fresh-directory run
-        # before launch (a .chk on disk short-circuits the || chain and
-        # hides it).  SIESTA's branch survives bare only because its "."
-        # terminates the name; same brace lesson as bench/grid.py.
-        warmstart_test = " || ".join(
-            piece
-            for suf in warm
-            for piece in (f'_mb_has_state "${{_warm_label}}{suf}"',
-                          f'_mb_has_state "{basename}{suf}"')
-        )
         # PySCF embeds the canonical frozen-atom list as a single-line
         # comment.  The indices are comma-separated inside ``[...]``, so
         # the count is the digits INSIDE the brackets -- the line's tail
@@ -886,45 +838,58 @@ def _runtime_status_block(
             f"    fi\n"
             f"fi\n"
         )
-        # DERIVED like SIESTA's (D11).
-        warm_files_label = "/".join(x.lstrip(".") for x in warm)
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for status block: {engine!r}")
 
-    # ``$_warm_label`` is set once, sanitized, by the cold-restart
-    # block's prefix, which runs before this banner in both engines.
+    # ``$_warm_label`` is set once, by the cold-restart block's prefix,
+    # which runs before this banner in both engines.
+    # THE RESTART FILES LYING HERE, from the restart list in effect
+    # (``warm``), under both names a file of the run may carry -- the label
+    # the deck names its files on and the run's own stem -- so the Mode line
+    # names what is there, never the whole list (a run whose only warm file
+    # is ``<JOB>_optimized.xyz`` does not announce a clean start).  BRACED:
+    # a suffix may start with "_" (`_optimized.xyz`), and an unbraced
+    # "$_warm_label_optimized.xyz" is one unbound variable under set -u.
+    warm_names = " ".join(f'"${{_warm_label}}{suf}" "{basename}{suf}"'
+                          for suf in warm)
     return (
-        f"# --- Runtime status banner --------------------------\n"
-        f"# Reads the actual on-disk script + state files at run\n"
-        f"# time and reports the resulting MODE + CONSTRAINTS so\n"
-        f"# the user can see what's about to happen BEFORE the\n"
-        f"# engine starts.  See _runtime_status_block docstring.\n"
-        + f'# WARM STATE IS CONTENT, not mere existence: a zero-byte\n'
-        + f'# restart file is nothing to resume from, and a launch that\n'
-        + f'# announced "WARM-RESUME ... engine will load ..." over one\n'
-        + f'# would be telling the person something false.\n'
-        + f'_mb_has_state() {{ [ -s "$1" ]; }}\n'
-        + f'_warmstart_present=0\n'
-        + f"if {warmstart_test}; then _warmstart_present=1; fi\n"
-        f'_mode="initial-run (clean state)"\n'
-        f'if [ "$_cold" = "1" ]; then\n'
-        f'    _mode="COLD (--cold --force; prior state removed)"\n'
-        f'elif [ "$_continue" = "1" ]; then\n'
-        f'    if [ "$_warmstart_present" = "1" ]; then\n'
+        "# --- Runtime status banner --------------------------\n"
+        "# Reads the actual on-disk script + state files at run\n"
+        "# time and reports the resulting MODE + CONSTRAINTS so\n"
+        "# the user can see what's about to happen BEFORE the\n"
+        "# engine starts.  See _runtime_status_block docstring.\n"
+        + '# WARM STATE IS CONTENT, not mere existence: a zero-byte\n'
+        + '# restart file is nothing to resume from, and a launch that\n'
+        + '# announced "WARM-RESUME ... engine will load ..." over one\n'
+        + '# would be telling the person something false.\n'
+        + '_mb_has_state() { [ -s "$1" ]; }\n'
+        + '_warm_found=""\n'
+        + (f'for _f in {warm_names}; do\n'
+           f'    if _mb_has_state "$_f"; then '
+           f'_warm_found="${{_warm_found:+$_warm_found }}$_f"; fi\n'
+           f'done\n' if warm else "")
+        + '_warmstart_present=0\n'
+        + 'if [ -n "$_warm_found" ]; then _warmstart_present=1; fi\n'
+        '_mode="initial-run (clean state)"\n'
+        'if [ "$_cold" = "1" ]; then\n'
+        '    _mode="COLD (--cold --force; prior state removed)"\n'
+        'elif [ "$_continue" = "1" ]; then\n'
+        '    if [ "$_warmstart_present" = "1" ]; then\n'
         + (f'        _mode="{_retry_texts(False, None)["mode"]}"\n'
            if not resumes else
            f'        _mode="{_CLEAN_DECK_MODE}"\n'
            if reads_prior is False else
-           f'        _mode="WARM-RESUME (--continue; engine will load {warm_files_label})"\n')
-        + f"    else\n"
-        + (f'        _mode="RE-RUN REQUESTED but no prior state found -- starting from the first step with nothing to read back"\n'
+           '        _mode="WARM-RESUME (--continue; engine will load '
+           '$_warm_found)"\n')
+        + "    else\n"
+        + ('        _mode="RE-RUN REQUESTED but no prior state found -- starting from the first step with nothing to read back"\n'
            if not resumes else
-           f'        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n')
-        + f"    fi\n"
-        f'elif [ "$_warmstart_present" = "1" ]; then\n'
+           '        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n')
+        + "    fi\n"
+        'elif [ "$_warmstart_present" = "1" ]; then\n'
         + (f'    _mode="{_CLEAN_DECK_MODE}"\n' if reads_prior is False else
-           f'    _mode="WARM-RESTART (silent; engine will load existing {warm_files_label}.  '
-           f'Pass --cold to discard them.)"\n')
+           '    _mode="WARM-RESTART (silent; engine will load existing '
+           '$_warm_found.  Pass --cold to discard them.)"\n')
         + f"fi\n"
         f"{constraint_detection}"
         f"\n"
@@ -1308,9 +1273,9 @@ def _siesta_resolved_log_block(script_name: str, gpu_mode: bool) -> str:
         f'_log INFO "ranks / omp     : $_mpi_np ranks x $_omp_threads '
         f'OMP threads"\n'
         + (
-            f'_log INFO "gpu placement   : ${{_ngpu:-0}} GPU(s), '
-            f'${{_ranks_per_gpu:-?}} rank(s)/GPU, '
-            f'numa-wrap=\'${{_numa_wrap_gpu:-none}}\'"\n'
+            '_log INFO "gpu placement   : ${_ngpu:-0} GPU(s), '
+            '${_ranks_per_gpu:-?} rank(s)/GPU, '
+            'numa-wrap=\'${_numa_wrap_gpu:-none}\'"\n'
             if gpu_mode else ""
         )
     )
@@ -1383,32 +1348,32 @@ def _siesta_dry_run_block(script_name: str, sbatch_name: str,
         f"        fi\n"
         f"    fi\n"
         + (
-            f'    echo "  Visible GPUs : ${{_ngpu:-0}}"\n'
-            f'    echo "  Ranks/GPU    : ${{_ranks_per_gpu:-?}} '
-            f'(MPS ${{_use_mps_str:-?}})"\n'
-            f'    echo "  Rank -> GPU mapping (block-distributed):"\n'
-            f'    _dr_ng=${{_ngpu:-0}}\n'
-            f'    if [ "$_dr_ng" -lt 1 ]; then\n'
-            f'        echo "      (no GPUs visible here -- on the '
-            f'compute node each rank maps as rank*ngpu/ntasks)"\n'
-            f'    else\n'
-            f'        _dr_r=0\n'
-            f'        while [ "$_dr_r" -lt "$_mpi_np" ]; do\n'
-            f'            _dr_g=$(( _dr_r * _dr_ng / _mpi_np ))\n'
+            '    echo "  Visible GPUs : ${_ngpu:-0}"\n'
+            '    echo "  Ranks/GPU    : ${_ranks_per_gpu:-?} '
+            '(MPS ${_use_mps_str:-?})"\n'
+            '    echo "  Rank -> GPU mapping (block-distributed):"\n'
+            '    _dr_ng=${_ngpu:-0}\n'
+            '    if [ "$_dr_ng" -lt 1 ]; then\n'
+            '        echo "      (no GPUs visible here -- on the '
+            'compute node each rank maps as rank*ngpu/ntasks)"\n'
+            '    else\n'
+            '        _dr_r=0\n'
+            '        while [ "$_dr_r" -lt "$_mpi_np" ]; do\n'
+            '            _dr_g=$(( _dr_r * _dr_ng / _mpi_np ))\n'
             + _bash_numa_from_gpu("$_dr_g", "_dr_numa",
                                   bus_var="_dr_bus", indent="            ")
-            + f'            echo "      rank $_dr_r -> GPU $_dr_g '
-            f'(numa=$_dr_numa)"\n'
-            f'            _dr_r=$(( _dr_r + 1 ))\n'
-            f'        done\n'
-            f'    fi\n'
+            + '            echo "      rank $_dr_r -> GPU $_dr_g '
+            '(numa=$_dr_numa)"\n'
+            '            _dr_r=$(( _dr_r + 1 ))\n'
+            '        done\n'
+            '    fi\n'
             if gpu_mode else ""
         )
-        + f'    echo "================================================"\n'
-        f'    _log INFO "dry-run complete; nothing launched"\n'
-        f'    exit 0\n'
-        f'fi\n'
-        f"\n"
+        + '    echo "================================================"\n'
+        '    _log INFO "dry-run complete; nothing launched"\n'
+        '    exit 0\n'
+        'fi\n'
+        "\n"
     )
 
 
@@ -1582,10 +1547,14 @@ def _gpu_runtime_block() -> str:
     )
 
 
-#: fdf's own truthy set for a logical keyword (fdf_get's accepted values) --
-#: how `_fdf_honours_restart` reads the deck's ``DM.UseSaveDM`` as SIESTA
-#: does.
-_FDF_TRUTHY = (".true.", "true", "yes", "t", "y", "1")
+def _wrapped(text: str, prefix: str, width: int = 62) -> str:
+    """``text`` as lines of at most ``width`` columns, each begun with
+    ``prefix`` and ended with a newline -- a sentence composed elsewhere
+    (`identity.way_back_words`), set in this script's comments or its usage
+    text."""
+    import textwrap
+    return "".join(f"{prefix}{line}\n" for line in textwrap.wrap(
+        text, width=width - len(prefix), break_on_hyphens=False))
 
 
 #: The Mode line of a run whose deck reads no prior state, whatever lies on
@@ -1632,9 +1601,9 @@ def _retry_texts(resumes: bool,
         }
     # THE LINE AFTER THE BUDGET, for every case, in molbuilder's own road:
     # a stage is launched again, never re-run inside its attempt, and a
-    # setting changes from the state saved before its prep.
-    back = ("to change a setting, go back to the state saved before its "
-            "prep and prep it anew")
+    # setting changes by the way back of a launched stage -- this is read
+    # after its run (`identity.way_back_words`).
+    back = "to change a setting, " + way_back_words(True)
     if restart_honoured is False:
         return {"does": "re-running cold -- this deck declines prior state",
                 "policy": ("COLD, because this deck sets DM.UseSaveDM "
@@ -1663,15 +1632,17 @@ def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
 
     First match wins, as libfdf does (`fdf_locate` stops at the first label).
     """
+    from .parse.fdf import fdf_true
     from .script_emit import parameter
     if text is None:
         return None
     # THE ONE DOOR, deck-backed.  Which keyword answers for `restart` is the
-    # catalogue's to say (`[item.restart].expands`), not this function's.
+    # catalogue's to say (`[item.restart].expands`), not this function's;
+    # its value read as fdf reads a switch (`parse.fdf.fdf_true`).
     answer = parameter("restart", "siesta", deck_text=text).value
     if answer is None:
         return None
-    return answer.strip().lower() in _FDF_TRUTHY
+    return fdf_true(answer.split())
 
 
 def _py_deck_reads_prior(text: Optional[str]) -> Optional[bool]:
@@ -1704,10 +1675,10 @@ def _fdf_n_atoms(text: str) -> Optional[int]:
     found -- ``NumberOfAtoms`` is OPTIONAL in SIESTA, the coordinates block
     being authoritative -- and the notice is then simply not emitted.
     """
-    from molbuilder.parse.fdf import _parse_fdf
+    from molbuilder.parse.fdf import read_fdf
     # THROUGH THE ONE READER: fdf treats `NumberOfAtoms`, `Number.Of.Atoms`
     # and `number_of_atoms` as one keyword.
-    got = _parse_fdf(text)[0].get("numberofatoms")
+    got = read_fdf(text)[0].get("numberofatoms")
     if not got:
         return None
     try:
@@ -1742,6 +1713,7 @@ def _effective_parameters_block(script_path: "Path") -> str:
         "",
         "# --- What the engine will read ------------------------------",
         f'echo "{begin_marker(BLOCK_PARAMETERS)}"',
+        "echo " + _shlex.quote(_sc.PARAMETER_COLUMNS_LINE),
     ]
     for item in _sc.declarations(engine="siesta"):
         param = _sc.parameter(item.name, "siesta")
@@ -2204,23 +2176,23 @@ def render_run_wrapper(script_path: Path, *,
         )
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")
-            + f"# --- SIESTA-specific argument parsing -----------\n"
-            f"# Override the stated counts with: ``-np N`` /\n"
-            f"# ``-omp N`` flags, or ``MB_NP`` / ``OMP_NUM_THREADS`` env\n"
-            f"# vars.  Useful for retrying after a propor crash (see the\n"
-            f"# diagnostic at the bottom of this wrapper) or for bench\n"
-            f"# sweeps WITHOUT regenerating the .fdf / wrapper.\n"
+            + "# --- SIESTA-specific argument parsing -----------\n"
+            "# Override the stated counts with: ``-np N`` /\n"
+            "# ``-omp N`` flags, or ``MB_NP`` / ``OMP_NUM_THREADS`` env\n"
+            "# vars.  Useful for retrying after a propor crash (see the\n"
+            "# diagnostic at the bottom of this wrapper) or for bench\n"
+            "# sweeps WITHOUT regenerating the .fdf / wrapper.\n"
             + _mpi_np_default_assignment
-            + f"# MPI rank-count precedence (highest first):\n"
-            f"#   1. ``-np N`` flag on the wrapper invocation\n"
-            f"#   2. ``MB_NP`` env var (manual override)\n"
-            f"#   3. ``SLURM_NTASKS`` (scheduler-allocated under sbatch)\n"
-            f"#   4. ``PBS_NP`` (scheduler-allocated under qsub)\n"
-            f"#   5. the stated value, baked at prep ($_mpi_np_default)\n"
-            f"# Per docs/execution/running-a-job.md § 5: reading scheduler env vars for\n"
-            f"# launch tuning is part of the wrapper contract -- the user\n"
-            f"# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
-            f'_mpi_np="${{MB_NP:-${{SLURM_NTASKS:-${{PBS_NP:-$_mpi_np_default}}}}}}"\n'
+            + "# MPI rank-count precedence (highest first):\n"
+            "#   1. ``-np N`` flag on the wrapper invocation\n"
+            "#   2. ``MB_NP`` env var (manual override)\n"
+            "#   3. ``SLURM_NTASKS`` (scheduler-allocated under sbatch)\n"
+            "#   4. ``PBS_NP`` (scheduler-allocated under qsub)\n"
+            "#   5. the stated value, baked at prep ($_mpi_np_default)\n"
+            "# Per docs/execution/running-a-job.md § 5: reading scheduler env vars for\n"
+            "# launch tuning is part of the wrapper contract -- the user\n"
+            "# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
+            '_mpi_np="${MB_NP:-${SLURM_NTASKS:-${PBS_NP:-$_mpi_np_default}}}"\n'
             # OMP precedence: -omp flag > OMP_NUM_THREADS env > the
             # scheduler's reservation (SLURM_CPUS_PER_TASK, PBS_NCPUS,
             # NSLOTS) > the stated value, baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
@@ -2239,27 +2211,27 @@ def render_run_wrapper(script_path: Path, *,
             # (`--dry-run` names where each count came from).
             f'_np_from_flag=0\n'
             f'_omp_from_flag=0\n'
-            + f'while [ $# -gt 0 ]; do\n'
-            f'    case "$1" in\n'
-            f"        -np|--np)\n"
-            f'            if [ $# -lt 2 ]; then\n'
-            f'                echo "ERROR: -np requires a value" >&2\n'
-            f"                exit 1\n"
-            f"            fi\n"
-            f'            _mpi_np="$2"; _np_from_flag=1; shift 2 ;;\n'
-            f"        -omp|--omp|-t|--threads)\n"
-            f'            if [ $# -lt 2 ]; then\n'
-            f'                echo "ERROR: -omp requires a value" >&2\n'
-            f"                exit 1\n"
-            f"            fi\n"
-            f'            _omp_threads="$2"; _omp_from_flag=1; shift 2 ;;\n'
-            f"        --dry-run|--dryrun)\n"
-            f"            # Resolve + LOG the launch command and the\n"
-            f"            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
-            f"            # running SIESTA.  Lets you sbatch a preview and\n"
-            f"            # read the log to confirm the command matches\n"
-            f"            # the allocation (running-a-job.md § 3.3).\n"
-            f'            _dry_run=1; shift ;;\n'
+            + 'while [ $# -gt 0 ]; do\n'
+            '    case "$1" in\n'
+            "        -np|--np)\n"
+            '            if [ $# -lt 2 ]; then\n'
+            '                echo "ERROR: -np requires a value" >&2\n'
+            "                exit 1\n"
+            "            fi\n"
+            '            _mpi_np="$2"; _np_from_flag=1; shift 2 ;;\n'
+            "        -omp|--omp|-t|--threads)\n"
+            '            if [ $# -lt 2 ]; then\n'
+            '                echo "ERROR: -omp requires a value" >&2\n'
+            "                exit 1\n"
+            "            fi\n"
+            '            _omp_threads="$2"; _omp_from_flag=1; shift 2 ;;\n'
+            "        --dry-run|--dryrun)\n"
+            "            # Resolve + LOG the launch command and the\n"
+            "            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
+            "            # running SIESTA.  Lets you sbatch a preview and\n"
+            "            # read the log to confirm the command matches\n"
+            "            # the allocation (running-a-job.md § 3.3).\n"
+            '            _dry_run=1; shift ;;\n'
             # MPS toggle.  Default state is decided in the GPU placement
             # block based on (a) ``nvidia-cuda-mps-control`` binary
             # presence and (b) the MOLBUILDER_USE_MPS env var.  These flags
@@ -2274,75 +2246,76 @@ def render_run_wrapper(script_path: Path, *,
                 '            _use_mps_default=0; shift ;;\n'
                 if gpu_mode else ""
             ) +
-            f"        -h|--help)\n"
-            f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") --run N [--continue|-c] [--force|-f] '
-            f"[--cold] [-np N] [-omp N] [--dry-run]"
+            "        -h|--help)\n"
+            '            cat <<USAGE\n'
+            'Usage: bash $(basename "$0") --run N [--continue|-c] [--force|-f] '
+            "[--cold] [-np N] [-omp N] [--dry-run]"
             + (" [--mps|--no-mps]" if gpu_mode else "")
             + " [-h]\n"
-            f"\n"
+            "\n"
             + _run_usage_entry()
             + _continue_usage_lead()
             + (
                 f"                   {_retry['usage']}"
                 if not resumes else
-                f"                   This deck says 'start from: continue'\n"
-                f"                   (DM.UseSaveDM / MD.UseSaveXV .true.,\n"
-                f"                   and MD.UseSaveCG on a CG relaxation),\n"
-                f"                   so SIESTA reads the .DM/.XV (and .CG)\n"
-                f"                   left under this SystemLabel.\n"
+                "                   This deck says 'start from: continue'\n"
+                "                   (DM.UseSaveDM / MD.UseSaveXV .true.,\n"
+                "                   and MD.UseSaveCG on a CG relaxation),\n"
+                "                   so SIESTA reads the .DM/.XV (and .CG)\n"
+                "                   left under this SystemLabel.\n"
                 if _restart_honoured else
-                f"                   This deck says 'start from: clean'\n"
-                f"                   (DM.UseSaveDM .false.), so SIESTA will\n"
-                f"                   NOT read prior .DM/.XV/.CG: the\n"
-                f"                   calculation starts cold.  To resume:\n"
-                f"                   go back to the state saved before this\n"
-                f"                   stage's prep, change 'restart' in the\n"
-                f"                   description, and prep it anew.\n"
+                "                   This deck says 'start from: clean'\n"
+                "                   (DM.UseSaveDM .false.), so SIESTA will\n"
+                "                   NOT read prior .DM/.XV/.CG: the\n"
+                "                   calculation starts cold.  To resume:\n"
+                + _wrapped(way_back_words(
+                               None, change="change 'restart' in the "
+                                            "description") + ".",
+                           "                   ")
                 if _restart_honoured is False else
-                f"                   Whether the engine also reads prior\n"
-                f"                   state is the deck's to say.\n"
+                "                   Whether the engine also reads prior\n"
+                "                   state is the deck's to say.\n"
             )
             + _force_usage_entry()
             + _cold_usage_entry(warm_examples=".DM/.CG/.XV among them")
-            + f"  -np N            override the MPI rank count.  Stated\n"
-            f"                   at prep: $_mpi_np_default.\n"
-            f"  -omp N,          override OpenMP threads per MPI rank.\n"
-            f"  -t N, --threads  Aliased.  Stated at prep:\n"
-            f"                   $_omp_threads_default.\n"
-            f"  --dry-run        resolve + log the launch command and the\n"
-            f"                   rank->GPU/NUMA placement for the current\n"
-            f"                   allocation, then exit WITHOUT running\n"
-            f"                   SIESTA.  Use to preview/validate a job\n"
-            f"                   (e.g. ``sbatch job.sbatch --dry-run``).\n"
-            f"  -h               this help.\n"
-            f"\n"
-            f"Environment variables:\n"
-            f"  MB_NP=N            same as -np N (useful for SLURM/PBS:\n"
-            f"                     ``export MB_NP=\\$SLURM_NTASKS``).\n"
-            f"  OMP_NUM_THREADS=N  same as -omp N (standard OMP toolchain\n"
-            f"                     convention; honored if set in env).\n"
-            f"\n"
-            f"On 'propor: ERROR: IMAX = 0' crashes at startup, retry\n"
-            f"with a smaller -np.  See the diagnostic the wrapper prints\n"
-            f"on failure for specific suggestions.\n"
-            f"USAGE\n"
-            f"            exit 0 ;;\n"
-            f"        *)\n"
-            f'            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
-            f"            exit 1 ;;\n"
-            f"    esac\n"
-            f"done\n"
-            f'if ! printf %s "$_mpi_np" | grep -qE \'^[1-9][0-9]*$\'; then\n'
-            f'    echo "ERROR: -np must be a positive integer; got: '
-            f'\'$_mpi_np\'" >&2\n'
-            f"    exit 1\n"
-            f"fi\n"
-            f'if ! printf %s "$_omp_threads" | grep -qE \'^[1-9][0-9]*$\'; then\n'
-            f'    echo "ERROR: -omp must be a positive integer; got: '
-            f'\'$_omp_threads\'" >&2\n'
-            f"    exit 1\n"
-            f"fi\n"
+            + "  -np N            override the MPI rank count.  Stated\n"
+            "                   at prep: $_mpi_np_default.\n"
+            "  -omp N,          override OpenMP threads per MPI rank.\n"
+            "  -t N, --threads  Aliased.  Stated at prep:\n"
+            "                   $_omp_threads_default.\n"
+            "  --dry-run        resolve + log the launch command and the\n"
+            "                   rank->GPU/NUMA placement for the current\n"
+            "                   allocation, then exit WITHOUT running\n"
+            "                   SIESTA.  Use to preview/validate a job\n"
+            "                   (e.g. ``sbatch job.sbatch --dry-run``).\n"
+            "  -h               this help.\n"
+            "\n"
+            "Environment variables:\n"
+            "  MB_NP=N            same as -np N (useful for SLURM/PBS:\n"
+            "                     ``export MB_NP=\\$SLURM_NTASKS``).\n"
+            "  OMP_NUM_THREADS=N  same as -omp N (standard OMP toolchain\n"
+            "                     convention; honored if set in env).\n"
+            "\n"
+            "On 'propor: ERROR: IMAX = 0' crashes at startup, retry\n"
+            "with a smaller -np.  See the diagnostic the wrapper prints\n"
+            "on failure for specific suggestions.\n"
+            "USAGE\n"
+            "            exit 0 ;;\n"
+            "        *)\n"
+            '            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
+            "            exit 1 ;;\n"
+            "    esac\n"
+            "done\n"
+            'if ! printf %s "$_mpi_np" | grep -qE \'^[1-9][0-9]*$\'; then\n'
+            '    echo "ERROR: -np must be a positive integer; got: '
+            '\'$_mpi_np\'" >&2\n'
+            "    exit 1\n"
+            "fi\n"
+            'if ! printf %s "$_omp_threads" | grep -qE \'^[1-9][0-9]*$\'; then\n'
+            '    echo "ERROR: -omp must be a positive integer; got: '
+            '\'$_omp_threads\'" >&2\n'
+            "    exit 1\n"
+            "fi\n"
             +
             # WHERE each number came from, computed once the values are
             # final -- the --dry-run report prints these so a wrong scale
@@ -2362,7 +2335,7 @@ def render_run_wrapper(script_path: Path, *,
                       f'_omp_source="{_THREAD_SOURCE_WORDS[var]}"\n'
                       for var in THREAD_SOURCES)
             + 'fi\n'
-            f"\n"
+            "\n"
             # SIESTA's stdout role, asked rather than taken from a default.
             + _run_index_block(names, _stdout_role_for(".fdf"))
             + _cold_restart_block(basename, engine="siesta",
@@ -2387,8 +2360,8 @@ def render_run_wrapper(script_path: Path, *,
             # block (needs $_mpi_np) and BEFORE the MPS block (reads
             # $_ranks_per_gpu).  See _gpu_loadbalance_block.__doc__.
             + (_gpu_loadbalance_block() if gpu_mode else "")
-            + f"# MPI rank count: $_mpi_np (stated at prep: "
-            f"$_mpi_np_default)\n"
+            + "# MPI rank count: $_mpi_np (stated at prep: "
+            "$_mpi_np_default)\n"
             + _orbitals_per_rank_notice(n_atoms)
             + f"# --- Thread / BLAS pinning ------------------------------\n"
             f"#   * OMP_NUM_THREADS: the stated cores per rank\n"
@@ -2412,8 +2385,8 @@ def render_run_wrapper(script_path: Path, *,
                 "export OMP_PLACES=cores\n"
                 if gpu_mode else ""
             )
-            + f""
-            f"export OPENBLAS_NUM_THREADS=1\n"
+            + ""
+            "export OPENBLAS_NUM_THREADS=1\n"
             # MPS setup: enable Hyper-Q GPU sharing when (a) the binary
             # is on PATH, (b) the user hasn't opted out, and (c) we'll
             # actually have multiple ranks (single-rank MPS is pure
@@ -2665,7 +2638,7 @@ def render_run_wrapper(script_path: Path, *,
                 '_mpirun_bind="--bind-to core --map-by '
                 'package:PE=$_omp_threads"\n'
                 if gpu_mode else
-                f'_mpirun_bind=""\n'
+                '_mpirun_bind=""\n'
             )
             # ``_numa_wrap_gpu`` is set by _gpu_runtime_block
             # in GPU mode; default to empty here so CPU-mode wrappers
@@ -2728,9 +2701,9 @@ def render_run_wrapper(script_path: Path, *,
             + (f'echo "  Retry policy  : up to {continue_retries} '
                f'retry(s) on non-convergence -- {_retry["policy"]}"\n'
                if continue_retries and continue_retries > 0 else
-               f'echo "  Retry policy  : none (halt on non-convergence)"\n')
-            + f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
-            f'OPENBLAS=1, MKL=1"\n'
+               'echo "  Retry policy  : none (halt on non-convergence)"\n')
+            + 'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
+            'OPENBLAS=1, MKL=1"\n'
             # GPU mode: print a brief monitoring hint so the user has
             # nvidia-smi commands at hand when they start the run.
             + ((
@@ -2769,12 +2742,12 @@ def render_run_wrapper(script_path: Path, *,
             # on-disk script + restart files at runtime so a manual
             # .fdf edit shows the EDITED state, not the generation-
             # time snapshot (the "what you see is what runs" rule).
-            + f'echo "  Mode          : $_mode"\n'
-            + f'echo "  Constraints   : $_constraints"\n'
+            + 'echo "  Mode          : $_mode"\n'
+            + 'echo "  Constraints   : $_constraints"\n'
             + f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
-            + f'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
-            + f'echo "========================================="\n'
-            f"\n"
+            + 'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
+            + 'echo "========================================="\n'
+            "\n"
         )
     else:                                          # pyscf
         # THE RUN'S NUMBER, handed on: the script names its own files with
@@ -2793,49 +2766,49 @@ def render_run_wrapper(script_path: Path, *,
         # MPI rank knob; its thread count is the stated one).
         pyscf_args_block = (
             _continue_force_args_parser("PySCF wrapper")
-            + f"# --- PySCF wrapper argument parsing -------------\n"
-            f'_dry_run=0\n'
-            f'_omp_flag=""\n'
-            f'while [ $# -gt 0 ]; do\n'
-            f'    case "$1" in\n'
-            f"        --dry-run|--dryrun)\n"
-            f'            _dry_run=1; shift ;;\n'
+            + "# --- PySCF wrapper argument parsing -------------\n"
+            '_dry_run=0\n'
+            '_omp_flag=""\n'
+            'while [ $# -gt 0 ]; do\n'
+            '    case "$1" in\n'
+            "        --dry-run|--dryrun)\n"
+            '            _dry_run=1; shift ;;\n'
             # -omp / -np are what `jobset launch` hands EVERY .run.sh
             # (submit._run_sh_args).  -omp is the thread count and is honoured; -np is
             # accepted and reported, because PySCF is OpenMP-only and a
             # silently swallowed rank count would let a user believe they
             # had asked for something.
-            f"        -omp|--omp)\n"
-            f'            _omp_flag="$2"; shift 2 ;;\n'
-            f"        -np|--np)\n"
-            f'            if [ "${{2:-1}}" != "1" ]; then\n'
-            f'                echo "molbuilder: -np $2 ignored -- PySCF is '
-            f'OpenMP-only (no MPI ranks); use -omp for thread count" >&2\n'
-            f'            fi\n'
-            f'            shift 2 ;;\n'
-            f"        -h|--help)\n"
-            f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") --run N [--continue|-c] [--force|-f] [--cold] [--dry-run] [-h]\n'
-            f"\n"
+            "        -omp|--omp)\n"
+            '            _omp_flag="$2"; shift 2 ;;\n'
+            "        -np|--np)\n"
+            '            if [ "${2:-1}" != "1" ]; then\n'
+            '                echo "molbuilder: -np $2 ignored -- PySCF is '
+            'OpenMP-only (no MPI ranks); use -omp for thread count" >&2\n'
+            '            fi\n'
+            '            shift 2 ;;\n'
+            "        -h|--help)\n"
+            '            cat <<USAGE\n'
+            'Usage: bash $(basename "$0") --run N [--continue|-c] [--force|-f] [--cold] [--dry-run] [-h]\n'
+            "\n"
             + _run_usage_entry()
             + _continue_usage_lead()
             + (
-                f"                   This deck reads prior state: its\n"
-                f"                   chkfile init-guess and geometry\n"
-                f"                   reads are gated on its described\n"
-                f"                   ``continue`` (run-identity.md § 4\n"
-                f"                   rule 2).\n"
+                "                   This deck reads prior state: its\n"
+                "                   chkfile init-guess and geometry\n"
+                "                   reads are gated on its described\n"
+                "                   ``continue`` (run-identity.md § 4\n"
+                "                   rule 2).\n"
                 if _py_reads_prior else
-                f"                   This deck emits NO prior-state\n"
-                f"                   read (described ``clean``), so the\n"
-                f"                   calculation starts from the deck's\n"
-                f"                   own coordinates.\n"
+                "                   This deck emits NO prior-state\n"
+                "                   read (described ``clean``), so the\n"
+                "                   calculation starts from the deck's\n"
+                "                   own coordinates.\n"
                 if _py_reads_prior is False else
-                f"                   This vibration deck reads no prior\n"
-                f"                   engine state at start: each run\n"
-                f"                   recomputes from its own relaxation\n"
-                f"                   (or your already_relaxed\n"
-                f"                   assertion).\n"
+                "                   This vibration deck reads no prior\n"
+                "                   engine state at start: each run\n"
+                "                   recomputes from its own relaxation\n"
+                "                   (or your already_relaxed\n"
+                "                   assertion).\n"
             )
             + _force_usage_entry()
             + _cold_usage_entry(
@@ -3015,22 +2988,22 @@ def render_run_wrapper(script_path: Path, *,
             for _pth in _srcs:
                 _lines += [
                     f'if [ ! -r "{_pth}" ]; then',
-                    f'    _log ERROR "baked preamble sources a file that '
-                    f'does not exist on this machine:"',
+                    '    _log ERROR "baked preamble sources a file that '
+                    'does not exist on this machine:"',
                     f'    _log ERROR "    {_pth}"',
                     # SINGLE-quoted: bash runs backticks inside a
                     # double-quoted string.
-                    f"    _log ERROR 'It was baked verbatim from the "
-                    f"preamble of the record prep read, and this machine "
-                    f"is not the one that record describes.'",
-                    f"    _log ERROR 'Fix: environment.json beside task.json, "
-                    f"the record this calculation was prepared with, carries "
-                    f"this preamble -- edit its env_init.preamble (for "
-                    f"example: module load mamba), or correct the record of "
-                    f"that machine and prep the calculation anew, from the "
-                    f"state saved before its first prep; or edit the source "
-                    f"line below.'",
-                    f'    exit 78',           # EX_CONFIG
+                    "    _log ERROR 'It was baked verbatim from the "
+                    "preamble of the record prep read, and this machine "
+                    "is not the one that record describes.'",
+                    "    _log ERROR 'Fix: environment.json beside task.json, "
+                    "the record this calculation was prepared with, carries "
+                    "this preamble -- edit its env_init.preamble (for "
+                    "example: module load mamba), or correct the record of "
+                    "that machine and prep the calculation anew, from the "
+                    "state saved before its first prep; or edit the source "
+                    "line below.'",
+                    '    exit 78',           # EX_CONFIG
                     "fi",
                 ]
             _guard = "\n".join(_lines) + "\n\n"
@@ -3196,8 +3169,8 @@ def render_run_wrapper(script_path: Path, *,
            f"    exit 1\n"
            f"  fi\n"
            if category == "pyscf" else "")
-        + f"fi\n"
-        f"\n"
+        + "fi\n"
+        "\n"
     )
 
     # Launch + diagnostics.  The command is run, not exec'd, for both
@@ -3264,6 +3237,7 @@ def render_run_wrapper(script_path: Path, *,
                f'${{_mb_engine_args[@]+"${{_mb_engine_args[@]}}"}}\n'
                f'}}\n'
                if continue_retries and continue_retries > 0 else "")
+            + _last_run_block(names)
             + f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
             f'$_launch_cmd {script_name} | _mb_scf_tee "$_out_file" '
@@ -3319,10 +3293,13 @@ def render_run_wrapper(script_path: Path, *,
             f"   ranks empty in the orbital/projector distribution.  Prepare\n"
             f"   the stage again at another count (lower; powers of 2 are\n"
             f"   safest): in the calculation's folder, restore the state\n"
-            f"   saved before its prep, then prep it with that count --\n"
+            f"   saved before its group's first launch -- the list notes\n"
+            f"   it 'before launch task group N (...)', this stage among\n"
+            f"   the names -- then prep its group with that count; prep\n"
+            f"   asks which group, and offers this one --\n"
             f"     molbuilder checkpoint list\n"
-            f"     molbuilder checkpoint restore <that state>\n"
-            f"     molbuilder jobset prep task --stage <stage> --np 8\n"
+            f"     molbuilder checkpoint restore <the id the list gives it>\n"
+            f"     molbuilder jobset prep task --np 8\n"
             f"   The same clean .fdf can fail at one -np and pass at another.\n"
             f"\n"
             f"HINT\n"
@@ -3351,17 +3328,17 @@ def render_run_wrapper(script_path: Path, *,
                f'$_siesta_retry_max retry(s); '
                + f'{_retry["after"]}.'
                + '" >&2\n'
-               f'    fi\n'
+               '    fi\n'
                if continue_retries and continue_retries > 0 else "")
-            + f'    # CONCLUDED -- an error is a conclusion (project-\n'
-            f'    # layout.md 1.6, "the other file"): the engine returned\n'
-            f'    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
-            f'    # never the cleanup trap: a walltime SIGTERM runs the\n'
-            f'    # trap, and a forced stop must leave NO marker.\n'
-            f'    printf "rc=%s at %s\\n" "$_siesta_exit" "$(date)" '
-            f'> "$_concluded"\n'
-            + f'    exit "$_siesta_exit"\n'
-            f"fi\n"
+            + '    # CONCLUDED -- an error is a conclusion (project-\n'
+            '    # layout.md 1.6, "the other file"): the engine returned\n'
+            '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
+            '    # never the cleanup trap: a walltime SIGTERM runs the\n'
+            '    # trap, and a forced stop must leave NO marker.\n'
+            '    printf "rc=%s at %s\\n" "$_siesta_exit" "$(date)" '
+            '> "$_concluded"\n'
+            + '    exit "$_siesta_exit"\n'
+            "fi\n"
             + (f"\n"
                f"# --- Geometry-cap check + warm-retry "
                f"(up to {continue_retries} retries) ---\n"
@@ -3386,10 +3363,10 @@ def render_run_wrapper(script_path: Path, *,
                f'\n'
                if continue_retries and continue_retries > 0 else "")
             + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
-            + f'$_out_file"\n'
+            + '$_out_file"\n'
             + _finish_block(finish, script_name)
-            + f'printf "rc=0 at %s\\n" "$(date)" '
-            f'> "$_concluded"\n'
+            + 'printf "rc=0 at %s\\n" "$(date)" '
+            '> "$_concluded"\n'
         )
     else:
         launch_block = (
@@ -3412,6 +3389,7 @@ def render_run_wrapper(script_path: Path, *,
                              # the run's GPU request, read above -- its
                              # script's GPU probe runs on the same value
                              gpu=gpus.uses)
+            + _last_run_block(names)
             # NOT `exec`: the shell has to outlive the engine to conclude.
             + f"set +e\n"
             f"{inner}\n"
@@ -3491,35 +3469,35 @@ def render_run_wrapper(script_path: Path, *,
         # otherwise a SIESTA deck whose restart answer could not be read
         # would fall through to the PySCF paragraph.
         + (
-            f"#  * PySCF: this deck reads prior state -- its chkfile\n"
-            f"#    init-guess and previous-rung geometry reads are gated\n"
-            f"#    on its described ``continue`` (run-identity.md § 4\n"
-            f"#    rule 2).\n"
+            "#  * PySCF: this deck reads prior state -- its chkfile\n"
+            "#    init-guess and previous-rung geometry reads are gated\n"
+            "#    on its described ``continue`` (run-identity.md § 4\n"
+            "#    rule 2).\n"
             if suffix == ".py" and _py_reads_prior else
-            f"#  * PySCF: this deck emits NO prior-state read (described\n"
-            f"#    ``clean``): prior files on disk are simply not\n"
-            f"#    consulted.\n"
+            "#  * PySCF: this deck emits NO prior-state read (described\n"
+            "#    ``clean``): prior files on disk are simply not\n"
+            "#    consulted.\n"
             if suffix == ".py" and _py_reads_prior is False else
-            f"#  * PySCF (vibration): this deck reads no prior engine\n"
-            f"#    state at start -- each run recomputes from its own\n"
-            f"#    relaxation (or the already_relaxed assertion).\n"
+            "#  * PySCF (vibration): this deck reads no prior engine\n"
+            "#    state at start -- each run recomputes from its own\n"
+            "#    relaxation (or the already_relaxed assertion).\n"
             if suffix == ".py" else
-            f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
-            f"#    ``MD.UseSaveXV`` .true. (and ``MD.UseSaveCG`` on a CG\n"
-            f"#    relaxation), so SIESTA loads the .DM/.XV (and .CG) left\n"
-            f"#    under this SystemLabel.\n"
+            "#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
+            "#    ``MD.UseSaveXV`` .true. (and ``MD.UseSaveCG`` on a CG\n"
+            "#    relaxation), so SIESTA loads the .DM/.XV (and .CG) left\n"
+            "#    under this SystemLabel.\n"
             if _restart_honoured else
-            f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` .false., so\n"
-            f"#    SIESTA does NOT load prior .DM/.XV/.CG -- the run starts\n"
-            f"#    from the coordinates in the deck.  To continue instead,\n"
-            f"#    go back to the state saved before this stage's prep,\n"
-            f"#    change `restart` in the description, and prep it anew.\n"
+            "#  * SIESTA: this deck sets ``DM.UseSaveDM`` .false., so\n"
+            "#    SIESTA does NOT load prior .DM/.XV/.CG -- the run starts\n"
+            "#    from the coordinates in the deck.  To continue instead,\n"
+            + _wrapped(way_back_words(
+                           None, change="change `restart` in the "
+                                        "description") + ".", "#    ")
             if _restart_honoured is False else
-            f"#  * SIESTA: this deck's restart keywords could not be read;\n"
-            f"#    whether prior .DM/.XV/.CG are loaded is the deck's to\n"
-            f"#    say.  Prep the stage anew, from the state saved before\n"
-            f"#    its prep, to restore the restart group the generator\n"
-            f"#    writes.\n"
+            "#  * SIESTA: this deck's restart keywords could not be read;\n"
+            "#    whether prior .DM/.XV/.CG are loaded is the deck's to\n"
+            "#    say.  To restore the restart group the generator\n"
+            + _wrapped("writes, " + way_back_words(None) + ".", "#    ")
         )
         + f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"
@@ -4060,10 +4038,11 @@ def render_wrappers(script_path: Path, *,
     # machine has a queue -- every value in it the job's own (its resources,
     # its GPU request among them).
     if emit_sbatch:
-        sbatch = _render_sbatch_for(script_path, names=names, resources=r,
-                                    project_dir=project_dir,
-                                    domain_pq=domain_pq,
-                                    machine_record=machine_record)
+        from .jobset.placement import deck_runs_one_process
+        sbatch = _render_sbatch_for(
+            script_path, names=names, resources=r, project_dir=project_dir,
+            domain_pq=domain_pq, machine_record=machine_record,
+            one_process=deck_runs_one_process(script_path.suffix))
         if sbatch is not None:
             _validate_rendered_wrapper(sbatch, script_path)
             files.append((names.name(".sbatch"), sbatch))
@@ -4075,9 +4054,11 @@ def render_wrappers(script_path: Path, *,
 def _warm_in_effect(engine: str, warm: Optional[Sequence[str]]
                     ) -> Tuple[str, ...]:
     """The restart files this script knows: ``warm``, the list in effect for
-    its calculation that ``prep`` hands in (`warmfiles.warm_list`), or --
-    for a script rendered with no calculation behind it -- the engine's own
-    file, every section: the same door asked with no folder."""
+    its calculation that ``prep`` hands in (`warmfiles.warm_list`,
+    `job-contracts.md` § 4.2a), or -- for a script rendered with no
+    calculation behind it -- the engine's own file, every section: the same
+    door asked with no folder.  PySCF's are SUFFIXES rather than extensions
+    -- ``_optimized.xyz`` -- which no plain extension match would catch."""
     if warm is not None:
         return tuple(warm)
     from .warmfiles import warm_list
@@ -4141,7 +4122,7 @@ def write_run_wrapper(script_path: Path, *,
     return parent / rendered.wrapper_name
 
 
-def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
+def _bound_queue(resources, domain_pq, env_rec):
     """The queue this job NAMES, bound on the target's record -- a
     :class:`~molbuilder.scheduler.place.Placement`, or ``None`` when the job
     names none.
@@ -4186,7 +4167,7 @@ def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
     if not want:
         return None
     try:
-        return place(rows, Request(), prefer_gpu=prefer_gpu, named=want)
+        return place(rows, Request(), named=want)
     except Unplaceable as exc:
         raise WrapperError(
             f"this job names the queue {want!r}, which the target's record "
@@ -4198,8 +4179,8 @@ def _render_sbatch_for(script_path: Path, *, names,
                        project_dir: Optional[Path] = None,
                        resources: "Resources",
                        domain_pq: Optional[Tuple[str, str]] = None,
-                       machine_record=None,
-                       ) -> Optional[str]:
+                       machine_record=None, one_process: bool,
+                       where: str = "") -> Optional[str]:
     """The ``.sbatch`` text for this job when its target has a scheduler;
     ``None`` when it does not.
 
@@ -4208,9 +4189,11 @@ def _render_sbatch_for(script_path: Path, *, names,
 
     **Every value in it is one the job stated** (`architecture.md` § 5.2):
     the queue it names, its wall, its memory, its cores per rank, its GPU
-    count and -- for SIESTA -- its rank count.  PySCF runs ONE process with
-    OpenMP threads, so its header asks for one task: that is what the engine
-    is, not a value anyone picks.  Whether each is stated is asked ONCE per
+    count and -- for SIESTA -- its rank count.  ``one_process`` (PySCF, with
+    OpenMP threads) asks for one task: that is what the engine is, not a
+    value anyone picks -- the caller's answer, `placement.one_process`.
+    ``where`` is the folder, from the one the job is submitted in, that its
+    run script and SLURM's own output are in (a walk's, `launch/`).  Whether each is stated is asked ONCE per
     moment, by `placement.launch_refusal` -- at prep, before anything is
     written, and at launch for a header written there (`submit.
     _sbatch_request`).  Nothing is filled in: not the target's width, not a
@@ -4235,7 +4218,6 @@ def _render_sbatch_for(script_path: Path, *, names,
     if env_rec is None or env_rec.scheduler != "slurm":
         return None  # no queue on this machine -> only .run.sh is meaningful
 
-    suffix = script_path.suffix.lower()
     # IS THIS A GPU JOB, AND HOW MANY -- the job's request, the one door for
     # every engine and every reader (`jobset.model.gpu_request`).
     from .jobset.model import GpuRequestError, gpu_request
@@ -4244,8 +4226,8 @@ def _render_sbatch_for(script_path: Path, *, names,
     except GpuRequestError as exc:
         raise WrapperError(f"`{script_path.name}`: {exc}") from None
 
-    placement = _bound_queue(r, domain_pq, env_rec, prefer_gpu=gpus.uses)
-    ntasks = 1 if suffix == ".py" else r.mpi_np
+    placement = _bound_queue(r, domain_pq, env_rec)
+    ntasks = 1 if one_process else r.mpi_np
 
     return render_sbatch(
         names,
@@ -4253,8 +4235,28 @@ def _render_sbatch_for(script_path: Path, *, names,
         ntasks=int(ntasks), cpus_per_task=int(r.cpus_per_task),
         time=r.time, mem=r.mem,
         gpus=gpus, gpu_binding=r.gpu_binding,
-        exclusive=r.exclusive,
+        exclusive=r.exclusive, where=where,
     )
+
+
+def walk_header(base: Path, names, *, resources: "Resources",
+                one_process: bool, machine_record=None,
+                domain_pq: Optional[Tuple[str, str]] = None
+                ) -> Optional[str]:
+    """THE ONE HEADER OF A WALK -- a group's one job, a benchmark's shelf, a
+    run of points (`job-system.md` § 6.0): rendered for its one request,
+    submitted from ``base``, the folder the walk runs from -- the
+    calculation's for a group, the stage's for a run of points, the
+    benchmark's container for a shelf -- its walk script and SLURM's own
+    output in `launch/` beside it -- or ``None`` where the
+    machine has no scheduler.  ``names`` are the walk's own
+    (`runfiles.GroupNames`)."""
+    from .runfiles import LAUNCH_DIR
+    return _render_sbatch_for(
+        Path(base) / names.name(".sbatch"), names=names,
+        project_dir=Path(base), resources=resources, domain_pq=domain_pq,
+        machine_record=machine_record, one_process=one_process,
+        where=f"{LAUNCH_DIR}/")
 
 
 # --------------------------------------------------------------------- #
@@ -4268,7 +4270,8 @@ def render_sbatch(names, *,
                   time: str, mem: str,
                   gpus: "Optional[GpuRequest]" = None,
                   gpu_binding: Optional[bool] = None,
-                  exclusive: Optional[bool] = None) -> str:
+                  exclusive: Optional[bool] = None,
+                  where: str = "") -> str:
     """Render the ``<basename>.sbatch`` submission script.
 
     The thin two-layer model (job-system.md § 6, § 5): an ``#SBATCH`` header
@@ -4322,13 +4325,26 @@ def render_sbatch(names, *,
     else:
         exclusive = False  # CPU jobs never request a whole node here
 
+    # HOW IT IS SENT (`job-contracts.md` § 2.6): by `jobset launch`, which
+    # numbers each run and records it; by hand, past the run script's
+    # launch-door gate, from the folder `launch` sends it from -- a run's
+    # header from its own folder, handing its run script the run's number;
+    # a walk's (``where``) from the calculation's, its members' numbers in
+    # its walk script.
+    by_hand = (f"sbatch --export=ALL,MB_LAUNCHED_BY=manual "
+               f"{where}{names.name('.sbatch')}"
+               + ("" if where else " --run N"))
     lines: List[str] = [
         "#!/bin/bash",
         "# === molbuilder sbatch header (scheduler: slurm) ===",
-        "# Generated at prep from the job's own stated values.",
+        "# Generated from the job's own stated values -- by prep, or for a",
+        "# run of points' walk and a benchmark's shelf, by the launch.",
         "# Authoritative design: docs/execution/job-system.md.",
-        "# Submit with:  cd <projdir>; sbatch "
-        f"{names.name('.sbatch')}   (NOT bash -- sbatch reads the #SBATCH header; bash would ignore it)",
+        "# Sent by `molbuilder jobset launch`, which numbers each run and",
+        "# records it.  By hand -- sbatch, not bash, which ignores the",
+        "# #SBATCH lines -- from "
+        + ("the calculation's folder:" if where else "this file's folder:"),
+        f"#     {by_hand}",
         "#",
         f"#SBATCH -J {basename}",
         "#SBATCH -N 1",
@@ -4352,17 +4368,19 @@ def render_sbatch(names, *,
             f"# --exclusive owns the whole node -> ALL its memory.  The stated "
             f"mem ({mem}) is IGNORED; --mem=0 = all node RAM.")
     lines.extend(_d.header_lines())
-    lines.append("#SBATCH -o slurm.%j.out")
-    lines.append("#SBATCH -e slurm.%j.err")
+    lines.append(f"#SBATCH -o {where}slurm.%j.out")
+    lines.append(f"#SBATCH -e {where}slurm.%j.err")
 
     body = (
         "\n"
-        "# SLURM lands us in SLURM_SUBMIT_DIR = the project dir; the\n"
-        "# launcher never cd's (running-a-job.md § 5).  The launcher's\n"
+        "# SLURM lands us in SLURM_SUBMIT_DIR, the folder it was sent from;\n"
+        "# the launcher never cd's (running-a-job.md § 5).  The launcher's\n"
         "# preamble + activation are baked into it, so it needs nothing\n"
         "# from the submitting shell.  \"$@\" forwards what `jobset launch`\n"
-        "# hands the run: its number (--run N) and its -np / -omp.\n"
-        f"bash {names.name('.run.sh')} \"$@\"\n"
+        + ("# hands it -- nothing: each member's run number and counts are\n"
+           "# in the walk.\n" if where else
+           "# hands the run: its number (--run N) and its -np / -omp.\n")
+        + f"bash {where}{names.name('.run.sh')} \"$@\"\n"
     )
     return "\n".join(lines) + "\n" + body
 

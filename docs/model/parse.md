@@ -470,11 +470,11 @@ package.** The blocks are molbuilder's own, so they are read by the module that
 writes them:
 
 ```python
-from molbuilder.script_emit import (_extract_atom_metadata_dict,
-                                    _extract_provenance_dict)
+from molbuilder.script_emit import (read_atom_metadata_block,
+                                    read_provenance_block)
 
-_extract_atom_metadata_dict(fdf_text)   # the block dict, or None if absent
-_extract_provenance_dict(fdf_text)      # the PROVENANCE block, or None
+read_atom_metadata_block(fdf_text)   # the block dict, or None if absent
+read_provenance_block(fdf_text)      # the PROVENANCE block, or None
 ```
 
 *(A `read_script(text) -> ScriptSource` door stood here until 2026-09-05. It
@@ -749,8 +749,11 @@ So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
 
 **`active_source` is the run the folder speaks for** — the run door's one rule
-(`execution/architecture.md` § 3.2): the highest stage launched — its launch
-record, or files carrying a run index — then that stage's newest run index. *(The stage first is the user's ruling of
+(`execution/architecture.md` § 3.2): the highest stage launched, by its
+launch records — none launched, the folder's one stage with a deck — then
+that stage's newest run, by one rule (`runrecord.newest_run`): where a
+stage's runs share the folder, its newest launched run; in a folder of the
+run's own, its newest try, the highest index its files reached. *(The stage first is the user's ruling of
 2026-09-04: within one directory a re-run of an earlier rung must not hijack the
 run's reported state, and only the stage ordinal can say so. The run index
 within a stage replaced the file's time on 2026-10-04, plan B11: a copied or
@@ -1613,7 +1616,9 @@ calculation and stage *(not built — plan § 5w, K16: SIESTA's wrapper writes
 every SIESTA item, `runwrap.py:1746`; PySCF's narrows by calculation alone,
 `pyscf/layout.py:313-314`)* — `[item, default, asked, used]` — each one JSON array
 after `#   `, so a blank value or one with spaces cannot shift a column; `null`
-is *this writer cannot know*. **PySCF's deck** prints it after setup with all
+is *this writer cannot know*. The block's first line says what the columns
+are (`script_emit.PARAMETER_COLUMNS_LINE`) — prose, which the reader skips,
+as it skips every line that is not a row. **PySCF's deck** prints it after setup with all
 three columns, `used` read off the live objects; the vibration deck prints it
 after its SCF is dressed and before the equilibrium SCF runs. **SIESTA's
 wrapper** prints it at launch, in its log beside the deck it is about to run,

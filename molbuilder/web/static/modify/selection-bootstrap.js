@@ -159,18 +159,6 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
                 if (ix >= 0) _candidateListeners.splice(ix, 1);
             };
         }
-        window.molbuilder.molbuilderTab = {
-            getCandidate:     () => _candidate,
-            onCandidateChange: _onCandidateChange,
-            // commitFile(path): the canonical "load this file into
-            // the workspace structure" entry point — identical to
-            // what the Load button does on a dblclick.  Goes through
-            // structurePage's gate (`loadIntoCanvas`).  Exposed for
-            // tests that need to drive the canonical sidebar→canvas
-            // flow without depending on DOM clicks.
-            commitFile:       _commitFile,
-        };
-
         if (projects) {
             const initial = projects.getCurrentFile() || "";
             // WHAT IS ALREADY HERE WINS.  Whatever this tab held when you left
@@ -312,12 +300,10 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
          */
         async function _commitFile(path) {
             if (!path) return;
-            const s = document.getElementById("status");
-            const say = (text, cls) => {
-                if (!s) return;
-                s.textContent = text;
-                s.className = "status " + cls;
-            };
+            // The page's status line, through its one writer
+            // (`lib/status.js`), as `modify/viewer.js` writes it.
+            const say = (text, kind) =>
+                window.molbuilder.status.set("status", text, kind);
             const load = async (which) => {
                 try {
                     const r = await fetch("/api/build/load", {

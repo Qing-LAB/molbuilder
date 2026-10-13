@@ -11,8 +11,8 @@
  *   * ``.card { ... }`` -- canonical here, and the only definition
  *     (modify keeps a ``.card[hidden]`` guard, which restyles nothing).
  *   * ``.app-header { ... }`` -- canonical here.  Modify and the Spectrum
- *     page restyle its padding and border in their own sheets, naming the
- *     banner by its class.
+ *     page set its padding in their own sheets (composition), naming the
+ *     banner by its class; its look is this file's.
  *
  * Do NOT add NEW rules to per-tab stylesheets that page-shell.css
  * already covers -- they'd silently override the canonical version.
@@ -461,12 +461,13 @@ button:disabled {
  * (`.modify-init-tab`, modify/style.css) is the same control with its own
  * copy of the rules.
  *
- * The markup contract: a `role="tablist"` of `<button role="tab">` carrying
- * `is-active` + `aria-selected`, each with an `id` and `aria-controls` naming
- * its panel, and panels with `role="tabpanel"` (`aria-labelledby` the tab)
- * shown and hidden through the `hidden` PROPERTY; one tab stop, the arrow
- * keys moving the selection (ui-contract.md § 4.1).  Which is why the panel
- * rule below exists at all -- see the note on it. */
+ * The markup contract: a `role="tablist"` of `<button role="tab">`, each
+ * named by `data-tab` with `aria-controls` naming its panel; the one tab
+ * strip (`lib/tab-strip.js`, ui-contract.md § 4.1) keeps `aria-selected`,
+ * the one tab stop, the arrow keys, the ids that pair a tab and its panel,
+ * and shows and hides the panels through the `hidden` PROPERTY.  This sheet
+ * keys the look on `aria-selected`.  Which is why the panel rule below
+ * exists at all -- see the note on it. */
 .panel-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -487,7 +488,7 @@ button:disabled {
     margin-bottom: -1px;
 }
 .panel-tab:hover { color: var(--text-primary); }
-.panel-tab.is-active {
+.panel-tab[aria-selected="true"] {
     color: var(--text-primary);
     background: var(--bg-card);
     border-color: var(--border-soft);

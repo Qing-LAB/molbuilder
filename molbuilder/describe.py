@@ -46,14 +46,14 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import dataclasses as _dc
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
-from .template import (SUFFIX as TEMPLATE_SUFFIX,
-                       template_filename as _template_filename)
+from .template import template_filename as _template_filename
 from .template import template_with_values
 from .workingcopy_structure import StructureCodec
 
@@ -78,6 +78,14 @@ class Description:
     task: Task
     template: str
     pseudo_species: Tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """EVERY STAGE STATES ITS GROUP (`engines/stages.md` § 2): a ladder
+        a producer built is numbered here, so every description -- `jobset
+        init`'s, the Transport tab's -- is written with them: the defaults
+        repeat the number above wherever the ladder's links allow it."""
+        from .jobset.group import numbered
+        object.__setattr__(self, "task", numbered(self.task, self.template))
 
     @property
     def label(self) -> str:
@@ -272,7 +280,6 @@ def write_description(desc: Description, dest, *,
         pair = codec.source_files(
             struct if struct is not None else codec.load(src),
             desc.task.label)
-        import dataclasses as _dc
         desc = _dc.replace(desc, task=_dc.replace(
             desc.task, structure=_dc.replace(
                 desc.task.structure, source=pair[0][0].name)))

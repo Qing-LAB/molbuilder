@@ -471,13 +471,3 @@ export async function chooseSavePath(opts) {
   if (!name) return null;
   return String(dir).replace(/\/+$/, "") + "/" + name;
 }
-
-// ─── Test seam ─────────────────────────────────────────────────────── //
-
-export function _resetDialogsForTests() {
-  if (_active) _settle(null);
-}
-
-export function _isAnyDialogOpen() {
-  return _active !== null;
-}

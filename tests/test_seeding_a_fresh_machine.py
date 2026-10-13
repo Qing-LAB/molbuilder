@@ -370,12 +370,12 @@ def test_a_declared_projects_root_is_written_and_reported(fresh):
     the config as its source -- which is what every surface prints."""
     from molbuilder.projects import projects_root_with_source
     initconfig.init_config("conda activate", probe=False,
-                           projects=Path("/scratch/someone/mb"))
+                           projects=Path("/scratch/someone/projects"))
 
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
-    assert doc["paths"]["projects"] == "/scratch/someone/mb"
+    assert doc["paths"]["projects"] == "/scratch/someone/projects"
     resolved = projects_root_with_source()
-    assert resolved.path == Path("/scratch/someone/mb")
+    assert resolved.path == Path("/scratch/someone/projects")
     assert "paths.projects" in resolved.source, (
         f"the source must name the config, not just the path: {resolved}")
 

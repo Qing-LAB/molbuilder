@@ -35,7 +35,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`,
 # `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
@@ -276,6 +276,23 @@ class RunStatus:
             raise ValueError(
                 f"RunStatus.state must be one of {RUN_STATES}; "
                 f"got {self.state!r}")
+
+    @property
+    def verdict(self) -> "Optional[Tuple[str, bool]]":
+        """What the speaking output says the run converged -- ``("geometry",
+        ok)`` for a relaxation, else ``("SCF", ok)`` -- or ``None`` when it
+        says neither yet: the one scan's answer (:attr:`endings`), which a
+        reader decides on and words where it shows it
+        (`jobset.runstatus.converged_of`)."""
+        end = (self.endings or {}).get(self.active_source) \
+            if self.active_source else None
+        if end is None:
+            return None
+        if end.relaxed is not None:
+            return ("geometry", bool(end.relaxed))
+        if end.scf_converged is not None:
+            return ("SCF", bool(end.scf_converged))
+        return None
 
 
 #: A caller that does not hold the attempt's launch record -- the monitor,

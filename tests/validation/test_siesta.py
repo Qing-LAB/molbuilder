@@ -353,49 +353,46 @@ class TestSiestaPseudoCoverageInPreflight:
         assert errs
         assert "/no/such/dir" in errs[0].message
 
-    def test_complete_coverage_passes(self, tmp_path, monkeypatch):
+    def test_complete_coverage_passes(self, isolated_projects_root):
         """All elements present + matching XC -> NO psml-related issues
         (other checks may fire; we filter to just the psml ones)."""
+        lib = isolated_projects_root
         for el in ("O", "H"):
-            (tmp_path / f"{el}.psml").write_text(_make_pdojo_psml(el))
+            (lib / f"{el}.psml").write_text(_make_pdojo_psml(el))
         from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.validation import validate
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(tmp_path), xc_authors="PBE"))
+                           SiestaConfig(psml_lib=str(lib), xc_authors="PBE"))
         psml_issues = [i for i in issues if "psml" in i.where.lower()]
         assert psml_issues == []
 
-    def test_missing_element_emits_error(self, tmp_path, monkeypatch):
+    def test_missing_element_emits_error(self, isolated_projects_root):
         """Only O.psml is present; H is missing -> ERROR Issue."""
-        (tmp_path / "O.psml").write_text(_make_pdojo_psml("O"))
+        lib = isolated_projects_root
+        (lib / "O.psml").write_text(_make_pdojo_psml("O"))
         from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.validation import validate
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(tmp_path)))
+                           SiestaConfig(psml_lib=str(lib)))
         h_issues = [i for i in issues
                     if i.where == "config.psml_lib.H"]
         assert h_issues
         assert h_issues[0].severity == "error"
         assert "no .psml file for H" in h_issues[0].message
 
-    def test_xc_family_mismatch_emits_error(self, tmp_path, monkeypatch):
+    def test_xc_family_mismatch_emits_error(self, isolated_projects_root):
         """Pseudos are LDA but the calc requests PBE -> an XC-FAMILY
         mismatch, which is never physically correct (silently wrong bond
         lengths).  ERROR per element so it BLOCKS emission."""
+        lib = isolated_projects_root
         # libxc id 1 = XC_LDA_X
         for el in ("O", "H"):
-            (tmp_path / f"{el}.psml").write_text(
+            (lib / f"{el}.psml").write_text(
                 _make_pdojo_psml(el, libxc_id_x=1, libxc_id_c=9))
         from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.validation import validate
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(tmp_path),
+                           SiestaConfig(psml_lib=str(lib),
                                           xc_authors="PBE"))
         mismatch_issues = [i for i in issues
                            if "psml" in i.where.lower()

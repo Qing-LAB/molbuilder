@@ -4,7 +4,7 @@
 **Module**: the ONE comparison between what a deck was rendered for and the
 launch it is about to get, plus the ONE wording of why a mismatch matters.
 **Callers**: `jobset/submit`'s launch planning (the refusal, M5's *"`submit`
-decides nothing … refuses if they do not"*), `jobset/prep.prep_stage`
+decides nothing … refuses if they do not"*), `jobset/prep.plan_stage`
 (the warning at `prep`, where changing your mind is still cheap -- each door
 shows it from the entry's answer), and `jobset/submit`'s per-trial
 gate calling :func:`check_trial_starts_cold` (the door VERIFIES the
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
 
-from ..identity import checkpoint_words
+from ..identity import checkpoint_words, way_back_words
 
 
 @dataclass(frozen=True)
@@ -85,8 +85,8 @@ def launch_agreement(job_dir, job, *, text=None) -> LaunchAgreement:
         if not deck.is_file():
             return LaunchAgreement("silent")
         text = deck.read_text(encoding="utf-8", errors="replace")
-    from ..script_emit import _extract_bench_marks_dict
-    marks = _extract_bench_marks_dict(text)
+    from ..script_emit import read_bench_marks_block
+    marks = read_bench_marks_block(text)
     if not marks or "mpi_np" not in marks:
         # A deck with no BENCH-MARKS block says nothing about its launch, so
         # there is nothing to disagree with.  The check is an agreement between
@@ -100,20 +100,22 @@ def launch_agreement(job_dir, job, *, text=None) -> LaunchAgreement:
                            rendered_for, launching_at)
 
 
-def disagreement_note(a: LaunchAgreement, folder) -> str:
+def disagreement_note(a: LaunchAgreement, folder, *, bench: bool) -> str:
     """The ONE wording of why a mismatch matters and what to do — embedded
     by the `prep` warning and the `launch` refusal alike, so the two
-    surfaces cannot drift into explaining one fact two ways."""
+    surfaces cannot drift into explaining one fact two ways.  The way back
+    is a task stage's (`identity.way_back_words`), or a benchmark's
+    (``bench``): the state saved before its prep."""
+    redo = (_bench_anew(folder) if bench else
+            way_back_words(None) + " -- " + checkpoint_words(folder) + ".")
     return ("a deck derives values from the rank count -- BlockSize above "
             "all -- so one rendered for a different launch is wrong for "
             "this one (project-layout.md § 2.3.1: a parameter that depends "
             "on the launch cannot be decided before the launch is known).  "
-            f"A prepared stage is not prepared again (job-system.md § 5.0): go "
-            f"back to the state saved before its prep -- "
-            f"{checkpoint_words(folder)} -- and prep it anew "
-            f"for the width it will launch at ({a.launch_text}); `prep` "
-            f"renders the deck and the launch together (`--np`, or the run "
-            f"card's `mpi_np`), and `launch` takes no width of its own.")
+            f"`prep` renders the deck and the launch together (`--np`, or "
+            f"the run card's `mpi_np`), and `launch` takes no width of its "
+            f"own: for the width it will launch at ({a.launch_text}), "
+            + redo)
 
 
 class DeckLaunchMismatch(Exception):
@@ -123,8 +125,9 @@ class DeckLaunchMismatch(Exception):
     `launch` at all."""
 
 
-def check_launch_matches_deck(job_dir, job) -> None:
-    """Refuse a launch the deck was not rendered for (P6 unit 2).
+def check_launch_matches_deck(job_dir, job, *, bench: bool) -> None:
+    """Refuse a launch the deck was not rendered for (P6 unit 2) -- a task
+    stage's, or a benchmark trial's (``bench``), whose ways back differ.
 
     Three outcomes:
 
@@ -145,7 +148,7 @@ def check_launch_matches_deck(job_dir, job) -> None:
         f"job {job.name!r}: this deck ({deck}) was rendered for mpi_np "
         f"{a.rendered_text}, and you are launching it at "
         f"{a.launch_text}.\n  " + disagreement_note(
-            a, _calculation_of(job_dir)) + "\n"
+            a, _calculation_of(job_dir), bench=bench) + "\n"
         "  The deck records what it assumed in its BENCH-MARKS block, "
         "which is what made this checkable.")
 
@@ -200,30 +203,19 @@ def check_trial_starts_cold(job_dir, job) -> None:
         # whether an EXISTING deck would warm-start.
         return
     text = deck.read_text(encoding="utf-8", errors="replace")
-    # One deck reader: `parse/fdf.py`, which reads `MD_UseSaveXV` /
-    # `MD-UseSaveXV` as `MD.UseSaveXV`, as fdf does.
-    from ..parse.fdf import _parse_fdf
-    scalars, _blocks = _parse_fdf(text)
-    saves = [(k, v[0]) for k, v in scalars.items() if "usesave" in k and v]
+    # THE RESTART GROUP, as the catalogue spells it (`[item.restart]
+    # .expands`), read off the deck by the one door (`script_emit.
+    # deck_values`) and each switch as fdf reads one (`parse.fdf.fdf_true`).
+    from ..parse.fdf import fdf_true
+    from ..script_emit import deck_values
+    saves = deck_values("restart", "siesta", text)
     if not saves:
         raise DeckLaunchMismatch(
             f"trial {job.name!r}: {deck.name} carries no restart group at "
             f"all, so its cold start cannot be vouched for (prep always "
             f"writes the clean group).  " + _bench_anew(_calculation_of(job_dir)))
-    warm = [k for k, v in saves
-            if v.strip().lower().strip(".") in ("t", "true", "yes", "1")]
-    # NAME THE DECK'S OWN SPELLING, not the normalised key.  `_parse_fdf`
-    # squashes `MD.UseSaveXV` to `mdusesavexv`, and the remedy is "go find
-    # that line" -- so the message says what is written there.  Falls back to
-    # the normalised key if the line cannot be recovered.
+    warm = [k for k, v in saves.items() if fdf_true(str(v).split())]
     if warm:
-        from ..parse.fdf import _norm
-        spelled = {}
-        for line in text.splitlines():
-            tok = line.split("#", 1)[0].split()
-            if tok and _norm(tok[0]) in warm:
-                spelled.setdefault(_norm(tok[0]), tok[0])
-        warm = [spelled.get(k, k) for k in warm]
         raise DeckLaunchMismatch(
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "

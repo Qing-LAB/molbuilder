@@ -24,7 +24,6 @@
     /* ---- Borders ---- */
     --border-strong: #3a3f48;
     --border-soft:   #2c313a;
-    --border-dashed: #2c313a;
 
     /* ---- Text ---- */
     --text-primary:   #e6e9ef;
@@ -91,7 +90,6 @@
     /* ---- Layout ---- */
     --radius:        7px;
     --radius-sm:     4px;
-    --radius-lg:     10px;
     --gap:           var(--space-md);  /* legacy alias — follows the grid */
     /* The rail beside a page's main column (`.page-aside`,
      * form-components.css) -- Task setup's and the Transport tab's. */
@@ -175,8 +173,6 @@
     --ps-accent-fg:       #cfe0fb;   /* bright text on dark sidebar */
     --ps-danger:          #5a1f1f;
     --ps-danger-fg:       #e07a7a;
-    --ps-warn-bg:         #5d4520;
-    --ps-warn-fg:         #ffdca7;
     /* Checkpoint sensor states + git-ref chips: semantic palette for the
        projects-sidebar checkpoint UI. */
     --ps-ck-clean-bg:       #2d4a2d;
@@ -194,6 +190,7 @@
     --ps-ck-restore-fg:     #e0a868;
     --ps-ref-tag-bg:        #7a5b2d;
     --ps-ref-branch-bg:     #2d4a5a;
+    --ps-graph-lane-5:      #4a2d4a;   /* the run-history graph's fifth lane */
     --ps-code-fg:           #88aacc;
     --ps-on-accent:         #ffffff;
 
@@ -235,7 +232,6 @@
     --surface-deep:      rgba(0, 0, 0, 0.18);      /* recessed well */
     --surface-recessed:  rgba(0, 0, 0, 0.20);
     --border-subtle:     rgba(255, 255, 255, 0.08);
-    --bg-panel:          #20242b;                  /* embed panel solid bg */
     --text-tertiary:     #7c7c7c;
     --radius-md:         8px;
     --font-sans:         system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -286,6 +282,7 @@
     --ts-opt-min:       16rem;   /* a shape option's flex basis */
     --ts-ask-label-w:   7.5rem;  /* the time/memory field's label column */
     --ts-cell-min:      5.5rem;  /* a stage-table cell */
+    --ts-runval-min:    12ch;    /* a run-card value's floor */
     --ts-ptadd-w:       5rem;    /* the add-a-point input */
     --ts-cmd-rule:      3px;     /* the command block's accent rule */
     --ts-pick-max:      22rem;   /* an add-a-parameter picker */
@@ -303,7 +300,6 @@
     /* --- Trajectory viewer (lib/trajectory/trajectory-inspector.css) --- */
     --traj-plot-h:      clamp(200px, 24vh, 260px); /* one of the plots row's charts */
     --traj-plot-min:    280px;    /* a plots-row cell's floor before it stacks */
-    --results-list-min: 280px;    /* the empty card's supported-files list, a column's floor */
     --traj-readout-w:   28px;     /* a force knob's value readout */
     --traj-force-scale-w: 7rem;   /* the arrow-scale slider */
     --traj-force-min-w: 4.5rem;   /* the smallest-force box: a number */
@@ -328,7 +324,9 @@
     /* --- Results tab (results/style.css) --- */
     --results-page-max: 1200px;   /* the plots row legible without wrapping */
     --results-host-min-h: 360px;  /* the viewer's host before a viewer mounts */
-    --results-source-max-h: 60vh; /* the source viewer before it scrolls */
+    --results-list-min: 280px;    /* the empty card's supported-files list, a column's floor */
+    /* --- The inspector card (lib/inspectors/inspector-card.css) --- */
+    --inspector-source-max-h: 60vh; /* the source viewer before it scrolls */
     /* --- Transport report (lib/inspectors/transport.css) --- */
     --tr-plot-h:        21.25rem; /* T(E), DOS and I-V: one chart's height */
     --tr-plot-half-h:   16rem;    /* the convergence pair, side by side */

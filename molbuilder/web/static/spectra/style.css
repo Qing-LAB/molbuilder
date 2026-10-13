@@ -1,7 +1,8 @@
 /* molbuilder Spectra-tab styles -- the /spectra PAGE sheet ONLY.
  *
- * Page chrome: header, the .card column container, the page's bare form
- * controls, the .is-locked form fade and the .status base.
+ * Composition only: the banner's padding, the action row's margin, the
+ * .is-locked form fade and the room the .status line keeps.  The generic
+ * controls are page-shell's.
  *
  * The spectra-INSPECTOR component classes (.spectra-section / .spectra-section-header /
  * .modes-table / .spectrum-chart / .mode-viewer / .spectra-phase-indicator / .es-* /
@@ -22,17 +23,14 @@
 
 html, body { height: 100%; }
 
-/* The canonical body rules live in lib/page-shell.css.  Header rules
- * below stay per-page (the spectra page uses different padding + border
- * treatment than the shared default).  Scoped to the banner's own class:
- * a bare ``header`` would also dress every ``<header class="spectra-section-header">``
- * on the page. */
+/* The canonical body and banner rules live in lib/page-shell.css; this page
+ * says only how much room its banner takes.  Scoped to the banner's own
+ * class: a bare ``header`` would also dress every ``<header
+ * class="spectra-section-header">`` on the page. */
 
 .app-header {
     padding: var(--space-lg2) var(--space-xl) var(--space-md);
-    border-bottom: 1px solid var(--border-soft);
 }
-.app-header h1 { margin: 0; }
 .app-header .tagline {
     /* COMPOSITION ONLY (`ui-contract.md` § 5): only the tighter top margin
        is this page's own. */
@@ -45,52 +43,12 @@ html, body { height: 100%; }
  * /structure-optimization tab (the user's reference design).
  * `.card` is the shell's (`lib/page-shell.css`). */
 
-textarea, input[type="text"], input[type="file"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    padding: var(--space-sm) var(--space-sm2);
-    font-size: var(--text-sm);
-}
-textarea {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    resize: vertical;
-    min-height: 96px;
-}
-textarea:focus, input[type="text"]:focus, input[type="file"]:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-input-focus);
-}
-
-button {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    padding: var(--space-sm) var(--space-md);
-    font-size: var(--text-sm);
-    cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
-}
-button:hover { background: var(--bg-input-focus); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
-/* `button.primary` styling lives in lib/form-components.css. */
-button > code {
-    background: transparent;
-    padding: 0;
-    color: inherit;
-    font-size: 0.92em;
-}
-
 .primary-actions { margin-top: var(--space-sm); }
 
 .status {
     /* COMPOSITION ONLY (`ui-contract.md` § 5): reserving the line is this
        page's to say. */
-    min-height: 1.1em;
+    min-height: 1lh;            /* one line, at its own line height */
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
  * page-shell.css (`web/ui-contract.md` § 1.1). */

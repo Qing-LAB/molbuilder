@@ -12,7 +12,6 @@ memory, spelled as a person types them.
 """
 from __future__ import annotations
 
-import json
 
 import pytest
 
@@ -26,7 +25,7 @@ _BASE = {
     "run": {"name": "JOB", "id": "JOB_H2"},
     "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
     "varies": [],
-    "stages": [{"name": "coarse", "enabled": True, "overrides": {}}],
+    "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
 }
 
 

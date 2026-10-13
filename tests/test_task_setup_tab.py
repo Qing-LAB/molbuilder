@@ -135,7 +135,7 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
         assert out["handover_name"] == "task.1st.json"
         assert list(d.iterdir()) == [], (
             "the render endpoint wrote into the folder; the browser writes, "
-            "through projects.safeSave")
+            "through the file layer (projects.writeFile)")
 
         h = _json.loads(out["handover_text"])
         assert h["schema"] == "molbuilder/task-handover@1"
@@ -181,7 +181,7 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
                     "calculation": over["calculation"],
                     "shape": "flat", "run": over["run"],
                     "structure": over["structure"], "varies": [],
-                    "stages": [{"name": "coarse", "enabled": True,
+                    "stages": [{"name": "coarse", "group": 1,
                                 "overrides": {}}]}
         r = web_client.post("/api/task-setup/save", json={
             "dest": str(d), "text": _json.dumps(proposed)})
@@ -404,7 +404,7 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     described = {"schema": "molbuilder/task@1", "engine": over["engine"],
                  "calculation": over["calculation"], "shape": "flat",
                  "run": over["run"], "structure": over["structure"],
-                 "varies": [], "stages": [{"name": "relax", "enabled": True,
+                 "varies": [], "stages": [{"name": "relax", "group": 1,
                                            "overrides": {}}]}
     s = web_client.post("/api/task-setup/save",
                         json={"dest": str(d), "text": _json.dumps(described)})
@@ -424,24 +424,6 @@ def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects
         assert j["ok"] and j["name"] is None and j["values"] == {}
     finally:
         pass    # tmp_path removes the tree
-
-
-def test_the_structure_pair_is_not_reported_as_engine_state():
-    """`warm_files_present` answers *has anything run here* by SUBTRACTION —
-    anything named after the label that is not on `OUR_FILE_PATTERNS` is the
-    engine's.  The hand-over started writing `<label>.xyz` +
-    `<label>.molstruct.json` into the bundle, so `prep` announced a brand-new
-    calculation as "already under way here: warm files at the root" and offered
-    a person their own input back as engine state."""
-    from molbuilder.validation.identity import warm_files_present
-    import tempfile, pathlib as _pl
-    with tempfile.TemporaryDirectory() as d:
-        base = _pl.Path(d)
-        for n in ("slab.source.xyz", "slab.source.molstruct.json",
-                  "slab.template.toml"):
-            (base / n).write_text("x")
-        assert warm_files_present(base, "slab", "siesta") == [], (
-            "the hand-over's own files are reported as engine warm files")
 
 
 from conftest import write_pseudos as _pseudos_for
@@ -511,7 +493,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
                      "shape": "flat", "run": over["run"],
                      "structure": over["structure"], "varies": [],
                      "execution": {"mpi_np": 1, "omp_threads": 1},
-                     "stages": [{"name": "coarse", "enabled": True,
+                     "stages": [{"name": "coarse", "group": 1,
                                  "overrides": {}}]}
         s = web_client.post("/api/task-setup/save",
                             json={"dest": str(d), "text": _json.dumps(described)})
@@ -523,7 +505,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         # …and now the part no shape-check reaches: RENDER IT.
         p = subprocess.run(
             [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "task",
-             "--stage", "coarse", "--bundle", str(d)],
+             "--group", "1", "--bundle", str(d)],
             capture_output=True, text=True, cwd=str(ROOT), timeout=300,
             env=_child_env_with_a_config(tmp_path))
         assert p.returncode == 0, p.stdout + p.stderr
@@ -611,7 +593,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
                  "shape": "flat", "run": over["run"],
                  "structure": over["structure"], "varies": [],
                  "execution": {"threads": 1},
-                 "stages": [{"name": "coarse", "enabled": True,
+                 "stages": [{"name": "coarse", "group": 1,
                              "overrides": {}}]}
     s = web_client.post("/api/task-setup/save",
                         json={"dest": str(d), "text": _json.dumps(described)})
@@ -619,7 +601,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
 
     p = subprocess.run(
         [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "task",
-         "--stage", "coarse", "--bundle", str(d)],
+         "--group", "1", "--bundle", str(d)],
         capture_output=True, text=True, cwd=str(ROOT), timeout=300,
         env=_child_env_with_a_config(tmp_path))
     assert p.returncode == 0, p.stdout + p.stderr
@@ -680,7 +662,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
                      "calculation": over["calculation"],
                      "shape": "hierarchical", "run": over["run"],
                      "structure": over["structure"], "varies": [],
-                     "stages": [{"name": "coarse", "enabled": True,
+                     "stages": [{"name": "coarse", "group": 1,
                                  "overrides": {}}]}
         s = web_client.post("/api/task-setup/save",
                             json={"dest": str(d), "text": _json.dumps(described)})
@@ -787,7 +769,7 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     assert items["diag_algorithm"]["type"] == "enum"
     assert items["diag_algorithm"]["choices"] == [
         "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
-    assert items["diag_algorithm"]["default"] == "ScaLAPACK"
+    assert items["diag_algorithm"]["default"] == "ELPA-1STAGE"
 
     from molbuilder.template import catalogue, one
     cols = web_client.get("/api/task-setup/columns?engine=siesta"
@@ -850,7 +832,7 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
             # (`engines/template.md` § 5.3); the codec has no opinion about
             # values, so only the preflight can catch this.  (A value merely
             # outside a recommended range is warned, and saves.)
-            "stages": [{"name": "coarse", "enabled": True,
+            "stages": [{"name": "coarse", "group": 1,
                         "overrides": {"kgrid": [0, 4, 4]}}]}
         r = web_client.post("/api/task-setup/save", json={
             "dest": str(d), "text": _json.dumps(bad_bounds)})

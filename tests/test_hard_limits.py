@@ -89,7 +89,7 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
                 "created": "2026-09-30T00:00:00-07:00"},
         "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
         "varies": ["kgrid", "mesh_cutoff"],
-        "stages": [{"name": "coarse", "enabled": True,
+        "stages": [{"name": "coarse", "group": 1,
                     "overrides": {"mesh_cutoff": 2000.0,
                                   "kgrid": [100, 1, 1]}}]}
     r = web_client.post("/api/task-setup/save", json={
@@ -135,7 +135,7 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
                 "created": "2026-09-30T00:00:00-07:00"},
         "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
         "varies": [],
-        "stages": [{"name": "coarse", "enabled": True, "overrides": {}}]}
+        "stages": [{"name": "coarse", "group": 1, "overrides": {}}]}
 
     def save(**change):
         described = json.loads(json.dumps(base))

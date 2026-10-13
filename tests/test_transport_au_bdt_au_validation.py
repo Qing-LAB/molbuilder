@@ -267,7 +267,7 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
 
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.structure import Structure
-    from molbuilder.parse.fdf import _parse_fdf
+    from molbuilder.parse.fdf import read_fdf
     from molbuilder import script_emit as _sc
     from molbuilder.siesta.input import spec_for
 
@@ -287,7 +287,7 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
                     names=RunNames.of("asym", "04_device", "hierarchical"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
-    _scalars, blocks = _parse_fdf(deck)
+    _scalars, blocks = read_fdf(deck)
     elec = {k: rows for k, rows in blocks.items()
             if k.startswith("tselec") and k != "tselecs"}
     assert len(elec) == 2, f"expected two electrode blocks, got {sorted(elec)}"
@@ -308,9 +308,9 @@ def test_the_device_deck_states_its_identity_and_method():
     the emitter's column spacing is not part of the contract.
     """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.parse.fdf import _parse_fdf
+    from molbuilder.parse.fdf import read_fdf
     cfg = SiestaConfig(system_label="au_bdt_au_test")
-    scalars, _blocks = _parse_fdf(_live_device_deck(cfg.system_label))
+    scalars, _blocks = read_fdf(_live_device_deck(cfg.system_label))
     assert scalars.get("systemlabel") == [cfg.system_label]
     # `SolutionMethod` switches the SCF to NEGF; `TS.SolutionMethod` is how
     # the Green's function is inverted -- 5.4.2 stops on `transiesta` there
@@ -323,9 +323,9 @@ def test_the_transmission_window_carries_the_configured_point_count():
     """TBtrans' contour window is a BLOCK, and its ``points`` row must be the
     value the config asks for -- compared against the config, not a literal."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.parse.fdf import _parse_fdf
+    from molbuilder.parse.fdf import read_fdf
     cfg = SiestaConfig(system_label="au_bdt_au_test")
-    _scalars, blocks = _parse_fdf(_live_device_deck(cfg.system_label,
+    _scalars, blocks = read_fdf(_live_device_deck(cfg.system_label,
                                                     rung="transmission"))
     window = blocks.get("tbtcontourwindow")
     assert window, "no %block TBT.Contour.window in the transmission deck"

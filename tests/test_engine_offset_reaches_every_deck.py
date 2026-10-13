@@ -13,6 +13,8 @@ then `jobset prep task`, then the deck on disk.  Per engine:
 """
 from __future__ import annotations
 
+from support.road import group_words
+
 import ast
 import json
 import re
@@ -107,7 +109,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     if before_prep is not None:
         before_prep(dest)
     stage = stage or stages[0].name
-    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", stage, "--bundle",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", *group_words(dest, stage), "--bundle",
                                           str(dest), "--no-sbatch"])
     if refused:
         assert r.exit_code != 0, r.output

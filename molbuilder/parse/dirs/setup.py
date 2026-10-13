@@ -25,9 +25,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:                                           # pragma: no cover
     from .record import RunFiles
 
-#: fdf's and PySCF's spellings of a logical, one vocabulary.
-_TRUE = {"t", "true", ".true.", "yes", "y", "1"}
-_FALSE = {"f", "false", ".false.", "no", "n", "0"}
+#: A logical as either engine spells it: fdf's words (`parse.fdf`, libfdf's
+#: own) and the 1 / 0 a PySCF value reads back as.
+from ..fdf import FDF_FALSE_WORDS, FDF_TRUE_WORDS  # noqa: E402
+_TRUE = FDF_TRUE_WORDS | {"1"}
+_FALSE = FDF_FALSE_WORDS | {"0"}
 #: fdf prints a number to ten significant digits; two values that agree to
 #: that are one value.
 _REL_TOL = 1e-8
@@ -116,14 +118,14 @@ def _stage_role(f: "RunFiles") -> Optional[str]:
 def _used_from_fdf_log(keys, params, blocks) -> Any:
     """What SIESTA's log says it read for an item's keywords: the entry of
     the first keyword it read, or the block's rows."""
-    from ..fdf import _norm
+    from ..fdf import fdf_key
     for key in keys:
         if key.lower().startswith("%block"):
-            name = _norm(key[len("%block"):].strip())
+            name = fdf_key(key[len("%block"):].strip())
             if name in blocks:
                 return blocks[name]
             continue
-        entry = params.get(_norm(key))
+        entry = params.get(fdf_key(key))
         if entry is not None:
             return entry
     return None
@@ -147,7 +149,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     """``{"setup": {"rows", "engine_only"}, "verdict": {"findings"}}`` for the
     run ``f`` describes -- each part present only when a file states it."""
     from ... import script_emit as _sc
-    from ..fdf import _norm
+    from ..fdf import fdf_key
     from ..registry import parse as _parse
     from .record import _read
 
@@ -176,8 +178,8 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
         keys = tuple(p.writes)
         if f.engine == "siesta" and not keys:
             continue                   # no keyword: the launch's, not the deck's
-        written.update(_norm(k[len("%block"):].strip())
-                       if k.lower().startswith("%block") else _norm(k)
+        written.update(fdf_key(k[len("%block"):].strip())
+                       if k.lower().startswith("%block") else fdf_key(k)
                        for k in keys)
         if keys and keys in by_keys:           # items sharing one block
             by_keys[keys]["items"].append(it.name)

@@ -331,7 +331,7 @@ reference fact cannot tell apart the only two things that matter:
 Both read identically to every tool. Measured 2026-09-22: `stages.config_for`
 is ~90 lines implementing per-rung override bags with no production caller.
 That is equally consistent with *"per-rung overrides silently stopped applying"*.
-It was only settled as residue by reading `jobset/prep.py::_resolve_transport`
+It was only settled as residue by reading `jobset/transport_rung.py::resolve_transport`
 end to end and finding it does strictly more — provenance, and a refusal for a
 shared value posing as a per-stage override — plus `d6f0218d`'s message saying
 the projection was deliberately retired.

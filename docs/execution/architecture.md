@@ -217,10 +217,10 @@ note records the deletion.)*
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `ref` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `Ref` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers | know what a calculation is — a stage, a ladder, a plan |
+| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `ref` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `Ref` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers | know what a calculation is — a stage, a ladder, a plan |
 | **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template` · `jobset/migrate` · `runs` | `read_task` · `write_task` · `find_template` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `folder_answer` | `task.json` · the template | **name a machine** |
-| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
-| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` | `stage_home` · `prepared_already` · `open_run` · `job_dir_names` · `paths.attempts_in` · `latest_attempt` · `continuation_answer` · `usable` | the folder tree; `run-<n>/` | know about a queue |
+| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/transport_rung` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
+| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` | `stage_home` · `open_run` · `hand_over` · `job_dir_names` · `paths.attempts_in` · `latest_attempt` · `continuation_answer` · `usable` · `gather_sources` · `task_state` · `readiness` · `job_of` · `first_launch_takes` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `launch_agreement` · `check_launch_matches_deck` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
 | **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `summarize` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s and `launch`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
@@ -246,12 +246,18 @@ assumed is that reach, and it once cost a real run.
 > rather than in it. **It may call, but it may never decide**: a value settled
 > inside `prep` is a value no floor owns, and that is the shape of the "stomp"
 > failures — an allocation re-applied over per-element resources floor 3 had
-> already resolved. **Only a surface may import it.** The sequence it walks is
+> already resolved. **Only a surface may import it — and launch, for its one
+> member planner** (`plan_stage`, quiet: a stage planned again as its prep
+> planned it, to compare, [`job-system.md`](?doc=execution/job-system.md)
+> § 9.1); the gather renders a rung's deck now through prep's own assembly
+> (`prep_inputs.run_inputs`). The sequence it walks is
 > [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.
 > Beside it sit its own assembly (`jobset/prep_inputs.py`, what a prep
-> receives — A12) and its one entry (`prep_stage`, which both prep doors call
-> and which appends the verb's decisions to the ledger); a surface imports
-> them as it imports the conductor.
+> receives — A12) and its entries (`prep_task` and `prep_bench`, which both
+> prep doors call and which append the verb's decisions to the ledger;
+> `plan_stage` the one member planner both entries — and launch, quiet —
+> ask, [`job-system.md`](?doc=execution/job-system.md) § 9.1); a surface
+> imports them as it imports the conductor.
 >
 > **`launch` has an entry of its own, built the same way** *(W55 B5,
 > 2026-10-03)*: it plans every submission with nothing sent, the surface shows
@@ -295,7 +301,7 @@ classDiagram
     }
     class Stage {
       +str name
-      +bool enabled
+      +int group
       +Mapping overrides
     }
     class JobSet {
@@ -312,6 +318,9 @@ classDiagram
       +Resources resources
       +list warm
       +dict traits
+      +list members
+      +str written_at
+      +dict asked
     }
     class WarmFile {
       +str name
@@ -325,9 +334,15 @@ classDiagram
       +str stage
       +Path dir
       +bool fresh
-      +list linked
-      +list copied
-      +str continued_from
+      +list brought
+      +HandOver hand
+    }
+    class HandOver {
+      +Path target
+      +str record
+      +tuple files
+      +RunRef source
+      +bool walk
     }
     class LaunchAgreement {
       +int ranks
@@ -344,6 +359,7 @@ classDiagram
     StageStatus --> StageRef : carries
     Task ..> JobSet : floor 3 turns one into the other
     JobSet ..> Attempt : floor 4 lays it out
+    Attempt *-- HandOver : what it takes from other runs
     Attempt ..> LaunchAgreement : floor 5 checks before starting
 ```
 
@@ -363,7 +379,7 @@ classDiagram
 | **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold, linked), what that run was, **and the files it carries** | `continuation_answer` |
 | **`Placement`** | 3 | *where does this job go, and what does it ask?* — queue, wall, memory, ranks, cores, GPUs, each with its source, admitted against the target's record | `placement` |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `open_run` — the one opener of a run folder (a stage's attempt, a trial's, a bias point's) |
-| **`Plan`** | the prep entry's | *what will this prep write?* — every file's text and every folder, decided with nothing written, then written in order by `Plan.carry_out` after the save | `jobset/planned.py` — made by `prep_stage`, filled by `prep_calculation` |
+| **`Plan`** | the prep entry's | *what will this prep write?* — every file's text and every folder, decided with nothing written, then written in order by `Plan.carry_out` after the save | `jobset/planned.py` — made by the prep entry (`prep_task`, `prep_bench`), filled by `prep_calculation` through `plan_stage` |
 | **`LaunchPlan`** | the launch entry's | *what will this launch send?* — every submission, its members, their attempts and the exact lines | `plan_launch` |
 | **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` (`jobset/agreement.py` — its own floor-5 module since 2026-08-12, so `prep` and `submit` both import it downward and neither imports the other) |
 | **`StageStatus` / `JobSetStatus`** | 6 | *where has this got to?* | `jobset_status` |
@@ -432,12 +448,12 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | the fact | its door | floor | every reader asks it — among them |
 |---|---|---|---|
 | **a stage's number and folder** | `stage_home(base, task, stage)` — the number on disk for a stage that has a folder (its directory in the hierarchy, its deck's token in the flat shape); the next unused for one that has none ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | 4 | prep, launch, status, `#N`, what a stage continues from, the transport record, the displacement sweep, a benchmark's folder, Task setup |
-| **prepared** | `prepared_already(base, task, kind, stage)` — the plan holds the stage's row, or its bench folder a sweep, matched by `identity.stage_key` *(called* prepped *until 2026-10-08)* | 4 | prep's gate, launch's gate, status, the plan's merge, Task setup's folder answer, its Save, its commands |
-| **ready** | `jobset.ready.readiness(base, task, stage)` → `Readiness`: prepared, or ready with what it would take (its `Continuation`'s line, or each file a transport rung gathers), or waiting with the refusal saying what for — the one door that decides what a stage takes (`continuation_answer`, `gather_sources`), asked of a stage not yet prepared ([`job-system.md`](?doc=execution/job-system.md), *The task*) | 4 | `prep task`'s offer and its check, status's table and next step, Task setup's Prep |
+| **prepared** | a stage: `ready.job_of(base, stage)` — its row in the plan (`JobSet.job`, matched by `identity.stage_key`); a benchmark: `prepared_already(base, task, "bench", stage)` — its bench folder holds a sweep | 4 | prep's gate, launch's gate, status, the plan's merge, Task setup's folder answer, its Save, its commands |
+| **ready** | `jobset.ready.readiness(base, task, stage)` → `Readiness`: for a prepared stage not launched, **ready to launch** with what its launch would take (its `Continuation`'s line, or each file a transport rung gathers), or **waits for** with the refusal saying what for — the one door that decides what a stage takes (`continuation_answer`, `gather_sources`), asked by launch at a first launch; for a stage not prepared, preparable — a force-constant stage only once `relax` has finished ([`job-system.md`](?doc=execution/job-system.md), *The task*) | 4 | launch's gate and its offer, `prep task`'s offer, status's table and next step, Task setup's Prep and its group tabs |
 | **launched** | `launch_record(run)` — the run's `run.json` (a flat stage's run's own `<stem>-run<N>.run.json`, the stage's newest run when no number is asked; one with no number, written before 2026-10-06, refused naming `jobset migrate`); one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, every launch gate, the transport citation |
 | **how a run ended** | `ending(run)` — the run's own conclusion marker, which carries the exit code; nothing else answers — the engine's own end mark says the engine ended, not the job *(it answered for a run started by hand until 2026-10-03)* | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, a re-launch's plan, the transport record, a benchmark's trials, the viewers through the server |
 | **a run to build on** | `usable(state)` — the one status door says it **finished**: it ended on its own with exit code 0 and nothing in its output says the engine stopped (`parse.dirs.run_status`, the door `status` asks; user, 2026-10-06); the default of every hand-over, while a run named with `--from` is taken as said and a structure can be stated relaxed ([`job-system.md`](?doc=execution/job-system.md) § 5.4) | 4 | every hand-over by default: a continuing stage, the frequency stage's geometry, a transport rung's inputs |
-| **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, the files it carries included | 4 | prep — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
+| **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, the files it carries included | 4 | a first launch — checked, written and ledgered as one object — a force-constant stage's prep, a re-launch, status, Task setup's *Continue from* |
 | **a stage launched again** | `relaunch(..., cold=)` → `Continuation` or `None` — warm, its own latest run, however it ended, when it continues from a run of its own (`Job.relaunch_continues`: its kind resumes and it takes something from a run); cold, or a stage that takes nothing, `None` | 4 | launch — opened, written and ledgered as prep's hand-over is — and status, which words what launching again will do from the same fact ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 3 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |
 | **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, launch and its queue table, a benchmark's trials and their report, the Task setup card |
@@ -446,7 +462,7 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **the template** | `find_template(base, label)` — the one template, named for the label, or refused by name | 2 | prep, the preflight, continuation, the run inputs, Task setup, transport |
 | **the shape** | `Shape.named(task.shape)` — asked, never inferred from what is on disk | 1 | every reader of the layout |
 | **the description** | `read_task(path)` → `Task` — `task.json` read whole, its schema checked; one that does not read is an error naming the file. Nothing else opens `task.json`: a reader that wants one field reads the `Task` *(B14, user, 2026-10-04: "addressed by unified api call")* | 2 | every verb; the run door (a calculation's shape, its kind, its label); the Results tab's folder answer; Task setup's folder answer |
-| **the run a file belongs to, and its files** | `run_of(path)` → `Run` — the folder's place (`calcdir.json`, or the description at a root), the description (`read_task`), the label molbuilder's files are named on (the description's; a benchmark trial's `<label>-<point>`, `paths.trial_label`), the stage — the one its folder's path names, else the one a reader asks about in a folder several stages share (`run_of(path, stage)`, a flat calculation's) — and the run index; its files read back with that label through `runfiles`: one by role (`Run.file(role, run)`), its deck (`Run.deck`), the folder prep wrote its files in — its folder with the `run-<n>` level taken out: the stage's, or a bias point's within it; a flat run's and a benchmark trial's own folder (`Run.prepared`, since 2026-10-11) — and there the stage's deck (`Run.stage_deck`) and the check written beside it (`Run.report`, the `.validation.txt` — none once a re-prep has written a deck there that is another calculation), a carried file — named on its label with no stage token, SIESTA's `.XV` — (`Run.carried(role)`), its engine output at its run index (`Run.stdout`), every output of its stage newest run first (`Run.outputs`), its session log — the one whose first section is its run (`Run.session_log`). A reader takes a run's files at its one run index, so what it reports never mixes two runs. **A folder speaks for one run**: the highest stage launched — its launch record, or files carrying a run index — then that stage's newest run index; a file's time decides nothing. A folder with neither `calcdir.json` nor `task.json` above it holds no run of ours. What a file is — its catalogue row, or *not written by molbuilder* — is `about(path)`, on the same door *(B11)* | 2 | the Results tab's folder answer and its file card, the run record, the viewers' loads and run answer, the structure reader (an engine's own `.xyz`), `summarize` (a benchmark trial's figures), the transport record, prep (the geometry a relaxation left), continuation (what a run concluded), `xv2xyz`, the transport citation (a cited run's folder) -- status and launch's re-launch ask a run's state by the stem they compose (`run_status`, `ending`) |
+| **the run a file belongs to, and its files** | `run_of(path)` → `Run` — the folder's place (`calcdir.json`, or the description at a root), the description (`read_task`), the label molbuilder's files are named on (the description's; a benchmark trial's `<label>-<point>`, `paths.trial_label`), the stage — the one its folder's path names, else the one a reader asks about in a folder several stages share (`run_of(path, stage)`, a flat calculation's) — and the run index; its files read back with that label through `runfiles`: one by role (`Run.file(role, run)`), its deck (`Run.deck`), the folder prep wrote its files in — its folder with the `run-<n>` level taken out: the stage's, or a bias point's within it; a flat run's and a benchmark trial's own folder (`Run.prepared`, since 2026-10-11) — and there the stage's deck (`Run.stage_deck`) and the check written beside it (`Run.report`, the `.validation.txt` — none once a re-prep has written a deck there that is another calculation), a file named on its label alone, as an engine names its own and a run its result — SIESTA's `.FC` and `.ORB_INDX`, a vibration's `.spectra.json` — (`Run.on_label(role)`), its engine output at its run index (`Run.stdout`), every output of its stage newest run first (`Run.outputs`), its session log — the one whose first section is its run (`Run.session_log`). A reader takes a run's files at its one run index, so what it reports never mixes two runs. **A folder speaks for one run**: the highest stage launched, by its launch records — none launched, the folder's one stage with a deck — then that stage's newest run, by one rule (`runrecord.newest_run`): where a stage's runs share the folder, its newest launched run, by its launch records; in a folder of the run's own, its newest try, the highest index its files reached. A file's time decides nothing. A folder with neither `calcdir.json` nor `task.json` above it holds no run of ours. What a file is — its catalogue row, or *not written by molbuilder* — is `about(path)`, on the same door *(B11)* | 2 | the Results tab's folder answer and its file card, the run record, the viewers' loads and run answer, the structure reader (an engine's own `.xyz`), `summarize` (a benchmark trial's figures), the transport record, prep (the geometry a relaxation left), continuation (what a run concluded), `xv2xyz`, the transport citation (a cited run's folder) -- status and launch's re-launch ask a run's state by the stem they compose (`run_status`, `ending`) |
 | **what a run declared about its atoms** | `declared(run)` → `Declared` — from the run's own deck (`Run.deck`): its `atom-metadata` block (held atoms, regions, annotations), its `engine-offset` record (the axis kinds, the cell its atoms were placed in), its stated parameters. The calculation's structure pair is reached only through the description; nothing is looked for beside an output by its name *(B12; D19 is its first reader)* | 2 | `view_of` (below), the codec reading an engine's own structure file (`model/structure-periodicity.md` § 6.0) |
 | **what a run says about the structure it ran on** | `view_of(run, output=, traj=, n_atoms=, lattice=)` → `RunView` — three sources, one question: the labels and held atoms its deck declared for a structure of `n_atoms` (`Declared.atom_metadata_for`), the box from its output's `lattice` or its deck's record (`Declared.frame`), and what it says about itself, `info.calculation` and `info.relaxation` (`parse.dirs.run_info` of its deck and `output`); `RunView.structure(elements, positions)` makes one geometry step of the run a `Structure` with all of it. A file no run of ours holds is viewed alone: its lattice and its own record | 2 | the Results trajectory's load (`/api/watch/load`), `xv2xyz --from-run`, the transport citation (a cited run: its result through `openable`, parsed by the registry, its last step viewed) |
 | **what molbuilder writes, and what each file is** | `runfiles.WRITTEN` — every file molbuilder writes into a calculation folder, one row each: its name (a role on the label, or a fixed name), where it sits in each shape, what it holds, who writes it and when, its door, its kind; the names a stage will have, per shape (`manifest`), and the glob family (`patterns`) are its readings. A fixed name's owner takes it from the catalogue *(B13)* | 1 | the Task setup card, the Results file card (through `about`), `--cold`'s sweep, [`project-layout.md`](?doc=execution/project-layout.md) § 5 — rendered from it |
@@ -526,10 +542,11 @@ before the launch is known.** The full dependency table, pair by pair, is
 
 ### 4.2 A worked example, in plain words
 
-You have looked at the coarse stage, you are happy with it, and you type:
+Both groups are prepared. You have looked at the coarse stage, you are happy
+with it, and you type:
 
 ```bash
-molbuilder jobset prep task --stage tight --from 01_coarse/run-0
+molbuilder jobset launch task --group 2 --from 01_coarse/run-0
 ```
 
 Here is what happens, and **who decides each thing**:
@@ -541,16 +558,17 @@ Here is what happens, and **who decides each thing**:
 | 1 | the machine's record is read — the calculation's own copy, or at its first prep the target's (`machine_for`); prep never probes | **1 · plain facts** | a fact about that machine, not about your calculation |
 | 3 | those two become a list of jobs | **3 · plan** | the only floor allowed to see both at once |
 | — | *"tight"* is turned into *which stage that is* | **1 · names** | so a name, a number and a token all reach the same stage |
-| 3 | the run script is written, with the environment baked in | **3 · render** | it is text rendered from decided values, like the deck |
+| 3 | what prep would write now is compared with what it wrote — the deck, the run script, the header, the job | **3 · render** | it is text rendered from decided values; an edit since prep must not run unsaid |
 | — | the deck is checked against the launch it will get | **5 · launch** | a deck built for 8 ranks must not be started at 32 |
-| 4 | `03_tight/run-1/` is made; coarse's geometry is **copied** in | **4 · layout** | where files sit is this floor's only job |
-| — | what was resolved is printed for you | **7 · surface** | so the next command is a plain yes |
+| — | what was resolved is printed for you, and asked | **7 · surface** | so the send is a plain yes |
+| — | the folder's state is saved — the group's first launch | **4 · layout** (the one save, `checkpoint.save_before`) | the state a redo of this group restores, coarse's runs in it |
+| 4 | `02_tight/run-0/`, which prep opened, is filled: coarse's geometry is **copied** in; then the job is sent | **4 · layout**, then **5 · launch** | where files sit is the layout's only job; sending is the launch's |
 
-**`prep` decided none of that.** It decided only **the order**. Every answer came
+**`launch` decided none of that.** It decided only **the order**. Every answer came
 from the floor that owns it, which is what makes it possible to change one answer
 without hunting through the others.
 
-**Why coarse's geometry is copied rather than linked** is
+**Why coarse's geometry is copied rather than linked, and at the launch** is
 [`project-layout.md § 1.6`](?doc=execution/project-layout.md), which owns that
 rule and the reasoning behind it. In one line: the engine writes to that very
 filename.
@@ -871,16 +889,15 @@ sequenceDiagram
     U->>B: describe the calculation
     B->>B: write task.json + the template + data files
     Note over B: names NO machine — this folder is portable
-    U->>P: scp to the cluster, then `jobset prep task --stage coarse`
-    P->>P: the five steps → 01_coarse/run-0/
-    U->>S: `jobset launch task --stage coarse --mode submit`
+    U->>P: scp to the cluster, then `jobset prep task --group 1 --group 2`
+    P->>P: the five steps → 01_coarse/run-0/, 02_tight/run-0/
+    U->>S: `jobset launch task --group 1 --mode submit`
     S-->>U: Submitted job 4021
     U->>O: `jobset status`
     O-->>U: coarse · finished · warm files: .XV .DM
     Note over U: YOU LOOK AT IT.<br/>Converged? Geometry sane?
-    U->>P: `jobset prep task --stage tight --from 01_coarse/run-0`
-    P->>P: copies coarse's .XV/.DM into 02_tight/run-0/
-    U->>S: `jobset launch task --stage tight --mode submit`
+    U->>S: `jobset launch task --group 2 --from 01_coarse/run-0 --mode submit`
+    Note over S: launch copies coarse's .XV/.DM into 02_tight/run-0/, then sends
 ```
 
 **The pause before the last three steps is the design, not a gap in it.** It is
@@ -928,7 +945,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `tests/data/launch_values.toml` — one prep's `.sbatch` header and `.run.sh` carry the same stated ranks and cores (*the header carries each stated value*) |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
 | **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | **review** (see the note under this table) — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
-| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing. For `prep` the whole verb is one entry, `jobset/prep.py::prep_stage` | the prep road through both doors — `tests/test_prep_from_the_browser.py` (one prep through each door: the same findings, attempt, agreement and ledger; the preview is the entry stopped before the save; the axis-less bench on both) and `tests/test_task_setup_prep_e2e.py` (the tab previews, then preps the plan it showed) |
+| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing. For `prep` the whole verb is one entry per kind, `jobset/prep.py::prep_task` and `prep_bench` | the prep road through both doors — `tests/test_prep_from_the_browser.py` (one prep through each door: the same findings, attempt, agreement and ledger; the preview is the entry stopped before the save; the axis-less bench on both) and `tests/test_task_setup_prep_e2e.py` (the tab previews, then preps the plan it showed) |
 | **A14** | **one composer for a run file's name.** `<label>[_<stage>][-run<N>]<role>` is built by `runfiles` and read back by `runfiles.parse`. No call site concatenates a name, spells a role, or invents a counter keyword — see `job-contracts.md` § 2.2a for which door to call | `test_runfile_names` — the generator over the product of its segments: round trip, and what each segment refuses |
 | **A15** | **one door per fact.** Each fact in § 3.2 is answered by its door alone; a reader asks it and never works the fact out from the files itself | **review**, and each door's case table — a disagreement found is a row of it |
 | **A13** | **a run shows its end point.** The launch values the run will be executed with are displayed as what it is launched with carries them — its header where a scheduler runs it, else its run script — read back by each writer's own reader, never re-derived by the surface; a value stated nowhere is the prep's refusal, never a blank | `test_bench_grid_card.py::test_a_run_preview_carries_its_header_line_for_line`, through the browser's door; `tests/test_task_setup_prep_e2e.py` on the page |
@@ -1002,13 +1019,14 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > it field by field, and there is no field-by-field merge onto nothing.
 >
 > **And the whole VERB is one entry** *(plan W38 F7, built 2026-09-29)*:
-> `jobset/prep.py::prep_stage` does everything a prep does — the preflight,
-> the plan, the save, the attempt, the transport carry, the launch
-> agreement, the ledger — and returns what it found and decided as data; the
+> `jobset/prep.py::prep_task` (and `prep_bench`) does everything a prep does — the preflight,
+> the plan, the save, the attempt, the launch agreement, the ledger — and returns what it found and decided as data; the
 > command line prints it, the Task setup tab shows it, its preview the same
 > answer stopped before the save ([`job-system.md`](?doc=execution/job-system.md)
 > § 5.0, § 5.3). *(Its *already under way* question was retired on
-> 2026-10-02: a prepared stage is not prepared again.)* A surface that did part of the act itself is how the tab came to
+> 2026-10-02: a launched stage is not prepared again; one never launched is
+> prepared again since 2026-10-11, and the transport carry is a first
+> launch's.)* A surface that did part of the act itself is how the tab came to
 > skip four of them. **The assembly lives beside the conductor**, as its own
 > (`jobset/prep_inputs.py`, § 2.1's note): `prep_run_inputs` and
 > `bench_inputs` sat in `jobset/_cli.py` — floor 7 — until the same day, so
@@ -1275,23 +1293,26 @@ side by side, with nothing edited between them.
 checkable against that:
 
 ```bash
-molbuilder jobset prep task --stage coarse --np 8 --cpus-per-task 1
+molbuilder jobset prep task --group 1 --group 2 --np 8 --cpus-per-task 1
 #   machine      8 cores · 1× RTX A4000 · no scheduler
 #   allocation   8 ranks
 #   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32, Diag.Algorithm ScaLAPACK
 #                                    (500 orbitals / 8 ranks = 62 -> 32, the pow2 below it)
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
-molbuilder jobset launch task --stage coarse --mode direct  # runs here; you wait
+#   02_tight/run-0/                  waits for: `tight` continues from the newest attempt of `coarse`,
+#                                    01_coarse/run-0, which has not been launched
+#                                    (at launch: takes its restart files from `coarse`'s newest run,
+#                                    which must have finished)
+molbuilder jobset launch task --group 1 --mode direct      # runs here; you wait
 molbuilder jobset status                                   # look before deciding
-molbuilder jobset prep task --stage tight --from 01_coarse/run-0 --np 8 --cpus-per-task 1
-molbuilder jobset launch task --stage tight --mode direct
+molbuilder jobset launch task --group 2 --from 01_coarse/run-0 --mode direct
 ```
 
 **On the cluster**, after `scp -r bdt-relax/ cluster:~/`, where the cluster's own
 record is the probe's:
 
 ```bash
-molbuilder jobset prep task --stage coarse --np 16 --cpus-per-task 1 --gpus 1 \
+molbuilder jobset prep task --group 1 --group 2 --np 16 --cpus-per-task 1 --gpus 1 \
                                     --domain public --time 2-00:00:00 --mem 64G
 #   machine      64 cores · 4× A100 · slurm
 #   allocation   16 ranks · 1 GPU        <- what THIS run asks for, not what the node has
@@ -1299,16 +1320,18 @@ molbuilder jobset prep task --stage coarse --np 16 --cpus-per-task 1 --gpus 1 \
 #                                    (500 orbitals / 16 ranks = 31 -> 16)
 #   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 16 -c 1 --gres=gpu:1
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
-molbuilder jobset launch task --stage coarse --mode submit  # Submitted job 4021
+#   02_tight/run-0/                  waits for: `tight` continues from the newest attempt of `coarse`,
+#                                    01_coarse/run-0, which has not been launched
+#                                    (at launch: takes its restart files from `coarse`'s newest run,
+#                                    which must have finished)
+molbuilder jobset launch task --group 1 --mode submit      # Submitted job 4021
 molbuilder jobset status                                   # look before deciding
-molbuilder jobset prep task --stage tight --from 01_coarse/run-0 --np 16 --cpus-per-task 1 --gpus 1 \
-                                    --domain public --time 2-00:00:00 --mem 64G
-molbuilder jobset launch task --stage tight --mode submit   # Submitted job 4022
+molbuilder jobset launch task --group 2 --from 01_coarse/run-0 --mode submit   # Submitted job 4022
 ```
 
 *(Stated once instead: the same values in the description — the ranks, cores
-and GPUs on the run card, the queue, wall and memory in `allocation` — and both
-preps take no flags.)*
+and GPUs on the run card, the queue, wall and memory in `allocation` — and the
+prep takes no flags.)*
 
 **The folder is the same; what you stated at prep is each machine's run**, and
 the printed report differs where floor 1 or your statement differs:

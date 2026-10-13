@@ -572,24 +572,26 @@ written twice: every tab already has a schema, so every tab gets this.
 ## 2. The object
 
 ```jsonc
-{ "name": "coarse",
+{ "name": "coarse", "group": 1,
   "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04 } }
 ```
 
-**Three fields, and no others.**
+**Four fields, and no others.**
 
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a SIESTA vibration's `Relax` is its relaxation); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
 | `overrides` | map | schema field name → that stage's value |
 | `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
+| `group` | whole number, from 1 | **the job this stage runs in**: the stages with one number are one job, prepared together and launched together ([`job-system.md`](?doc=execution/job-system.md), *The task*). The first stage is group 1; each later stage **repeats the number above it or adds one**, so the groups run in the ladder's order. A stage never shares a group with a stage it builds on — its continuation, a force-constant stage's `relax`, a transport rung's upstream — because a job runs its members one after another with nothing handed between them (§ 6.6). Required: every writer of a description states it — the defaults repeat the number above wherever that is allowed: the stage builds on none of that group, and its run card states what theirs do on what a job shares (`group.may_join`; else its prep refuses the group, R-P13) — a transport ladder 1 1 1 2 3, an optimization ladder 1 2 3, stages set `restart: clean` 1 1 1 — and a description without it is refused, naming `jobset migrate` |
 
 **There is no `enabled`** *(W38 F5, agreed 2026-09-27 — user: "remove on/off
 for optimization and vibration", "yes, drop the seed switch too")*. A
 stage is in the description or it is not. Removing one that left files leaves
 them untouched and keeps its number taken
 ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2); a transport
-ladder's seed is skipped by removing it. A description written before carries
+ladder keeps every rung, its seed among them — the leads and the device start
+from its density (user, 2026-10-12; `task.fixed_by_kind`). A description written before carries
 `"enabled": true` on every stage — read and ignored; `"enabled": false` is
 refused by name, saying to remove the stage instead. A shipped ladder's
 strategy writes the stages it runs; a tier it leaves out is added later from
@@ -611,6 +613,14 @@ why it is the calculation's (`template.why_shared`; ES1 for the state: every run
 `.DM` or `.chk` is a density for one electronic state); a fixed one, saying why
 it is not a choice (`template.why_role`) — and the same refusal meets a pin or a
 sweep axis naming it (`template.md` § 6.4).
+
+**`group` is the stage's, and it says nothing about what a run computes.**
+The stages of one group share one allocation
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6 lists what
+that holds), so each member's `execution` states the same values for those,
+which Task setup's group card writes into every member at once. A group's members are
+compared by **who they are**, never by the number: removing a stage above
+shifts the numbers below it, and that is no change to any job.
 
 **`overrides` and `execution` are not two names for one thing**, and the
 difference is what reads them. `overrides` changes what the calculation *is* —
@@ -698,6 +708,11 @@ folder or starts clean has to be sayable, and by question 2 it is a shared field
 a single run can mean it too. `restart` (`continue` | `clean`) joins the shared
 schema; what the generator does with it is
 [`execution/run-identity.md`](?doc=execution/run-identity.md) § 4.
+
+**And `group` is a stage field** *(2026-10-11)*. Question 1: it survives
+without a scheduler — it decides which stages one launch runs, and on a
+machine with no queue that is one walk, one after another. Question 2: no
+single run can mean it — it is about several. So it lands on the stage (§ 2).
 
 ---
 
@@ -893,9 +908,10 @@ never derived: it is the person's, written verbatim, or absent.
 
 **A deck meets only the launch it was rendered for.** `prep` renders the deck
 and the launch together; `prep` warns and `launch` refuses a deck whose recorded
-`mpi_np` differs from the job's (`jobset/agreement.py`), and the way back is the
-checkpoint saved before that prep and a new prep
-([`job-system.md`](?doc=execution/job-system.md) § 5.0). A benchmark uses the
+`mpi_np` differs from the job's (`jobset/agreement.py`), and the way back is a
+new prep — of a stage never launched, at once; a launched one is not prepared
+again (its way back, [`job-system.md`](?doc=execution/job-system.md)'s *How the
+checkpoint supports you*). A benchmark uses the
 same block, because each of its trials is rendered at its own point.
 
 ---
@@ -940,13 +956,14 @@ same block, because each of its trials is rendered at its own point.
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
 
   "stages": [
-    { "name": "coarse",
+    { "name": "coarse", "group": 1,
       "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04,
                      "relax_type": "CG" },
       // HOW THIS RUNG IS RUN -- its run card (§ 6.8d), never a column.
       "execution": { "restart": "clean" } },
 
-    { "name": "tight",
+    // A NEW GROUP: tight continues from coarse, so it cannot share its job.
+    { "name": "tight", "group": 2,
       "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01,
                      "relax_type": "Broyden" } }
   ],
@@ -1156,11 +1173,11 @@ real state — several stages differing in nothing but their name.
 
 Removing the last stage is refused.
 
-**A stage is named or picked, never guessed — including when there is only
-one.** `prep task --stage coarse` names it; a bare `prep task` shows the ladder
-and asks which ready stage(s), the offer pre-selected, on one rung exactly as on
-three — and with nobody to ask it is refused, naming the line that picks them
-([`job-system.md`](?doc=execution/job-system.md), *The task*). `prep bench
+**A group is named or picked, never guessed — including when there is only
+one.** `prep task --group 1` names it; a bare `prep task` shows the groups
+and asks which — what it offers is [`job-system.md`](?doc=execution/job-system.md),
+*The task*, `prep task`, 2 — on one rung exactly as on three, and with nobody
+to ask it is refused, naming the line that picks them. `prep bench
 coarse`, not `prep bench`; `--from 01_coarse/run-0`, not `--from run-0`.
 Taking the lone stage without asking would be a rule that holds only at length
 one and silently stops holding when a second stage is added — the implicit kind
@@ -1222,6 +1239,8 @@ In order, and all of it before anything is written:
 | no `overrides` key names an item the rung fixes (`role` for the kind — SIESTA's per-step forces and coordinates on every kind; a transport rung's solver and bias) | refuse at resolve, naming the item and why it is not a choice |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
+| every stage states a `group`: the first 1, each later one the number above it or one more (§ 2) | refuse (the reader), naming the stage and the rule — a description without groups names `jobset migrate` |
+| no stage shares a group with a stage it builds on (`group.upstream_of`: its continuation, a force-constant stage's `relax`, a transport rung's upstream) — asked here, with the template read, since the ladder's links need it (`group.check_groups`; [`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 3) | refuse, naming both stages and why: one job runs its members with nothing handed between them |
 | every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |
 | every value may stand for its item on this kind — not a component the kind fixes, a choice the kind offers (`offered`, § 6.3a — a vibration's relaxation a relaxer), above its hard limit — one door, `template.why_not` ([`template.md`](?doc=engines/template.md) § 5.3) | refuse, naming the stage, the value and the one reason, the first that holds |
 | every value is inside its item's recommended `range` | **warn**, naming the field and both bounds — a recommendation, the same severity on every surface, and silent for a value refused above ([`template.md`](?doc=engines/template.md) § 5.3) |
@@ -1910,8 +1929,9 @@ one. Two of its properties are the reason:
 - **What a stage continues from is copied, not linked.** Stage 2 writes to
   `<label>.XV` itself; a link would send that write straight through into stage 1's
   directory and destroy the result it started from. A real copy closes it, and
-  `prep` can make one *then and there* because the run you named has already
-  finished — which is the whole payoff of stages not being chained
+  the stage's **first launch** makes it *then and there* (prep copies nothing
+  from another stage's run), because the run it takes has already finished —
+  which is the whole payoff of stages not being chained
   ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)). The read-only
   files — the deck, the wrapper, the monitor, the pseudopotentials — are real
   copies too: **every file in a stage is a real file, never a link.**
@@ -1928,7 +1948,8 @@ intermediate result is not a trade, it is a defect.
 
 **Stages are not chained**, and what that means on disk —
 no `depends_on`, no queued follow-on, nothing pointing at a file that does not
-exist yet, and a **copy** made at `prep` from the run you name — is
+exist yet, and a **copy** made at the stage's first launch from the run it
+builds on — is
 [`project-layout.md § 1.6`](?doc=execution/project-layout.md)'s, which owns the
 rule and the reasoning.
 
@@ -1957,8 +1978,9 @@ rule and the reasoning.
 it declares.** `.XV` always, `.DM` when the config saves it, and `.CG` **only
 when the run it continues from used the same relaxation method** — *"a CG state
 is meaningless to a Broyden stage"*. The stage declares that as its `warm` list
-with `requires_same: "optimizer"`, and the comparison is made at `prep` against
-the attempt you named (`job-system.md § 4.1`).
+with `requires_same: "optimizer"`, and the comparison is made at the launch
+that takes the files, against the attempt it continues from (`job-system.md
+§ 4.1`).
 
 **And `restart` gets sharper.** In one directory, *continue* could only mean
 "whatever ran here last" — order-of-execution dependent, and wrong if you re-ran
@@ -2034,12 +2056,13 @@ from what you saw, run that. So the stage list **grows over time**, and a produc
 usually lands in a folder where earlier stages have already run.
 
 **There is no fixed number of stages.** `job-system.md § 4.1`'s three-rung ladder
-is a *default set* with three presets flipping its enable flags — a starting
-proposal, not a bound. A fourth and fifth stage decided next month are ordinary,
-and each continues from what is in the folder because `restart` means *whatever
-ran here last* (`execution/run-identity.md § 4`). That is the payoff of the
-identity being blind to everything a stage tunes: appending a stage does not
-change the id, so the state is still there to continue from.
+is a *default set* — a shipped strategy writes the stages it runs, and a tier it
+leaves out is added later from the tier presets (§ 2) — a starting proposal, not
+a bound. A fourth and fifth stage decided next month are ordinary, and each
+continues from the stage before it, because `restart: continue` means *carry
+from the previous stage* (§ 7.1). That is the payoff of the identity being
+blind to everything a stage tunes (`execution/run-identity.md § 4`): appending
+a stage does not change the id, so the state is still there to continue from.
 
 Two rules make growth safe, and both follow from one observation.
 
@@ -2058,14 +2081,12 @@ keeping the old one leaves a folder whose results came from a file that no longe
 exists. That is not a reason to refuse the edit — redoing a stage is ordinary
 work. It is a reason for the history to exist, which § 7.2 already requires.
 
-So the history keeps it. **When a state is saved is
-[`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 9's rule, and
-nothing here restates it**: `prep` and Task setup's Save save the folder first,
-always, and say so (`checkpoint.save_before`); a folder with no history gets its
-first state then; nothing is saved during a run or at submit, and a finished run
-is shown as unsaved — never saved or tagged on anyone's behalf (§ 9, L4). A redo
-restores the state saved before the stage's prep
-([`job-system.md`](?doc=execution/job-system.md) § 5.0).
+So the history keeps it: the folder's state is saved before the acts that
+change it — which acts, and the note each writes, are
+[`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 9's. A
+launched stage is not prepared again — its way back is
+[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
+you*.
 
 > **The obstacle here is cleared** (2026-08-06). `Repo.init` used to refuse any
 > directory whose subdirectories held a working-dir marker — and § 7.1's layout
@@ -2075,25 +2096,14 @@ restores the state saved before the stage's prep
 > calculation's stages rather than rival jobs; a directory that declares nothing
 > is still refused. See `execution/checkpointing.md` L1.
 
-*(This section held its own account of the moments until 2026-10-04 — two
-boundaries, the second a checkpoint tagged when a stage's run finished; both
-asked at an interactive prep and never taken, a non-interactive prep going
-without; a folder that existed without a history left so; a wrapper that could
-not commit for want of git on the node. `checkpointing.md` § 9's ruling of
-2026-10-03 superseded each, `checkpoint.save_before` follows § 9, and every
-env molbuilder installs ships git.)*
-
 #### What each checkpoint is called
 
-A history is only worth taking if you can find the point you want in it. **This
-section once specified a naming scheme — an automatic commit message, an
-automatic tag per finished stage, and a branch name. The checkpoint rework
-retired all three**, and what replaced them is smaller and puts the naming where
-it belongs.
+A history is only worth taking if you can find the point you want in it, and
+the naming is small and sits where it belongs:
 
 | | What it is now |
 |---|---|
-| **the note** | written by the act that saves — the time the state was taken, then what was about to change it, `2026-10-03 14:05:12 · before prep task tight` (`checkpointing.md` § 9); yours, and required, when you save by hand (L3) |
+| **the note** | written by the act that saves — the time the state was taken, then what was about to change it, `2026-10-03 14:05:12 · before prep task group 1 (coarse), group 2 (medium, tight)` (`checkpointing.md` § 9); yours, and required, when you save by hand (L3) |
 | **the calculation's name** | carried in the state's own `Calculation:` trailer, so a folder opened a year later still says which calculation its history is |
 | **a tag** | *yours*, and only yours. Nothing tags on your behalf |
 
@@ -2156,7 +2166,7 @@ two were made and one came free. It is kept as a pointer rather than a proposal.
 |---|---|
 | **the repository at the parent**, not in each subdirectory — a per-stage repository cannot restore a shared file above it, and cannot express *branch the workflow at stage 2*, because no repository contains the workflow | [`checkpointing.md`](?doc=execution/checkpointing.md) **L1** |
 | **archive globs that match at depth** — `*.DM` does not match `<stage>/<label>.DM`, so every big binary would have gone into git as a blob, the exact outcome the archive exists to prevent | [`checkpointing.md`](?doc=execution/checkpointing.md) **L2** |
-| **nothing points at a file that does not exist** — this came free from stages not chaining (§ 7.1): whatever a stage continues from was copied in as a real file when that stage was set up, so a checkpoint always holds real files | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6, invariant 4a |
+| **nothing points at a file that does not exist** — this came free from stages not chaining (§ 7.1): whatever a stage continues from was copied in as a real file at that stage's first launch, so a checkpoint always holds real files | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6, invariant 4a |
 
 **The general rule this leaves behind**, which is what belongs in *this* contract:
 a layout decision is not finished when the folder is right. It has to be carried

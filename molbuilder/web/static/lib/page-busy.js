@@ -7,12 +7,17 @@
  * form at once — nothing is guarded per-control (user, 2026-08-28:
  * "blocking the window is going to block switching so make it simple").
  *
- * The recovery contract (all three layers required at every call site):
+ * The recovery contract:
  *   A. ``release()`` in a ``finally`` — a thrown operation still releases;
  *   B. the cancelers abort the in-flight request (AbortController);
- *   C. the Cancel button is the human override — always clickable, runs
- *      the cancelers, does NOT release (the finally does, after the
- *      abort unwinds).  No silent stuck state.
+ *   C. the Cancel button is the human override — shown when there are
+ *      cancelers to run, always clickable, runs them, does NOT release (the
+ *      finally does, after the abort unwinds).  No silent stuck state.
+ *
+ * THE KEYBOARD IS FENCED TOO: the cover stops the mouse, and while claimed
+ * a key pressed anywhere but on the cover, or in a dialog the operation
+ * itself opened, does nothing -- Enter on the button just clicked does not
+ * send again.  Focus moves to the cover and comes back at release.
  *
  * ``claim()`` while claimed THROWS: one heavy operation at a time is the
  * design.  Periodic/automatic work (GPU sampler, polling) never claims —
@@ -25,7 +30,21 @@
  */
 
 let _claim = null;          // { reason: string, cancelers: Function[] } | null
-let _els = null;            // { cover, msg } once built
+let _els = null;            // { cover, panel, msg, cancel } once built
+let _before = null;         // the element focused when the fence went up
+
+/** A key pressed outside the cover, or outside a dialog the operation
+ *  opened, while claimed: nothing happens. */
+function _fenceKey(e) {
+    if (_claim === null || !_els) return;
+    const t = e.target;
+    if (t && (_els.cover.contains(t)
+              || (typeof t.closest === "function" && t.closest("dialog[open]")))) {
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+}
 
 function _canPaint() {
     // Partial DOM stubs (the node test harnesses) fall back to the
@@ -50,6 +69,7 @@ function _ensureDom() {
 
     const panel = document.createElement("div");
     panel.className = "page-busy-panel";
+    panel.tabIndex = -1;            // where focus rests when there is no Cancel
 
     const spin = document.createElement("span");
     spin.className = "spinner";
@@ -68,7 +88,7 @@ function _ensureDom() {
     panel.appendChild(cancel);
     cover.appendChild(panel);
     document.body.appendChild(cover);
-    _els = { cover, msg };
+    _els = { cover, panel, msg, cancel };
 }
 
 /** Run the registered cancelers (Cancel button / tests).  Does NOT
@@ -100,9 +120,21 @@ export const pageBusy = {
         _ensureDom();
         if (_els) {
             _els.msg.textContent = _claim.reason;
+            _els.cancel.hidden = _claim.cancelers.length === 0;
             _els.cover.hidden = false;
             if (typeof _els.cover.setAttribute === "function") {
                 _els.cover.setAttribute("aria-busy", "true");
+            }
+            _before = document.activeElement || null;
+            if (typeof document.addEventListener === "function") {
+                document.addEventListener("keydown", _fenceKey, true);
+            }
+            // THE FENCE NEVER MOVES THE VIEW: focus goes to the cover and
+            // back without scrolling, so what the operation brought into
+            // view -- a refusal beside its field -- stays there.
+            const rest = _els.cancel.hidden ? _els.panel : _els.cancel;
+            if (typeof rest.focus === "function") {
+                rest.focus({ preventScroll: true });
             }
         }
         return _claim;
@@ -113,7 +145,17 @@ export const pageBusy = {
     release() {
         if (_claim === null) return;
         _claim = null;
-        if (_els) _els.cover.hidden = true;
+        if (_els) {
+            _els.cover.hidden = true;
+            if (typeof document.removeEventListener === "function") {
+                document.removeEventListener("keydown", _fenceKey, true);
+            }
+            if (_before && _before.isConnected
+                    && typeof _before.focus === "function") {
+                _before.focus({ preventScroll: true });
+            }
+            _before = null;
+        }
     },
 
     /** Is the fence held?  Programmatic movers of shared state

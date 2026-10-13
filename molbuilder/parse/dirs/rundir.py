@@ -13,7 +13,7 @@ import os
 from typing import List, Optional, Tuple
 
 
-def _claimed(path: str) -> bool:
+def claimed(path: str) -> bool:
     """Does a registered parser claim this file? — the REGISTRY's question.
 
     The door never offers a file `detect()` refuses.  *What is a run's output* and *what can a
@@ -69,7 +69,7 @@ def openable_in(directory: str, calculation: Optional[str] = None
         """The newest of *paths* the REGISTRY claims, with the trail written."""
         for cand in sorted(paths, key=lambda p: os.path.getmtime(p)
                            if os.path.isfile(p) else 0.0, reverse=True):
-            if _claimed(cand):
+            if claimed(cand):
                 attempts.append(f"{how} -> {os.path.basename(cand)}")
                 return cand
             attempts.append(f"{how} -> {os.path.basename(cand)}: "
@@ -102,13 +102,16 @@ def run_state_of(directory, names, run=None):
     or not launched, and never followed.
     The run door (`runs`) asks it, with the run's names; ``run`` asks about
     that run, by default the stage's newest."""
-    from molbuilder.runrecord import LaunchRecordError, launch_record
+    from molbuilder.runrecord import LaunchRecordError, launch_record, newest_run
     from .job import RunStatus, run_status
     try:
+        # ONE RUN, by the one rule (`runrecord.newest_run`), asked of its
+        # launch record and of its files alike.
+        run = run if run is not None else newest_run(directory, names)
         launch = launch_record(directory, names, run)
     except LaunchRecordError as e:
         return RunStatus(state="unreadable", detail=str(e))
     return run_status(directory, names.stem, launch=launch, run=run)
 
 
-__all__ = ["openable_in", "run_state_of"]
+__all__ = ["claimed", "openable_in", "run_state_of"]

@@ -32,19 +32,6 @@
 
 export const CM_VENDOR_BASE = "/static/vendor/codemirror/";
 
-/** Every file the bundle needs, in the order above.  The vendor-integrity
- *  test reads THIS list, so an asset added here is automatically required to
- *  exist on disk (`tests/test_codemirror_vendor_bundle.py`). */
-export const CM_ASSETS = [
-    "codemirror.min.css",
-    "dialog.min.css",
-    "codemirror.min.js",
-    "dialog.min.js",
-    "searchcursor.min.js",
-    "search.min.js",
-    "jump-to-line.min.js",
-];
-
 /* ---------- modes: chosen by suffix, fetched on demand ---------- */
 
 /** Every vendored mode, and what each one needs loaded first.

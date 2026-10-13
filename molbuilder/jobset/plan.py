@@ -4,8 +4,8 @@
 Pure formatting: it knows nothing but the data model.  The one basis for
 ``STAGE-PLAN.md`` — per-job resources, visible before anything is
 submitted.  There are no dependency or carry-forward columns, because
-nothing chains stages: a carry is a COPY ``prep --from`` makes, not an
-edge a plan could draw.  And there is no second plan file for a sweep — a
+nothing chains stages: a carry is a COPY a stage's first launch makes
+(`job-system.md` § 5.4), not an edge a plan could draw.  And there is no second plan file for a sweep — a
 sweep's plan IS a ``STAGE-PLAN.md``, in its ``bench/`` container.
 """
 
@@ -49,9 +49,11 @@ def resources_text(r) -> str:
 
 def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
     """Render the plan: one row per job — its seq, input deck, the restart
-    files it declares it may take, and resources -- and, under the table,
-    ``this_prep``: what this prep's hand-over takes, the line both doors
-    print (`job-system.md` § 5.4).  Reads only what it is handed -- no IO.
+    files it declares it may take, its resources and the other members of
+    the one job it is launched in -- and, under the table, ``this_prep``:
+    what each stage this prep prepared takes at its first launch, the line
+    both doors print (`job-system.md` § 5.4).  Reads only what it is handed
+    -- no IO.
 
     Nothing here orders anything, so no column claims an order: a carry is
     a COPY a hand-over makes, recorded in the attempt's marker, not a
@@ -63,7 +65,8 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         f"{', '.join(js.shared) or '(none)'}",
         "",
     ]
-    hdr = ("seq", "job", "input", "restart files it declares", "resources")
+    hdr = ("seq", "job", "input", "restart files it declares", "resources",
+           "one job with")
     rows = []
     # The column is the stage's SEQ, never its row.  A row index is the
     # stage's POSITION, which `engines/stages.md` R5 forbids as an identifier
@@ -78,8 +81,11 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         # are none; a list of file names is the strongest claim this plan can
         # make and still be true.
         warm = ", ".join(w.name for w in j.warm) or "-"
+        # ITS GROUP'S OTHER MEMBERS, the one job it is launched in
+        # (`Job.members`).
+        mates = ", ".join(m for m in (j.members or ()) if m != j.name) or "-"
         rows.append((refs[j.name].seq_text, j.name, j.script, warm,
-                     resources_text(j.resources)))
+                     resources_text(j.resources), mates))
     # Off `hdr`, not off a literal count -- a hand-written column count stops
     # matching the header the moment a column is added.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
@@ -104,11 +110,12 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         # WHAT EACH BUILDS ON is its kind's -- the stage before it in an
         # optimization's ladder, `relax` for a force-constant stage, the
         # rungs upstream for transport -- and this prep's is said above.
-        lines.append(f"Order: {len(js.jobs)} stage(s), run ONE AT A TIME -- "
-                     "prep a stage, launch it, look at it, then the next "
-                     "(project-layout.md § 1.6); what each builds on is "
-                     "decided at its prep (job-system.md § 5.4), and "
-                     "`molbuilder jobset status` names the next command.")
+        lines.append(f"Order: {len(js.jobs)} stage(s) -- each group one job, "
+                     "its members one after another; a group's first launch "
+                     "takes what each member builds on from the newest run "
+                     "of the stage it builds on, which must have finished "
+                     "(job-system.md, *The task*), and `molbuilder jobset "
+                     "status` names the next command.")
     else:
         lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "
                      "between them.  Submit one at a time; a scheduler is "
@@ -116,4 +123,4 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["render_plan"]
+__all__ = ["FILENAME", "render_plan"]

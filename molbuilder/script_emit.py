@@ -83,6 +83,12 @@ if TYPE_CHECKING:                       # annotations only -- `issues`
 PARAMETER_ROW_PREFIX = "#   "
 _ROW_FIELDS = ("item", "default", "asked", "used")
 
+#: The block's first line, saying what each row's four columns are -- the
+#: block's prose, which its reader skips (:func:`read_parameters_fence`).
+PARAMETER_COLUMNS_LINE = (
+    PARAMETER_ROW_PREFIX + "each row: item, catalogue default, asked (the "
+    "deck), used (the engine) -- null: not known when this was written")
+
 
 def parameter_row(item: str, default: Any = None, asked: Any = None,
                   used: Any = None) -> str:
@@ -129,7 +135,7 @@ def same_calculation(a: str, b: str) -> bool:
     invocation", which is a different and much narrower question.
 
     This exists because the transport DAG asks the useful one:
-    ``jobset/prep.py::transport_inputs`` will only carry a concluded
+    ``jobset/gather.py::transport_inputs`` will only carry a concluded
     rung's output forward if that rung ran *the deck this composition renders*,
     and a re-prep -- or a commit between two preps, which moves the sha --
     changes the stamps and nothing else.
@@ -642,7 +648,7 @@ def written_by(text: str) -> Optional[str]:
     """The molbuilder version that wrote a deck or run script, read from
     its PROVENANCE block -- ``None`` for one written before 2.0.0, which
     recorded only its git commit, or for a file with no block."""
-    block = _extract_provenance_dict(text) or {}
+    block = read_provenance_block(text) or {}
     m = _VERSION_RE.match(block.get("generator-version", ""))
     return m.group(1) if m else None
 
@@ -691,6 +697,9 @@ __all__ = [
     "not_set_line",
     # USER-CUSTOM round-trip
     "replace_user_custom_inner", "merge_user_custom_from_target",
+    # The deck's own records, read back
+    "read_provenance_block", "read_atom_metadata_block",
+    "read_bench_marks_block",
     # Git / time
     "molbuilder_git_sha", "generator_version", "written_by",
     "generated_at_now",
@@ -960,19 +969,19 @@ def _deck_answers(decl, deck_text: str) -> Dict[str, Any]:
         return {}
     # `parse` imports THIS module (`parse/contract.py`), so the import is
     # function-level -- the same move that module makes in the other direction.
-    from .parse.fdf import _norm, _parse_fdf
-    scalars, blocks = _parse_fdf(deck_text)
+    from .parse.fdf import fdf_key, read_fdf
+    scalars, blocks = read_fdf(deck_text)
     out: Dict[str, Any] = {}
     for key in keys:
         if key.lower().startswith("%block"):
             # A BLOCK'S VALUE IS ITS BODY.  There is no `key value` line to
             # take a second token from: on `%block kgrid_Monkhorst_Pack` that
             # token is the block's own NAME.
-            body = blocks.get(_norm(key[len("%block"):].strip()))
+            body = blocks.get(fdf_key(key[len("%block"):].strip()))
             if body:
                 out[key] = body
             continue
-        toks = scalars.get(_norm(key))
+        toks = scalars.get(fdf_key(key))
         if toks is None:
             continue
         # A keyword present with no value is `.true.` to `fdf_boolean`.
@@ -1672,7 +1681,7 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
 
     ``findings``, when a caller hands in a list, receives both halves of the
     verdict too -- the one prep entry's answer carries them to the doors that
-    cannot read stderr (`jobset/prep.prep_stage`, `job-system.md` § 5.3).
+    cannot read stderr (`jobset/prep.prep_task`, `job-system.md` § 5.3).
 
     ``plan`` (`jobset.planned.Plan`) receives the deck and its report instead
     of the disk, and the check reads the deck's text as the plan will write
@@ -1761,41 +1770,6 @@ def _log_spec(spec: "DeckSpec", log) -> None:
 #  Contract: `execution/job-contracts.md` § 3.1 (the block grammar and the
 #  emit matrix).
 
-def _extract_header_text(text: str) -> Optional[str]:
-    """Find the HEADER block and return its inner content as a single
-    string (free-form prose, comment prefixes stripped).
-
-    Returns ``None`` when no HEADER block is present.  The leading
-    ``# `` (or ``#``) on each line is removed so the result is the
-    raw prose the generator wrote; line ordering is preserved.
-    """
-    lines = text.splitlines()
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m or m.group(1) != BLOCK_HEADER:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None:
-        return None
-    out_lines: List[str] = []
-    for raw in lines[begin_idx + 1: end_idx]:
-        # Strip the comment prefix the generator emits ("# " or "#").
-        if raw.startswith("# "):
-            out_lines.append(raw[2:])
-        elif raw.startswith("#"):
-            out_lines.append(raw[1:])
-        else:
-            out_lines.append(raw)
-    return "\n".join(out_lines)
-
-
 _PROVENANCE_KV_RE = re.compile(
     r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
 
@@ -1811,7 +1785,7 @@ _PROVENANCE_DEFAULTS_HDR = re.compile(
 _PROVENANCE_DEFAULTS_KV_RE = re.compile(
     r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
 
-def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
+def read_provenance_block(text: str) -> Optional[Dict[str, str]]:
     """Find the PROVENANCE block and return its k/v payload as a flat
     dict.  Returns ``None`` when no well-formed PROVENANCE block is
     present.  Empty-but-present block returns ``{}`` (distinct from
@@ -1908,7 +1882,7 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
     return text.splitlines()[begin_idx + 1: end_idx]
 
 
-def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
+def read_atom_metadata_block(text: str) -> Optional[Dict[str, Any]]:
     """The ATOM-METADATA block's payload; ``None`` when absent or broken."""
     return read_json_block(text, BLOCK_ATOM_METADATA)
 
@@ -1924,7 +1898,7 @@ def _coerce_scalar(s: str) -> Any:
     except ValueError:
         return s
 
-def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
+def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
     """Find the BENCH-MARKS block and return its structured payload.
 
     Returns ``None`` when no BENCH-MARKS block is present.
@@ -2045,7 +2019,7 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     ``struct`` is duck-typed: any object with a mutable ``regions`` dict will
     do.  Returns ``True`` when labels were applied, ``False`` when the payload
     carries none.  A caller holding a whole script extracts first --
-    ``_extract_atom_metadata_dict(text)`` -- and hands the payload here.
+    ``read_atom_metadata_block(text)`` -- and hands the payload here.
 
     THE RULE: the block is read as it is written today.  Nothing translates an
     older layout, and a block that no longer says what this build reads simply

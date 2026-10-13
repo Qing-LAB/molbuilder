@@ -112,7 +112,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   margin: 0;
   flex: 1;
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* ---- Desktop collapse toggle + reopen handle (B.5.4) ----------
@@ -156,7 +156,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
 .ps-edge-tab-chevron {
   font-size: var(--text-sm);
   line-height: 1;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 .ps-edge-tab:hover { filter: brightness(1.1); }
 .ps-edge-tab:focus-visible {
@@ -216,9 +216,11 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * label readable.  Hover gives a clear "this is a button" cue
  * (accent border + accent background).
  */
+/* TWO BY TWO: four labels never fit one row of the sidebar, and wrapping
+   left one alone on a second row. */
 .ps-create-bar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-sm) var(--space-sm);
@@ -227,7 +229,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-create-action {
   appearance: none;
-  flex: 0 0 auto;          /* as wide as its own label, no wider */
   min-width: 0;
   background: var(--ps-bg-deep);
   color: var(--ps-fg);
@@ -257,8 +258,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   transform: translateY(1px);
 }
 .ps-create-action:focus-visible {
-  outline: 1px solid var(--accent, #6ba6ff);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 .ps-create-action[disabled] {
   opacity: 0.45;
@@ -289,7 +290,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-create-action-label {
   flex: 0 0 auto;
   font-size: var(--text-2xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -320,15 +321,15 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   min-width: 22rem;
   max-width: 90vw;
   font: 13px/1.45 var(--font-sans);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-modal);
 }
 .molbuilder-projects-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--backdrop);
 }
 .molbuilder-projects-dialog h2 {
   margin: 0 0 var(--space-sm2);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--ps-selected-fg);
 }
 .molbuilder-projects-dialog-hint {
@@ -378,7 +379,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   appearance: none;
   font: inherit;
   padding: var(--space-xs) var(--space-sm2);
-  background: var(--ps-hover, #2a2a2a);
+  background: var(--ps-hover, #232323);
   color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: var(--radius-sm);
@@ -418,11 +419,11 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   font-size: var(--text-md);        /* ⋯ glyph reads better slightly larger */
   line-height: 1;
   padding: 0 var(--space-xs);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 .ps-entry-kebab:hover,
 .ps-entry-kebab[aria-expanded="true"] {
-  background: var(--ps-hover, #2a2a2a);
+  background: var(--ps-hover, #232323);
   color: var(--ps-selected-fg, #fff);
   border-color: var(--ps-border, #2a2a2a);
 }
@@ -450,7 +451,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-entry-menu-item:hover,
 .ps-entry-menu-item:focus {
-  background: var(--ps-hover, #2a2a2a);
+  background: var(--ps-hover, #232323);
   color: var(--ps-selected-fg, #fff);
   outline: none;
 }
@@ -512,15 +513,17 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-crumb.is-current {
   cursor: default;
-  background: rgba(79, 122, 184, 0.22);    /* matches accent at low alpha */
-  border-color: rgba(79, 122, 184, 0.55);
+  /* The sidebar's accent at low alpha, from its token. */
+  background: color-mix(in srgb, var(--ps-accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--ps-accent) 55%, transparent);
   color: var(--ps-accent-fg);                          /* bright on dark sidebar bg */
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .ps-crumb.is-current:hover {
-  background: rgba(79, 122, 184, 0.22);    /* no hover lift on current */
-  border-color: rgba(79, 122, 184, 0.55);
+  /* no hover lift on current */
+  background: color-mix(in srgb, var(--ps-accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--ps-accent) 55%, transparent);
   color: var(--ps-accent-fg);
 }
 
@@ -624,6 +627,12 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-entry:hover {
   background: var(--ps-hover);
+}
+/* A row is the listbox's tab stop (ui-contract.md § 4.1): where focus is
+ * shows, on the one ring every control wears. */
+.ps-entry:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
 }
 
 .ps-entry.is-selected {
@@ -775,7 +784,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   flex: 1;
   font-size: var(--text-base);
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -867,14 +876,14 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   border-left-color: var(--ps-accent-fg);
 }
 .ps-preview-cmview .CodeMirror-activeline-background {
-  background: rgba(74, 158, 255, 0.06);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 .ps-preview-cmview .CodeMirror-selected {
   /* ~55% so the selection reads as a clear block (a low-alpha
-   * accent-blue has nearly the same luminance as the ``--ps-fg``
+   * accent has nearly the same luminance as the ``--ps-fg``
    * text on a dark canvas) + keep the accent hue so it's obvious
    * "this is the selected region". */
-  background: rgba(74, 158, 255, 0.55);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 /* Focused-editor selection is the user's primary attention target;
  * give it an even stronger contrast.  Without this, an out-of-focus
@@ -882,7 +891,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * one and the user can't tell which area their next keypress
  * affects. */
 .ps-preview-cmview .CodeMirror-focused .CodeMirror-selected {
-  background: rgba(74, 158, 255, 0.65);
+  background: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 /* (The .CodeMirror-selectedtext per-character class isn't enabled
  * — see preview.js's ``styleSelectedText`` note about the
@@ -1201,7 +1210,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-checkpoint-title {
     margin: 0;
     font-size: var(--text-sm);
-    font-weight:       600;
+    font-weight: var(--weight-semibold);
     color:             var(--ps-fg);
     flex:              1;
 }
@@ -1210,7 +1219,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     padding: 0.1rem var(--space-sm);
     border-radius: 999px;
     font-size: var(--text-xs);
-    font-weight:       500;
+    font-weight: var(--weight-medium);
     cursor:            pointer;
     user-select:       none;
     border:            1px solid transparent;
@@ -1300,7 +1309,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 .ps-checkpoint-row-sha {
-    font-family:       var(--font-mono, monospace);
+    font-family:       var(--font-mono, ui-monospace, "SF Mono", Consolas, monospace);
     color:             var(--ps-code-fg);
     font-size: var(--text-xs);
     margin-right: var(--space-sm);
@@ -1397,11 +1406,11 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-checkpoint-view-btn:last-child { border-right: none; }
 
-.ps-checkpoint-view-btn.is-active {
+.ps-checkpoint-view-btn[aria-selected="true"] {
     background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-on-accent);
 }
-.ps-checkpoint-view-btn:hover:not(.is-active) {
+.ps-checkpoint-view-btn:hover:not([aria-selected="true"]) {
     background:        var(--ps-hover);
 }
 
@@ -1438,13 +1447,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * the rail and belong to this module, so this is where they are answered:
  * the narrow-viewport hamburger, its backdrop, and the edge tab that reopens
  * a collapsed sidebar.  Leaving any of them would put a control on screen
- * for a panel the page has decided not to offer.
- *
- * `!important` on the mobile toggle only: its own media query sets a
- * `display` at a specificity this cannot outrank from here. */
-body[data-sidebars-hidden] .ps-mobile-toggle {
-    display: none !important;
-}
+ * for a panel the page has decided not to offer.  Each selector here
+ * outranks the media query's own (a media query adds no specificity). */
+body[data-sidebars-hidden] .ps-mobile-toggle,
 body[data-sidebars-hidden] .ps-mobile-backdrop,
 body[data-sidebars-hidden] .ps-edge-tab--reopen {
     display: none;

@@ -167,7 +167,7 @@ def api_transport_describe_attempt() -> Any:
             state = f"CONCLUDED ({cited.concluded.strip()})"
             if cited.converged:
                 state += " · " + cited.converged
-                if cited.converged.endswith("NO"):
+                if cited.verdict == ("geometry", False):
                     state += (" -- its last geometry is the last one SIESTA "
                               "wrote, not a converged minimum")
         if record is None:

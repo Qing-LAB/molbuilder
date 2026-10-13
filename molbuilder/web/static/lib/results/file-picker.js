@@ -902,13 +902,16 @@
                     /* `record` rides along for the Run panel (§ 3a), which
                      * listens to this event and nothing else: the run the
                      * folder's files came from, or null for a container or a
-                     * folder with no run in it.  `files` -- EVERY file of
+                     * folder with no run in it -- with `record_dir`, the
+                     * folder it was read from, whose file names it gives.
+                     * `files` -- EVERY file of
                      * the folder, each with what it is (`about`) -- rides for
                      * the file card (§ 3b), which explains a file the menu
                      * does not list as readily as one it does. */
                     { detail: { file: file || "", meta: _metaFor(file),
                                 place: lastPlace, ladder: lastLadder,
                                 record: lastRecord, files: lastFiles,
+                                record_dir: boundDir,
                                 dir: boundDir,
                                 diverged: _divergedFromSidebar(),
                                 force: forced } }));
@@ -1155,17 +1158,6 @@
             });
         }
 
-        // -- lock-state subscriber (disable while Save in flight) //
-        let unsubscribeLock = null;
-        if (typeof proj.onLockChange === "function") {
-            unsubscribeLock = proj.onLockChange((st) => {
-                selEl.disabled = !!(st && st.locked);
-                selEl.title = st && st.locked
-                    ? "Sidebar is locked while a save is in progress."
-                    : "";
-            });
-        }
-
         // -- disposer ------------------------------------------- //
         return {
             dispose() {
@@ -1185,8 +1177,6 @@
                 try { if (_metaObserver) _metaObserver.disconnect(); }
                 catch (_) { /* ignore */ }
                 try { if (unsubscribeSelection) unsubscribeSelection(); }
-                catch (_) { /* ignore */ }
-                try { if (unsubscribeLock) unsubscribeLock(); }
                 catch (_) { /* ignore */ }
                 try {
                     if (root.removeEventListener) {

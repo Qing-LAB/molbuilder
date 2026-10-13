@@ -1,7 +1,7 @@
 """The vibration calculation's E2E — the spectra-migration plan's P1 bar.
 
 Water, on this workstation, through the WHOLE framework loop:
-``init --calculation vibration`` → ``prep task --stage freq`` →
+``init --calculation vibration`` → ``prep task --group 1`` →
 ``launch --mode direct`` → a schema-5 ``.spectra.json`` in the attempt
 directory, every phase complete, loadable through the Results door.  Two
 runs: the default (Raman) and the DECOUPLED IR-only run the 2026-08-20
@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
+from support.road import group_words
 
 CONDA_SH = conda_hook()
 
@@ -41,7 +42,8 @@ def _bundle_head(folder, *objects) -> str:
     the script's own head and an import of each of ``objects`` from the
     bundle, bound as ``_mb_<its name>`` -- so a probe runs the code a run
     executes, under the env that runs it, where molbuilder is not
-    installed."""
+    installed.  It is started as a run script starts a deck, with its run's
+    number (``--run 0``, `runtime_info.run_given`)."""
     from molbuilder.pyscf.input import emit_bundle_imports, emit_script_head
     from molbuilder.runwrap import PYSCF_BUNDLE, pyscf_bundle
     (folder / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
@@ -93,7 +95,8 @@ def _prep_and_run(bundle):
 
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(jobset_group,
-                           ["prep", "task", "--stage", "freq", "--bundle", str(bundle)])
+                           ["prep", "task", *group_words(bundle, "freq"),
+                            "--bundle", str(bundle)])
     assert r.exit_code == 0, r.output
     r = CliRunner().invoke(jobset_group,
                            ["launch", "task", "--stage", "freq", "--bundle", str(bundle),
@@ -407,7 +410,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     out = subprocess.run(
         ["bash", "-lc",
          f"source {CONDA_SH} && conda activate molbuilder-pySCF "
-         f"&& python {script}"],
+         f"&& python {script} --run 0"],
         capture_output=True, text=True, timeout=1800)
     rows = [ln.split() for ln in out.stdout.splitlines()
             if ln.startswith("RESULT")]
@@ -481,7 +484,7 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
     out = subprocess.run(
         ["bash", "-lc",
          f"source {CONDA_SH} && conda activate molbuilder-pySCF "
-         f"&& python {script}"],
+         f"&& python {script} --run 0"],
         capture_output=True, text=True, timeout=1800)
     rows = [json.loads(ln[len("RESULT "):]) for ln in out.stdout.splitlines()
             if ln.startswith("RESULT ")]
@@ -592,7 +595,7 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
     out = subprocess.run(
         ["bash", "-lc",
          f"source {CONDA_SH} && conda activate molbuilder-pySCF "
-         f"&& python {script}"],
+         f"&& python {script} --run 0"],
         capture_output=True, text=True, timeout=1800)
     rows = [ln.split() for ln in out.stdout.splitlines() if ln.startswith("RESULT")]
     assert len(rows) == 2, f"probe produced {len(rows)} rows:\n{out.stdout}\n{out.stderr[-3000:]}"
@@ -647,7 +650,8 @@ def test_a_setting_that_enters_nothing_is_said_to_at_prep(tmp_path,
                                     '\ntype = "float"\nvalue = 500.0\n', 1)
              + t[j:])
         tpl.write_text(t)
-        r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "freq",
+        r = CliRunner().invoke(jobset_group, ["prep", "task",
+                                              *group_words(bundle, "freq"),
                                               "--bundle", str(bundle)])
         assert r.exit_code == 0, r.output
         said[bool(held)] = (
@@ -694,7 +698,8 @@ def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
             t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)
                  + t[j:])
         tpl.write_text(t)
-        r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "freq",
+        r = CliRunner().invoke(jobset_group, ["prep", "task",
+                                              *group_words(bundle, "freq"),
                                               "--bundle", str(bundle)])
         assert r.exit_code == 0, r.output
         assert "functional = 'PBE0' has no effect here" in r.output, r.output
@@ -755,7 +760,8 @@ def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
 
     _answer("0, 2")
     r = CliRunner().invoke(jobset_group,
-                           ["prep", "task", "--stage", "freq", "--bundle", str(bundle)])
+                           ["prep", "task", *group_words(bundle, "freq"),
+                            "--bundle", str(bundle)])
     assert r.exit_code != 0, r.output
     assert "can't be read: 0 is below 1" in r.output, r.output
     assert not list((bundle / "01_freq").glob("*.py")), "a deck was written"

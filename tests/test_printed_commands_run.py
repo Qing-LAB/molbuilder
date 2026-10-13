@@ -52,9 +52,10 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     calculation named, a launch line per mode where this machine's config
     sets none -- and each, typed back from outside the calculation, is
     taken.  Prepared, the folder answer names the machine the calculation is
-    set to and the stage prepared, in the prep entry's own sentence; the
-    stage's lines are its launch alone -- a prep of it is refused -- and the
-    next stage's line needs no `--target`: the calculation's copy answers.
+    set to; the group's lines are its launch alone (the ready door's
+    *prepared*), and the next group's prep line needs
+    no `--target` -- the calculation's copy answers -- and carries no
+    `--cold`, which is its launch's (`job-system.md` § 5.4).
 
     API-LEVEL for the page's two doors, which no `jobset` verb reaches; the
     lines themselves are typed down the road.
@@ -66,27 +67,26 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     bundle = _described(tmp_path, monkeypatch)
     client = create_app(config={}).test_client()
 
-    def lines(stage, **choice):
+    def lines(group, **choice):
         r = client.post("/api/task-setup/commands", json=dict(
-            dest=str(bundle), kind="task", stages=[stage], target="this",
+            dest=str(bundle), kind="task", groups=[group], target="this",
             **choice))
         assert r.status_code == 200, r.get_json()
         return r.get_json()["lines"]
 
-    coarse = lines("coarse")
+    coarse = lines(1)
     assert [l for l in coarse if " launch " in l] and all(
         "--mode " in l for l in coarse if " launch " in l), coarse
     assert each_is_taken("\n".join(coarse)) == len(coarse), coarse
 
     folder = client.get("/api/task-setup/folder?dir=" + str(bundle)).get_json()
-    assert (folder["set_to"], list(folder["prepared"]["task"])) == (
-        "(this machine)", ["coarse"]), folder
-    assert "already prepared" in folder["prepared"]["task"]["coarse"], folder
-    again = lines("coarse")
+    assert folder["set_to"] == "(this machine)", folder
+    again = lines(1)
     assert again and all(" launch " in l for l in again), again
-    medium = lines("medium", cold=True)
+    medium = lines(2, cold=True)
     assert medium[0].split(" --bundle ")[0] == \
-        "molbuilder jobset prep task --stage medium --cold", medium
+        "molbuilder jobset prep task --group 2", medium
+    assert all("--cold" in l for l in medium if " launch " in l), medium
 
 
 @pytest.mark.parametrize("shape, container", [

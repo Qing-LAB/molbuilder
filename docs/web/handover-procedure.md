@@ -49,7 +49,7 @@ flowchart LR
   D[("task.json")]
   P -->|"Send to Task setup"| R
   R -->|"returns TEXT, writes nothing"| P
-  P -->|"projects.safeSave"| W
+  P -->|"projects.writeFile"| W
   W -->|"opens on the same folder"| T
   T -->|"save: read_task validates"| D
   T -.->|"projects.deleteEntry, after"| W
@@ -72,8 +72,12 @@ sidecar beside it is called, is the pairing rule's — one home
 rule it does not own.
 
 **Step 2 — write, through the file layer.** The tab writes every returned text
-with `projects.safeSave(text, filename, {overwrite})` into the folder the user
-selected — **the structure first**, because the hand-over *names* it and a
+with `projects.writeFile(dest + "/" + filename, text, {overwrite})` into the
+folder the user selected — `dest`, the folder the Send checked, read once: the
+whole Send holds the page fence ([`ui-contract.md`](?doc=web/ui-contract.md)
+§ 10), so no click can move the selection between the check and the last
+write, and the fence's Cancel aborts what is in flight. **The structure
+first**, because the hand-over *names* it and a
 hand-over pointing at a file that was never written is worse than no hand-over. Never a fetch of its own: the content-blind layer is what *"every tab
 can use"* (`projects.md` § 1), and it carries the roots guard, the lock, the
 uniform `{ok, …}` envelope and the sidebar re-list.
@@ -90,10 +94,10 @@ cell, left-handed axes — is a **refusal**: the door answers 400 and nothing is
 written. A box the gate accepted but wants read — an axis it could not tell
 was periodic, vacuum thinner than it expects — comes back as **notices**
 (the gate's four-key dicts: `severity`, `message`, `where`, `about` —
-`periodicity_gate.py`), and a notice holds back the **navigation, never the
-write**: the files are the person's own parameters and refusing to save them
-helps nobody, but a page that jumps away is a page whose warning was never
-read. The sender (`lib/task-handover.js`) hands every notice to the tab's
+`periodicity_gate.py`), and a notice **never holds back the write**: the
+files are the person's own parameters and refusing to save them helps nobody;
+the page does not navigate, so the notice is read where the person is. The
+sender (`lib/task-handover.js`) hands every notice to the tab's
 findings panel — the one renderer, `lib/validation-findings.js`
 ([`science/validation.md`](?doc=science/validation.md) § 4.1 R2, R2a: a notice
 is a finding) — beside the findings the tab's live check already shows, which
@@ -160,7 +164,7 @@ The split is `projects.md`'s, not this document's invention:
 
 | | who | why |
 |---|---|---|
-| the structure's pair, the template, the hand-over | **the browser**, via `safeSave` — a transport calculation's template is its describe door's, with its `task.json` (row 3) | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
+| the structure's pair, the template, the hand-over | **the browser**, via `writeFile` — a transport calculation's template is its describe door's, with its `task.json` (row 3) | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
 | removing the hand-over | **the browser**, via `deleteEntry` | likewise, and **only after** the write succeeded: the reverse order loses the parameters if the write fails |
 | `task.json` | **the server**, via `/api/task-setup/save` — or, for a transport calculation, `/api/transport/describe`, which writes the whole description in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.read_task`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
@@ -237,8 +241,8 @@ and two copies of a contract drift.
 way this section once predicted.**  A hand-over exists because Task setup
 owns questions the sending tab leaves open (shape, stages, what varies).
 The composite leaves NONE open: its rungs and the hierarchical shape are
-fixed by the kind (`task.fixed_by_kind`; a ladder skips its seed by leaving it
-out), the electronic contract — its spin included — is
+fixed by the kind (`task.fixed_by_kind`: all five, the seed among them), the
+electronic contract — its spin included — is
 defaulted into the template from the cited run at `init`, where the shared
 panel edits it for every rung, and the knobs ride the stages' override bags.
 So the Transport tab describes DIRECTLY — `POST /api/transport/describe`
@@ -250,7 +254,7 @@ P7b).  The `transport-handover@1` schema this section once proposed was
 never needed: with no open questions there is no hand-over payload to
 carry.  **Once written, Task setup is its editor, as every kind's** *(user,
 2026-10-11)*: each rung's own values in its Stages card — the rungs
-fixed, the seed the one left out or added back, `web/task-setup.md` § 5.3 —
+fixed, every one, `web/task-setup.md` § 5.3 —
 and the run's settings; what came over is what
 the calculation is: its citation names it — a different junction is a new
 description in a new folder — and its electrode rename and its bias are corrected

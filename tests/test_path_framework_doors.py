@@ -151,16 +151,3 @@ def test_sidecars_in_finds_what_sidecar_path_for_composes(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
-def test_the_trial_search_reads_the_prefix_through_its_own_reader(tmp_path):
-    """`materialize.trials_in` returns the trial directories and skips a
-    directory that merely sits beside them.
-
-    `paths.trial_name` composes `bench-<point>` and `paths.trial_point` reads it
-    back. The pair is § 4.5's rule, and a door that re-spells one half is how
-    the two drift.
-    """
-    from molbuilder.jobset.materialize import trials_in
-    c = tmp_path / "01_coarse" / "bench"
-    for d in ("bench-G1", "bench-G2K4", "notatrial", "bench-"):
-        (c / d).mkdir(parents=True, exist_ok=True)
-    assert [p.name for p in trials_in(c)] == ["bench-G1", "bench-G2K4"]

@@ -22,7 +22,7 @@
     flex-shrink: 0;
     padding: var(--space-xs) var(--space-sm);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     background: transparent;
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
@@ -53,12 +53,12 @@
 .rp-section-title {
     margin: var(--space-md) 0 var(--space-sm);
     font-size: var(--text-base);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .rp-group-title {
     margin: var(--space-sm) 0 var(--space-xs);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     color: var(--text-secondary);
 }
 .rp-rows {
@@ -101,7 +101,7 @@
 }
 .rp-table th {
     color: var(--text-muted);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     border-top: 0;
 }
 .rp-param .rp-keys {

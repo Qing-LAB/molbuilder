@@ -61,7 +61,7 @@
      * single answer would arrive -- the route already sends each file's
      * role, and one more field would let this list be deleted.
      */
-    const CARRIED_ROLES = [
+    const WORKING_PARTS = [
         "_initial.xyz", "_optimized.xyz", "_geom_optim.xyz",
     ];
 
@@ -140,8 +140,8 @@
          *
          * SAME RUN IS ONE EQUALITY, because the server reads each name back
          * with the label the deck states (`/api/results/dir` -> `label`,
-         * `stage`, `role`; `runfiles.parse`).  The carried files stem on the
-         * bare job label and this rung's stream on the same label with a
+         * `stage`, `role`; `runfiles.parse`).  The input echo and the
+         * optimizer's geometry stem on the bare job label and this rung's stream on the same label with a
          * stage, so `label` is the thing they share and the test is `===`.
          *
          * The stem is never cut here: the label/stage boundary CANNOT be
@@ -164,15 +164,15 @@
             // THE SERVER'S READING, when there is one.  Same label, and
             // then the STAGE decides which rung a part belongs to -- which
             // is the sentence above, said in the grammar's own words:
-            // `_initial` / `_optimized` CARRY between rungs and so have no
-            // stage, while the geomeTRIC stream is this rung's and carries
-            // it.  A LADDER IS N RESULTS (`stages.md` § 1.1a), so 03_tight's
+            // `_initial` / `_optimized` are named on the label alone, with
+            // no stage, while the geomeTRIC stream is this rung's and
+            // carries its stage.  A LADDER IS N RESULTS (`stages.md` § 1.1a), so 03_tight's
             // master must leave 01_coarse's stream to 01_coarse's master.
             if (mMeta && mMeta.label && oMeta && oMeta.label) {
                 if (mMeta.role !== ".molwatch.log") return false;
                 if (mMeta.label !== oMeta.label) return false;
                 if (oMeta.stage && oMeta.stage !== mMeta.stage) return false;
-                return CARRIED_ROLES.indexOf(oMeta.role) >= 0;
+                return WORKING_PARTS.indexOf(oMeta.role) >= 0;
             }
 
             // NO DIRECTORY ANSWER: the names, and only the shapes that need
@@ -182,7 +182,7 @@
             if (!stem) return false;
             const n = o.name.toLowerCase();
             const b = stem.toLowerCase();
-            return CARRIED_ROLES.some((r) => n === b + r);
+            return WORKING_PARTS.some((r) => n === b + r);
         },
     });
 

@@ -1,19 +1,26 @@
-"""THE READY DOOR -- whether a stage not yet prepared can be prepared now,
-and what it would take (`job-system.md`, *The task*; `architecture.md`
-§ 3.2).
+"""THE READY DOOR -- where a stage and its group stand between the
+description and a run, and what a stage's first launch takes
+(`job-system.md`, *The task*; `architecture.md` § 3.2).
 
-**One question, answered by the doors that already decide it.**  What a
-stage takes is decided in one place per kind: an independent stage's or a
-force-constant stage's continuation (`continuation.continuation_answer` --
-the stage before it, or `relax`, its newest run finished), a transport
-rung's gather (`prep.gather_sources` -- each upstream rung's newest run,
-finished, having run the deck it renders now).  A stage is **ready** when
-that door answers without refusing; **waiting** when it refuses, its words
-saying for what.  Nothing here decides a second way, and nothing is written.
+**A stage is described, prepared or launched**, each answered here from the
+doors that already decide it.  **Described** -- not prepared: preparable,
+but a SIESTA force-constant stage while the `relax` run its deck would be
+written at has not finished (`continuation.continuation_answer`, the one
+value hand-over, `engines/vibration.md` § 5.2a).  **Prepared**, never
+launched: **ready to launch** when what its first launch takes is there,
+else **waits for** what it names -- the door that decides what it takes, the
+same one launch asks: an independent stage's continuation (the stage before
+it, its newest run finished), a transport rung's gather
+(`gather.gather_sources`, its three gates), a force-constant stage's `relax`
+run its prep took (`Job.written_at`).  **Launched**: the run doors answer.
+Nothing here decides a second way, and nothing is written.
 
-Readers: `prep task`'s ladder and offer, `status`'s rows and next step,
-Task setup's Prep -- and prep itself asks the same two doors when it
-plans the stage.
+**A group** is the stages one number holds (`engines/stages.md` § 2),
+matched to what is prepared by its members, never its number: prepared as
+described when every member's job holds exactly those members.
+
+Readers: `prep task`'s groups and offer, `launch task`'s gate and offer,
+`status`'s rows and next step, Task setup's Prep and its group tabs.
 """
 from __future__ import annotations
 
@@ -24,85 +31,435 @@ from typing import Dict, List, Optional
 
 @dataclass
 class Readiness:
-    """One stage's answer: ``prepared`` (asked of the prepared door first),
-    else ``ready`` with what it takes, or waiting with ``why``."""
+    """One stage's answer.  ``ready`` is the question its state asks: a
+    stage not prepared, whether it can be prepared now; one prepared and
+    never launched, whether it can be launched now -- with what it takes,
+    or ``why`` it waits."""
     stage: str
+    group: Optional[int] = None
     prepared: bool = False
+    launched: bool = False
     ready: bool = False
-    #: What it would take, one line each -- the run it continues from, or
-    #: each file a transport rung gathers and the run it comes from; ``[]``
-    #: for a stage that builds on nothing.
+    #: What it takes, one line each: for a stage not prepared, what its
+    #: first launch will take, said before any run is read (a force-constant
+    #: stage, the `relax` run its deck would be written at); for one
+    #: prepared, what its launch would take now.  ``[]`` for a stage that
+    #: builds on nothing.
     takes: List[str] = field(default_factory=list)
     #: The refusal of the door that decides what it takes -- what it waits
-    #: for, and what to do -- for a stage that is waiting.
+    #: for, and what to do.
     why: Optional[str] = None
+    #: Which wait ``why`` is, for a stage prepared and not ready to launch
+    #: (`job-system.md`, *The task*): ``"waits"`` -- a run it builds on is
+    #: not there yet; ``"regrouped"`` -- its job's members changed;
+    #: ``"unreadable"`` -- its launch record does not read; ``"again"`` --
+    #: it is prepared again before it can be launched.  ``None`` otherwise.
+    blocked: Optional[str] = None
+    #: The members of the job it is prepared in (`Job.members`, or itself
+    #: alone) -- ``None`` when not prepared.
+    job_members: Optional[List[str]] = None
 
     @property
     def state(self) -> str:
-        """``prepared`` / ``ready`` / ``waiting`` -- the word `status` shows."""
-        return ("prepared" if self.prepared
-                else "ready" if self.ready else "waiting")
+        """``described`` / ``prepared`` / ``launched`` -- the word `status`
+        shows for a stage the run doors do not answer."""
+        return ("launched" if self.launched else
+                "prepared" if self.prepared else "described")
 
     @property
     def detail(self) -> str:
-        """One line beside the state -- what a ready stage takes (or that
-        it builds on nothing), the first line of what one waiting waits
-        for: `status`'s detail column and `prep task`'s ladder."""
-        if self.prepared:
+        """One line beside the state: what a ready stage takes, the first
+        line of what one waiting waits for."""
+        if self.launched:
             return ""
+        from .commands import reason_of
+        first = reason_of(self.why or "")
+        if self.prepared:
+            if not self.ready:
+                return {"regrouped": "its job's members changed: ",
+                        "unreadable": "its launch record does not read: ",
+                        "again": "prepare its group again: "}.get(
+                            self.blocked, "waits for: ") + first
+            return "ready to launch -- " + ("; ".join(self.takes)
+                                            if self.takes else
+                                            "takes nothing from another run")
         if not self.ready:
-            return (self.why or "").splitlines()[0].rstrip(" -") if self.why \
-                else "waiting"
-        return "takes " + "; ".join(self.takes) if self.takes \
-            else "builds on nothing"
+            return "waits before it can be prepared: " + first
+        return "; ".join(self.takes) if self.takes else "builds on nothing"
 
 
-def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
-              from_attempt: Optional[str] = None, cold: bool = False,
-              verdict: bool = True) -> Readiness:
-    """``stage``'s answer (`job-system.md`, *The task*) -- ``from_attempt``
-    and ``cold`` asked as prep would take them: a run named is taken as
-    said, so it makes a stage ready that waits for its default.
-    ``verdict=False`` leaves a relaxation's convergence unread -- for
-    `status`, read far more often than prep."""
-    from .prep import (PrepError, _user_error_as_prep, gather_sources,
-                       prepared_already)
+@dataclass
+class GroupAnswer:
+    """One group of the description: its number, its members in ladder
+    order, each member's answer, and where the group stands."""
+    number: int
+    members: List[str]
+    answers: List[Readiness]
+
+    @property
+    def launched(self) -> bool:
+        """A member was launched: the group's job is fixed."""
+        return any(a.launched for a in self.answers)
+
+    @property
+    def prepared(self) -> bool:
+        """Every member prepared, each in the one job these members make --
+        matched by membership (`engines/stages.md` § 2)."""
+        from .group import same_members
+        return all(a.prepared and same_members(a.job_members, self.members)
+                   for a in self.answers)
+
+    @property
+    def changed(self) -> bool:
+        """A member was prepared in a job these members no longer make: its
+        prep forms the group again (`web/task-setup.md` § 11)."""
+        from .group import same_members
+        return not self.launched and any(
+            a.prepared and not same_members(a.job_members, self.members)
+            for a in self.answers)
+
+    @property
+    def preparable(self) -> bool:
+        """It may be prepared now: no member launched, and every member
+        preparable -- a force-constant stage once its `relax` has finished."""
+        return not self.launched and all(
+            a.prepared or a.ready for a in self.answers)
+
+    @property
+    def launchable(self) -> bool:
+        """Its first launch may go now: prepared as described, never
+        launched, and what each member takes is there."""
+        return (self.prepared and not self.launched
+                and all(a.ready for a in self.answers))
+
+    @property
+    def why(self) -> Optional[str]:
+        """What it waits for: the first member's refusal."""
+        return next((a.why for a in self.answers if a.why), None)
+
+
+def job_of(base, stage: str, *, jobset=None):
+    """The job ``stage`` is prepared as -- its row in the calculation's
+    ``job-set.json``, matched as every reader matches a stage's name
+    (`identity.stage_key`) -- or ``None``.  PREPARED is that row
+    (`job-system.md` § 5.0): the one door every reader asks.  ``jobset`` is
+    the plan as the caller read it; with none it is read here."""
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    if jobset is None:
+        plan = Path(base) / JOBSET_FILENAME
+        if not plan.is_file():
+            return None
+        jobset = JobSet.load(plan)
+    return jobset.job(stage)
+
+
+def first_launch_takes(base, task, stage: str, job, jobset, *,
+                       template_text: Optional[str] = None,
+                       from_attempt: Optional[str] = None,
+                       cold: bool = False, verdict: bool = True):
+    """``(continuation, gather, refusal)`` -- what ``stage``'s first launch
+    takes (`job-system.md` § 6.0, step 1), from the one door per kind, read
+    now, every kind's refusal with it: a force-constant stage's `relax` run
+    its prep took (``job.written_at``) with that run's files -- ``cold`` and
+    ``from_attempt`` refused, its run its prep's; a transport rung's
+    gather, the three gates (`engines/transport.md` § 6.1), each point its
+    own for a rung that runs per point -- its inputs its kind's, never
+    named; an independent stage's continuation -- the stage before it's
+    newest run, which must have finished, ``from_attempt`` a run named,
+    ``cold`` none.  The continuation carries the files it would copy (the
+    pair's rule, `materialize.continuation_files`), so a run holding none is
+    refused here, before anything is sent."""
+    import dataclasses
+    from .continuation import (Continuation, continuation_answer,
+                               force_constant_stage, read_run,
+                               relax_stage_of)
+    from .materialize import continuation_files, shape_of
+    from .errors import PrepError, user_error_as_prep
+    from .gather import gather_sources
     base = Path(base)
-    if prepared_already(base, task, "task", stage):
-        return Readiness(stage, prepared=True)
-    if template_text is None:
-        from ..template import find_template
-        tpl = find_template(base, task.label)
-        template_text = tpl.read_text(encoding="utf-8") if tpl else None
-    if getattr(task, "calculation", None) == "transport":
+    if force_constant_stage(task, stage):
+        relax = relax_stage_of(task)
+        if cold or (from_attempt and relax is None):
+            # IT MEASURES AT THE GEOMETRY ITS `relax` REACHED, or the
+            # structure stated relaxed (§ 5.2a's table): nothing to start
+            # cold from, and no run to name.
+            from .continuation import cannot_be_named
+            return None, None, (
+                cannot_be_named(base, task, stage, from_attempt, cold)
+                or f"--cold: `{stage}` takes nothing to start cold from -- "
+                   f"it measures the structure as given.")
+        if relax is None:
+            return None, None, None
+        if from_attempt:
+            from .commands import block, command, words_for
+            from .continuation import cannot_be_named
+            from .group import number_of
+            # A RUN ON THE FLAT LAYOUT, which keeps none to name, is
+            # refused as such -- never told to a prep that would refuse it
+            # too.
+            if not shape_of(jobset, base).keeps_attempts_as_directories:
+                return None, None, cannot_be_named(base, task, stage,
+                                                   from_attempt, False)
+            return None, None, (
+                f"--from {from_attempt!r}: `{stage}`'s deck is written at the "
+                f"`relax` run its prep took ({job.written_at}), and its first "
+                f"launch takes that run's files -- another `relax` run is "
+                f"said at its prep (engines/vibration.md § 5.2a):\n"
+                + block([command("prep", *words_for(
+                    "task", groups=[number_of(task, stage)]), base=base,
+                    flags=("--from", from_attempt))]))
+        if job.written_at is None:
+            from .commands import way_back
+            return None, None, (
+                f"`{stage}` was prepared before its prep recorded the "
+                f"`{relax}` run its deck is written at (2.7.0), so its "
+                f"launch cannot say whose files it takes.  To launch it, "
+                + way_back(stage, base=base, task=task, launched=False))
+        flat = not shape_of(jobset, base).keeps_attempts_as_directories
+        where = base if flat else base / job.written_at
+        # THE RUN ITS PREP TOOK, the one its record names -- on the flat
+        # layout by its name (`runfiles.parse_run_name`), never the newest.
+        from ..runfiles import parse_run_name
+        named = parse_run_name(job.written_at, task.label) if flat else None
+        if flat and named is None:
+            from .commands import way_back
+            return None, None, (
+                f"`{stage}`'s record names the `{relax}` run its deck is "
+                f"written at as {job.written_at!r}, which is no run of "
+                f"`{task.label}` in this folder.  To launch it, "
+                + way_back(stage, base=base, task=task, launched=False))
+        concluded, state, converged, _ = read_run(
+            base, task, relax, where, verdict=verdict,
+            run=named.run if named is not None else None)
+        cont = Continuation(stage=relax,
+                            source=None if flat else job.written_at,
+                            by_default=True, concluded=concluded,
+                            state=state, converged=converged, linked=True,
+                            run=job.written_at if flat else None)
+        if flat:
+            # WHAT IT READS is the folder's restart files, as the last run
+            # there left them (`continuation.flat_files`) -- a record of
+            # another run that does not read is the refusal, in its words.
+            from ..runrecord import LaunchRecordError
+            from .continuation import flat_files
+            try:
+                return (dataclasses.replace(flat_files(base, task, cont),
+                                            carries=()), None, None)
+            except LaunchRecordError as exc:
+                return None, None, str(exc)
         try:
-            # THE REFUSALS PREP SAYS, translated as prep translates them.
-            with _user_error_as_prep():
+            names = continuation_files(jobset, base, stage, job.written_at,
+                                       named=False)
+        except ValueError as exc:
+            return None, None, str(exc)
+        return (dataclasses.replace(cont, carries=tuple(
+            n for n in names if (where / n).is_file())), None, None)
+    if task.calculation == "transport":
+        # ITS INPUTS ARE ITS KIND'S, never named: `--from` / `--cold`
+        # refused by the one door, as a swept rung's are.
+        from .continuation import cannot_be_named
+        why = cannot_be_named(base, task, stage, from_attempt, cold)
+        if why:
+            return None, None, why
+        try:
+            # THE REFUSALS THE GATHER SAYS, translated as prep translates.
+            with user_error_as_prep():
                 got = gather_sources(base, task, stage,
                                      template_text=template_text)
         except PrepError as exc:
-            return Readiness(stage, why=str(exc))
-        return Readiness(stage, ready=True, takes=_takes_lines(got))
-    from .continuation import continuation_answer
+            return None, None, str(exc)
+        return None, got, None
     cont, refused = continuation_answer(base, task, stage,
                                         from_attempt=from_attempt, cold=cold,
                                         verdict=verdict,
                                         template_text=template_text)
     if refused:
-        return Readiness(stage, why=refused)
-    return Readiness(stage, ready=True,
-                     takes=([cont.line(would=True)] if cont is not None
-                            else []))
+        return None, None, refused
+    if cont is None or cont.source is None:
+        # FROM NOTHING, or on the flat layout from files lying in the folder.
+        return (dataclasses.replace(cont, carries=()) if cont is not None
+                else None), None, None
+    try:
+        names = continuation_files(jobset, base, stage, cont.source,
+                                   named=not cont.by_default)
+    except ValueError as exc:
+        return None, None, str(exc)
+    return (dataclasses.replace(cont, carries=tuple(
+        n for n in names if (base / cont.source / n).is_file())), None, None)
 
 
-def _takes_lines(got) -> List[str]:
-    """What a transport rung's prep would gather, ONE line per file: the
-    run's inputs are taken once for every point (`engines/transport.md`
-    § 2a.11), so a file every point takes from the same run is said once; a
-    file each point takes from its own point of one run names that run and
-    the count."""
-    srcs: Dict[str, List[str]] = {}
-    for _point, inputs in got:
+def at_launch(task, stage: str, *, base=None, job=None, jobset=None,
+              template_text: Optional[str] = None) -> List[dict]:
+    """What ``stage``'s first launch will take, said before any run is read
+    (`job-system.md` § 5.0, *a preview*) -- ``[{"from", "files", "line"}]``,
+    the line *at launch: takes <files> from <stage>'s newest run, which must
+    have finished*: a transport rung one per stage upstream, its files by
+    the ladder's DAG; an independent stage its restart files (``job``'s,
+    when prepared; ``files`` ``None`` before) from the stage before it, by
+    the pair's rule the launch copies by (`model.warm_carry`) against that
+    stage's job in ``jobset`` -- the plan as the caller holds it, else the
+    calculation's; ``[]`` for a stage that builds on nothing.  A
+    force-constant stage's is the `relax` run its deck is written at
+    (:func:`readiness`)."""
+    if task.calculation == "transport":
+        from ..transport.stages import inputs_of
+        by: Dict[str, List[str]] = {}
+        for up, fn in inputs_of(task, stage):
+            by.setdefault(up, []).append(fn)
+        return [{"from": up, "files": fns,
+                 "line": f"at launch: takes {', '.join(fns)} from `{up}`'s "
+                         f"newest run, which must have finished"}
+                for up, fns in by.items()]
+    from .continuation import stage_before
+    prev = stage_before(base, task, stage, template_text)
+    if prev is None:
+        return []
+    files = (carried_from(job, prev, base=base, jobset=jobset)
+             if job is not None and job.warm else None)
+    return [{"from": prev, "files": files,
+             "line": f"at launch: takes "
+                     f"{', '.join(files) if files else 'its restart files'} "
+                     f"from `{prev}`'s newest run, which must have finished"}]
+
+
+def carried_from(job, source: str, *, base=None, jobset=None) -> List[str]:
+    """The restart files ``job`` takes from a run of ``source`` -- the
+    pair's rule (`model.warm_carry`), the one the launch copies by, against
+    ``source``'s job in ``jobset`` (else the calculation's plan): a file
+    conditioned on the pair is said only when both jobs are there to agree
+    on it."""
+    from .model import warm_carry
+    other = (job_of(base, source, jobset=jobset)
+             if jobset is not None or base is not None else None)
+    return warm_carry(job, other)
+
+
+def written_at_takes(cont, files=None) -> dict:
+    """What a force-constant stage's first launch takes -- ``{"from",
+    "files", "line"}`` as :func:`at_launch`'s items: ``files`` (its job's
+    restart files, ``None`` before it is prepared) from the `relax` run its
+    deck is written at, ``cont`` (`engines/vibration.md` § 5.2a)."""
+    return {"from": cont.stage, "files": files,
+            "line": f"at launch: takes "
+                    f"{', '.join(files) if files else 'its restart files'} "
+                    f"from the `{cont.stage}` run its deck is written at, "
+                    f"{cont.where()}"}
+
+
+def takes_sentence(items: List[dict]) -> str:
+    """:func:`at_launch`'s items as one sentence -- the one item's line, or
+    for several upstreams *at launch: takes <files> from <stage>; ... --
+    each from its newest run, which must have finished*."""
+    if len(items) == 1:
+        return items[0]["line"]
+    return ("at launch: takes "
+            + "; ".join(f"{', '.join(t['files'])} from `{t['from']}`"
+                        for t in items)
+            + " -- each from its newest run, which must have finished")
+
+
+def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
+              verdict: bool = True, jobset=None) -> Readiness:
+    """``stage``'s answer (`job-system.md`, *The task*), each run taken by
+    default: for a force-constant stage not prepared, the `relax` run its
+    prep would write it at; for a stage prepared, what its first launch
+    would take.  ``verdict=False``
+    leaves a relaxation's convergence unread -- for `status`, read far more
+    often than a prep or a launch.  ``jobset`` is the calculation's plan as
+    the caller read it; with none it is read here."""
+    from .continuation import continuation_answer, force_constant_stage
+    from .materialize import ever_launched
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    base = Path(base)
+    from .group import number_of
+    group = number_of(task, stage)
+    if template_text is None:
+        from ..template import find_template
+        tpl = find_template(base, task.label)
+        template_text = tpl.read_text(encoding="utf-8") if tpl else None
+    if jobset is None and (base / JOBSET_FILENAME).is_file():
+        jobset = JobSet.load(base / JOBSET_FILENAME)
+    job = job_of(base, stage, jobset=jobset) if jobset is not None else None
+    if job is not None:
+        from .group import members_of
+        members = members_of(job)
+        from ..runrecord import LaunchRecordError
+        try:
+            launched = ever_launched(jobset, base, job)
+        except LaunchRecordError as exc:
+            # A RECORD THAT DOES NOT READ is this stage's answer, in its
+            # reader's words, which name the way out -- the ladder's other
+            # rows stand.
+            return Readiness(stage, group, prepared=True, why=str(exc),
+                             blocked="unreadable", job_members=members)
+        if launched:
+            return Readiness(stage, group, prepared=True, launched=True,
+                             job_members=members)
+        from .group import regrouped
+        why = regrouped(task, jobset, stage, base=base)
+        if why:
+            return Readiness(stage, group, prepared=True, why=why,
+                             blocked="regrouped", job_members=members)
+        cont, gather, why = first_launch_takes(
+            base, task, stage, job, jobset, template_text=template_text,
+            verdict=verdict)
+        if why:
+            # A FORCE-CONSTANT STAGE PREPARED BEFORE ITS PREP RECORDED THE
+            # RUN its deck is written at is prepared again; every other
+            # refusal waits for a run it builds on.
+            again = (job.written_at is None
+                     and force_constant_stage(task, stage))
+            return Readiness(stage, group, prepared=True, why=why,
+                             blocked="again" if again else "waits",
+                             job_members=members)
+        return Readiness(stage, group, prepared=True, ready=True,
+                         takes=_takes_lines(cont, gather),
+                         job_members=members)
+    if group is not None and jobset is not None:
+        # PUT INTO A LAUNCHED GROUP it was not launched with: its prep, and
+        # its group's launch, are refused -- said here, with the way on.
+        from ..runrecord import LaunchRecordError
+        from .group import joined_launched, launched_without
+        try:
+            hit = launched_without(task, jobset, group, base=base)
+        except LaunchRecordError as exc:
+            return Readiness(stage, group, why=str(exc))
+        if hit and stage in hit[1]:
+            return Readiness(stage, group, why=joined_launched(
+                group, *hit, base=base, task=task))
+    if force_constant_stage(task, stage):
+        # THE ONE VALUE HAND-OVER: its deck is written at a `relax` run,
+        # which must have finished before it can be prepared.
+        cont, why = continuation_answer(base, task, stage, verdict=verdict,
+                                        template_text=template_text)
+        if why:
+            return Readiness(stage, group, why=why)
+        return Readiness(stage, group, ready=True,
+                         takes=([written_at_takes(cont)["line"]]
+                                if cont is not None else []))
+    from .continuation import unreadable
+    try:
+        items = at_launch(task, stage, base=base, template_text=template_text)
+    except unreadable() as exc:
+        # A TEMPLATE PREP WOULD REFUSE is said, never raised: it waits for
+        # the fix before it can be prepared.
+        return Readiness(stage, group,
+                         why=f"what `{stage}` continues from cannot be read: "
+                             f"{exc}")
+    return Readiness(stage, group, ready=True,
+                     takes=[takes_sentence(items)] if items else [])
+
+
+def _takes_lines(cont, gather) -> List[str]:
+    """What a first launch would take now, one line each: the run it
+    continues from, with the files it would copy; or, for a transport rung,
+    one line per file (a file every point takes from one run said once; a
+    file each point takes from its own point of one run, that run and the
+    count)."""
+    if cont is not None:
+        return [cont.line(cont.carries or (), would=True)]
+    srcs: Dict[str, list] = {}
+    for _point, inputs in (gather or ()):
         for src, fn in inputs:
             if src not in srcs.setdefault(fn, []):
                 srcs[fn].append(src)
@@ -111,54 +468,131 @@ def _takes_lines(got) -> List[str]:
         if len(where) == 1:
             out.append(f"{fn} <- {where[0]}")
             continue
-        # THE RUN a point lies in: `<stage>/run-<n>`, the folders below it
-        # its point's levels (a frame, a voltage).
-        runs = {"/".join(w.split("/")[:2]) for w in where}
+        # THE RUN a point lies in (`RunRef.run_folder`), the folders below
+        # it its point's levels (a frame, a voltage).
+        runs = {str(w.run_folder()) for w in where}
         out.append(f"{fn} <- {runs.pop()} ({len(where)} points)"
-                   if len(runs) == 1 else f"{fn} <- " + ", ".join(where))
+                   if len(runs) == 1
+                   else f"{fn} <- " + ", ".join(str(w) for w in where))
     return out
 
 
 def ladder(base, task, *, template_text: Optional[str] = None,
-           verdict: bool = True) -> List[Readiness]:
+           verdict: bool = True, jobset=None) -> List[Readiness]:
     """Every stage of the description, in ladder order, with its answer --
-    what `prep task` shows before it asks, and `status` beside each stage
-    not prepared."""
+    ``jobset`` the plan as the caller read it; with none it is read here."""
     from .materialize import ladder_homes
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    base = Path(base)
     if template_text is None:
         from ..template import find_template
-        tpl = find_template(Path(base), task.label)
+        tpl = find_template(base, task.label)
         template_text = tpl.read_text(encoding="utf-8") if tpl else None
+    if jobset is None and (base / JOBSET_FILENAME).is_file():
+        jobset = JobSet.load(base / JOBSET_FILENAME)
     return [readiness(base, task, h.name, template_text=template_text,
-                      verdict=verdict)
-            for h in ladder_homes(Path(base), task)]
+                      verdict=verdict, jobset=jobset)
+            for h in ladder_homes(base, task)]
 
 
-def preselected(base, task, answers: List[Readiness]) -> List[str]:
-    """The stages `prep task` offers pre-selected (D2, `job-system.md`, *The
-    task*): for a kind whose stages each have a role -- transport, a
-    vibration (`paths.KIND_ROLES`) -- every ready stage that builds on
-    nothing (`group.upstream_of`), which may share one job; for any other
-    kind, the first ready stage."""
-    from ..paths import KIND_ROLES
-    from .group import upstream_of
-    ready = [a.stage for a in answers if a.ready]
-    if not ready:
-        return []
-    if getattr(task, "calculation", None) in KIND_ROLES:
-        free = [s for s in ready if not upstream_of(base, task, s)]
-        return free or ready[:1]
-    return ready[:1]
+@dataclass
+class TaskState:
+    """THE TASK AS THE READY DOOR READS IT, ONCE (`job-system.md`, *The
+    task*): the description, its template's text, the plan, every stage's
+    answer in ladder order and every group's -- what `prep task` shows
+    before it asks, what `launch task` sends with nothing named, what
+    `status` lists and what Task setup's folder answer carries."""
+    task: object
+    template_text: Optional[str]
+    jobset: object
+    stages: List[Readiness]
+    groups: List[GroupAnswer]
+
+    @property
+    def prep_offer(self) -> List[int]:
+        """The groups `prep task` offers (:func:`prep_offer`)."""
+        return prep_offer(self.groups)
+
+    @property
+    def launch_offer(self) -> List[int]:
+        """The groups `launch task` sends with nothing named
+        (:func:`launch_offer`)."""
+        return launch_offer(self.groups)
+
+    def text(self) -> str:
+        """The groups as both verbs show them (:func:`groups_text`)."""
+        return groups_text(self.groups)
 
 
-def ladder_text(answers: List[Readiness]) -> str:
-    """The ladder as `prep task` shows it before it asks: each stage, where
-    it stands, and for one waiting the first line of what it waits for."""
-    width = max([len(a.stage) for a in answers] + [5])
+def task_state(base, *, task=None, template_text: Optional[str] = None,
+               jobset=None, verdict: bool = False) -> TaskState:
+    """The calculation's :class:`TaskState`, every file read once --
+    ``task``, ``template_text`` and ``jobset`` as the caller read them,
+    else read here.  ``verdict`` reads a relaxation's convergence where a
+    stage takes one (a prep's question); `status` and the folder answer
+    leave it unread.  A description or template that does not read raises,
+    in its reader's words."""
+    from ..task import FILENAME as TASK_FILENAME, read_task
+    from ..template import find_template
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    base = Path(base)
+    if task is None:
+        task = read_task(base / TASK_FILENAME)
+    if template_text is None:
+        tpl = find_template(base, task.label)
+        template_text = tpl.read_text(encoding="utf-8") if tpl else None
+    if jobset is None and (base / JOBSET_FILENAME).is_file():
+        jobset = JobSet.load(base / JOBSET_FILENAME)
+    answers = ladder(base, task, template_text=template_text,
+                     verdict=verdict, jobset=jobset)
+    return TaskState(task, template_text, jobset, answers,
+                     groups(task, answers))
+
+
+def groups(task, answers: List[Readiness]) -> List[GroupAnswer]:
+    """The description's groups, in order, each with its members' answers
+    (``answers``, :func:`ladder`'s)."""
+    by = {a.stage: a for a in answers}
+    out: List[GroupAnswer] = []
+    for st in task.stages:
+        if not out or out[-1].number != st.group:
+            out.append(GroupAnswer(st.group, [], []))
+        out[-1].members.append(st.name)
+        out[-1].answers.append(by[st.name])
+    return out
+
+
+def prep_offer(gs: List[GroupAnswer]) -> List[int]:
+    """The groups `prep task` offers pre-selected (`job-system.md`, *The
+    task*): every one not prepared as described and preparable."""
+    return [g.number for g in gs if not g.prepared and g.preparable]
+
+
+def launch_offer(gs: List[GroupAnswer]) -> List[int]:
+    """The groups `launch task` sends with nothing named (L1): prepared as
+    described, never launched, and what each member takes is there."""
+    return [g.number for g in gs if g.launchable]
+
+
+def groups_text(gs: List[GroupAnswer]) -> str:
+    """The groups as `prep task` and `launch task` show them: each group's
+    number, then each member, where it stands, and what it takes or waits
+    for."""
+    width = max([len(a.stage) for g in gs for a in g.answers] + [5])
     out = []
-    for a in answers:
-        out.append(f"  {a.stage:<{width}}  {a.state:<8}  {a.detail}")
+    for g in gs:
+        out.append(f"  group {g.number}"
+                   + ("  (launched)" if g.launched else
+                      "  (prepared, not launched)" if g.prepared else
+                      "  (prepared, its members changed)" if g.changed
+                      else ""))
+        for a in g.answers:
+            out.append(f"    {a.stage:<{width}}  {a.state:<9}  {a.detail}")
     return "\n".join(out)
 
 
-__all__ = ["Readiness", "readiness", "ladder", "preselected", "ladder_text"]
+__all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
+           "readiness", "job_of",
+           "first_launch_takes",
+           "at_launch", "written_at_takes", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
+           "groups_text"]

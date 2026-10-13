@@ -83,9 +83,9 @@ export async function pickPath(opts) {
   dialog.appendChild(tree);
 
   // The meta line: what the current selection MEANS, when the caller
-  // can say (`describe`).
+  // can say (`describe`).  Its line is reserved (dialog.css), so a
+  // selection never moves the rows under the pointer.
   const meta = _el("p", "tp-meta");
-  meta.hidden = true;
   dialog.appendChild(meta);
 
   const err = _el("p", "molbuilder-projects-dialog-error");
@@ -114,15 +114,13 @@ export async function pickPath(opts) {
         if (r) r.setAttribute("aria-selected", "true");
       }
     }
-    if (!opts.describe || !path) { meta.hidden = true; return; }
+    if (!opts.describe || !path) { meta.textContent = ""; return; }
     const seq = ++describeSeq;
-    meta.hidden = false;
     meta.textContent = "Reading…";
     try {
       const text = await opts.describe(path, entry);
       if (seq !== describeSeq) return;      // a newer selection landed
       meta.textContent = text || "";
-      meta.hidden = !text;
     } catch (e) {
       if (seq !== describeSeq) return;
       meta.textContent = "Could not read: "
@@ -174,7 +172,7 @@ export async function pickPath(opts) {
     }
   }
 
-  function _buildNode(name, path, kind) {
+  function _buildNode(name, path, kind, open) {
     const li = _el("li", "tp-node");
     li.dataset.path = path;
     li.dataset.kind = kind;
@@ -227,12 +225,22 @@ export async function pickPath(opts) {
       li, row, isDir, canPick, path, name, kind, toggle,
       expanded: () => expanded,
     }));
+    // OPENED BY ITS OWN TOGGLE, so its state, its twisty and its
+    // aria-expanded say one thing (the root opens this way).
+    if (open) toggle();
     return li;
   }
 
-  async function _expand(node) {
-    if (node.dataset.loaded === "1") return;
-    node.dataset.loaded = "1";
+  // ONE LISTING PER NODE, its promise kept: a second asker -- the root's
+  // opener after its own toggle -- awaits the same listing rather than
+  // returning before it lands.
+  const listings = new WeakMap();
+  function _expand(node) {
+    if (!listings.has(node)) listings.set(node, _list(node));
+    return listings.get(node);
+  }
+
+  async function _list(node) {
     const path = node.dataset.path;
     const sub = node.querySelector("ul");
     const r = await apiList(path);
@@ -266,12 +274,9 @@ export async function pickPath(opts) {
 
   const rootUl = _el("ul", "tp-root");
   tree.appendChild(rootUl);
-  const rootNode = _buildNode("projects", root, "directory");
+  const rootNode = _buildNode("projects", root, "directory", true);
   rootUl.appendChild(rootNode);
   await _expand(rootNode);
-  rootNode.querySelector(".tp-children").hidden = false;
-  rootNode.querySelector(".tp-twisty").textContent = "▾";
-  rootNode.classList.add("is-open");
 
   const actions = _el("div", "molbuilder-projects-dialog-actions");
   const cancel = _el("button", null, "Cancel");

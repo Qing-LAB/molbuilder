@@ -19,7 +19,7 @@ import pytest
 
 from molbuilder.runfiles import (QUALIFIERS, ON_THE_LABEL, RunFile, RunFileError,
                                  find, find_by_role, latest_run,
-                                 compose, is_carried, manifest, parse,
+                                 compose, manifest, parse,
                                  tail)
 
 
@@ -111,11 +111,12 @@ def test_a_role_with_underscores_is_not_mistaken_for_a_stage():
 def test_carried_is_the_absence_of_a_stage():
     """SIESTA's .XV/.DM and PySCF's .chk/_optimized.xyz cross rungs.  A stage
     in them would make each rung hunt for a file only its own stage wrote."""
-    assert is_carried(compose(LABEL, ".chk"), LABEL) is True
-    assert is_carried(compose(LABEL, "_optimized.xyz"), LABEL) is True
-    assert is_carried(compose(LABEL, ".molwatch.log", "01_coarse"), LABEL) is False
+    assert parse(compose(LABEL, ".chk"), LABEL).stage is None
+    assert parse(compose(LABEL, "_optimized.xyz"), LABEL).stage is None
+    assert parse(compose(LABEL, ".molwatch.log", "01_coarse"),
+                 LABEL).stage == "01_coarse"
     # An ATTEMPT is not a stage: `-run2` still names a carried file.
-    assert is_carried(compose(LABEL, ".chk", None, 2), LABEL) is True
+    assert parse(compose(LABEL, ".chk", None, 2), LABEL).stage is None
 
 
 def test_another_labels_file_is_not_claimed():
@@ -322,7 +323,7 @@ def test_a_carried_file_is_named_the_same_whichever_engine_reads_it_next():
     for engine in ("siesta", "pyscf"):
         for suffix in warm_list(engine).suffixes:
             name = compose(LABEL, suffix)
-            assert is_carried(name, LABEL), name
+            assert parse(name, LABEL).stage is None, name
             assert LABEL + suffix == name, (
                 f"{name!r} carries something between the label and the role; "
                 f"the next rung looks for {LABEL + suffix!r}")
@@ -396,7 +397,7 @@ class TestTheReader:
 
     def test_the_latest_run_is_the_HIGHEST_across_every_role(self, tmp_path):
         """The run's conclusion door asks this to find the newest run's
-        marker (`runrecord.ending`, through `runfiles.at_latest_run`).
+        marker (`runrecord.ending`, through `runfiles.at_run`).
 
         Lowest instead of highest reads an EARLIER run's goodbye as the latest
         word -- which is what that door's own docstring says must not happen,

@@ -9,7 +9,10 @@ under guard, each named for its failure:
   would tangle the Cancel semantics;
 * Cancel runs the cancelers and does NOT release — release belongs to
   the operation's ``finally``, after its abort path unwinds;
-* ``release()`` is idempotent and lowers the cover.
+* ``release()`` is idempotent and lowers the cover;
+* the KEYBOARD is fenced too, and Cancel is shown only with cancelers --
+  Enter on the button just clicked would otherwise send again, uncovered
+  by any Cancel (§ 10).
 """
 from __future__ import annotations
 
@@ -179,4 +182,47 @@ def test_state_works_without_a_dom():
     ''')
     assert out == {"claimed": True, "reason": "headless op"}
 
+
+def test_the_keyboard_is_fenced_and_cancel_shows_only_with_cancelers():
+    """§ 10: a key pressed outside the cover does nothing while claimed, and
+    focus rests on the cover -- on Cancel when there is one to run, on the
+    panel when there is none -- until the release lets the page go."""
+    out = _run_node('''
+        let focused = null;
+        const mk = document.createElement;
+        document.createElement = t => Object.assign(mk(t), {
+            contains(x) { return x === this || this.children.includes(x); },
+            focus() { focused = this.className; },
+        });
+        const listeners = {};
+        document.addEventListener = (ev, fn) => { listeners[ev] = fn; };
+        document.removeEventListener = (ev, fn) => {
+            if (listeners[ev] === fn) delete listeners[ev];
+        };
+        pageBusy.claim("nothing to cancel", []);
+        const cover = body.children.find(
+            c => c.className === "page-busy-cover");
+        const cancel = cover.children[0].children.find(
+            e => e.className === "page-busy-cancel");
+        const hiddenWithout = cancel.hidden;
+        const focusWithout = focused;
+        let stopped = false;
+        listeners["keydown"]({ target: { closest: () => null },
+                               preventDefault() { stopped = true; },
+                               stopPropagation() {} });
+        pageBusy.release();
+        const fencedAfter = "keydown" in listeners;
+        pageBusy.claim("cancellable", [() => {}]);
+        const hiddenWith = cancel.hidden;
+        const focusWith = focused;
+        pageBusy.release();
+        console.log(JSON.stringify({ hiddenWithout, focusWithout, stopped,
+                                     fencedAfter, hiddenWith, focusWith }));
+    ''')
+    assert out["stopped"] is True, "a key outside the cover still acted"
+    assert out["fencedAfter"] is False, "the release left the keyboard fenced"
+    assert (out["hiddenWithout"], out["focusWithout"]) == (
+        True, "page-busy-panel"), out
+    assert (out["hiddenWith"], out["focusWith"]) == (
+        False, "page-busy-cancel"), out
 

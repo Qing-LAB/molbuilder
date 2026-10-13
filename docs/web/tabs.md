@@ -242,7 +242,7 @@ needs beyond that — the deck, the pseudopotentials beside it, the `.run.sh`
 wrapper — is written by `prep` on the machine that runs it (the old
 `/api/siesta/install-pseudos` and `/api/run/install-wrapper` doors retired
 2026-08-21 with zero browser callers).  These files are written through the projects module's
-`safeSave` file-writer — note that's a *different* door from the structure-save in
+`writeFile` — note that's a *different* door from the structure-save in
 §6 (`molviewFiles.save` → `/api/structure/save`, which writes a molecule + sidecar
 pair); a script isn't a molecule, so it takes the plain file-write door.
 
@@ -271,7 +271,8 @@ B8)*.
    labelling (`L-electrode` the high-z block) as a warning — never a refusal,
    the junction cites and runs — with a *Swap L-electrode and R-electrode*
    button offering the rename as **this calculation's own** (`swap_electrodes`
-   in the description; the cited junction is never written — § 4); the
+   in the description; the cited junction is never written — § 4), made
+   about one citation: citing another junction starts without it; the
    junction enters the calculation centred in its cell, save a cited
    pair's origin a person assigned, which it keeps (§ 4). A read-only
    **MolView** follows the citation, re-opened on every cite and reload as
@@ -292,7 +293,9 @@ B8)*.
    settings as its override bag (§ 3.8.2a), its cards folded where the rung
    does not own the group, the rung-fixed items echoed read-only. The
    transmission's tab offers no SCF setting (tbtrans runs none, § 6.1b).
-5. **Describe** — one button. `POST /api/transport/describe` writes the
+5. **Describe** — one button, enabled once a junction is cited and the
+   shared panel and the rungs' tabs are drawn for it (until then they hold
+   the last citation's values). `POST /api/transport/describe` writes the
    template and `task.json` into the selected folder, or refuses: a refusal
    lands beside the control it names (the bias list, its treatment, a rung's
    field on its own tab, brought into view), and the status line says it too.

@@ -39,6 +39,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, env_bin
+from support.road import group_words
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -254,11 +255,13 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     # THE JOB SET'S OWN ORDER: freq before relax has run is refused by the
     # one hand-over door, naming the stage to run first and how
     # (`continuation`, vibration.md § 5.2a's table).
-    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "freq"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code != 0 and "`freq` builds on `relax`" in r.output \
         and "Run it first" in r.output, r.output
 
-    r = _jobset("prep", "task", "--stage", "relax", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "relax"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     relax_deck = next((bundle / "01_relax").glob("*.fdf")).read_text()
     # the ordinary relaxation deck, from the same sorted copy: Broyden to
@@ -273,7 +276,8 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     _the_monitor_closed(bundle / "01_relax" / "run-0", "01_relax",
                         "Broyden opt. move")
 
-    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "freq"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     perm = read_permutation(bundle)
     assert perm.key == "held-first" and perm.sorted_to_original == (1, 0)
@@ -338,15 +342,19 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     # the relaxed bond (H-H 0.7745 A, measured 2026-09-24 on this road)
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
     task = json.loads((bundle / "task.json").read_text())
-    task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
+    # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
+    task["stages"] = [dict(s, group=1) for s in task["stages"]
+                      if s["name"] == "freq"]
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
-    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "freq"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code != 0 and "already_relaxed = true" in r.output \
         and "`relax` stage" in r.output, r.output
     _tick_already_relaxed(bundle)
     _set_template_value(bundle, "temperature_K", "298.15", "350.0")
-    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "freq"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
@@ -369,8 +377,8 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
 
 def _deck_coordinates(deck_text):
     """The deck's own coordinate block, as SIESTA reads it."""
-    from molbuilder.parse.fdf import _norm, _parse_fdf
-    rows = _parse_fdf(deck_text)[1][_norm("AtomicCoordinatesAndAtomicSpecies")]
+    from molbuilder.parse.fdf import fdf_key, read_fdf
+    rows = read_fdf(deck_text)[1][fdf_key("AtomicCoordinatesAndAtomicSpecies")]
     return np.array([[float(x) for x in r[:3]] for r in rows])
 
 
@@ -393,13 +401,15 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     task = json.loads((bundle / "task.json").read_text())
     # a stage overrides only what the description varies (stages.md § 6.2)
     task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    task["stages"].append({"name": "freq_half", "enabled": True,
+    # A GROUP OF ITS OWN: `freq` is launched before it is prepared, and a
+    # launched group is fixed (engines/stages.md § 2).
+    task["stages"].append({"name": "freq_half", "group": 3, "enabled": True,
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
     def _prep_and_launch(stage):
-        r = _jobset("prep", "task", "--stage", stage, "--bundle", str(bundle),
-                    "--target", "this")
+        r = _jobset("prep", "task", *group_words(bundle, stage),
+                    "--bundle", str(bundle), "--target", "this")
         assert r.exit_code == 0, r.output
         r = _jobset("launch", "task", "--stage", stage, "--bundle", str(bundle),
                     "--mode", "direct", "--yes")
@@ -407,8 +417,8 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
 
     _prep_and_launch("relax")
     _prep_and_launch("freq")
-    r = _jobset("prep", "task", "--stage", "freq_half", "--bundle", str(bundle),
-                "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "freq_half"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     # A STAGE STILL TO COME is pending, never a failure, in the words its
     # attempt's `run_status` gives (prepared, not launched).
@@ -499,11 +509,13 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     task = json.loads((bundle / "task.json").read_text())
     # a stage overrides only what the description varies (stages.md § 6.2)
     task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    task["stages"].append({"name": "freq_half", "enabled": True,
+    # A GROUP OF ITS OWN: `freq` is launched before it is prepared, and a
+    # launched group is fixed (engines/stages.md § 2).
+    task["stages"].append({"name": "freq_half", "group": 3, "enabled": True,
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = _jobset("prep", "task", "--stage", "relax", "--bundle", str(bundle),
-                "--target", "this")
+    r = _jobset("prep", "task", *group_words(bundle, "relax"),
+                "--bundle", str(bundle), "--target", "this")
     assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
     for written in ("*.fdf", "atom-permutation.json", "job-set.json"):
         assert not list(bundle.glob(written)), f"{written} before refusing"

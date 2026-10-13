@@ -59,7 +59,17 @@
         });
     }
 
+    /* AN ENERGY AXIS, for every chart of an energy: its ticks as plain
+     * numbers, with the decimals their spacing needs -- Plotly's own rule --
+     * never a fixed count of figures.  A run's last steps differ anywhere
+     * from the first to the sixth decimal of a total of thousands to
+     * millions of eV, and a fixed count labelled every tick alike (six
+     * figures on the SCF chart, nine on a relaxation of 312 atoms that
+     * moved 3 meV); Plotly's default would write them "-1.211221373M". */
+    const ENERGY_AXIS = Object.freeze({ exponentformat: "none" });
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.plotTheme = plotTheme;
     root.molbuilder.themedLayout = themedLayout;
+    root.molbuilder.energyAxis = ENERGY_AXIS;
 })(typeof window !== "undefined" ? window : this);

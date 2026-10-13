@@ -12,7 +12,7 @@ one object, and none of them works the mesh out again.
 **Why a module and not a helper in each writer.**  Writers each building
 their own block from ``cfg.kgrid`` would each force the transport axis to 1,
 give one fact two severities, and decide a lead's ``Diag.ParallelOverK`` from
-the template's ``kx ky 1`` while its deck writes ``kx ky 40``.
+the template's ``kx ky 1`` while its deck writes ``kx ky 100``.
 
 It imports nothing from the catalogue -- :mod:`molbuilder.template` asks
 :func:`fixed` for its one per-value door (``template.why_not``), so this module
@@ -44,11 +44,15 @@ AXES = ("x", "y", "z")
 LEAD_RUNGS = frozenset({"electrode"})
 
 #: Why the transport axis takes one point with no offset on a transport
-#: calculation -- the reason every door gives for a fixed component.
-WHY_OPEN = ("the transport axis is the open boundary on the seed, the device "
-            "and the transmission, sampled at one point, and a lead samples "
-            "it by electrode_kz -- no rung reads this component "
-            "(engines/siesta.md 6.1)")
+#: calculation -- the reason every door gives for a fixed component.  The
+#: device and the transmission are open along it, and both engines force one
+#: point there; the seed is a periodic run whose cell is long along it and
+#: whose density is only the device's start (`engines/transport.md` § 0.2).
+WHY_OPEN = ("one point along the transport axis: the device and the "
+            "transmission are open there and both engines force it "
+            "(ts_kpoint_scf.F90, m_tbt_kpoint.F90), the seed's density is "
+            "only their start, and a lead samples it by electrode_kz -- no "
+            "rung reads this component (engines/transport.md 0.2)")
 WHY_NO_OFFSET = ("both engines sample the transport axis with no offset -- "
                  "TranSIESTA in ts_kpoint_scf.F90, tbtrans in m_tbt_kpoint.F90 "
                  "-- and a lead is compared with the device on it "
@@ -118,6 +122,9 @@ class KMesh:
     #: ``siesta`` writes ``%block kgrid_Monkhorst_Pack``; ``tbtrans``
     #: ``%block TBT.k``.
     program: str = "siesta"
+    #: The transmission's mesh worked out from the SCF's, ``tbt_k_grid`` left
+    #: blank (:func:`transmission_start`) -- never the person's statement.
+    derived: bool = False
 
     @property
     def counts(self) -> Tuple[int, int, int]:
@@ -163,7 +170,15 @@ def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
     """
     kinds = tuple(axis_kind) if axis_kind else ("isolated",) * 3
     source = "tbt_k_grid" if program == "tbtrans" else "kgrid"
-    counts = _triple(getattr(cfg, source, None), int)
+    raw = getattr(cfg, source, None)
+    # A BLANK TRANSMISSION MESH IS THE RULE'S: three times the SCF's in the
+    # electrode plane, worked out here -- the one derivation -- so it follows
+    # `kgrid` whenever that changes (`engines/transport.md` § 0.3b).
+    derived = program == "tbtrans" and raw is None
+    if derived:
+        scf = _triple(getattr(cfg, "kgrid", None), int)
+        raw = transmission_start(scf) if scf is not None else None
+    counts = _triple(raw, int)
     shifts = _triple(getattr(cfg, "kgrid_displacement", (0.0, 0.0, 0.0)),
                      float)
     if counts is None or shifts is None or len(kinds) != 3:
@@ -185,7 +200,7 @@ def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
         # 2026-09-30); only an isolated axis is Gamma's.
         role = "gamma" if kinds[i] == "isolated" else "sampled"
         axes.append(KAxis(kinds[i], role, counts[i], shifts[i], source))
-    return KMesh(tuple(axes), program)
+    return KMesh(tuple(axes), program, derived)
 
 
 def fixed(item: str, kind: str) -> Dict[int, Tuple[Any, str]]:
@@ -266,7 +281,11 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     (``refused``: the items that door refused) is not judged at all, since a
     value refused draws that refusal alone (`engines/template.md` § 5.3).
 
-    The count rules are per mesh -- each mesh's counts are its own item's.
+    The count rules are per mesh -- each mesh's counts are its own item's --
+    save one between two: a transmission mesh the person set COARSER than
+    the SCF mesh beside it in the electrode plane is warned, since T(E)
+    needs at least the points the density was converged on and usually many
+    more (`engines/transport.md` § 0.3b); a blank one is three times it.
     The OFFSET is one value every mesh of the deck shares, so its finding is
     said once, naming each mesh that samples the axis at one point.
     """
@@ -307,10 +326,13 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     f"usual choice (engines/siesta.md 6.1)",
                     where))
             elif (axis.role == "sampled" and axis.count == 1
-                  and mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")):
+                  and mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")
+                  and not mesh.derived):
                 # ONE POINT ALONG A DIRECTION THE ELECTRODES REPEAT IN, on a
                 # transport mesh (`engines/transport.md` § 0.3b): known to
-                # put false peaks into T(E) and move the conductance.
+                # put false peaks into T(E) and move the conductance.  A
+                # transmission mesh worked out from the SCF's says it there,
+                # once, where the person sets it.
                 wide = (f"; this cell is {lengths[i]:.1f} A wide along "
                         f"{AXES[i]}" if lengths is not None else "")
                 out.append(Issue(
@@ -334,6 +356,25 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                         f"k = 1 is the usual choice -- if a weak image "
                         f"interaction is deliberate, carry on",
                         where))
+    scf = next((m for m in judged if m.program == "siesta"), None)
+    for tbt in (m for m in judged if m.program == "tbtrans" and not m.derived):
+        if scf is None:
+            break
+        for i, (t, s) in enumerate(zip(tbt.axes, scf.axes)):
+            # ONE POINT IS THE ONE-POINT WARNING'S to say (above), never
+            # twice about one number.
+            if (i != TRANSPORT_AXIS and s.role == "sampled"
+                    and 1 < t.count < s.count):
+                out.append(Issue(
+                    "warn",
+                    f"tbt_k_grid[{i}] = {t.count} is coarser than the shared "
+                    f"k-point mesh's {s.count} along {AXES[i]}: T(E) needs at "
+                    f"least the points the density was converged on, and "
+                    f"usually many more -- the SIESTA manual: tbtrans's "
+                    f"sampling \"should generally be much denser\".  Raise it, "
+                    f"or leave it blank for three times the shared mesh "
+                    f"(engines/transport.md 0.3b)",
+                    "config.tbt_k_grid"))
     for i in range(3):
         # ...read modulo 1, as both engines read it (`kpoint_t.F90`,
         # `m_tbt_kpoint.F90`): an offset of 1.0 is Gamma again.

@@ -100,9 +100,8 @@ run_sh = ["\n# engine siesta\n"]
 # run-identity.md § 2, § 3.2: the label is the SystemLabel literal, unsuffixed on every rung.
 [[case]]
 name = "a later rung's deck carries the calculation's label, unsuffixed"
-before = [["prep", "task", "--stage", "coarse"]]
+before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-prep = ["--cold"]
 deck = ["\nSystemLabel H2\n"]
 
 # SIESTA's OMM runs a polarized density only with the spin held
@@ -297,9 +296,8 @@ run_sh = ["\n# engine pyscf\n"]
 name = "...and a later PySCF rung's deck carries the label unsuffixed"
 engine = "pyscf"
 stage_strategy = "publishable"
-before = [["prep", "task", "--stage", "coarse"]]
+before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-prep = ["--cold"]
 deck = ["\nJOB = \"H2\""]
 
 # pyscf.md § 2: _initial.xyz is saved right after gto.M, before any optimization.

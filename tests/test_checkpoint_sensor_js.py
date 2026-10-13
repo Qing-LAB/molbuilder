@@ -337,6 +337,9 @@ globalThis.prompt = (q) => { __asked.push(q); return __prompts.shift() ?? null; 
 globalThis.confirm = () => true;
 globalThis.molbuilder = {
   projects: { getProjectsRoot: () => "/p", onChange() {}, getCurrentDir: () => null },
+  // The one tab strip, which every page's header loads (`lib/tab-strip.js`);
+  // the List / Graph strip is not what these tests drive.
+  tabStrip: { mount: () => ({ select() {} }) },
 };
 """
 

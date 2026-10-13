@@ -115,7 +115,6 @@ def test_the_full_readmission_check_no_longer_raises(
     """End to end through the real function the user's traceback named:
     `_reject_if_this_machine_says_no`, given a placement whose queue this
     (target-less) local machine simply has no opinion about."""
-    from molbuilder.jobset.model import Resources
     from molbuilder.jobset.submit import _reject_if_this_machine_says_no
     from molbuilder.scheduler import Request
 
@@ -125,5 +124,4 @@ def test_the_full_readmission_check_no_longer_raises(
 
     want = Request(ranks=48, cpus_per_task=1, gpus=None,
                    mem_gb=None, walltime_s=3600)
-    _reject_if_this_machine_says_no(_Placed(), want, False, "bench",
-                                    tmp_path)
+    _reject_if_this_machine_says_no(_Placed(), want, "bench", tmp_path)

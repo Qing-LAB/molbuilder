@@ -3,7 +3,7 @@ says about it (`process/testing.md` § 6: a test about what a run ended as,
 produced or shows makes that run with the engine, through the road).
 
 ``jobset init`` (flat, the shipped `publishable` ladder) -> ``prep task
-coarse`` -> ``launch task --stage coarse --mode direct`` -> ``prep task --stage medium``, on an
+--group 1`` -> ``launch task --stage coarse --mode direct`` -> ``prep task --group 2``, on an
 H2 in a 10 Å box, isolated on every axis, its first atom held: the coarse
 stage's run beside the medium stage's deck in one folder, SIESTA's own files
 -- named by ``SystemLabel`` -- among ours.  And a second calculation whose
@@ -78,7 +78,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
     """The projects tree, with the flat calculation run and the capped one
     run beside it, and what their later steps answered and left:
     ``{"flat": <folder>, "capped": <folder>, ...}``."""
-    from support.road import jobset
+    from support.road import group_words, jobset
     tree = isolated_projects_root_module
     with live_siesta(tree, tmp_path_factory):
         _write_h2(tree, "h2.xyz")
@@ -91,8 +91,8 @@ def road(isolated_projects_root_module, tmp_path_factory):
                    "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
         _one_rank(flat)
-        r = jobset("prep", "task", "--stage", "coarse", "--bundle", flat,
-                   "--target", "this")
+        r = jobset("prep", "task", *group_words(flat, "coarse"),
+                   "--bundle", flat, "--target", "this")
         assert r.exit_code == 0, r.output
         r = jobset("launch", "task", "--stage", "coarse", "--bundle", flat,
                    "--mode", "direct", "--yes")
@@ -101,8 +101,8 @@ def road(isolated_projects_root_module, tmp_path_factory):
             errors="replace"), "the coarse run did not reach its end"
         kept = ("H2_01_coarse.fdf", "H2_01_coarse.run.sh")
         kept_before = {n: _as_written(flat / n) for n in kept}
-        r = jobset("prep", "task", "--stage", "medium", "--bundle", flat,
-                   "--target", "this")
+        r = jobset("prep", "task", *group_words(flat, "medium"),
+                   "--bundle", flat, "--target", "this")
         assert r.exit_code == 0, r.output
         kept_after = {n: _as_written(flat / n) for n in kept}
 
@@ -118,8 +118,8 @@ def road(isolated_projects_root_module, tmp_path_factory):
         set_template_value(capped / "H2.template.toml", "relax_steps", "1")
         set_template_value(capped / "H2.template.toml", "continue_retries",
                            "0")
-        r = jobset("prep", "task", "--stage", "coarse", "--bundle", capped,
-                   "--target", "this")
+        r = jobset("prep", "task", *group_words(capped, "coarse"),
+                   "--bundle", capped, "--target", "this")
         assert r.exit_code == 0, r.output
         jobset("launch", "task", "--stage", "coarse", "--bundle", capped,
                "--mode", "direct", "--yes")
@@ -138,9 +138,42 @@ def road(isolated_projects_root_module, tmp_path_factory):
         # leaves a folder's times -- which reorder files, never runs.
         later = time.time() + 120
         os.utime(capped / "H2_01_coarse-run0.out", (later, later))
+
+        # A FLAT STAGE THAT CONTINUES: `medium`'s first launch takes
+        # `coarse`'s files where they lie, and its record is written with
+        # its launch record (`job-system.md` § 5.4) -- a calculation of its
+        # own, so the folders above keep speaking for the runs they hold.
+        chain = tree / "P" / "opt" / "H2chain"
+        r = jobset("init", "--structure", "P/structure/h2.xyz",
+                   "--bundle", "P/opt/H2chain", "--engine", "siesta",
+                   "--calculation", "optimization", "--shape", "flat",
+                   "--name", "H2", "--psml-lib", "pseudopotential",
+                   "--stage-strategy", "publishable")
+        assert r.exit_code == 0, r.output
+        _one_rank(chain)
+        set_template_value(chain / "H2.template.toml", "relax_steps", "1")
+        r = jobset("prep", "task", *group_words(chain, "coarse"),
+                   *group_words(chain, "medium"), "--bundle", chain,
+                   "--target", "this")
+        assert r.exit_code == 0, r.output
+        for stage in ("coarse", "medium"):
+            r = jobset("launch", "task", "--stage", stage, "--bundle", chain,
+                       "--mode", "direct", "--yes")
+            assert r.exit_code == 0, r.output
+        # THE LAST RUN, as the folder records it, before and after.
+        from molbuilder.runrecord import last_run
+        last_before = str(last_run(chain, "H2"))
+        # `coarse` LAUNCHED AGAIN WARM after `medium` ran: the folder's
+        # restart files are `medium`'s, and its record says so.
+        chain_again = jobset("launch", "task", "--stage", "coarse",
+                             "--bundle", chain, "--mode", "direct", "--yes")
+        assert chain_again.exit_code == 0, chain_again.output
+        last_after = str(last_run(chain, "H2"))
         yield {"flat": flat, "capped": capped, "again": again.output,
                "run0": run0, "run0_after": run0_after,
-               "kept_before": kept_before, "kept_after": kept_after}
+               "kept_before": kept_before, "kept_after": kept_after,
+               "chain": chain, "chain_again": chain_again.output,
+               "last_before": last_before, "last_after": last_after}
 
 
 @pytest.fixture(scope="module")
@@ -271,6 +304,52 @@ def test_launched_again_with_restart_clean_it_runs_again_taking_nothing(road):
     assert ("launched again in the same folder, as its run 1, where its "
             "files are: it starts over") in road["again"], road["again"]
     assert not (road["capped"] / "H2_01_coarse-run1.continued-from").exists()
+
+
+def test_a_flat_stage_records_the_run_it_continues_from(road):
+    """`medium`, continuing from `coarse` on the flat layout, takes nothing
+    copied -- `coarse`'s files lie in the folder -- and records the run it
+    continues from by the name every file of that run carries, in its own
+    run's `.continued-from` and its launch record, both written as the run
+    is sent (`job-system.md` § 5.4; `project-layout.md` § 1.6.3)."""
+    from molbuilder.runrecord import RunRef, launch_record, read_continued_from
+    from molbuilder.runs import run_of
+    chain = road["chain"]
+    names = run_of(chain, stage="02_medium").names
+    assert read_continued_from(chain, names, 0) == RunRef.named(
+        "H2_01_coarse-run0"), sorted(p.name for p in chain.iterdir())
+    assert launch_record(chain, names, 0)["continued_from"] == \
+        "H2_01_coarse-run0"
+
+
+def test_a_flat_run_records_the_last_run_whose_files_it_reads(road):
+    """`coarse` launched again warm after `medium` ran reads the restart
+    files `medium` left -- the folder's, every stage's alike -- so its record
+    names `medium`'s run, and its launch says so beside its own latest run
+    (`job-system.md` § 5.4; user, 2026-10-12)."""
+    from molbuilder.runrecord import RunRef, launch_record, read_continued_from
+    from molbuilder.runs import run_of
+    chain = road["chain"]
+    names = run_of(chain, stage="01_coarse").names
+    assert read_continued_from(chain, names, 1) == RunRef.named(
+        "H2_02_medium-run0")
+    assert launch_record(chain, names, 1)["continued_from"] == \
+        "H2_02_medium-run0"
+    assert ("the restart files H2_02_medium-run0 left in this folder"
+            in road["chain_again"]), road["chain_again"]
+    assert "coarse's latest run is H2_01_coarse-run0" in road["chain_again"]
+
+
+def test_the_folder_records_its_last_run_and_speaks_for_it(road):
+    """The last run is a RECORD the run script writes as its engine starts
+    (`project-layout.md` § 1.6.3; user, 2026-10-12): `medium`'s before
+    `coarse` ran again, `coarse`'s run 1 after -- and the folder speaks for
+    that run, whatever the stages' order."""
+    from molbuilder.runs import run_of
+    assert road["last_before"] == "H2_02_medium-run0", road["last_before"]
+    assert road["last_after"] == "H2_01_coarse-run1", road["last_after"]
+    speaks = run_of(road["chain"])
+    assert (speaks.stage, speaks.run) == ("01_coarse", 1), speaks
 
 
 def test_a_run_launched_again_overwrites_nothing_of_the_run_before(road):
@@ -485,7 +564,7 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(flat):
     as set, any other as SIESTA's default; a block is found by the deck's
     own spelling, fdf's label rule."""
     from molbuilder.parse import detect
-    from molbuilder.parse.fdf import _norm
+    from molbuilder.parse.fdf import fdf_key
     deck = flat / "H2_01_coarse.fdf"
     stated, blocks = set(), set()
     for ln in deck.read_text().splitlines():
@@ -493,9 +572,9 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(flat):
         if not words or words[0].startswith("#"):
             continue
         if words[0].lower() == "%block":
-            blocks.add(_norm(words[1]))
+            blocks.add(fdf_key(words[1]))
         elif not words[0].startswith("%"):
-            stated.add(_norm(words[0]))
+            stated.add(fdf_key(words[0]))
     [log] = list(flat.glob("fdf.*.log"))
     res = detect(log).parse(log)
     assert res.result_kind == "engine-params"
@@ -505,7 +584,7 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(flat):
         assert p["default"] is (key not in stated), (key, p)
     assert any(p["default"] for p in one_reading.values()), (
         "SIESTA read no key the deck left to it")
-    mesh = res.params[_norm("MeshCutoff")]
+    mesh = res.params[fdf_key("MeshCutoff")]
     assert (mesh["number"], mesh["unit"], mesh["default"]) == (
         float(_deck_value(deck, "MeshCutoff")), "Ry", False), mesh
     for name in blocks:

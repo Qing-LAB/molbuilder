@@ -168,7 +168,7 @@ flowchart TB
       direction LR
       WD["Web UI<br/>DESCRIBE a staged calculation<br/>(Task setup) + observe results"]
       CS["CLI<br/>one job + checkpoints"]
-      CJ["CLI<br/>JobSet framework:<br/>ladders, sweeps, HPC, benchmarks —<br/>prep + submit, one stage at a time"]
+      CJ["CLI<br/>JobSet framework:<br/>ladders, sweeps, HPC, benchmarks —<br/>prep + submit, one group at a time"]
     end
     subgraph target["Still to build (roadmap workstream 1)"]
       WJ["Web UI<br/>plan view + per-stage status roll-up<br/>(observe half, beyond Results)"]
@@ -187,7 +187,7 @@ flowchart TB
 | `molbuilder.json` config (launch, envs, `env_init` — `configuration.md` § 4) | ✅ | — | `running-a-job.md § 5` |
 | Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
 | Describe a staged calculation (shape · stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
-| Prep a staged ladder (one stage at a time) | ✅ | ✅ *(the one prep entry, for a named machine)* | `job-system.md § 5.3` |
+| Prep a staged ladder (its groups, launched one at a time) | ✅ | ✅ *(the one prep entry, for a named machine)* | `job-system.md § 5.3` |
 | Launch a stage | ✅ | — *(by design: it spends a queue slot, by hand)* | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |

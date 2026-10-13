@@ -250,7 +250,7 @@ def test_the_task_setup_save_findings_carry_their_workflow_group(
                 # the preflight ever runs.
                 "varies": [key],
                 # a STRING where the field is an int -> `config.<key>`
-                "stages": [{"name": "coarse", "enabled": True,
+                "stages": [{"name": "coarse", "group": 1,
                             "overrides": {key: "not-an-int"}}]}
     r = web_client.post("/api/task-setup/save",
                         json={"dest": str(d), "text": _json.dumps(proposed)})

@@ -93,7 +93,7 @@ flowchart LR
   ```bash
   molbuilder jobset init --structure P/structure/water.xyz --bundle P/optimization/water \
       --engine pyscf --calculation optimization --shape flat
-  molbuilder jobset prep task --stage coarse --bundle P/optimization/water --target this \
+  molbuilder jobset prep task --group 1 --bundle P/optimization/water --target this \
       --cpus-per-task 4
   ```
 

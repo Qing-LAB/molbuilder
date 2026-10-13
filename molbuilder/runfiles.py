@@ -31,10 +31,12 @@ the other.
 
 The token sits IMMEDIATELY AFTER THE LABEL and never inside the role.
 
-A CARRIED FILE HAS NO TOKEN, and that is what carrying means: SIESTA's `.XV` /
-`.DM` / `.CG` and PySCF's `.chk` / `_optimized.xyz` are how one rung hands the
-next its geometry and density.  A token in them would make every rung look for
-a file only its own stage ever wrote.
+A FILE NAMED ON THE LABEL ALONE HAS NO TOKEN -- every name an engine gives by
+its label, and a run's own result (`<label>.spectra.json`).  The CARRIED files
+are among them, and that is what carrying means: SIESTA's `.XV` / `.DM` /
+`.CG` and PySCF's `.chk` / `_optimized.xyz` are how one rung hands the next its
+geometry and density.  A token in them would make every rung look for a file
+only its own stage ever wrote.
 """
 from __future__ import annotations
 
@@ -143,10 +145,11 @@ FIELDS: "dict[str, Field]" = {
         shape=r"[0-9]+",
         example="48213"),
     "group": Field(
-        what="a launch group's name: a benchmark's side and shelf, or a "
-             "bias sweep's chain",
+        what="a launch group's name (`GroupNames.of_*`): a task's group, "
+             "its stages' tokens; a benchmark's side and shelf; a run of "
+             "points' walk",
         shape=r"[A-Za-z0-9_.-]+",
-        example="bench-group-gpu"),
+        example="bench-group-cpu-G0K4C1"),
     "random": Field(
         what="a temporary file's random part",
         shape=r"[A-Za-z0-9_.-]+",
@@ -248,7 +251,8 @@ def _in_declared_order(found: "tuple[tuple[str, int], ...]") -> bool:
 
 @dataclass(frozen=True)
 class RunFile:
-    """What a filename says it is.  ``stage`` is None for a carried file.
+    """What a filename says it is.  ``stage`` is None for a file named on
+    the label alone -- a carried file among them.
 
     ``counters`` holds every declared qualifier the name carried, in order, as
     ``(keyword, number)`` pairs -- a tuple rather than a dict so the record
@@ -321,8 +325,9 @@ def compose(label: str, role: str, stage: Optional[str] = None,
     ``"_optimized.xyz"``, ``".molwatch.log"``.  It is declared once per engine
     in that engine's ``warm-files.toml`` and never spelled at a call site.
 
-    ``stage`` omitted is a CARRIED file, which is a statement and not a
-    default: it says this file crosses rungs.
+    ``stage`` omitted is a file named on the label alone, which is a
+    statement and not a default: a carried file, which crosses rungs, or a
+    name an engine gives by its label.
 
     ``run`` is the wrapper's attempt (``-run2``), spelled out because it is the
     counter that exists; any other keyword in :data:`QUALIFIERS` is passed by
@@ -388,6 +393,15 @@ def run_name(label: str, stage: Optional[str], run: int) -> str:
     spelled by the grammar and nowhere else."""
     _role = ".concluded"
     return compose(label, _role, stage, run=run)[:-len(_role)]
+
+
+def parse_run_name(name: str, label: str) -> "Optional[RunFile]":
+    """A flat run's name read back -- :func:`run_name`'s reader, by the
+    grammar (:func:`parse`), as it was composed: its ``stage`` and ``run``
+    -- or ``None`` when ``name`` is not one of ``label``'s runs."""
+    got = parse(name + ".concluded", label)
+    return (got if got is not None and got.stage is not None
+            and got.run is not None else None)
 
 
 #: A stand-in label for :func:`tail`.  Any legal label would do; what matters
@@ -681,18 +695,6 @@ def at_run(directory, files, stem: str,
             continue
         kept.append((idx if idx is not None else -1, f))
     return [f for _key, f in sorted(kept, key=lambda k: k[0], reverse=True)]
-
-
-def is_carried(f: "RunFile | str", label: str = "") -> bool:
-    """Does this name cross rungs?  A carried file states it by having no token.
-
-    Accepts a parsed :class:`RunFile` or a filename plus its label, so a caller
-    holding either can ask without composing a third thing.
-    """
-    if isinstance(f, RunFile):
-        return f.stage is None
-    parsed = parse(f, label)
-    return parsed is not None and parsed.stage is None
 
 
 # --------------------------------------------------------------------- #
@@ -1110,20 +1112,36 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "retry, the run script through the monitor's bundle "
                     "(`runrecord.record_retry`)",
              door="runrecord.launch_record"),
-    # AND THE RUN IT CONTINUES FROM, left by `prep` for `launch` to write into
-    # that record -- an attempt's `.continued-from`, for a stage with none of
-    # its own (user, 2026-10-01: the flat layout records it too), named for
-    # the run that continues.
+    # AND THE RUN IT CONTINUES FROM, left by launch's one hand-over beside
+    # the run -- an attempt's `.continued-from`, or where a stage's runs
+    # share a folder the run's own (user, 2026-10-01: the flat layout
+    # records it too), named for the run that continues.
     Artifact(".continued-from", "the run this one continues from -- a "
-                                "walked point's or a stage's start, a "
-                                "taken-over point's computing run (one hop) "
-                                "-- for launch's record",
-             attempt="shared", hierarchical=CONTINUED_FROM_FILE, when="prep",
-             kind="record",
-             writer="prep, and launch when it runs a stage again, through "
-                    "`runrecord.write_continued_from`",
+                                "stage's run, a run of points, a walked "
+                                "point's start, a taken-over point's "
+                                "computing run (one hop)",
+             attempt="shared", hierarchical=CONTINUED_FROM_FILE,
+             when="launch", kind="record",
+             writer="launch, by its one hand-over (`materialize.hand_over`, "
+                    "through `runrecord.write_continued_from`) -- with the "
+                    "files it takes; on the flat layout with the run's "
+                    "launch record",
              door="runrecord.read_continued_from",
              only="it continues from an earlier run"),
+    # THE LAST RUN IN A FOLDER A CALCULATION'S STAGES SHARE (user,
+    # 2026-10-12: "there should be a record manifest of the last run"): the
+    # run whose restart files and results lie in the folder, named by its
+    # run script the moment its engine starts -- a record, never worked out
+    # from when the launch records were written.
+    Artifact(".last-run", "the last run in this folder -- the run whose "
+                          "restart files and results lie here",
+             staged=False, level="calculation", kind="record",
+             writer="the run script, the moment its engine starts "
+                    "(`runwrap`); `jobset migrate`, for runs launched "
+                    "before 2.7.0",
+             door="runrecord.last_run",
+             only="the flat layout, where a calculation's stages share its "
+                  "folder"),
     # ---- written on the label, beside any file of ours ---------------------
     Artifact(".runtime_info.json", "what a file of the run says about the "
                                    "run, as `molbuilder runtime-info` read it",
@@ -1185,7 +1203,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "`pseudos/`, and a real copy beside every deck — SIESTA "
                   "opens only its working directory",
              engine="siesta", when="prep", level="calculation", kind="input",
-             writer="prep (`jobset.engines._pseudo_dir`, `materialize`); "
+             writer="prep (`jobset.engines.pseudo_dir`, `materialize`); "
                     "`jobset init --psml-lib`",
              door="pseudos.psml_sources"),
     Artifact(name=JUNCTION_FILE, what="the composed junction",
@@ -1215,21 +1233,24 @@ WRITTEN: "tuple[Artifact, ...]" = (
              kind="record",
              writer="a transport calculation's first prep "
                     "(`transport.compose.write_compose_record`)",
-             door="transport.compose.load_compose_record"),
+             door="transport.compose.read_provenance"),
     Artifact(name=".gitignore",
              what="which files the saved states keep by content in "
                   "`.binsnapshots/` rather than in git",
              when="setup", level="calculation", kind="record",
-             writer="`checkpoint.save_before`, before every Save and prep",
+             writer="`checkpoint.save_before`, before every Save and prep and a "
+                    "group's first launch",
              door="checkpoint.Repo"),
     Artifact(name=".git/", what="the folder's saved states",
              when="setup", level="calculation", kind="record",
-             writer="`checkpoint.save_before`, before every Save and prep",
+             writer="`checkpoint.save_before`, before every Save and prep and a "
+                    "group's first launch",
              door="checkpoint.Repo"),
     Artifact(name=".binsnapshots/",
              what="the big files of each saved state, by content",
              when="setup", level="calculation", kind="record",
-             writer="`checkpoint.save_before`, before every Save and prep",
+             writer="`checkpoint.save_before`, before every Save and prep and a "
+                    "group's first launch",
              door="checkpoint.Repo"),
     Artifact(name=CALCDIR_FILE,
              what="what this folder is in its calculation — a container or "
@@ -1271,10 +1292,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
              only="a charged, isolated deck"),
     Artifact(name=GATHERED_FROM_FILE,
              what="what a rung took, from which upstream run",
-             calculation="transport", when="prep", level="run",
+             calculation="transport", when="launch", level="run",
              kind="record",
-             writer="prep (`jobset.prep.transport_inputs`, through "
-                    "`runrecord.write_gathered_from`)",
+             writer="launch, by its one hand-over (`materialize.hand_over`, "
+                    "through `runrecord.write_gathered_from`) -- a rung's "
+                    "first launch or a `--gather` "
+                    "(`jobset.gather.transport_inputs`), or a launch again "
+                    "keeping what its last run was given",
              door="runrecord.read_gathered_from"),
     Artifact(name="slurm.{jobid}.out", what="SLURM's own stdout for the job",
              level="run", kind="record",
@@ -1305,8 +1329,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
                     "launch -- a task's group's by its prep "
-                    "(`prep.prep_group`), and by launch only for stages "
-                    "first named together there",
+                    "(`prep.group_header`)",
              only="launched to a queue"),
     Artifact(name="{group}.log", what="every member's output, in order",
              when="run", level="launch", kind="record",
@@ -1482,6 +1505,14 @@ class RunNames:
         carries (:func:`run_name`)."""
         return run_name(self.label, self.stage, run)
 
+    def unnumbered(self, role: str) -> str:
+        """``role``'s name carrying no run's number -- how a shared folder's
+        run files were named before each carried its run's (plan W57
+        decision 2): what the launch door refuses, naming `jobset migrate`,
+        and what that verb numbers."""
+        return compose(self.label, role,
+                       self.stage if _row(role).staged else None)
+
 
 @dataclass(frozen=True)
 class GroupNames:
@@ -1495,6 +1526,28 @@ class GroupNames:
 
     def __post_init__(self):
         stem(self.group)                # one [A-Za-z0-9_-]+ token, refused
+
+    # WHAT EACH WALK IS CALLED -- the one composer of a group's name, for
+    # each kind of walk (`project-layout.md` § 5.5).
+    @classmethod
+    def of_stages(cls, label: str, tokens) -> "GroupNames":
+        """A task's group -- its stages sharing one job: the calculation's
+        label and every member's token, in order --
+        ``chain-t_group-01_seed-02_electrode_L-03_electrode_R``."""
+        return cls(f"{label}_group-{'-'.join(tokens)}")
+
+    @classmethod
+    def of_points(cls, stem_: str) -> "GroupNames":
+        """A run of points' walk -- the stage's stem, ``<stem>-sweep``."""
+        return cls(f"{stem_}-sweep")
+
+    @classmethod
+    def of_trials(cls, side: Optional[str] = None,
+                  cell: Optional[str] = None) -> "GroupNames":
+        """A benchmark's walk: its trials run here, ``bench-group``; a shelf
+        sent to a queue, named in full by its side and its machine cell,
+        ``bench-group-cpu-G0K4C1`` (`generator.md` § 4.3a)."""
+        return cls("bench-group" + (f"-{side}-{cell}" if side else ""))
 
     @property
     def stem(self) -> str:
@@ -1612,6 +1665,15 @@ def deck_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
     return tuple(a.role for a in ON_THE_LABEL
                  if a.level == "stage" and a.kind == "derived" and a.engine
                  and (engine is None or a.engine == engine))
+
+
+def prepared_roles() -> "tuple[str, ...]":
+    """What every prepared run carries that says what it is -- each engine's
+    deck (:func:`deck_roles`) and the run script beside it, both stating
+    their engine and molbuilder's provenance: what marks a folder as
+    somebody's working directory, and what a reader asks a folder's
+    engine."""
+    return (*deck_roles(), ".run.sh")
 
 
 def engine_of_role(role: str) -> Optional[str]:

@@ -44,7 +44,9 @@ def _described(engine, stages, calculation="optimization"):
                    "created": "2026-09-30T00:00:00-07:00"},
            "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
            "varies": sorted({k for s in stages for k in s["overrides"]}),
-           "stages": [dict(s) for s in stages]}
+           # EACH ROW ITS OWN GROUP, as the page numbers a stage it adds.
+           "stages": [dict(s, group=s.get("group", i + 1))
+                      for i, s in enumerate(stages)]}
     if calculation != "optimization":
         out["calculation"] = calculation
     return out
@@ -68,11 +70,12 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
     """A vibration's relaxation rung reads the relaxation's settings and its
     force-constant rung the displacement, whatever the stages are called:
     each on the other rung is refused by name, naming the rung that reads
-    it -- as an item the kind does not carry is, on any rung -- and nothing
-    is saved.
+    it -- as an item the kind does not carry is, on any rung, and a name no
+    field has, on a ladder whose groups are checked -- and nothing is saved.
 
-    MUTATION THIS MUST FAIL AGAINST: the description's check not asking
-    which rung reads an override (both save)."""
+    MUTATIONS THIS MUST FAIL AGAINST: the description's check not asking
+    which rung reads an override (both save); the group check asked of a
+    ladder that does not resolve (the save crashes, 500)."""
     from test_task_setup_tab import _fresh_calc_dir
     d = _fresh_calc_dir(isolated_projects_root)
     r = _save(web_client, d, _described("siesta", [
@@ -92,6 +95,68 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
     assert r.status_code == 400, r.get_json()
     assert "which an optimization does not carry" in r.get_json()["error"]
     assert not (d / "task.json").exists()
+
+    # A NAME NO FIELD HAS, on a ladder whose groups the save checks against
+    # the template beside it: the stages' links are read of a ladder that
+    # resolves, so the answer is this refusal, never a crash.
+    from molbuilder.config.siesta import SiestaConfig
+    _template_beside(d, "siesta", "optimization",
+                     SiestaConfig(system_label="x"))
+    r = _save(web_client, d, _described("siesta", [
+        {"name": "coarse", "overrides": {"no_such_item": 1}},
+        {"name": "medium", "overrides": {}}]))
+    assert r.status_code == 400, r.get_json()
+    assert "no_such_item" in r.get_json()["error"], r.get_json()["error"]
+    assert not (d / "task.json").exists()
+
+
+def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
+        web_client, isolated_projects_root):
+    """`web/task-setup.md` § 6.2b: a run-card value is read by the rungs the
+    item's ``stages`` names, as an override is -- a GPU count on a transport
+    ladder's transmission, which runs on no GPU, is refused by name, saying
+    to remove it, and nothing is saved; on the device, which reads it, it
+    is not.  Without it the count reached prep's G5 refusal, which named a
+    GPU switch the transmission's card does not have (measured 2026-10-12).
+
+    MUTATIONS THIS MUST FAIL AGAINST: the description's check not asking
+    which rung reads a run-card value (it saves); `gpu_count` read by every
+    rung (the catalogue's `stages` dropped -- it saves)."""
+    from molbuilder.identity import run_id
+    rungs = ("seed", "electrode_L", "electrode_R", "device", "transmission")
+    cite = "J/optimization/relax/01_coarse/run-0"
+    d = isolated_projects_root / "J" / "transport" / "t"
+    d.mkdir(parents=True)
+
+    def described(on, execution):
+        return {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+                "calculation": "transport", "shape": "hierarchical",
+                "run": {"name": "t", "id": run_id("t", cite, stage_names=rungs),
+                        "created": "2026-10-12T00:00:00-07:00"},
+                "slots": {"junction": cite},
+                "bias": {"voltages_v": [0.0, 0.2],
+                         "low_bias_approximation": False},
+                "varies": [],
+                "stages": [dict({"name": n, "group": g, "overrides": {}},
+                                **({"execution": execution} if n == on
+                                   else {}))
+                           for n, g in zip(rungs, (1, 1, 1, 2, 3))]}
+
+    r = _save(web_client, d, described("transmission", {"gpu_count": 1}))
+    assert r.status_code == 400, r.get_json()
+    assert ("stage 'transmission' states gpu_count = 1 on its run card, "
+            "which only the seed / electrode_L / electrode_R / device / "
+            "relaxation / force_constants rungs of a transport calculation "
+            "read, not 'transmission'") in r.get_json()["error"], \
+        r.get_json()["error"]
+    assert ("not 'transmission' -- remove it from that run card -- on Task "
+            "setup, the × beside it") in r.get_json()["error"], \
+        r.get_json()["error"]
+    assert not (d / "task.json").exists()
+
+    r = _save(web_client, d, described("device", {"gpu_count": 1,
+                                                  "use_gpu": True}))
+    assert r.status_code == 200, r.get_json()
 
 
 def test_a_relaxation_that_takes_no_step_is_refused(web_client,
@@ -185,13 +250,14 @@ def test_the_stage_table_offers_each_rung_what_it_reads(
     def foreign():
         return page.evaluate(
             "(sel) => [...document.querySelectorAll(sel)].map(tr =>"
-            "  [...tr.querySelectorAll(':scope > td')].slice(1)"
+            # the name's cell and the group's, then a cell per column
+            "  [...tr.querySelectorAll(':scope > td')].slice(2)"
             "   .map(td => td.getAttribute('data-foreign') === 'yes'))", rows)
 
     def columns():
         return page.evaluate(
             "() => document.querySelectorAll("
-            "  '#ts-stage-table thead th').length - 1")
+            "  '#ts-stage-table thead th').length - 2")
 
     # the columns are the description's `varies`, in its order
     varies = json.loads((calc / "task.json").read_text())["varies"]
@@ -220,5 +286,5 @@ def test_the_stage_table_offers_each_rung_what_it_reads(
     page.locator(f"{rows}:nth-child(1) select.ts-preset").select_option(
         index=1)
     page.wait_for_function(f"() => document.querySelectorAll("
-                           f"'#ts-stage-table thead th').length - 1 > {before}",
+                           f"'#ts-stage-table thead th').length - 2 > {before}",
                            timeout=10000)

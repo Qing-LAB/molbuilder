@@ -88,18 +88,22 @@
                 <div class="md-edit-pane"></div>
                 <div class="md-render-pane"></div>
               </div>
-              <div class="md-status" aria-live="polite"></div>
+              <div class="md-status status" aria-live="polite"></div>
             `;
             host.appendChild(wrap);
             const elTitle  = wrap.querySelector(".md-toolbar-title");
             const elEdit   = wrap.querySelector(".md-edit-pane");
             const elRender = wrap.querySelector(".md-render-pane");
             const elStatus = wrap.querySelector(".md-status");
+            // THE ONE STATUS WRITER (`lib/status.js`): a failure in the
+            // error tone, a save in the ok tone, as on every tab.
+            const say = (text, kind) =>
+                root.molbuilder.status.set(elStatus, text, kind || null);
             const elDirty  = wrap.querySelector(".md-dirty-flag");
             const elSave   = wrap.querySelector(".md-save-btn");
 
             elTitle.textContent  = file.split("/").pop();
-            elStatus.textContent = "Loading…";
+            say("Loading…", "muted");
 
             // State captured by the handle's dispose() so late
             // callbacks become no-ops after the user navigates away.
@@ -114,7 +118,7 @@
             async function save() {
                 if (aborted || !dirty || elSave.disabled) return;
                 elSave.disabled      = true;
-                elStatus.textContent = "Saving…";
+                say("Saving…", "muted");
                 // Write through the framework-injected writer (ctx.writeFile ->
                 // projects.writeFile, the ONE byte layer); mtime-safe via
                 // expected_mtime.  No raw /api/files/write in the handler.
@@ -124,8 +128,8 @@
                         { expected_mtime: mtime });
                 } catch (e) {
                     if (aborted) return;
-                    elStatus.textContent = "Save failed: " +
-                        String(e && e.message || e);
+                    say("Save failed: " + String(e && e.message || e),
+                        "error");
                     elSave.disabled = false;
                     return;
                 }
@@ -133,14 +137,13 @@
                 if (!env || env.ok === false) {
                     // A concurrent edit (mtime mismatch) surfaces actual_mtime.
                     if (env && env.actual_mtime != null) {
-                        elStatus.textContent =
-                            "Conflict: this file was modified on disk "
+                        say("Conflict: this file was modified on disk "
                             + "since you opened it.  Reload to see the "
                             + "current version (your edits will be "
-                            + "lost), or save under a new name.";
+                            + "lost), or save under a new name.", "warn");
                     } else {
-                        elStatus.textContent = "Save failed: " +
-                            ((env && env.error) || "unknown");
+                        say("Save failed: " + ((env && env.error)
+                                                || "unknown"), "error");
                     }
                     elSave.disabled = false;
                     return;
@@ -149,8 +152,7 @@
                 dirty          = false;
                 elDirty.hidden = true;
                 elSave.disabled = true;   // explicit: nothing to save now
-                elStatus.textContent = "Saved at " +
-                    new Date().toLocaleTimeString();
+                say("Saved at " + new Date().toLocaleTimeString(), "ok");
             }
 
             // Browser navigation warning if there are unsaved edits.
@@ -176,16 +178,16 @@
                     const body = await ctx.readFile(file);
                     if (aborted) return;
                     if (!body.ok) {
-                        elStatus.textContent = "Read failed: " +
-                            (body.error || "unknown");
+                        say("Read failed: " + (body.error || "unknown"),
+                            "error");
                         return;
                     }
                     initialText = body.text || "";
                     mtime       = body.mtime || null;
                 } catch (e) {
                     if (aborted) return;
-                    elStatus.textContent = "Read failed: " +
-                        String(e && e.message || e);
+                    say("Read failed: " + String(e && e.message || e),
+                        "error");
                     return;
                 }
 
@@ -194,8 +196,8 @@
                     await _loadLibs();
                 } catch (e) {
                     if (aborted) return;
-                    elStatus.textContent = "Editor unavailable: " +
-                        String(e && e.message || e);
+                    say("Editor unavailable: " + String(e && e.message || e),
+                        "error");
                     return;
                 }
                 if (aborted) return;
@@ -237,8 +239,8 @@
                     renderTimer = setTimeout(render, 200);
                 });
 
-                elStatus.textContent = "Loaded.  Edit on the left; "
-                    + "preview on the right.";
+                say("Loaded.  Edit on the left; preview on the right.",
+                    "muted");
             })();
 
             // Synchronous handle per registry.js § "Handle contract".

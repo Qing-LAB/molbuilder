@@ -14,14 +14,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+# fdf's own `labeleq` normalisation, from the parser that owns it.
+from molbuilder.parse.fdf import fdf_key
+
 __all__ = ["fdf_value", "fdf_sets", "assert_fdf",
            "fdf_block", "fdf_block_rows", "fdf_energy_window"]
-
-
-def _norm(label: str) -> str:
-    """fdf's own `labeleq` normalisation, from the parser that owns it."""
-    from molbuilder.parse.fdf import _norm as _fdf_norm
-    return _fdf_norm(label)
 
 
 def fdf_value(text: str, keyword: str) -> Optional[str]:
@@ -31,13 +28,13 @@ def fdf_value(text: str, keyword: str) -> Optional[str]:
     does -- it walks from the top and stops at the first match, so a later
     duplicate is the line SIESTA ignores.
     """
-    want = _norm(keyword)
+    want = fdf_key(keyword)
     for line in text.splitlines():
         code = line.split("#", 1)[0].strip()
         if not code or code.startswith("%"):
             continue
         parts = code.split(None, 1)
-        if _norm(parts[0]) == want:
+        if fdf_key(parts[0]) == want:
             return parts[1].strip() if len(parts) > 1 else ""
     return None
 
@@ -65,15 +62,15 @@ def assert_fdf(text: str, keyword: str, value: str) -> None:
 # deck text: a substring only notices a number that disappeared, not one
 # that moved to another block, flipped sign, or changed unit.
 #
-# `molbuilder.parse.fdf._parse_fdf` does the reading -- the same reader
+# `molbuilder.parse.fdf.read_fdf` does the reading -- the same reader
 # the product uses on a cited deck.
 
 
 def fdf_block(text: str, name: str):
     """The rows of ``%block <name>``, tokenised, or ``None`` if absent."""
-    from molbuilder.parse.fdf import _parse_fdf
-    _scalars, blocks = _parse_fdf(text)
-    return blocks.get(_norm(name))
+    from molbuilder.parse.fdf import read_fdf
+    _scalars, blocks = read_fdf(text)
+    return blocks.get(fdf_key(name))
 
 
 def fdf_block_rows(text: str, name: str) -> dict:

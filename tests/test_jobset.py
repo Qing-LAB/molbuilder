@@ -14,16 +14,13 @@ from molbuilder.jobset.plan import render_plan
 
 
 @pytest.fixture(autouse=True)
-def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
-    """These tests build a calculation under ``tmp_path`` and hand its path
-    to a verb.  ``--bundle`` is fenced to the projects tree
-    (`job-contracts.md` § 2.5b), so the test says where its tree IS rather
-    than handing over a path from outside one -- which is exactly what a
-    user does when their calculations live on scratch: set
-    ``paths.projects`` / ``$MOLBUILDER_PROJECTS`` and the fence follows.
+def tree(isolated_projects_root):
+    """Tests here hand a folder to a verb.  ``--bundle`` is fenced to the
+    projects tree (`job-contracts.md` § 2.5b), so a test builds inside one:
+    the conftest's per-test tree, a folder named ``projects`` like every tree
+    (§ 2.5).
     """
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+    return isolated_projects_root
 
 
 @pytest.fixture(autouse=True)
@@ -98,7 +95,7 @@ def _token_ladder(*scripts, optimizers=None):
     names = [s.split("_", 2)[2].rsplit(".", 1)[0] for s in scripts]
     opt = dict(optimizers or {})
     # DERIVED from the rules file, exactly as `siesta/stages.py`'s
-    # ``_warm_declaration`` derives it, so a test asserting the copy
+    # ``warm_for`` derives it, so a test asserting the copy
     # behaviour tests the system's list rather than the fixture's own.
     declared = [WarmFile(f"JOB{r.suffix}", requires_same=r.requires_same)
                 for r in warm_list("siesta", "optimization").rules if r.carry]
@@ -187,7 +184,7 @@ def _runner():
     return CliRunner(), jobset_group
 
 
-def test_cli_errors_without_jobset_json(tmp_path):
+def test_cli_errors_without_jobset_json(tree):
     """A directory that is not a bundle exits non-zero and says `no job-set.json`.
 
     Pointing `--bundle` at the wrong directory is the ordinary mistake. Exiting 0
@@ -195,28 +192,28 @@ def test_cli_errors_without_jobset_json(tmp_path):
     much more alarming thing to be told about work you believe you prepared.
     """
     runner, grp = _runner()
-    r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["status", "--bundle", str(tree)])
     assert r.exit_code != 0
     assert "no job-set.json" in r.output
 
 
-def test_cli_prep_is_described_only(tmp_path):
+def test_cli_prep_is_described_only(tree):
     """`describe` is floor 2's only writer: a folder without the task.json +
     template pair is refused with the next
     step named; hand-built job-sets stay LAUNCHABLE (submit/status read
     job-set.json directly) -- prep is what they lose."""
     js = _sweep()
-    js.write(tmp_path / "job-set.json")
-    _write_fdf(tmp_path / "job-gpu.fdf")
+    js.write(tree / "job-set.json")
+    _write_fdf(tree / "job-gpu.fdf")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tree),
                             "--no-sbatch"])
     assert r.exit_code != 0
     assert "not a described calculation" in r.output
     assert "jobset init" in r.output
     # nothing lays out a hand-built set: prep is the described route's
     # alone, and nothing was laid out here
-    assert not (tmp_path / "bench-G1K1C4").exists()
+    assert not (tree / "bench-G1K1C4").exists()
 
 
 # --------------------------------------------------------------------- #
@@ -266,7 +263,7 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
                                "--shape", "hierarchical", "--engine", "pyscf",
                                "--calculation", "optimization"])
     assert init.exit_code == 0, init.output
-    prep = ["prep", "task", "--stage", "coarse", "--bundle", "P/optimization/h",
+    prep = ["prep", "task", "--group", "1", "--bundle", "P/optimization/h",
             "--no-sbatch", "--cpus-per-task", "1"]
     first = runner.invoke(grp, prep)
     assert first.exit_code == 0, first.output
@@ -297,7 +294,7 @@ def _shipped_ladder(coarse_restart=None):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.identity import stage_token
     from molbuilder.resolve import effective_config
-    from molbuilder.siesta.stages import (_traits, _warm_declaration,
+    from molbuilder.siesta.stages import (traits_for, warm_for,
                                           default_siesta_stages)
     label = "bdt"
     jobs = []
@@ -311,8 +308,8 @@ def _shipped_ladder(coarse_restart=None):
         jobs.append(Job(name=st.name,
                         script=f"{label}_{stage_token(i, st.name)}.fdf",
                         resources=Resources(),
-                        warm=_warm_declaration(label, eff),
-                        traits=_traits(eff)))
+                        warm=warm_for(label, eff),
+                        traits=traits_for(eff)))
     js = JobSet(name=label, engine="siesta", kind="ladder", jobs=jobs)
     # lowercase: the trait normalizes at its ONE producer so
     # "Broyden" vs "broyden" (one optimizer, two hands) compare equal
@@ -472,7 +469,8 @@ def _describe(base, shape, names=("coarse", "tight")):
     """Write a real `task.json` beside a bundle, through the one codec."""
     from molbuilder.task import (FILENAME, Stage, StructureRef, Task,
                                  derive_run, write_task)
-    stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200}) for n in names)
+    stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200}, group=i + 1)
+                   for i, n in enumerate(names))
     write_task(Path(base) / FILENAME, Task(
         engine="siesta", shape=shape, calculation="optimization",
         run=derive_run("JOB", "H2", stage_names=names),
@@ -576,7 +574,7 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     task["allocation"] = {"domain": "cpu", "time": "04:00:00", "mem": "8G"}
     (hpc / "task.json").write_text(json.dumps(task, indent=2))
     for bundle, target in ((ws, "this"), (hpc, "sol")):
-        r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+        r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                    "--target", target)
         assert r.exit_code == 0, r.output
     assert (hpc / "H2_01_coarse.sbatch").is_file(), "the cluster has no header"
@@ -629,7 +627,7 @@ def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
     """
     from support.road import describe_calculation, jobset
     bundle = describe_calculation(tmp_path, monkeypatch)
-    r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+    r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                "--target", "this", "--np", "2", "--cpus-per-task", "1")
     assert r.exit_code == 0, r.output
     log = "H2_01_coarse.molwatch.log"
@@ -638,5 +636,5 @@ def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
         f"the seeded progress log did not reach the run directory; "
         f"{attempt} holds {sorted(p.name for p in attempt.iterdir())}")
     assert not (bundle / "01_coarse" / log).exists(), (
-        f"the seed is still in the stage container as well -- two homes for "
-        f"one log is the state that reported a finished run as 'Running'")
+        "the seed is still in the stage container as well -- two homes for "
+        "one log is the state that reported a finished run as 'Running'")

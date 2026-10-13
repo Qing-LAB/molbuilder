@@ -395,13 +395,15 @@ such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
 state, detail, dir, attempt, …}], offer}` —
 `JobSetStatus.to_dict`, the one wire form of `jobset_status`, the ladder door the
 CLI's `status` verb reads — consumed, never copied: every stage of the
-description, the ones not prepared yet among them, `ready` or `waiting`
-([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3), before
-anything is prepared too — and `null` for anything else (a rung's directory). A **flat** calculation
+description with its group's number (`group`), the ones not prepared yet
+among them (`described`), the prepared ones not launched *ready to launch* or *waits
+for* ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*),
+before anything is prepared too — and `null` for anything else (a rung's directory). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory
-(§ 3a), and no ladder. A bias sweep's rung reads from its first point not
-finished, and its detail names the point
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
+(§ 3a), and no ladder. A bias sweep's rung is one run: *finished* once every
+point's run finished, converged or not — its converged column says *SCF NO*
+when one did not — and its detail counts the points done and names the first
+not done ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 
 The page's empty-state card draws it: one row per rung in ladder order, the
 state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
@@ -415,8 +417,8 @@ requirement — instead of *pick a file*. A rung's files are read by opening the
 rung's directory; the product, when present — a transport root's `task.json`
 from `init` on — is what `openable` picks at the root.
 
-**Every run of the calculation, in one place, picked in place** *(W55 B6,
-2026-10-03 — user: "this gives a bird's eye of one parent task dir that can
+**Every run of the calculation, in one place, picked in place** *(user,
+2026-10-03: "this gives a bird's eye of one parent task dir that can
 have different run results in one place such that result tab would be able to
 show them (don't have to get into individual run dir to probe, and rather
 result can display the result by simply select which run to pick")*. The
@@ -427,21 +429,21 @@ folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
 to the root — **a transmission run's is the root's `task.json`, with its
 `point`**: its result is the report at that bias (§ 0.1), and its row's *open*
 re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`) — and when the panel shows another file of the calculation, `<label>.transport.json` opened as a file, the ladder says so: *open the report first — choose task.json in the Result file menu* *(the user, 2026-10-10)*
-(§ 2.5), never a file of its own — TBtrans writes none a viewer reads
-*(2026-10-08, B8 R1-02 / F23)*); the states are
+(§ 2.5), never a file of its own — TBtrans writes none a viewer reads); the states are
 status's reading of each run (`run_state_of`), which reads **every** attempt,
 so a launched run that has not ended is never hidden behind a newer one.
 **Picking a run shows its result in this panel** — the file that run's own
 folder would open, with its Run panel: the page asks the run door for that
 folder (`/api/results/dir`) and announces its file with the root's ladder kept
-— while the sidebar stays on the calculation; *back to the calculation*
+— while the sidebar stays on the calculation, the record read in the run's
+own folder (`record_dir`, whose file names the Run panel's **View** joins to);
+a folder that does not answer is said under the ladder, and a pick overtaken
+by a later one or by a new selection is dropped; *back to the calculation*
 re-announces the root. A calculation's
 own product — a transport I–V, a displacement sweep — is shown **with** the
 ladder, never instead of it, and its rows name the attempt and the point each
 fact came from. A flat calculation's root lists its stages' runs the same way,
-by run number. *(Until 2026-10-03 the ladder's rows were text: a run was read
-by moving the sidebar into its folder, a root's product hid the ladder, and
-status read only each stage's newest attempt.)*
+by run number.
 
 **And what each run read, and what was checked before it was written** *(the
 user, 2026-10-11: "this would give the view a logical starting place so the

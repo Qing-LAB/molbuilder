@@ -146,6 +146,9 @@ def projects_root(base: Optional[Path] = None) -> Path:
          run from)
       4. ``repo_root()/projects`` — the default
 
+    Steps 2 and 3 move the folder, never rename it: what they name must be
+    called ``projects`` (:func:`named_projects`).
+
     **Never the working directory**: that would make the tree a property of
     where the user happened to stand, the same command meaning different
     trees in different shells.  The default comes from the molbuilder root,
@@ -196,7 +199,8 @@ def projects_root_with_source(base: Optional[Path] = None) -> ProjectsRoot:
     import os
     env = os.environ.get(PROJECTS_ROOT_ENV)
     if env:
-        return ProjectsRoot(Path(env).expanduser(),
+        return ProjectsRoot(named_projects(Path(env).expanduser(),
+                                           f"${PROJECTS_ROOT_ENV}"),
                             f"${PROJECTS_ROOT_ENV}")
     # Lazy: runtime_config is not needed to answer 1 or 2, and importing it
     # at module scope would tie the tree API to the config reader.
@@ -209,10 +213,36 @@ def projects_root_with_source(base: Optional[Path] = None) -> ProjectsRoot:
     configured = (get_paths() or {}).get("projects")
     if configured:
         p = Path(configured).expanduser()
-        return ProjectsRoot(p if p.is_absolute() else repo_root() / p,
-                            "molbuilder.json -> paths.projects")
+        return ProjectsRoot(
+            named_projects(p if p.is_absolute() else repo_root() / p,
+                           "molbuilder.json's paths.projects"),
+            "molbuilder.json -> paths.projects")
     return ProjectsRoot(repo_root() / PROJECTS_ROOT_NAME,
                         "default -- no paths.projects set")
+
+
+def named_projects(path: Path, said_by: str) -> Path:
+    """``path``, when it is a folder named ``projects`` -- else refused.
+
+    THE TREE IS THE FOLDER NAMED ``projects``, wherever it is
+    (`job-contracts.md` § 2.5): a calculation finds its tree by walking up to
+    that name (:func:`find_projects_root`), so a setting may move the folder
+    but not rename it.  Under any other name the server would serve the tree
+    while every calculation in it found none -- its citations and its
+    ``psml_lib`` naming nothing.  Asked of every setting that names the tree:
+    ``$MOLBUILDER_PROJECTS`` and ``paths.projects`` when read, and the
+    installer's answer before it is written.
+    """
+    from .runtime_config import RuntimeConfigError
+    if path.name != PROJECTS_ROOT_NAME:
+        raise RuntimeConfigError(
+            f"{said_by} names {path}, a folder called {path.name!r}: the "
+            f"projects tree is a folder named {PROJECTS_ROOT_NAME!r}, because "
+            f"a calculation finds its tree by walking up to that name -- "
+            f"under any other name its citations and psml_lib name nothing "
+            f"(docs/execution/job-contracts.md § 2.5).  Rename the folder to "
+            f"{PROJECTS_ROOT_NAME!r}, or set {path / PROJECTS_ROOT_NAME}.")
+    return path
 
 
 class OutsideRoot(ValueError):

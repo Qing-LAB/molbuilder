@@ -463,6 +463,9 @@ class TestSpectraPartialHasNoDeadControls:
                 rf'_on\(\s*\$\("{re.escape(ident)}"\)',
                 rf'getElementById\("{re.escape(ident)}"\)\s*\.addEventListener',
                 rf'querySelector\("#{re.escape(ident)}"\)\s*\.addEventListener',
+                # A STRIP MOUNTED BY THE ONE TAB STRIP listens on every tab in
+                # it (`lib/tab-strip.js`, ui-contract.md § 4.1).
+                rf'tabStrip\.mount\(\s*els\.{re.escape(camel)}\b',
             )
             return any(re.search(p, wired_sources) for p in patterns)
 
