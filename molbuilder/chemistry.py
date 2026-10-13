@@ -227,6 +227,16 @@ CLOSED_D10_METALS = frozenset({
                                 # as RKS unless studying magnetism.
 })
 
+#: THE NON-METALS, with the metalloids molecules are built from -- the heavy
+#: atoms an organic molecule's hydrogens are counted against.  The H/heavy
+#: note's reference range is organic molecules', so a metal's atoms -- a gold
+#: lead, a junction's electrodes -- are no part of its count
+#: (`science/overview.md` § 4; 2026-10-13, a lead read 0/75).
+NONMETALS = frozenset({
+    "H", "He", "B", "C", "N", "O", "F", "Ne", "Si", "P", "S", "Cl", "Ar",
+    "Ge", "As", "Se", "Br", "Kr", "Sb", "Te", "I", "Xe", "At", "Rn",
+})
+
 #: A species label is a name plus an optional trailing index: ``Au1`` is
 #: ``Au`` + 1.  The ONLY thing read off a label -- see
 #: :func:`split_species_label`.

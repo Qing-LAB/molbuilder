@@ -1755,7 +1755,9 @@ run it is.
 business for *transport* and an ordinary person-answered choice for an
 *optimization*, where nothing else decides it. So the item says for which kinds,
 and absence means never; `write_forces` and `write_coor_step` name every SIESTA
-kind.
+kind — on the stages that run an SCF (`stages = "scf"`, since 2026-10-13):
+`tbtrans` writes neither, so a transport calculation's transmission does not
+carry them ([`transport.md`](?doc=engines/transport.md) § 6.1b).
 
 **The answer is the catalogue's `value`, unless the rung's own is declared.**
 Most role items have one answer on every rung that carries them — `true` for
@@ -1794,9 +1796,12 @@ its deck said `transiesta`.
 
 **No other door sets it.** `resolve` refuses a stage override, a pin or a sweep
 axis naming a role item of the kind, as it refuses a `shared` one, saying why
-(`template.why_role`); and a template value, unless the item's answer is the
-same on every rung — no `stages`, no `role_values` — and the value is that
-answer (`template.fixed_on_every_rung`). A template written before 2026-09-29
+(`template.why_role`); and a template value, unless the value is the item's
+one answer wherever it is read — no `role_values`, and not answered point by
+point as the bias is (`template.PER_POINT`) — (`template.fixed_answers`). The
+items every rung of a kind reads among them (`template.fixed_on_every_rung`) are
+what a whole-calculation surface echoes and the settings gate holds a config
+to. A template written before 2026-09-29
 carries `write_forces = true` and `write_coor_step = true`, which state that one
 answer and are read as it; an item answered rung by rung (the device's solver,
 the leads' `TS.HS.Save`, the bias point each rung runs) has no one answer a

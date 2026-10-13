@@ -666,6 +666,10 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
             field["locked"] = {"value": (None if it.name in _T.PER_POINT
                                          else _jsonable(echoed[it.name])),
                                "why": _T.why_role(it.name)}
+            # ANSWERED POINT BY POINT (`template.PER_POINT`): no one value to
+            # draw, so the page shows the points it holds (`showPoints`).
+            if it.name in _T.PER_POINT:
+                field["locked"]["per_point"] = True
         # WHICH RUNGS OWN IT (template.md § 6.4's `stages`; empty = any):
         # the fact a rung's tab folds its cards by, and the stage table
         # disables cells by.

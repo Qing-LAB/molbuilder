@@ -50,18 +50,18 @@ node_types = [{ cores = 64, nodes = 2 }]
 [[case]]
 name = "a SIESTA run states its rank count -- no width of the target"
 run_unset = ["mpi_np"]
-refused = '{"mpi_np": N} in task.json, or --np N'
+refused = 'the run card on Task setup ("execution": {"mpi_np": N} in task.json), or --np N'
 
 [[case]]
 name = "a SIESTA run states its cores per rank -- no thread count of one"
 run_unset = ["omp_threads"]
-refused = '{"omp_threads": N} in task.json, or --cpus-per-task N'
+refused = 'the run card on Task setup ("execution": {"omp_threads": N} in task.json), or --cpus-per-task N'
 
 [[case]]
 name = "a PySCF run states its threads -- not the node's cores"
 engine = "pyscf"
 run_unset = ["threads"]
-refused = '{"threads": N} in task.json, or --cpus-per-task N'
+refused = 'the run card on Task setup ("execution": {"threads": N} in task.json), or --cpus-per-task N'
 
 [[case]]
 name = "a run on a scheduler names its queue, from the record's list"

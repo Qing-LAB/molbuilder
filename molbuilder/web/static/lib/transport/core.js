@@ -242,6 +242,7 @@ const WORKSPACE_TAG = "transport";
                     // nothing -- the newer one settles it.
                     if (seq !== _rungsSeq) return false;
                     _panelsDrawn = drew.every(Boolean);
+                    _echoBias();
                     _refreshSendButton();
                     return _panelsDrawn;
                 });
@@ -1078,6 +1079,20 @@ const WORKSPACE_TAG = "transport";
     function _syncTreatment() {
         var box = _$("transport-bias-treatment");
         if (box) box.hidden = _biasList().length <= 1;
+        _echoBias();
+    }
+
+    /* THE BIAS ON EACH RUNG'S TAB IS THE LIST'S POINTS: the device and the
+     * transmission are answered point by point (`template.PER_POINT`), so
+     * their locked box shows the list as typed, kept current with it. */
+    function _echoBias() {
+        var fs = root.molbuilder && root.molbuilder.formSchema;
+        if (!fs || typeof fs.showPoints !== "function") return;
+        var pts = _biasList();
+        fs.showPoints(_$("transport-form-container"), "bias_voltage_v",
+            pts.some(isNaN) ? "the bias list, above"
+                : pts.join(", ") + " V \u2014 "
+                  + (pts.length > 1 ? "one run per point" : "one run"));
     }
 
     /* THE BUILDER: 0 V first, then start..stop by step, written into the

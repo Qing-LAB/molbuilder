@@ -2159,7 +2159,7 @@ Exposing these as controls would offer a choice with one correct answer.
 | *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
 | *each lead's label* | `SystemLabel` | Derived by `prep` from the calculation's one label (`system_label`, shared — Class A): the stem the device's `TS.Elec` reference is built from | 1 |
 | `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's device and transmission decks carry its own (§ 2a.10) | 1 |
-| `write_forces` · `write_coor_step` | `WriteForces` · `WriteCoorStep` | Every step's forces and coordinates in the output, which molbuilder reads back — fixed on every SIESTA kind, not only here (`template.md` § 6.4) | 1 |
+| `write_forces` · `write_coor_step` | `WriteForces` · `WriteCoorStep` | Every step's forces and coordinates in the output, which molbuilder reads back — fixed on every SIESTA run that runs an SCF, not only here: the seed, the leads and the device; the transmission writes neither (§ 6.1b; `template.md` § 6.4) | 1 |
 | `tbt_solution_method` | `TBT.SolutionMethod` | `BTD`, on the transmission: the only method tbtrans has — any other word stops it (`m_tbt_options.F90:490`). Written, so the deck says what runs *(2.1.0)* | 1 |
 | `ts_hartree_fix` | `TS.Hartree.Fix` | `C`, on the device: the plane where the Hartree potential is held, which follows from the transport axis — always the cell's third, along z. TranSIESTA's own default is that axis's letter; any other spelling, `-C` included, is a different request it warns about (`m_ts_hartree.F90:50-72`). Written, so the deck says what runs *(2.1.0)* | 1 |
 
@@ -4243,8 +4243,11 @@ none of it: it was text `siesta` never read.
   the output switches a person sets (`write_coor_xmol`, `write_hs`), and
   since 2026-10-12 `gpu_count` — the count of the GPUs only `use_gpu` asks
   for (`execution/gpu.md` G5), so the transmission's run card states none;
-  the two the rung fixes, `write_forces` and `write_coor_step`, keep their
-  one answer for every rung (`template.md` § 6.4).
+  and since 2026-10-13 the two the rung fixes, `write_forces` and
+  `write_coor_step`: `tbtrans` writes neither, so the transmission's tab no
+  longer echoes them as fixed on (plan § 5u.1 row 13 ②), and the seed, the
+  leads and the device keep their one answer (`template.fixed_answers`,
+  `template.md` § 6.4).
 * **The leads' bulk treatment is ONE value for the device and the
   transmission** — `electrodes_bulk`, a shared value. TranSIESTA reads it for
   the device's self-consistent run, and `tbtrans` takes `TS.Elecs.Bulk` as the

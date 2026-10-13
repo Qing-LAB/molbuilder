@@ -2078,22 +2078,40 @@ def role_answers(engine: str, kind: str,
     return out
 
 
-def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
-    """``{item: value}`` -- the `role` items of a ``kind`` calculation whose
-    answer is the same on every rung: no ``stages`` and no ``role_values``,
-    so the catalogue's ``value`` is every rung's (§ 6.4).  SIESTA's
-    per-step forces and coordinates are the two.
+def fixed_answers(engine: str, kind: str) -> Dict[str, Any]:
+    """``{item: value}`` -- the `role` items of a ``kind`` calculation with
+    ONE answer wherever they are read: no ``role_values`` (a rung's own
+    answer) and not answered point by point (:data:`PER_POINT`), so the
+    catalogue's ``value`` is the answer of every rung that reads it (§ 6.4).
 
-    The one answer a calculation-wide statement CAN give, which is why two
-    readers ask it: `resolve` reads a template value for one of these as
-    the answer when it equals it, and refuses any template value for a
-    fixed item answered rung by rung; the settings gate refuses a config
-    rendered with anything else, since only a render that skipped
-    `resolve` can hold another value.
-    """
+    `resolve` reads a template value for one of these as that answer when
+    it equals it -- what a template written before 2026-09-29 states for
+    SIESTA's per-step forces and coordinates -- and refuses any other."""
     return {it.name: it.value
             for it in select(catalogue(), engine=engine)
-            if kind in it.role and not it.stages and not it.role_values}
+            if kind in it.role and not it.role_values
+            and it.name not in PER_POINT}
+
+
+def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
+    """``{item: value}`` -- those of :func:`fixed_answers` that EVERY rung
+    of a ``kind`` calculation reads: on a kind without roles all of them;
+    on one with roles, those whose ``stages`` names every role
+    (`paths.KIND_ROLES`) -- SIESTA's per-step forces and coordinates on an
+    optimization and a vibration, which every rung writes; not on a
+    transport calculation, whose transmission writes neither (§ 6.4;
+    `engines/transport.md` § 6.1b).
+
+    What a whole-calculation surface echoes, and what the settings gate
+    holds a config to: only a render that skipped `resolve` can hold
+    another value.
+    """
+    roles = set(KIND_ROLES.get(kind, ()))
+    stages = {it.name: set(it.stages)
+              for it in select(catalogue(), engine=engine)}
+    return {name: value
+            for name, value in fixed_answers(engine, kind).items()
+            if not roles or not stages[name] or roles <= stages[name]}
 
 
 def why_not(item: "Item", value: Any, *, engine: str,
@@ -2586,5 +2604,5 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "shared_by", "shared_scope_words",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
-           "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
+           "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
            "a_kind", "as_declared", "why_not"]

@@ -133,6 +133,9 @@ class TestStages:
         # ...and the GPU count, which only `use_gpu` asks for (2026-10-12,
         # `execution/gpu.md` G5): tbtrans has no GPU path.
         scf |= {"gpu_count"}
+        # ...and the per-step forces and coordinates the rung fixes, which
+        # tbtrans writes neither of (2026-10-13, `transport.md` § 6.1b).
+        scf |= {"write_forces", "write_coor_step"}
         assert scf.isdisjoint(owned["transmission"])
         assert scf <= owned["seed"] and owned["seed"] == scf, (
             "the seed owns nothing of its own but the SCF it runs")

@@ -877,6 +877,12 @@
 }
 
 .molviewer-selection-mode-option {
+    /* THE CONTAINING BLOCK OF ITS HIDDEN RADIO (below): an absolutely
+       positioned input with no positioned ancestor is placed against the
+       page itself, past every scroller's clip, and stretches the document --
+       a focus jump then scrolls the window and the header goes off-screen
+       (the 2026-10-11 walk, ⑮). */
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1409,6 +1415,7 @@
     border: 0;
 }
 .molviewer-panel-tab-option {
+    position: relative;          /* its hidden radio's containing block, as above */
     display: flex;
     align-items: center;
     padding: 0.05rem 0 var(--molviewer-space-xs);

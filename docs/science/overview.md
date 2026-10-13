@@ -133,7 +133,7 @@ states the *why* so the thresholds don't drift silently.
 |---|---|---|
 | min atom–atom distance < 0.3 Å | **error** | atoms on top of each other; SCF diverges |
 | min atom–atom distance 0.3–0.7 Å | warn | likely broken structure (failed protonation / bad backend output) |
-| H/heavy ratio, on every structure with a heavy atom | info | **a reference number, never a verdict** — `H/heavy atoms: 4/14 = 0.29 (for reference: organic molecules usually sit at 0.6-1.5)`, counted by element (`chemistry.is_atom`). Whether hydrogens are missing is the scientist's to judge: a metal, an oxide or graphene has none by construction *(the user, 2026-10-11: "maybe just provide that ratio as a reference"; a warning below 0.3 until then)* |
+| H/heavy ratio, on every structure with a heavy non-metal atom | info | **a reference number, never a verdict** — `H/heavy non-metal atoms: 4/8 = 0.50 (for reference: organic molecules usually sit at 0.6-1.5)`, counted by element (`chemistry.is_atom`) against the heavy **non-metal** atoms only (`chemistry.NONMETALS`): the reference range is organic molecules', so a junction's gold is no part of the count, and a structure with no non-metal heavy atom — a gold lead — gets no note. Whether hydrogens are missing is the scientist's to judge: an oxide or graphene has none by construction *(the user, 2026-10-11: "maybe just provide that ratio as a reference"; a warning below 0.3 until then; against the non-metals since 2026-10-13, when a gold lead read 0/75 and a junction 4/440)* |
 | polymer residue listing reversed / no preceding O3′–P bridge | warn | reversed or disconnected backbone — a likely backend regression |
 
 ### Cell & periodicity (`geometry.py` + `siesta.py`)

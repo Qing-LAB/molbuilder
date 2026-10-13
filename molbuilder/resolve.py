@@ -303,18 +303,21 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
 def _refuse_a_stated_answer(template_text: str, engine: str,
                             kind: str) -> None:
     """A template value on an item the rung fixes is refused unless it IS
-    the answer every rung gives (`engines/template.md` § 6.4).
+    the item's one answer wherever it is read (`engines/template.md` § 6.4,
+    `template.fixed_answers`).
 
     The template writer leaves such an item valueless; a value that states
-    the one answer every rung gives is read as it.  An item answered rung by rung -- the device's solver, the leads'
-    ``TS.HS.Save``, the bias point each rung runs -- has no one answer a
-    calculation-wide file could state, so any value there is refused; so is
-    any other value, which the answer would be laid over without a word.
+    that one answer is read as it -- what a template written before
+    2026-09-29 says of SIESTA's per-step forces and coordinates.  An item
+    answered rung by rung -- the device's solver -- or point by point -- the
+    bias -- has no one answer a calculation-wide file could state, so any
+    value there is refused; so is any other value, which the answer would be
+    laid over without a word.
     """
-    from .template import (fixed_by_role, fixed_on_every_rung, read_template,
+    from .template import (fixed_answers, fixed_by_role, read_template,
                            select, why_role)
     fixed = fixed_by_role(engine, kind)
-    alike = fixed_on_every_rung(engine, kind)
+    alike = fixed_answers(engine, kind)
     parsed = read_template(template_text)
     mine = select(parsed, engine=engine) if parsed.engines else parsed.items
     for it in mine:

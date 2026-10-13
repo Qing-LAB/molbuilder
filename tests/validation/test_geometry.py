@@ -65,24 +65,33 @@ def test_min_distance_normal_bonds_no_issue(water_structure):
 
 
 @pytest.mark.parametrize("elements, said", [
-    (["O", "H", "H"], "H/heavy atoms: 2/1 = 2.00"),
+    (["O", "H", "H"], "H/heavy non-metal atoms: 2/1 = 2.00"),
     # Counted BY ELEMENT: labelled hydrogens are hydrogens (A1.12 -- the
     # raw labels read labelled methane as 0/5).
-    (["C1", "H1", "H2", "H3", "H4"], "H/heavy atoms: 4/1 = 4.00"),
+    (["C1", "H1", "H2", "H3", "H4"], "H/heavy non-metal atoms: 4/1 = 4.00"),
+    # Against the NON-METALS only: a junction's gold is no part of the
+    # organic reference (benzenedithiol on gold, 4 H on C6S2 -- not 4/10).
+    (["Au", "Au", "S", "C", "C", "C", "C", "C", "C", "S", "H", "H", "H", "H"],
+     "H/heavy non-metal atoms: 4/8 = 0.50"),
+    # ...and a structure with no non-metal heavy atom -- a gold lead -- has
+    # no organic part, so no note (the 2026-10-11 walk: a lead read 0/75).
+    (["Au", "Au", "Au"], None),
 ])
 def test_the_h_ratio_is_a_reference_note_counted_by_element(elements, said):
-    """`science/overview.md` § 4: the ratio is said on every structure with
-    a heavy atom, at `info` -- whether hydrogens are missing is the
+    """`science/overview.md` § 4: the ratio is said at `info` against the
+    heavy NON-METAL atoms -- the organic part its reference range is about
+    -- on every structure that has one; whether hydrogens are missing is the
     scientist's to judge (the user, 2026-10-11).
 
     MUTATIONS THIS MUST FAIL AGAINST: counting raw labels (`e == "H"`);
+    counting a metal's atoms; a note on a structure with no organic part;
     the note at any other severity."""
     pos = np.array([[i * 1.2, 0.0, 0.0] for i in range(len(elements))])
     s = Structure(elements=elements, positions=pos)
     notes = [i for i in validate(s, SiestaConfig())
              if i.where == "geometry.h_ratio"]
-    assert [(i.severity, i.message.split(" (")[0]) for i in notes] == [
-        ("info", said)], notes
+    assert [(i.severity, i.message.split(" (")[0]) for i in notes] == (
+        [("info", said)] if said else []), notes
 
 
 

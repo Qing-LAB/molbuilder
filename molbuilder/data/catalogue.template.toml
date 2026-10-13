@@ -697,8 +697,9 @@ help = """
 Emit inline tuning hints and a Troubleshooting block in the generated script, in whatever comment syntax that engine uses.  Turn it off for a bare deck -- only the comments go, nothing the engine reads.
 """
 [item.write_forces]
-# role: every SIESTA run writes each step's forces -- molbuilder reads them back (template.md 6.4).
+# role: every SIESTA run that runs an SCF writes each step's forces -- molbuilder reads them back (template.md 6.4); tbtrans writes none, so a transport calculation's transmission does not carry it (transport.md 6.1b).
 role = ["optimization", "vibration", "transport"]
+stages = "scf"
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -717,8 +718,9 @@ It does NOT control the .FA file.  The last step's forces reach the .FA file wha
 """
 
 [item.write_coor_step]
-# role: every SIESTA run writes each step's coordinates -- molbuilder reads them back (template.md 6.4).
+# role: every SIESTA run that runs an SCF writes each step's coordinates -- molbuilder reads them back (template.md 6.4); tbtrans writes none, so a transport calculation's transmission does not carry it (transport.md 6.1b).
 role = ["optimization", "vibration", "transport"]
+stages = "scf"
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]

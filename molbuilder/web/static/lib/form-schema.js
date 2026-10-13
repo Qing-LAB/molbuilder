@@ -489,6 +489,10 @@
             for (const c of labelEl.querySelectorAll("input, select")) {
                 c.disabled = true;
             }
+            // ...ONE ANSWERED POINT BY POINT (`locked.per_point`, the bias)
+            // has no one value to draw: the page that holds the points
+            // shows them in it (`showPoints`).
+            if (f.locked.per_point) labelEl.dataset.perPoint = f.name;
         } else {
             // WHOSE THE VALUE IS, beside the field and kept current as it
             // is edited (form-schema.md § 1.1): the template's source, *you
@@ -1037,9 +1041,25 @@
         return JSON.stringify(a) === JSON.stringify(b);
     }
 
+    /* THE POINTS OF A FIELD ANSWERED POINT BY POINT (`locked.per_point`),
+     * shown in its locked box as ``text`` -- the page holds them (the
+     * Transport tab's bias list), the form only the place to say them.
+     * Never collected: the box stays locked and blank. */
+    function showPoints(container, name, text) {
+        if (!container) return;
+        for (const lab of container.querySelectorAll(
+                 '[data-per-point="' + cssEsc(name) + '"]')) {
+            for (const c of lab.querySelectorAll("input")) {
+                c.placeholder = text;
+                c.title = text;
+            }
+        }
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.formSchema = {
         renderForm:  renderForm,
+        showPoints:  showPoints,
         collectForm: collectForm,
         heldValues:  heldValues,
         fetchSchema: fetchSchema,

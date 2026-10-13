@@ -104,14 +104,20 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
             # flag on this launch.
             where.append(f"  {words:<15} {flag} on this launch")
             continue
+        # WHERE A PERSON STATES IT, on either road: the Task setup card that
+        # writes it, the task.json key that card writes, and the flag --
+        # the refusal reaches the page and the terminal alike.
         if field in ("domain", "time"):
-            card = (f'"allocation": {{"{key}": ...}} in task.json'
-                    + (f' or "execution": {{"{key}": ...}} (this run)'
-                       if shape else ""))
+            card = (f'Task setup\'s "Where it runs" card ("allocation": '
+                    f'{{"{key}": ...}} in task.json)'
+                    + (f' or this run\'s run card ("execution": '
+                       f'{{"{key}": ...}})' if shape else ""))
         elif field == "mem":
-            card = '"allocation": {"mem": ...} in task.json'
+            card = ('Task setup\'s "Where it runs" card ("allocation": '
+                    '{"mem": ...} in task.json)')
         else:
-            card = f'"execution": {{"{key}": N}} in task.json'
+            card = (f'the run card on Task setup ("execution": '
+                    f'{{"{key}": N}} in task.json)')
         line = f"  {words:<15} {card}, or {flag}"
         if field == "domain" and queues:
             line += (f"\n  {'':<15} (the target's record lists: "

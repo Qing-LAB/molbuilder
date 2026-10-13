@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
-from ..chemistry import is_atom
+from ..chemistry import NONMETALS, is_atom, resolve_element
 from ..issues import Issue
 from ..structure import Structure
 
@@ -58,20 +58,31 @@ def validate_geometry(struct: Structure,
 
     # H/heavy ratio -- A REFERENCE NUMBER, never a verdict (user,
     # 2026-10-11: "maybe just provide that ratio as a reference").  Whether
-    # a structure is missing hydrogens is the scientist's to judge -- a
-    # metal, an oxide or graphene has none by construction -- so it is
-    # said on every structure with a heavy atom, at `info`, with the range
-    # organic molecules usually sit in beside it.
+    # a structure is missing hydrogens is the scientist's to judge, so it is
+    # said at `info`, with the range organic molecules usually sit in beside
+    # it -- and counted against the NON-METAL heavy atoms only
+    # (`chemistry.NONMETALS`), since that range is organic molecules': a
+    # junction's gold is no part of it, and a structure with no non-metal
+    # heavy atom -- a gold lead -- has no organic part and gets no note
+    # (2026-10-13; a lead read 0/75, a junction 4/440).
     if n >= 1:
         # BY ELEMENT, not by label (`chemistry.is_atom`): a labelled
-        # methane's H1..H4 are hydrogens.
+        # methane's H1..H4 are hydrogens.  A label that names no element is
+        # the species check's to report, and counts here as neither.
+        def _element(label):
+            try:
+                return resolve_element(label)
+            except KeyError:
+                return None
         n_h     = sum(1 for e in struct.elements if is_atom(e, "H"))
-        n_heavy = len(struct.elements) - n_h
+        n_heavy = sum(1 for e in struct.elements
+                      if not is_atom(e, "H") and _element(e) in NONMETALS)
         if n_heavy > 0:
             issues.append(Issue(
                 "info",
-                f"H/heavy atoms: {n_h}/{n_heavy} = {n_h / n_heavy:.2f} (for "
-                f"reference: organic molecules usually sit at 0.6-1.5).",
+                f"H/heavy non-metal atoms: {n_h}/{n_heavy} = "
+                f"{n_h / n_heavy:.2f} (for reference: organic molecules "
+                f"usually sit at 0.6-1.5).",
                 "geometry.h_ratio",
             ))
 
