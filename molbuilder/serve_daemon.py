@@ -38,7 +38,7 @@ from typing import List, Optional, Tuple
 from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
                          jupyter_log, jupyter_pidfile,
                           runtime_dir, serve_log, serve_pidfile)
-from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
+from .reload_protocol import RELOAD_EXIT_CODE, server_environment
 
 
 # --------------------------------------------------------------------- #
@@ -554,8 +554,10 @@ def supervise(port: int, child_argv: List[str], *,
     signal.signal(signal.SIGUSR1, _on_usr1)
     signal.signal(signal.SIGUSR2, _on_usr2)
 
-    env = dict(os.environ)
-    env[SUPERVISED_ENV] = "1"
+    # The server's environment, the one both supervisors give it; the
+    # notebook this supervisor starts keeps its own (`ops/deployment.md`
+    # § 1.0f).
+    env = server_environment(os.environ)
     crashes: List[float] = []
     restarts = 0
     code = 0

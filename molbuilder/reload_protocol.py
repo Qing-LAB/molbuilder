@@ -1,4 +1,5 @@
-"""The two words the supervisor and the server it starts agree on.
+"""The two words the supervisor and the server it starts agree on, and the
+environment it starts the server with.
 
 A leaf on purpose: **it imports nothing, and it sits ABOVE ``web/``.**
 
@@ -16,7 +17,10 @@ the app would kill the supervisor too, and the site would be down until someone
 reached the machine.
 
 So both constants live here, where either side can read them at no cost and
-neither has to reach into the other.
+neither has to reach into the other -- and the environment the server is
+started with (:func:`server_environment`), which both supervisors hand their
+child: `serve start`'s in the background and `serve foreground`'s in a
+terminal.
 
 **And there is exactly one copy of each.**  Two copies of an exit code is a
 reload that quietly stops respawning: the child asks with 3, the parent waits for
@@ -34,3 +38,15 @@ RELOAD_EXIT_CODE = 3
 #: server back, and an endpoint that stops it would leave a dead site with no way
 #: back from the browser.
 SUPERVISED_ENV = "MOLBUILDER_SUPERVISED"
+
+
+def server_environment(environ) -> dict:
+    """The environment a supervisor starts the server with: ``environ``,
+    marked supervised, and ONE NUMERICAL THREAD (`ops/deployment.md` § 1.0f)
+    -- what the server computes with numpy is small, and OpenBLAS otherwise
+    starts a thread per core that competes with the jobs running on the
+    machine.  A thread count already set is the person's, and is kept."""
+    env = dict(environ)
+    env[SUPERVISED_ENV] = "1"
+    env.setdefault("OPENBLAS_NUM_THREADS", "1")
+    return env

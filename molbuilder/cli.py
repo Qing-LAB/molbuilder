@@ -1734,7 +1734,8 @@ def cmd_runtime_info(input_path, out_path, pretty):
 # The supervisor protocol lives in a leaf module that imports NOTHING, so this
 # parent can read it without importing the application it restarts -- which is
 # the property that lets a child failing to import leave the supervisor alive.
-from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
+from .reload_protocol import (RELOAD_EXIT_CODE, SUPERVISED_ENV,
+                              server_environment)
 
 
 def _supervise_forever() -> int:
@@ -1760,8 +1761,7 @@ def _supervise_forever() -> int:
     """
     import subprocess
 
-    env = dict(os.environ)
-    env[SUPERVISED_ENV] = "1"
+    env = server_environment(os.environ)
     args = [sys.executable, "-m", "molbuilder", *sys.argv[1:]]
     _crashes: list = []
     while True:
@@ -2296,8 +2296,12 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
             f"  The port is not reported busy; the address itself is the "
             f"problem.  `--host` must name an interface this machine has -- "
             f"`ip -br addr` lists them -- or 0.0.0.0 for all of them.")
+    # NO `--no-supervise`: the environment the supervisor starts it with
+    # (`reload_protocol.server_environment`) marks it supervised, which is
+    # what makes it the server rather than another supervisor -- and its
+    # command line then does not name a mode it is not in.
     child = [sys.executable, "-m", "molbuilder", "serve", "foreground",
-             "--host", host, "--port", str(port), "--no-supervise"]
+             "--host", host, "--port", str(port)]
     if cert:
         child += ["--cert", cert]
     if key:

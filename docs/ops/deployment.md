@@ -35,7 +35,12 @@ python -m molbuilder serve foreground   # today's terminal-bound run (dev)
 
 `start` detaches, then runs the same supervisor+child pair `foreground`
 runs — nothing about the server itself changes, only who holds the
-terminal. Three files, all under **your own** home (which is what makes
+terminal. A process list shows the two: the supervisor (the `serve` command
+you ran) and its child, `serve foreground --host … --port …`, the server —
+marked supervised by the environment the supervisor starts it with
+(`reload_protocol.server_environment`, which also gives it its one numerical
+thread, § 1.0f). The many lines a thread view lists under the child are its
+threads, not processes. Three files, all under **your own** home (which is what makes
 every bit of this per-user):
 
 | file | what |
@@ -188,6 +193,30 @@ silent client in turn.
 > way to stop it; it does not make Werkzeug a hardened front end. § 2's shape —
 > a reverse proxy terminating TLS, molbuilder bound to loopback — is what keeps
 > hostile input away from it in the first place.
+
+### 1.0f One numerical thread for the server
+
+Both supervisors — `serve start`'s in the background and `serve foreground`'s
+in a terminal — start the server with `OPENBLAS_NUM_THREADS=1`
+(`reload_protocol.server_environment`), unless the environment already sets
+it: a number you set is yours. Unset, OpenBLAS (the
+linear algebra under numpy) starts one thread per core, which is why the
+server's process listed forty threads on a forty-core machine.
+
+**What the server computes with numpy is small**: a cell's 3×3 algebra, a
+structure's rotation, the chemistry card's bond check, the rigid motions a
+vibration stage is checked against. Each takes 0.1–4 ms for 2,000 atoms, the
+same on one thread as on forty (measured 2026-10-13). The heavy algebra — a
+normal-mode eigensolve — runs in jobs and in `jobset summarize`, never on a
+request, and there the many threads cost: on the same machine running jobs
+(load 25 of 40), one 450-row eigensolve took 0.1 s on one thread and 10.7 s on
+forty, each thread waiting for a core. Only the server is capped, with the helper
+programs it starts while serving a page (`git` for a checkpoint, `nvidia-smi`,
+the scheduler's queries, the nucleic-acid builders' `tleap` and `fiber`); the
+notebook the supervisor starts keeps the environment it was given, a job keeps
+the one it was launched with, and the server launches no computation of its
+own. Run unsupervised (`--no-supervise`, under another process manager), set it
+in that manager's environment.
 
 ### 1.1 Is the running server actually running your code?
 
