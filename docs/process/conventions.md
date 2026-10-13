@@ -69,36 +69,65 @@ shape of the repository rather than a result: when such a test went red the docs
 were not wrong, the layout had moved. So the contrast this paragraph draws is
 gone, and both headers stand on review.
 
-### Versioning — when the number moves *(the user, 2026-10-11)*
+### Versioning — when the number moves *(the user, 2026-10-11; disciplined 2026-10-13)*
 
 molbuilder's version has **one home**, `__version__` in `molbuilder/__init__.py`;
 `pyproject.toml` reads it (`[tool.setuptools.dynamic]`). Each release is a git
 tag, `v<version>` — `v2.0.0` on 2026-10-11, the first since `v1.1.0`
-(2026-05-11). The version tracks **what molbuilder writes into a file**, not the
-size of the diff:
+(2026-05-11). The number says **what kind of change** a version is *(the user,
+2026-10-13: "middle number means new functionality, major number means major
+framework change")*:
 
 | the number | moves when | example |
 |---|---|---|
-| **middle** (2.**x**.0) | **any change to what molbuilder writes into a file** — a deck's lines, a record's fields, a file's name, a new file, a description's keys | a deck that lists who set each value |
-| **last** (2.0.**x**) | a change that writes every file as before | a fix inside the browser |
-| **first** (**x**.0.0) | a release the user declares | 2.0.0 |
+| **first** (**x**.0.0) | **a major framework change** — the user declares it | 2.0.0 |
+| **middle** (2.**x**.0) | **new functionality** — something a person can do that they could not before | the groups: every stage states its group, prep prepares every group at once, a group's first launch gathers what it builds on (2.7.0) |
+| **last** (2.7.**x**) | **everything else that changes what molbuilder does or writes** — a fix, a consolidation, a corrected default or check, a changed warning, wording, comments, help — **including a change to what a file says** | the transport k-point consolidation and its wording (2.8.0 and 2.9.0, had this rule held) |
 
-**Every move of the middle number has its line in the
-[changelog](?doc=process/changelog.md)** — the version, the date, what changed
-in which file — written in the commit that makes the change. **Every deck and
-run script records the version that wrote it** (`generator-version`,
+**The discipline:**
+
+* **One move per push.** The version moves once for what a push to `main`
+  holds, by the largest kind of change in it; work committed between two pushes
+  shares that number. A version is never moved twice in one push, and a push
+  that changes only documents moves nothing.
+* **When in doubt, the last number.** New functionality is a new thing a
+  person can do — a new kind of calculation, a new verb, a new surface — not
+  a better way of doing what they already could. The first number is the
+  user's to declare, never inferred.
+* **Every version has its line in the [changelog](?doc=process/changelog.md)**
+  — the version, the date, what changed and in which file molbuilder writes —
+  written in the commit that moves the number, a last-number move as much as a
+  middle one: what a file says is still recorded, it just no longer decides the
+  number.
+
+**Every deck and run script records the version that wrote it, and its git
+commit** (`generator-version 2.9.0 (git …)`,
 [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 3.2), so a
-check that meets a file from an older molbuilder names both versions instead
-of calling the file different (*"prepared by molbuilder 2.0.0; this is
-2.1.0"*); a file written before 2.0.0 records only its git commit and reads as
-*before 2.0.0*.
+check that meets a file from another molbuilder names both versions instead
+of calling the file different (*"prepared by molbuilder 2.8.0; this is
+2.9.0"*), and the commit tells two builds of one version apart; a file written
+before 2.0.0 records only its git commit and reads as *before 2.0.0*. Only one
+comparison orders versions — a template written before 2.1.0, whose zeros
+meant *not set* (`template.version_key`, `ZERO_MEANING_CHANGED_AT`); every
+other check asks only whether two versions are the same.
 
-The rule exists because downstream things — a user's run directory, a parser,
-the gather that compares a run's deck with the one prep writes now — key off
-what a file says. `.out` → `.pyscf.log`
+The changelog exists because downstream things — a user's run directory, a
+parser, the gather that compares a run's deck with the one prep writes now —
+key off what a file says. `.out` → `.pyscf.log`
 ([`execution/job-contracts.md § 2.2`](?doc=execution/job-contracts.md)) is the
 worked example of a change nobody recorded: a one-line rename that silently
 broke a viewer's dispatch.
+
+> **2.1.0 – 2.9.0 were numbered too loosely** *(2026-10-11 → 13)*. The rule
+> that stood then moved the middle number for **any** change to what molbuilder
+> writes into a file, and it was applied per commit: nine middle-number moves in
+> three days. Several were no new functionality — a validation note reworded
+> (2.2.0), a consolidation of the transport k-point grids (2.8.0), a deck's
+> comments reworded (2.9.0) — and two moved in one push (2.7.0 and 2.8.0,
+> commit `85164f2e`): last-number changes by the rule above. The numbers already given
+> stand — files record them, and `jobset migrate` and the 2.1.0 comparison key
+> off them — and every version from 2.9.0 on is numbered by the rule above
+> *(the user, 2026-10-13: "we will discipline from now on")*.
 
 ## 3. The CLI surface
 

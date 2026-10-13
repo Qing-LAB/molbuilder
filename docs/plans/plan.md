@@ -51,10 +51,13 @@ lists, one chart theme (`lib/plot-theme.js`) and one series palette
 
 **molbuilder 2.0.0** *(2026-10-11, tag `v2.0.0`; the user: "we are closer
 to release")*: the version has one home (`molbuilder/__init__.py`), every deck
-and run script records it, and the middle number moves with every change to
-what molbuilder writes into a file, with its line in the changelog
-(`process/conventions.md` § 2, *Versioning*; `process/changelog.md`). Step 7's
-deck changes are the first: 2.1.0.
+and run script records it, and every version has its line in the changelog
+(`process/conventions.md` § 2, *Versioning*; `process/changelog.md`). **The
+numbering, disciplined 2026-10-13** (the user: "middle number means new
+functionality, major number means major framework change"; "we will discipline
+from now on"): the middle number for new functionality only, the last for
+everything else, once per push -- 2.1.0 to 2.9.0 moved the middle number for
+any change to a file, too loosely, and stand as given.
 
 **Next, in order** (the queue, § 0a): **Q5**, **Q7**, **Q9**, **Q12**,
 **Q13**, **Q11** — as the queue orders them.
