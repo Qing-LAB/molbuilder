@@ -143,7 +143,7 @@ they share the `lib/` folder, but their substance lives with their real subject:
   Its home is the chemistry card's domain
   (`science/chemistry-correctness.md` § 2.5). *(A Budget-card line of
   atom-count × metal thresholds → "bump the caps" advice stood here until
-  2026-10-13: no contract stated it, so it was removed — plan § 2, CHIP.)*
+  2026-10-13: no contract stated it, so it was removed — CHIP, [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md).)*
 - **`system-load-monitor.js`** — a self-mounting CPU/RAM/GPU sparkline strip on
   the **Results tab only**, not a shared block; documented with the Results tab.
 - **`region-label-definitions.js`** (+ its popover) — the transport **device-role

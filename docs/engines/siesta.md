@@ -456,7 +456,8 @@ always too — one form whether or not the grid is displaced (plan § 5w.3's
 ruling asked for the block when displaced; one form serves both). The
 transmission deck carries two k-point grids: `TBT.k`, the transmission's own,
 and the ladder's shared SCF block, which tbtrans reads only when `TBT.k` is
-absent — kept as the deck keeps the other shared settings (plan TD12).
+absent — kept as the deck keeps the other shared settings (TD12,
+[`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)).
 
 **What reads the k-point grid.** `Diag.ParallelOverK`'s automatic answer —
 *more than one k-point* — is counted on the grid the deck writes: a lead's

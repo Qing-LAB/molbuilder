@@ -636,6 +636,11 @@
           "subtitle": "Q17 — transport over a set of frames: the plan's record — 2026-10-10"
         },
         {
+          "path": "archive/2026-10-13-plan-rows.md",
+          "label": "The plan's done rows — 2026-10-13",
+          "subtitle": "The plan's done rows — 2026-10-13"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"
