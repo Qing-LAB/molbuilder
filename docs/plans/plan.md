@@ -1756,6 +1756,18 @@ raised `NameError` (282 failures); the stage's job is now `JobSet.job`'s.
   numbered once. Four references added (`Brandbyge2002`, `LopezSancho1985`,
   `Thygesen2005b`, `SiestaManual542`). Row 13 ⑭ (the folders renumbering
   without the seed) is moot: the seed is always kept
+- [x] **The k-point wording, one vocabulary (2026-10-13, 2.9.0)** (user:
+  "the language are vague to state k-point,k-grid or mesh etc
+  inconsistently"): *k-point grid* everywhere (never *mesh*, SIESTA's
+  real-space grid), *in the electrode plane (x, y)* and *along z* (never
+  *transverse*), *stage* on the Transport tab; each reason in full sentences
+  with its background -- the contract § 0.2-0.3b and every k-point passage
+  of it, `siesta.md` § 6.1, `science/overview.md`, the four items' labels and
+  help, the stage notes, the k-points card, `kmesh`'s findings, the decks'
+  k-point comments. Done by an agent, every edit re-read; the § 2a.7 and
+  § 3.8 passages that still gave the old reasons were corrected with it.
+  Left as they are: "transverse" where it names the cell's geometry (§ 4,
+  § 5's I12), and the engine's own message, *"found incompatible k-grids"*
 - Open, for the CSS pass: two modal vocabularies (`.mb-dialog`,
   `.molbuilder-projects-dialog`) and the sidebar's native `prompt()`
   (rename, a state's name); the projects dialog's raw `13px/1.45`, sizes

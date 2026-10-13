@@ -365,14 +365,14 @@ class SiestaConfig:
         "tier":  "advanced",
     })
 
-    # k-grid -- three integers; the form renders them as three
+    # the k-point grid -- three integers; the form renders them as three
     # side-by-side inputs (kx / ky / kz).
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
         "category": ("accuracy",),
         # In the Stage card (a convergence knob: more
         # k-points → tighter sampling → more cost).
         "workflow_group": "stage",
-        "label": "k-point mesh",
+        "label": "k-point grid",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
         "tier":  "basic",
         # Bounds PER COMPONENT, a recommendation (validation/metadata.py's
@@ -393,7 +393,7 @@ class SiestaConfig:
         default=(0.0, 0.0, 0.0), metadata={
             "category": ("accuracy",),
             "workflow_group": "stage",
-            "label": "k-grid displacement",
+            "label": "k-point grid offset",
             # Same block as kgrid; the note says which column, and
             # ``_bare_anchor`` keeps only the keyword.
             "engine_key": '%block kgrid_Monkhorst_Pack  (displ column)',
@@ -937,18 +937,19 @@ class SiestaConfig:
         "tier":        "basic",
     })
 
-    # BLANK IS THE RULE'S: three times the shared mesh in the electrode plane,
-    # worked out when the deck is written (`kmesh.mesh_for`), so it follows
-    # `kgrid` until the person sets it (`engines/transport.md` § 0.3b).
+    # BLANK IS THE RULE'S: three times the shared k-point grid in the
+    # electrode plane (x, y), worked out when the deck is written
+    # (`kmesh.mesh_for`), so it follows `kgrid` until the person sets it
+    # (`engines/transport.md` § 0.3b).
     tbt_k_grid: Optional[Tuple[int, int, int]] = field(default=None, metadata={
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
-        "label":       "Transmission k-points in the electrode plane (x, y)",
+        "label":       "Transmission k-point grid (x, y)",
         "engine_key":  "TBT.k",
         "range":       (1, 64),
         "tier":        "basic",
-        "null_label":  "(3 x the shared k-point mesh)",
+        "null_label":  "(3 x the shared k-point grid)",
     })
 
     tbt_spin: int = field(default=0, metadata={
@@ -1179,11 +1180,11 @@ class SiestaConfig:
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
-        "label":       "Lead k-points along the transport direction (z)",
+        "label":       "Lead k-points along z",
         "engine_key":  "%block kgrid_Monkhorst_Pack",
-        # A RECOMMENDATION from 50 (warned below: the SIESTA manual's "at
-        # least >50"); 1 and under is the item's hard limit, refused on every
-        # door (`above`, engines/transport.md § 0.3b).
+        # A RECOMMENDATION from 50 k-points along z (fewer is warned: the
+        # SIESTA manual's "at least >50"); 1 or fewer is the item's hard
+        # limit, refused on every door (`above`, engines/transport.md § 0.3b).
         "range":       (50, 200),
         "tier":        "basic",
     })

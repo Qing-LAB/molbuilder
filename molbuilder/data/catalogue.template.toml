@@ -391,20 +391,24 @@ type = "int3"
 value = [1, 1, 1]
 default = [1, 1, 1]
 range = [1, 64]
-above = { value = 0, why = "each is a k-point count along its axis, and 0 samples nothing (SIESTA's kgrid.F counts the points as the grid's determinant)" }
+above = { value = 0, why = "each number is the k-point count along its axis -- how many k-points the grid takes there -- and 0 would sample nothing (SIESTA's kgrid.F counts the points as the grid's determinant)" }
 group = "stage"
-label = "k-point mesh"
+label = "k-point grid"
 tier = "basic"
 help = """
-How many sample points the calculation takes along each repeating direction of the cell -- one count per axis (x, y, z).
-A crystal or a slab repeats, and its electrons' waves repeat with it, shifted a little from one copy of the cell to the next.  The calculation cannot follow every shift, so it samples a few and averages them.  More points: more accurate, and slower -- the cost grows with the three counts multiplied together.
+How many k-points the calculation samples along each direction in which the cell repeats -- one count per axis (x, y, z), written for example as a 4 x 4 x 1 k-point grid.
+What a k-point is: in a crystal or a slab the cell repeats, and so do its electrons' waves -- from one copy of the cell to the next a wave comes back the same apart from a phase shift.  A k-point is one such shift.  The calculation cannot follow every shift, so it samples a regular grid of them and averages.  More k-points: more accurate, and slower -- the cost grows with the three counts multiplied together.  (This is not SIESTA's "mesh": that is the real-space grid set by the mesh cutoff.)
   1 1 1      an isolated molecule -- nothing repeats, so one point is exact
-  4 4 1      a slab or a surface -- sampled across it, 1 along the vacuum
+  4 4 1      a slab or a surface -- sampled along the surface, 1 along the vacuum
   6 6 6      a 3D crystal
-A small cell needs more points than a big one: a cell twice as wide needs about half the count along that axis.  To check it, raise the counts about 1.5x per axis; when the total energy moves by less than 1 meV per atom, the grid is fine enough.
-IN A TRANSPORT CALCULATION (the shared panel): this is the grid IN THE PLANE OF THE ELECTRODES (x and y), perpendicular to the transport direction, for the seed, both leads and the device -- the electrodes are infinite surfaces, so the cell repeats sideways, one molecule in each copy.  One grid for all four, because the device uses each lead's Hamiltonian as the bulk of its own electrode region, and the two are the same metal only when their densities were computed on the same points: TranSIESTA compares each lead's grid and offset with the device's and stops on "found incompatible k-grids" (ts_electrode.F90; the manual: "the scattering region forces the electrodes to use equivalent k points").  Its third count, along the transport direction (z), is always 1 here: the device's NEGF cycle forces it (ts_kpoint_scf.F90), and the seed's density is only a starting point.  Two more grids sit on the rungs' tabs: each lead's own count along z ("Lead k-points along the transport direction (z)"), and the transmission's grid in the electrode plane ("Transmission k-points in the electrode plane (x, y)"), which is finer than this one -- three times it, unless you set it.
+A small cell needs more k-points than a big one: a cell twice as wide needs about half the count along that axis.  To check it, raise the counts about 1.5x per axis; when the total energy moves by less than 1 meV per atom, the grid is fine enough.
+
+IN A TRANSPORT CALCULATION this is the SHARED k-point grid, on the shared panel.  It samples the plane of the electrodes (x and y): the electrodes are infinite metal surfaces, so the junction's cell repeats sideways in that plane, one molecule in each copy.  The seed, both leads and the device all use this one grid.
+Why one grid for all four: the device uses each lead's Hamiltonian as the bulk metal of its own electrode region, and the two describe the same metal only when their densities were computed on the same k-points.  TranSIESTA compares each lead's grid and offset with the device's and stops on "found incompatible k-grids" (ts_electrode.F90; the manual: "the scattering region forces the electrodes to use equivalent k points").
+Its third count, along the transport direction (z), is always 1 here and is shown locked: the device's NEGF cycle forces one k-point along z (ts_kpoint_scf.F90), and the seed's density is only a starting point for the device.
+Two more k-point settings sit on the stages' tabs: each lead's own count along z ("Lead k-points along z"), and the transmission's own grid in the electrode plane ("Transmission k-point grid (x, y)"), which is finer than this one -- three times it, unless you set it.
   To converge it: raise each count about 1.5 times, re-run the leads and the device, and see that the leads' Fermi level and the device's T(E) at the Fermi level do not move.
-  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 100 on each lead's tab, and the transmission's grid 12 12 1 -- three times this one along each direction it samples.  One point along a direction the electrodes repeat in is warned (engines/transport.md 0.2).
+  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 100 on each lead's tab, and the transmission's grid 12 12 1 -- three times this one along each direction it samples with more than one point.  One k-point along a direction the electrodes repeat in is warned (engines/transport.md 0.3b).
 """
 
 [item.kgrid_displacement]
@@ -421,14 +425,15 @@ value = [0.0, 0.0, 0.0]
 default = [0.0, 0.0, 0.0]
 range = [0.0, 1.0]
 group = "stage"
-label = "k-grid displacement"
+label = "k-point grid offset"
 help = """
-Shifts the k-point mesh off Gamma, one value per axis, in units of the mesh spacing. [0,0,0] is Gamma-centred.
-  0.0    Gamma-centred. Required for a 1x1x1 mesh (an isolated molecule), and the safe choice for odd meshes, which already contain Gamma.
-  0.5    The classic Monkhorst-Pack shift. Use on even meshes -- it samples better than a Gamma-centred grid of the same size, and matters most for metals.
+Shifts the k-point grid away from Gamma (the point k = 0), one value per axis, in units of one grid spacing.  [0, 0, 0] is Gamma-centred: Gamma is one of the k-points.
+  0.0    Gamma-centred.  Required for a 1x1x1 grid (an isolated molecule), and the safe choice for an odd count, whose grid already contains Gamma.
+  0.5    The classic Monkhorst-Pack shift: every k-point moves half a spacing.  Use it on an even count -- it samples better than a Gamma-centred grid of the same size, and matters most for metals.
 Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves the third on Gamma, which is what a slab wants when the third axis is vacuum.
-On a hexagonal cell -- an Au(111) surface -- keep it Gamma-centred: 0.5 does not respect the six-fold symmetry.  SIESTA folds only k with -k, so nothing is computed wrong; the sampling is lopsided and converges more slowly.
-In a transport calculation the transport direction is sampled with no offset on every rung -- one point on the seed, the device and the transmission, electrode_kz points on the leads -- so that component is fixed at 0 and shown locked: TranSIESTA forces the device's to 0 and compares each lead's offset with the device's on all three axes, z included (ts_kpoint_scf.F90, ts_electrode.F90).  Across it the offset is one value for every rung, cited from the relaxation: TranSIESTA refuses a lead whose offset differs from the device's (engines/transport.md 0.2).
+On a hexagonal cell -- an Au(111) surface -- keep it Gamma-centred: 0.5 does not respect the six-fold symmetry.  SIESTA folds only k with -k, so nothing is computed wrong; the k-points fall unevenly and the sampling converges more slowly.
+In a transport calculation, z (the transport direction) is sampled with no offset on every stage -- one k-point on the seed, the device and the transmission, and the leads' own count (electrode_kz) on the leads -- so the third component is fixed at 0 and shown locked.  TranSIESTA forces the device's offset along z to 0, and compares each lead's offset with the device's on all three axes, z included (ts_kpoint_scf.F90, ts_electrode.F90).
+In the electrode plane (x, y) the offset is one value for every stage, cited from the relaxation, because TranSIESTA refuses a lead whose offset differs from the device's (engines/transport.md 0.2).
 """
 
 [item.relax_type]
@@ -895,9 +900,9 @@ type = "bool"
 group = "budget"
 label = "ParallelOverK"
 optional = true
-not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point mesh before the deck is written"
+not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point grid before the deck is written"
 help = """
-How the MPI ranks split the diagonalisation: over k-points (on) or over orbitals (off).  Left blank it is chosen automatically from your k-point mesh -- off for a Gamma-only run, on when the mesh holds more than one k-point.
+How the MPI ranks split the diagonalisation: over k-points (on) or over orbitals (off).  Left blank it is chosen automatically from your k-point grid -- off for a Gamma-only run, on when the mesh holds more than one k-point.
 Splitting over k-points when there is only one leaves the other ranks nothing to do.
 """
 
@@ -2260,19 +2265,24 @@ engine_key = "TBT.k"
 manual = "SIESTA 5.4.2 TBtrans §'k-point sampling'"
 type = "int3"
 range = [1, 64]
-above = { value = 0, why = "each is a k-point count along its axis, and 0 samples nothing" }
+above = { value = 0, why = "each number is the k-point count along its axis -- how many k-points the grid takes there -- and 0 would sample nothing" }
 group = "stage"
-label = "Transmission k-points in the electrode plane (x, y)"
+label = "Transmission k-point grid (x, y)"
 tier = "basic"
 optional = true
-null_label = "(3 x the shared k-point mesh)"
-not_set = "worked out before the deck is written: three times the shared k-point mesh's count along each direction in the electrode plane it samples more than once, one along z (kmesh.transmission_start) -- so it follows the shared mesh whenever that changes"
+null_label = "(3 x the shared k-point grid)"
+not_set = "worked out before the deck is written: three times the shared k-point grid's count along each direction in the electrode plane (x, y) that it samples with more than one point, and one k-point along z (kmesh.transmission_start) -- so it follows the shared grid whenever that changes"
 help = """
-How many sample points the transmission takes in the plane of the electrodes (x and y) -- the directions perpendicular to the current -- when it computes T(E), the chance that an electron of energy E crosses.  The electrodes are infinite surfaces, so the cell repeats sideways and these points sample the metal surface's bands.  The third count, along the transport direction (z), is always 1: tbtrans forces it (m_tbt_kpoint.F90).
-WHY IT IS ITS OWN GRID, AND FINER.  The seed, the leads and the device share one grid in this plane (the shared panel's "k-point mesh"), because TranSIESTA requires the leads and the device to be sampled alike.  That grid converges the electron density, which is smooth.  T(E) is not smooth from point to point in this plane: the leads' band edges put sharp features into it, and a coarse grid shows them as false peaks.  The SIESTA manual: "Importantly(!) the k-point sampling need typically be much higher in a tbtrans calculation to achieve a converged transmission function."  It may differ because tbtrans rebuilds each lead's self-energy at its own points from the lead's stored Hamiltonian (tbt_init.F90) and checks nothing against the SCF grid -- and raising it re-runs the transmission alone, no SCF.
-LEFT BLANK, it is three times the shared grid's count along each direction that grid samples more than once -- 4 4 1 gives 12 12 1 -- worked out when the deck is written, so it follows the shared grid whenever that changes.  Three is molbuilder's starting point, not a converged answer: published gold-benzenedithiol junctions converged at 4 x 4 (Strange et al. 2008) and at 8 points of a 3 x 3 cell (Thygesen and Jacobsen 2005), below three times a typical shared grid.
-TO CONVERGE IT: run the transmission at the start, then again with each count about 1.5 times larger (12 -> 18), and lay the two T(E) over each other.  It has settled when T(E) at the Fermi level moves by less than about 1 % and no peak moves; a peak that moves or vanishes with the grid is an artefact of the sampling.  Then keep that one grid for every voltage, so the points of a bias sweep are compared on one sampling (Papior, SIESTA Launchpad 686603).  Once you set it, it is yours and stays; it is warned if it falls below the shared grid.
-A finer grid here cannot rescue a shared grid that was too coarse: the device itself would then be wrong.  Settle the shared grid first, then this one (engines/transport.md 0.2).
+The k-points the transmission samples in the plane of the electrodes (x and y) when it computes T(E), the chance that an electron of energy E crosses the junction.  The electrodes are infinite surfaces, so the cell repeats sideways in that plane, and these k-points sample the bands of the metal surface.  The third count, along the transport direction (z), is always 1: tbtrans forces it (m_tbt_kpoint.F90).
+
+WHY IT IS A GRID OF ITS OWN, AND FINER.  The seed, the leads and the device share one k-point grid in this plane (the shared panel's "k-point grid"), because TranSIESTA requires the leads and the device to be sampled alike.  That grid converges the electron density, which is smooth: it adds up every filled state.  T(E) is not smooth from one k-point to the next: it picks out the states at one energy, the leads' band edges put sharp features into it, and a coarse grid shows them as false peaks.  The SIESTA manual: "Importantly(!) the k-point sampling need typically be much higher in a tbtrans calculation to achieve a converged transmission function".
+It may differ from the shared grid because tbtrans rebuilds each lead's self-energy -- the correction that stands in for the endless lead beyond the cell -- at its own k-points, from the lead's stored Hamiltonian (tbt_init.F90), and checks nothing against the shared grid.  Raising it re-runs the transmission alone, no SCF.
+
+LEFT BLANK, it is three times the shared grid's count along each direction that grid samples with more than one point -- 4 4 1 gives 12 12 1 -- worked out when the deck is written, so it follows the shared grid whenever that changes.  Three is molbuilder's starting point, not a converged answer: published gold-benzenedithiol junctions converged at 4 x 4 (Strange et al. 2008) and at 8 points of a 3 x 3 cell (Thygesen and Jacobsen 2005), below three times a typical shared grid.
+
+TO CONVERGE IT: run the transmission at its start, then again with each count about 1.5 times larger (12 -> 18), and lay the two T(E) over each other.  It has settled when T(E) at the Fermi level moves by less than about 1 % and no peak moves; a peak that moves or vanishes when the grid changes comes from the sampling, not from the junction.  Then keep that one grid for every voltage, so the points of a bias sweep are compared on one sampling (Papior, SIESTA Launchpad 686603).  Once you set it, it is yours and stays; it is warned if it is coarser than the shared grid.
+
+A finer grid here cannot rescue a shared grid that was too coarse: the device's Hamiltonian would then be wrong, and evaluating it at more k-points does not fix it.  Settle the shared grid first, then this one (engines/transport.md 0.2).
 """
 
 [item.tbt_spin]
@@ -2779,14 +2789,18 @@ type = "int"
 value = 100
 default = 100
 range = [50, 200]
-above = { value = 1, why = "a lead is periodic bulk along transport: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error (engines/transport.md 0.2)" }
+above = { value = 1, why = "a lead is periodic bulk metal along z, the transport direction: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error (engines/transport.md 0.2)" }
 group = "stage"
-label = "Lead k-points along the transport direction (z)"
+label = "Lead k-points along z"
 tier = "basic"
 help = """
-How many sample points each LEAD's calculation takes along the transport direction (z) -- the direction the current flows.
-A lead's run is an ordinary periodic calculation of bulk metal, and along z it is a crystal: its density, its bands and its Fermi level come out right only with many points there.  The device does not repeat along z -- it is the one piece between the two leads -- so the seed, the device and the transmission use 1 there.  This is the one direction where the leads and the device deliberately differ (the SIESTA manual: the same parameters in the lead and the device calculations "except the number of k points for the electrode calculations along their respective semi-infinite directions").
-WHY IT MATTERS SO MUCH.  The device never samples z: it attaches each lead through a self-energy built from this run's Hamiltonian and overlap, at each energy and in-plane point, with the endless rest of the lead summed exactly (Lopez Sancho et al. 1985; m_ts_electrode.F90) -- and shifted to this run's own Fermi level (H - E_F S, m_ts_electrode.F90).  So this count does not smooth the self-energy; it decides the Hamiltonian and the Fermi level the self-energy is made of.  Too few points and every self-energy, and so every T(E), sits on a wrong lead -- with no error message.
-In the plane of the electrodes (x and y) the leads use the shared grid on the shared panel ("k-point mesh"), the same as the device, and they must: TranSIESTA stops on "found incompatible k-grids" otherwise (ts_electrode.F90).
-  Example: 100, the default -- the manual's ("If in doubt, use 100 k-points along the semi-infinite direction"), warned below 50 ("at least >50 should easily be reachable").  It is cheap: only the lead runs grow with it.  To check it, raise it and see that the lead's Fermi level -- on the Results tab, each lead's beside the other's -- does not move (engines/transport.md 0.2).
+How many k-points each LEAD's calculation samples along the transport direction (z) -- the direction the current flows.  A count, not a grid: in the electrode plane (x, y) the leads use the shared k-point grid.
+
+A lead's run is an ordinary periodic calculation of bulk metal, and along z it is a crystal like any other: its density, its bands and its Fermi level come out right only with many k-points along z.  A lead cell is short along z (three Au(111) layers are about 7 A), and a short cell needs many k-points along its length to be sampled finely.
+The device does not repeat along z -- it is the one piece between the two leads -- so the seed, the device and the transmission take one k-point there.  This is the one direction where the leads and the device deliberately differ (the SIESTA manual: the same parameters in the lead and the device calculations "except the number of k points for the electrode calculations along their respective semi-infinite directions").
+
+WHY IT MATTERS SO MUCH.  The device never samples z.  It attaches each lead through a self-energy -- a correction that stands in for the endless lead beyond the cell -- built from this run's Hamiltonian and overlap, at each energy and each k-point in the electrode plane, with the endless rest of the lead summed exactly (Lopez Sancho et al. 1985; m_ts_electrode.F90), and shifted to this run's own Fermi level (H - E_F S, m_ts_electrode.F90).  So this count does not smooth the self-energy; it decides the Hamiltonian and the Fermi level the self-energy is made of.  With too few k-points, every self-energy, and so every T(E), is built on a slightly wrong lead, shifted in energy -- and no error message says so.
+
+In the electrode plane (x, y) the leads use the shared k-point grid on the shared panel ("k-point grid"), the same as the device, and they must: TranSIESTA stops on "found incompatible k-grids" otherwise (ts_electrode.F90).
+  Example: 100, the default -- the manual's ("If in doubt, use 100 k-points along the semi-infinite direction"), warned below 50 ("at least >50 should easily be reachable").  It is cheap: only the two lead runs grow with it.  To check it, raise it and see that the lead's Fermi level -- on the Results tab, each lead's beside the other's -- does not move (engines/transport.md 0.2).
 """

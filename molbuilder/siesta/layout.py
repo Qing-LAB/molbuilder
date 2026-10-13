@@ -253,7 +253,7 @@ def k_mesh_lines(mesh, *, notes: bool = True) -> list:
             out += parameter(name, "siesta").note()
         if mesh.derived:
             out.append("# tbt_k_grid left blank: three times the shared k-point "
-                       "mesh in the electrode plane, one along z "
+                       "grid in the electrode plane, one k-point along z "
                        "(kmesh.transmission_start).")
     out += kmesh.write(mesh)
     return out

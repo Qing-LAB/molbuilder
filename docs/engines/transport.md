@@ -53,7 +53,7 @@ function).
 ## 0. Orientation — what this calculation is, before any keyword
 
 *(Written 2026-09-15 for a reader who has not done NEGF before, and because
-§ 3.4's first attempt at explaining the k-grids conflated two different axes
+§ 3.4's first attempt at explaining the k-point grids conflated two different axes
 and read as self-contradictory. If you only read one section, read this one.)*
 
 ### 0.1 Why one run cannot do it
@@ -107,268 +107,323 @@ labels (§ 4). This is the design decision the rest of the feature rests on.
 
 *(The user, 2026-10-13: "a thorough investigation ... with literature/manual/document review"; "the transport document (.md) and the side panel ... thoroughly updated to include the kgrid discussion and citation to paper and source code". Every line number below is SIESTA 5.4.2's — `Src/` for TranSIESTA, `Util/TS/TBtrans/` for tbtrans — read on this machine on 2026-10-13; every paper is in `science/references.bib`, checked against Crossref.)*
 
-**The three directions, first.** **x and y** are the plane of the
-electrodes: the electrodes are infinite surfaces, so the cell repeats
-sideways, one molecule in each copy, and a run samples that plane at a few
-k-points. **z** is the transport direction: the device does not repeat along
-it — it is the one piece between two semi-infinite leads — while a lead alone
-is bulk metal that does. Every grid below is one of these, and every surface
-says which — *in the electrode plane (x, y)*, *along z* — never *across*,
-which in transport reads as from one lead to the other.
+**What a k-point is.** A crystal repeats one cell over and over, and the waves
+of its electrons repeat with it: from one copy of the cell to the next, a wave
+comes back the same apart from a phase shift. Each possible shift belongs to
+one wavevector k, and a **k-point** is one such k. The k-points that give
+different shifts fill the Brillouin zone, whose length along a direction is
+inversely proportional to the cell's length along it (2π/a for a cell of
+length a): a short cell has a long zone, and a long cell a short one. A
+calculation cannot treat every k, so it samples a regular **k-point grid** — a
+count along each direction (Monkhorst–Pack), a 4 × 4 × 1 k-point grid for
+example, placed by a **grid offset** (§ 0.3a) — and averages over it. More
+points are more accurate, and slower. Along a direction in which the cell does
+not repeat there is nothing to sample, and one point is exact. *(This document
+says "k-point grid", never "mesh": in SIESTA the mesh is the real-space grid
+set by `MeshCutoff`.)*
+
+**The three directions.** **x and y** span the plane of the electrodes: the
+electrodes are infinite metal surfaces, so the junction's cell repeats
+sideways in that plane, one molecule in each copy, and every stage samples it
+with a few k-points — *in the electrode plane (x, y)*. **z** is the transport
+direction, the one the current flows along — *along z*. The device does not
+repeat along z: it is the one piece between two semi-infinite leads. A lead on
+its own is bulk metal, and along z it is a crystal like any other. Every
+surface names a grid's direction this way — *in the electrode plane (x, y)* or
+*along z* — and never says *across*, which in transport reads as "from one
+lead to the other".
+
+**The three k-point settings**, each set in one place:
+
+1. **the shared k-point grid** (`kgrid`, on the shared panel) — in the
+   electrode plane; one value, used by the seed, both leads and the device;
+2. **the leads' k-points along z** (`electrode_kz`, on each lead's tab) — a
+   count, not a grid: how many k-points each lead's run takes along z;
+3. **the transmission k-point grid** (`tbt_k_grid`, on the transmission's
+   tab) — in the electrode plane, used by tbtrans for T(E) alone.
+
+Along z, every stage but the leads takes one k-point, which is fixed rather
+than set (I8).
 
 **What each stage samples:**
 
-| stage | program | in the electrode plane (x, y) | along z | what those points decide | what the engine does with it |
+| stage | program | in the electrode plane (x, y) | along z | what those k-points decide | what the engine does with them |
 |---|---|---|---|---|---|
-| **seed** | SIESTA | `kgrid`, the shared mesh | **1** | a starting density for the device — never its answer | a plain periodic run: the grid as written |
-| **each lead** | SIESTA, `TS.HS.Save` | `kgrid` — **must** be the device's | **`electrode_kz`**, 100 (warned below 50, refused at 1) | the lead's density, Hamiltonian, overlap and Fermi level, saved in its `.TSHS` | TranSIESTA compares the lead's grid and offset with the device's and stops on a mismatch (`ts_electrode.F90:1188–1235`); it warns below 20 along z (`:1193–1199`) |
-| **device** | TranSIESTA | `kgrid` | **1**, offset 0 | the junction's density and Hamiltonian, at each bias | forces z to one point and offset 0, silently (`ts_kpoint_scf.F90:87–92`) |
-| **transmission** | tbtrans | **`tbt_k_grid`** — its own; blank, three times `kgrid` | **1** | T(E) | rebuilds each lead's self-energy at its own points (`tbt_init.F90:208–210`), checks nothing against the SCF grid (`m_tbt_options.F90:694–695`), forces z to 1 (`m_tbt_kpoint.F90:411–422`) |
+| **seed** | SIESTA | the shared k-point grid, `kgrid` | **1** | a starting density for the device — never part of its answer | a plain periodic run: it samples the grid as written |
+| **each lead** | SIESTA, `TS.HS.Save` | the shared k-point grid — it **must** be the device's | **`electrode_kz`**, 100 (warned below 50, refused at 1) | the lead's density, Hamiltonian, overlap and Fermi level, saved in its `.TSHS` | TranSIESTA compares the lead's grid and offset with the device's and stops on a mismatch (`ts_electrode.F90:1188–1235`); it warns only when a lead has fewer than 20 k-points along z (`:1193–1199`) |
+| **device** | TranSIESTA | the shared k-point grid | **1**, offset 0 | the junction's density and Hamiltonian, at each bias | sets z to one k-point with offset 0 whatever the deck says, without a message (`ts_kpoint_scf.F90:87–92`) |
+| **transmission** | tbtrans | the transmission k-point grid, **`tbt_k_grid`** — its own; left blank, three times the shared grid | **1** | T(E) | rebuilds each lead's self-energy at its own k-points (`tbt_init.F90:208–210`), does not compare its grid with the shared one (`m_tbt_options.F90:694–695`), sets z to one k-point (`m_tbt_kpoint.F90:411–422`) |
 
 **What each stage hands the next, and where each grid enters:**
 
 ```mermaid
 flowchart TD
-    KG["kgrid — the shared mesh in the electrode plane (x, y)<br/>the shared panel: one value"]
-    KZ["electrode_kz — a lead's points along z<br/>100, warned below 50"]
-    TK["tbt_k_grid — the transmission's mesh (x, y)<br/>blank: three times kgrid"]
+    KG["the shared k-point grid, kgrid<br/>in the electrode plane (x, y)<br/>one value, on the shared panel"]
+    KZ["the leads' k-points along z, electrode_kz<br/>100, warned below 50"]
+    TK["the transmission k-point grid, tbt_k_grid<br/>in the electrode plane (x, y)<br/>left blank: three times kgrid"]
     SEED["1 · seed — SIESTA, periodic<br/>samples kgrid × 1"]
     LEAD["2, 3 · each lead — SIESTA, bulk metal<br/>samples kgrid × electrode_kz"]
     LH["the lead's .TSHS<br/>H(R), S(R) and its Fermi level E_F"]
-    SE["Σ_L, Σ_R at each energy E and in-plane k<br/>the endless lead summed exactly (Lopez Sancho)<br/>from H − E_F·S: aligned to the lead's own E_F"]
-    DEV["4 · device — TranSIESTA, NEGF<br/>samples kgrid × 1 (forced)<br/>G = [E·S − H − Σ_L − Σ_R]⁻¹"]
+    SE["Σ_L, Σ_R at each energy E<br/>and each k-point in the electrode plane<br/>the endless lead summed exactly (Lopez Sancho)<br/>from H − E_F·S: aligned to the lead's own E_F"]
+    DEV["4 · device — TranSIESTA, NEGF<br/>samples kgrid × 1, z forced to 1<br/>G = [E·S − H − Σ_L − Σ_R]⁻¹"]
     DH["the device's .TSHS<br/>its converged H(R), S(R), per bias"]
-    TB["5 · transmission — tbtrans<br/>samples tbt_k_grid × 1 (forced)<br/>Σ rebuilt at its own k"]
+    TB["5 · transmission — tbtrans<br/>samples tbt_k_grid × 1, z forced to 1<br/>Σ rebuilt at its own k-points"]
     T["T(E) = Σ over k of w_k · Tr[Γ_L G Γ_R G†]"]
     KG --> SEED
     KG --> LEAD
     KG --> DEV
     KZ --> LEAD
-    KG -. "three times, when blank" .-> TK
+    KG -. "three times, when left blank" .-> TK
     TK --> TB
-    SEED -->|".DM — a start only"| DEV
+    SEED -->|".DM — only a starting point"| DEV
     LEAD --> LH
     LH -->|"its grid checked equal to the device's"| SE
     SE --> DEV
     DEV --> DH
     DH --> TB
-    LH -->|"again, at tbtrans's own points"| TB
+    LH -->|"again, at tbtrans's own k-points"| TB
     TB --> T
 ```
 
-#### Why one mesh in the electrode plane for the seed, both leads and the device
+#### Why the seed, both leads and the device share one k-point grid in the electrode plane
 
-The device takes each lead's Hamiltonian as the bulk of its own electrode
-region: the self-energy says *"more of this lead, forever"*, and it attaches
-the right metal only if the lead's run and the device's electrode block are
-the same metal. They come from two separate SCF runs, and a run's density —
-so its Hamiltonian — depends on how it sampled the electrode plane. Sampled
-alike, the lead's bulk continues the device's electrode block seamlessly;
-sampled differently, the self-energy attaches a slightly different metal,
-which shows up as a spurious step in the potential at the boundary, not as an
-error. TranSIESTA does not leave it to chance: it reads each lead's grid and
-offset from its `.TSHS` and compares them with the device's — the in-plane
-counts equal (times any Bloch expansion), the offsets equal **on all three
-axes, z included** — and stops on *"found incompatible k-grids"*
+The device treats each lead's Hamiltonian as the bulk metal of its own
+electrode region. The **self-energy** — a correction that stands in for the
+endless lead beyond the cell (§ 0.1) — says *"more of this lead, forever"*,
+and it attaches the right metal only if the lead's run and the device's
+electrode block describe the same metal. They come from two separate SCF runs,
+and a run's density — and so its Hamiltonian — depends on which k-points it
+sampled in the electrode plane. Sampled on the same grid, the lead's bulk
+continues the device's electrode block seamlessly. Sampled on different
+grids, the self-energy attaches a slightly different metal; the result is a
+spurious step in the potential at the boundary, and no error message.
+TranSIESTA does not leave this to chance: it reads each lead's grid and offset
+from its `.TSHS` and compares them with the device's — the counts in the
+electrode plane must be equal (times any Bloch expansion, which repeats a
+smaller lead cell to fill the electrode block), and the offsets equal **on all
+three axes, z included** — and it stops with *"found incompatible k-grids"*
 (`ts_electrode.F90:1188–1235`; the `TS.Elec.<>.check-kgrid` option, on by
 default). The manual: TranSIESTA "requires that the device and electrode k
 samplings are commensurate", and "the scattering region forces the
 electrodes to use equivalent k points" [`SiestaManual542`]; the developer:
 "Yes, they should be the same" [`Papior2019`]. molbuilder never
 Bloch-expands a lead — each lead is the device's electrode block atom for atom
-(I10) — so commensurate means equal, and one value, `kgrid`, holds it for all
-four by construction (I7).
+(I10) — so *commensurate* means *equal*, and one value, `kgrid`, holds it for
+all four runs by construction (I7).
 
-#### Why each lead samples z densely — what that does, and what it does not
+#### Why each lead takes many k-points along z — what they decide, and what they do not
 
 A lead's run is an ordinary periodic SCF of bulk metal, and along z it is a
-crystal. The device never samples z: it attaches each lead through a
-self-energy built at each energy and in-plane point from the lead's
-real-space blocks — H₀₀, one lead cell, and H₀₁, its coupling to the next
-cell along z (`ts_electrode.F90:1859–1903`) —
+crystal like any other. The device, by contrast, never samples z: it attaches
+each lead through a self-energy, built at each energy and at each k-point in
+the electrode plane (written k∥ below) from two real-space blocks of the
+lead — H₀₀, one lead cell, and H₀₁, its coupling to the next cell along z
+(`ts_electrode.F90:1859–1903`) —
 
 ```
 Σ_L(E, k∥) = (z·S₁₀ − H₁₀) · g_L(E, k∥) · (z·S₀₁ − H₀₁),        z = E + iη
 ```
 
-with the surface Green's function g_L of the endless lead summed **exactly**
-by the Lopez Sancho iteration [`LopezSancho1985`] — TranSIESTA prints its
-name as it starts (`m_ts_electrode.F90:945`) — and the z component of k set
-to zero (`ts_electrode.F90:1496–1507`; [`Brandbyge2002`]). **No k-point along
-z enters Σ.** What enters is the lead's Hamiltonian, and its Fermi level:
-TranSIESTA shifts each lead's blocks to that lead's own E_F before the
-iteration (`H₀₀ − E_F·S₀₀`, `m_ts_electrode.F90:1462, 1503`). Both come from
-the lead's own SCF, a bulk-metal calculation whose density, bands and Fermi
-level converge only with many points along z — a thin lead cell (three
-Au(111) layers are ≈ 7 Å) has a long Brillouin zone along z. So
-`electrode_kz` does not smooth the self-energy; **it decides the Hamiltonian
-and the energy reference the self-energy is made of.** Too few points and
-every Σ, and so every T(E), sits on a slightly wrong lead, shifted in energy,
-with no error anywhere. (How smooth Σ is in energy is the broadening's,
-`ts_elecs_eta_ev`, and the in-plane sampling's.)
+with the surface Green's function g_L of the endless lead — how an electron at
+the lead's surface spreads into the half-infinite metal behind it — summed
+**exactly** by the Lopez Sancho iteration [`LopezSancho1985`] (TranSIESTA
+prints its name as it starts, `m_ts_electrode.F90:945`), and the z component
+of k set to zero (`ts_electrode.F90:1496–1507`; [`Brandbyge2002`]). **No
+k-point along z enters Σ.** What does enter is the lead's Hamiltonian, and its
+Fermi level: before the iteration TranSIESTA shifts each lead's blocks to that
+lead's own Fermi level E_F (`H₀₀ − E_F·S₀₀`, `m_ts_electrode.F90:1462, 1503`).
+Both come from the lead's own SCF, a bulk-metal calculation whose density,
+bands and Fermi level converge only with many k-points along z. The reason is
+the cell's length: a thin lead cell (three Au(111) layers are ≈ 7 Å) has a
+long Brillouin zone along z, and a few points sample it coarsely — the
+metal's bands are then seen at too few places, and the Fermi level that comes
+out is off. So `electrode_kz` does not smooth the self-energy; **it decides
+the Hamiltonian and the energy reference the self-energy is made of.** With
+too few points, every Σ — and so every T(E) — is built on a slightly wrong
+lead, shifted in energy, and nothing reports an error. (How smooth Σ is as a
+function of energy is set by the broadening, `ts_elecs_eta_ev`, and by the
+grid in the electrode plane — not by this count.)
 
 The manual: "If in doubt, use 100 k-points along the semi-infinite direction"
 (Electrodes), and "at least >50 should easily be reachable" (Convergence)
 [`SiestaManual542`]; the developer: "much simpler to just use a very high
-number (like 100)" [`Papior2019`]. TranSIESTA itself only warns below 20
+number (like 100)" [`Papior2019`]. TranSIESTA's own warning comes only below 20
 (`ts_electrode.F90:1193–1199`). molbuilder starts at **100**, warns below
 **50** — the manual's floor — and refuses 1 (`electrode_kz`'s `range` and
-`above`). It is cheap: only the lead runs grow with it, and a lead is a small
-cell. **To check it**, raise it and see each lead's Fermi level stay put: the
-Results tab shows both leads' and says whether they agree within 0.05 eV
-(`transport/record.py`, `leads_agreement`).
+`above`). The cost is small: only the two lead runs grow with this count, and
+a lead is a small cell. **To check it**, raise it and see that each lead's
+Fermi level stays put: the Results tab shows both leads' Fermi levels and says
+whether they agree within 0.05 eV (`transport/record.py`, `leads_agreement`).
 
-#### Why one point along z on the device — and on the seed
+#### Why one k-point along z on the device — and on the seed
 
-On the device z is the open direction: the leads' self-energies stand in for
-everything beyond the cell, so nothing periodic is left to sample. TranSIESTA
-forces one point and zero offset there whatever the deck says, without a word
-(`ts_kpoint_scf.F90:87–92` — for two leads along one cell vector and the
-ramp Poisson solution, molbuilder's shape); the manual asks the same of any
-TranSIESTA grid: "Always take care to use only 1 k point along non-periodic
-lattice vectors" [`SiestaManual542`]. molbuilder writes the 1 itself rather
-than relying on the forcing (I8).
+On the device, z is the open direction: the leads' self-energies stand in for
+everything beyond the cell, so nothing periodic is left to sample along z,
+and one k-point there is exact. TranSIESTA sets one point with zero offset
+there whatever the deck says, without a message (`ts_kpoint_scf.F90:87–92` —
+for two leads along one cell vector and the ramp Poisson solution, which is
+molbuilder's shape); the manual asks the same of any TranSIESTA grid: "Always
+take care to use only 1 k point along non-periodic lattice vectors"
+[`SiestaManual542`]. molbuilder writes the 1 in the deck itself rather than
+relying on the engine to force it, so the deck says what runs (I8).
 
-The seed is different in kind: a plain periodic SIESTA run of the whole
-junction, so z is periodic there and could be sampled. It takes one point
-because its cell is long along z — the molecule and several gold layers on
-each side — and because its density is only the device's start: the device's
-NEGF cycle converges to its own answer from it. The developer: "Sometimes it
+The seed is a different kind of run: a plain periodic SIESTA calculation of
+the whole junction, so along z it does repeat and could be sampled. It takes
+one point for two reasons. Its cell is long along z — the molecule and several
+gold layers on each side — and a long cell has a short Brillouin zone along
+z, so few points are needed there. And its density is only the device's
+starting point: the device's NEGF cycle converges to its own answer from it,
+so a rougher start costs iterations, not accuracy. The developer: "Sometimes it
 can work better to have k-points along the semi-infinite direction for the
 device. Other times not so much. In any case 1 along the semi-infinite
 direction in the device is fine" [`Papior2019`].
 
-#### Why the transmission samples the plane more finely, on its own mesh
+#### Why the transmission has its own, finer k-point grid in the electrode plane
 
-T(E) is the average over in-plane points of the transmission at each,
+T(E) is the average, over the k-points k∥ in the electrode plane, of the
+transmission at each one,
 
 ```
 T(E) = Σ_k∥ w_k∥ · Tr[ Γ_L(E,k∥) G(E,k∥) Γ_R(E,k∥) G†(E,k∥) ]
 ```
 
-and it is far less smooth in k∥ than the density is: the leads' band edges
-(van Hove singularities) put sharp features into it, and a coarse grid shows
-them as strong, unphysical peaks [`Thygesen2005`]. The manual: "Importantly(!)
-the k-point sampling need typically be much higher in a tbtrans calculation to
-achieve a converged transmission function" [`SiestaManual542`]. A different
-grid is legal because tbtrans rebuilds each lead's self-energy at its own
-points from the lead's `.TSHS` (`tbt_init.F90:208–210`, the same Σ builder)
-and evaluates the device's stored real-space H and S there; it checks no
-relation between its grid and the SCF's — its lead check is called without a
-k-grid (`m_tbt_options.F90:694–695`), though the tbtrans manual says it checks
-one. It forces one point along z (`m_tbt_kpoint.F90:416`, *"We MUST kill all
-k-points in this direction"*). So the transmission's mesh is its own item,
-`tbt_k_grid`, and raising it re-runs the transmission alone.
+and it varies far more sharply from one k-point to the next than the density
+does. The density adds up every filled state, which smooths it; T(E) at one
+energy picks out the states at that energy alone, and the leads' band edges
+(van Hove singularities, where the number of states per energy changes
+abruptly) put sharp features into it. A coarse grid shows those features as
+strong, unphysical peaks [`Thygesen2005`]. The manual: "Importantly(!) the
+k-point sampling need typically be much higher in a tbtrans calculation to
+achieve a converged transmission function" [`SiestaManual542`].
 
-Two engine facts the deck writer follows. tbtrans reads `TBT.k` (a list
-`[N1 N2 1]` or a block) before `TBT.kgrid.MonkhorstPack` and before the
-deck's `kgrid_Monkhorst_Pack`, and never reads `TS.kgrid.*`
-(`m_tbt_kpoint.F90:776–812`) — so `TBT.k` is written always. And a block row
-is read only when it carries the offset column: a row of three counts is
-skipped without a word and T(E) is computed at Γ alone
-(`m_tbt_kpoint.F90:340–342`) — so the column is written always
+A different grid is allowed because tbtrans does not reuse the device's
+self-energies: it rebuilds each lead's self-energy at its own k-points from
+the lead's `.TSHS` (`tbt_init.F90:208–210`, the same Σ builder), and
+evaluates the device's stored real-space H and S at those k-points too. It
+checks no relation between its grid and the shared one — its lead check is
+called without a k-point grid (`m_tbt_options.F90:694–695`), although the
+tbtrans manual says it checks one. It sets one k-point along z
+(`m_tbt_kpoint.F90:416`, *"We MUST kill all k-points in this direction"*). So
+the transmission k-point grid is an item of its own, `tbt_k_grid`, and raising
+it re-runs the transmission alone — no SCF stage runs again.
+
+The deck writer follows two engine facts about how tbtrans reads its grid.
+First, tbtrans reads `TBT.k` (a list `[N1 N2 1]` or a block) before
+`TBT.kgrid.MonkhorstPack` and before the deck's `kgrid_Monkhorst_Pack`, and
+never reads `TS.kgrid.*` (`m_tbt_kpoint.F90:776–812`) — so `TBT.k` is always
+written, and it is the grid tbtrans uses. Second, a block row is read only
+when it carries the offset column: a row of three counts is skipped without a
+message, and T(E) is then computed at Γ alone — the single point k = 0
+(`m_tbt_kpoint.F90:340–342`) — so the offset column is always written
 (`kmesh.write`). *(The manual's Convergence item prints "N_k^TS ≥ N_k^tbtrans"
 right after "much denser"; the inequality contradicts the sentence it ends and
 is read as a typo.)*
 
-**A denser transmission mesh cannot rescue a coarse shared mesh**: the
-device's Hamiltonian would be wrong, and evaluating a wrong Hamiltonian at
-more points does not improve it. Settle the shared mesh first.
+**A finer transmission k-point grid cannot rescue a shared k-point grid that is
+too coarse.** The shared grid decides the device's Hamiltonian; if that
+Hamiltonian is wrong, evaluating it at more k-points does not make it right.
+Settle the shared grid first.
 
 ### 0.3 Setting them up — the order, and how each is checked *(2026-10-13)*
 
-The manual's procedure: converge the leads; use their parameters for the
+The manual's procedure: converge the leads first; use their parameters for the
 device and converge those too — "an iterative process since the scattering
 region forces the electrodes to use equivalent k points" — and then converge
-tbtrans's points [`SiestaManual542`]. In molbuilder's terms, one value at a
+tbtrans's k-points [`SiestaManual542`]. In molbuilder's terms, one value at a
 time:
 
-1. **The shared mesh** (`kgrid`, the shared panel) starts as the cited
-   relaxation's (§ 3.1). It is converged for the leads and the device
-   together: raise each in-plane count about 1.5×, run the leads and the
-   device again, and it is settled when the leads' Fermi level and the
-   device's T(E_F) stay put. Changing it re-runs every SCF stage, since all
-   four use it.
-2. **The leads' count along z** (`electrode_kz`): keep 100. Raising it must
-   not move a lead's Fermi level.
-3. **The transmission's mesh** (`tbt_k_grid`): run the transmission at its
-   start — blank, three times the shared mesh — then again with each count
-   about 1.5× larger (12 → 18), and lay the two T(E) over each other. It is
-   settled when T(E_F) moves by less than about 1 % and no peak moves; a
-   peak that moves or vanishes with the grid is an artefact of the sampling.
-   That is the developer's method — the k-averaged T(E) of several samplings
-   compared — and one grid then serves every voltage, so the points of a bias
-   sweep are compared on one sampling [`Papior2019`]. Raising it re-runs the
-   transmission alone. Once set, it is the person's and stays, warned if it
-   falls below the shared mesh (§ 0.3b).
+1. **The shared k-point grid** (`kgrid`, on the shared panel) starts as the
+   cited relaxation's (§ 3.1). It is converged for the leads and the device
+   together, because they must use the same one: raise each count in the
+   electrode plane about 1.5×, run the leads and the device again, and it is
+   settled when the leads' Fermi level and the device's T(E_F) stay put.
+   Changing it re-runs every SCF stage, since all four use it.
+2. **The leads' k-points along z** (`electrode_kz`): keep 100. Raising it must
+   not move a lead's Fermi level; if it does, the lead was not converged.
+3. **The transmission k-point grid** (`tbt_k_grid`): run the transmission at
+   its starting grid — left blank, three times the shared grid — then again
+   with each count about 1.5× larger (12 → 18), and lay the two T(E) curves
+   over each other. It is settled when T(E_F) moves by less than about 1 % and
+   no peak moves; a peak that moves or vanishes when the grid changes comes
+   from the sampling, not from the junction. That is the developer's method —
+   compare the k-averaged T(E) of several grids — and once settled, one grid
+   serves every voltage, so the points of a bias sweep are compared on the
+   same sampling [`Papior2019`]. Raising it re-runs the transmission alone.
+   Once set, it is the person's and stays as set; it is warned if it falls
+   below the shared grid (§ 0.3b).
 
-**What it costs.** Each stage's time grows with the points it computes, and
-time reversal pairs k with −k (on by default in both programs;
-`TBT.Symmetry.TimeReversal`): a Γ-centred N × N grid is (N² + 4)/2 points for
-an even N and (N² + 1)/2 for an odd one — 4 × 4 is 10, 12 × 12 is 74,
-18 × 18 is 164, 30 × 30 is 452. A lead's 100 points along z cost the lead
-runs alone; the device's cost is its in-plane points times its contour's
-energy points, every SCF cycle and every bias; tbtrans's its in-plane points
-times the energy window's points, once.
+**What it costs.** Each stage's run time grows with the number of k-points it
+computes. Time reversal makes k and −k equivalent, so each such pair is
+computed once (on by default in both programs; `TBT.Symmetry.TimeReversal`):
+a Γ-centred N × N grid is (N² + 4)/2 points for an even N and (N² + 1)/2 for
+an odd one — 4 × 4 is 10, 12 × 12 is 74, 18 × 18 is 164, 30 × 30 is 452. A
+lead's 100 k-points along z cost the lead runs alone; the device's cost is its
+k-points in the electrode plane times its contour's energy points, every SCF
+cycle and every bias; tbtrans's is its k-points in the electrode plane times
+the energy window's points, once.
 
-### 0.3a The grid's offset — where the samples sit *(user, 2026-09-29)*
+### 0.3a The grid offset — where the k-points sit *(user, 2026-09-29)*
 
-`kgrid_displacement` shifts the k-point grid off Γ, one value per axis, in
-units of one grid spacing: `0` is Γ-centred, `0.5` the classic
-Monkhorst–Pack shift. In a transport calculation it acts on one kind of axis
-only, and its value is one fact for the whole ladder.
+`kgrid_displacement` shifts the k-point grid away from Γ (the point k = 0),
+one value per axis, in units of one grid spacing: `0` is Γ-centred — Γ is one
+of the points — and `0.5` is the classic Monkhorst–Pack shift, every point
+moved half a spacing. In a transport calculation it acts in the electrode
+plane only, and its value is one fact shared by every stage.
 
-**Along the transport axis it does nothing.** The leads' self-energies
-replace the k-sum along A3, so both engines force a single k-point there with
-zero offset whatever the deck says — TranSIESTA in `ts_kpoint_scf.F90`
-(`process_k_cell_displ`), `tbtrans` in `m_tbt_kpoint.F90` (the transport
-index's `displ` set to 0).
+**Along z it does nothing.** On the device and the transmission the leads'
+self-energies take the place of a sum over k-points along z, so both engines
+use a single k-point there with zero offset, whatever the deck says —
+TranSIESTA in `ts_kpoint_scf.F90` (`process_k_cell_displ`), tbtrans in
+`m_tbt_kpoint.F90` (the transport direction's `displ` set to 0).
 
-**Across it, the offset chooses where T(E) is sampled.** T(E) is the average
-of T(E, k⊥) over the transverse grid (§ 0.2), and the offset only moves those
-samples. At `0` the grid contains Γ. At `0.5` every sample moves half a
-spacing: on an **even** count that skips both Γ and the zone edge — the
-Monkhorst–Pack grid — and on an **odd** count it trades Γ for the zone edge.
-The even-or-odd rule is about the **number of k-points** along the axis, never
-the number of atoms in the cell.
+**In the electrode plane, the offset chooses where every stage's k-points sit
+— and so where T(E) is sampled.** T(E) is the average of the transmission at
+each k-point in the electrode plane (§ 0.2), and the offset only moves those
+points. At `0` the grid contains Γ. At `0.5` every point moves half a spacing:
+on an **even** count that avoids both Γ and the edge of the Brillouin zone —
+the Monkhorst–Pack grid — and on an **odd** count it trades Γ for the zone's
+edge. The even-or-odd rule is about the **number of k-points** along the axis,
+never the number of atoms in the cell.
 
-**Where the atom count does enter: a supercell folds points onto Γ.** An
-in-plane supercell of n×n primitive cells folds the primitive cell's zone
-points onto its own Γ — the 3×3 Au(111) cell of the acceptance ladder (TD8)
-folds the primitive K point there — so Γ carries degenerate folded states.
-That is not a numerical hazard for NEGF: the Green's function at Γ is as
-well-defined as anywhere, the broadening takes care of degeneracies, and the
-device region is not filled level by level. It matters for a material with a
-special point there — graphene's Dirac point lands on Γ in a 3n×3n cell, so
-whether a coarse grid contains Γ moves T near E_F a great deal. Converge the
-transverse grid until T(E) and G stop changing; for gold it is benign.
+**Where the atom count does enter: a supercell folds k-points onto Γ.** A
+supercell in the electrode plane made of n × n primitive cells folds k-points
+of the primitive cell's Brillouin zone onto its own Γ — the 3 × 3 Au(111) cell
+of the acceptance ladder (TD8) folds the primitive cell's K point there — so
+the states at Γ include these folded copies, which are degenerate. That is not
+a numerical hazard for NEGF: the Green's function at Γ is as well-defined as
+anywhere, the broadening takes care of degeneracies, and the device region is
+not filled level by level. It matters for a material with a special point
+there — graphene's Dirac point lands on Γ in a 3n × 3n cell, so whether a
+coarse grid contains Γ changes T near E_F a great deal. Converge the grid in
+the electrode plane until T(E) and the conductance G stop changing; for gold
+it is benign.
 
 **On a hexagonal cell, keep it Γ-centred.** An offset of `0.5` does not respect
-a hexagonal lattice's six-fold symmetry, so the samples fall lopsided. SIESTA
+a hexagonal lattice's six-fold symmetry, so the k-points fall unevenly. SIESTA
 folds only k with −k (`find_kgrid.F`; no spatial symmetry is used), so nothing
 is computed wrong — the sampling is less balanced and converges more slowly.
 The usual choice for a hexagonal cell, an Au(111) junction among them, is `0`.
 
-**One offset for every rung — and the engine checks it.** TranSIESTA compares
+**One offset for every stage — and the engine checks it.** TranSIESTA compares
 each lead's grid and offset, read from its `.TSHS`, with the device's — the
 offset on all three axes, z included, which is why a lead's offset along z is
 0 as the device's is — and stops on *"found incompatible k-grids"*
 (`ts_electrode.F90:1188–1235`, the `TS.Elec.<>.check-kgrid` option, on by
 default); the manual asks for the same parameters in the electrode and the
-device calculations except the lead's own count along its semi-infinite axis
-[`SiestaManual542`]. `tbtrans` takes `TBT.k` as a list —
+device calculations, except the lead's own count along its semi-infinite
+direction [`SiestaManual542`]. tbtrans takes `TBT.k` as a list —
 `TBT.k [3 3 1]`, counts only, no offset — or as a block, which carries one
 (`m_tbt_kpoint.F90`, `read_kgrid`).
 
 **What molbuilder does** *(ruled 2026-09-29, plan § 5w K17; built 2026-09-30
-with the k-point mesh, K3)*. The offset is a `citation` item: `jobset init`
+with `kmesh.py`, K3)*. The offset is a `citation` item: `jobset init`
 carries the cited run's offset into the template beside its grid — from the
 cited deck's own block, or the recorded contract's `kgrid_displacement` — and
-every rung writes it through the one writer
-([`siesta.md`](?doc=engines/siesta.md) § 6.1), the transport axis `0` as both
-engines use it, with the transmission's `TBT.k` always in its block form,
-which carries it. *(Until then no transport deck honoured it: every rung wrote
-`0.0` and the template took `[0, 0, 0]` whatever the relaxation ran. The
+every stage writes it through the one writer
+([`siesta.md`](?doc=engines/siesta.md) § 6.1), with the offset along z `0` as
+both engines use it, and with the transmission's `TBT.k` always in its block
+form, which carries it. *(Until then no transport deck honoured it: every stage
+wrote `0.0` and the template took `[0, 0, 0]` whatever the relaxation ran. The
 acceptance ladder relaxed at `0`, so it matched by coincidence.)*
 
 ### 0.3b How dense each grid starts, and the warnings — chosen with the literature *(user, 2026-10-09; revised 2026-10-13)*
@@ -380,30 +435,32 @@ search"; then "I agree with your choice of these parameters". Revised
 the manual's, the transmission's start left to its rule, its coarser-than-SCF
 warning added — the user: "yes to A, B and C".)*
 
-| the grid | starts at | why | the literature and the engine |
+| the setting | starts at | why | the literature and the engine |
 |---|---|---|---|
-| **a lead's points along z** — `electrode_kz`, each lead's tab | **100**; warned below **50**; 1 refused | it decides the lead's Hamiltonian and Fermi level, which every self-energy is built from and aligned to (§ 0.2). What counts is points × the lead's length: a three-layer Au(111) lead (≈ 7 Å) at 100 is ≈ 700 Å of reciprocal reach, far past what bulk gold needs — a safe default, since only the lead runs pay for it | "If in doubt, use 100 k-points along the semi-infinite direction"; "at least >50 should easily be reachable" [`SiestaManual542`]; "much simpler to just use a very high number (like 100)" [`Papior2019`]; TranSIESTA's own warning is below 20 (`ts_electrode.F90:1193–1199`) |
-| **the shared mesh in the electrode plane** — `kgrid`, the shared panel | the cited run's (§ 3.1) | one mesh for the seed, both leads and the device: the device uses each lead as the bulk of its own electrode region, so both are sampled alike (§ 0.2) | the leads' and the device's meshes "should be the same" [`Papior2019`]; TranSIESTA stops otherwise (`ts_electrode.F90:1235`); a 4 × 4 mesh converged the benchmark junctions' conductance to a few per cent [`Strange2008`] |
-| **the transmission's mesh in the electrode plane** — `tbt_k_grid`, the transmission's tab | **blank — three times the shared mesh's count along each direction it samples more than once**, worked out when the deck is written (`kmesh.transmission_start`, asked by `kmesh.mesh_for`; 4 4 1 → 12 12 1), so it follows the shared mesh; a count of one kept; z is 1 | T(E) has sharp structure from the leads' bands that the density does not need, so it wants more points — and a finer mesh for it re-runs no SCF. **Three is molbuilder's starting point, not a converged answer**: no source gives a factor; three times a typical shared mesh (3 × 3 to 5 × 5) lands at or above the meshes published gold–benzenedithiol junctions converged at, for a third to a ninth of the cost of the 30 × 30–50 × 50 sometimes quoted. The person converges it (§ 0.3) | "the k-point sampling need typically be much higher in a tbtrans calculation" [`SiestaManual542`]; sparse in-plane sampling gives strong, unphysical features in T(E), from the leads' van Hove singularities [`Thygesen2005`]; benzenedithiol between Au(111) leads of a 3 × 3 cross-section: Γ alone "fluctuates very much compared to the converged result", 8 irreducible points used [`Thygesen2005b`]; 4 × 4 converged to a few per cent [`Strange2008`]; graphene, whose density of states vanishes at E_F, needs far more — the worst case [`Falkenberg2015`]; converge by comparing the k-averaged T(E) of several meshes, and use one transmission mesh for every bias [`Papior2019`] |
+| **the leads' k-points along z** — `electrode_kz`, on each lead's tab | **100**; warned below **50**; 1 refused | It decides the lead's Hamiltonian and Fermi level, which every self-energy is built from and aligned to (§ 0.2). What matters is the number of k-points times the lead cell's length along z: a three-layer Au(111) lead (≈ 7 Å) with 100 points is sampled as finely as one point on a cell ≈ 700 Å long, far beyond what bulk gold needs. That makes 100 a safe default, and only the lead runs pay for it | "If in doubt, use 100 k-points along the semi-infinite direction"; "at least >50 should easily be reachable" [`SiestaManual542`]; "much simpler to just use a very high number (like 100)" [`Papior2019`]; TranSIESTA's own warning is below 20 (`ts_electrode.F90:1193–1199`) |
+| **the shared k-point grid in the electrode plane** — `kgrid`, on the shared panel | the cited run's (§ 3.1) | One grid for the seed, both leads and the device: the device uses each lead as the bulk metal of its own electrode region, so both must be sampled on the same k-points (§ 0.2) | the leads' and the device's grids "should be the same" [`Papior2019`]; TranSIESTA stops if they differ (`ts_electrode.F90:1235`); a 4 × 4 grid converged the benchmark junctions' conductance to a few per cent [`Strange2008`] |
+| **the transmission k-point grid in the electrode plane** — `tbt_k_grid`, on the transmission's tab | **left blank: three times the shared grid's count along each direction it samples with more than one point**, worked out when the deck is written (`kmesh.transmission_start`, asked by `kmesh.mesh_for`; 4 4 1 → 12 12 1), so it follows the shared grid; a count of one stays one; z is 1 | T(E) has sharp structure from the leads' bands that the density does not have, so it needs more k-points — and a finer grid for it re-runs no SCF stage. **Three is molbuilder's starting point, not a converged answer**: no source gives a factor; three times a typical shared grid (3 × 3 to 5 × 5) lands at or above the grids published gold–benzenedithiol junctions converged at, for a third to a ninth of the cost of the 30 × 30–50 × 50 sometimes quoted. The person converges it (§ 0.3) | "the k-point sampling need typically be much higher in a tbtrans calculation" [`SiestaManual542`]; sparse sampling in the electrode plane gives strong, unphysical features in T(E), from the leads' van Hove singularities [`Thygesen2005`]; benzenedithiol between Au(111) leads of a 3 × 3 cross-section: Γ alone "fluctuates very much compared to the converged result", 8 irreducible k-points used [`Thygesen2005b`]; 4 × 4 converged to a few per cent [`Strange2008`]; graphene, whose density of states vanishes at E_F, needs far more — the worst case [`Falkenberg2015`]; converge by comparing the k-averaged T(E) of several grids, and use one transmission grid for every bias [`Papior2019`] |
 
-**Three warnings, never refusals** — each said by prep's settings gate on
-every rung's deck (`kmesh.check`, the one k-mesh check), and when the
-Transport tab describes the calculation, each rung's mesh as the description
-resolves it (`transport/deck.ladder_mesh_findings`): the shared mesh's finding
-once beside the shared panel's control, the transmission's on its tab.
+**Three warnings, never refusals.** Each is said by prep's settings gate on
+every stage's deck (`kmesh.check`, the one k-point check), and also when the
+Transport tab describes the calculation, on each stage's grid as the
+description resolves it (`transport/deck.ladder_mesh_findings`): a finding on
+the shared grid is shown once, beside the shared panel's control, and a
+finding on the transmission grid on the transmission's tab.
 
 | warning | why | the literature |
 |---|---|---|
-| **one point along a direction the electrodes repeat in** — the shared mesh, or a transmission mesh the person set, at 1 along x or y while the structure repeats there; never said for a direction that does not repeat (a chain or a wire in a box, where one point is exact), and one point is a legitimate quick first test | a single in-plane point treats every sideways copy of the cell as in phase, and the metal's bands are seen at one place. Its words name the remedy: the benchmark used 4 × 4 for a cell about 9 Å wide | with Γ alone, "a (unphysical) peak at the Fermi level" (an H₂ junction), and the conductance of benzenedithiol between gold raised from 0.24 to 0.37 G₀ [`Strange2008`]; the Γ-only error dominates the error from the cell's periodic images in a 3 × 3 supercell [`Thygesen2005`]; with TranSIESTA on an Au(111) junction the conductance was "more sensitive to the reciprocal-space sampling grid than the quality of the basis set", moving by up to a factor of five over the parameters tried [`Hoft2007`] |
-| **a transmission mesh the person set coarser than the shared mesh** along x or y (2026-10-13) | T(E) needs at least the points the density was converged on, and usually many more — most likely the shared mesh was raised and the transmission's left behind. A blank one is three times the shared mesh and is never coarser | tbtrans's sampling "should generally be much denser" [`SiestaManual542`] |
-| **a lead's points along z below 50** | the item's recommended range — a floor, not a convergence proof: only raising it and seeing the lead's Fermi level stay put shows it has settled | "at least >50 should easily be reachable" [`SiestaManual542`] |
+| **one k-point along a direction the electrodes repeat in** — the shared grid, or a transmission grid the person set, at 1 along x or y while the structure repeats there. Never said for a direction that does not repeat (a chain or a wire in a box, where one point is exact), and one point is a legitimate quick first test | A single k-point in the electrode plane treats every sideways copy of the cell as in phase, so the metal's bands are seen at one place only. The warning's words name the remedy: the benchmark used 4 × 4 for a cell about 9 Å wide | with Γ alone, "a (unphysical) peak at the Fermi level" (an H₂ junction), and the conductance of benzenedithiol between gold raised from 0.24 to 0.37 G₀ [`Strange2008`]; the Γ-only error dominates the error from the cell's periodic images in a 3 × 3 supercell [`Thygesen2005`]; with TranSIESTA on an Au(111) junction the conductance was "more sensitive to the reciprocal-space sampling grid than the quality of the basis set", moving by up to a factor of five over the parameters tried [`Hoft2007`] |
+| **a transmission grid the person set coarser than the shared grid** along x or y (2026-10-13) | T(E) needs at least the k-points the density was converged on, and usually many more; most likely the shared grid was raised and the transmission's was left behind. A transmission grid left blank is three times the shared grid and is never coarser | tbtrans's sampling "should generally be much denser" [`SiestaManual542`] |
+| **the leads' k-points along z below 50** | below the item's recommended range — a floor, not a proof of convergence: only raising the count and seeing the lead's Fermi level stay put shows it has settled | "at least >50 should easily be reachable" [`SiestaManual542`] |
 
 **Where each lives:** `electrode_kz`'s value and range in the catalogue; the
-3 × rule in `kmesh.transmission_start`, applied by `kmesh.mesh_for` to a blank
-`tbt_k_grid` and named in the deck's provenance block (`resolve.BLANK_ANSWERED_BY`);
-the warnings in `kmesh.check`. The references are `science/references.bib`'s,
-each checked against its publisher's record (Crossref) on 2026-10-09 or
-2026-10-13; the method itself is [`Papior2017`]'s, after [`Brandbyge2002`].
+three-times rule in `kmesh.transmission_start`, applied by `kmesh.mesh_for`
+to a blank `tbt_k_grid` and named in the deck's provenance block
+(`resolve.BLANK_ANSWERED_BY`); the warnings in `kmesh.check`. The references
+are `science/references.bib`'s, each checked against its publisher's record
+(Crossref) on 2026-10-09 or 2026-10-13; the method itself is
+[`Papior2017`]'s, after [`Brandbyge2002`].
 
 ### 0.4 The four things that must agree, and where each is enforced
 
@@ -413,8 +470,8 @@ rather than a crash — which is why they are guards in code and not advice.
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
 | 1 | device `kz = 1` | **fixed**: the rung's mesh writes 1 (`kmesh.mesh_for`), the form draws the component locked, and every door refuses another value (`kmesh.fixed` through `template.why_not`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) *(an error in `validation._validate_transport_kind`, the kind's validator, from 2026-09-16 until 2026-09-30, beside a warning about the same axis in the SIESTA validator)* | ✅ on every door. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one was keyed on `TransportConfig` in `_ENGINE_VALIDATORS` while every rung resolved a `SiestaConfig`, so it dispatched for nothing — deleted 2026-09-17, the class 2026-10-02. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
-| 2 | electrode `kz` dense | default **100**, a catalogue row (`electrode_kz`) a lead's mesh reads (§ 0.2) | ✅ **held** — the value reaches the deck (the lead renders `0 0 100`), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 50 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
-| 3 | transverse k identical in lead and device — so the lead is the bulk of the device's electrode region (§ 0.2) | one shared `kgrid` and `kgrid_displacement`, and every rung's mesh reads them (`kmesh.mesh_for`) — TranSIESTA itself stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | ✅ by construction |
+| 2 | the leads' k-points along z are many (dense) | default **100**, a catalogue row (`electrode_kz`) that each lead's k-point grid reads for its count along z (§ 0.2) | ✅ **held** — the value reaches the deck (the lead's grid writes `0 0 100` as its row along z), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 50 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
+| 3 | the k-point grid in the electrode plane (x, y) and its offset are identical in lead and device — so the lead is the bulk of the device's electrode region (§ 0.2) | one shared `kgrid` and `kgrid_displacement`, which every stage's k-point grid reads (`kmesh.mesh_for`) — and TranSIESTA itself stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | ✅ by construction |
 | 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `init` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
@@ -441,7 +498,7 @@ below are the Au–BDT–Au design's, 2026-09; the walk's junction is smaller):
 | structure | 444 atoms — 432 Au, one benzene-1,4-dithiol bridge |
 | labels | `L-electrode` (low z) · `BRIDGE` · `R-electrode` (high z) |
 | contract, from the citation | DZP · GGA-PBE · 300 Ry mesh |
-| device k | `2 2 1` — transverse 2×2, **transport 1** |
+| device k-points | `2 2 1` — 2×2 in the electrode plane, **one along z** |
 | electrode k | `2 2 100` — the same 2×2, **dense along z** (`electrode_kz`'s default) |
 | bias | `0.0` → equilibrium, so the non-equilibrium contour settings are inert |
 | what prep writes | `01_seed` … `05_transmission`, **a deck each plus its `.validation.txt`** — every rung goes through `spec_for` → `DeckSpec` → `prepare_deck`, so the validate → render → read-back-check → report chain is the same one every other kind gets (§ 2a.14). *(This row said the opposite, describing a `write_text` arm deleted on 2026-09-16.)* |
@@ -570,7 +627,7 @@ citation, or one that does not read (`transport_rung.composed_for_prep`).
 #### Step 1 — the seed: the periodic density *(SIESTA; § 6.1, § 2a.15)*
 
 An ordinary Kohn–Sham self-consistent cycle on the whole junction, treated as
-a periodic crystal — the shared transverse k-grid, one k-point along the wire:
+a periodic crystal — the shared k-point grid in the electrode plane (x, y), one k-point along z:
 
 ```
 H[ρ] ψ_nk = ε_nk S ψ_nk          ρ = Σ_k w_k Σ_n f(ε_nk − E_F) |ψ_nk⟩⟨ψ_nk|
@@ -585,37 +642,40 @@ open-boundary cycle is the expensive one.
 
 #### Steps 2 and 3 — the leads: each one's H, S and self-energy *(SIESTA; § 0.2, § 5)*
 
-Each lead's cell is bulk metal, periodic in all three directions — and here the
-wire's direction really is periodic, the lead being infinite, so it is sampled
-densely along it (`electrode_kz`, 100 by default, I9) with the device's
-transverse grid (I7) — § 0.2 says why each. The cycle is an ordinary one; what the device needs from
-it is not its density but its Hamiltonian H and overlap S, written in real
-space (`.TSHS`, `TS.HS.Save`, I13). From them TranSIESTA builds each lead's
-**self-energy** — what the semi-infinite rest of the lead does to the
-electrode block it is attached to (the manual: *"the electrode self-energy is
-calculated from the bulk electrode calculation"*):
+Each lead's cell is bulk metal, periodic in all three directions. Here the
+transport direction really is periodic — the lead is infinite along it — so
+the lead takes many k-points along z (`electrode_kz`, 100 by default, I9), and
+in the electrode plane (x, y) it uses the device's grid, the shared k-point
+grid (I7); § 0.2 says why each. The cycle is an ordinary one; what the device
+needs from it is not its density but its Hamiltonian H and overlap S, written
+in real space (`.TSHS`, `TS.HS.Save`, I13). From them TranSIESTA builds each
+lead's **self-energy** — a correction that stands in for the endless lead
+beyond the cell: what the semi-infinite rest of the lead does to the electrode
+block it is attached to (the manual: *"the electrode self-energy is calculated
+from the bulk electrode calculation"*). It is built at each energy E and at
+each k-point in the electrode plane, written k∥:
 
 ```
-Σ_L(E, k⊥) = (z·S₁₀ − H₁₀) · g_L(E, k⊥) · (z·S₀₁ − H₀₁),        z = E + iη
+Σ_L(E, k∥) = (z·S₁₀ − H₁₀) · g_L(E, k∥) · (z·S₀₁ − H₀₁),        z = E + iη
 ```
 
-where H₀₁ and S₀₁ couple one lead cell to the next and g_L is the surface
-Green's function of the semi-infinite lead. Its anti-Hermitian part is the
-lead's **broadening** — how fast an electron in the junction leaks into it:
+where H₀₁ and S₀₁ couple one lead cell to the next along z, and g_L is the
+surface Green's function of the semi-infinite lead. Its anti-Hermitian part is
+the lead's **broadening** — how fast an electron in the junction leaks into it:
 
 ```
 Γ_L(E) = i [ Σ_L(E) − Σ_L(E)† ]
 ```
 
-Σ is one matrix per energy and transverse k-point, built from the lead's
-real-space H and S at whatever point is asked for, with the endless lead along
-the wire summed exactly (Lopez Sancho; no k-point along it) and the blocks
-shifted to the lead's own Fermi level (§ 0.2). So the lead's sampling along the
-wire matters through its own SCF — the Hamiltonian and Fermi level Σ is made
-of — which is why it must be dense; and its transverse grid must be the
-device's because the lead is the bulk of the device's electrode region, which
-TranSIESTA checks. The lead must be at
-least a principal layer thick — Σ assumes a lead cell couples only to its
+Σ is one matrix for each energy and each k-point in the electrode plane,
+built from the lead's real-space H and S at whatever k-point is asked for,
+with the endless lead along z summed exactly (Lopez Sancho; no k-point along z
+is involved) and the blocks shifted to the lead's own Fermi level (§ 0.2). So
+the lead's k-points along z matter through its own SCF — they decide the
+Hamiltonian and Fermi level that Σ is made of — which is why there must be
+many of them; and its grid in the electrode plane must be the device's because
+the lead is the bulk of the device's electrode region, which TranSIESTA
+checks. The lead must be at least a principal layer thick — Σ assumes a lead cell couples only to its
 neighbours (I11) — and its cell is the device's electrode block atom for atom,
 so Σ attaches where it belongs (I10).
 
@@ -640,7 +700,7 @@ Hartree potential in H[ρ] holds each lead at its own level.
 
 **The density, from the Green's function.** With the leads filled to different
 levels the density has two parts (Brandbyge 2002; Papior 2017), at each
-transverse k-point, summed over the grid:
+k-point of the electrode plane, summed over the grid:
 
 ```
 ρ = −(1/π) Im ∫ G(E) f(E − μ_R) dE  +  (1/2π) ∫ G(E) Γ_L(E) G†(E) [ f(E − μ_L) − f(E − μ_R) ] dE
@@ -700,16 +760,17 @@ one continuous with equilibrium. A point is done or not done; launched again,
 the sweep's next run takes the done points over and runs the rest, or with
 `--cold` runs every point (§ 2a.11).
 
-#### Step 5 — the transmission and the current *(TBtrans; § 0.2, § 2a.10, § 2a.12, § 6.1b)*
+#### Step 5 — the transmission and the current *(tbtrans; § 0.2, § 2a.10, § 2a.12, § 6.1b)*
 
-TBtrans runs no self-consistent cycle. At each bias point it reads that point's
-converged H(V) and S and both leads' H and S, rebuilds Σ_L and Σ_R on its own
-energy grid (the window, `TBT.Contour.window`) and its own transverse grid
-(`TBT.k`, denser than the cycle's — § 0.2), and evaluates the
-transmission:
+tbtrans runs no self-consistent cycle. At each bias point it reads that point's
+converged H(V) and S and both leads' H and S, and rebuilds Σ_L and Σ_R at its
+own energies (the window, `TBT.Contour.window`) and at the k-points of its own
+grid in the electrode plane (`TBT.k`, the transmission k-point grid, finer
+than the shared one — § 0.2). At each of those k-points k∥ it evaluates the
+transmission, and averages them with weights w_k∥:
 
 ```
-T(E, V) = Σ_k⊥ w_k⊥ Tr[ Γ_L(E, k⊥) G(E, k⊥) Γ_R(E, k⊥) G†(E, k⊥) ]        (the weights w_k⊥ sum to 1)
+T(E, V) = Σ_k∥ w_k∥ Tr[ Γ_L(E, k∥) G(E, k∥) Γ_R(E, k∥) G†(E, k∥) ]        (the weights w_k∥ sum to 1)
 ```
 
 — the probability that an electron of energy E arriving from one lead crosses
@@ -723,7 +784,7 @@ I(V) = (e/h) Σ_σ ∫ T_σ(E, V) [ f(E − μ_L) − f(E − μ_R) ] dE       s
 
 Only energies in the bias window — between μ_R and μ_L, widened by a few k_BT —
 contribute, so the transmission window must cover it for the current to be
-whole. TBtrans prints one spin channel's current; the record's is the
+whole. tbtrans prints one spin channel's current; the record's is the
 junction's total (§ 2a.12). At zero bias the window closes, and the observable
 is the **conductance**:
 
@@ -742,7 +803,7 @@ I(V) ≈ (2e/h) ∫ T(E, 0) [ f(E − μ_L) − f(E − μ_R) ] dE
 
 sound while eV/2 is small against the distance from E_F to the nearest
 resonance. With **`low_bias_approximation: false`**, every voltage gets its own
-device SCF and its own T(E, V), and each I(V) is TBtrans's integral over its own
+device SCF and its own T(E, V), and each I(V) is tbtrans's integral over its own
 window, with no approximation beyond the method; the transmission takes the
 device's sweep run whole, each point its own point's H (§ 2a.11).
 
@@ -810,12 +871,12 @@ Three consequences drive **every** parameter choice:
 
 1. **Σ comes from a separate, pristine bulk-lead run** — *not* from frozen atoms
    in the device (frozen is only a geometry constraint). Hence **three runs**.
-2. **The transport direction is open** → the device k-grid has **`kz = 1`**. Any
+2. **The transport direction is open** → the device's k-point grid has **one k-point along z**. Any
    `kz > 1` re-imposes Bloch periodicity along the wire and destroys the transport
    physics.
-3. **Geometry fixes the physical model; the k-grid only sets integration
+3. **Geometry fixes the physical model; the k-point grid only sets integration
    accuracy.** Adding lateral vacuum makes a *cluster* (a different Hamiltonian); a
-   denser k-grid of the *same* geometry just integrates it better.
+   denser k-point grid of the *same* geometry just integrates it better.
 
 > **Honest caveat (report it, don't hide it).** Plain LDA/GGA-DFT+NEGF
 > **systematically overestimates** single-molecule conductance by ~1–2 orders of
@@ -883,11 +944,12 @@ same reason:
   cutoff, electronic temperature, spin treatment, the pseudopotentials, and the
   species ordering. The lead self-energy must attach to a device Hamiltonian
   built the same way;
-* **the transverse Brillouin-zone sampling.** The leads and the device share one
-  transverse cell by construction — the lead *is* the junction's lead region
-  extended periodically — and the self-energy is built per transverse k-point
-  and folded into the device at that same point. Two different grids cannot be
-  combined.
+* **the k-point grid in the electrode plane (x, y).** The leads and the device
+  share one cell in that plane by construction — the lead *is* the junction's
+  lead region extended periodically — and the device uses each lead's
+  Hamiltonian as the bulk of its own electrode region, which is the same metal
+  only when both were computed on the same k-points; TranSIESTA checks it and
+  stops otherwise (§ 0.2).
 
 The person owns every value here. What they cannot do is give one stage a
 different answer from another.
@@ -895,7 +957,7 @@ different answer from another.
 > **There was a Class B, and dissolving it is a finding rather than tidying.**
 > It was *"decided at the electrodes, binds the device and the transmission"* —
 > and when the full map was written it had exactly **two** members, the
-> transverse grid and its offset, both of which are better described as decided
+> shared k-point grid and its offset, both of which are better described as decided
 > once for a cell the stages share. A class with two members that belong
 > elsewhere is evidence the class does not exist. What genuinely flows from the
 > leads to the device is not parameters at all — it is **results**: the lead's
@@ -1013,8 +1075,8 @@ force a re-run; only one is a rule about values.
 *Exact consumers must re-run; approximate ones need not.* The device reads the
 leads' Hamiltonians as **truth**, so a changed lead invalidates it. It reads the
 seed's density only as a **starting guess**, so a changed seed — or a seed
-converged on a different transverse grid — leaves the device valid, merely
-started from a slightly different place. That is why changing the transverse
+converged on a different k-point grid in the electrode plane — leaves the device valid, merely
+started from a slightly different place. That is why changing the shared k-point
 grid rebuilds the leads, device and transmission but does **not** require the
 seed to be re-run: a density matrix is expressed over orbital pairs in real
 space, not over k-points, so it stays readable and serviceable.
@@ -1097,7 +1159,7 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 | XC | GGA / PBE | and the caveat is real: GGA underestimates the gap, so the conductance will come out high. § 7 says by how much |
 | mesh cutoff | 300 Ry | converged for Au–S; egg-box error below ~250 |
 | electronic temperature | 300 K | metallic leads; also the leads' distribution function |
-| transverse k | 4 × 4 | the junction supercell's transverse sampling — **the leads and the device both use it** |
+| shared k-point grid (x, y) | 4 × 4 | the junction supercell's k-point grid in the electrode plane — **the leads and the device both use it** |
 
 **The stage panels — each stage's own.**
 
@@ -2016,8 +2078,8 @@ Edited in one panel. Changing any of these rebuilds every stage that reads it �
 | `spin_treatment` · `unpaired_electrons` | `Spin` | Whether the physics is spin-resolved at all — restricted or unrestricted, TranSIESTA's two; the count floats, since TranSIESTA holds no fixed total spin (`Spin.Fix` is never written here, § 3.1's spin note) | 3 |
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA runs the deck's functional and only prints an `xc_check` WARNING when the pseudo was generated with another | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly. Held by one rule, `chemistry.species_order` (I15, § 5) | 2 |
-| `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the device uses each lead as the bulk of its own electrode region — so both are sampled alike, and TranSIESTA stops otherwise (§ 0.2). *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
-| `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling, and TranSIESTA itself refuses a lead whose offset differs from the device's, on all three axes (`ts_electrode.F90:1209`). Acts across the transport axis only; Γ-centred on a hexagonal cell. **Cited and written on every rung since 2026-09-30** (§ 0.3a; [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
+| `kgrid` *(its counts in the electrode plane)* | `%block kgrid_Monkhorst_Pack` | **The shared k-point grid** in the electrode plane (x, y). The leads and the device share one cell in that plane, and the device uses each lead as the bulk of its own electrode region — so both must be sampled on the same k-points, and TranSIESTA stops if they are not (§ 0.2). *(Advisory as to whether the density is converged; checkable that they agree)* | 2 + 3 |
+| `kgrid_displacement` | same block | **The grid offset** — the same argument: an offset that differs is a different set of k-points, and TranSIESTA itself refuses a lead whose offset differs from the device's, on all three axes (`ts_electrode.F90:1209`). It acts in the electrode plane only — along z every stage's offset is 0 (§ 0.3a); Γ-centred on a hexagonal cell. **Cited and written on every stage since 2026-09-30** (§ 0.3a; [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
 | `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b). **One value for those two rungs only** (`shared` with `stages = ["device", "transmission"]`, TD11, 2026-10-11): the seed's and the leads' decks never write it, and the shared panel says which rungs it is for ([`template.md`](?doc=engines/template.md) § 5) | 3 |
 | *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
@@ -2048,7 +2110,7 @@ naming one there is refused where it is written (§ 3.8.9).
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
-| `electrode_kz` | `%block kgrid_Monkhorst_Pack` | **The lead's Hamiltonian and Fermi level.** The lead is genuinely periodic along transport; the device builds its self-energy from the lead's H and S and shifts it to the lead's own E_F (`m_ts_electrode.F90:1462`), so under-converging it puts every transmission feature at the wrong energy (§ 0.2). 100 by default, warned below 50 [`SiestaManual542`]. **Per lead**, not shared: an asymmetric junction has different materials on the two sides | 3 |
+| `electrode_kz` | `%block kgrid_Monkhorst_Pack` | **The leads' k-points along z, which decide the lead's Hamiltonian and Fermi level.** A lead is genuinely periodic along z; the device builds its self-energy from the lead's H and S and shifts it to the lead's own E_F (`m_ts_electrode.F90:1462`), so too few k-points put every transmission feature at the wrong energy (§ 0.2). 100 by default, warned below 50 [`SiestaManual542`]. **Per lead**, not shared: an asymmetric junction has different materials on the two sides | 3 |
 
 **The device owns:**
 
@@ -2068,7 +2130,7 @@ binds anything, so re-running against an unchanged device costs seconds.
 |---|---|---|---|
 | `transmission_emin_ev` · `transmission_emax_ev` | `%block TBT.Contour.window` | The energy window T(E) is evaluated on. A feature outside it does not exist in the output | 3 |
 | `transmission_n_points` | same block | Resolution. A resonance narrower than the spacing is invisible | 3 |
-| `tbt_k_grid` | `TBT.k` | Transverse sampling for T(E). A grid converged for a total energy is routinely far too coarse for a transmission. **Blank is the rule's**: three times the shared mesh in the electrode plane, worked out when the deck is written, so it follows the shared mesh; set, it is the person's and is warned below the shared mesh (§ 0.2, § 0.3b) | 3 |
+| `tbt_k_grid` | `TBT.k` | **The transmission k-point grid** in the electrode plane (x, y), for T(E). A grid converged for a total energy is routinely far too coarse for a transmission. **Left blank, the rule answers it**: three times the shared k-point grid, worked out when the deck is written, so it follows the shared grid; set, it is the person's, and it is warned if it is coarser than the shared grid (§ 0.2, § 0.3b) | 3 |
 | `tbt_elecs_eta_ev` | `TBT.Elecs.Eta` | Lead self-energy broadening: too large smears real resonances flat, too small turns them into noise | 3 |
 | `tbt_contours_eta_ev` | `TBT.Contours.Eta` | The device Green function's broadening. **Blank is not set** — not written, and tbtrans takes a tenth of the smallest lead broadening; **0 is written as 0** — none (below) | 3 |
 | `tbt_spin` | `TBT.Spin` | Which spin channel is reported | 3 |
@@ -2093,7 +2155,7 @@ Exposing these as controls would offer a choice with one correct answer.
 | parameter | keyword | what the role fixes | tier |
 |---|---|---|---|
 | `solution_method` | `SolutionMethod` | The stage's identity: a closed periodic warm-up, a bulk lead, an NEGF device. It declares the SCF rungs too (`stages`, Class C's list): on transport the role answers it; on the vibration ladder, where it is a choice, the declaration is what keeps it off a rung that runs no SCF | 1 |
-| *the transport axis's k* | `%block kgrid_Monkhorst_Pack` · `TBT.k` | Fixed at 1 on the seed, the device and the transmission, offset 0 — the device and the transmission are open there and both engines force it, and the seed's density is only their start (§ 0.2). It is the third component of `kgrid`, `tbt_k_grid` and `kgrid_displacement`, which no rung reads: drawn locked on the form, and another value refused on every door (`kmesh.fixed`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
+| *the k-points along z* | `%block kgrid_Monkhorst_Pack` · `TBT.k` | One k-point, offset 0, on the seed, the device and the transmission — the device and the transmission are open along z and both engines force one point there, and the seed's density is only their starting point (§ 0.2). It is the third component of `kgrid`, `tbt_k_grid` and `kgrid_displacement`, which no stage reads as a choice: drawn locked on the form, and another value refused on every door (`kmesh.fixed`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
 | *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
 | *each lead's label* | `SystemLabel` | Derived by `prep` from the calculation's one label (`system_label`, shared — Class A): the stem the device's `TS.Elec` reference is built from | 1 |
 | `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's device and transmission decks carry its own (§ 2a.10) | 1 |
@@ -2210,20 +2272,26 @@ column is the 2026-09-16 measurement; since 2026-10-08 the transmission deck
 carries no SCF setting at all (§ 6.1b: tbtrans runs none), so its
 `MaxSCFIterations` cell would read – today.*
 
-#### The lead's k-mesh, which is the physics made visible
+#### The lead's k-point grid, which makes the physics visible
+
+A lead's deck writes its k-point grid as three rows — one per axis, the count
+on the diagonal and the offset last:
 
 ```
-    4    0    0      0.0     ← in the electrode plane: SHARED with the device,
-    0    4    0      0.0        because the lead is the bulk of the device's
-                                electrode region (TranSIESTA checks it)
-    0    0  100      0.0     ← along z: DENSE, because a lead is a periodic
-                                bulk crystal and its Hamiltonian and Fermi
-                                level are what every self-energy is built
-                                from and aligned to (§ 0.2)
+    4    0    0      0.0     ← in the electrode plane (x, y): the SHARED
+    0    4    0      0.0        k-point grid, the device's too, because the
+                                lead is the bulk of the device's electrode
+                                region (TranSIESTA checks it)
+    0    0  100      0.0     ← along z: MANY k-points, because a lead is a
+                                periodic bulk crystal, and its Hamiltonian
+                                and Fermi level are what every self-energy
+                                is built from and aligned to (§ 0.2)
 ```
 
-The device writes `1` on that third axis. Not a disagreement — **the definition
-of an open boundary**, and the reason the two are computed separately at all.
+The device writes `1` in that third row. That is not a disagreement — it is
+**the definition of an open boundary**: along z the device does not repeat,
+the leads' self-energies stand in for everything beyond it, and that is the
+reason the leads are computed in runs of their own at all.
 
 #### What did NOT land, stated plainly
 
@@ -2471,7 +2539,7 @@ would otherwise write into the finished run it cites. A pair is a file, so no fo
 
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
-orbital energy shift, the transverse k-grid, the electronic temperature and the
+orbital energy shift, the shared k-point grid, the electronic temperature and the
 spin. § 2a.3 calls them shared, and § 5 is why they cannot differ between the
 leads and the device.
 
@@ -2740,7 +2808,7 @@ So transport supplies **four layout tables**, selected by the `stage_token` that
 |---|---|---|
 | `seed` | an ordinary SCF | the electronic contract; no TS/TBT rows |
 | `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` + semi-infinite direction |
-| `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; one k-point along transport, the rung's mesh ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
+| `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; the shared k-point grid in the electrode plane and one k-point along z ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | `transmission` | **its own text since 2026-09-29** (the same text as `device` until then) | the `TS.*` junction description `tbtrans` reads plus the `TBT.*` rows; the binary is `Resources.program = tbtrans` (§ 6.1b) |
 
 An item absent from a stage's layout is simply not written into that stage's
@@ -2868,7 +2936,7 @@ cannot be done first.** Each line is falsifiable.
    check gate sees each line — and `TS.Voltage` (a `role` item) there too
    since 2026-09-29 (K1) — and the T(E) window's three values through the
    rung's own block, each asked of the framework's door and written with its
-   note, the k-grid block's precedent. `TBT.k` was written as the bracketed list it has to be
+   note, the k-point grid block's precedent. `TBT.k` was written as the bracketed list it has to be
    *(since 2026-09-30 always the block, which carries the offset — `kmesh.write`,
    [`siesta.md`](?doc=engines/siesta.md) § 6.1)*.
    `TBT.HS` stays a rung line derived from the label, with no row.
@@ -2927,8 +2995,8 @@ cannot be done first.** Each line is falsifiable.
 10. `electrode_kz` is reachable from a description — invariant I9, previously a
     Python function default nothing passed. **✅ done — 4b/4c.**
 11. Every parameter with a physical constraint has its guard where it is
-    declared, in particular the transport axis of any k-grid. **✅ done
-    2026-09-30**: the k-point mesh decides every rung's sampling in one place,
+    declared, in particular the transport axis of any k-point grid. **✅ done
+    2026-09-30**: every stage's k-point grid is decided in one place (`kmesh.py`),
     and the transport axis of `kgrid` and `tbt_k_grid` is a component the kind
     fixes, refused on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1).
     *(Partly done 2026-09-16 by a transport KIND validator, keyed on the kind
@@ -3150,7 +3218,7 @@ markers the catalogue carries, never by a list a blueprint keeps:
 defect of 2026-09-23.** `citation` says *who supplies the default*; `shared`
 says *who it binds*. Every `citation` row is shared, and Class A contains
 more: `species_order` and the pseudopotentials are shared and answered by
-nobody's run. *(The transverse grid's offset was too, until the citation began
+nobody's run. *(The k-point grid's offset was too, until the citation began
 answering it on 2026-09-30.)* *(The spin was too, until the citation
 began answering it on 2026-09-28: `spin_treatment` and `unpaired_electrons` are
 `citation` rows now.)*
@@ -3163,11 +3231,11 @@ calculation and describe another *(plan § 5w K7, 2026-09-30)*. Each field
 carries the template's value and its source (`form-schema.md` § 1.1): the
 shared panel **holds** them, the citation's answers named as such; a rung's
 tab holds the rung's own values, and shows the template's as what a blank
-field runs — the transmission grid the cited run's transverse pair, *from the
-junction you cited*. A rung's tab is drawn from what the shared panel holds too,
-and again whenever it changes: a rung's value can follow a shared one, the
-transmission grid starting at the SCF's (`_apply_kgrid`'s one rule, applied to
-a mesh the person sets as to the cited one). The two panels sit one above the
+field runs. A rung's tab is drawn from what the shared panel holds too, and
+again whenever it changes. The transmission k-point grid is left blank by
+Describe, and a blank one is three times the shared grid, worked out when the
+transmission's deck is written (`kmesh.mesh_for`, § 0.3b) — so it follows the
+shared grid, cited or set, whenever that changes. The two panels sit one above the
 other on the tab (cards 2 and 4), so the per-rung form carries no second echo
 of the shared values on this page.
 
@@ -3437,7 +3505,7 @@ a visually logical way".)*
 (`form-components.css` `.page-cols` / `.page-aside`, Task setup's rail) with
 four cards about the whole calculation: **the five stages, in order** (the
 rung list the schema route answers, each rung's note — the same notes its tab
-opens with, `RUNG_NOTES`); **k-points: three grids, one picture**; **SCF
+opens with, `RUNG_NOTES`); **k-points: what each stage samples, and why**; **SCF
 settings: each stage has its own**; **after you describe** (prepare, launch,
 read back). The rail stays on screen while the steps are worked through.
 
@@ -3446,34 +3514,38 @@ read back). The rail stays on screen while the steps are worked through.
 clarify the correct understanding of k-grid settings in each step"; "organize
 in sections rather than in table")* — the physics is § 0.2, the order to set
 them § 0.3, the starting values and the warnings with their literature
-§ 0.3b. The page says it in three places, each from one home:
+§ 0.3b. The page says it in three places, each from one home, and all three
+use the same words: *k-point*, *k-point grid*, *in the electrode plane (x, y)*,
+*along z*, and the three settings' names — the shared k-point grid, the leads'
+k-points along z, the transmission k-point grid.
 
 * **The side panel's k-points card** (`transport_calculation.html`,
-  `#transport-kpoints-card`): one short section per stage — *Seed*, *Each
-  lead*, *Device*, *Transmission* — each saying what it samples in the
-  electrode plane and along z and why; then *Setting them up, in order*
-  (§ 0.3's three steps), the gold example, the one-point warning, and the
-  sources. Sections, not a table: the rail is narrow (`--page-aside-w`), and a
-  rail card's sections share one small heading style
-  (`form-components.css`, `.page-aside .card h3`).
+  `#transport-kpoints-card`): first what a k-point is and which directions
+  repeat, and the three settings with where each is set; then one short
+  section per stage — *Seed*, *Each lead*, *Device*, *Transmission* — each
+  saying what that stage samples in the electrode plane and along z, and why;
+  then *Setting them up, in order* (§ 0.3's three steps), the gold example,
+  the one-point warning, and the sources. Sections, not a table: the rail is
+  narrow (`--page-aside-w`), and a rail card's sections share one small
+  heading style (`form-components.css`, `.page-aside .card h3`).
 * **Each stage's note** (`transport/stages.py` `RUNG_NOTES`) — the stages card
-  lists them, each headed by the rung's own number as its tab is (*1 · seed*),
-  and each rung's tab opens with its own — ends with that stage's k-points in
-  one clause.
+  lists them, each headed by the stage's own number as its tab is
+  (*1 · seed*), and each stage's tab opens with its own — says which
+  k-points that stage samples and why, in a sentence or two.
 * **Each item's help** (the catalogue, the one home of what it means): the
   why at length, with the manual's words and the engine's lines.
 
-| where you set it | the item | what it samples | why it is set there |
+| where you set it | the item, as the form labels it | what it samples | why it is set there |
 |---|---|---|---|
-| step 2, the shared panel | **k-point mesh** (`kgrid`) | in the plane of the electrodes (x, y) — they are infinite surfaces, so the cell repeats sideways — for the seed, both leads and the device; z is 1 | the device uses each lead as the bulk of its own electrode region, so the leads and the device are sampled alike — TranSIESTA stops otherwise (§ 0.2) — one value, never a rung's |
-| each lead's tab | **Lead k-points along the transport direction (z)** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z; its Hamiltonian and Fermi level — what every self-energy is built from and aligned to — need many points there (100 by default, warned below 50, 1 refused; § 0.2, § 0.3b) — the device, seed and transmission use 1 |
-| the transmission's tab | **Transmission k-points in the electrode plane (x, y)** (`tbt_k_grid`) | in the plane of the electrodes, for T(E) alone; z is 1 | T(E) changes faster from point to point in that plane than the density does, so it needs more points than the SCF; left blank it is three times the shared grid, and follows it; set, it is the person's, warned below the shared grid (§ 0.3b); raising it re-runs the transmission alone |
+| step 2, the shared panel | **k-point grid** (`kgrid`) — the shared k-point grid | in the electrode plane (x, y) — the electrodes are infinite surfaces, so the cell repeats sideways — for the seed, both leads and the device; along z, 1 | the device uses each lead as the bulk of its own electrode region, so the leads and the device must be sampled on the same k-points — TranSIESTA stops otherwise (§ 0.2). One value, never a single stage's |
+| each lead's tab | **Lead k-points along z** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z, and a short cell along z; its Hamiltonian and Fermi level — what every self-energy is built from and aligned to — need many k-points there (100 by default, warned below 50, 1 refused; § 0.2, § 0.3b). The seed, the device and the transmission take 1 along z |
+| the transmission's tab | **Transmission k-point grid (x, y)** (`tbt_k_grid`) | in the electrode plane (x, y), for T(E) alone; along z, 1 | T(E) changes much faster from one k-point to the next than the density does, so it needs more k-points than the SCF stages; left blank it is three times the shared grid and follows it; set, it is the person's, warned if it is coarser than the shared grid (§ 0.3b); raising it re-runs the transmission alone |
 
 **The example on the page:** a gold junction three gold atoms wide (about
-8.7 Å side to side) — 4 × 4 × 1 in the electrode plane, 100 along the leads,
-12 × 12 × 1 for T(E). **One point along a direction the electrodes repeat in**
-is warned on the shared panel's or the transmission's control when the
-calculation is described (§ 0.3b).
+8.7 Å side to side) — a 4 × 4 × 1 shared k-point grid, 100 k-points along z on
+each lead, and a 12 × 12 × 1 transmission k-point grid. **One k-point along a
+direction the electrodes repeat in** is warned beside the shared panel's or
+the transmission's control when the calculation is described (§ 0.3b).
 
 ## 4. Region labels drive everything
 
@@ -3674,9 +3746,9 @@ run.
 | I4 | PAO.EnergyShift | all three | sets orbital range = basis radius | **construction** — one template |
 | I5 | Basis tier, per species | frozen-electrode-Au = device-Au | a basis step = spurious back-scattering (§ 7) | **construction** — one template |
 | I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | **construction** — the extraction takes the device's `lat_a`/`lat_b` verbatim |
-| I7 | Transverse k (kx, ky) and offset | electrode **identical to** device | the lead is the bulk of the device's electrode region, so both SCF runs sample the plane alike (§ 0.2); TranSIESTA stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | **construction** — one shared `kgrid` and `kgrid_displacement`, which every rung's mesh reads (`kmesh.mesh_for`) *("commensurate — the two grids share a common factor" stood here until 2026-09-30; the engine requires them equal)* |
-| I8 | Device kz = 1 | seed, device, transmission | open boundary on the device and the transmission, forced by both engines; the seed's density only their start (§ 0.2) | **fixed** — the rung's mesh writes 1; `kmesh.fixed` through `template.why_not` refuses another value on every door |
-| I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ); its H and E_F are what every self-energy is built from (§ 0.2) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 50 (`range`, the manual's floor), on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
+| I7 | The k-point grid in the electrode plane (its x and y counts, kx and ky) and its offset | electrode **identical to** device | the lead is the bulk of the device's electrode region, so both SCF runs must sample the electrode plane on the same k-points (§ 0.2); TranSIESTA stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | **construction** — one shared `kgrid` and `kgrid_displacement`, which every stage's k-point grid reads (`kmesh.mesh_for`) *("commensurate — the two grids share a common factor" stood here until 2026-09-30; the engine requires them equal)* |
+| I8 | One k-point along z (kz = 1) | seed, device, transmission | the device and the transmission are open along z — the leads' self-energies stand in for everything beyond the cell — and both engines force one k-point there; the seed's density is only their starting point (§ 0.2) | **fixed** — the stage's k-point grid writes 1; `kmesh.fixed` through `template.why_not` refuses another value on every door |
+| I9 | The leads' k-points along z: many (converged) | electrode | a lead is a *periodic bulk* run along z, and a thin lead cell has a long Brillouin zone (BZ) along z, which few k-points sample coarsely; the lead's H and E_F are what every self-energy is built from (§ 0.2) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 50 (`range`, the manual's floor), on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of a cited run's `.ion` files; a cited pair has none beside it, so the lead's note says *unverified* and TranSIESTA checks the leads' connectivity when it runs (§ 3.1) |
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
@@ -3719,7 +3791,7 @@ to format.)
 **Each gate traces to a physical requirement and a reference** (so the design is
 auditable, not asserted): the open boundary (I8) and the basis continuity
 (I5) to Brandbyge 2002; the bulk lead's sampling (I9), the lateral cell and the
-shared transverse grid (I6/I7),
+shared k-point grid in the electrode plane (I6/I7),
 and `electrode.thickness` (I11, principal-layer screening) to Papior 2017; the
 numerical contract `contract.{xc,meshcutoff,energyshift}` (I1/I3/I4) to Soler 2002;
 and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
@@ -3965,7 +4037,7 @@ reason a *single* set of parameter values cannot describe the ladder:
 | seed | `diagon` | 1 | `.DM` | an ordinary closed periodic SCF, only to give the NEGF cycle a starting density |
 | electrode | `diagon` | **dense** (`electrode_kz`) | `.TSHS` | a genuinely periodic *bulk* run — its Fermi level must be well converged, so this axis must be sampled |
 | device | `transiesta` | 1 | `.TS.HSX`, `.TSDE` | an **open** boundary: there is no periodicity along transport to sample |
-| transmission | none written — `tbtrans` runs no SCF | `TBT.k` | `.TBT.nc` | reads the device's saved H; samples the *transverse* BZ for T(E) |
+| transmission | none written — `tbtrans` runs no SCF | `TBT.k` | `.TBT.nc` | reads the device's saved H; samples its own k-point grid in the electrode plane (x, y) for T(E) |
 
 Two rows of that table are the same keyword — `SolutionMethod` — carrying
 **two different values within one calculation**.  That is not expressible as
@@ -4055,8 +4127,8 @@ parameter the person answers is for a question the *person* can answer
 differently without the deck stopping being the deck it is.  Under that test the three candidates fail and the genuinely
 per-stage-looking fourth — the k-axis — fails differently: the device is
 sampled 1 along transport and the lead densely (`electrode_kz`), but those are
-two different **cells**, so it is the k-point mesh's composition of one
-person-answered transverse grid (`kmesh.mesh_for`,
+two different **cells**, so it is the k-point grid's composition of one
+person-answered grid in the electrode plane (`kmesh.mesh_for`,
 [`siesta.md`](?doc=engines/siesta.md) § 6.1), not one parameter with two values.
 
 **What transport actually lacks is nothing to do with stages.**  The 21 SIESTA
@@ -4108,7 +4180,7 @@ cross-checked against the installed binaries (2026-09-29):
 transmission rung wrote `TBT.k                  2 2 1` — three integers,
 neither a list nor a block — so `tbtrans` skipped it and samples the SCF's grid from the same deck. It
 has not changed an answer yet: `jobset init` sets `tbt_k_grid` to the cited
-run's transverse grid, which is the SCF's. But a person who raises it for the
+run's k-point grid in the electrode plane, which is the SCF's. But a person who raises it for the
 convergence study § 0.3 describes would be ignored in silence. Written
 `TBT.k [2 2 1]`, it is read. *(Nothing ever caught it: no transmission rung has
 run since `TBT.k` joined the deck on 2026-09-15. Since 2026-09-30 it is written
@@ -4466,7 +4538,7 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | Basis | **DZP everywhere** | DZP = double-ζ + polarization (SIESTA PAO tier); drop to the smaller SZP for bulk-Au only after a `T(E)` check |
 | `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`SiestaConfig.mesh_cutoff`), and a transport rung takes the cited relaxation's own value (`transport/citation_defaults.py`); the § 3 example overrides to 400 |
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
-| Transverse k | converge 2×2 → 4×4 → 6×6 | identical in device and electrode (I7) |
+| Shared k-point grid (x, y) | converge 2×2 → 4×4 → 6×6 | identical in device and electrode (I7) |
 | Device `kz` | **1** | open boundary (I8) |
 | Electrode `kz` | converge (default **100**; warned below 50, refused at 1) | dense bulk z-sampling (I9, § 0.2) |
 | Electrode thickness | **~6 Au(111) layers** | the *electronic* principal layer, not the 3-layer geometric repeat |
@@ -4512,8 +4584,8 @@ Three corrections that catch real mistakes:
   was one in this codebase — zero occurrences in `molbuilder/`. Corrected
   2026-09-23.)* Forces are
   k-robust while the sharp `T(E_F)` Fermi-surface integral is not, so it is sound to
-  **relax at a coarser transverse k (e.g. 2×2×1) and run transport dense (e.g.
-  4×4×1)** [Soler 2002; Papior 2017]. The composite DEFAULTS the transverse k
+  **relax at a coarser k-point grid in the electrode plane (e.g. 2×2×1) and run transport denser (e.g.
+  4×4×1)** [Soler 2002; Papior 2017]. The composite DEFAULTS the shared k-point grid
   from the cited relaxation's own grid (§ 2a.7) and the device's transport axis
   is 1 by rule ([`siesta.md`](?doc=engines/siesta.md) § 6.1) — so relax at the
   coarse mesh, cite that attempt, and raise the transport's `kgrid` in its

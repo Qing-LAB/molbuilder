@@ -354,8 +354,8 @@ SET_AFTER = {
 #: names (`engines/template.md` § 6.6 obligation 4).
 BLANK_ANSWERED_BY = {
     **{name: "the electronic state decides it" for name in STATE_ITEMS},
-    "parallel_over_k": "worked out from the k-point mesh",
-    "tbt_k_grid": "three times the k-point mesh in the electrode plane",
+    "parallel_over_k": "worked out from the k-point grid",
+    "tbt_k_grid": "three times the shared k-point grid in the electrode plane",
     "md_target_temperature": "the initial temperature, on a Nose run",
 }
 BLANK_ENGINE = "the engine's own default"

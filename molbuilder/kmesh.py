@@ -1,13 +1,15 @@
-"""The k-point mesh a rung samples -- ONE home (`engines/siesta.md` § 6.1).
+"""The k-point grid a rung samples -- ONE home (`engines/siesta.md` § 6.1).
 
 Every deck molbuilder writes for SIESTA or ``tbtrans`` samples the Brillouin
-zone on a Monkhorst-Pack mesh: a count and an offset per axis of the cell.
-What that mesh IS on a rung follows from two facts and the template's values:
+zone on a Monkhorst-Pack k-point grid: a count and an offset per axis of the
+cell.  (Not SIESTA's "mesh", which is the real-space grid of
+``MeshCutoff``.)  What that grid IS on a rung follows from two facts and the
+template's values:
 each axis's kind, as the structure states it (``Structure.axis_kind``), and
 what the rung does along the calculation's transport axis.  This module turns
 them into a :class:`KMesh` once per deck; the deck's writer, the settings
 gate, the derived settings (``Diag.ParallelOverK``) and the record read that
-one object, and none of them works the mesh out again.
+one object, and none of them works the grid out again.
 
 **Why a module and not a helper in each writer.**  Writers each building
 their own block from ``cfg.kgrid`` would each force the transport axis to 1,
@@ -28,9 +30,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 #: The transport axis of a transport calculation: the cell's third vector,
 #: ``c`` (A3).  The composition states it (`transport/compose.py` builds every
 #: junction's kinds as ``(across, across, "transport")``), and TranSIESTA's
-#: electrodes are semi-infinite along it.  The composition and the mesh read
-#: it here; `transport/sort.py` keeps a copy of its own and the transport
-#: writers index ``c`` directly (owed, plan § 5w K3).
+#: electrodes are semi-infinite along it.  The composition and the k-point
+#: grid read it here; `transport/sort.py` keeps a copy of its own and the
+#: transport writers index ``c`` directly (owed, plan § 5w K3).
 TRANSPORT_AXIS = 2
 
 #: The components' names -- the form's triple labels, and how a refusal names
@@ -43,26 +45,28 @@ AXES = ("x", "y", "z")
 #: rung's shape (`transport/deck.py`'s ``SHAPE_OF_RUNG``).
 LEAD_RUNGS = frozenset({"electrode"})
 
-#: Why the transport axis takes one point with no offset on a transport
+#: Why the transport axis takes one k-point with no offset on a transport
 #: calculation -- the reason every door gives for a fixed component.  The
 #: device and the transmission are open along it, and both engines force one
 #: point there; the seed is a periodic run whose cell is long along it and
 #: whose density is only the device's start (`engines/transport.md` § 0.2).
-WHY_OPEN = ("one point along the transport axis: the device and the "
-            "transmission are open there and both engines force it "
-            "(ts_kpoint_scf.F90, m_tbt_kpoint.F90), the seed's density is "
-            "only their start, and a lead samples it by electrode_kz -- no "
-            "rung reads this component (engines/transport.md 0.2)")
-WHY_NO_OFFSET = ("both engines sample the transport axis with no offset -- "
-                 "TranSIESTA in ts_kpoint_scf.F90, tbtrans in m_tbt_kpoint.F90 "
-                 "-- and a lead is compared with the device on it "
+WHY_OPEN = ("one k-point along z, the transport direction: the device and "
+            "the transmission are open along z, and both engines force a "
+            "single k-point there (ts_kpoint_scf.F90, m_tbt_kpoint.F90); "
+            "the seed's density is only their starting point; and each "
+            "lead samples z by its own count, electrode_kz.  So no stage "
+            "reads this component as a choice (engines/transport.md 0.2)")
+WHY_NO_OFFSET = ("along z, the transport direction, both engines sample "
+                 "with no offset -- TranSIESTA in ts_kpoint_scf.F90, tbtrans "
+                 "in m_tbt_kpoint.F90 -- and TranSIESTA compares each "
+                 "lead's offset with the device's on z too "
                  "(engines/siesta.md 6.1)")
 
-#: The items that answer a mesh's counts -- an axis's ``source`` is one of
-#: them, or ``open`` when the axis itself answers.
+#: The items that answer a k-point grid's counts -- an axis's ``source`` is
+#: one of them, or ``open`` when the axis itself answers.
 ITEMS = ("kgrid", "tbt_k_grid", "electrode_kz")
 
-#: What a transport calculation fixes in each item a mesh reads.
+#: What a transport calculation fixes in each item a k-point grid reads.
 _FIXED_ON_TRANSPORT: Dict[str, Tuple[Any, str]] = {
     "kgrid": (1, WHY_OPEN),
     "tbt_k_grid": (1, WHY_OPEN),
@@ -73,21 +77,21 @@ _FIXED_ON_TRANSPORT: Dict[str, Tuple[Any, str]] = {
 #: hint (`science/validation.md` § 4.1, user 2026-08-20).
 VACUUM_HINT_A = 5.0
 
-#: HOW MUCH DENSER THE TRANSMISSION'S MESH STARTS than the SCF's, along each
-#: direction in the plane of the electrodes the SCF samples more than once
-#: (`engines/transport.md` § 0.3b; the user, 2026-10-09): T(E) has sharp
-#: structure there that the density does not, and a finer mesh for it re-runs
-#: no SCF.
+#: HOW MUCH DENSER THE TRANSMISSION'S K-POINT GRID STARTS than the shared
+#: one, along each direction in the plane of the electrodes the shared grid
+#: samples with more than one k-point (`engines/transport.md` § 0.3b; the
+#: user, 2026-10-09): T(E) has sharp structure there that the density does
+#: not, and a finer grid for it re-runs no SCF.
 TRANSMISSION_PER_SCF = 3
 
 
 def transmission_start(counts) -> Tuple[int, int, int]:
-    """The transmission's starting mesh from the SCF's ``counts``:
+    """The transmission's starting k-point grid from the SCF's ``counts``:
     :data:`TRANSMISSION_PER_SCF` times each in-plane count above one, a
     count of one kept -- one point on a direction that does not repeat is
     exact, and on one that does, :func:`check` says so -- and the transport
-    axis one, as every transport mesh holds it (`engines/transport.md`
-    § 0.3b)."""
+    axis one, as every transport k-point grid holds it
+    (`engines/transport.md` § 0.3b)."""
     out = [int(c) * TRANSMISSION_PER_SCF if int(c) > 1 else 1
            for c in counts]
     out[TRANSPORT_AXIS] = 1
@@ -96,7 +100,7 @@ def transmission_start(counts) -> Tuple[int, int, int]:
 
 @dataclass(frozen=True)
 class KAxis:
-    """One axis of a rung's mesh."""
+    """One axis of a rung's k-point grid."""
     #: The axis's kind as the structure states it: ``periodic``,
     #: ``isolated`` or ``transport``.
     kind: str
@@ -108,7 +112,7 @@ class KAxis:
     #: electrode rung: ``electrode_kz`` points, no offset).
     role: str
     count: int
-    #: The grid's offset along the axis, in units of one mesh spacing.
+    #: The grid's offset along the axis, in units of one grid spacing.
     shift: float
     #: The item that answered the count: ``kgrid``, ``tbt_k_grid``,
     #: ``electrode_kz`` -- or ``open``, when the axis itself does.
@@ -117,12 +121,13 @@ class KAxis:
 
 @dataclass(frozen=True)
 class KMesh:
-    """The mesh one deck writes: three axes and the program that reads it."""
+    """The k-point grid one deck writes: three axes and the program that
+    reads it."""
     axes: Tuple[KAxis, KAxis, KAxis]
     #: ``siesta`` writes ``%block kgrid_Monkhorst_Pack``; ``tbtrans``
     #: ``%block TBT.k``.
     program: str = "siesta"
-    #: The transmission's mesh worked out from the SCF's, ``tbt_k_grid`` left
+    #: The transmission's grid worked out from the SCF's, ``tbt_k_grid`` left
     #: blank (:func:`transmission_start`) -- never the person's statement.
     derived: bool = False
 
@@ -156,13 +161,14 @@ def _triple(value, cast) -> Optional[Tuple[Any, Any, Any]]:
 def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
              kind: str = "optimization", rung: Optional[str] = None,
              program: str = "siesta") -> Optional[KMesh]:
-    """The mesh this rung writes -- the ONE derivation.
+    """The k-point grid this rung writes -- the ONE derivation.
 
     ``axis_kind`` is the structure's (``Structure.axis_kind``); ``kind`` the
     described calculation; ``rung`` a transport rung's shape (``seed`` ·
     ``electrode`` · ``device`` · ``transmission``), and ``None`` on any other
     kind; ``program`` whose keywords write it -- ``tbtrans`` reads
-    ``tbt_k_grid`` across the transport axis, every SIESTA run ``kgrid``.
+    ``tbt_k_grid`` in the electrode plane (x, y), every SIESTA run
+    ``kgrid``.
 
     ``None`` when a value it needs is not three numbers: that is the declared
     type's refusal, which the settings gate gives, and a crash here would
@@ -171,9 +177,10 @@ def mesh_for(cfg, axis_kind: Optional[Sequence[str]], *,
     kinds = tuple(axis_kind) if axis_kind else ("isolated",) * 3
     source = "tbt_k_grid" if program == "tbtrans" else "kgrid"
     raw = getattr(cfg, source, None)
-    # A BLANK TRANSMISSION MESH IS THE RULE'S: three times the SCF's in the
-    # electrode plane, worked out here -- the one derivation -- so it follows
-    # `kgrid` whenever that changes (`engines/transport.md` § 0.3b).
+    # A BLANK TRANSMISSION K-POINT GRID IS THE RULE'S: three times the
+    # shared one in the electrode plane, worked out here -- the one
+    # derivation -- so it follows `kgrid` whenever that changes
+    # (`engines/transport.md` § 0.3b).
     derived = program == "tbtrans" and raw is None
     if derived:
         scf = _triple(getattr(cfg, "kgrid", None), int)
@@ -233,7 +240,7 @@ def with_fixed(item: str, value, kind: str):
 
 
 def write(mesh: KMesh) -> List[str]:
-    """The mesh's text -- the ONLY one.  SIESTA's ``%block
+    """The k-point grid's text -- the ONLY one.  SIESTA's ``%block
     kgrid_Monkhorst_Pack`` and ``tbtrans``'s ``%block TBT.k``: three rows of
     counts, each with its offset column.  SIESTA reads a row of one to four
     values (``kpoint_t.F90``); ``tbtrans`` reads a block row only when it
@@ -250,11 +257,12 @@ def write(mesh: KMesh) -> List[str]:
 
 
 def _a_stripe(mesh: KMesh, i: int) -> bool:
-    """Is ``mesh`` a transport calculation's SCF mesh whose isolated axis
-    ``i`` sits beside a periodic transverse axis -- the junction TranSIESTA
-    refuses to attach a lead to when ``i`` is sampled more than once?  Its
-    check skips a lead isolated on both transverse axes (``is_Gamma``,
-    ``ts_electrode.F90``), and ``tbtrans`` does not make it."""
+    """Is ``mesh`` a transport calculation's SCF k-point grid whose isolated
+    axis ``i`` sits beside a periodic axis of the electrode plane -- the
+    junction TranSIESTA refuses to attach a lead to when ``i`` is sampled
+    more than once?  Its check skips a lead isolated on both axes of the
+    electrode plane (``is_Gamma``, ``ts_electrode.F90``), and ``tbtrans``
+    does not make it."""
     transport = mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")
     return (transport and mesh.program == "siesta"
             and any(a.role == "sampled" for j, a in enumerate(mesh.axes)
@@ -263,7 +271,7 @@ def _a_stripe(mesh: KMesh, i: int) -> bool:
 
 def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
           refused=frozenset()) -> List[Any]:
-    """The findings on the meshes ONE deck writes -- one rule each
+    """The findings on the k-point grids ONE deck writes -- one rule each
     (`engines/siesta.md` § 6.1; `science/validation.md` § 4.1).
 
     Warnings: ``k > 1`` is the person's explicit statement (user,
@@ -271,23 +279,25 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     save on a transport calculation, where one point along a direction the
     electrodes repeat in is warned (`engines/transport.md` § 0.3b; the user,
     2026-10-09) -- and save one refusal, where the engine itself stops: a transport
-    calculation's SCF mesh sampling an isolated axis more than once while the
-    other transverse axis is periodic (a stripe), which TranSIESTA refuses at
-    the device after the seed and both leads have run (``ts_electrode.F90``,
-    ``check_in_cell``; refused for now, user 2026-09-30).  A
+    calculation's SCF grid sampling an isolated axis more than once while the
+    other axis of the electrode plane is periodic (a stripe), which
+    TranSIESTA refuses at the device after the seed and both leads have run
+    (``ts_electrode.F90``, ``check_in_cell``; refused for now, user
+    2026-09-30).  A
     count at or below its limit and a fixed component are refused by the
     one per-value door (``template.why_not``) on every surface; they are not
-    judged here again -- and a mesh built from a value that cannot stand
+    judged here again -- and a grid built from a value that cannot stand
     (``refused``: the items that door refused) is not judged at all, since a
     value refused draws that refusal alone (`engines/template.md` § 5.3).
 
-    The count rules are per mesh -- each mesh's counts are its own item's --
-    save one between two: a transmission mesh the person set COARSER than
-    the SCF mesh beside it in the electrode plane is warned, since T(E)
-    needs at least the points the density was converged on and usually many
-    more (`engines/transport.md` § 0.3b); a blank one is three times it.
-    The OFFSET is one value every mesh of the deck shares, so its finding is
-    said once, naming each mesh that samples the axis at one point.
+    The count rules are per grid -- each grid's counts are its own item's --
+    save one between two: a transmission grid the person set COARSER than
+    the shared SCF grid beside it in the electrode plane is warned, since
+    T(E) needs at least the k-points the density was converged on and
+    usually many more (`engines/transport.md` § 0.3b); a blank one is three
+    times it.  The OFFSET is one value every grid of the deck shares, so its
+    finding is said once, naming each grid that samples the axis at one
+    k-point.
     """
     from .issues import Issue
     judged = [m for m in meshes if m is not None and not (
@@ -309,39 +319,43 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 out.append(Issue(
                     "error",
                     f"{name} = {axis.count} on an isolated axis of a junction "
-                    f"that is periodic across the other: TranSIESTA stops the "
-                    f"device on it -- a lead that repeats along one "
-                    f"transverse axis must sample the other, where it has no "
-                    f"neighbours, at one point (ts_electrode.F90, \"found "
+                    f"that repeats along the other axis of the electrode "
+                    f"plane (x, y): TranSIESTA stops the device on it.  A "
+                    f"lead that repeats along one axis of the electrode "
+                    f"plane must take one k-point along the other, where it "
+                    f"has no neighbours (ts_electrode.F90, \"found "
                     f"incompatible k-grids\"), and the seed and both leads "
-                    f"would have run first.  Set it to 1; such a junction is "
-                    f"refused for now (engines/siesta.md 6.1)",
+                    f"would have run before the device stops.  Set it to 1; "
+                    f"such a junction is refused for now "
+                    f"(engines/siesta.md 6.1)",
                     where))
             elif axis.role == "gamma" and axis.count > 1:
                 out.append(Issue(
                     "warn",
                     f"{name} = {axis.count} on an isolated axis: the "
-                    f"structure does not repeat there, so the extra points "
-                    f"sample images of vacuum -- cost for nothing; 1 is the "
-                    f"usual choice (engines/siesta.md 6.1)",
+                    f"structure does not repeat there, so the extra k-points "
+                    f"only sample its periodic images, separated by vacuum "
+                    f"-- they add cost and nothing else; 1 is the usual "
+                    f"choice (engines/siesta.md 6.1)",
                     where))
             elif (axis.role == "sampled" and axis.count == 1
                   and mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")
                   and not mesh.derived):
-                # ONE POINT ALONG A DIRECTION THE ELECTRODES REPEAT IN, on a
-                # transport mesh (`engines/transport.md` § 0.3b): known to
-                # put false peaks into T(E) and move the conductance.  A
-                # transmission mesh worked out from the SCF's says it there,
-                # once, where the person sets it.
+                # ONE K-POINT ALONG A DIRECTION THE ELECTRODES REPEAT IN, on
+                # a transport k-point grid (`engines/transport.md` § 0.3b):
+                # known to put false peaks into T(E) and move the
+                # conductance.  A transmission grid worked out from the
+                # shared one says it there, once, where the person sets it.
                 wide = (f"; this cell is {lengths[i]:.1f} A wide along "
                         f"{AXES[i]}" if lengths is not None else "")
                 out.append(Issue(
                     "warn",
                     f"{name} = 1 along {AXES[i]}, a direction the electrodes "
-                    f"repeat in: a single point there samples the metal's "
-                    f"bands at one place, which is known to add false peaks "
-                    f"to T(E) and to shift the conductance by tens of per "
-                    f"cent.  The benchmark used 4 x 4 for a cell about "
+                    f"repeat in: a single k-point there treats every sideways "
+                    f"copy of the cell as in phase, so the metal's bands are "
+                    f"seen at one place only.  This is known to add false "
+                    f"peaks to T(E) and to shift the conductance by tens of "
+                    f"per cent.  The benchmark used 4 x 4 for a cell about "
                     f"9 A wide{wide} (engines/transport.md 0.3b)",
                     where))
             elif (axis.role == "sampled" and axis.count > 1
@@ -350,11 +364,12 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 if gap >= VACUUM_HINT_A:
                     out.append(Issue(
                         "warn",
-                        f"{name} = {axis.count} samples a supercell along "
-                        f"an axis whose periodic images sit ~{gap:.1f} A "
-                        f"apart; if the images are meant not to interact, "
-                        f"k = 1 is the usual choice -- if a weak image "
-                        f"interaction is deliberate, carry on",
+                        f"{name} = {axis.count} k-points along an axis whose "
+                        f"periodic images sit ~{gap:.1f} A apart, with vacuum "
+                        f"between them; if the images are meant not to "
+                        f"interact, one k-point (k = 1) is the usual choice "
+                        f"-- if a weak interaction between them is "
+                        f"deliberate, carry on",
                         where))
     scf = next((m for m in judged if m.program == "siesta"), None)
     for tbt in (m for m in judged if m.program == "tbtrans" and not m.derived):
@@ -368,11 +383,11 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 out.append(Issue(
                     "warn",
                     f"tbt_k_grid[{i}] = {t.count} is coarser than the shared "
-                    f"k-point mesh's {s.count} along {AXES[i]}: T(E) needs at "
-                    f"least the points the density was converged on, and "
+                    f"k-point grid's {s.count} along {AXES[i]}: T(E) needs at "
+                    f"least the k-points the density was converged on, and "
                     f"usually many more -- the SIESTA manual: tbtrans's "
-                    f"sampling \"should generally be much denser\".  Raise it, "
-                    f"or leave it blank for three times the shared mesh "
+                    f"sampling \"should generally be much denser\".  Raise "
+                    f"it, or leave it blank for three times the shared grid "
                     f"(engines/transport.md 0.3b)",
                     "config.tbt_k_grid"))
     for i in range(3):
@@ -387,7 +402,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 "warn",
                 f"kgrid_displacement[{i}] = {single[0].shift} shifts an "
                 f"axis sampled at a SINGLE k-point ({counts}), which moves "
-                f"that point off Gamma.  For an "
+                f"that k-point off Gamma, the point k = 0.  For an "
                 f"isolated molecule only Gamma is meaningful -- set this "
                 f"component to 0.",
                 "config.kgrid_displacement"))

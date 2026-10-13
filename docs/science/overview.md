@@ -147,26 +147,32 @@ states the *why* so the thresholds don't drift silently.
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
 | net dipole > 1 D (debye, the dipole-moment unit), in a box of vacuum on every axis (each axis SIESTA computes on isolated — never the k count: a crystal or a junction sampled at Γ alone carries its images by design; [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
 
-### k-point sampling (`kmesh.check`, on every mesh a deck writes)
-The rules and their severities are [`engines/siesta.md`](?doc=engines/siesta.md)
-§ 6.1's, on the mesh each rung writes — `kgrid`, a transmission's `tbt_k_grid`,
-a lead's `electrode_kz`:
+### k-point grids (`kmesh.check`, on every k-point grid a deck writes)
+A k-point is one value of the electrons' wavevector: in a periodic structure
+the electron waves repeat from cell to cell up to a phase shift, and each
+k-point is one such shift. A run samples a regular **k-point grid** of them —
+a count along each axis, a 4 × 4 × 1 k-point grid for example — and averages.
+*("Mesh" in SIESTA is the real-space grid, `MeshCutoff`, not this.)* The rules
+and their severities are [`engines/siesta.md`](?doc=engines/siesta.md)
+§ 6.1's, on the k-point grid each stage writes — `kgrid`, a transmission's
+`tbt_k_grid`, a lead's `electrode_kz`. In a transport calculation x and y span
+the electrode plane and z is the transport direction:
 
 | Check | Severity | Why |
 |---|---|---|
-| an isolated axis sampled more than once | warn | the structure does not repeat there, so the points sample images of vacuum — cost for nothing *(user, 2026-08-20: `k > 1` is the person's statement, never refused)* |
-| a transport calculation's isolated axis sampled more than once while the other transverse axis is periodic (a stripe) | **error** | TranSIESTA stops the device on it — *"found incompatible k-grids"* (`ts_electrode.F90`) — after the seed and both leads have run; refused for now *(user, 2026-09-30)* |
-| a sampled axis above 1 whose images sit ≥ 5 Å apart | warn (hint) | the gap is the real vacuum; images that far apart are usually meant not to interact |
-| an offset on an axis sampled once | warn | it moves that point off Γ (read modulo 1, so 1.0 is Γ again) |
-| a transport calculation's third k component other than 1 (`kgrid`, `tbt_k_grid`), or its offset other than 0 | **error** | that axis is the open boundary on the device and the transmission — both engines force one point there — the seed's density is only their start, and a lead samples it by `electrode_kz`: no rung reads the component (`kmesh.fixed`, every door; [`engines/transport.md`](?doc=engines/transport.md) § 0.2) |
-| a count at or below 0; `electrode_kz` at or below 1 | **error** | the items' own limits (`above`, `engines/template.md` § 5.3) — a lead is periodic bulk along transport, and one point there gives a wrong lead Hamiltonian and Fermi level, which every self-energy is built from and aligned to |
-| `electrode_kz` below 50 | warn | its recommended range, the SIESTA manual's floor — not a convergence proof: only raising it and seeing the lead's Fermi level stay put shows it has settled |
-| a transmission mesh the person set coarser than the shared mesh along x or y | warn | T(E) needs at least the points the density was converged on, and usually many more; a blank one is three times the shared mesh ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b) |
+| an isolated axis sampled with more than one k-point | warn | the structure does not repeat there, so the extra k-points only sample its periodic images, separated by vacuum — cost for nothing *(user, 2026-08-20: `k > 1` is the person's statement, never refused)* |
+| a transport calculation's isolated axis sampled with more than one k-point while the other axis of the electrode plane (x, y) is periodic (a stripe) | **error** | TranSIESTA stops the device on it — *"found incompatible k-grids"* (`ts_electrode.F90`) — after the seed and both leads have run; refused for now *(user, 2026-09-30)* |
+| a sampled axis with more than one k-point, whose periodic images sit ≥ 5 Å apart | warn (hint) | the gap is the real vacuum; images that far apart are usually meant not to interact |
+| an offset on an axis sampled with one k-point | warn | it moves that one k-point off Γ, the point k = 0 (the offset is read modulo 1, so 1.0 is Γ again) |
+| a transport calculation's third k-point count other than 1 (`kgrid`, `tbt_k_grid`), or its offset other than 0 | **error** | along z the device and the transmission are open — both engines force one k-point there — and the seed's density is only their starting point, while a lead samples z by its own count, `electrode_kz`: no stage reads this component as a choice (`kmesh.fixed`, every door; [`engines/transport.md`](?doc=engines/transport.md) § 0.2) |
+| a count at or below 0; `electrode_kz` at or below 1 | **error** | the items' own limits (`above`, `engines/template.md` § 5.3) — a lead is periodic bulk metal along z, and one k-point there gives a wrong lead Hamiltonian and Fermi level, which every self-energy is built from and aligned to |
+| `electrode_kz` below 50 | warn | its recommended range, the SIESTA manual's floor — not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled |
+| a transmission k-point grid the person set coarser than the shared k-point grid along x or y | warn | T(E) needs at least the k-points the density was converged on, and usually many more; a blank one is three times the shared grid ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b) |
 
 *(`k = 1` on a periodic axis is checked not at all — the "under-converged"
-warning was retired 2026-08-20. The transport axis's three rows above
-(`kgrid[2]`, `electrode_kz`, `tbt_k_grid`) stood in the transport kind's
-validator until 2026-09-30, beside a warning about the same axis here.)*
+warning was retired 2026-08-20. The three rows above about z (`kgrid[2]`,
+`electrode_kz`, `tbt_k_grid`) stood in the transport kind's validator until
+2026-09-30, beside a warning about the same axis here.)*
 
 ### Spin & charge — the electronic state's one family (`validation/chemistry.py::check_electronic_state`, every engine and kind)
 
@@ -203,7 +209,7 @@ science; this is where they sit in the pass.)*
 Keyed on `task.calculation`, not on a config class — every rung resolves a
 `SiestaConfig`, so a rule keyed on `TransportConfig` would fire for none of
 them. **The transport axis's k-point sampling is not here**: it is the
-k-point mesh's, above, where the open axis, a lead's own count and the
+k-point grids section's, above, where the open axis, a lead's own count and the
 transmission's grid are one rule each.
 
 | Check | Severity | Why |

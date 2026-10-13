@@ -379,33 +379,40 @@ def why_no_transport(engine: str) -> Optional[str]:
 #: is the rung's position in TRANSPORT_STAGES, one-based.
 RUNG_NOTES = {
     "seed": ("A closed periodic SCF of the whole junction.  It writes the "
-             "density every later rung starts from -- a starting guess, "
-             "never truth: it spares the device iterations and changes no "
-             "answer.  k-points: the shared mesh in the electrode plane, "
-             "one along z."),
+             "density every later stage starts from -- a starting guess "
+             "only: it spares the device iterations and changes no result.  "
+             "k-points: the shared k-point grid in the electrode plane "
+             "(x, y), and one k-point along z, because the cell is long "
+             "along z and the device only starts from this density."),
     "electrode_L": ("The left lead as a bulk crystal.  It writes the "
                     "Hamiltonian, overlap and Fermi level the device builds "
-                    "the left self-energy from -- read as truth.  k-points: "
-                    "the shared mesh in the electrode plane, which must be "
-                    "the device's, and many along z (100): the lead's "
-                    "Fermi level depends on them."),
-    "electrode_R": ("The right lead, likewise, on the same k-points.  Two "
-                    "lead runs even when the leads are identical, so the "
-                    "record stays auditable and the Results tab compares "
-                    "their Fermi levels."),
+                    "the left self-energy from, and the device takes them "
+                    "as given.  k-points: the shared k-point grid in the "
+                    "electrode plane (x, y), which must be the device's, "
+                    "and many k-points along z (100), because the lead's "
+                    "Hamiltonian and Fermi level depend on them."),
+    "electrode_R": ("The right lead, likewise, on the same k-points as the "
+                    "left.  Two lead runs even when the leads are "
+                    "identical, so the record stays auditable and the "
+                    "Results tab compares their Fermi levels."),
     "device": ("The open-boundary NEGF SCF of the junction between the two "
                "leads, at the bias.  It writes the converged Hamiltonian "
                "the transmission reads -- one per bias point.  k-points: "
-               "the shared mesh in the electrode plane, one along z."),
+               "the shared k-point grid in the electrode plane (x, y), and "
+               "one k-point along z, where the leads' self-energies stand "
+               "in for everything beyond the cell."),
     "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
                      "tbtrans runs no SCF, so this tab has no SCF settings: "
                      "the ones behind this T(E) are the device's and the "
                      "two leads', on their tabs, and T(E) is only as "
-                     "converged as those runs.  k-points: its own, finer "
-                     "mesh in the electrode plane -- three times the shared "
-                     "one unless you set it -- and one along z.  Nothing "
-                     "consumes its output, so tuning the window or the mesh "
-                     "re-runs the transmission alone, never an NEGF cycle."),
+                     "converged as those runs.  k-points: its own "
+                     "transmission k-point grid in the electrode plane "
+                     "(x, y), finer than the shared one -- three times it "
+                     "unless you set it -- because T(E) changes more "
+                     "sharply from one k-point to the next than the density "
+                     "does; and one k-point along z.  Nothing consumes its "
+                     "output, so changing the window or the grid re-runs "
+                     "the transmission alone, never an NEGF cycle."),
 }
 
 

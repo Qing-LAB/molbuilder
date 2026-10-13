@@ -383,7 +383,7 @@ metal-driven count warned until it is stated (ES8)
 
 ---
 
-## 6. Lattice & the k-point mesh
+## 6. Lattice & the k-point grid
 
 **Lattice (§2).** Either the caller passes `cell=` (a 3×3 Å matrix), or the emitter
 auto-generates the box via `struct.resolve_cell()` (isolated axes = bbox + 2·vacuum)
@@ -391,96 +391,106 @@ with the molecule centred. The per-axis / periodicity behaviour (which axes are
 periodic vs vacuum, `axis_kind`, `resolve_cell`) is the model's contract —
 [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md).
 
-### 6.1 The k-point mesh — one per rung, decided in one place *(2026-09-30, plan § 5w K3)*
+### 6.1 The k-point grid — one per stage, decided in one place *(2026-09-30, plan § 5w K3)*
 
-Every deck molbuilder writes for SIESTA or `tbtrans` samples the Brillouin zone
-on a Monkhorst–Pack mesh: a count and an offset per axis of the cell. `(1, 1, 1)`
-(Γ-only) is right for an isolated molecule in vacuum and too coarse for a real
-crystal (`tuning.md` § 2.7 has the recipes). The counts and the offset are
+**What a k-point is.** In a periodic structure the electrons' waves repeat
+from one copy of the cell to the next, apart from a phase shift; a k-point is
+one such shift — one value of the electrons' wavevector k, in reciprocal
+space. A calculation samples a regular set of them and averages. Every deck
+molbuilder writes for SIESTA or tbtrans samples k on a **k-point grid**
+(Monkhorst–Pack): a count and an offset along each axis of the cell, a
+4 × 4 × 1 k-point grid for example. *(This section says "k-point grid", never
+"mesh": in SIESTA the mesh is the real-space grid set by `MeshCutoff`.)*
+`(1, 1, 1)` — Γ alone, the single point k = 0 — is right for an isolated
+molecule in vacuum, where nothing repeats, and too coarse for a real crystal
+(`tuning.md` § 2.7 has the recipes). The counts and the offset are
 calculation parameters — `kgrid`, `kgrid_displacement`, `tbt_k_grid`,
 `electrode_kz` — never `Structure` fields.
 
-**What the mesh is on a rung is decided in one place, `molbuilder/kmesh.py`**,
-from two facts and the template's values: each axis's kind, as the structure
-states it (`Structure.axis_kind`,
-[`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2), and
-what the rung does along the calculation's transport axis.
+**What the k-point grid is on a stage is decided in one place,
+`molbuilder/kmesh.py`**, from two facts and the template's values: each axis's
+kind, as the structure states it (`Structure.axis_kind`,
+[`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2),
+and what the stage does along the calculation's transport direction (z).
 `kmesh.mesh_for(cfg, axis_kind, kind=, rung=, program=)` returns a `KMesh` —
-three `KAxis`, each carrying the axis's kind, its role on this rung, the count
-and offset written, and the item that answered — worked out once per deck and
-carried in its derived context; or nothing, when a value it needs is not three
-numbers, which is the declared type's refusal to give. The deck's writer, the
-settings gate and the derived settings read that one object; none of them works
-the mesh out again. A finished run's record keeps what its deck wrote, read
-back from the deck itself. *(Until 2026-09-30 nothing derived a mesh from the
-axes: four writers each built their own block from `cfg.kgrid`, the transport
-axis was forced to 1 in six places, and one fact carried two severities.)*
+three `KAxis`, each carrying the axis's kind, its role on this stage, the
+count and offset written, and the item that answered — worked out once per
+deck and carried in its derived context; or nothing, when a value it needs is
+not three numbers, which is the declared type's refusal to give. The deck's
+writer, the settings gate and the derived settings read that one object; none
+of them works the grid out again. A finished run's record keeps what its deck
+wrote, read back from the deck itself. *(Until 2026-09-30 nothing derived a
+k-point grid from the axes: four writers each built their own block from
+`cfg.kgrid`, the transport axis was forced to 1 in six places, and one fact
+carried two severities.)*
 
 | the axis | role | count | offset | answered by |
 |---|---|---|---|---|
-| periodic | sampled | `kgrid[i]` — on `tbtrans`, `tbt_k_grid[i]`, and when that is blank three times `kgrid[i]` above 1 (`kmesh.transmission_start`; [`transport.md`](?doc=engines/transport.md) § 0.3b) | `kgrid_displacement[i]` | the template — a blank transmission mesh, its rule (`KMesh.derived`) |
-| isolated | gamma | the same item | the same item | the template — above 1 it samples images of vacuum, and is warned |
-| a transport calculation's transport axis, on the seed, the device and the transmission | open | **1** | **0** | the axis: on the device and the transmission it is the open boundary, the leads' self-energies standing in for the sum along it; on the seed, a long cell whose density is only the device's start ([`transport.md`](?doc=engines/transport.md) § 0.2) |
-| the same axis on an electrode rung | lead | `electrode_kz` | **0** | the lead's own item: a lead is periodic bulk along transport, and its Hamiltonian and Fermi level are what the device's self-energy is built from; TranSIESTA compares its offset with the device's on every axis ([`transport.md`](?doc=engines/transport.md) § 0.2) |
+| periodic | sampled | `kgrid[i]` — on tbtrans, `tbt_k_grid[i]`, and when that is left blank, three times `kgrid[i]` where `kgrid[i]` is above 1 (`kmesh.transmission_start`; [`transport.md`](?doc=engines/transport.md) § 0.3b) | `kgrid_displacement[i]` | the template — a blank transmission k-point grid, by its rule (`KMesh.derived`) |
+| isolated | gamma | the same item | the same item | the template — above 1 it samples only the structure's periodic images, separated by vacuum, and is warned |
+| a transport calculation's transport direction (z), on the seed, the device and the transmission | open | **1** | **0** | the axis: on the device and the transmission it is the open boundary, where the leads' self-energies take the place of a sum over k-points along z; on the seed, a long cell whose density is only the device's starting point ([`transport.md`](?doc=engines/transport.md) § 0.2) |
+| the same axis on a lead's stage | lead | `electrode_kz` | **0** | the lead's own item: a lead is periodic bulk metal along z, and its Hamiltonian and Fermi level are what the device's self-energy is built from; TranSIESTA compares its offset with the device's on every axis ([`transport.md`](?doc=engines/transport.md) § 0.2) |
 | an axis declared `transport` in any other calculation — relaxing a junction | sampled | as periodic | as periodic | the template: the deck is periodic along it *(user, 2026-09-30)* |
 
-A transport calculation's transport axis is the cell's third, `c` (A3): the
-composition states it (`transport/compose.py`, `kmesh.TRANSPORT_AXIS`). **The
-seed takes one point too**: it is periodic along transport, but its cell is
-long there and its density matrix is only the device's starting point
+A transport calculation's transport direction is the cell's third vector,
+`c`, along z: the composition states it (`transport/compose.py`,
+`kmesh.TRANSPORT_AXIS`). **The seed takes one k-point there too**: it is
+periodic along z, but its cell is long there, and its density matrix is only
+the device's starting point
 ([`transport.md`](?doc=engines/transport.md) § 0.2). The engines agree where
-they force it: TranSIESTA's NEGF step and `tbtrans` put that axis at one point with zero
-offset whatever a deck says (`ts_kpoint_scf.F90`, `process_k_cell_displ`, in TS
-mode; `m_tbt_kpoint.F90`, `read_kgrid`: *"We MUST kill all k-points in this
-direction"*). The seed, a plain SIESTA run, and the device's own periodic start
-read the grid as written, so the rule writes the one point on every open rung
-itself.
+they force it: TranSIESTA's NEGF step and tbtrans put that axis at one k-point
+with zero offset whatever a deck says (`ts_kpoint_scf.F90`,
+`process_k_cell_displ`, in TS mode; `m_tbt_kpoint.F90`, `read_kgrid`: *"We
+MUST kill all k-points in this direction"*). The seed, a plain SIESTA run, and
+the device's own periodic start read the grid as written, so the rule writes
+the one k-point itself on every open stage.
 
-**One writer.** `kmesh.write(mesh)` is the only text a mesh has: SIESTA's
-`%block kgrid_Monkhorst_Pack` and `tbtrans`'s `%block TBT.k`, three rows of
-counts, each with its offset column. SIESTA reads a row of one to four values
-(`kpoint_t.F90`); `tbtrans` reads its block only when a row carries the offset
-column — a row of three counts is not read, and T(E) is computed at Γ alone
-(`m_tbt_kpoint.F90`, `read_kgrid`) — so the column is written always. The list
-form, `TBT.k [3 3 1]`, carries no offset, so the block is written always too —
-one form whether or not the grid is displaced (plan § 5w.3's ruling asked for
-the block when displaced; one form serves both). The transmission deck
-carries two meshes: `TBT.k`, the transmission's own, and the ladder's shared
-SCF block, which `tbtrans` reads only when `TBT.k` is absent — kept as the deck
-keeps the other shared settings (plan TD12).
+**One writer.** `kmesh.write(mesh)` is the only text a k-point grid has:
+SIESTA's `%block kgrid_Monkhorst_Pack` and tbtrans's `%block TBT.k`, three
+rows of counts, each with its offset column. SIESTA reads a row of one to four
+values (`kpoint_t.F90`); tbtrans reads its block only when a row carries the
+offset column — a row of three counts is not read, and T(E) is computed at Γ
+alone (`m_tbt_kpoint.F90`, `read_kgrid`) — so the column is written always.
+The list form, `TBT.k [3 3 1]`, carries no offset, so the block is written
+always too — one form whether or not the grid is displaced (plan § 5w.3's
+ruling asked for the block when displaced; one form serves both). The
+transmission deck carries two k-point grids: `TBT.k`, the transmission's own,
+and the ladder's shared SCF block, which tbtrans reads only when `TBT.k` is
+absent — kept as the deck keeps the other shared settings (plan TD12).
 
-**What reads the mesh.** `Diag.ParallelOverK`'s automatic answer — *more than
-one point* — is counted on the mesh the deck writes: an electrode's `kx ky 100`,
-not the template's `kx ky 1`. The dipole advisory reads no mesh: it asks the
-axes SIESTA computes on, a box of vacuum on every one
+**What reads the k-point grid.** `Diag.ParallelOverK`'s automatic answer —
+*more than one k-point* — is counted on the grid the deck writes: a lead's
+`kx ky 100`, not the template's `kx ky 1`. The dipole advisory reads no grid:
+it asks the axes SIESTA computes on, a box of vacuum on every one
 ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1;
 it read *every count 1* until 2026-10-01). A finished SIESTA run's recorded contract (`parse/contract.py`)
 records its counts (`kgrid`, all three — `k_mesh_transverse` until 2026-10-02)
 and since 2026-09-30 its offset (`kgrid_displacement`); a transport citation carries
 both into the template, the transport axis laid on by the rule above.
 
-**What a kind fixes.** On a transport calculation no rung reads the third
-component of `kgrid`, `tbt_k_grid` or `kgrid_displacement`: the open rungs write
-1 and 0, a lead writes `electrode_kz` and 0. `kmesh.fixed(item, kind)` names
-those components with the reason; the form shows them locked, and every door
-refuses another value through the one per-value door, `template.why_not`
+**What a kind fixes.** On a transport calculation no stage reads the third
+component of `kgrid`, `tbt_k_grid` or `kgrid_displacement` as a choice: the
+open stages write 1 and 0, a lead writes `electrode_kz` and 0.
+`kmesh.fixed(item, kind)` names those components with the reason; the form
+shows them locked, and every door refuses another value through the one
+per-value door, `template.why_not`
 ([`template.md`](?doc=engines/template.md) § 5.3).
 
-**The checks — one each, on the meshes a deck writes** (`kmesh.check`, all
-of a deck's meshes at once: the offset is one value every mesh shares, so its
-finding is said once; a mesh built from a value the per-value door refused is
-not judged — that refusal stands alone).
+**The checks — one each, on the k-point grids a deck writes** (`kmesh.check`,
+all of a deck's grids at once: the offset is one value every grid shares, so
+its finding is said once; a grid built from a value the per-value door
+refused is not judged — that refusal stands alone).
 
 | finding | severity | where it is decided |
 |---|---|---|
-| an isolated axis sampled more than once | warn — `k > 1` is the person's explicit statement *(user, 2026-08-20)*; the points sample images of vacuum, cost for nothing | `kmesh.check`, the settings gate |
-| on a transport calculation's SCF rungs, an isolated axis sampled more than once **while the other transverse axis is periodic** — a stripe | **refused** — TranSIESTA stops the device: a lead that repeats along one transverse axis must sample the other, where it has no neighbours, at one point (`ts_electrode.F90`, `check_in_cell`: *"found incompatible k-grids"*), and the seed and both leads would have run first. A wire, isolated on both, passes that check and is warned as above. Refused for now *(user, 2026-09-30: "a special case that will take a lot of effort to get right")* | `kmesh.check`, the settings gate — at the seed's `prep`, before anything runs |
-| a sampled axis above 1 whose images sit ≥ 5 Å apart | warn, a hint — the geometric gap is the real vacuum; *"if deliberate, carry on"* | `kmesh.check` |
-| an offset on an axis sampled once | warn — it moves that point off Γ (SIESTA and `tbtrans` read the offset modulo 1, so 1.0 is Γ again) | `kmesh.check` |
+| an isolated axis sampled with more than one k-point | warn — `k > 1` is the person's explicit statement *(user, 2026-08-20)*; the extra k-points sample only the structure's periodic images, separated by vacuum, cost for nothing | `kmesh.check`, the settings gate |
+| on a transport calculation's SCF stages, an isolated axis sampled with more than one k-point **while the other axis of the electrode plane (x, y) is periodic** — a stripe | **refused** — TranSIESTA stops the device: a lead that repeats along one axis of the electrode plane must take one k-point along the other, where it has no neighbours (`ts_electrode.F90`, `check_in_cell`: *"found incompatible k-grids"*), and the seed and both leads would have run first. A wire, isolated along both x and y, passes that check and is warned as above. Refused for now *(user, 2026-09-30: "a special case that will take a lot of effort to get right")* | `kmesh.check`, the settings gate — at the seed's `prep`, before anything runs |
+| a sampled axis with more than one k-point, whose periodic images sit ≥ 5 Å apart | warn, a hint — the geometric gap is the real vacuum; *"if deliberate, carry on"* | `kmesh.check` |
+| an offset on an axis sampled with one k-point | warn — it moves that one k-point off Γ (SIESTA and tbtrans read the offset modulo 1, so 1.0 is Γ again) | `kmesh.check` |
 | a component a kind fixes, holding another value | refused | `kmesh.fixed` through `template.why_not` — every door |
 | a count at or below 0; `electrode_kz` at or below 1 | refused | the items' own limits, `above` (`template.md` § 5.3) — every door |
-| `electrode_kz` below 50 | warn — the SIESTA manual's floor ("at least >50 should easily be reachable"), not a convergence proof: only raising it and seeing the lead's Fermi level stay put shows it has settled | its recommended `range` |
-| on a transport calculation, a transmission mesh the person set **coarser than the SCF mesh** along x or y | warn — T(E) needs at least the points the density was converged on, and usually many more (the manual: "much denser"); a blank one is three times the SCF mesh and never coarser ([`transport.md`](?doc=engines/transport.md) § 0.3b) | `kmesh.check`, the settings gate, on the transmission's deck, which carries both meshes |
+| `electrode_kz` below 50 | warn — the SIESTA manual's floor ("at least >50 should easily be reachable"), not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled | its recommended `range` |
+| on a transport calculation, a transmission k-point grid the person set **coarser than the shared k-point grid** along x or y | warn — T(E) needs at least the k-points the density was converged on, and usually many more (the manual: "much denser"); a blank one is three times the shared grid and never coarser ([`transport.md`](?doc=engines/transport.md) § 0.3b) | `kmesh.check`, the settings gate, on the transmission's deck, which carries both grids |
 
 `k = 1` on a periodic axis states nothing and is checked not at all *(user,
 2026-08-20; the "under-converged" warning it replaced is retired)*.

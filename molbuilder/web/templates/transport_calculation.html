@@ -34,10 +34,10 @@
 <!-- ============================================================ -->
 <!--  The composite's describe surface:                           -->
 <!--    1. The junction — cite a finished run or a pair; viewer follows -->
-<!--    2. Shared by every rung — the template's one description    -->
-<!--    3. Charge and spin — the junction's, for every rung         -->
-<!--    4. The physics, rung by rung — the bias list, its treatment,  -->
-<!--       and each rung's own settings (its override bag)          -->
+<!--    2. Shared by every stage — the template's one description   -->
+<!--    3. Charge and spin — the junction's, for every stage        -->
+<!--    4. The physics, stage by stage — the bias list, its treatment,-->
+<!--       and each stage's own settings (its override bag)         -->
 <!--    5. Describe — the one button; writes task.json + template    -->
 <!-- ============================================================ -->
 <main class="app-grid">
@@ -64,7 +64,8 @@
       or <code>molbuilder xv2xyz --from-run</code>), or a frame set a
       script wrote onto that pair through the structure's own doors —
       every frame then runs at every voltage of the list.  Either answers the
-      basis, functional and mesh, and step 2 shows them as the run's,
+      basis, the functional and the real-space mesh, and step 2 shows them
+      as the run's,
       yours to change; a pair brings no pseudopotentials, so step 2 asks
       for the directory that holds them.  A structure that records no
       optimization is not a citation: relax it first (Structure
@@ -130,7 +131,7 @@
     <div id="transport-molview-host" class="molviewer-host"></div>
   </section>
 
-  {#- ===================== 2. Shared by every rung ===================== -#}
+  {#- ===================== 2. Shared by every stage ==================== -#}
   {#- THE SHARED PANEL (engines/transport.md 3.8.2): the one surface that
       edits the TEMPLATE.  Every item the catalogue marks `shared` for
       transport lands here and nowhere else; the per-rung form below never
@@ -138,16 +139,16 @@
       /api/transport/schema?surface=shared, again whenever the junction
       changes, because the values are the citation's answers. -#}
   <section class="card" id="shared-card">
-    <h2>2. Shared by every rung</h2>
+    <h2>2. Shared by every stage</h2>
     <p class="hint">
       <strong>One electronic description for all five stages.</strong>
       The lead self-energy attaches to a device Hamiltonian built the
-      same way, so the basis, the functional, the mesh, the energy
-      shift, the electronic temperature, the spin, the species order
-      and the transverse k-sampling are decided once, here, and no
-      stage may override them.  <strong>Changing a value here rebuilds
+      same way, so the basis, the functional, the real-space mesh, the
+      energy shift, the electronic temperature, the spin, the species
+      order and the shared k-point grid in the electrode plane (x, y) are
+      decided once, here, and no stage may override them.  <strong>Changing a value here rebuilds
       every stage that reads it</strong> &mdash; all five, but where a value
-      says which rungs it is for.
+      says which stages it is for.
     </p>
     <p class="hint" id="transport-shared-source">Loading&hellip;</p>
     <div id="transport-shared-container" class="param-grid">
@@ -158,7 +159,7 @@
   {#- ===================== 3. Charge and spin ===================== -#}
   {% set hint %}<strong>Read the cited junction back before you spend any
       compute on it.</strong>  A transport junction is neutral, and its spin
-      is ONE answer for all five rungs &mdash; the cited relaxation's, or,
+      is ONE answer for all five stages &mdash; the cited relaxation's, or,
       left blank on the shared panel, worked out on the whole junction.  The
       answer is below with its reason, and follows every edit to the shared
       panel's spin fields.{% endset %}
@@ -167,7 +168,7 @@
 
   {#- ===================== 4. The physics ===================== -#}
   <section class="card" id="parameters-card">
-    <h2>4. The physics, rung by rung</h2>
+    <h2>4. The physics, stage by stage</h2>
     {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
         fields under it: at zero bias the whole non-equilibrium half of
         the density contour is inert, and more than one value asks how
@@ -218,15 +219,16 @@
       walking the points, each starting from the one before it.
     </p>
     <p class="hint">
-      <strong>One tab per rung, in the order they run.</strong>  Pick a
-      rung; its tab opens with what that rung computes and hands on, then
-      its cards, each named with the rung (<em>seed · Convergence
+      <strong>One tab per stage, in the order they run.</strong>  Pick a
+      stage; its tab opens with what that stage computes and hands on, then
+      its cards, each named with the stage (<em>seed · Convergence
       targets</em>).  The seed, both leads and the device each converge
       their own SCF, so each of their tabs carries the same SCF settings
       with its own values; the transmission runs none.  A value typed on a
-      tab is that rung's alone, written into its own deck.  Basis,
-      functional, mesh and the rest of step 2 are not here: they bind every
-      rung, and a per-rung value for one is refused by name.  The grey tag
+      tab is that stage's alone, written into its own deck.  Basis,
+      functional, the real-space mesh, the shared k-point grid and the rest
+      of step 2 are not here: they bind every stage, and a per-stage value for
+      one is refused by name.  The grey tag
       under a field is the fdf keyword it writes; <em>help</em> expands the
       reasoning.
     </p>
@@ -234,8 +236,8 @@
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:
-      § 2a.13 every parameter and what it writes, § 0.2 the three k-grid
-      axes, § 0.4 the four things that must agree.
+      § 2a.13 every parameter and what it writes, § 0.2 the three k-point
+      grids, § 0.4 the four things that must agree.
     </p>
     {#- ONE PANEL PER ENGINE (engines/transport.md 3.8.8): a tab per engine
         molbuilder knows (`transport.stages.engine_tabs`); the panel is the
@@ -274,7 +276,7 @@
     <p class="hint">
       <strong>Write the calculation down.</strong>  This produces
       <code>task.json</code> — the citation, the bias list and your
-      per-rung settings from step 4 — and the template that carries the
+      per-stage settings from step 4 — and the template that carries the
       shared description from step 2, in the folder selected in the
       Projects sidebar.  It runs nothing; the stages are prepared and
       launched afterwards.
@@ -325,8 +327,9 @@
 
   <section class="card" id="transport-stages-card">
     <h2>The five stages, in order</h2>
-    <p class="hint">Each tab in step 4 is one of these.  What each one
-      computes, and what it hands to the next:</p>
+    <p class="hint">Each tab in step 4 is one of these stages.  What each
+      one computes, what it hands to the next, and which k-points it
+      samples:</p>
     {#- Filled from the rung list the schema route answers -- the same notes
         each tab opens with (transport/stages.py RUNG_NOTES), each headed by
         the rung's own number, as its tab is ("1 · seed"). -#}
@@ -335,70 +338,94 @@
 
   <section class="card" id="transport-kpoints-card">
     <h2>k-points: what each stage samples, and why</h2>
-    <p class="hint">The electrodes are infinite surfaces in the x&ndash;y
-      plane, so the junction's cell repeats sideways, one molecule in each
-      copy; along z it runs from one lead to the other and does not repeat.
-      Each run samples a few points of how the electrons' waves repeat, and
-      averages them: more points, more accurate, slower.  The stages build
-      on one another, so each samples what its own job needs.</p>
+    <p class="hint">A crystal repeats one cell over and over, and so do its
+      electrons' waves: from one copy of the cell to the next, a wave comes
+      back the same apart from a phase shift.  A <em>k-point</em> is one
+      such shift.  A run cannot follow every shift, so it samples a regular
+      <em>k-point grid</em> of them &mdash; for example
+      4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;1 &mdash; and averages: more
+      k-points, more accurate, slower.</p>
+    <p class="hint">Here the electrodes are infinite metal surfaces in the
+      electrode plane (x, y), so the junction's cell repeats sideways, one
+      molecule in each copy.  Along the transport direction (z) the
+      junction runs from one lead to the other and does not repeat; a lead
+      on its own is bulk metal, which does.</p>
+    <p class="hint">Three k-point settings, each set in one place: the
+      <strong>shared k-point grid</strong> (step&nbsp;2, <em>k-point
+      grid</em>), the <strong>leads' k-points along z</strong> (each lead's
+      tab) and the <strong>transmission k-point grid</strong> (the
+      transmission's tab).</p>
 
     <h3>Seed</h3>
-    <p class="hint">The shared <em>k-point mesh</em> (step 2) in the
-      electrode plane, one point along z.  Its density is only where the
-      device starts, and its cell is long along z.</p>
+    <p class="hint">The shared k-point grid in the electrode plane, and one
+      k-point along z.  Its cell is long along z, and its density is only
+      where the device starts, so one point there is enough.</p>
 
     <h3>Each lead</h3>
-    <p class="hint">The shared mesh in the electrode plane, and it must be:
-      the device uses the lead as the bulk of its own electrode region, so
-      both are sampled alike &mdash; TranSIESTA stops otherwise.</p>
-    <p class="hint">Many points along z &mdash; 100, on the lead's tab
-      (warned below 50).  The device sums the endless lead exactly, but
-      from this run's Hamiltonian, aligned to this run's Fermi level: too
-      few points here shift every T(E), and nothing says so.</p>
+    <p class="hint">The shared k-point grid in the electrode plane, and it
+      must be: the device uses each lead as the bulk metal of its own
+      electrode region, so both must be sampled on the same k-points
+      &mdash; TranSIESTA stops if they are not.</p>
+    <p class="hint">Many k-points along z &mdash; 100, on the lead's tab
+      (warned below 50).  A lead is a short cell of bulk metal, endless
+      along z, and a short cell needs many points along its length.</p>
+    <p class="hint">The device adds the endless lead through the
+      <em>self-energy</em>, a correction that stands in for the lead beyond
+      the cell.  It is built from this run's Hamiltonian and aligned to
+      this run's Fermi level, so too few k-points here shift every T(E),
+      and no error says so.</p>
 
     <h3>Device</h3>
-    <p class="hint">The shared mesh in the electrode plane, one point along
-      z: the leads stand in for everything beyond the cell, and TranSIESTA
-      forces it.</p>
+    <p class="hint">The shared k-point grid in the electrode plane, and one
+      k-point along z.  Along z the device does not repeat: the leads'
+      self-energies stand in for everything beyond the cell, and
+      TranSIESTA forces one point there.</p>
 
     <h3>Transmission</h3>
-    <p class="hint">Its own mesh in the electrode plane, finer than the
-      shared one: T(E) changes sharply from point to point there, where
-      the density is smooth.  Left blank it is three times the shared mesh,
-      and follows it; set it on the transmission's tab and it is yours.  It
-      may differ because tbtrans rebuilds each lead at its own points.  One
-      point along z.</p>
+    <p class="hint">Its own transmission k-point grid in the electrode
+      plane, finer than the shared one.  T(E) changes sharply from one
+      k-point to the next, where the density is smooth, so it needs more
+      points.</p>
+    <p class="hint">Left blank it is three times the shared grid, and
+      follows it; set it on the transmission's tab and it is yours.  It may
+      differ from the shared grid because tbtrans rebuilds each lead's
+      self-energy at its own k-points.  One k-point along z.</p>
 
     <h3>Setting them up, in order</h3>
     <ol class="hint">
-      <li><strong>The shared mesh</strong> starts as the junction you cited.
-        Raise each count about 1.5&times; and run the leads and the device
-        again: it is settled when the leads' Fermi level and T(E) at the
-        Fermi level stay put.</li>
-      <li><strong>The leads' count along z</strong>: keep 100.  Raising it
-        must not move a lead's Fermi level &mdash; the Results tab shows
-        both leads'.</li>
-      <li><strong>The transmission's mesh</strong>: run it at its start,
-        then about 1.5&times; finer (12 &rarr; 18), and lay the two T(E)
-        over each other.  Settled when T(E) at the Fermi level moves by less
-        than about 1&nbsp;% and no peak moves.  Keep that mesh for every
-        voltage.</li>
+      <li><strong>The shared k-point grid</strong> starts as the junction
+        you cited.  Raise each count about 1.5&times; and run the leads and
+        the device again: it is settled when the leads' Fermi level and T(E)
+        at the Fermi level stay put.</li>
+      <li><strong>The leads' k-points along z</strong>: keep 100.  Raising
+        the count must not move a lead's Fermi level &mdash; the Results
+        tab shows both leads'.</li>
+      <li><strong>The transmission k-point grid</strong>: run it at its
+        start, then about 1.5&times; finer (12 &rarr; 18), and lay the two
+        T(E) over each other.  It is settled when T(E) at the Fermi level
+        moves by less than about 1&nbsp;% and no peak moves.  Keep that grid
+        for every voltage.</li>
     </ol>
-    <p class="hint">A finer transmission mesh cannot rescue a shared mesh
-      that was too coarse: the device itself would be wrong.</p>
+    <p class="hint">A finer transmission grid cannot rescue a shared grid
+      that was too coarse: the device's Hamiltonian itself would be wrong,
+      and more k-points do not fix it.</p>
 
     <h3>Example</h3>
     <p class="hint">A gold junction three gold atoms wide (about
-      8.7&nbsp;&Aring; side to side): 4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;1
-      shared, 100 along each lead, the transmission
-      12&nbsp;&times;&nbsp;12&nbsp;&times;&nbsp;1.</p>
+      8.7&nbsp;&Aring; side to side): a
+      4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;1 shared k-point grid, 100
+      k-points along z on each lead, and a
+      12&nbsp;&times;&nbsp;12&nbsp;&times;&nbsp;1 transmission k-point
+      grid.</p>
 
-    <h3>One point in a repeating direction</h3>
-    <p class="hint">A grid of 1 along x or y, while the gold surface repeats
-      there, is known to add false peaks to T(E) and shift the conductance
-      by tens of per cent.  Describe says so beside the grid; it is a
-      warning, because one point is fine for a quick first test, and it is
-      never said for a chain in a box, where nothing repeats sideways.</p>
+    <h3>One k-point in a repeating direction</h3>
+    <p class="hint">A count of 1 along x or y, while the gold surface
+      repeats there, samples the metal's bands at one place only.  It is
+      known to add false peaks to T(E) and to shift the conductance by tens
+      of per cent, so Describe warns beside the grid.  It is a warning, not
+      a refusal: one point is fine for a quick first test, and the warning
+      is never said for a chain in a box, where nothing repeats
+      sideways.</p>
 
     <h3>Sources</h3>
     <p class="hint">The SIESTA 5.4.2 manual and source
