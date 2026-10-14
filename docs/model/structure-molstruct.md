@@ -97,6 +97,26 @@ carry a field the codec doesn't know, nor a frame row set for a frame the
 document does not hold; this is what closed the `cell_origin`-dropped-on-reload
 bug).
 
+**`atom_order`** *(v14; decided 2026-10-14, not built —
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1)* is `null`
+for a structure in the person's input order, and for one in an engine's order
+its index, written whole:
+
+```text
+"atom_order": {"key": "held-first",                  one of transport.sort.SORT_KEYS
+               "sorted_to_original": [2, 0, 1],      each a bijection of 0 … n−1,
+               "original_to_sorted": [1, 2, 0]}      the two inverse
+```
+
+It is **system** information (stored whole, never per atom), and it holds
+only for the atom list as it stands — so an edit that adds or removes atoms
+refuses a remapped structure (`model/structure.md` § 2.2). It is a metadata
+field like the others, spread in and read through the scratch structure, which
+refuses an index that is not two inverse bijections over `n_atoms_total`
+atoms, or names no key. **Present means remapped** (I2): a sidecar carries one
+only for an engine's own record — the transport composer's junction — since
+every pair molbuilder writes for a person is restored first (I1).
+
 **`customized`** (`model/structure.md` § 2.2d) is `null` when it holds no row
 at all — as every other metadata field states its unset value — and otherwise
 written whole: `rows`, and `frames` with exactly `n_frames_total` entries, an
@@ -263,6 +283,7 @@ at any of them is refused, not upgraded.
 | v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
 | v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
 | **v13** | **current** *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
+| v14 | *decided 2026-10-14, not built* — the optional **`atom_order`**, the index of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file states the person's order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
 
 ### Changing the schema
 

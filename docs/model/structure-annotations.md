@@ -184,6 +184,20 @@ it answers with, through the block's one reader (`script_emit.apply_atom_metadat
 would reject the envelope-less block. *(The browser posted it back to
 `/api/build/load` beside a text until 2026-09-25.)*
 
+**The block states the deck's index, and the block is the serialiser's**
+*(decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
+§ 2.2a, plan § 5ab R2)*. A deck written from a reordered copy states its
+`atom_order` in this block (I5) — the run's one index, read by the run door
+through `runs.declared` and nowhere else. The block is written from the
+structure's own `metadata_to_dict`, not from the hand list
+`emit_atom_metadata` takes today (`regions`, `annotations`, `customized`), so
+the index — and any field the structure gains — rides it with no edit; its
+emission gate, `apply_atom_metadata`'s early return and
+`Declared.atom_metadata_for` each count the index as something the block
+says, so a deck stating only its order is not dropped. The bridge above then
+**marks** what it builds: the Results tab shows a reordered run's structure
+in the engine's order with its index, and a save from it is restored (I1).
+
 ### 4b. Engine translation (one-way: data model → engine input)
 
 The engine's physics *requires* certain metadata as input blocks. This reads

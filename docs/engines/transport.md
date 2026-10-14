@@ -1843,6 +1843,16 @@ else.
 
 ### 2a.12 What the Results surface reads
 
+*(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
+§ 2.2a, plan § 5ab R5–R6: the report draws the composed junction **in the
+person's order**, restored by a server door — `junction.xyz` stays the
+engine's record, since the device's regions and the leads are read from it in
+its order — and a projected-DOS selection is mapped into the junction's order
+through its index (`sorted_of`) and its `outside_device` atoms back
+(`original_of`); the record's per-atom content and the data file's atom axis
+are in the person's order (I1). Today they are all in the junction's sorted
+order, named in words.)*
+
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the
 surface should present both.
@@ -1948,7 +1958,7 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 | `energy_ev` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
 | `spin` | the spin channels TBtrans wrote, by the record's names — the one channel of a `non-polarized` run, or `up` and `down` |
 | `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
-| `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components |
+| `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components *(Decided 2026-10-14, not built: on the person's side — the data file is a result molbuilder computes for the person, so its atom axis is in the person's order, restored through the junction's own index, and the record's per-atom content the same; the composed junction stays the engine's record, carrying its index in its sidecar; `model/overview.md` § 2.2a, I1; plan § 5ab R5)* |
 | `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's `.TBT.nc` holds — those TBtrans was asked for (`TBT.T.Eig`), none where no file is read, nor for a polarized point, whose eigenchannels are one set per spin, in the record |
 | `rung` | the rungs that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names |
 | `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
@@ -2512,6 +2522,21 @@ built 2026-10-09, plan § 5z Q17-c)*.
 |---|---|---|---|
 | **a finished relaxation run** — its folder, `<calc>/<NN>_<stage>/run-<n>`, or a flat calculation's root | the run the folder speaks for (`runs.run_of`), read as the Results tab reads a run: its result (`runs.openable`) parsed by the registry — every geometry step with its cell — its labels, held atoms and box (`runs.declared`), its record (`run_info`: `info.calculation`, `info.relaxation`), all through `runs.view_of`; its launch record and the wrapper's conclusion (`runrecord.ending`); its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran, its record through `parse.contract.contract_of` |
 | **a structure pair** — `<name>.xyz` and its `<name>.molstruct.json` | the frames; the labels; `info.calculation`, the record of the optimization frame 0 came from — its engine, its deck and the deck's `contract` (basis, functional, mesh, k-grid, temperature, spin, charge, and how its SCF converged), written by `contract_of` when the pair was saved (the Results tab, `molbuilder xv2xyz --from-run`) | geometry (every frame) · labels · **settings** | the pair's `info.calculation.contract`; the pseudopotentials from the directory you give that holds them all |
+
+**A cited run in an engine's order, and a run that is not a relaxation**
+*(decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
+§ 2.2a, plan § 5ab R3)*. Today any finished run of ours is accepted — a
+vibration's force-constant stage among them, whose last geometry is a
+displacement — and a vibration's `relax` stage, a run in the `held-first`
+order, is sorted again for TranSIESTA from that order, so the record maps to
+the engine's order, not the person's. Decided: **a run whose verdict is not a
+geometry relaxation is refused**, as the condition above says, through the
+verdict `_classify_run` already reads; **a cited run's geometry crosses back
+first** — its relaxed structure and its starting geometry (the leads'
+*unmoved* gate compares the two), restored to the person's order through the
+run's own index by `_run_geometry`, the one door every reader of a cited run
+asks — and the composer sorts it for TranSIESTA from there (I3, I4). A cited
+pair is in the person's order already (I1).
 
 **One reader takes both kinds' settings** (`citation_defaults.citation_answers`):
 a cited run's deck through `contract_of` when the transport is described, a

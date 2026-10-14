@@ -931,7 +931,9 @@ Walk through it with the *why* for each piece:
 - **`JobSet.shared`** lists files that every job needs but that never change
   between jobs — the pseudopotentials and the geometry, and the
   atom-permutation record when the decks come from a sorted copy
-  (`engines/vibration.md` § 5.2). (The monitor travels beside each wrapper
+  (`engines/vibration.md` § 5.2). *(Decided 2026-10-14, not built: the
+  record retires — each deck states its own index, `model/overview.md`
+  § 2.2a, plan § 5ab R5.)* (The monitor travels beside each wrapper
   instead, `run-reports.md` § 2.3, and so does a job's finish.) They
   are **copied** into each job's folder as real files (user, 2026-08-24): a run
   directory holds everything it needs, and a link holds nothing
@@ -2001,6 +2003,17 @@ starts from**:
 | what a stage starts from | **the stage before it, by default**: medium's first launch takes the newest attempt of the stage before it and copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). A stage whose `restart` is `clean`, and the first stage, start from the calculation's structure | the stages before it, by the kind: **transport, files at the first launch** — the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest attempt that ended so and ran the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11); **a force-constant stage, its deck written at prep** from `relax`'s newest attempt, which must have finished — its relaxed coordinates and cell — and that same run's restart files copied at its first launch ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a) |
 | when the stage before has not finished | the stage is prepared all the same; its **launch** refuses before anything is sent, says why in the status door's words, and names what to do: launch the one before, let it finish, or run it again — or choose: `--from` an earlier run of it that finished, `--cold` the structure (on the flat layout, the stage's run card's `restart: clean`) — a launch says these for one stage, so a member of a group of several is told to give it a group of its own first. One that finished without converging is taken, with a warning; one that failed is refused | transport: the **launch** refuses before anything is sent and names the stage to run first; a force-constant stage: its **prep** refuses — its preview gives the same refusal (§ 5.0) — since its deck needs `relax`'s geometry |
 | another source | yours to choose — any attempt by `--from`, none by `--cold`, at the launch | the frequency stage: a `relax` run you name with `--from` **at its prep**, taken as said — no other run, and no `--cold` at its first launch, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. The kind's first rung — a vibration's `relax` — builds on the structure: `--from` naming a run of another stage is refused. A transport rung: none — what it takes is its kind's, gathered from the rungs upstream at its first launch; launched again, `--gather` takes them anew, and `--cold` starts it with none of its own files, keeping what it gathered; `--from` is refused, and `--cold` at its first launch |
+
+**What crosses between stages, when a deck is a reordered copy** *(decided
+2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
+plan § 5ab R3–R4)*. A stage that takes another's **geometry** reads it through
+the run door, restores it to the person's order through that run's own index,
+and sorts its own copy from it, as every prep does (I3–I5) — never row by row
+from one deck's order into another's. A **restart file** — the stage before's
+density, geometry or history, continued or gathered — is carried only when the
+two decks state the same index, or both none; otherwise it is not carried, and
+the launch says so (I6). A lead's Hamiltonian describes the lead's own cell
+and crosses as today.
 
 **What *finished* means, and how a choice is recorded** *(user: "yes, … but
 user can force a structure still")*. The rule is *The task*'s — by default the

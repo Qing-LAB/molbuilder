@@ -748,6 +748,16 @@ cover lifts when the viewer signals it has painted, or failed to (a viewer
 that cannot load its file says so and signals too), or after a 15-second
 safety timeout.
 
+**A reordered run is shown in the engine's order, marked** *(decided
+2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
+plan § 5ab R2)*: a SIESTA vibration's stages and the transport rungs run on a
+reordered copy; their frames, forces, held atoms and labels agree with each
+other in the engine's order, and the viewer says which order it is — from the
+structure's `atom_order`, read at every settle, never a notice that a poll
+would clear. Saving or exporting from it writes the person's order, restored
+(I1); the transport report draws its junction restored (R6). Today the view is
+the engine's order, unmarked.
+
 The viewers you can land in — **six, all from the result dropdown**
 ([`presenters.md`](?doc=web/presenters.md) § 1 is the registry's own list).
 Each sits on page-shell's `.card` surface: the structure, spectra and the

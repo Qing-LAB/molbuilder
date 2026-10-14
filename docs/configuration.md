@@ -524,7 +524,12 @@ writer, the structure codec, the relaxation, and a vibration's rules,
 selector and writer.  Its rule is **the standard library and numpy at load;
 in the functions the script calls also ASE -- which the PySCF env carries for
 it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run
-on the GPU; AND travels**; its members import each other the same two ways.
+on the GPU; AND travels**; its members import each other the same two ways. *(Decided 2026-10-14, not built: a SIESTA vibration's
+finish reads its index from its own deck — `deck_record` and `atom_permutation`,
+already travelling — and restores the spectrum's structure with
+`Structure.restored()`, so `structure.py` and `sidecars/molstruct.py` join
+`mb_vibration.pyz` with two-way imports; `model/overview.md` § 2.2a, plan
+§ 5ab R5 and V1.39.)*
 The one member the script imports before numpy -- the thread set-up's,
 `runtime_info` -- imports nothing that loads numpy (the standard library at
 load; psutil inside the core count when the env has it, and cupy and

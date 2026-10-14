@@ -187,8 +187,11 @@ survive the sidecar, bump `SCHEMA_VERSION` and add the new version to
 `READABLE_VERSIONS` (see `structure-molstruct.md`); (4) if MolView must show it,
 `structureFromServer` reads it from the envelope (`payload.structure`, the
 structure's own dict, as it reads `info`) and `structureForServer` writes it
-back — the model's two translators, and nothing else in the browser names it
-(`web/molview.md` § 6.2); (5) add a
+back — the model's two translators (`web/molview.md` § 6.2); *(untrue
+today in one place: `model.js`'s `getStructure` lists the master copy's
+fields too, a third site — decided 2026-10-14, not built: the browser carries
+the metadata block whole through one function each way, so step (4) goes,
+and a field reaches every road with no edit; plan § 5ab, R1)*; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 writer (`sidecars/molstruct.to_dict`), its reader
 (`parse/sidecars/molstruct.load_text`) or `apply_to_structure` — each SPREADS
@@ -206,6 +209,26 @@ fine (`apply_metadata_dict` ignores unknown keys)"* until 2026-09-25, which the
 code has never done — found by review when `cell_origin` was retired. Never
 leave a "read-but-never-write" half-migration — that is the drift this contract
 exists to prevent.
+
+**The index of a remapped structure** *(decided 2026-10-14, not built —
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1)*. A ninth
+field, **`atom_order`**: null for a structure in your input order; for one in
+an engine's order, its index — an `atom_permutation.Permutation`, the key that
+made it (one of `transport.sort.SORT_KEYS`) and both directions, checked to be
+inverse bijections over the structure's atoms by `__post_init__`. **Present
+means remapped** (I2), and nothing else states it. It rides every road a
+metadata field rides — `replace`, `copy`, `frame_at`, `with_frames`, `affine`
+and every derived copy that keeps the atoms in place; the sidecar (v14,
+`structure-molstruct.md`); the deck's ATOM-METADATA block; the browser.
+**Three calls cross with it, and nothing else touches it**:
+`transport.sort.sort_by` sets it (refusing a structure that already has one,
+I4); **`Structure.restored()`** moves every per-atom field and every frame back
+to the input order through it and clears it (a structure in your order comes
+back unchanged); `take` refuses a remapped structure, `restored()` being the
+one reorder of one. **An edit that adds or removes atoms refuses a remapped
+structure**, naming `restored()` — one sentence, as a frame set's refusal is
+(§ 2.2e) — so an index never outlives the atoms it describes; an editor never
+meets one, since it opens a remapped file restored (I8).
 
 ### 2.2a `info` — metadata that travels
 
@@ -267,6 +290,7 @@ one is TAKEN FROM A STATED OWNER:
 | `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
 | `customized` | **the first input** — its rows and its frame's rows | named values about the canvas, as `info` is; the addition's rows are not joined, because a row about one structure is not true of the merge |
 | frames | — | a merge joins one-frame structures; a frame set is refused (§ 2.2e) |
+| `atom_order` | — | *(decided 2026-10-14, not built)* a remapped addition is restored before it is joined, and the merge says so (`overview.md` § 2.2a, I8); the canvas, held by an editor, is never remapped |
 
 **What the merge does not carry, it says** (`modify.append_structure`'s
 notes, shown on the page that asked): the addition's cell when the canvas has
@@ -855,6 +879,18 @@ copy of any of them:
    run's own deck since 2026-10-04, plan B12)*. A file molbuilder writes, or
    one in a folder no calculation marks, reads as before. **Not** a periodicity gate: reading does not judge
    (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
+
+   *Decided 2026-10-14, not built* ([`model/overview.md`](?doc=model/overview.md)
+   § 2.2a, plan § 5ab): **the index travels inside the pair** — a remapped
+   structure's `atom_order` is a field of its sidecar (v14), so the codec reads
+   and writes it with its atoms and nowhere else (I7). The codec writes what it
+   is handed: an engine's record (the transport composer's junction) is written
+   remapped, carrying its index; **every door that writes for a person — the
+   save, export and hand-over routes, `xv2xyz --from-run` — calls
+   `restored()` first**, so no pair molbuilder writes for a person is remapped
+   (I1). **An engine's own structure file** in a reordered run is read through
+   that run's view (`runs.view_of`), carrying the run's index from its deck
+   (I5), never as the person's order.
 
 **How it is shaped: one generator, and an adapter per destination.**
 
