@@ -347,11 +347,16 @@ relaxation held. A transport calculation built from it needs only every
 electrode atom among the held ([`engines/transport.md`](?doc=engines/transport.md)
 § 1.1, Step 0, *what transport asks of the held set*).
 
-**Within one ladder both stages hold the same set.** A SIESTA ladder's
-`freq` stage is prepared after its `relax` stage ran, from the same
-structure, and copies `relax`'s final coordinates into its deck row by row
-(§ 5.2a); holding more for the spectrum is the road of two calculations
-above, never a label changed between the two preps.
+**Within one ladder the held set may grow too.** A SIESTA ladder's `freq`
+stage is prepared after its `relax` stage ran, each deck a held-first sorted
+copy. `relax`'s final coordinates are a per-atom result of a sorted run, so
+`freq`'s prep takes them in the input order — `relax`'s restored result, or
+restored through `relax`'s own index with a warning — before it sorts its own
+copy, as every prep does ([`model/overview.md`](?doc=model/overview.md) § 2.2;
+plan § 5ab); the comparison above then judges the held set. *(Today
+`jobset.prep._vibration_stage_geometry` takes them in `relax`'s sorted order,
+row by row — right only while the two preps held the same atoms; plan V1.41,
+folded into RMP.)*
 
 ### 2.4 Where results land — `frequency/` and `spectrum/`
 
