@@ -2,8 +2,9 @@
  *
  * One line about the file in hand: the dropdown's, or a file single-clicked
  * in the sidebar inside the folder this panel shows.  A file molbuilder
- * writes says what it holds and who writes it; anything else says it is not
- * written by molbuilder (user, 2026-10-04).
+ * writes says what it holds and who writes it; a file of a calculation
+ * whose description does not read says so, in the reader's words; anything
+ * else says it is not written by molbuilder (user, 2026-10-04).
  *
  * THE WORDS ARE THE CATALOGUE'S, AND THIS COMPOSES NONE.  Every file of
  * `/api/results/dir`'s answer carries `about` -- the run door's reading of
@@ -69,6 +70,13 @@ function render() {
         line.appendChild(document.createTextNode(". Written by "));
         line.appendChild(words(about.writer));
         line.appendChild(document.createTextNode("."));
+    } else if (about.unread) {
+        // A CALCULATION'S FOLDER WHOSE DESCRIPTION DOES NOT READ: whose file
+        // this is waits on it, and the reader's words say why and the way
+        // out (`web/results.md` § 3b).
+        line.appendChild(document.createTextNode(
+            " — whose file this is cannot be said here: "));
+        line.appendChild(words(about.unread));
     } else {
         line.appendChild(document.createTextNode(
             " — not written by molbuilder."));

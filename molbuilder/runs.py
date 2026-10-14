@@ -468,7 +468,7 @@ def about(path) -> Dict[str, Any]:
     folder = p.parent
     place = place_of(folder)
     if not place.ours:
-        return _row_about(p, None)
+        return _row_about(p, None, unread=place.problem)
     label, _stage, _trial = _position(folder, place)
     return _row_about(p, label)
 
@@ -506,10 +506,17 @@ def _in_words(writer: str) -> str:
     return re.sub(r"\s*\([^()]*`[^()]*\)", "", writer).strip()
 
 
-def _row_about(path: Path, label: Optional[str]) -> Dict[str, Any]:
+def _row_about(path: Path, label: Optional[str], *,
+               unread: Optional[str] = None) -> Dict[str, Any]:
     """:func:`about`'s answer for a file whose folder's label is known -- or,
     with no label, a folder no calculation claims, where a saved structure
-    pair is molbuilder's (`runfiles.saved_pair_row`)."""
+    pair is molbuilder's (`runfiles.saved_pair_row`).  ``unread``: the folder
+    IS a calculation's and its description does not read
+    (`place_of`'s ``problem``) -- what the file is cannot be said, and the
+    reader's words say why: ``{ours: None, unread}``, never ``ours: False``
+    (`web/results.md` § 3b)."""
+    if unread:
+        return {"ours": None, "unread": unread}
     row = _rf.row_for(path, label) if label else None
     if row is None:
         saved = None if label else _rf.saved_pair_row(path)
@@ -685,7 +692,7 @@ def folder_answer(directory) -> Dict[str, Any]:
             "stage": rec.stage if rec is not None else None,
             "parser": parser, "opens": opens,
             "size": st_.st_size, "mtime": st_.st_mtime,
-            "about": _row_about(entry, label),
+            "about": _row_about(entry, label, unread=place.problem),
         })
     return {"place": {"role": place.role,
                       "calculation": str(place.root) if place.root else None},
