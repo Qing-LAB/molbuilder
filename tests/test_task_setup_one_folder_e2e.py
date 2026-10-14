@@ -25,6 +25,8 @@ import json
 
 import pytest
 
+from support.task_setup_page import every_card_text, unfold
+
 pytestmark = pytest.mark.e2e
 
 
@@ -86,6 +88,7 @@ def _open(page, base, calc):
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         " return !!(n && n.CodeMirror); }", timeout=20000)
+    unfold(page)
 
 
 def test_opening_another_folder_leaves_nothing_of_the_first(
@@ -111,10 +114,10 @@ def test_opening_another_folder_leaves_nothing_of_the_first(
     # THE TASK SETUP SURFACE, not the whole document.  The projects sidebar
     # is a different component with its own contract (`web/projects.md`) and
     # its own idea of when to re-list; section 2.1 is about THIS page's
-    # cards.  Still the WHOLE panel and not
-    # named cards: a per-card list is the same hand-kept thing that failed.
-    text = page.evaluate(
-        "() => (document.querySelector('main') || document.body).innerText")
+    # cards.  Still EVERY card and not named ones -- a per-card list is the
+    # same hand-kept thing that failed -- each opened, since a folded card
+    # still holds what it would show (`task-setup.md` § 9a.1).
+    text = every_card_text(page)
     assert "betalabel" in text, "the second folder must actually be shown"
     assert "alphalabel" not in text, (
         "the first folder's label is still on the page after moving to the "
@@ -170,8 +173,7 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
         "            && n.CodeMirror.getValue().includes('awaiting')); }",
         timeout=20000)
 
-    text = page.evaluate(
-        "() => (document.querySelector('main') || document.body).innerText")
+    text = every_card_text(page)
     assert "alphalabel" not in text, (
         "the described folder's label survived a move to one that has no "
         "description -- a card with nothing new to paint kept what it had")

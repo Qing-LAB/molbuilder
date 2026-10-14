@@ -641,7 +641,8 @@
             const folded = foldable && typeof opts.folded === "function"
                 && !!opts.folded(role, fieldsInCard);
             const card = el(foldable ? "details" : "section",
-                { class: "workflow-group workflow-group--" + role });
+                { class: "workflow-group workflow-group--" + role
+                         + (foldable ? " fold" : "") });
             if (foldable) card.open = !folded;
             const header = el(foldable ? "summary" : "header",
                               { class: "workflow-group-header" });
@@ -652,7 +653,7 @@
             if (foldable) {
                 // A folded card still says how much it holds.
                 header.appendChild(el("span",
-                    { class: "workflow-group-count" },
+                    { class: "fold-sum workflow-group-count" },
                     fieldsInCard.length + (fieldsInCard.length === 1
                                            ? " setting" : " settings")));
             }

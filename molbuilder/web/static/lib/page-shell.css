@@ -289,6 +289,49 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
     box-shadow: var(--shadow-card);
 }
 
+/* ---- A card that folds -- the ONE foldable component (ui-contract.md § 4)
+ * A <details class="fold"> whose <summary> is its head: the marker, the
+ * title, and `.fold-sum` -- what it holds in a few words, so a folded one
+ * still gives its answer.  `details.card.fold` is a card that folds; a
+ * `.fold` inside a card is a segment of it.  Which start folded is the
+ * page's rule; this sheet draws the two states and decides nothing.  The
+ * marker is drawn, not the browser's: the default triangle sits outside the
+ * flex row and cannot share the heading's baseline. */
+.fold > summary {
+    display: flex;
+    flex-wrap: wrap;                 /* a long answer wraps, never overflows */
+    align-items: baseline;
+    gap: var(--space-sm);
+    cursor: pointer;
+    list-style: none;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+    content: "\25b8";                /* ▸ */
+    content: "\25b8" / "";           /* ...and not read aloud with the title */
+    color: var(--text-muted);
+    transition: transform 120ms ease;
+}
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold > summary > h2,
+.fold > summary > h3 { margin: 0; }
+.fold > summary:hover > h2 { color: var(--accent); }
+.fold > summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: var(--space-xs);
+}
+.fold-sum {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-normal);
+}
+.card.fold[open] > summary { margin-bottom: var(--space-sm2); }
+/* Folded, a card is its head: as much inset below it as above. */
+.card.fold:not([open]) { padding-bottom: var(--space-md); }
+@media (prefers-reduced-motion: reduce) {
+    .fold > summary::before { transition: none; }
+}
+
 /* ---- Content links, for a page that has opted in --------------------
  *
  * Nothing styles a bare <a> in page content, so an inline link renders in

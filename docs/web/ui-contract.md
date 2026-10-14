@@ -223,6 +223,17 @@ own `[hidden]` guard (§ 6).
   copies was the fix. *(`test_css_no_duplicate_selectors` enforced it until
   2026-09-10, retired with the other source-reading tests, `082ba979`; the
   rule is held by review.)*
+- **A card that folds is one component** (2026-10-13). A `<details
+  class="fold">` whose `<summary>` is its head: the disclosure marker, the
+  title, and `.fold-sum` — what it holds, said in a few words, so a folded
+  card still gives its answer. page-shell draws it; `details.card.fold` is a
+  card that folds (Task setup's), a `.fold` inside a card is a segment of it
+  (the file groups of Task setup's *What this calculation writes*), and the
+  parameter forms' foldable cards are `.fold` too
+  ([`form-schema.md`](?doc=web/form-schema.md) § 1.3). Which start folded is
+  the page's rule; the component decides nothing. Cards of which one is open
+  at a time share a `name` — the browser's own exclusive `<details>` group —
+  rather than a script that closes the others.
 - **One owner survives a rename** (2026-08-31). That check asks whether one
   *selector* has two homes, and there is a second shape it cannot see: the
   same reasoning and the same declaration under two *different* selectors.

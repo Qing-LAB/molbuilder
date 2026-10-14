@@ -385,7 +385,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     # (`web/results.md` § 2.4) while the sidebar stays on the root -- so a
     # single click on a root file is not looked up among the run's files, and
     # the card keeps naming the run's; a click on another file of the run's
-    # own folder is followed (plan § 2, R2-15).
+    # own folder is followed (R2-15, `archive/2026-10-13-plan-rows.md`).
     page.locator(".results-ladder-open[aria-pressed]").first.click()
     page.locator(".results-ladder-open[aria-pressed='true']").wait_for(
         timeout=20000)

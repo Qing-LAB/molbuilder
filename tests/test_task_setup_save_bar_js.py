@@ -1,13 +1,12 @@
-"""The folded `task.json` editor — `task-setup.md` § 9a.1.
+"""The save bar says what is unsaved — `task-setup.md` § 7a, § 9a.1.
 
-The editor sits in the main column, closed, so the page keeps two columns the
-whole way down and the rail can travel with you. Folding it away puts the Save
-button behind a click, which makes ONE rule load-bearing:
+Every card of the page folds, the `task.json` editor among them, and Save
+sits in a bar pinned to the bottom of the window. ONE rule is load-bearing:
 
-    a buffer that differs from the file on disk may never be hidden.
+    a buffer that differs from the file on disk is said, in the bar.
 
 Getting that wrong is silent and expensive — you set up a calculation through
-the cards, never open the fold, and close the tab with nothing written. It was
+the cards, never press Save, and close the tab with nothing written. It was
 wrong once already: "dirty" was measured against the last text *put into* the
 editor, which the cards rewrite on every edit, so a card edit was never
 unsaved. These drive the real functions rather than grepping for them, because
@@ -37,10 +36,16 @@ def _fns() -> str:
     return body.replace("await ensureEditor()", "_cm")
 
 
+#: The bar's two elements, and the buffer.  `refreshSave` repaints why Save
+#: is held and the cards' heads, and `saidSave` what the last save did --
+#: neither is what this file asks about.
 HARNESS = """
+    const _attrs = {};
     const _els = { "ts-dirty": { hidden: true },
-                   "ts-editor-card": { open: false } };
+                   "ts-savebar": { setAttribute(k, v) { _attrs[k] = v; } } };
     function $(id) { return _els[id] || null; }
+    function refreshSave() {}
+    function saidSave() {}
     const _cm = { _v: "",
                   setValue(v) { this._v = v; },
                   getValue() { return this._v; },
@@ -62,50 +67,36 @@ def _run(js: str) -> dict:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-def _state(js_after: str) -> dict:
-    return _run(js_after + """
+def _said(js_after: str) -> bool:
+    """Whether the bar says *edited — not saved*: its words shown, and the
+    bar marked so (the mark is what hides the "nothing unsaved" line)."""
+    out = _run(js_after + """
         console.log(JSON.stringify({
-            open:  _els["ts-editor-card"].open,
-            dirty: !_els["ts-dirty"].hidden }));
+            words: !_els["ts-dirty"].hidden,
+            bar:   _attrs["data-dirty"] }));
     """)
+    assert out["bar"] == ("true" if out["words"] else "false"), (
+        "the bar's mark and its words disagree: " + json.dumps(out))
+    return out["words"]
 
 
-def test_what_the_folder_holds_is_not_an_unsaved_edit():
-    """Opening a folder must leave the fold closed — otherwise every folder
-    opens with a wall of JSON in front of the cards, which is the state the
-    fold exists to end."""
-    out = _state('await setEditorText(\'{"a":1}\', { fromDisk: true });')
-    assert out["dirty"] is False
-    assert out["open"] is False
+#: (what happened, the buffer's moves, is it unsaved)
+_ROWS = [
+    ("what the folder holds is not an unsaved edit",
+     "await setEditorText('{\"a\":1}', { fromDisk: true });", False),
+    ("a card edit is unsaved",
+     "await setEditorText('{\"a\":1}', { fromDisk: true });"
+     " await setEditorText('{\"a\":2}');", True),
+    ("saving settles it -- the folder re-read carries the edit",
+     "await setEditorText('{\"a\":1}', { fromDisk: true });"
+     " await setEditorText('{\"a\":2}');"
+     " await setEditorText('{\"a\":2}', { fromDisk: true });", False),
+    ("a folder with no description starts clean",
+     "await setEditorText('', { fromDisk: true });", False),
+]
 
 
-def test_a_card_edit_is_unsaved_and_shows_itself():
-    """The failure this test exists for: a card writes the model into the
-    buffer, and the page said nothing was pending because the buffer matched
-    the last thing the page itself had written."""
-    out = _state("""
-        await setEditorText('{"a":1}', { fromDisk: true });
-        await setEditorText('{"a":2}');          // a card changed the model
-    """)
-    assert out["dirty"] is True, "a card edit was not counted as unsaved"
-    assert out["open"] is True, "the fold hid an unsaved edit"
-
-
-def test_saving_settles_it():
-    """`save()` ends by re-reading the folder, so the baseline moves and the
-    flag clears. The fold is left OPEN — closing a card the user opened would
-    be the page taking a decision back."""
-    out = _state("""
-        await setEditorText('{"a":1}', { fromDisk: true });
-        await setEditorText('{"a":2}');
-        await setEditorText('{"a":2}', { fromDisk: true });   // written, re-read
-    """)
-    assert out["dirty"] is False
-    assert out["open"] is True
-
-
-def test_a_folder_with_no_description_starts_clean():
-    """An empty folder has nothing pending — "" IS what it holds."""
-    out = _state('await setEditorText("", { fromDisk: true });')
-    assert out["dirty"] is False
-    assert out["open"] is False
+@pytest.mark.parametrize("what,moves,unsaved", _ROWS,
+                         ids=[r[0] for r in _ROWS])
+def test_the_bar_says_what_is_not_on_disk(what, moves, unsaved):
+    assert _said(moves) is unsaved, what

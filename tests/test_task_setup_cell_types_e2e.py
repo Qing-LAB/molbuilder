@@ -43,6 +43,8 @@ pytest.importorskip("flask")
 
 from pathlib import Path
 
+from support.task_setup_page import unfold
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -104,13 +106,14 @@ def _open(page, base, calc, ready='input[aria-label="tight kgrid"]'):
         f" sessionStorage.setItem('molbuilder.current_dir', {slot});"
         "} catch (_) {}")
     page.goto(f"{base}/task-setup")
-    page.wait_for_selector(ready, timeout=20000)
+    page.wait_for_selector(ready, state="attached", timeout=20000)
     # The editor arrives LAST -- CodeMirror is fetched lazily, so the stage
     # table can be up while `.CodeMirror` is still null.  Everything below
     # reads the description through the editor, so this is part of "open".
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         " return !!(n && n.CodeMirror); }", timeout=20000)
+    unfold(page)
 
 
 def _described(page):

@@ -30,37 +30,6 @@
     padding: var(--space-lg) var(--space-lg) var(--space-xl);
 }
 
-/* ---- The description itself, folded (task-setup.md 9a.1) ---- */
-
-.ts-editor-card > summary {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-sm);
-    cursor: pointer;
-    list-style: none;
-}
-.ts-editor-card > summary::-webkit-details-marker { display: none; }
-/* The marker is drawn, not inherited: the default triangle sits outside the
-   flex row and cannot be aligned with the heading's baseline. */
-.ts-editor-card > summary::before {
-    content: "\25b8";
-    color: var(--text-muted);
-    transition: transform 120ms ease;
-}
-.ts-editor-card[open] > summary::before { transform: rotate(90deg); }
-.ts-editor-card > summary h2 { margin: 0; }
-.ts-editor-card > summary:hover h2 { color: var(--accent); }
-.ts-editor-card > summary .ts-editor-sum {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-}
-.ts-editor-card[open] > summary { margin-bottom: var(--space-sm2); }
-.ts-editor-card > summary:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: var(--space-xs);
-}
-
 /* ---- Destination ---- */
 
 .ts-path {
@@ -123,6 +92,8 @@
  * a machine is chosen -- without this it would sit there reading as a
  * decision nobody made. */
 .ts-state[hidden] { display: none; }
+/* The page's messages, above the cards: the column's own gap spaces them. */
+.page-main > .ts-state { margin-top: 0; }
 
 /* ---- What will be written ---- */
 
@@ -286,16 +257,30 @@
 .ts-editor .CodeMirror-linenumber { color: var(--text-muted); }
 .ts-editor .CodeMirror-cursor { border-left-color: var(--accent); }
 
-.ts-editor-bar {
+/* ---- The save bar (task-setup.md § 7a) ----
+ * Pinned to the bottom of the window, inside the main column: on screen
+ * wherever an edit is made, never over the rail.  It is the last thing in
+ * the column, so scrolled to the end it rests in its own place.  What each
+ * of its lines says, and when, is the page's (`_setDirty`, `saidSave`,
+ * `refreshSave`); the sheet only draws them. */
+.ts-savebar {                    /* a `.card`: its surface is page-shell's */
+    position: sticky;
+    bottom: 0;
     display: flex;
     flex-wrap: wrap;
-    justify-content: space-between;
     align-items: center;
-    gap: var(--space-sm);
-    margin-top: var(--space-sm);
+    justify-content: space-between;
+    gap: var(--space-sm) var(--space-md);
+    padding: var(--space-sm2) var(--space-lg);
+}
+.ts-savebar[data-dirty="true"] { border-color: var(--warn-soft); }
+.ts-savebar-say {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: var(--text-sm);
 }
 .ts-dirty {
-    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
     color: var(--warn-soft);
 }
 .ts-dirty[hidden] { display: none; }
@@ -528,7 +513,8 @@
 .ts-pick {
     font: inherit;
     font-size: var(--text-sm);
-    max-width: var(--ts-pick-max);
+    /* never wider than the card it sits in, a phone's included */
+    max-width: min(var(--ts-pick-max), 100%);
     padding: var(--space-xs) var(--space-sm);
     background: var(--bg-input);
     color: var(--text-primary);
@@ -784,13 +770,6 @@
     color: var(--text-secondary);
     overflow-wrap: anywhere;
 }
-/* The Prep sits above the stage tabs, set off by the rule the run card
-   uses below a tab's measure card. */
-.ts-task-prep {
-    margin-bottom: var(--space-md);
-    padding-bottom: var(--space-md);
-    border-bottom: 1px solid var(--border-soft);
-}
 
 /* ---------- what the RUN uses (stages.md 6.8d) ---------- */
 /* PER RUNG, inside that rung's tab and immediately above `prep run` -- the
@@ -941,16 +920,8 @@
    it holds) and this card asks exactly that question of a longer list.  What
    is new is only the grouping -- one group per rung, plus the run's own
    records -- so nothing here restates a row's typography. */
-.ts-written-group + .ts-written-group { margin-top: var(--space-md); }
-/* WHERE THE GROUP LANDS, under its own name.  Flat and hierarchical put a
-   rung's files in different directories, so the heading alone would leave a
-   reader guessing which folder they are looking for. */
-.ts-written-where {
-    margin: 0 0 var(--space-xs);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-}
+.ts-written-group + .ts-written-group { margin-top: var(--space-sm); }
+.ts-written-group[open] > summary { margin-bottom: var(--space-xs); }
 /* A RUN FILE NAME IS WIDER THAN THE COLUMN, and it may not be clipped: the
    whole use of this card is reading a name you are about to look for.
    `<label>_<stage>-run0.scf-timing.log` measures 362px in the 353px column

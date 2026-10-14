@@ -42,32 +42,38 @@
 <main class="ts-wrap">
 
   <div class="page-cols">
-    <div>
+    {#- BUSY UNTIL THE FIRST FOLDER IS READ (`loadFolder` ends it), so a
+        card opened before the read cannot be folded back under you. -#}
+    <div class="page-main" id="ts-main" aria-busy="true">
 
-      <section class="card" id="ts-dest-card">
-        <h2>Where this saves</h2>
+      {#- THE PAGE'S MESSAGES, above every card and inside no fold
+          (task-setup.md § 9a.1): what the folder is, a refusal, what the
+          last save's check said -- a fold never hides one. -#}
+      <div class="ts-state" id="ts-state" data-state="empty">
+        <div>
+          <span class="ts-state-title" id="ts-state-title">Nothing selected</span>
+          <p class="ts-state-body ts-keeps-lines" id="ts-state-body">Pick a calculation folder in the sidebar to read its description.</p>
+          {#- WHAT A SAVE'S CHECK SAID (gate ③, workflow.md § 9): the
+              description's warnings, row by row -- drawn by
+              lib/validation-findings.js, the one renderer
+              (science/validation.md § 4.1 R2); cleared on every state
+              change, so it never speaks for another folder. -#}
+          <ul class="issues-panel" id="ts-state-findings" hidden
+              aria-live="polite"></ul>
+        </div>
+      </div>
+
+      <details class="card fold" id="ts-dest-card">
+        <summary><h2>Where this saves</h2><span class="fold-sum" id="ts-dest-card-sum"></span></summary>
         <p class="hint">The folder selected in the projects sidebar. This page
           creates no folders &mdash; make or pick the one you want there first.</p>
         <div class="ts-path" id="ts-path" aria-live="polite">
           <span class="ts-path-seg">no folder selected</span>
         </div>
-        <div class="ts-state" id="ts-state" data-state="empty">
-          <div>
-            <span class="ts-state-title" id="ts-state-title">Nothing selected</span>
-            <p class="ts-state-body ts-keeps-lines" id="ts-state-body">Pick a calculation folder in the sidebar to read its description.</p>
-            {#- WHAT A SAVE'S CHECK SAID (gate ③, workflow.md § 9): the
-                description's warnings, row by row -- drawn by
-                lib/validation-findings.js, the one renderer
-                (science/validation.md § 4.1 R2); cleared on every state
-                change, so it never speaks for another folder. -#}
-            <ul class="issues-panel" id="ts-state-findings" hidden
-                aria-live="polite"></ul>
-          </div>
-        </div>
-      </section>
+      </details>
 
-      <section class="card" id="ts-came-card" hidden>
-        <h2>What came over</h2>
+      <details class="card fold" id="ts-came-card" hidden>
+        <summary><h2>What came over</h2><span class="fold-sum" id="ts-came-card-sum"></span></summary>
         <p class="hint">Read-only here — this is what the calculation
           <em>is</em>. Its name and what it is of (its structure, or a
           transport calculation's junction) name it: a different one is a new
@@ -91,10 +97,10 @@
             new folder.</p>
           <dl class="ts-facts" id="ts-shared"></dl>
         </div>
-      </section>
+      </details>
 
-      <section class="card" id="ts-shape-card" hidden>
-        <h2>How the files are kept apart</h2>
+      <details class="card fold" id="ts-shape-card" hidden>
+        <summary><h2>How the files are kept apart</h2><span class="fold-sum" id="ts-shape-card-sum"></span></summary>
         <p class="hint">Every attempt in one directory, or a directory per
           attempt. <strong>There is no default</strong> — it decides where
           results land, so it is asked, never guessed.</p>
@@ -114,26 +120,29 @@
               disk.</span>
           </button>
         </div>
-        <p class="ts-needs" id="ts-shape-needs">Needed before this can be
+        {#- `data-attention`: a line that asks for you -- a question
+            unanswered, a refusal, a warning.  A folder opened anew opens
+            the card holding one (task-setup.md § 9a.1). -#}
+        <p class="ts-needs" id="ts-shape-needs" data-attention>Needed before this can be
           written</p>
         {#- A FIXED SHAPE says so -- its kind fixes it, or the calculation
             has produced, with the way back (task-setup.md § 4). -#}
         <p class="hint ts-keeps-lines" id="ts-shape-fixed" hidden></p>
-      </section>
+      </details>
 
       <!-- WHICH MACHINE.  Same component and same rationale as the shape
            card above: a choice with no default, asked rather than guessed.
            The options are the machine records `jobset probe --write --name`
            wrote (preparing-for-another-machine.md 4). -->
-      <section class="card" id="ts-target-card" hidden>
-        <h2>Which machine is this for</h2>
+      <details class="card fold" id="ts-target-card" hidden>
+        <summary><h2>Which machine is this for</h2><span class="fold-sum" id="ts-target-card-sum"></span></summary>
         <p class="hint">A deck carries the machine's numbers — ranks, memory,
           whether there is a queue — so preparing it needs to know which
           machine. <strong>There is no default when several could be
           meant</strong>: being asked costs one click, being given the wrong
           one costs a queue wait and an allocation.</p>
         <div class="ts-choice" id="ts-target-choice"></div>
-        <p class="ts-needs" id="ts-target-needs">Needed before this can be
+        <p class="ts-needs" id="ts-target-needs" data-attention>Needed before this can be
           prepared</p>
         <div class="ts-state" id="ts-target-state" hidden>
           <div>
@@ -148,15 +157,15 @@
              rather than restated.  Which machine RECORD answers is a prep's
              answer, a preview's too: it turns on the machine named. -->
         <dl class="ts-facts" id="ts-resolved" hidden></dl>
-      </section>
+      </details>
 
       <!-- THE QUEUE, AND WHAT IT ALLOWS (2026-08-24, user).  Picking a
            queue names it and fills nothing: its own probed ceilings are
            shown beside the two asks, which stay empty until a person
            states them -- a value stated, never proposed (submission.md S1,
            S5). -->
-      <section class="card" id="ts-queue-card" hidden>
-        <h2>Where it runs, and what it may use</h2>
+      <details class="card fold" id="ts-queue-card" hidden>
+        <summary><h2>Where it runs, and what it may use</h2><span class="fold-sum" id="ts-queue-card-sum"></span></summary>
         <p class="hint">Pick a queue: <strong>what it allows</strong> is shown
           under each field &mdash; the most you can ask for there. State what
           this job needs; a smaller ask is usually scheduled sooner.
@@ -209,12 +218,12 @@
            `domain`/`time`/`mem` for the calculation as a whole.  A rung
            wanting a different queue or wall adds that row to its own card,
            where it reads as THIS RUNG DIFFERS. -#}
-      </section>
+      </details>
 
       
       
-      <section class="card" id="ts-stages-card" hidden>
-        <h2>Stages</h2>
+      <details class="card fold" id="ts-stages-card" hidden>
+        <summary><h2>Stages</h2><span class="fold-sum" id="ts-stages-card-sum"></span></summary>
         <p class="hint" id="ts-stages-hint">Rows are stages, columns are the
           parameters that vary.
           A cell shown muted is <em>this stage uses the template's value</em>
@@ -245,10 +254,10 @@
             previous one's values — a refinement starts from what came
             before.</span>
         </div>
-      </section>
+      </details>
 
-      <section class="card" id="ts-machine-card" hidden>
-        <h2>What to measure</h2>
+      <details class="card fold" id="ts-machine-card" hidden>
+        <summary><h2>What to measure</h2><span class="fold-sum" id="ts-machine-card-sum"></span></summary>
         <p class="hint" id="ts-machine-hint">Several values on a row means <strong>try each of
           them</strong> &mdash; one trial per combination, in
           <code>&lt;stage&gt;/bench/</code>. This is a plan to measure; what
@@ -271,73 +280,74 @@
           <span class="hint">Only speed knobs — a setting that changes the
             answer would make every point a different calculation.</span>
         </div>
-      </section>
-
-      {#- THE RUN CARD IS NOT HERE (user, 2026-09-02: "that selection panel
-         card should be next to the prep for run button such that it's
-         obvious that this is designed for the run.  This is not mixed up
-         with the existing functional bench setup.").
-
-         It is built per rung, inside that rung's tab, immediately above
-         `prep task` -- `stageRunCard` in viewer.js.  A card two cards away
-         from the button it decides for is a card you read as part of the
-         bench setup. -#}
-
-      {#- THE DESCRIPTION ITSELF, FOLDED, IN THE COLUMN WITH EVERYTHING
-         ELSE (task-setup.md 9a.1, user 2026-09-01: "we should allow the
-         task.json view to be foldable, and have its width to be consistent
-         with the other cards, such that the 'what gets written' card can
-         travel as we scroll the window down").
-
-         The MAIN COLUMN is not the rail, and it is wide enough to read JSON
-         in, so this is a card like the others, at the same width open or
-         closed.
-
-         CLOSED BY DEFAULT, and forced open by an unsaved edit -- a buffer
-         that differs from disk may never be hidden (`syncFromModel`). #}
-      <details class="card ts-editor-card" id="ts-editor-card">
-        <summary>
-          <h2>task.json</h2>
-          <span class="ts-editor-sum">the file itself &mdash; open it to
-            check or correct what the cards above say</span>
-          <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not
-            saved</span>
-        </summary>
-        <div class="ts-editor" id="ts-editor"></div>
-        {#- THE FOLDER'S STATE IS SAVED FIRST, by the server, always
-            (`task-setup.md` § 8; `checkpointing.md` § 9). -#}
-        <div class="ts-editor-bar">
-          <button type="button" class="primary" id="ts-save" disabled>
-            Save to this folder</button>
-        </div>
-        <p class="hint" id="ts-save-why">Pick a folder first.</p>
-        {#- WHAT THE LAST SAVE DID, beside the button that did it.  Its own
-            element because `ts-save-why` is `refreshSave`'s (it says why the
-            button is enabled or not, and is rewritten on every repaint), and
-            the shared state box is `loadFolder`'s -- a save ends by reopening
-            the folder, which paints "Loaded ..." into it.  One surface, one
-            owner. -#}
-        <p class="ts-ask-note ts-keeps-lines" id="ts-save-said" hidden></p>
       </details>
 
-      <section class="card" id="ts-next-card" hidden>
-        <h2>Preparing, group by group</h2>
-        <p class="hint"><strong>The task's Prep</strong> comes first: the
-          groups, where each stands, and the ones to pick &mdash; each group
-          one job. Then <strong>one tab per group</strong>, each holding the
-          exact commands &mdash; measure a stage, or run the group.
-          <em>What</em> the job will use is decided in the group's own tab
-          &mdash; the machine card above says what to <em>measure</em>, which
-          is a different question.</p>
-        <div id="ts-next"></div>
-      </section>
+      {#- WHAT EACH GROUP RUNS (task-setup.md § 11): one tab per group --
+         a group is one job, so its members' benchmarks, its run card and
+         its lines are one tab, built by `renderNext`.  The run card sits
+         beside the lines that read it (user, 2026-09-02: "that selection
+         panel card should be next to the prep for run button such that
+         it's obvious that this is designed for the run"), and before the
+         task's Prep, which prepares what the tabs decide. -#}
+      <details class="card fold" id="ts-groups-card" hidden>
+        <summary><h2>What each group runs</h2><span class="fold-sum" id="ts-groups-card-sum"></span></summary>
+        <p class="hint"><strong>One tab per group</strong> &mdash; each group
+          is one job. In its tab: measuring a stage, and what the job will
+          <em>run</em> with, beside the exact commands. <em>What to
+          measure</em>, above, is a different question.</p>
+        <div id="ts-groups"></div>
+      </details>
+
+      {#- THE TASK'S PREP (job-system.md, *The task*; task-setup.md § 11):
+         the groups, where each stands, the ones to pick, and the Preview /
+         Prep pair -- after the tabs whose values it prepares. -#}
+      <details class="card fold" id="ts-prep-card" hidden>
+        <summary><h2>Prep the task</h2><span class="fold-sum" id="ts-prep-card-sum"></span></summary>
+        <div id="ts-prep"></div>
+      </details>
+
+      {#- THE DESCRIPTION ITSELF, LAST IN THE COLUMN AND FOLDED
+         (task-setup.md § 9a.1; user, 2026-09-01: "we should allow the
+         task.json view to be foldable, and have its width to be consistent
+         with the other cards"): a place to check or correct the
+         description, not a step.  An unsaved edit is the save bar's to
+         say. -#}
+      <details class="card fold ts-editor-card" id="ts-editor-card">
+        <summary><h2>task.json</h2><span class="fold-sum">the file itself
+          &mdash; open it to check or correct what the cards above
+          say</span></summary>
+        <div class="ts-editor" id="ts-editor"></div>
+      </details>
+
+      {#- THE SAVE BAR (task-setup.md § 7a), pinned to the bottom of the
+         window: whether the page's text is on disk, and the one button that
+         puts it there -- the folder's state saved first, by the server,
+         always (§ 8; checkpointing.md § 9).  Three owners, three elements:
+         `ts-dirty` is the buffer's (`_setDirty`), `ts-save-why` says why
+         Save is or is not offered (`refreshSave`, rewritten on every
+         repaint), and `ts-save-said` what the last save did (`saidSave`) --
+         a save ends by reopening the folder, which repaints the others. -#}
+      <div class="card ts-savebar" id="ts-savebar" data-dirty="false">
+        <p class="ts-savebar-say">
+          <span class="ts-dirty" id="ts-dirty" hidden>Edited &mdash; not
+            saved. Prep reads task.json from disk: save before
+            Preview.</span>
+          <span class="ts-ask-note ts-keeps-lines" id="ts-save-said"
+                hidden></span>
+          <span class="hint" id="ts-save-why">Pick a folder first.</span>
+        </p>
+        <button type="button" class="primary" id="ts-save" disabled>
+          Save to this folder</button>
+      </div>
 
     </div>
 
     <aside class="page-aside">
 
-      <section class="card">
-        <h2>What gets written</h2>
+      {#- THE RAIL'S THREE CARDS, ONE OPEN AT A TIME (task-setup.md § 9a.1):
+         the browser's own exclusive <details> group, `name="ts-rail"`. -#}
+      <details class="card fold" id="ts-files-card" name="ts-rail" open>
+        <summary><h2>What gets written</h2><span class="fold-sum" id="ts-files-card-sum"></span></summary>
         {# What the FOLDER holds, not only what this page writes.  The
            structure is listed because it is what the calculation is OF: a
            person checking a description before a week of compute is checking
@@ -390,7 +400,7 @@
           <h3 class="ts-reports-head">And when you prep, per stage</h3>
           <ul class="ts-planlist" id="ts-plan-list"></ul>
         </div>
-      </section>
+      </details>
 
       {#- WHAT A PREP WILL BE NAMED (user, 2026-09-07: *"we should add a card
          that list all the generated data file from the setup (not
@@ -406,15 +416,15 @@
          THE NAMES COME FROM THE GRAMMAR, not from this page: every one is
          composed by `runfiles.compose` with this rung's own token, so the
          card cannot show a spelling the writers do not use. -#}
-      <section class="card" id="ts-written-card" hidden>
-        <h2>What this calculation writes</h2>
+      <details class="card fold" id="ts-written-card" name="ts-rail" hidden>
+        <summary><h2>What this calculation writes</h2><span class="fold-sum" id="ts-written-card-sum"></span></summary>
         <p class="hint">The files <strong>molbuilder</strong> names &mdash;
           not the engine's own outputs, which belong to the run and depend on
           its version. The deck and its wrapper appear at <em>prep</em>; the
           logs when it <em>runs</em>. A name with <code>*</code> in it is a
           family: one file per launch.</p>
         <div id="ts-written"></div>
-      </section>
+      </details>
 
 
       {# LAST in the flow, deliberately (user, 2026-08-27: it "breaks the
@@ -429,8 +439,8 @@
          addresses and keys those names resolve to are on the This-machine
          tab, in a file that never travels: the separation is held by the
          architecture (`run-reports.md` 1, `this-machine.md` 1). #}
-      <section class="card" id="ts-notify-card" hidden>
-        <h2>Tell me how it is going</h2>
+      <details class="card fold" id="ts-notify-card" name="ts-rail" hidden>
+        <summary><h2>Tell me how it is going</h2><span class="fold-sum" id="ts-notify-card-sum"></span></summary>
         <p class="hint">A long run does not need watching. Tick what is
           worth a message and it is written into this calculation's
           description. Nothing ticked is no reports at all; <strong>once
@@ -495,7 +505,7 @@
 
         <div class="ts-notify-channels" id="ts-report-items"></div>
         <span class="ts-ask-note" id="ts-report-note"></span>
-      </section>
+      </details>
 
     </aside>
   </div>

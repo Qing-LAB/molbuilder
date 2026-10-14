@@ -150,12 +150,14 @@ Keeping `group` as the outer axis keeps that fix.
 
 **Folding is the caller's choice, drawn here** *(2026-09-24)*.
 `renderForm(container, schema, {foldable, folded})` draws each outer card as
-a `<details>` whose header is its `<summary>`, with the count of settings it
-holds, and `folded(role, fields)` says which start closed. The transport tab
+the one foldable component ([`ui-contract.md`](?doc=web/ui-contract.md) § 4),
+a `<details class="fold">` whose header is its `<summary>`, with the count of
+settings it holds, and `folded(role, fields)` says which start closed. The transport tab
 folds per rung — a card holding none of the rung's own items starts closed
 ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a); the Build tab
-passes nothing and keeps its open cards. The sheet owns the two states and
-decides nothing about which cards fold.
+passes nothing and keeps its open cards. The component draws the two states
+(`.fold`, page-shell); form-schema's sheet keeps the card's grid, and neither
+decides which cards fold.
 
 **What a card says is the schema's** *(2026-10-09)*. The cards, their order,
 their titles and the line under each come with the schema as `group_words` —

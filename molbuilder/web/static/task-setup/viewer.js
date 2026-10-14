@@ -488,6 +488,7 @@ function freshFolderState() {
         groups:       { stages: [], groups: [], shared: [] },  // each stage's group, each group's state
         prepPick:     null,       // the groups picked for the task's Prep; null = the offer
         fixed:        null,       // what the kind fixes -- shape, stages (§ 5.3)
+        writtenOpen:  new Set(),  // the file groups opened in *What this calculation writes*
     };
 }
 
@@ -1147,18 +1148,21 @@ async function _bootEditor() {
     return _cm;
 }
 
-/** Say whether the buffer differs from disk — and, when it does, OPEN.
+/** Say whether the buffer differs from disk -- in the save bar, which is
+ *  on screen whatever is folded (`task-setup.md` § 7a, § 9a.1).
  *
- * `task-setup.md` § 9a.1: the editor is closed by default because the cards
- * above already say what the description says.  An unsaved edit is the one
- * thing they do not say, so it may never be hidden -- a fold that could
- * swallow "edited, not saved" would be a page that lost your work quietly.
- */
+ * The cards already say what the description says; an unsaved edit is the
+ * one thing they do not, and a page that did not say it would be one that
+ * lost your work quietly.  The heads move with the buffer: every edit
+ * passes through here. */
 function _setDirty(dirty) {
+    // WHAT THE LAST SAVE DID is about text an edit has since changed.
+    if (dirty) saidSave("");
     const flag = $("ts-dirty");
     if (flag) flag.hidden = !dirty;
-    const card = $("ts-editor-card");
-    if (dirty && card && !card.open) card.open = true;
+    const bar = $("ts-savebar");
+    if (bar) bar.setAttribute("data-dirty", dirty ? "true" : "false");
+    refreshSave();
 }
 
 /** Put `text` in the editor.  `fromDisk` says it is what the folder holds --
@@ -1196,6 +1200,7 @@ function _resetPerFolderState(keep) {
     if (keep) {
         _fs.stepTab = was.stepTab;
         _fs.continueChoice = was.continueChoice;
+        _fs.writtenOpen = was.writtenOpen;
         if (keep === "all") _fs.answers = was.answers;
     }
     for (const id of ["ts-ask-time", "ts-ask-mem"]) {
@@ -1219,7 +1224,69 @@ function _resetPerFolderState(keep) {
 }
 
 
+/** Open `dir` -- read it (`readFolder`), and when it is a folder opened
+ *  anew, show it as a checklist (`task-setup.md` § 9a.1).
+ *
+ * FOLDED FIRST, OPENED LAST: every card of the main column folds before
+ * the folder paints, and a card holding a question still unanswered opens
+ * once it has -- so a card the person opens while it loads is never folded
+ * back.  The same folder read again (a Save, a Prep, a restore) leaves the
+ * cards as the person left them.  What the last save did is said until
+ * another read -- the save's own re-read keeps it. */
 async function loadFolder(projects, dir, opts) {
+    const fresh = !(dir && dir === _dir);
+    const mine = ++_loadSeq;
+    const col = $("ts-main");
+    // THE COLUMN SAYS IT IS BEING REWRITTEN while a read is in flight --
+    // to assistive technology, and to anything waiting for the folder.  The
+    // page starts so (the template), until its first read ends.
+    if (col) col.setAttribute("aria-busy", "true");
+    if (fresh) for (const card of _mainCards()) card.open = false;
+    if (!(opts && opts.saved)) saidSave("");
+    try {
+        await readFolder(projects, dir, opts);
+        // THE MACHINE CARD IS THE FOLDER'S TOO, once the machines are listed.
+        await _machinesListed;
+        if (dir !== _dir) return;
+        showTargetCard();
+        if (fresh) {
+            /* A CARD THAT ASKS FOR YOU OPENS: a line marked `data-attention`
+             * -- a question unanswered, a refusal, a warning -- shown. */
+            for (const line of document.querySelectorAll("[data-attention]")) {
+                const card = line.closest("details.fold");
+                if (card && !line.closest("[hidden]")) card.open = true;
+            }
+        }
+        paintHeads();
+    } finally {
+        if (col && mine === _loadSeq) col.removeAttribute("aria-busy");
+    }
+}
+
+/** Which read of a folder is the newest -- the one that ends the column's
+ *  busy state. */
+let _loadSeq = 0;
+
+/** EVERY CARD A DESCRIPTION PAINTS, hidden -- for no folder, an empty one,
+ *  or one the page cannot describe -- so nothing of another folder stays on
+ *  the page to be read or written here (§ 2.1). */
+function hideDescriptionCards() {
+    renderCameOver(null);
+    for (const id of ["ts-shape-card", "ts-target-card", "ts-queue-card",
+                      "ts-stages-card", "ts-machine-card", "ts-groups-card",
+                      "ts-prep-card", "ts-notify-card"]) {
+        const card = $(id);
+        if (card) card.hidden = true;
+    }
+}
+
+/** The main column's cards, in order. */
+function _mainCards() {
+    const col = $("ts-main");
+    return col ? col.querySelectorAll(":scope > details.fold") : [];
+}
+
+async function readFolder(projects, dir, opts) {
     const keep = (dir && dir === _dir)
         ? ((opts && opts.retire) ? "view" : "all") : null;
     _dir = dir;
@@ -1236,9 +1303,21 @@ async function loadFolder(projects, dir, opts) {
     _resetPerFolderState(keep);
     showPath(dir);
     if (!dir) {
-        _mode = "empty"; refreshSave();
+        _mode = "empty";
+        hideDescriptionCards();
+        for (const [id, name] of [["ts-f-task", "task.json"],
+                                  ["ts-f-tmpl", "<label>.template.toml"],
+                                  ["ts-f-struct", "<label>.xyz"],
+                                  ["ts-f-side", "<label>.molstruct.json"]]) {
+            markFile(id, false, "");
+            const named = $(id + "-name");
+            if (named) named.textContent = name;
+            const row = $(id).closest("li");
+            if (row) row.hidden = false;
+        }
         setState("empty", "Nothing selected",
                  "Pick a calculation folder in the sidebar to read its description.");
+        await setEditorText("", { fromDisk: true });
         return;
     }
 
@@ -1271,7 +1350,7 @@ async function loadFolder(projects, dir, opts) {
      * finally filled at the end of this function.  Loading paints cards, and
      * a card that paints can push the model into the buffer (`setShape` ->
      * `syncFromModel`) -- against the PREVIOUS folder's baseline, which reads
-     * as "unsaved" and forces the fold open. */
+     * as "unsaved" in the save bar. */
     _diskText = taskText;
     const overText = said.handover === null
         ? null : JSON.stringify(said.handover, null, 2);
@@ -1372,9 +1451,7 @@ async function loadFolder(projects, dir, opts) {
 
     if (said.mode === "empty") {
         _mode = "empty"; _handover = null;
-        renderCameOver(null);
-        $("ts-shape-card").hidden = true;
-        $("ts-next-card").hidden = true;
+        hideDescriptionCards();
         refreshSave();
         // EVERY DOOR THAT WRITES ONE: the Transport tab writes a `task.json`
         // through its own door (`engines/transport.md` 3.4).
@@ -1384,9 +1461,6 @@ async function loadFolder(projects, dir, opts) {
                  + "calculation, or press Describe on Transport calculation "
                  + "(which writes straight into the folder selected there), "
                  + "or run `molbuilder jobset init`.");
-        $("ts-stages-card").hidden = true;
-        { const c = $("ts-notify-card"); if (c) c.hidden = true; }
-        $("ts-machine-card").hidden = true;
         await setEditorText("", { fromDisk: true });
         return;
     }
@@ -1944,12 +2018,7 @@ function sayLoaded(task) {
  *  stays on the page to be written here (`task-setup.md` § 2.1, § 6.2b). */
 async function refuseFolder(title, why) {
     _mode = "refused"; _handover = null; _task = null;
-    renderCameOver(null);
-    for (const id of ["ts-shape-card", "ts-queue-card", "ts-next-card",
-                      "ts-stages-card", "ts-notify-card", "ts-machine-card"]) {
-        const c = $(id);
-        if (c) c.hidden = true;
-    }
+    hideDescriptionCards();
     setState("refuse", title, why);
     _diskText = "";
     await setEditorText("", { fromDisk: true });
@@ -2228,11 +2297,32 @@ function fileRow(f) {
            f.only ? f.what + " (only: " + f.only + ")" : f.what));
 }
 
-function writtenGroup(head, sub, files) {
-    return el("div", { class: "ts-written-group" },
-        el("h3", { class: "ts-reports-head" }, head),
-        sub ? el("p", { class: "ts-written-where" }, sub) : null,
-        el("ul", { class: "ts-files" }, ...files.map(fileRow)));
+/** One group of the card, A FOLD (`task-setup.md` § 7.2): its head the
+ *  group's name, where it lands and how many files, so the card reads as
+ *  its organization first and one group at a time as its files. */
+function writtenGroup(head, where, files) {
+    return _keptOpen(head, el("details", { class: "fold ts-written-group" },
+        el("summary", {},
+           el("h3", { class: "ts-reports-head" }, head),
+           el("span", { class: "fold-sum" },
+              where + " \u00b7 " + _count(files.length, "file"))),
+        el("ul", { class: "ts-files" }, ...files.map(fileRow))));
+}
+
+/** A FILE GROUP OPENED STAYS OPEN while the folder does: the card is drawn
+ *  again on every edit and every read of the folder (§ 9a.1). */
+function _keptOpen(key, group) {
+    group.open = _fs.writtenOpen.has(key);
+    group.addEventListener("toggle", () => {
+        if (group.open) _fs.writtenOpen.add(key);
+        else _fs.writtenOpen.delete(key);
+    });
+    return group;
+}
+
+/** `n` and its noun, singular or plural. */
+function _count(n, noun) {
+    return n + " " + noun + (n === 1 ? "" : "s");
 }
 
 function paintWritten(body) {
@@ -2244,6 +2334,9 @@ function paintWritten(body) {
     const bundle = body.bundle || [];
     if (!stages.length && !bundle.length) { card.hidden = true; return; }
     card.hidden = false;
+    const n = bundle.length + (body.once || []).length
+        + stages.reduce((sum, row) => sum + (row.files || []).length, 0);
+    _sum("ts-written-card", _count(n, "file") + " molbuilder names");
     /* THE RUN'S OWN RECORDS FIRST: they are written once, and reading them
      * is how a person checks the ladder before spending a queue slot. */
     if (bundle.length) {
@@ -2275,9 +2368,6 @@ function paintWritten(body) {
 
 function warmGroup(w) {
     const kids = [
-        el("p", { class: "ts-written-where" },
-           w.own ? "this calculation's own list"
-                 : "molbuilder's list for this engine"),
         el("p", { class: "ts-warm-path" }, el("code", {}, w.path)),
     ];
     if (!w.own && w.copy_to) {
@@ -2287,9 +2377,14 @@ function warmGroup(w) {
             + "read instead, for this calculation alone, and the file says "
             + "what each key does."));
     }
-    return el("div", { class: "ts-written-group" },
-        el("h3", { class: "ts-reports-head" },
-           "Restart files carried between runs"), ...kids);
+    const head = "Restart files carried between runs";
+    return _keptOpen(head, el("details", { class: "fold ts-written-group" },
+        el("summary", {},
+           el("h3", { class: "ts-reports-head" }, head),
+           el("span", { class: "fold-sum" },
+              w.own ? "this calculation's own list"
+                    : "molbuilder's list for this engine")),
+        ...kids));
 }
 
 function askLine(a, chosen) {
@@ -2351,10 +2446,13 @@ function paintPlan(box, host, body) {
  * plan W37), shown once prep has run.
  */
 function renderNext(task) {
-    const card = $("ts-next-card");
-    const host = $("ts-next");
-    if (!card || !host) return;
+    const card = $("ts-groups-card");
+    const host = $("ts-groups");
+    const prepCard = $("ts-prep-card");
+    const prepHost = $("ts-prep");
+    if (!card || !host || !prepCard || !prepHost) return;
     host.textContent = "";
+    prepHost.textContent = "";
     // The prep widgets are rebuilt with the card, so the list of them is
     // emptied with the card too -- otherwise it accretes one page's worth
     // per folder opened, and `_syncPrepButtons` walks buttons nobody can
@@ -2365,7 +2463,7 @@ function renderNext(task) {
     ladder.forEach((st, full) => {
         if (st) rungs.push({ st: st, full: full });
     });
-    if (!rungs.length) { card.hidden = true; return; }
+    if (!rungs.length) { card.hidden = true; prepCard.hidden = true; return; }
 
     /* A STAGE IS SOMETHING TO MEASURE OR SOMETHING TO RUN, and which is a
      * decision only the user has (`task-setup.md` § 11).  The bench axes
@@ -2380,8 +2478,9 @@ function renderNext(task) {
 
     /* THE TASK'S PREP, ONE FOR THE LADDER (`job-system.md`, *The task*):
      * the groups, where each stands, the ones to pick -- the same question
-     * `prep task` asks at the terminal. */
-    host.appendChild(taskPrepCard(task));
+     * `prep task` asks at the terminal -- in its own card, after the tabs
+     * whose values it prepares (`task-setup.md` § 11). */
+    prepHost.appendChild(taskPrepCard(task));
     /* ONE TAB PER GROUP (§ 11; user 2026-09-01: "we can make the stage axis
      * as a tab to organize the cards for prep bench and run so the whole
      * page won't extend too long"): a group is one job, so its run card,
@@ -2468,7 +2567,7 @@ function renderNext(task) {
 
         block.appendChild(el("p", { class: "hint" },
             "Run it \u2014 at what the card above says, prepared with the "
-            + "task's Prep at the top. A launch value no row states is "
+            + "task's Prep below, once saved. A launch value no row states is "
             + "refused at prep; --np / --cpus-per-task / --time on the "
             + "command line state one, or override the card."));
         /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): for a group of
@@ -2500,6 +2599,15 @@ function renderNext(task) {
     } });
 
     card.hidden = false;
+    prepCard.hidden = false;
+}
+
+/** WHERE A GROUP STANDS, in the words the task's Prep and its head both
+ *  say (`task-setup.md` § 11). */
+function groupStateWords(g) {
+    return g.state === "prepared" && !g.matches
+        ? "prepared \u2014 its members changed, prepare it again"
+        : g.state === "prepared" ? "prepared, never launched" : g.state;
 }
 
 /** The task's Prep (`job-system.md`, *The task*; `task-setup.md` § 11):
@@ -2516,7 +2624,7 @@ function taskPrepCard(task) {
     const lad = _fs.ladder || {};
     const err = gs.error || lad.error;
     if (err) {
-        const p = el("p", { class: "hint" },
+        const p = el("p", { class: "hint", "data-attention": "" },
                      "The task's groups cannot be read: " + err);
         p.setAttribute("data-state", "bad");
         wrap.appendChild(p);
@@ -2554,9 +2662,7 @@ function taskPrepCard(task) {
             if (!box.checked && at !== -1) _fs.prepPick.splice(at, 1);
             renderNext(_task || task);
         });
-        const state = g.state === "prepared" && !g.matches
-            ? "prepared \u2014 its members changed, prepare it again"
-            : g.state === "prepared" ? "prepared, never launched" : g.state;
+        const state = groupStateWords(g);
         const members = el("ul", { class: "ts-planlist" });
         for (const st of g.members) {
             const r = said[st] || {};
@@ -2622,7 +2728,8 @@ function continueFromChoice(task, name, cf) {
          * with no `relax` and a structure not stated relaxed -- the one
          * hand-over door's answer, here before anything is written
          * (`engines/vibration.md` § 5.2a). */
-        const note = el("p", { class: "hint ts-continue-note ts-keeps-lines" },
+        const note = el("p", { class: "hint ts-continue-note ts-keeps-lines",
+                               "data-attention": "" },
                         String(cf.refused || ""));
         note.setAttribute("data-state", "warn");
         wrap.append(note);
@@ -2652,6 +2759,7 @@ function continueFromChoice(task, name, cf) {
             // WHOLE, with the commands it names: they are the ways on.
             note.textContent = String(cf.refused || "");
             note.setAttribute("data-state", "warn");
+            note.setAttribute("data-attention", "");
         }
     } else if (sel.value === "--cold") {
         note.textContent = "starts from the calculation's structure — nothing "
@@ -2776,18 +2884,17 @@ function prepButton(kind, picks) {
          * only the file.  An unsaved card is not in the document prep reads,
          * so its preview would show a plan the card does not say. */
         if (_cm && _cm.getValue() !== _diskText) {
-            const ed = $("ts-editor-card");
-            if (ed && ed.scrollIntoView) ed.scrollIntoView({ block: "center" });
             return "Save first — prep reads task.json from disk, and "
-                 + "these edits are not in it yet.";
+                 + "these edits are not in it yet: the bar at the bottom.";
         }
         if (!_machine) {
             const card = $("ts-target-card");
+            if (card) card.open = true;
             if (card && card.scrollIntoView) {
                 card.scrollIntoView({ behavior: "smooth", block: "center" });
             }
-            return "Pick a machine first — “Which machine is this "
-                 + "for”, just above.";
+            return "Pick a machine first — the card “Which machine is "
+                 + "this for”.";
         }
         return null;
     }
@@ -3337,6 +3444,7 @@ function applySetMachine() {
 }
 
 function setMachine(name) {
+    const switched = name !== _machine;
     _machine = name;
     for (const b of document.querySelectorAll("#ts-target-choice .opt")) {
         b.setAttribute("aria-pressed",
@@ -3348,7 +3456,7 @@ function setMachine(name) {
     // queue chosen under the old one, so the choice is cleared rather
     // than carried across (a name that means nothing here would default
     // the asks from a ceiling this machine never stated).
-    _fs.queue = "";
+    if (switched) _fs.queue = "";
     renderQueues();
     /* THE GRID'S FIT IS THE MACHINE'S TOO (`task-setup.md` § 2.1: it
      * changes when either the folder or the machine moves). */
@@ -3367,6 +3475,7 @@ function setMachine(name) {
      * in `preparing-for-another-machine.md`.  `_fs.stepTab` is module
      * state, so the open tab survives the rebuild. */
     if (_task) renderNext(_task);
+    paintHeads();
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-target-state");
     if (!st) return;
@@ -3376,6 +3485,7 @@ function setMachine(name) {
      * that cannot happen. */
     st.hidden = false;
     st.setAttribute("data-state", chosen.readable ? "loaded" : "refuse");
+    st.toggleAttribute("data-attention", !chosen.readable);
     const title = $("ts-target-state-title");
     const body = $("ts-target-state-body");
     // CHOSEN, NOT PREPARED: nothing is prepared until a Prep -- and once
@@ -3963,10 +4073,26 @@ function renderResolved(d) {
         if (!warning) continue;
         facts.appendChild(el("div", null,
             el("dt", null, "warning"),
-            el("dd", { class: "hint ts-config-warning" }, String(warning))));
+            el("dd", { class: "hint ts-config-warning",
+                       "data-attention": "" }, String(warning))));
     }
     facts.hidden = !facts.children.length;
 
+}
+
+/** The machines are listed (`loadMachines`), or the list failed. */
+let _machinesOk = false;
+/** Settles once the machines have answered -- a folder's read waits on it
+ *  before it shows the machine card and opens what asks for you. */
+let _machinesListed = Promise.resolve();
+
+/** THE MACHINE CARD IS A DESCRIPTION'S: shown once the machines are listed,
+ *  for a folder holding a description or a hand-over -- nothing else is
+ *  prepared. */
+function showTargetCard() {
+    const card = $("ts-target-card");
+    if (card) card.hidden = !(_machinesOk
+        && (_mode === "description" || _mode === "handover"));
 }
 
 async function loadMachines() {
@@ -3976,8 +4102,9 @@ async function loadMachines() {
     try {
         data = await fetch("/api/task-setup/machines").then((r) => r.json());
     } catch (e) { data = null; }
-    if (!data || !data.ok) { card.hidden = true; return; }
+    if (!data || !data.ok) { _machinesOk = false; card.hidden = true; return; }
     _machines = data.machines || [];
+    _machinesOk = true;
     const host = $("ts-target-choice");
     if (!host) return;
     host.textContent = "";
@@ -3993,9 +4120,10 @@ async function loadMachines() {
     }
     /* One machine is not a question.  Choosing it silently is the same
      * rule the CLI applies: there is no ambiguity, so nothing is asked. */
-    card.hidden = false;
+    showTargetCard();
     if (_fs.setTo) {
         applySetMachine();               // a folder set to one: shown fixed
+        setMachine(_fs.setTo);           // ...and drawn from its record now
     } else if (!data.choice_required && _machines.length === 1) {
         setMachine(_machines[0].name);
     } else {
@@ -4025,6 +4153,7 @@ function setShape(shape) {
         fixedSaid.textContent = fixedShape ? _fs.shapeFixed.why
             : unread ? "Whether the shape is fixed could not be read: "
                        + unread : "";
+        fixedSaid.toggleAttribute("data-attention", !!unread);
     }
     const needs = $("ts-shape-needs");
     if (needs) needs.hidden = !!shape;
@@ -4040,7 +4169,7 @@ function setShape(shape) {
     if (shape && _task && _task.schema === "molbuilder/task@1") {
         // ...AND ONLY A CHANGE IS WRITTEN: the load repaints the shape the
         // description already carries, and writing that through would mark
-        // a file nobody edited as edited (and open the editor's fold).
+        // a file nobody edited as edited.
         if (_task.shape !== shape) {
             _task.shape = shape;
             commitEdit("Changing the shape\u2026");
@@ -4136,11 +4265,92 @@ function refreshSave() {
     else if (_mode === "refused")                 blocked = "Nothing to save — this folder could not be described; the reason is above.";
     else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
     btn.disabled = !!blocked;
+    /* EDITED, the bar's own words say so (`_setDirty`); SAVED, what the
+     * save did (`saidSave`).  This line says why Save is held, and else,
+     * with neither said, that there is nothing to save. */
+    const edited = !!_cm && _cm.getValue() !== _diskText;
+    const said = $("ts-save-said");
+    const confirmed = !!said && !said.hidden
+        && said.getAttribute("data-state") === "ok";
     if (why) {
         why.textContent = blocked
-            || "Writes task.json into this folder. The text in the editor is "
-             + "what gets written.";
+            || (edited || confirmed ? ""
+                : _mode === "handover"
+                ? "Not a description yet \u2014 Save writes task.json from "
+                  + "what was handed over."
+                : "Nothing unsaved \u2014 task.json in this folder is what "
+                  + "this page shows.");
     }
+    paintHeads();
+}
+
+/* ---------- each card's head says its answer ---------- */
+
+/** Put `text` in card `id`'s head (`.fold-sum`). */
+function _sum(id, text) {
+    const n = $(id + "-sum");
+    if (n) n.textContent = text || "";
+}
+
+/** EACH CARD'S HEAD SAYS ITS ANSWER (`task-setup.md` § 9a.1), so a folded
+ *  card still gives what it holds -- read from what the page already holds:
+ *  the open description (or the hand-over), the folder's answer, the
+ *  machine chosen.  Repainted with the save bar, which every edit reaches. */
+function paintHeads() {
+    const doc = _task || _handover || {};
+    const proj = window.molbuilder && window.molbuilder.projects;
+    _sum("ts-dest-card", !_dir ? "no folder selected"
+        : (proj && typeof proj.relativeToProjects === "function")
+            ? String(proj.relativeToProjects(_dir) || _dir) : _dir);
+    const run = doc.run || {};
+    _sum("ts-came-card", [doc.calculation, _handoverEngine(doc),
+                          run.name || run.id].filter(Boolean).join(" \u00b7 "));
+    const fixed = _fs.shapeFixed && _fs.shapeFixed.shape;
+    _sum("ts-shape-card", !_shape ? "not chosen \u2014 needed before Save"
+        : _shape + (fixed ? " \u2014 fixed" : ""));
+    const chosen = _machines.find((m) => m.name === _machine);
+    _sum("ts-target-card", !_machine ? "not chosen \u2014 needed before Prep"
+        : chosen && !chosen.readable ? "cannot prepare for " + _machine
+        : (_fs.setTo ? "set to " : "") + _machine);
+    const a = doc.allocation || {};
+    _sum("ts-queue-card", [a.domain, a.time, a.mem].filter(Boolean)
+        .join(" \u00b7 ") || "nothing stated");
+    const stages = Array.isArray(doc.stages) ? doc.stages : [];
+    const groups = new Set(stages.map((st) => st && st.group));
+    _sum("ts-stages-card", stages.length
+        ? [_count(stages.length, "stage"), _count(groups.size, "group"),
+           _count(Array.isArray(doc.varies) ? doc.varies.length : 0,
+                  "column")].join(" \u00b7 ")
+        : "");
+    const axes = Object.values(
+        doc.bench && typeof doc.bench === "object" ? doc.bench : {});
+    _sum("ts-machine-card", axes.length
+        ? _count(axes.length, "setting") + " \u00b7 "
+          + _count(axes.reduce((n, pts) =>
+                n * ((Array.isArray(pts) && pts.length) || 1), 1),
+                   "combination")
+        : "nothing to measure");
+    _sum("ts-groups-card", stages.length ? _count(groups.size, "group") : "");
+    const gs = (_fs.groups && _fs.groups.groups) || [];
+    _sum("ts-prep-card", (_fs.groups && _fs.groups.error)
+        ? "the groups cannot be read"
+        : gs.map((g) => "group " + g.number + " "
+                 + groupStateWords(g)).join(" \u00b7 "));
+    const rows = Array.from(document.querySelectorAll("#ts-file-list > li"))
+        .filter((li) => !li.hidden);
+    const here = rows.filter((li) =>
+        li.querySelector('[data-exists="yes"]')).length;
+    _sum("ts-files-card", !_dir ? "no folder selected"
+        : here + " of " + rows.length + " in the folder");
+    const n = doc.notify && typeof doc.notify === "object" ? doc.notify : null;
+    _sum("ts-notify-card", !n ? "no reports"
+        : [n.on_scf_converged ? "each SCF converged" : "",
+           n.every_hours ? "every " + n.every_hours + " h" : "",
+           !Array.isArray(n.channels) || _everyOrThese(n.channels) === null
+               ? "every channel"
+               : n.channels.length ? _count(n.channels.length, "channel")
+               : "no channel"]
+          .filter(Boolean).join(" \u00b7 "));
 }
 
 /** What the last save did, beside the button that did it.
@@ -4242,8 +4452,7 @@ async function _save() {
     const wrote = ["task.json"];
     saidSave("Saved " + wrote.join(" + ") + " into this folder"
              + (body.saved ? " · " + body.saved : "")
-             + ".  `prep` reads this file, so it will use what you just "
-             + "wrote.", "ok");
+             + ". Prep reads this file.", "ok");
     /* THE FOLDER CHANGED, said as a prep says it, so the history panel
      * shows the state just saved; this page re-reads below on its own. */
     if (projects && typeof projects.publishFolderChanged === "function") {
@@ -4254,7 +4463,8 @@ async function _save() {
 
     // Re-open the folder: it is now a description.
     try {
-        if (projects) await loadFolder(projects, _dir, { retire: true });
+        if (projects) await loadFolder(projects, _dir,
+                                       { retire: true, saved: true });
     } catch (e) {
         saidSave("Saved " + wrote.join(" + ") + " \u2014 but the page could "
                  + "not re-read the folder: " + ((e && e.message) || e)
@@ -4294,6 +4504,9 @@ function start(projects) {
     const startDir = typeof projects.getCurrentDir === "function"
         ? projects.getCurrentDir()
         : "";
+    // THE MACHINES ARE ASKED FIRST: a folder's read waits on the list
+    // before it shows the machine card (`loadFolder`).
+    _machinesListed = loadMachines().catch(() => {});
     loadFolder(projects, startDir);
 
     // Directory changes arrive on onChange; a dblclick commit also lands on
@@ -4332,8 +4545,8 @@ function start(projects) {
             () => setShape(b.getAttribute("data-shape") || ""));
     }
     // The machine options are built from the server's records, so the
-    // buttons (and their listeners) are wired inside loadMachines.
-    loadMachines();
+    // buttons (and their listeners) are wired inside loadMachines, asked
+    // above.
     const addSetting = () => {
         const sel = $("ts-add-setting");
         if (!sel || !sel.value) return;
@@ -4368,6 +4581,8 @@ function boot() {
     const rt = window.molbuilder && window.molbuilder.runtime;
     if (rt && typeof rt.whenReady === "function") {
         rt.whenReady("projects").then(start).catch((e) => {
+            const col = $("ts-main");
+            if (col) col.removeAttribute("aria-busy");
             setState("refuse", "The projects sidebar did not load",
                      "This page follows the sidebar's selected folder, so it "
                      + "cannot read anything without it. "

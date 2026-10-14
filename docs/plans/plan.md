@@ -32,13 +32,17 @@ discussions persistent and ready so that when i come back here we can
 continue without losing any context/details")* Read this first; each line
 points at the row or section that holds the detail.
 
-**Just done — 2.9.0 to 2.9.3** *(2026-10-13, each pushed)*: the k-point
+**Just done — 2.9.0 to 2.9.4** *(2026-10-13, each pushed)*: the k-point
 wording in one vocabulary (2.9.0); the 2026-10-11 walk's leftovers (2.9.1);
 the first phase of Q19's three passes — small UI, CSS, Python — each
 reviewed by fresh agents on the full code and contract text, the none2e
 batch run, the one confirm unified on the one dialog component (2.9.2);
 the server's numerical threads capped at one (2.9.3, in effect on port
-8888). Q19's row holds the detail and what its reviews left open.
+8888); Task setup as a checklist — every card folds, its head saying its
+answer, the rail one card at a time, Save in a bar pinned to the window, and
+the task's Prep after the group tabs (2.9.4, the user's request; `web/
+task-setup.md` §§ 7a, 9a.1, 11). Q19's row holds the detail and what its
+reviews left open.
 
 **Before that — Q17, transport over a set of frames** *(2026-10-08 → 10; its
 record archived, § 5z)*. A transport calculation cites a finished relaxation

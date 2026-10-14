@@ -41,6 +41,8 @@ pytest.importorskip("flask")
 
 from pathlib import Path
 
+from support.task_setup_page import unfold
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -156,6 +158,7 @@ def _open(page, base, calc):
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         " return !!(n && n.CodeMirror); }", timeout=20000)
+    unfold(page)
 
 
 def _commands_shown(page):
@@ -183,11 +186,6 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         "    { b.click(); return; } }")
 
     # ── SAVE IS NOT DISABLED ON ARRIVAL ────────────────────────────────
-    # The editor and its Save live in a fold (§ 9a.1); open it the way a
-    # person does rather than reaching past it.
-    page.evaluate(
-        "() => { const d = document.getElementById('ts-editor-card');"
-        "        if (d && 'open' in d) d.open = true; }")
     page.wait_for_selector("#ts-save", state="attached", timeout=20000)
     assert page.evaluate("() => !document.getElementById('ts-save').disabled"), \
         "Save is disabled on arrival"
@@ -560,9 +558,6 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
     This is the page's half; what a prep makes of the switch is the GPU
     contract's table (`test_gpu_contract.py`)."""
     _open(page, flask_server, binding_dir)
-    page.evaluate(
-        "() => { const d = document.getElementById('ts-editor-card');"
-        "        if (d && 'open' in d) d.open = true; }")
     box = "#ts-ask-gpu-binding"
     page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
     if not page.is_visible(box):
@@ -676,9 +671,6 @@ def test_what_you_typed_is_still_there_when_you_come_back(
     one of them.
     """
     _open(page, flask_server, filled_dir)
-    page.evaluate(
-        "() => { const d = document.getElementById('ts-editor-card');"
-        "        if (d && 'open' in d) d.open = true; }")
     sel = '.ts-runcard input[aria-label="value for omp_threads"]'
     page.wait_for_selector(sel, timeout=20000)
 
@@ -703,6 +695,7 @@ def test_what_you_typed_is_still_there_when_you_come_back(
 
     # 2 -- a full reload of this tab.
     page.reload()
+    unfold(page, "ts-groups-card")     # a page loaded anew folds its cards
     page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
     assert _rows(page)["omp_threads"]["value"] == "6", (
         "the value did not survive a page reload")
@@ -779,6 +772,7 @@ def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
         "() => { const cm = document.querySelector('.CodeMirror');"
         " return cm && /\"probe_H2\"/.test(cm.CodeMirror.getValue()); }",
         timeout=20000)
+    unfold(page, "ts-groups-card")     # a folder opened anew folds its cards
     page.wait_for_selector(".ts-runcard", timeout=20000)
 
     assert "block_size" not in _rows(page), (
@@ -899,9 +893,6 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
     so the window is never left covered.
     """
     _open(page, flask_server, filled_dir)
-    page.evaluate(
-        "() => { const d = document.getElementById('ts-editor-card');"
-        "        if (d && 'open' in d) d.open = true; }")
     sel = '.ts-runcard input[aria-label="value for omp_threads"]'
     page.wait_for_selector(sel, timeout=20000)
 
@@ -1289,6 +1280,7 @@ def test_the_notify_card_offers_this_machines_channels(
     page.wait_for_function(
         "() => { const c = document.getElementById('ts-notify-card');"
         " return c && !c.hidden; }", timeout=20000)
+    unfold(page, "ts-notify-card")     # the rail's: one card open at a time
     page.wait_for_selector("#ts-notify-channels input[type=checkbox]",
                            timeout=20000)
 

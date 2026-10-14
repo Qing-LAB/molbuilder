@@ -42,10 +42,10 @@ entry for both doors, whose checkpoints and agreement
 [`job-system.md`](?doc=execution/job-system.md) § 5.0 states,
 rendering from the facts of the machine you chose in § 6, never from the
 browser's. **Launching stays at the terminal**: it spends a queue slot, one job
-per invocation, by hand. The Prep buttons prep one stage; stages that share one
-job — a transport ladder's seed and leads — are grouped at the terminal's
-`prep`, by naming them ([`project-layout.md`](?doc=execution/project-layout.md)
-§ 1.6.6). What the page writes:
+per invocation, by hand. The task's Prep prepares the groups you pick, each
+group one job — the stages that share it, a transport ladder's seed and leads
+among them ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6;
+§ 11). What the page writes:
 
 ```text
 projects/BDT-Au/optimization/au111-series/bdt_au/
@@ -839,7 +839,7 @@ not necessarily the engine generated ones, but more the ones we designed to be
 generated".)*
 
 A second card in the aside, listing every file **molbuilder** names, each with
-one line saying what it holds. Three groups, and the grouping is the same
+one line saying what it holds. Three kinds of group, and the grouping is the same
 distinction the names themselves draw (`job-contracts.md` § 2.3):
 
 | group | what is in it |
@@ -847,6 +847,14 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 | **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
 | **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them |
 | **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in, **spelled as that shape spells it**: an attempt's `run.json` and `.continued-from` in the hierarchy, a run's own `<base>-run<N>.run.json`, `<base>-run<N>.continued-from` and `<base>-run<N>.molwatch.log` in the flat shape — the card names the first run's, `-run0` |
+
+**Each group folds** *(user, 2026-10-13: "the 'what this calculation writes'
+panel should have the organization of the files clear by foldable segments
+too")*: closed until opened, its head the group's name — *For the whole
+run*, *Once, for the calculation*, each rung by name — with where it lands
+and how many files it holds — and *Restart files carried between runs*, with
+which list it is. The card
+reads first as its organization, then one group at a time as its files.
 
 **Not the engine's outputs, and that asymmetry is the point.** An engine's
 output set depends on its version and on which options are on, so listing *that*
@@ -903,7 +911,7 @@ sequenceDiagram
 
     You->>Card: type 48 into mpi_np
     Card->>Model: stages[i].execution.mpi_np = 48
-    Note over Model: the unsaved marker appears.<br/>PREP CANNOT SEE THIS YET.
+    Note over Model: the save bar says edited — not saved.<br/>PREP CANNOT SEE THIS YET.
 
     You->>Save: Save to this folder
     Save->>Disk: 1 · the folder's state saved, always (§ 8)
@@ -960,11 +968,32 @@ the file. **So `Save` is not a convenience, it is the only bridge** — and a
 card whose values have not crossed it has done nothing, however complete it
 looks.
 
+**Save sits in a bar pinned to the bottom of the window** *(user,
+2026-10-13: "what's the purpose/function of the button 'save to this
+folder'? … should I press this button before i set up the prep parameters
+… this is a bit confusing")*, on screen while you work through the main
+column; on a window too narrow for two columns the rail's cards come after
+it. The bar says one of three things: *edited — not saved* (the page's text
+differs from `task.json` on disk), *nothing unsaved* (they agree), or why
+there is nothing to save yet; what the last save did stands in it until the
+next edit or the next read of the folder, and a save refused says so there,
+in the server's words. Every edit — a card, the stage table, a group's run card,
+the notify card, the editor — waits for Save; nothing saves itself, because
+each save also saves the folder's state (§ 8), and a state per keystroke
+would bury the ones worth going back to.
+
+**When to press it: whenever you like, and as often** — each save keeps a
+state you can go back to. Prep reads only what is saved: Preview and Prep
+refuse while the bar says *edited*, so the last edit before a Preview —
+the run settings in a group's tab included — is followed by a Save, and an
+edit made after a Prep needs a Save and a new Preview before it is
+prepared.
+
 | step | reads | must say, when it fails |
 |---|---|---|
 | **1 checkpoint** | — the server's, always (§ 8) | *"No state was saved, so nothing was written"* — and it **stops**: the state is the one a redo restores |
 | **2 write** | the **buffer**, not the model | *"NOT written — ⟨the server's words⟩"* |
-| **3 confirm** | — | **always**, beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
+| **3 confirm** | — | **always**, in the bar beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
 | **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |
 | **preview** | `task.json` **on disk** | the server's refusal, verbatim |
 | **prep** | `task.json` **on disk** | the server's refusal, verbatim |
@@ -1064,54 +1093,74 @@ language is one row there rather than a second copy per surface.
 
 **Editing here is not saving.** The editor is where you check and correct the
 description before it is written; § 8 is what writes it. An edited buffer that
-has not been saved says so. **A card never writes over text that does not
+has not been saved is said by the save bar (§ 7a). **A card never writes over text that does not
 parse**: while the editor holds something that is not valid JSON — an edit in
 progress — a card's change is refused, said at the top of the page, and the
 text is left as typed.
 
-### 9a.1 Folded by default, and in the column with everything else
+### 9a.1 Every card folds — the page opens as a checklist
+
+*(user, 2026-10-13: "the side panel and the other cards/panels in the task
+setup are currently all fully expanded all time. can you make them all
+foldable so that the logic flow are clear in first sight? especially the side
+bars, can you make only one of them will unfold at a give time?")*
+
+**Every card folds**, through the one foldable component
+([`ui-contract.md`](?doc=web/ui-contract.md) § 4), and **its head says its
+answer** in a few words — where it saves; what the calculation is; the shape,
+and whether it is fixed; the machine; the queue and what it asks; the stages,
+their groups and columns; the points to measure; the groups; where each group
+stands for Prep — so a folded card still gives what it holds.
+
+**A folder opened anew is a checklist** — picked in the sidebar, or the page
+loaded: every card in the main column folded to its head, except one that
+asks for you — a question still unanswered (the shape, § 4; the machine,
+§ 6), or a refusal or warning about its own subject (a machine record that
+cannot be read, a `molbuilder.json` that is never read) — which opens.
+Reading the same folder again — after a Save, a Prep, a restore — leaves
+every card as you left it. **The page's messages stand above the cards**,
+outside every fold — what the folder is, a refusal, the preflight's notes
+on the last save — so a fold never hides one.
+
+**The main column is the order you work in**: where it saves, what came over,
+the shape, the machine, the queue, the stages, what to measure, what each
+group runs, the task's Prep (§ 11) — and last the file itself, `task.json`,
+folded: a place to check or correct the description, not a step. The save
+bar (§ 7a) is under all of it, on screen while you work through the column.
 
 *(user, 2026-09-01: "we should allow the task.json view to be foldable, and
 have its width to be consistent with the other cards, such that the 'what gets
-written' card can travel as we scroll the window down".)*
-
-The editor was **full width, below both columns**, on the argument that a JSON
-document reads badly in a narrow rail. That is true of an *open* editor and it
-cost something real: the page stopped being two columns partway down, so the
-aside could not follow you. *What gets written* — which since § 7.1 lists what
-every stage will produce — sat at the top while you edited the stages it
-describes.
-
-So it **folds**, and folded it joins the main column:
+written' card can travel as we scroll the window down".)* The editor card:
 
 - **closed by default.** The description is what the cards above already say;
   the editor is for checking and correcting it, which is a thing you go and do
-  rather than a thing you watch. An unsaved edit forces it open — a buffer
-  that differs from disk may never be hidden.
+  rather than a thing you watch. An unsaved edit is said by the save bar, on
+  screen whatever is folded, so the fold stays yours.
 - **column width, open or closed** (user: *"have its width to be consistent
-  with the other cards"*). The old argument for full width — a JSON document
-  reads badly in a narrow rail — was answered by the wrong measurement: the
-  main column is not the rail. It is the widest thing on the page after the
-  page itself, and a card that matched it would have cost the second column
-  for a few characters of line length.
+  with the other cards"*): the main column is the widest thing on the page
+  after the page itself, and a card that spanned both columns would cost the
+  rail for a few characters of line length.
 - **the aside travels.** With one grid the whole way down, the rail is sticky
   — and **capped, with its own scroll**: a five-rung ladder's per-stage list is
   tall, and an aside that outgrows the viewport pins its own top out of reach.
 
-**The rail holds the two cards that are about the whole calculation**, in this
-order: *What gets written* (§ 7), then *Tell me how it is going* (§ 9b). The
-main column is the sequence you work through — folder, shape, machine, queue,
-stages, then a tab per rung; the rail is what is true of all of it, and what is
-true of all of it should stay on screen while you work through the parts.
+**The rail holds the three cards that are about the whole calculation**, in
+this order: *What gets written* (§ 7, § 7.1), *What this calculation writes*
+(§ 7.2), *Tell me how it is going* (§ 9b) — **one open at a time**: opening
+one folds the one that was open, *What gets written* is open when the page
+loads, and the one you opened stays open as you move between folders. The
+main column is the sequence you work through; the rail is what is true of all
+of it, and its open card stays on screen while you work through the parts.
 
 ---
 
 ## 9b. *Tell me how it is going* — and the one file it writes
 
-**It is out of the flow, deliberately** — in the sticky rail under *What gets
-written* (§ 9a.1). The main column is what the calculation *is*; this is what
-it *says while it runs*, one answer for every stage, and the rail keeps it out
-of the way and on screen (user: *"logically that's a global setup too"*).
+**It is out of the flow, deliberately** — the last of the rail's three cards
+(§ 9a.1). The main column is what the calculation *is*; this is what it *says
+while it runs*, one answer for every stage, and the rail keeps it out of the
+way and one click from wherever you are (user: *"logically that's a global
+setup too"*).
 
 **This card writes `task.json` and nothing else.** The addresses and keys are
 on the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)),
@@ -1193,18 +1242,24 @@ that resolves to nothing is silent by design.
 
 ---
 
-## 11. Preparing, group by group — one tab per group
+## 11. Preparing, group by group — what each group runs, then the task's Prep
 
 *(user, 2026-09-01: "we can make the stage axis as a tab to organize the cards
 for prep bench and run so the whole page won't extend too long".)*
 
 The page launches nothing (§ 10). What it does, per group, is show what will
 be prepared, prepare it for the chosen machine, and hand you the exact command
-— and it does that **in a tab strip keyed by group**, because a group is one
-job — what prep writes and launch sends — and a page keyed by stage would ask
-the same job's values once per stage.
+— and it does that **group by group**: a tab per group for what each job runs,
+then one Prep for the task, because a group is one job — what prep writes and
+launch sends — and a page keyed by stage would ask the same job's values once
+per stage.
 
-**The task's one Prep, above the tabs**
+**Two cards, in the order the work goes** *(user, 2026-10-13)*: *What each
+group runs* — one tab per group, where each job's run is decided — then
+*Prep the task*, which prepares what the tabs decided once the description
+is saved (§ 7a). The Prep comes after the values it reads.
+
+**The task's one Prep, its own card after the tabs**
 ([`job-system.md`](?doc=execution/job-system.md), *The task*). It lists every
 **group** with its stages, as the folder's answer gives them (`ladder`, the
 answer `prep task` shows before it asks) — *not prepared*; *prepared, its
@@ -1225,23 +1280,24 @@ the boxes start again from the new offer. Beside each prepared group, what its
 launch will take and whether it can go now — *ready to launch*, or *waits for
 electrode_R to finish* — the ready door's answer.
 
-**One tab per group.** Inside a tab, everything else you do with that job and
-its stages:
+**One tab per group** — the card *What each group runs*. Inside a tab,
+everything else you do with that job and its stages:
 
 | | |
 |---|---|
 | **measure it** | per member: `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring — a benchmark measures one stage, never a group |
-| **run it** | the group's one run card (§ 6.2b), the Continue-from choice for a group of one stage, and the lines `prep task --group <N>` → `launch task --group <N>` — prepared with the task's Prep above; then, per member, its launch again alone once the group has run; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
+| **run it** | the group's one run card (§ 6.2b), the Continue-from choice for a group of one stage, and the lines `prep task --group <N>` → `launch task --group <N>` — prepared with the task's Prep below; then, per member, its launch again alone once the group has run; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
-travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:
-`01_coarse/` beside `02_medium/` is how you check that the shape is what you
-meant, and a per-tab copy would show you one line of it at a time. The rail
-stays on screen while you work through the tabs, so both are visible at once
-without either being duplicated.
+rail's *What gets written* (§ 9a.1). A tab is one job and that list is the
+whole ladder: `01_coarse/` beside `02_medium/` is how you check that the shape
+is what you meant, and a per-tab copy would show you one line of it at a time.
+The rail travels beside the tabs, so both are visible at once without either
+being duplicated.
 
 **What the run will use is asked HERE, in the group's own tab**, immediately
-above the `prep task` line that consumes it *(user, 2026-09-02: "that selection
+above the `prep task` line that consumes it — the Prep that prepares it is the
+next card, *Prep the task*, once saved *(user, 2026-09-02: "that selection
 panel card should be next to the prep for run button such that it's obvious
 that this is designed for the run. This is not mixed up with the existing
 functional bench setup")*. It writes that rung's `stages[i].execution`
@@ -1249,8 +1305,8 @@ functional bench setup")*. It writes that rung's `stages[i].execution`
 the calculation's own block, which the field shows as its placeholder.
 
 There is exactly one such card per group and none anywhere else — it stood in
-the main column for part of 2026-09-02, two cards away from the button it
-decides for, which reads as part of the bench setup.
+the main column for part of 2026-09-02, among the cards that set up the
+benchmark, and read as part of the bench setup.
 
 **What the rung continues from is chosen in its tab too.** A group of one stage that
 continues from the stage before it — a continuing stage of an independent
@@ -1277,9 +1333,9 @@ takes their input itself, or none — and a choice the folder no longer offers
 force-constant stage with no `relax` shows, instead of a choice, why prep
 refuses it while its structure is not stated relaxed.
 
-**So a tab is about doing, not deciding**: what this rung will produce, and the
-two commands that produce it. The decision is above, made once, and visible in
-the description the commands read.
+**So a tab holds one job**: how to measure its stages, what it will run with,
+and the commands that prepare and launch it. What it will produce is the
+rail's list; the Prep that prepares it is the next card.
 
 **A stage is either something to measure or something to run, and which is
 a decision only you can make** — unchanged from the card this replaces:
@@ -1370,8 +1426,8 @@ from the same answer:
   have passed and before it writes, always
   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
   its note, led by the time it was taken. Unsaved edits are not in the
-  `task.json` prep reads, so the tab refuses a Preview or a Prep while the
-  editor holds them — "Save first" (§ 7a). A launched stage is refused
+  `task.json` prep reads, so the page refuses a Preview or a Prep while the
+  save bar says *edited* — "Save first" (§ 7a). A launched stage is refused
   instead, naming the way back
   ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
