@@ -912,8 +912,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * envelope, so the region / frozen / annotation block the Build tab
          * wrote into the input script, the cell and the axis kinds are
          * already on it (/api/watch/load). */
+        /* THE HOST REPLACES WHAT ITS VIEWER SHOWS, AND SAYS SO
+         * (`web/molview.md` § 9.4): the viewer is mounted read-only, which
+         * takes a second install only when its host means it -- a Refresh, a
+         * poll's rebuild (`web/trajectory.md` § 5).  Refused, the counter
+         * grew while the movie kept the old frames. */
         try {
             await _mvdata().installMolecule({
+                enforce:      true,
                 structure:    frame0,
                 // THE FILE IT CAME FROM names it (`web/molview.md`: an export
                 // "writes mine.xyz" for mine.xyz).

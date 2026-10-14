@@ -229,16 +229,21 @@ flowchart TD
 
 Appending is the cheap path: the movie keeps playing, the camera holds still,
 and your frame position stays put (if you were watching the newest frame, it
-follows the tail). One case costs a visible rebuild instead — the poll that
-turns a **single**-frame load into a trajectory. A run caught at its very first
-geometry has no movie to extend yet, so the viewer builds one from the whole
-series and you see the brief "Updating view…" overlay. Before this, that append
-went nowhere: the frame counter and slider grew while every position showed the
-first geometry, until you hit Refresh.
+follows the tail). **A poll that does not provably extend the movie rebuilds
+it** from the whole series instead — the poll that turns a **single**-frame load
+into a trajectory, and one in which a frame already shown changed (the step in
+flight at the last read, now finished, or a frame count the movie does not
+hold); you see the brief "Updating view…" overlay. **The rebuild is the host
+replacing what its viewer shows**: the viewer is MolView mounted read-only,
+which takes a second install only when its host says it means it
+([`molview.md`](?doc=web/molview.md) § 9.4, `enforce`), so every install this
+viewer makes says so. *(Until 2026-10-13 none did: every rebuild after the
+first load was refused in silence, the frame counter growing while the movie
+kept its old frames.)*
 
 **Refresh is a clean reload**, not a nudge: it re-runs the whole load, so the
-movie returns to its first frame and the camera refits — the same reset a
-file-switch does. This is deliberate (it closed a class of half-refreshed-state
+movie opens again at its newest frame, as a load opens it, and the camera
+refits — the same reset a file-switch does. This is deliberate (it closed a class of half-refreshed-state
 bugs); a couple of guards make sure a late reply from a previous file can never
 paint into the current view, and partial (mid-write) frames are listed but kept
 out of the plots.
@@ -339,6 +344,9 @@ header. The header's source-path line has the username redacted.
   `.xyz` carries geomeTRIC's iterations only. Both counts are right for
   what they are; which you see is decided by which file you opened.
 
+- `test_trajectory_rebuild_js.py` — § 5's rebuild reaching the read-only
+  viewer: the viewer's own `rebuildModel` against MolView's real read-only
+  model, four frames then six with the fourth moved.
 - `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
   reads the timestamp series and its "total" reads the duration series, and
   that no per-iteration rate is computed from a timestamp.
