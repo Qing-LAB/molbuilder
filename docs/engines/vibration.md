@@ -349,14 +349,15 @@ electrode atom among the held ([`engines/transport.md`](?doc=engines/transport.m
 
 **Within one ladder the held set may grow too.** A SIESTA ladder's `freq`
 stage is prepared after its `relax` stage ran, each deck a held-first sorted
-copy. `relax`'s final coordinates are a per-atom result of a sorted run, so
-`freq`'s prep takes them in the input order — `relax`'s restored result, or
-restored through `relax`'s own index with a warning — before it sorts its own
-copy, as every prep does ([`model/overview.md`](?doc=model/overview.md) § 2.2;
-plan § 5ab); the comparison above then judges the held set. *(Today
-`jobset.prep._vibration_stage_geometry` takes them in `relax`'s sorted order,
-row by row — right only while the two preps held the same atoms; plan V1.41,
-folded into RMP.)*
+copy carrying its own index. `freq`'s prep reads `relax`'s final geometry
+through the run door, restores it to the input order through `relax`'s
+index, and sorts its own copy from it, as every prep does; `relax`'s density
+is carried only when the two decks' indices are the same, and the launch says
+so when it is not ([`model/overview.md`](?doc=model/overview.md) § 2.2a, I3–I6);
+the comparison above then judges the held set. *(Decided 2026-10-14, not
+built: today `jobset.prep._vibration_stage_geometry` takes the coordinates in
+`relax`'s sorted order, row by row — right only while the two preps held the
+same atoms; plan V1.41, RMP R3.)*
 
 ### 2.4 Where results land — `frequency/` and `spectrum/`
 

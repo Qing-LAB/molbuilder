@@ -167,6 +167,67 @@ are a base offset with no state; this is a per-structure reorder with a record.
 `engine_atom_index.py` therefore does not hold it, and must not — its invariant
 is that its two directions cannot disagree because they share one base.
 
+### 2.2a The remapped state — the invariants, and the one API across them *(decided 2026-10-14, not built; plan § 5ab, RMP)*
+
+> **Decided with the user on 2026-10-14, not yet built.** *"there is a mapping
+> contract, all things will return to original index from input, no mapping
+> is exposed at the output"*; *"as long as .xyz and .json always travel along
+> with mapping explicit, there is no extra step needed"*; *"modify/molbuilder
+> always save a fresh, consistent index without remapping state"*; *"state the
+> invariable, and the api that translates different mapping state etc so all
+> users are using that"*. Until it is built, § 2.2 above describes the code:
+> the record in `atom-permutation.json` beside the calculation, read by two
+> readers. As each part is built, § 2.2 is rewritten from this section, and
+> this banner goes with the last.
+
+**Two sides.** *Your side* is in your input order: every pair molbuilder
+writes for you, a calculation's structure, a frame set, the Molbuilder tab,
+and every result molbuilder computes for you — a vibration's spectrum and the
+structure in it, a transport record's per-atom content and its data file.
+*The engine side* is in the order an engine needs: a deck, the engine's own
+files in a run (`.out`, `.XV`, `.DM`, `.FC`, SIESTA's `<label>.xyz`), and an
+engine record — the transport calculation's composed junction. **A structure
+derived from yours** — an electrode cell built from the junction — is a new
+structure with its own identity, on neither side's index: it is not a
+reordering of your atoms.
+
+**The invariants:**
+
+| # | invariant |
+|---|---|
+| **I1** | **Your side is never remapped.** Everything listed above as your side is in your input order, its `atom_order` null. |
+| **I2** | **Remapped ⇔ the index is present.** A structure in an engine's order carries its index, the structure's `atom_order` field, and nothing else states the state. The identity order is never stored. |
+| **I3** | **Each translation happens in one place.** Into an engine's order: `sort_by` only. Back to yours: `Structure.restored()` for a structure, and the index's own methods for a computed result's per-atom rows. Nothing maps an index by hand. |
+| **I4** | **An engine order is made only from yours.** `sort_by` refuses a remapped structure, so between an engine and you there is one index, never two composed. |
+| **I5** | **A run's index is its deck's.** The deck's ATOM-METADATA block states it, written from the structure's own serialiser; the run door reads it there and nowhere else. One deck, one index — every frame of a frame set sorted by one key from your order carries the same one. |
+| **I6** | **A restart file crosses between two runs only when their decks carry the same index** — or both none. A restart file holds the state of the receiving run's own atoms (`.XV`, `.DM`, `.CG`, `.TSDE`, `.chk`), whether it is continued from the run before or gathered from another (a seed's density into the device); otherwise it is not carried, and the launch says so. A file that describes another structure — a lead's `.TSHS`, its electrode cell — is that structure's own. |
+| **I7** | **The pair travels whole.** A structure's index lives in its `.json` beside its `.xyz`, read and written only by the codec, with its atoms. |
+| **I8** | **An editor holds only your order.** The Molbuilder tab and `molbuilder modify` open a remapped file already restored, and say so; a structure appended is restored first. The engine's order stays visible, marked, in the Results tab. |
+| **I9** | **A run made before this rule** — its deck states no index, `atom-permutation.json` beside it — is refused by name by a door that builds from it (*prepared before this version recorded its atoms' order; prepare the stage again*) and said by a door that shows it. **A pair saved before this rule** from a reordered run's view is in the engine's order with no mark, and cannot be told apart: the release says so. |
+
+**The API — the only way across:**
+
+| call | it crosses | its callers, and nobody else |
+|---|---|---|
+| `sort_by(structure, key) → Structure` (`transport/sort.py`) | your order → an engine's | prep (a SIESTA vibration's decks), the transport composer. Sets `atom_order`, leaving it null for the identity; refuses a remapped input |
+| `Structure.restored() → Structure` | an engine's → yours | every door that crosses back: the save, export and hand-over routes, `xv2xyz --from-run`, the editors' open and append, prep and the transport citation building from a run, the vibration finish building the spectrum's structure. Every per-atom field and every frame moved through `atom_order`, the field cleared; a structure in your order comes back unchanged |
+| `atom_order.original_of(indices)` · `atom_order.rows_to_input_order(rows, indices)` · `atom_order.sorted_of(indices)` — `atom_permutation.Permutation`, the field's type | a computed result's per-atom rows and indices, either way | the vibration finish (eigenvectors, positions, masses), the transport record and its data file, the transport report's selections (in through `sorted_of`, back through `original_of`), a refusal naming atoms |
+| `runs.view_of(run).structure(...)` | builds an engine-side structure from a run's own files | the only builder of a structure from engine files; attaches the run's `atom_order` from its deck. Its callers then cross with `restored()`, or show it marked |
+| `same_order(a, b)` (beside `Permutation`) | a restart file between two runs | the launch's hand-over, once, for every restart file (I6) |
+| `metadata_to_dict` / `apply_metadata_dict` | serialisation | the field rides them into the sidecar, the deck's block and the browser's two directions; nothing reads or writes the index field by field |
+
+**Forbidden, and checked in review**: `take` called with an index put
+together by hand; a `Permutation`'s lists read by hand; a parser class
+imported to build a run's structure; `atom-permutation.json` read (it
+retires).
+
+**What this supersedes in § 2.2's table**, as each part is built: *recorded,
+both directions* — the index lives in the deck and in the pair's `.json`, no
+file of its own; *the sorted copy is an engine artifact … with the
+permutation beside it* — it carries its index in itself; *one copy, one
+permutation … composed* — never composed: an engine order is made only from
+yours (I4).
+
 ---
 
 ## 3. The rest of the shared vocabulary lives in `execution/`

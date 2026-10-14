@@ -191,7 +191,7 @@ the code when it is taken (§ 2's rule), and a step closes as a milestone does
 
 | # | step | what it is, plainly | its items — the detail is in § 2 or the section named |
 |---|---|---|---|
-| **1** | **Wrong or lost results** | places where molbuilder can show, read or keep the wrong data and not say so | *Done 2.9.5–2.9.6, archived 2026-10-14:* T1, F-MDNC, F19b, W40, the pin of V1.9 (M2m), A1.11, A1.4, the `.pdb` half of A1.5 / A1.13, and the held-set rule of `engines/vibration.md` § 2.3a. **Open, in order:** § 5r steps 3–4 (V1.10 a structure pair half written, A1.1 a left-handed cell passed in silence); X3 (the Cell page commits a box with no seam verdict); PDB-T (a PDB title past column 80); F14 (the force over every atom, the held ones included, and a slab's pressure never shown, TranSIESTA's *FORCES WRONG* not captured; `max_force` offered to a transport rung); K17 (`ParallelOverK`, the pseudopotential name fallback, the geomeTRIC log — § 5w.1); PL-R's defect (`summarize` reports the latest of a trial's runs without saying there were two); RMP (§ 5ab: the remapped state stated at every output — V1.41's force-constant prep among its doors); V1.40 (a continuing PySCF stage's geometry unchecked); V1.43 (a cited pair's electrodes checked against what its relaxation held — the user's word owed); T-CO2 (the relaxation-to-vibration road on CO2); **then 2.9.6 is pushed**, and V1.39 (a vibration's result states its structure, in a JSON and a NetCDF) is **2.10.0**, new functionality |
+| **1** | **Wrong or lost results** | places where molbuilder can show, read or keep the wrong data and not say so | *Done 2.9.5–2.9.6, archived 2026-10-14:* T1, F-MDNC, F19b, W40, the pin of V1.9 (M2m), A1.11, A1.4, the `.pdb` half of A1.5 / A1.13, and the held-set rule of `engines/vibration.md` § 2.3a. **Open, in order:** § 5r steps 3–4 (V1.10 a structure pair half written, A1.1 a left-handed cell passed in silence); X3 (the Cell page commits a box with no seam verdict); PDB-T (a PDB title past column 80); F14 (the force over every atom, the held ones included, and a slab's pressure never shown, TranSIESTA's *FORCES WRONG* not captured; `max_force` offered to a transport rung); K17 (`ParallelOverK`, the pseudopotential name fallback, the geomeTRIC log — § 5w.1); PL-R's defect (`summarize` reports the latest of a trial's runs without saying there were two); RMP (the remapped state — `model/overview.md` § 2.2a, built by § 5ab's R0–R6; V1.41 its R3); V1.40 (a continuing PySCF stage's geometry unchecked); V1.43 (a cited pair's electrodes checked against what its relaxation held — the user's word owed); T-CO2 (the relaxation-to-vibration road on CO2); **then 2.9.6 is pushed**, and V1.39 (a vibration's result states its structure, in a JSON and a NetCDF) is **2.10.0**, new functionality |
 | **2** | **Finish what the framework half-built** | pieces whose design is agreed and partly built, so two ways of doing one thing live side by side | M3 the run record (W35, § 5t.3: P2's remainder, P4 the contour, divergence and the monitor's warnings); M6 P5 (W34, § 5s.3: the charge and spin a run actually used, read back and set against what was asked); M2k the GPU claim and match, and W36 ⑦ (an inherited thread count guarded); § 5w's remainder (M11: K13 one atomic writer, K14 each engine's parallel model as data, K16 the wrapper fence, K18 a PySCF run's level of theory, K9 each engine default declared once with its source); Q11 (the named-queue check in one door); Q8 (one `proxy.trust`; a benchmark's grid stated by its description); M4 (W33 P4, § 5q.6: the design-frame exports, the transport validation subject); W44 (a stage's required files, checked — or a ruling that prep's gather replaces it); W45 (checkpointing's owed half); W48 (facts the catalogue and the config classes both state); N10's two calculation-root checks; X4 ② ③; W41; W57-M, W57-K, W57-O; A1.14; V1.9's remainder (the broad hash, the join check, derived structures — its ruling the user's); V1.11 |
 | **3** | **Tidy the code and the pages** | no change to what molbuilder does; the same thing done one way, in one place | Q19's later phases — small UI P3–P4; the CSS phases, M8's W1–W6, W13 and W15 (sealing MolView) folded in as one CSS programme; Python phases 2–5 with S1 (§ 0a's Q19 row lists them); § 5r's remainder (A1.6, A1.8–A1.10, A1.15, A1.17–A1.20), then A1.21 (the audit of the rest of the tree); § 8 rows 10 and 11; F9 (a group prep's notes once, not per member); A1.5's remainder (one home for the structure-path rule, renaming a structure vs a file) and A1.13's; V1.14; V1.42 (the relaxation record's held set stated once); the tests — PYF-T, L2, T-ENV, R11, W57-T, DOC-TOC (retire); Q2f (absolute imports — agreed 2026-10-03, done as its own focused session with agent reviews, as the user asked) |
 | **4** | **Prove the whole road** | each kind of calculation driven start to finish through the browser and the printed commands, on the code as it then is | M3 P6 = W50 step 3 (an optimization, a vibration and a transport calculation: the parameter tab, the hand-over, Task setup, `prep` / `launch`, the Results tab — every step through the designed doors); M2n's leftovers (the sweep for tests that read text; W57-G, rules held by an assertion on a real run; W56-H, a PySCF relaxation with a held atom; K11 judged); F11's walk (the user's go); the full batch after it |
@@ -269,11 +269,11 @@ listed — stays here as step 3's detail:
 | ↳ | **V1.38** | **A δ-convergence comparison that also varies the mesh.** `engines/vibration.md` § 9 still names it as owed; V1.23 closed as built with the δ axis only (the displacement sweep), so the mesh half — the one that separates the grid's error from δ's (§ 9's H₂ measurement) — has no row. Found by the 2026-09-29 coverage check | `vibration.md` § 9 · `science/normal-modes.md` § 4b.6 C | open · *Re-checked 2026-10-09:* narrower: the sweep takes a mesh stage already (`spectra/displacement_sweep.py:8,17,152`; `vibration.md` § 5.9); what is left is the measured δ+mesh comparison on H₂. |
 | ↳ | **V1.39** | **A vibration's result states its structure whole, in a JSON and a NetCDF** (decided with the user 2026-10-14; revised the same day after two review agents; the design is `engines/vibration.md` § 6.10). Schema 8: `structure` is `Structure.to_dict()` of the equilibrium structure, the input's run records left behind; built on PySCF from the deck's `_MB_SIDECAR` through `molstruct.apply_to_structure`, on SIESTA from the deck's own ATOM-METADATA and ENGINE-OFFSET blocks put back in the input order (the held set checked against the FC range), the `vibration` block adding only the title and identity columns; `structure_hash`, `equilibrium.elements/positions_ang` and `frozen_atom_idxs` retired into it; `equilibrium.masses_amu` kept (on the `mass_amu` channel it would make the structure read as half a frame set); `relaxation.record` carrying the `relax` stage's record whole; `n_atoms_total`, `free_atom_idxs`, `n_atoms_in_hessian`, `hessian_scope` stated and checked; the reader serving one shape, then the consumers migrated (`lib/spectra/core.js`, `blueprints/spectra.py`, the sweep, the frame-set generator), then the writers; the SIESTA sweep comparing stated structures within 10⁻⁶ Å; a frame set citing the result alone, its `result_sha256` compared at the transport citation; `<label>.spectra.nc`, NetCDF-4 in three groups (`/structure` with `to_dict()` whole as JSON text, `/modes`, `/thermo/grid`), the scalars as attributes, through the variable record and loop moved out of `transport/datafile.py`, read back equal to the JSON. **What it changes beside**: `structure.py`, `molstruct.py` and `persist.py` join `mb_vibration.pyz`, `persist.py` `mb_pyscf.pyz`; both files written through `persist` (V1.37 and K13's spectra item close with it); `netcdf4` in the PySCF recipe and listed by both SIESTA recipes, every self-test importing it, the SIESTA `loads` check importing it before the force-constant run; I15 retires, I23, § 5.5 and `configuration.md`'s bundle rule gain `netCDF4`; `.spectra.nc` registered (`runfiles.WRITTEN`, § 6.9, `job-contracts.md` § 6.1). **Done when** both engines' e2e vibrations write both files, the `.nc` reads back equal, a v7 result still loads, and the viewer draws from the v8 shape | `engines/vibration.md` § 6.10 | decided, not built — **2.10.0**, after 2.9.6 is pushed |
 | ↳ | **V1.40** | **A continuing PySCF stage's starting geometry is checked at launch** (decided with the user 2026-10-14). The script swaps in the previous run's `<label>_optimized.xyz` coordinates and takes everything else from its own deck (`pyscf/input.py`, `continues`), which is right only while the file lists the deck's atoms in its order. Before the job is sent, launch reads the previous run's pair through the codec — the pin, the atom count, the elements in order against the stage's deck — and refuses naming the way out; the job keeps its plain read. **The carry copies a structure file as a pair**, its sidecar named by `molstruct.sidecar_path_for` (the one pairing rule, `structure-molstruct.md` § 6), never a second row in `pyscf/warm-files.toml`; `engines/pyscf.md`'s *copied at `prep`* corrected to launch (`job-system.md`). Whether SIESTA's carried `.XV` needs the same check is asked when this is built. **Silent failure it closes**: a run's geometry file replaced by hand, its atoms reordered, held and labelled as other atoms. **Done when** a launch refuses a stage whose previous pair's pin or atom order is wrong (a `launch_protocol.toml` row) and the carried pair opens through the codec in the new run | `engines/pyscf.md` § 3 · `model/structure-molstruct.md` § 3, § 6 | decided, not built |
-| ↳ | **T-CO2** | **The relaxation-to-vibration road on CO2** (agreed with the user 2026-10-14: *"why don't we switch to CO2 molecule so it can cover all the needs?"*). The shared relaxed-for-vibration run (`tests/support/real_runs.relaxed_for_vibration`, the fixture renamed from `real_h2_relaxed_for_vibration`) becomes CO2, relaxed with the carbon held and both oxygens free, and every test that reads it follows: the relaxation-record tests (`tests/test_siesta_relax_run_e2e.py`, the held-set rows of `engines/vibration.md` § 2.3a moving here from the real-junction test), the monitor (`test_monitor_watches_a_live_run_e2e.py`, its `_STEM`) and the inspector (`test_inspector_pageshow_refresh_e2e.py`). The SIESTA vibration e2e (`test_siesta_vibration_e2e.py`, its own four tests: the ladder, the ticked stage alone, a two-stage displacement sweep, the flat refusal) moves to CO2 too. CO2 is linear (five rigid motions) with infrared-active and -inactive modes, as the PySCF vibration e2e already has it. H2 stays for the flat and layered road and the run index; the hydrogen chain stays for transport. The pseudopotentials are checked in (`tests/fixtures/psml`, C and O beside H, one PseudoDojo release). **Cost**, estimated, one rank: the shared relaxation one to two minutes; the vibration e2e's relaxation and four force-constant runs of 12 displaced SCFs each (the carbon held). **Done when** the moved tests pass on CO2 and the held-set rows hold a superset with an atom still free | `tests/fixtures/psml/README.md` · `engines/vibration.md` § 2.3a | open — step 1, before V1.39 |
-| ↳ | **V1.41** | **A force-constant stage reads `relax`'s coordinates in the engine's sorted order** — the mapping contract broken: `_vibration_stage_geometry` (`jobset/prep.py`) pairs them row by row with this prep's sorted copy, checking only the element sequence, right only while both preps held the same atoms. **Folded into RMP** (§ 5ab, rule 4): the stage takes `relax`'s restored result, or warns and restores through `relax`'s index | `model/overview.md` § 2.2 · § 5ab | open — step 1, with RMP |
+| ↳ | **T-CO2** | **The relaxation-to-vibration road on CO2** (agreed with the user 2026-10-14: *"why don't we switch to CO2 molecule so it can cover all the needs?"*). The shared relaxed-for-vibration run (`tests/support/real_runs.relaxed_for_vibration`, the fixture renamed from `real_h2_relaxed_for_vibration`) becomes CO2, its atoms listed O O C (so the held-first order is a 3-cycle, `[2, 0, 1]`, and a restore in the wrong direction gives another answer), relaxed with the carbon held and both oxygens free, and every test that reads it follows: the relaxation-record tests (`tests/test_siesta_relax_run_e2e.py`, the held-set rows of `engines/vibration.md` § 2.3a moving here from the real-junction test), the monitor (`test_monitor_watches_a_live_run_e2e.py`, its `_STEM`) and the inspector (`test_inspector_pageshow_refresh_e2e.py`). The SIESTA vibration e2e (`test_siesta_vibration_e2e.py`, its own four tests: the ladder, the ticked stage alone, a two-stage displacement sweep, the flat refusal) moves to CO2 too. CO2 is linear (five rigid motions) with infrared-active and -inactive modes, as the PySCF vibration e2e already has it. H2 stays for the flat and layered road and the run index; the hydrogen chain stays for transport. The pseudopotentials are checked in (`tests/fixtures/psml`, C and O beside H, one PseudoDojo release). **Cost**, estimated, one rank: the shared relaxation one to two minutes; the vibration e2e's relaxation and four force-constant runs of 12 displaced SCFs each (the carbon held). **Done when** the moved tests pass on CO2, the held-set rows hold a superset with an atom still free, and the ladder's held set grows between its two preps (RMP R3, R4) | `tests/fixtures/psml/README.md` · `engines/vibration.md` § 2.3a | open — step 1, before V1.39 |
+| ↳ | **V1.41** | **A force-constant stage reads `relax`'s coordinates in the engine's sorted order** — `_vibration_stage_geometry` (`jobset/prep.py`) pairs them row by row with this prep's sorted copy, checking only the element sequence, and imports a parser class to read them; right only while both preps held the same atoms. **Built in RMP's R3** (`model/overview.md` § 2.2a, I3–I5): the geometry through the run door, `restored()` through `relax`'s deck index, then this prep's `sort_by` | `model/overview.md` § 2.2a · § 5ab | open — step 1, RMP R3 |
 | ↳ | **V1.42** | **The relaxation record states its held set twice** — `held_atom_idxs` beside `held_atom_keys` (`parse/contract.py`), the first read by tests alone, while `vibration.md` § 2.3a says the record names atoms never by an index. Cut it, and `model/parse.md` § 5b.1's row with it | `model/parse.md` § 5b.1 | open — step 3 |
 | ↳ | **V1.43** | **A cited pair's electrodes are checked against its label, not against what its relaxation held.** `wizard._refuse_unless_frozen_bulk` reads `frozen_atoms`; a cited run's electrodes are also measured unmoved against where its relaxation started, a cited pair's are not (`transport/compose.py`, `_pair_parts` gives no starting geometry). So a pair whose relaxation left an electrode free and whose label now holds it passes, though the leads' promise — the bulk they stand for — is about the relaxation. Proposed: when a cited pair carries a relaxation record, its electrode atoms must be among the record's `held_atom_keys` — the structure checked against its own record. **The user's word owed** (recommended: yes) | `engines/transport.md` § 1.1, Step 0 | open — step 1 |
-| **RMP** | structure / parse / web / execution | **The remapped state — the mapping contract stated at every output** (decided with the user 2026-10-14; its revision plan approved the same day; the design record is § 5ab). Today a reordered run's output — a SIESTA vibration's stages, every transport rung — is read in the engine's order, unmarked, everywhere but the vibration finish and the transport composer: the Results tab, a structure exported from it, `xv2xyz --from-run`, the force-constant prep (V1.41). The rule: stated remapped, never silent; never without its index (sidecar v14); a run's restored result written when it finishes; a building door restoring with a warning; the Molbuilder tab warning and offering restore | § 5ab · `model/overview.md` § 2.2 | approved — a validating review, then R0 (the contracts) |
+| **RMP** | structure / parse / web / execution | **The remapped state** (decided with the user 2026-10-14): two sides — yours always in your input order, the engine's carrying its index — and one API across them; the contract is `model/overview.md` § 2.2a (I1–I9), the build § 5ab (R0–R6). Today a reordered run's output is shown and copied in the engine's order unmarked everywhere but the vibration finish, and the index lives in a file overwritten in the flat layout | `model/overview.md` § 2.2a · § 5ab | R0 — § 2.2a written; the other contracts next |
 | **W33** | structure / engines / web | **THE ENGINE OFFSET — one placement rule for every engine** *(user, 2026-09-25: "always adjust it before sending to siesta or other engines that the coordinates of all atoms are centered inside the cell"; "we don't have to have special logic to treat isolated, periodic, transport axis_info differently")*. Every engine receives the design coordinates + `engine_offset` with the cell at the origin; the offset is computed from the cell and every atom (the fractional span centred, never re-wrapped), recorded in every deck, and stated 0 for an engine's own output, so the Results tab draws what the engine had. Retires `cell_origin` (an origin the person assigns is kept, stored as the offset), the derive-on-null corner and its per-axis rules, calibrate, and the two hand translations. Found by the fake-junction ladder: a TranSIESTA device refused on a flush corner, a Results box the engine never had, the molwatch step-0 jump (the 2026-09-25 audit's finding X4 — not § 2's row X4) | `model/structure-periodicity.md` § 6.0 · § 5q | **P0–P3 done** (P3's T3 on 2026-09-27, `tests/test_results_export_e2e.py`; its dev-server check on 2026-09-25)**; P4 open** — P5 closed by TD8, the Au–BDT–Au ladder run to T(E) on 2026-09-29 (§ 5q.6 is the per-phase record). **D1–D16 settled** (§ 5q.8) · *Re-checked 2026-10-09:* P4's three items (§ 5q.6) — M4. |
 | **W34** | science / engines / web | **THE ELECTRONIC STATE — charge and spin as one answer per calculation** *(user, 2026-09-25: "put spin and charge setup in to a unified framework so that these information can be produced consistently and systematically for different engines"; "investigate holistically ... from template to validation ... a design gap/framework level investigation rather than a patch"; "documentation should have an explicit discussion on species with these properties")*. Four engine-neutral template items — `net_charge`, `spin_treatment`, `unpaired_electrons`, `method` — resolved once with what the structure adds (the charge's source, the electron count, finite or repeating) and read by every deck writer, check, hand-over, form and read-back; restricted-open explicit; a species-by-species chapter. Found by the transport ladder's rung reports (a gold lead and a formate ion both told "switch to open-shell") | `science/chemistry-correctness.md` §§ 2a–2b · § 5s | **P1–P4 built** (M6, 2026-09-28/29; decisions 1–9, § 5s.2); **P5 open** · *Re-checked 2026-10-09:* P5 open — the TBtrans two-channel half built (`transport/record.py:157-165`, through `tbtrans.transmission_files`); no reader of SIESTA's charge and moment, none of PySCF's ⟨S²⟩. |
 | **W35** | parse / execution / web | **THE RUN RECORD — what ran, with what, and how it went, for every run; one SIESTA-family reader; the transport report** *(user, 2026-09-26: "include in the report of transport results ... all indicators that can provide scientific information, progress tracking and symptom of non-convergence"; "parameters used for calculating transport should be similarly reported ... check what we did for the other tasks, and find the best way to honestly and fully record what is the computation setup and scientific setup, and how result evolves in the record, and output report"; "fdf parser need unified upgrade"; "get the framework and code unified and finalized")*. One record per attempt, composed on read — computation, setup (default · asked · engine used), the deck, every iteration of every phase from one grammar, the verdict with its symptoms — read by a Run panel for every kind and by a transport report built from its rungs; the NEGF contour stated rather than left to TranSIESTA's fallback. Found by a device that diverged for eleven hours with every reader saying otherwise | `model/parse.md` § 5d · `engines/transport.md` § 2a.12 · § 5t | **P0–P1 done (`a4c1d28e`); decision 10 done — the monitor, the wrapper's endings and the report fields through the framework; P2: the record and the Run panel built (2026-09-27), the rest below** · *Re-checked 2026-10-09:* M3 — P2's remainder, P4, P5, P6 (§ 5t.3). |
@@ -318,6 +318,7 @@ listed — stays here as step 3's detail:
 | **F9** | execution | **A group prep prints its pseudopotential copy lines and the `geometry.h_ratio` note (a warning until 2026-10-11) once per rung** (three times each) — found on the road walk 2026-10-08, not reached by B8 | § 5x.7 F9 | open · *Re-checked 2026-10-09:* `prep_group` (`prep.py:2970`) does not de-duplicate the members' notes; its h_ratio half is A1.12. |
 | **F11** | execution | **The wrapper's kill line is unseen on a killed point**, and two more mechanisms have not been seen on the road: a **cold sweep** (`launch task --stage device --cold` on a finished sweep) and the **take-over hop** (a point taken over from a run that took it over). One walk closes all three — ~45 minutes of this machine (a device point ≈ 15 min), launched through Task setup and left to run; **waits for the user's go** | § 5x.7 | open — the user's · *Re-checked 2026-10-09:* the cold sweep is seen on Q15's run E (`tests/test_transport_on_a_real_junction_e2e.py:238-240, 396-409`); the kill line and the take-over hop are not. |
 | **F14** | parse | **The unconstrained max force and a periodic slab's pressure are never shown** (the monitor and wrapper print the constrained max); TranSIESTA's *FORCES WRONG* is not captured | § 5x.7 F14 | open · *Re-checked 2026-10-09:* no `FORCES WRONG` capture anywhere; `report_fields.py:58-61` offers `max_force` to a TranSIESTA device (§ 5t.4). |
+| **T-DOCERR** | tests | **Five or six setup errors in the documents' test set, twice, cause unknown** — the set `tests/test_doc_claims.py` plus the `doc`/`toc`/`link` files, run right after a document edit on 2026-10-14 (6 errors, then 5); three runs since passed, a new archive file added on purpose among them (so not `toc.json`'s write-back, which is atomic). The error text was lost both times: the harness records setup errors with their reason in the run's own file (`tools/progress_plugin.py`), but `status --fails` was read filtered for `ERROR` — it prints `FAIL` — and a rerun of the same batch overwrote it. **Next time: read `testrun.py status --fails` whole before any rerun.** The set's browser fixtures (`test_docs_tab.py`, `test_structure_envelope_protocol.py`) are the only ones in it that can fail at setup; the machine was at load 18 — a hypothesis, unproven | `process/testing.md` § 6.1a | open — step 3 |
 | **T-ENV** | tests | **Installer tests answer the environment manager in-process**: `tests/test_envs_one_answer_about_an_env.py` (H6, `dispatch_into_env` replaced to return a typed PySCF verify answer) and the stubs `tests/test_envs_install.py` writes -- a command's answer swapped in-process, which tier 1 forbids (`testing.md` § 0); judged under § 5y's rule in their own pass | § 5y | open · *Re-checked 2026-10-09:* open (`tests/test_envs_one_answer_about_an_env.py:182`). |
 | **PYF-T** | code hygiene | **The tests, `tools/` and `scripts/` are not pyflakes-clean**: 56 findings — 52 in tests, 3 in `tools/`, 1 in `scripts/` (47 unused imports, 7 unused locals, 2 f-strings without a placeholder), measured 2026-10-13 with `python -m pyflakes $(git ls-files '*.py' ':!:molbuilder/*' ':!:tests/data/*')` — the package is clean (`conventions.md` § 1) | Q19's Python P1 | open — each read before it is removed: an unused import in a test can be a fixture pulled in by name |
 | **L2** | tests | **`tests/field/test_ask_the_target.py` fails instead of skipping when invoked outside its batch** (`. does not read as a machine record`: the record path is unset) — a field test gates itself on its backend (`testing.md` § 3) | B8 round 2 | open · *Re-checked 2026-10-09:* open — `tests/field/test_ask_the_target.py:49-51` asserts instead of skipping. |
@@ -747,276 +748,65 @@ Recorded so nobody fixes them by analogy. Re-read against the code 2026-10-08.
 ---
 
 
-## 5ab. The remapped state — the mapping contract stated at every output *(RMP; decided with the user 2026-10-14)*
+## 5ab. The remapped state — the build of `model/overview.md` § 2.2a *(RMP; decided with the user 2026-10-14)*
 
-> *(user, 2026-10-14)*: *"there is a mapping contract, all things will return
-> to original index from input, no mapping is exposed at the output"*; *"it
-> should (1) clearly mark the output result as "remapped", and (2) if the
-> result finished, the generate the "restored" mapping result from that as the
-> final result. (3) if the prep does not see that final result as "restored"
-> it either should error, or warn for a conversion first"*; *"i would make do
-> warning and convert (if mapping index record is there, otherwise error)"*;
-> *"in the modify/molbuild tab, when loading a data set with "remapped" meta
-> state, we should get a warning and if the mapping index is present we can
-> allow a restore operation"*; *"that means parser should be reviewed and
-> revised accordingly?"*; *"maybe we should enforce that remapping index to be
-> saved into the .json if the meta data shows "remapped" state"*.
-
-**The contract it completes** — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2: the program sorts a COPY at prep, records the permutation both ways,
-and maps every number that comes back through the inverse before a person
-sees it; the sorted order never leaks.
+**The contract is [`model/overview.md`](?doc=model/overview.md) § 2.2a** — the two
+sides, the invariants I1–I9 and the one API across them; this section is its
+build. The day's rounds — the rule as first decided, the surveys, the revision
+plan, the validation round — are in
+[`archive/2026-10-14-rmp-design-rounds.md`](?doc=archive/2026-10-14-rmp-design-rounds.md),
+with the evidence each read in the code. *(user, 2026-10-14: "check this
+logically, and consolidate the document of design/contract, and plan"; the
+editors opening a remapped file restored, I8, taken as recommended.)*
 
 **What is true today** *(read 2026-10-14)*. Two kinds prepare their decks from
-a reordered copy: a **SIESTA vibration** — every stage, its `relax` stage
-included, because the force-constant stage starts from `relax`'s density
-(`DM.UseSaveDM`, `engines/vibration.md` § 5.3), stored atom by atom in the
-deck's order (`jobset/prep.py`, the SIESTA vibration rung; key `held-first`) —
-and **transport** — every rung from the composed junction sorted for
-TranSIESTA (`transport/compose.py`; key `transport`). A standalone structure
-optimization is never reordered. Two readers apply the record: the vibration
-finish (the spectrum is written in the input order) and the transport
-composer reading its own record. **Nothing else does**: the parsers, the run
-door (`runs.declared`, `runs.view_of`), the Results tab (a reordered run's
-frames and labels shown in the engine's order, unmarked, while the same
-calculation's spectrum is in the input order), a structure exported from such
-a run, `xv2xyz --from-run` — and the force-constant prep, which copies
-`relax`'s final coordinates row by row (V1.41: right only while both preps
-held the same atoms).
+a reordered copy: a SIESTA vibration (every stage, `relax` included — the
+force-constant stage starts from `relax`'s density; key `held-first`) and
+transport (every rung from the composed junction; key `transport`). The index
+is `atom-permutation.json`, written at the calculation's root by prep (the
+vibration) or by the composer (transport) — in the flat layout every run's
+own folder, so each prep overwrites the last — and copied into every attempt,
+electrode rungs and benchmark trials included. Two readers use it: the
+vibration finish, and the transport composer (then mapping by hand,
+`wizard._atoms_named`, `compose.py`'s `start[...]`). Everything else shows the
+engine's order unmarked — the parsers, the run door, the Results tab and its
+export, `xv2xyz --from-run`, the codec's engine-own branch, the transport
+report and its PDOS selections, the transport record and `.transport.nc`, a
+citation of a reordered run (any finished run of ours is accepted, a
+force-constant stage included), and the force-constant prep, which copies
+`relax`'s coordinates row by row (V1.41). The labels are not wrong: the deck's
+block is written from the sorted copy. The browser rebuilds a structure's
+metadata field by field in three places (`model-jobs.js`'s two translators,
+`model.js`'s `getStructure`), and the deck's block is written from a hand
+list (`script_emit.emit_atom_metadata`).
 
-**The rule, decided:**
-
-1. **Stated, never silent.** A structure or per-atom result in an engine's
-   reordered order carries the state **remapped**, its index with it. The run
-   door marks what it builds from a reordered run; the parsers stay the
-   engine's file view, and nothing is reordered silently while it is read.
-2. **"Remapped" is never stated without its index.** A sidecar in the remapped
-   state carries the full index — the reordering's key and both directions,
-   in the shape of `atom-permutation.json`, read by its one reader
-   (`atom_permutation`): one data structure, not a second format. Sidecar v14,
-   the key optional (absent: the person's own order). A remapped state
-   without a complete, self-consistent index is refused on read, by name — only
-   a hand edit makes one.
-3. **A run on a reordered copy leaves its restored result** when it finishes:
-   its final structure in the input order, with the person's labels, as a
-   pair (the name to settle; proposed `<label>_<stage>-run<N>.restored.xyz` and
-   its sidecar). A force-constant run's restored spectrum already is one
-   (`spectra.json`).
-4. **A door that builds from a reordered run's output** — prep (V1.41's
-   force-constant stage among them), a transport citation, the Molbuilder
-   tab's append — **restores** through the index and says so; a remapped state
-   with no index cannot exist (rule 2). The Results export and
-   `xv2xyz --from-run` build nothing: they carry the state and its index.
-5. **The Molbuilder tab**, loading a remapped structure, **warns and offers
-   restore**: the atoms back in the input order, every per-atom field with
-   them.
-
-**The survey** *(2026-10-14, two read-only agents at `8c5b6be1`, each
-finding re-read before it is used here)*. Every reader of a reordered run
-shows the engine's order unmarked — the SIESTA parsers (`.out`, `.MD.nc`,
-`.XV`, the molwatch log), the run door (`runs.declared`, `runs.view_of`), the
-Results load and export, `xv2xyz --from-run`, the transport report and its
-PDOS selections, the transport citation of a reordered run (any finished run
-of ours may be cited — a vibration's `relax` included, its order then sorted a
-second time, never composed), and the force-constant prep (V1.41, which also
-imports a parser class directly, against `model/parse.md` § 3). The labels are
-not wrong: the deck's ATOM-METADATA block is written from the sorted copy, so
-labels and coordinates agree — in the engine's order, unmarked. Handled today:
-the vibration finish (through the record's one reader), the transport
-composer (reading the record, then mapping by hand in `wizard._atoms_named`
-and `compose.py`, against § 2.2's *never by hand*). **Where the index lives
-today does not hold**: `atom-permutation.json` is written at the
-calculation's root at every prep — in the flat layout every run's own folder,
-so each prep overwrites the one before it — and the shared package copies it
-into every attempt, the transport electrode rungs and benchmark trials
-included, whose atoms it does not describe. The browser rebuilds the metadata
-it sends field by field (`model-jobs.js`), so a new field is dropped on every
-round trip unless both directions carry it. A pair cited for transport must
-carry `info.calculation`, which a job cannot compose. Stray engine indices in
-otherwise restored results: `info.relaxation.held_atom_idxs` (V1.42) and
-`engine_metadata.fc_range_1based`.
-
-**The revision plan — approved by the user 2026-10-14** (*"yes to all, go with your recommendations"*).
-
-*The constraints every part meets* *(the user, 2026-10-14: "your design need
-to guarantee a unified api access, no handcrafted code, the json and xyz
-travel, read and write together, no split handling")*:
-
-- **The pair is one unit.** The remapped state is a field of the structure,
-  so it is read and written only with its atoms, by the codec, in the
-  `.xyz` and its `.molstruct.json` together; no index travels in a file of
-  its own (`atom-permutation.json` retires), and the restored result is a
-  pair the codec writes.
-- **One door for each act.** A structure from a run comes through the run
-  door (`runs.view_of`) — never a parser class imported for it (V1.41's
-  `SiestaParser`); a restore is `Structure.take` through the record's one
-  reader — never an index mapped by hand (`wizard._atoms_named`,
-  `compose.py`'s `start[list(...)]`); every write is the codec's.
-- **No field listed by hand.** The two places that list a structure's
-  metadata field by field are fixed, not extended: the deck's ATOM-METADATA
-  block is written from the structure's own serialiser
-  (`metadata_to_dict`), not the hand list in `script_emit.emit_atom_metadata`
-  / `apply_atom_metadata`; the browser carries the metadata block whole
-  through one function each way, not the key-by-key rebuild in
-  `model-jobs.js` (`structureFromServer`, `structureForServer`) — so a field
-  the structure gains reaches every road with no edit.
-
-*Where the index lives — one home for each thing:*
-
-- **A structure** carries it as one field, `atom_order` — the key and both
-  directions, in the record's shape, checked by the record's one reader (split
-  into a reader of the dict that the file and the field share). **Present
-  means remapped**: the state cannot exist without its index. It rides
-  everything the structure's fields ride — `replace`, `to_dict`, the sidecar
-  (v14), the codec — and the browser's two directions.
-- **A run** states it in its own deck, in the ATOM-METADATA block (the
-  sidecar's shape, so the same field), read through `runs.declared`: each run
-  its own index — the flat layout's overwrite and the electrode rungs' false
-  copy end with it.
-- **`atom-permutation.json` retires**: the vibration finish reads the index
-  from its deck; the transport record's junction carries it in its sidecar;
-  `.transport.nc` carries the index on its atom axis, not a file's name.
-- **The identity order is not remapped** — nothing moved, no state.
-
-*Who says it, and who restores:*
-
-- **The run door marks**: `view_of` — the one builder of a structure from a
-  run (the Results load, `xv2xyz --from-run`, the citation) — sets the field
-  from the run's deck. The parsers stay the engine's file view; the bare file
-  readers (`watch parse`, `watch tail`, `runtime-info`, bare `xv2xyz`) read a
-  file, not a run, and the contract says so.
-- **The Results tab** shows a reordered run in the engine's order, marked
-  (the key named); an export carries the state and its index (v14).
-- **The Molbuilder tab** warns while a structure is remapped (a condition of
-  every answer, not a load-only notice, since notices clear on an edit) and
-  offers **restore** — a server operation, `Structure.take` through the
-  index, the field cleared, the selection cleared with it. An edit that adds
-  or removes atoms on a remapped structure is refused, naming restore (as a
-  frame set's is).
-- **A door that builds** restores with a warning — the force-constant prep
-  (V1.41: `relax`'s restored result, or its final coordinates through its
-  deck's index, read through the run door, not a parser class), a calculation
-  whose structure is a remapped pair (`_structure_for`), the transport
-  citation (restored before the transport sort, so the record is one
-  permutation of the person's order — and a run that is not a relaxation, a
-  force-constant stage, refused as `CITATION_CONDITION` already says),
-  `xv2xyz --from-run`. A remapped state with no index cannot exist (the field
-  is the index).
-
-*What a run leaves:*
-
-- **A SIESTA vibration's `relax` stage writes its restored result** when it
-  finishes: `<label>_<stage>-run<N>.restored.xyz` and its sidecar, the
-  relaxed geometry in the input order with the person's labels and box — its
-  job's finish, through `StructureCodec.write_moved`, the payload made by
-  prep, the final coordinates from the `.out` by the travelling reader. The
-  run records (`info.calculation`, `info.relaxation`) are composed on this
-  machine by the door that hands the pair on, as an export does today. A
-  restore that fails is said in the session log and does not change how the
-  run ended — the doors restore with a warning. The force-constant stage's
-  restored result is its spectrum, as today; **transport rungs** are single
-  points whose structure is the record's junction — no restored pair, the
-  junction stated remapped with its index; the electrode rungs carry none.
-- **Stray engine indices**: `held_atom_idxs` cut (V1.42);
-  `fc_range_1based` stated as the engine's, under `engine_metadata` where it is.
-
-*The validation round* *(2026-10-14: two fresh agents read the approved plan
-against every reader and writer at `03b09e7c`; each finding re-read before it
-is used here)*. What it changed — ◆ marks a choice the round forced, for the
-user's word with R0:
-
-- **Reordering a remapped structure composes** ◆: `Structure.take` composes
-  its order into the field's index (the new `sorted_to_original[j]` is the
-  old `[order[j]]`) and clears the field when the composition is the
-  identity — so a restore is `take` through the field and a second sort is
-  one composed permutation (§ 2.2's *one copy, one permutation*), never a
-  stale index under a new order. `SortResult`'s tuples become a view of the
-  sorted structure's field — one source from R2 on.
-- **One restore, one sentence** ◆: `Structure.restored()` — `take` through the
-  field — is called by every door (the route, prep, the citation, the
-  append, the CLI's `modify`); an edit that adds or removes atoms on a
-  remapped structure is refused by one constant naming it, as a frame set's
-  is (`_carry_nonatom`); `concat` (the Molbuilder tab's append, reached by a
-  load into an open tab) restores a remapped addition and says so.
-- **The warning is the structure's state, not a notice** ◆: the browser's
-  notices clear at every settle (`model.js`), a label edit or a Results poll
-  among them; the Molbuilder tab and the Results tab show the state from the
-  structure's field, read at every settle.
-- **Restore clears the selection**: an `OPERATIONS` column for a reorder (a
-  count kept, every index moved), and `molview.md` § 11.1's table gains it.
-- **The browser's third hand list**: `getStructure()` (`model.js`) lists the
-  master copy field by field too; one function each way, all three.
-- **The index rides inside the deck's ATOM-METADATA block**, the block
-  written from `metadata_to_dict` and read wherever it is read
-  (`emit_atom_metadata`'s gate, `apply_atom_metadata`'s early return,
-  `Declared.atom_metadata_for`, `render_deck`'s note) — never a `RunView`
-  attribute of its own (`watch._frame0_structure` rebuilds the view from the
-  block); a field refusal surfaces (`watch.py`'s blanket `except` goes).
-- **The codec's engine-own branch is a run door**: SIESTA's own `<label>.xyz`
-  in a reordered run (`WriteCoorXmol`, on by default) opens through the run's
-  view, marked.
-- **A run made before RMP** ◆: its index is in `atom-permutation.json` and its
-  deck states none. A door that builds refuses it by name — *prepared before
-  this version recorded its atoms' order; prepare the stage again* — as the
-  vibration finish already refuses an old deck; a viewer says it and shows
-  the engine's order; an old transport record is not loaded
-  (`load_compose_record` answers why). No reader of the old file remains.
-- **One source for a door that holds the run** ◆: prep and the citation
-  restore through the run's deck index, always; the restored pair is the
-  person's copy, for the Results tab and the Molbuilder tab — so V1.41's
-  deck bytes never depend on which of two sources exists, and R3 does not
-  wait on R4.
-- **The citation restores both geometries**: `_run_geometry`'s relaxed
-  structure and its starting geometry (the leads' *unmoved* gate compares
-  the two), and the cited-pair branch too; **a run that is not a geometry
-  relaxation is refused** through the verdict `_classify_run` already reads
-  (`CitedRun.verdict`), as `CITATION_CONDITION` states.
-- **The `relax` finish** ◆: keyed on the deck written from a remapped
-  structure; each finish's failure policy a column of `_FINISH_BUNDLES` — the
-  force constants' failure the job's, as now, the restore's said in the
-  session log and never stopping the relaxation, its load check a warning;
-  the payload in a deck block read by `deck_record`, built by
-  `pyscf/input._sidecar_for`'s rule — the **run's box**, the engine's origin
-  stated, never the person's design cell; the final rows permuted through the
-  deck's index before `write_moved`; the catalogue row kept out of the run's
-  result roles (`runs.about`), so the run door never puts the deck's sorted
-  labels on it.
-- **The density handed from `relax` to `freq`** ◆: the `.DM` is ordered as
-  `relax`'s deck; when the two decks' indices differ (the held set grew
-  between the preps), `freq` starts its reference SCF cold
-  (`DM.UseSaveDM .false.`) and says so — the force constants are unchanged.
-- **Stray engine indices**: `held_atom_idxs` cut in R1 (it outlives a
-  restore otherwise); `fc_range_1based` is the engine's numbering wherever it
-  is written — `spectra.json`'s `engine_metadata` and `fc-sweep.json`'s stage
-  rows, where the sweep reads `.FC` with it — and is named so.
-- **Stages prepared before the upgrade** and not yet launched are refused at
-  launch (`submit._as_described` compares the re-planned deck); the refusal
-  names the version that prepared them, not *the template changed*.
-- **Placement**: `atom_order` in `METADATA_FIELDS` — a v14 sidecar writes
-  `null` for the person's order, so "absent" reads "null or absent"; the
-  field's key one of `SORT_KEYS`, required; the identity read as no index,
-  the split reader answering it.
-- **Untrue in the survey, corrected**: transport writes its record's index
-  when it composes, not at every prep.
-
-*The order, each phase closed as a milestone (§ 0a):*
+**The build, each phase closed as a milestone (§ 0a):**
 
 | phase | what | tests |
 |---|---|---|
-| **R0** | the contracts, for the user's review before code — `model/overview.md` § 2.2; `model/structure.md` § 2.1–2.2e (and § 2.2 step 4's *two translators*); `model/structure-molstruct.md` (v14); `model/structure-annotations.md` § 4a; `model/parse.md` § 3, § 5.3, § 5b.1; `execution/job-contracts.md` § 3.1, § 3.4, § 6.1, § 6.3; `execution/project-layout.md` § 1.6.3, § 5.1; `execution/architecture.md` § 3.2; `execution/job-system.md` § 3; `engines/vibration.md` § 5.2, § 5.2a, § 5.5, § 6.5, § 6.9, § 7 (I7), § 8, § 10; `engines/transport.md` § 2a.12, § 3.1; `science/normal-modes.md`'s order note; `web/web-api.md`; `web/molview.md` § 6.2, § 6.8, § 11.1; `web/results.md`; `configuration.md`'s bundle rule | — |
-| **R1** | the model: `atom_order` and the record's dict reader; `take` composing; `restored()` and the one refusal; `concat` restoring; sidecar v14; the codec; `held_atom_idxs` cut; the browser's three hand lists made one function each way; the state shown from the field; `/api/modify/restore` with its `OPERATIONS` row and the CLI's | `geometry_pin.toml` (v14 rows, an incomplete index refused), `frame_sets.toml` (restore over a set), the model and browser round trips — every order a **3-cycle** (O O C with the carbon held: `[2, 0, 1]`), so the two directions differ |
-| **R2** | said at the source: `sort_by` setting the field, `SortResult` a view of it; the deck's block from `metadata_to_dict`; `declared` and `view_of` marking; the codec's engine-own branch; the Results tab's state; the export and `xv2xyz --from-run` carrying it; a pre-RMP run said or refused; launch naming the version | the Results route's rows |
-| **R3** | restored where it builds: V1.41 through `relax`'s deck index (the run door, not a parser class); `_structure_for`; the citation (both geometries, the pair branch, the kind refused); the by-hand maps through the record's reader | the SIESTA vibration e2e on T-CO2's ladder (O O C, a held set grown between the preps) — not `prep_protocol.toml`, whose road runs no engine |
-| **R4** | what a run leaves: the `relax` finish (its policy, its payload block, the run's box), the catalogue row, the cold `freq` start when the orders differ | the same e2e |
-| **R5** | `atom-permutation.json` retired: the vibration finish reading its deck, the transport record's junction carrying the field (`record.py`'s provenance key and its schema, `compose.record_files`, `.transport.nc`'s atom axis), no reader of the old file left | the vibration and transport e2e — the transport junction's input order **permuted**, so its sort is not the identity |
-| **R6** | the transport report: a server door restoring the junction for drawing (`junction.xyz` stays sorted on disk — the device's regions and the leads are read from it); the PDOS selections mapped in, and `outside_device` back out, through the record | a partial PDOS selection on the permuted junction |
+| **R0** | the contracts, for the user's review before code: § 2.2a written (2026-10-14); then `model/structure.md` § 2.1–2.2e and § 2.2's *two translators*; `model/structure-molstruct.md` (v14); `model/structure-annotations.md` § 4a; `model/parse.md` § 3, § 5.3, § 5b.1; `execution/job-contracts.md` § 3.1, § 3.4, § 4 (the restart rows), § 6.1, § 6.3; `execution/project-layout.md` § 1.6.3, § 5.1; `execution/architecture.md` § 3.2; `execution/job-system.md` § 3, § 5.4; `engines/vibration.md` § 5.2, § 5.2a, § 5.5, § 6.5, § 6.9, § 7 (I7), § 8, § 10; `engines/transport.md` § 2a.12, § 3.1; `web/web-api.md`; `web/molview.md` § 6.2, § 6.8, § 9.3, § 11.1; `web/results.md`; `configuration.md`'s bundle rule | — |
+| **R1** | **the model**: `atom_order` in `METADATA_FIELDS`, its type `Permutation` with a dict reader both the field and the deck use (its key one of `SORT_KEYS`, required; a v14 sidecar writes `null` for your order), `sorted_of` beside `original_of`; `Structure.restored()`; `sort_by` setting the field and refusing a remapped input, `SortResult` a view of the field; sidecar v14 and the codec; `held_atom_idxs` cut (V1.42); the browser's three hand lists made one function each way; the editors opening restored (I8) — the Molbuilder tab's load and append, `molbuilder modify` | `geometry_pin.toml` (v14 rows, an incomplete index refused), `frame_sets.toml` (restored over a set), the model's and the browser's round trips — every order a **3-cycle** (O O C, the carbon held: `[2, 0, 1]`), so the two directions differ |
+| **R2** | **the engine side states it, your side restores it**: the deck's block written from `metadata_to_dict` (the gate, `apply_atom_metadata`'s early return, `Declared.atom_metadata_for`, `render_deck`'s note), `declared` and `view_of` attaching it, the codec's engine-own branch through the run's view, `watch.py`'s blanket `except` gone; the Results tab marking the engine's order (from the field, read at every settle — notices clear on any change); the save, export and hand-over routes and `xv2xyz --from-run` restoring before they write (I1); a run made before the rule refused or said (I9); launch naming the version that prepared a deck it refuses | the Results route's rows; a save of a remapped structure writing your order |
+| **R3** | **the doors that build restore**: V1.41 — `relax`'s geometry through the run door and `restored()`, then this prep's `sort_by`; `_structure_for`; the transport citation — both geometries (`_run_geometry`'s relaxed structure and its start), the cited-pair branch, a run that is not a geometry relaxation refused through the verdict `_classify_run` already reads; the by-hand maps through the index's methods | the SIESTA vibration e2e on T-CO2's ladder (O O C, a held set grown between the preps) — not `prep_protocol.toml`, whose road runs no engine |
+| **R4** | **I6 at the hand-over**: `same_order` asked for every restart file, continued or gathered; the warm-file catalogue (`siesta/warm-files.toml`, `pyscf/warm-files.toml`) marking which rows are restart files; a restart file whose decks' indices differ not carried, and the launch saying so — the `relax` → `freq` density one case of it | the same e2e |
+| **R5** | **`atom-permutation.json` retired**: the vibration finish reading its index from its deck; the transport record's junction carrying the field (`record.py`'s provenance key and its schema, `compose.record_files`); the transport record's per-atom content and `.transport.nc`'s atom axis in your order (I1); `fc_range_1based` named as the engine's numbering wherever it is written (`spectra.json`'s `engine_metadata`, `fc-sweep.json`'s stage rows) | the vibration and transport e2e — the transport junction's input order **permuted**, so its sort is not the identity |
+| **R6** | **the transport report**: a server door restoring the junction for drawing (`junction.xyz` stays the engine record — the device's regions and the leads are read from it); the PDOS selections mapped in (`sorted_of`) and `outside_device` back (`original_of`) | a partial PDOS selection on the permuted junction |
 
-**Decided with it** *(the user, 2026-10-14)*: the field's name and home as
-above; `atom-permutation.json` retired; no restored pair for transport rungs;
-a failed restore not failing the relaxation; the identity order not
-remapped; the Results tab marking (not restoring) a reordered run's view;
-R6 drawing the junction in the person's order. RMP is new functionality (a restore operation, sidecar v14): its own middle
-number, after 2.9.6 is pushed — before V1.39, whose structures it reads.
+**Tests that change** (named by the validation round): `test_reserved_label_one_store.py`'s
+`METADATA_FIELDS` membership; `test_molview_model.py`'s `getStructure` keys;
+`TestEveryOpIsChecked` (an `OPS` body for any new route); `test_transport_sort.py`
+(the schema constant, `categorical_sort` called directly — R2's rows go through
+`sort_by`); `test_siesta_vibration_e2e.py` (`read_permutation`, the deck's
+numbering); `test_siesta_relax_run_e2e.py` (`held_atom_idxs`);
+`TestSchemaVersioning` (a v14 file); the inspector registry's
+`atom-permutation.json` row.
+
+**Said in the release** (RMP is new functionality, a middle number, after 2.9.6
+is pushed and before V1.39, whose structures it reads): a stage prepared
+before the upgrade and not yet launched is refused at launch, its deck
+re-planned — prepare it again; a run made before is refused or said (I9); a
+pair exported before from a reordered run's view is in the engine's order and
+cannot be told apart.
 
 ## 5s. The electronic state — charge and spin as one answer *(W34, 2026-09-25)*
 
