@@ -760,21 +760,16 @@ export function createModel(opts) {
          */
         getStructure() {
             if (!structure) return null;
-            /* THE MASTER COPY ENTIRE (§ 9.3).  § 6.2 lists what the module
-             * holds: elements, annotations, periodicity, title, channelDefs,
-             * info. */
-            return copy({
-                elements:       structure.elements,
-                annotations:    structure.annotations,
-                periodicity:    structure.periodicity,
-                title:          structure.title,
-                channelDefs:    structure.channelDefs,
-                info:           structure.info,
+            /* THE MASTER COPY ENTIRE (§ 9.3): every field of the structure
+             * § 6.2 lists -- as `structureFromServer` shaped it, listed
+             * nowhere here, so a field it carries is never dropped on a read
+             * -- and the coordinates beside it. */
+            return copy(Object.assign({}, structure, {
                 customized:     structure.customized || [],
                 frames:         frames,
                 forcesPerFrame: forcesPerFrame,
                 rowsPerFrame:   rowsPerFrame,
-            });
+            }));
         },
 
         // Narrower cuts of that one need. A cut returns exactly what the main

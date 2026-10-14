@@ -495,17 +495,21 @@ above the drawing itself (§ 9.6).
 
 ### 6.2 The shapes
 
-*(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, plan § 5ab R1: the structure carries its `atom_order` — null in the
-person's order, the order record of an engine's order otherwise — with the
-rest of its metadata. **The per-atom halves stay folded onto the atoms** (the
-labels, each channel's values — what lets an edit move a label with its atom);
-**every other metadata key rides as one object the model carries and does not
-open**, through one function each way. Today `structureFromServer` and
-`structureForServer` (`model-jobs.js`) and `getStructure` (`model.js`) each
-list the keys by hand, and a key they do not list is dropped on every save.
-An editor's model never holds a remapped structure — the Molbuilder tab asks
-the load to restore, and says so (I8); a viewer's may, marked.)*
+*(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
+§ 5ab R1.)* The structure carries its `atom_order` — null in the person's
+order, the order record of an engine's order otherwise — with the rest of its
+metadata. **The per-atom halves stay folded onto the atoms** (the labels, each
+channel's values — what lets an edit move a label with its atom), and the
+keys this module edits keep the shapes below (the box keys in `periodicity`,
+the named values in `customized` and `rowsPerFrame`); **every other metadata
+key rides whole in `otherMetadata`**, carried and never opened. One list names
+the shaped keys (`model-jobs.js`'s `SHAPED_METADATA_KEYS`), read by both
+translators, and `getStructure` lists no field of its own — so a key the
+server adds reaches every road with no edit here. Until 2026-10-14 the three
+listed the keys by hand, and a key they did not list was dropped on every
+save. An editor's model never holds a remapped structure — the Molbuilder tab
+asks the load to restore, and says so (I8); a viewer's may *(its mark is
+plan § 5ab R2's)*.
 
 ```mermaid
 classDiagram
@@ -517,6 +521,7 @@ classDiagram
       +ChannelDefs channelDefs
       +Map info
       +Row[] customized
+      +Map otherMetadata
     }
     class AtomFacts {
       +string[] labels
@@ -588,6 +593,7 @@ classDiagram
 | `title` + `channelDefs` | the structure's title, and per channel its `kind`/`color`/`fdf` — the channel-LEVEL half of the sidecar's `annotations` block | **Carried verbatim, like `periodicity`** *(2026-08-20)*: the viewer edits neither, so neither is per-atom — the atom-indexed half of each channel rides on the atoms (above), and the two doors (§ 11.1's adoption, the one outbound read) fold and unfold between this split and the wire's shape. Whether an identity value is a placeholder is the **server's** judgment; this module carries what it is given |
 | `info` | the records that describe the structure without being it (§ 8.4a) | **Shared by every frame**, carried verbatim; never hashed, never gated for the host's writes |
 | `customized` | `Row[]` — `{name, value, unit?, note?}`, the structure's named values (`model/structure.md` § 2.2d) | **Shared by every frame.** Part of the structure: written only through `data.customized` (§ 9.3), gated like any edit (§ 9.4) |
+| `otherMetadata` | every other key of the structure's metadata, as the server stated it — today `atom_order`, the order record (`model/overview.md` § 2.2a) | **Shared by every frame**, carried whole and never opened: in from the envelope's `metadata`, back out into it |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 | `rowsPerFrame` | `Row[][]` or `null` | `rowsPerFrame[f]` = frame `f`'s own `customized` rows; `null` when no frame has one, otherwise exactly one entry per frame. Folded in from the envelope's `metadata.customized.frames` and out again only by the two translators (§ 11.1), as the annotations are |
@@ -1960,10 +1966,10 @@ reachable without anyone remembering to add it here.
 
 ### 9.3 The model — the one place the structure lives
 
-*(Decided 2026-10-14, not built: `getStructure` answers in this module's
-words, as § 9.3a says, and the metadata keys it does not open ride in it as
-the one object the translators carry — no field list of its own;
-`model/overview.md` § 2.2a, plan § 5ab R1.)*
+*(2026-10-14: `getStructure` answers in this module's words, as § 9.3a says,
+and the metadata keys it does not open ride in it as `otherMetadata`, the one
+object the translators carry — no field list of its own; `model/overview.md`
+§ 2.2a, plan § 5ab R1.)*
 
 Every read of data returns a **copy**, so changing what you were given can never
 change the viewer. The two entries that are not data — `selection` and `view` —
@@ -2035,7 +2041,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 
 | Call | Parameters | Answers |
 |---|---|---|
-| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, frames, forcesPerFrame, rowsPerFrame}` |
+| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, frames, forcesPerFrame, rowsPerFrame}` |
 | `getAtoms()` | — | `[{index, element, labels, residue}]` |
 | `getElements()` · `getCoordinates()` | — | the elements; `{frames, forcesPerFrame}` |
 | `getRegions()` | — | `{label: [atom…]}` |
@@ -2164,7 +2170,7 @@ structure**, so one read holds them all.
 
 | You want… | Ask | You get |
 |---|---|---|
-| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
+| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
 | to **send** the structure to the server | `exportFile(range)` | the same facts **in the server's words**, for **one frame** (the one on screen, unless a range says otherwise), plus the name it came in under |
 
 **A tab never converts between them.** The renaming is a translation, and this

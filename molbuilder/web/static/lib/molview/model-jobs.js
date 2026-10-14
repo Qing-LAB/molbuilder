@@ -116,6 +116,18 @@ export const PREDEFINED_LABELS = [
 /* Just the names, in order — what every chooser offers. */
 export const PREDEFINED_LABEL_NAMES = PREDEFINED_LABELS.map((e) => e.name);
 
+/* THE METADATA KEYS THIS MODULE HOLDS IN SHAPES OF ITS OWN (§ 6.2): the
+ * labels, folded onto the atoms (`regions`); each channel's two halves
+ * (`annotations`); the named values and each frame's (`customized`); and the
+ * box keys, inside the periodicity block.  EVERY OTHER KEY of the structure's
+ * metadata -- today its order record, `atom_order` (`model/overview.md`
+ * § 2.2a) -- rides whole in `otherMetadata`, carried and never opened, so a
+ * key the server adds reaches every road with no edit here.  The one list
+ * both translators read. */
+const SHAPED_METADATA_KEYS = ["regions", "annotations", "customized",
+                              "cell", "engine_offset", "offset_by",
+                              "axis_kind", "vacuum"];
+
 /**
  * The server's structure payload, in the shapes of § 6.2.
  *
@@ -191,6 +203,15 @@ export function structureFromServer(payload) {
         ? env.metadata.customized : null;
     const rowsCopy = (rows) => (Array.isArray(rows)
         ? rows.map((r) => Object.assign({}, r)) : []);
+    // Every other metadata key, whole (`SHAPED_METADATA_KEYS`).
+    const meta = (env && env.metadata && typeof env.metadata === "object")
+        ? env.metadata : {};
+    const otherMetadata = {};
+    for (const key of Object.keys(meta)) {
+        if (!SHAPED_METADATA_KEYS.includes(key)) {
+            otherMetadata[key] = JSON.parse(JSON.stringify(meta[key]));
+        }
+    }
 
     const elements = atoms.map((a) => a.element);
     const annotations = atoms.map((a, i) => {
@@ -267,6 +288,9 @@ export function structureFromServer(payload) {
             /* The structure's named values (§ 2.2d) -- part of the
              * structure, written only through `data.customized`. */
             customized: rowsCopy(custom && custom.rows),
+            /* Every other metadata key, carried whole and never opened
+             * (`SHAPED_METADATA_KEYS`). */
+            otherMetadata: otherMetadata,
         },
         /* THE FRAMES, each with its coordinates and its rows (§ 6.1): one
          * entry per frame in every list.  One frame is the atoms' own
@@ -440,8 +464,11 @@ export function structureForServer(structure, coordinates) {
         /* METADATA IS NESTED, because that is where the envelope keeps it
          * (web-api.md § 1 — the envelope IS the structure's canonical dict, and
          * `Structure.from_dict` reads the block from here). The receiver
-         * refuses a stray top-level key. */
+         * refuses a stray top-level key.  Every key this module does not
+         * shape goes back as it came (`SHAPED_METADATA_KEYS`); the shaped
+         * ones are unfolded below. */
         metadata: {
+            ...clone(structure.otherMetadata || {}),
             regions:     groupByLabel(structure.annotations),
             cell:        clone(per.cell),
             engine_offset: clone(per.engine_offset),

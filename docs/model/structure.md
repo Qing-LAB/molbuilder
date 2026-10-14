@@ -184,15 +184,13 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 `__post_init__` validation, and its name to `METADATA_FIELDS`; (2) add it to
 `metadata_to_dict()` + `apply_metadata_dict()` — nowhere else; (3) if it must
 survive the sidecar, bump `SCHEMA_VERSION` and add the new version to
-`READABLE_VERSIONS` (see `structure-molstruct.md`); (4) if MolView must show it,
-`structureFromServer` reads it from the envelope (`payload.structure`, the
-structure's own dict, as it reads `info`) and `structureForServer` writes it
-back — the model's two translators (`web/molview.md` § 6.2), and today
-`model.js`'s `getStructure` too, which lists the master copy's fields itself.
-*(Decided 2026-10-14, not built — plan § 5ab R1: the browser keeps the
-per-atom halves folded onto the atoms and carries every other metadata key as
-one object it does not open, through one function each way, so step (4) goes
-and a field reaches every road with no edit)*; (5) add a
+`READABLE_VERSIONS` (see `structure-molstruct.md`); (4) nothing in the browser:
+MolView carries every metadata key it does not shape whole, in
+`otherMetadata`, through its two translators (`web/molview.md` § 6.2) — only a
+key MolView must show or edit in a shape of its own joins
+`SHAPED_METADATA_KEYS` and is folded and unfolded there *(since 2026-10-14,
+plan § 5ab R1; before, the translators and `getStructure` each listed the
+keys, and an unlisted one was dropped on every save)*; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 writer (`sidecars/molstruct.to_dict`), its reader
 (`parse/sidecars/molstruct.load_text`) or `apply_to_structure` — each SPREADS

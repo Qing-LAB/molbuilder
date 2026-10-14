@@ -306,11 +306,15 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
                 window.molbuilder.status.set("status", text, kind);
             const load = async (which) => {
                 try {
+                    /* AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md`
+                     * § 2.2a, I8): a file in an engine's order is answered
+                     * restored, and the answer says so -- said below with
+                     * what the read said. */
                     const r = await fetch("/api/build/load", {
                         method:  "POST",
                         headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify(Object.assign({ path: path },
-                                                              which)),
+                        body:    JSON.stringify(Object.assign(
+                            { path: path, restore: true }, which)),
                     });
                     const answer = await r.json();
                     if (!r.ok || !answer || answer.ok !== true) {

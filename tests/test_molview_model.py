@@ -1443,7 +1443,8 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
     # legitimately added updates this line, on purpose.
     assert out["keys"] == ["annotations", "channelDefs", "customized",
                            "elements", "forcesPerFrame", "frames", "info",
-                           "periodicity", "rowsPerFrame", "title"], (
+                           "otherMetadata", "periodicity", "rowsPerFrame",
+                           "title"], (
         f"the one read does not carry § 6.2's fields: {out['keys']}"
     )
     # The four facts § 9.3 names, each read off that single answer.
@@ -1905,8 +1906,13 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
     envelope unfold).  Until 2026-08-20 the fold read five fields and the
     unfold rebuilt four, so channels died at adoption and the first edit
     round-trip replaced every real residue name with the server's
-    re-synthesized placeholder."""
+    re-synthesized placeholder.  A metadata key the module does not shape --
+    the order record of a structure in an engine's order (`model/overview.md`
+    § 2.2a) -- goes back as it came: the two doors listed the keys by hand
+    until 2026-10-14, and an unlisted one was dropped on every save."""
     jobs_url = (MODULE_DIR / "model-jobs.js").resolve().as_uri()
+    order = {"key": "held-first", "sorted_to_original": [2, 0, 1],
+             "original_to_sorted": [1, 2, 0]}
     payload = {
         "title": "hemeC junction",
         "atoms": [
@@ -1926,6 +1932,7 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
             "charge": {"kind": "value", "data": {"1": -0.4, "2": 0.1},
                        "fdf": "some-strategy"},
         },
+        "structure": {"metadata": {"atom_order": order}},
     }
     snippet = (
         "const m = await import(" + json.dumps(jobs_url) + ");\n"
@@ -1957,6 +1964,7 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
     assert ch["charge"]["data"] == {"1": -0.4, "2": 0.1}
     assert ch["charge"]["fdf"] == "some-strategy"
     assert env["metadata"]["regions"] == {"L-electrode": [0]}
+    assert env["metadata"]["atom_order"] == order
 
 
 def test_a_load_clears_the_selection():

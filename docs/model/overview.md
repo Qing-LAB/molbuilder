@@ -179,10 +179,12 @@ is that its two directions cannot disagree because they share one base.
 > the code. Until it is built, § 2.2 above describes the code: the reorder
 > kept in `atom-permutation.json` beside the calculation, read by two readers.
 > As each part is built, § 2.2 is rewritten from this section, and this banner
-> goes with the last. **Built 2026-10-14 (plan § 5ab R1, the model):** the
-> field and its order record, `sort_by` setting it and refusing a remapped
-> input, `restored()`, the refusals, the codec's guard and its one door for an
-> engine's record, sidecar v14.
+> goes with the last. **Built 2026-10-14 (plan § 5ab R1):** the field and its
+> order record, `sort_by` setting it and refusing a remapped input,
+> `restored()`, the refusals, the codec's guard and its one door for an
+> engine's record, sidecar v14; the load route's `restore: true` and
+> `molbuilder modify` opening restored (I8); the browser carrying the field
+> whole.
 
 **Words.** *An atom's index* is its count from 0, as everywhere in this
 document (§ 2). **The order record** is what maps one order of a structure's
