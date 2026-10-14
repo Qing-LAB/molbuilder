@@ -33,7 +33,7 @@ import click
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
-from .structure import Structure, atom_words
+from .structure import Structure, atom_words, restored_said
 
 
 # --------------------------------------------------------------------- #
@@ -408,7 +408,8 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
 
 
 def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
-                           check_range: bool = True) -> None:
+                           check_range: bool = True,
+                           restored: bool = False) -> None:
     """THE CLI'S ATOM INDICES, AGREED (`model/overview.md` § 2; user,
     2026-10-10: *"we will give notification to user to agree that indices
     start from 0 and could be different from atom list in the UI"*): what a
@@ -419,7 +420,9 @@ def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
     for a script or a pipe, which has no one to ask).  An index outside the
     structure is refused first -- unless ``check_range`` is off, for
     `--electrode`, whose later slabs may centre on atoms an earlier one adds
-    and are checked against the grown structure, slab by slab."""
+    and are checked against the grown structure, slab by slab.  ``restored``:
+    the file was in an engine's order and is edited in yours, so the
+    indices count in yours, not the file's (`model/overview.md` § 2.2a)."""
     from .jobset.ask import confirm
     n = struct.n_atoms
     outside = sorted({int(i) for i in indices if not 0 <= int(i) < n})
@@ -428,9 +431,10 @@ def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
             f"{atom_words(outside)} {'is' if len(outside) == 1 else 'are'} "
             f"outside this {n}-atom structure, whose indices are 0 … {n - 1}")
     said = confirm(
-        f"Atom indices count from 0 here, as in code -- the UI's atom list "
-        f"numbers the same atoms from 1, so atom index 0 is #1 there.\n"
-        f"  This call names "
+        "Atom indices count from 0 here, as in code -- the UI's atom list "
+        "numbers the same atoms from 1, so atom index 0 is #1 there.\n"
+        + ("  They count in your order, not the file's.\n" if restored else "")
+        + f"  This call names "
         f"{atom_words(sorted({int(i) for i in indices}), struct.elements)}.",
         auto_yes=auto_yes, question="act on these atoms?", err=True)
     if not said.asked:
@@ -922,6 +926,15 @@ def cmd_modify(input_path, output_path,
     with _resolve_input_path(input_path) as resolved:
         struct, _cell = _struct_for_validate(resolved, one_frame_only=True)
     n_in = struct.n_atoms
+    # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): a file
+    # in an engine's order is opened restored, and said.
+    restored_from = (struct.atom_order.key if struct.atom_order is not None
+                     else None)
+    if restored_from:
+        struct = struct.restored()
+        click.echo(restored_said("the input" if str(input_path) == "-"
+                                 else Path(input_path).name, restored_from),
+                   err=True)
 
     # THE ATOM INDICES TYPED, read once and agreed before anything acts.
     typed: list = []
@@ -936,7 +949,8 @@ def cmd_modify(input_path, output_path,
         typed = [i for spec in specs for i in spec["center_indices"] or ()]
     if typed:
         _agree_to_atom_indices(struct, typed, auto_yes=auto_yes,
-                               check_range=not op_types["--electrode"])
+                               check_range=not op_types["--electrode"],
+                               restored=restored_from is not None)
 
     try:
         if op_types["--delete"]:

@@ -128,6 +128,19 @@ door = "load"
 order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [1, 2, 0] }
 
 [[case]]
+name = "the browser's load door answers an engine's record as it is -- its order record attached, nothing said: a viewer shows the engine's order"
+pair = "remapped"
+door = "route_load"
+order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [1, 2, 0] }
+
+[[case]]
+name = "...and in your order when an editor opens it, saying so -- the Molbuilder tab holds only your order"
+pair = "remapped"
+door = "route_load"
+body = { restore = true }
+said = { where = "structure.restored", severity = "info", words = "co.xyz was in an engine's order (held-first); it is put back in your order" }
+
+[[case]]
 name = "an order record missing a direction is refused"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1] } }

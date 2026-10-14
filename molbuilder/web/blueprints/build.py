@@ -76,7 +76,7 @@ from molbuilder.pubchem import build_from_name
 from molbuilder.smiles import build_from_smiles
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.structure import Structure
+from molbuilder.structure import Structure, restored_said
 from molbuilder.validation import validate
 from .files import _resolve_within_roots, _PickerError
 
@@ -616,6 +616,12 @@ def api_build_load():
     whole set with ``frames: true``; every answer says ``n_frames``, the
     count the file holds.  Returns the same JSON shape as
     /api/build/molecule so the front end can treat the result identically.
+
+    A path load answers the file AS IT IS -- a pair in an engine's order
+    with its order record -- unless ``restore: true``, which an editor's open
+    asks: then in your order, through ``Structure.restored()``, said in a
+    ``structure.restored`` notice naming the key (``model/overview.md``
+    § 2.2a, I8).
     """
     # FILE-ONLY load through the ONE authority (``model/structure.md`` § 2.4): a project
     # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via
@@ -647,6 +653,13 @@ def api_build_load():
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
+        # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): its
+        # open asks for the file restored; a viewer is answered the file as it
+        # is, its order record attached.
+        restored_from = None
+        if _pbody.get("restore") is True and whole.atom_order is not None:
+            restored_from = whole.atom_order.key
+            whole = whole.restored()
         try:
             struct = _chosen_frame(whole, _pbody)
         except (TypeError, ValueError) as exc:
@@ -663,7 +676,9 @@ def api_build_load():
         said = notices_for_report(
             [Issue("info", s, "structure.lone_file") for s in lone]
             + [Issue("warn", s, "structure.geometry_changed")
-               for s in changed])
+               for s in changed]
+            + ([Issue("info", restored_said(_resolved.name, restored_from),
+                      "structure.restored")] if restored_from else []))
         if retired.get("cell_origin") is not None:
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
             said += notices_for_report([Issue(

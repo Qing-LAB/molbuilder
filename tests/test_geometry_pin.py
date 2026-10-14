@@ -45,12 +45,16 @@ Keys of a ``[[case]]``:
     the door raises ``ValueError`` -- an unreadable sidecar's
     ``MolstructJsonError`` among them -- with this text in its message.
 ``order``
-    the order record the opened structure carries, ``{key,
-    sorted_to_original, original_to_sorted}``; restored, it is the
-    ``[remapped]`` pair as built.
+    the order record the opened ``remapped`` pair carries, ``{key,
+    sorted_to_original, original_to_sorted}``; restored, it is the pair as
+    built.  A ``remapped`` row without it opens as built, in your order.
+``body``
+    what a ``route_load`` row adds to ``{path}`` -- ``restore``, an editor's
+    open.
 ``said``
     ``{where, severity, words}``: the route's answer carries this notice; a
-    ``route_load`` row without it carries none of its kind.
+    ``route_load`` row without it carries none of its kinds (a changed
+    geometry, a restore).
 """
 from __future__ import annotations
 
@@ -71,7 +75,8 @@ _TABLE = tomllib.loads(
 _PAIR = _TABLE["pair"]
 _REMAPPED = _TABLE["remapped"]
 _CASES = _TABLE["case"]
-_NOTICE = "structure.geometry_changed"
+#: The notices a ``route_load`` row reads: a changed geometry, a restore.
+_SAID = ("structure.geometry_changed", "structure.restored")
 
 
 def _the_pair(plain: bool) -> Structure:
@@ -91,6 +96,18 @@ def _the_remapped() -> Structure:
     return Structure(elements=list(_REMAPPED["elements"]),
                      positions=np.asarray(_REMAPPED["positions"], dtype=float),
                      regions=dict(_REMAPPED["regions"]))
+
+
+def _opened_as_built(case, got: Structure) -> None:
+    """The ``[remapped]`` pair, opened: carrying the row's ``order`` and,
+    restored, the pair as built -- or, a row without one, as built already."""
+    if "order" in case:
+        assert got.atom_order.to_dict() == case["order"], got.atom_order
+        got = got.restored()
+    want = _the_remapped()
+    assert (got.elements, got.regions, got.atom_order) == (
+        want.elements, want.regions, None), got
+    assert np.allclose(got.positions, want.positions)
 
 
 def _edited(case, path: Path) -> None:
@@ -147,16 +164,18 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
     if case["door"] == "route_load":
         from molbuilder.web.app import create_app
         answer = create_app(config={}).test_client().post(
-            "/api/build/load", json={"path": str(path)})
+            "/api/build/load", json={"path": str(path), **case.get("body", {})})
         assert answer.status_code == 200, answer.get_json()
         notices = [n for n in answer.get_json().get("notices", [])
-                   if n["where"] == _NOTICE]
+                   if n["where"] in _SAID]
         want = case.get("said")
-        if want is None:
-            assert notices == [], notices
-            return
-        assert [(n["severity"], want["words"] in n["message"])
-                for n in notices] == [(want["severity"], True)], notices
+        assert [(n["where"], n["severity"]) for n in notices] == (
+            [(want["where"], want["severity"])] if want else []), notices
+        if want:
+            assert want["words"] in notices[0]["message"], notices
+        if remapped:
+            _opened_as_built(case, Structure.from_dict(
+                answer.get_json()["structure"]))
         return
 
     if "refused" in case:
@@ -170,11 +189,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
         return
     got = StructureCodec().load(path)
     if remapped:
-        assert got.atom_order.to_dict() == case["order"], got.atom_order
-        back, want = got.restored(), _the_remapped()
-        assert (back.elements, back.regions, back.atom_order) == (
-            want.elements, want.regions, None), back
-        assert np.allclose(back.positions, want.positions)
+        _opened_as_built(case, got)
         return
     assert got.atom_order is None, got.atom_order
     assert got.regions == ({} if case.get("plain") else

@@ -411,27 +411,59 @@ def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
     assert final.startswith("3\n")
 
 
-def test_modify_asks_to_agree_that_atom_indices_count_from_0(tmp_path):
+#: The rows of the agreement: the file, the atom index typed, what is said,
+#: and the atoms left.  An engine's record -- CO2 listed O O C, the carbon
+#: held, written in the engine's order C O O with its order record -- is
+#: opened in your order, so index 0 is your first oxygen, not the carbon.
+_AGREEMENT_ROWS = [
+    dict(name="a file in your order", remapped=False, delete="1",
+         said=("count from 0", "atom index 1 (C)", "--yes"),
+         left=["S", "C", "S"]),
+    dict(name="an engine's record, opened in your order: the indices count "
+              "in yours", remapped=True, delete="0",
+         said=("in.xyz was in an engine's order (held-first); it is put back "
+               "in your order", "count from 0",
+               "They count in your order, not the file's", "atom index 0 (O)",
+               "--yes"),
+         left=["O", "C"]),
+]
+
+
+@pytest.mark.parametrize("row", _AGREEMENT_ROWS,
+                         ids=[r["name"] for r in _AGREEMENT_ROWS])
+def test_modify_asks_to_agree_that_atom_indices_count_from_0(row, tmp_path):
     """`model/overview.md` § 2: the atom indices typed at the CLI are the
     code's own, counted from 0, while the UI's atom list numbers the same
     atoms from 1 -- so `modify` says so, names the atoms it was given, and
     acts only once that is agreed: with no one to ask (no terminal) it is
-    refused, naming `--yes`, and writes nothing; agreed, the atom at index 0
-    is the one that goes."""
+    refused, naming `--yes`, and writes nothing; agreed, the atom at that
+    index is the one that goes.  `modify` is an editor (§ 2.2a, I8): a file
+    in an engine's order is opened in yours, said, and the indices count in
+    yours."""
     from click.testing import CliRunner
     from molbuilder.workingcopy_structure import StructureCodec
     inp, outp = tmp_path / "in.xyz", tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())                     # S C C S
+    if row["remapped"]:
+        from molbuilder.structure import Structure
+        from molbuilder.transport.sort import sort_by
+        co2 = Structure(elements=["O", "O", "C"],
+                        positions=np.array([[1.16, 0, 0], [-1.16, 0, 0],
+                                            [0, 0, 0]]),
+                        regions={"frozen_atoms": [2]})
+        StructureCodec().write(sort_by(co2, "held-first").structure, inp,
+                               engine_record=True)
+    else:
+        inp.write_text(_bdt_stub_xyz())                 # S C C S
     refused = CliRunner().invoke(cli.cli, ["modify", str(inp), str(outp),
-                                           "--delete", "1"])
+                                           "--delete", row["delete"]])
     assert refused.exit_code != 0, refused.output
-    for words in ("count from 0", "atom index 1 (C)", "--yes"):
+    for words in row["said"]:
         assert words in refused.output, (words, refused.output)
     assert not outp.exists()
     agreed = CliRunner().invoke(cli.cli, ["modify", str(inp), str(outp),
-                                          "--delete", "1", "--yes"])
+                                          "--delete", row["delete"], "--yes"])
     assert agreed.exit_code == 0, agreed.output
-    assert StructureCodec().load(outp).elements == ["S", "C", "S"]
+    assert StructureCodec().load(outp).elements == row["left"]
 
 
 def test_modify_refuses_a_file_of_several_frames(tmp_path):

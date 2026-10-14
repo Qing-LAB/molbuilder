@@ -1008,13 +1008,13 @@ molbuilder peptide ASEQ                            # → XYZ on stdout
 molbuilder dna ATGC > seq.xyz                      # Structure on stdout
 ```
 
-**A remapped file on the command line** *(decided 2026-10-14, not built —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, I8)*: `molbuilder
-modify` is an editor — it opens a remapped pair restored, and its agreement
-says so and that the atom indices it takes count in your order, not the
-file's; `xv2xyz --from-run` writes the run's geometry restored; a bare
-`xv2xyz` of an `.XV` a reordered run of ours holds is refused, naming
-`--from-run`.
+**A remapped file on the command line** *([`model/overview.md`](?doc=model/overview.md)
+§ 2.2a, I8)*: `molbuilder modify` is an editor — it opens a remapped pair
+restored, says so, and its agreement says the atom indices it takes count in
+your order, not the file's *(built 2026-10-14)*; `xv2xyz --from-run` writes
+the run's geometry restored; a bare `xv2xyz` of an `.XV` a reordered run of
+ours holds is refused, naming `--from-run` *(these two decided 2026-10-14, not
+built — plan § 5ab R2)*.
 
 **Both sides of the CLI now go through the door.** Reads: `jobset prep`
 reads the calculation's structure through `StructureCodec().load`
