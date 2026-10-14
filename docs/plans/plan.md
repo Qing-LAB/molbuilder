@@ -839,6 +839,29 @@ otherwise restored results: `info.relaxation.held_atom_idxs` (V1.42) and
 
 **The revision plan — approved by the user 2026-10-14** (*"yes to all, go with your recommendations"*).
 
+*The constraints every part meets* *(the user, 2026-10-14: "your design need
+to guarantee a unified api access, no handcrafted code, the json and xyz
+travel, read and write together, no split handling")*:
+
+- **The pair is one unit.** The remapped state is a field of the structure,
+  so it is read and written only with its atoms, by the codec, in the
+  `.xyz` and its `.molstruct.json` together; no index travels in a file of
+  its own (`atom-permutation.json` retires), and the restored result is a
+  pair the codec writes.
+- **One door for each act.** A structure from a run comes through the run
+  door (`runs.view_of`) — never a parser class imported for it (V1.41's
+  `SiestaParser`); a restore is `Structure.take` through the record's one
+  reader — never an index mapped by hand (`wizard._atoms_named`,
+  `compose.py`'s `start[list(...)]`); every write is the codec's.
+- **No field listed by hand.** The two places that list a structure's
+  metadata field by field are fixed, not extended: the deck's ATOM-METADATA
+  block is written from the structure's own serialiser
+  (`metadata_to_dict`), not the hand list in `script_emit.emit_atom_metadata`
+  / `apply_atom_metadata`; the browser carries the metadata block whole
+  through one function each way, not the key-by-key rebuild in
+  `model-jobs.js` (`structureFromServer`, `structureForServer`) — so a field
+  the structure gains reaches every road with no edit.
+
 *Where the index lives — one home for each thing:*
 
 - **A structure** carries it as one field, `atom_order` — the key and both
