@@ -812,12 +812,110 @@ held the same atoms).
    restore**: the atoms back in the input order, every per-atom field with
    them.
 
-**Open, for the revision plan** (§ 5ab is its home until it is written into
-the contracts): the restored file's name; where the state lives in memory
-(a structure field, so it survives a load, an edit and a save — and what an
-edit that adds or removes atoms does to it); what the Results tab shows; the
-transport record's reordered junction; the order of the work. The survey of
-every place it touches is the next step.
+**The survey** *(2026-10-14, two read-only agents at `8c5b6be1`, each
+finding re-read before it is used here)*. Every reader of a reordered run
+shows the engine's order unmarked — the SIESTA parsers (`.out`, `.MD.nc`,
+`.XV`, the molwatch log), the run door (`runs.declared`, `runs.view_of`), the
+Results load and export, `xv2xyz --from-run`, the transport report and its
+PDOS selections, the transport citation of a reordered run (any finished run
+of ours may be cited — a vibration's `relax` included, its order then sorted a
+second time, never composed), and the force-constant prep (V1.41, which also
+imports a parser class directly, against `model/parse.md` § 3). The labels are
+not wrong: the deck's ATOM-METADATA block is written from the sorted copy, so
+labels and coordinates agree — in the engine's order, unmarked. Handled today:
+the vibration finish (through the record's one reader), the transport
+composer (reading the record, then mapping by hand in `wizard._atoms_named`
+and `compose.py`, against § 2.2's *never by hand*). **Where the index lives
+today does not hold**: `atom-permutation.json` is written at the
+calculation's root at every prep — in the flat layout every run's own folder,
+so each prep overwrites the one before it — and the shared package copies it
+into every attempt, the transport electrode rungs and benchmark trials
+included, whose atoms it does not describe. The browser rebuilds the metadata
+it sends field by field (`model-jobs.js`), so a new field is dropped on every
+round trip unless both directions carry it. A pair cited for transport must
+carry `info.calculation`, which a job cannot compose. Stray engine indices in
+otherwise restored results: `info.relaxation.held_atom_idxs` (V1.42) and
+`engine_metadata.fc_range_1based`.
+
+**The revision plan — proposed 2026-10-14, awaiting the user's word.**
+
+*Where the index lives — one home for each thing:*
+
+- **A structure** carries it as one field, `atom_order` — the key and both
+  directions, in the record's shape, checked by the record's one reader (split
+  into a reader of the dict that the file and the field share). **Present
+  means remapped**: the state cannot exist without its index. It rides
+  everything the structure's fields ride — `replace`, `to_dict`, the sidecar
+  (v14), the codec — and the browser's two directions.
+- **A run** states it in its own deck, in the ATOM-METADATA block (the
+  sidecar's shape, so the same field), read through `runs.declared`: each run
+  its own index — the flat layout's overwrite and the electrode rungs' false
+  copy end with it.
+- **`atom-permutation.json` retires**: the vibration finish reads the index
+  from its deck; the transport record's junction carries it in its sidecar;
+  `.transport.nc` carries the index on its atom axis, not a file's name.
+- **The identity order is not remapped** — nothing moved, no state.
+
+*Who says it, and who restores:*
+
+- **The run door marks**: `view_of` — the one builder of a structure from a
+  run (the Results load, `xv2xyz --from-run`, the citation) — sets the field
+  from the run's deck. The parsers stay the engine's file view; the bare file
+  readers (`watch parse`, `watch tail`, `runtime-info`, bare `xv2xyz`) read a
+  file, not a run, and the contract says so.
+- **The Results tab** shows a reordered run in the engine's order, marked
+  (the key named); an export carries the state and its index (v14).
+- **The Molbuilder tab** warns while a structure is remapped (a condition of
+  every answer, not a load-only notice, since notices clear on an edit) and
+  offers **restore** — a server operation, `Structure.take` through the
+  index, the field cleared, the selection cleared with it. An edit that adds
+  or removes atoms on a remapped structure is refused, naming restore (as a
+  frame set's is).
+- **A door that builds** restores with a warning — the force-constant prep
+  (V1.41: `relax`'s restored result, or its final coordinates through its
+  deck's index, read through the run door, not a parser class), a calculation
+  whose structure is a remapped pair (`_structure_for`), the transport
+  citation (restored before the transport sort, so the record is one
+  permutation of the person's order — and a run that is not a relaxation, a
+  force-constant stage, refused as `CITATION_CONDITION` already says),
+  `xv2xyz --from-run`. A remapped state with no index cannot exist (the field
+  is the index).
+
+*What a run leaves:*
+
+- **A SIESTA vibration's `relax` stage writes its restored result** when it
+  finishes: `<label>_<stage>-run<N>.restored.xyz` and its sidecar, the
+  relaxed geometry in the input order with the person's labels and box — its
+  job's finish, through `StructureCodec.write_moved`, the payload made by
+  prep, the final coordinates from the `.out` by the travelling reader. The
+  run records (`info.calculation`, `info.relaxation`) are composed on this
+  machine by the door that hands the pair on, as an export does today. A
+  restore that fails is said in the session log and does not change how the
+  run ended — the doors restore with a warning. The force-constant stage's
+  restored result is its spectrum, as today; **transport rungs** are single
+  points whose structure is the record's junction — no restored pair, the
+  junction stated remapped with its index; the electrode rungs carry none.
+- **Stray engine indices**: `held_atom_idxs` cut (V1.42);
+  `fc_range_1based` stated as the engine's, under `engine_metadata` where it is.
+
+*The order, each phase closed as a milestone (§ 0a):*
+
+| phase | what | contracts |
+|---|---|---|
+| **R0** | the contracts, for the user's review before code | `model/overview.md` § 2.2; `model/structure.md` § 2.1–2.2e; `model/structure-molstruct.md` (v14); `model/parse.md` § 3, § 5.3; `execution/job-contracts.md` § 3.1, § 6.1, § 6.3; `engines/vibration.md` § 5.2a, § 5.5; `engines/transport.md` § 2a.12, § 3.1; `web/web-api.md`; `web/molview.md`; `web/results.md`; `configuration.md`'s bundle rule |
+| **R1** | the model: the field and its reader, sidecar v14, the codec, atom-count edits refused, restore (`take`), the browser's two directions, `/api/modify/restore`, the Molbuilder tab's warning | tests: `geometry_pin.toml` (v14 rows), `frame_sets.toml` (restore over a set), the model and browser round trips |
+| **R2** | said at the source: `sort_by` sets the field; the deck states it; `declared` reads it; `view_of` marks; the Results tab shows it; the export carries it | the Results route's rows |
+| **R3** | restored where it builds: V1.41, `_structure_for`, the transport citation (and its condition), `xv2xyz --from-run`; the by-hand maps through the record's reader | `prep_protocol.toml` (a held set grown between the preps, flat and hierarchical; a remapped source) |
+| **R4** | what a run leaves: the `relax` finish writing the restored pair, its bundle, the catalogue's rows | e2e on T-CO2's ladder |
+| **R5** | `atom-permutation.json` retired; `.transport.nc` carrying the index; the stray engine indices | the vibration and transport e2e |
+| **R6** | the transport report: the junction drawn in the person's order, the PDOS selections mapped through the record — or marked as the engine's | the user's word first |
+
+**The user's word owed on**: the field's name and home as above; retiring
+`atom-permutation.json`; no restored pair for transport rungs; a failed
+restore not failing the relaxation; the identity order not remapped; the
+Results tab marking (not restoring) a reordered run's view; R6's choice. RMP
+is new functionality (a restore operation, sidecar v14): its own middle
+number, after 2.9.6 is pushed — before V1.39, whose structures it reads.
 
 ## 5s. The electronic state — charge and spin as one answer *(W34, 2026-09-25)*
 
