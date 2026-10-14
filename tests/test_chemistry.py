@@ -437,10 +437,13 @@ class TestSpeciesLabel:
 
     def test_a_label_naming_no_element_is_refused_not_guessed(self):
         """The refusal is the whole point: there is no sensible Z for 'Xx',
-        and the alternative to raising is emitting one anyway.
+        and the alternative to raising is emitting one anyway.  An element
+        denotes Z >= 1, so ASE's dummy atom `X` (Z = 0), which its table
+        lists, is refused too -- written into a deck it is a ghost species.
+        Contract: `model/chemistry.md` § 3.
         """
         from molbuilder.chemistry import resolve_element
-        for junk in ("Xx", "", "  ", "42"):
+        for junk in ("Xx", "", "  ", "42", "X", "X1"):
             with pytest.raises(KeyError):
                 resolve_element(junk)
 

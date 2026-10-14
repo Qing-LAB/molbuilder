@@ -276,7 +276,10 @@ def resolve_element(label: str) -> str:
     un-canonical is what a person typed: a UI field, or a species label they
     chose -- and there an error naming the label is the useful answer.
 
-    Raises KeyError naming the label when the name is not an element.
+    Raises KeyError naming the label when the name is not an element.  **An
+    element denotes Z >= 1**: ASE's table also lists ``X``, its dummy atom at
+    Z = 0, which is a placeholder and not an element -- in an engine input it
+    is a ghost species.
 
     **Callers emitting an engine input MUST let that propagate.**  A species
     with no element is not something a calculation can run, and the
@@ -291,13 +294,17 @@ def resolve_element(label: str) -> str:
     """
     from ase.data import atomic_numbers as _Z
     name, _index = split_species_label(label)
-    if name in _Z:
+    if _Z.get(name, 0) >= 1:
         return name
     hint = (f"  Did you mean {name.capitalize()!r}?  Case is not corrected -- "
             f"folding two letters is how 'CA' becomes calcium."
             if name.capitalize() in _Z else "")
     origin = (f" (from species label {label!r})"
               if name != str(label).strip() else "")
+    if name in _Z:
+        raise KeyError(
+            f"{name!r}{origin} is ASE's dummy atom (Z = 0), not an element: "
+            f"a calculation needs the element behind every atom.")
     raise KeyError(f"unknown element symbol {name!r}{origin}.{hint}")
 
 

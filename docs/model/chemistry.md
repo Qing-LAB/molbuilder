@@ -126,10 +126,15 @@ One door does it, and it is **explicit, never clever**:
 | Function | Purpose |
 |---|---|
 | `split_species_label(label)` → `(name, index)` | `"Au1"` → `("Au", 1)`. A run of digits at the END is an index; everything before it is the name. **That is the whole of what a label is read for** |
-| `resolve_element(label)` → symbol | splits, then looks the name up **verbatim**. `Au1` → `Au` ✓ · `au` ✗ · `FE` ✗ · `Au_1` ✗ (its name is `Au_`). Raises `KeyError` carrying the correction when one exists |
+| `resolve_element(label)` → symbol | splits, then looks the name up **verbatim**. `Au1` → `Au` ✓ · `au` ✗ · `FE` ✗ · `Au_1` ✗ (its name is `Au_`) · `X` ✗ (below). Raises `KeyError` carrying the correction when one exists |
 | `atomic_number(label)` → int | `resolve_element`, then one lookup. The Z an engine input needs beside the label |
 | `atomic_mass(label)` → float | the standard atomic weight, through the same resolution |
 | `is_atom(label, symbol)` → bool | **is this atom that element?** `is_atom("Au1", "Au")` is True. The one way to ask — a bare `el == "P"` says a labelled species is not phosphorus, and writing `el.capitalize() == sym` to fix that makes `CA` calcium again |
+
+**An element denotes Z ≥ 1.** The table the name is looked up in, ASE's, also
+lists `X`, its dummy atom at Z = 0. `X` is a placeholder, not an element, and
+it is refused like any other name that is not one: written into a SIESTA deck
+it is `1 0 X`, a ghost species, and in an electron count it adds nothing.
 
 **No case correction, anywhere.** Folding two letters is how `CA` becomes
 calcium and `CO` becomes cobalt — both real elements, so the result is a wrong
