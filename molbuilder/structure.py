@@ -126,7 +126,8 @@ XYZ_DECIMALS = 6
 #: it stored, and silently dropping it is how a structure reaches a calculation
 #: missing labels nobody noticed were gone.
 METADATA_FIELDS = ("regions", "cell", "engine_offset", "offset_by",
-                   "axis_kind", "vacuum", "annotations", "customized")
+                   "axis_kind", "vacuum", "annotations", "customized",
+                   "atom_order")
 
 #: WHOSE A STATED OFFSET IS (`model/structure-periodicity.md` § 6.0): an
 #: origin the person assigned on the Cell page, or the engine's own origin of
@@ -142,6 +143,34 @@ OFFSET_BY = ("person", "engine")
 FRAME_SET_NOT_EDITED = (
     "a frame set is not edited -- take one frame with frame_at(i), or build "
     "the set again with with_frames (model/structure.md § 2.2e)")
+
+#: What every door that would edit, reorder or merge a REMAPPED structure
+#: answers (``model/overview.md`` § 2.2a): a structure in an engine's order
+#: carries its order record, which holds only for the atom list as it stands,
+#: so it is restored to the person's order first.  One sentence, so every
+#: door says the same thing.
+REMAPPED_NOT_EDITED = (
+    "the structure is in an engine's order, which its order record states -- "
+    "restore it to your order with restored() first (model/overview.md § 2.2a)")
+
+
+def restored_said(what: str, key: str) -> str:
+    """What a door that restored a structure says of it (``model/overview.md``
+    § 2.2a): ``what`` -- the file, the added structure -- and the key of the
+    order it was in.  One sentence, so every door says the same thing."""
+    return (f"{what} was in an engine's order ({key}); it is put back in "
+            f"your order")
+
+
+def _order_record_type():
+    """The order record's class, imported both ways: this module travels in
+    ``mb_pyscf.pyz`` beside ``atom_permutation``."""
+    try:                                    # inside molbuilder
+        from .atom_permutation import Permutation
+    except ImportError:                     # beside a job
+        from atom_permutation import Permutation  # type: ignore
+    return Permutation
+
 
 #: The keys of one ``customized`` row (``model/structure.md`` § 2.2d).
 _ROW_KEYS = ("name", "value", "unit", "note")
@@ -651,6 +680,14 @@ class Structure:
     #: and read through :meth:`customized_value` / :meth:`customized_rows`;
     #: nothing else names a key of it.
     customized:    Optional[Dict[str, Any]] = None
+    #: THE ORDER RECORD of a structure in an engine's order
+    #: (``model/overview.md`` § 2.2a): ``None`` in the person's own order, an
+    #: ``atom_permutation.Permutation`` otherwise -- the key that made it and
+    #: both directions, read by its one reader.  PRESENT MEANS REMAPPED, and
+    #: nothing else states it.  Set by ``transport.sort.sort_by``, cleared by
+    #: :meth:`restored`; it rides every derived copy that keeps the atoms in
+    #: place, and an edit that adds or removes atoms refuses it.
+    atom_order:    Optional[Any] = None
     #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
     #: pane shows -- that is NOT part of the structure: no emitter reads
     #: it, it never enters `geometry_hash`, and the read-only gate does
@@ -805,6 +842,12 @@ class Structure:
         self._validate_annotations(n)
         # The named values, one row set per frame.
         self.customized = normalise_customized(self.customized, self.n_frames)
+        # The order record, read by its one reader: two inverse bijections
+        # over these atoms, a named key, never the identity (I2).  Its
+        # refusal is a ValueError, as every field's here is.
+        if self.atom_order is not None:
+            self.atom_order = _order_record_type().from_dict(
+                self.atom_order, source="Structure.atom_order", n_atoms=n)
 
     def pbc(self) -> Tuple[bool, bool, bool]:
         """Per-axis periodicity as BOOLEANS — an interop accessor, not state.
@@ -976,6 +1019,10 @@ class Structure:
             "annotations":  annotations_to_json(self.annotations),
             # None when no row, else every row and one set per frame (§ 2.2d).
             "customized":   _copy.deepcopy(self.customized),
+            # None in the person's own order, else the order record
+            # (`model/overview.md` § 2.2a).
+            "atom_order":   (self.atom_order.to_dict()
+                             if self.atom_order is not None else None),
         }
 
     def identity_to_dict(self) -> dict:
@@ -1061,6 +1108,7 @@ class Structure:
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
         self.customized   = data.get("customized")
+        self.atom_order   = data.get("atom_order")
         # Re-run the dataclass invariants ONCE: cell 3x3 of finite floats, the
         # ``axis_kind`` default and value check (nothing to reconcile: there
         # is one periodicity field), a stated offset of three finite
@@ -1565,7 +1613,28 @@ class Structure:
         sits at ``j``.  Every per-atom field moves with its atom -- the
         identity columns, the labels, the channels -- and so does every
         frame's coordinates (``model/structure.md`` § 2.2e).  A reorder is
-        not an edit; the transport sort goes through here."""
+        not an edit; the transport sort goes through here.
+
+        A REMAPPED structure is refused: its order record would hold no
+        longer, and its one reorder back is :meth:`restored`."""
+        if self.atom_order is not None:
+            raise ValueError(REMAPPED_NOT_EDITED)
+        return self._reordered(order)
+
+    def restored(self) -> "Structure":
+        """This structure in the person's own order (``model/overview.md``
+        § 2.2a) -- THE ONE WAY BACK from an engine's order.  Every per-atom
+        field and every frame's atoms move back through the order record,
+        and the record is cleared; ``info`` and the ``customized`` rows are
+        untouched (nothing in them is indexed by atom).  A structure in the
+        person's order comes back unchanged -- the same object."""
+        if self.atom_order is None:
+            return self
+        return self._reordered(self.atom_order.original_to_sorted,
+                               atom_order=None)
+
+    def _reordered(self, order: Sequence[int], **also) -> "Structure":
+        """The reorder :meth:`take` and :meth:`restored` share."""
         n = self.n_atoms
         idx = [int(i) for i in order]
         if sorted(idx) != list(range(n)):
@@ -1587,6 +1656,7 @@ class Structure:
             changes["frames"] = self.frames[:, idx, :]
         else:
             changes["positions"] = self.positions[idx].copy()
+        changes.update(also)
         return self.replace(**changes)
 
     # ------------------------------------------------------------------ #
@@ -2170,6 +2240,10 @@ class Structure:
         """
         if self.n_frames > 1:
             raise ValueError(FRAME_SET_NOT_EDITED)
+        # A REMAPPED STRUCTURE IS REFUSED HERE TOO, for the same reason: its
+        # order record holds only for the atom list as it stands.
+        if self.atom_order is not None:
+            raise ValueError(REMAPPED_NOT_EDITED)
         return self._nonatom()
 
     def _nonatom(self) -> dict:
@@ -2184,6 +2258,8 @@ class Structure:
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
             customized  = _copy.deepcopy(self.customized),
+            # Immutable, so shared: it holds while the atoms stay in place.
+            atom_order  = self.atom_order,
         )
 
     # ------------------------------------------------------------------ #
@@ -2372,6 +2448,10 @@ class Structure:
         # the frames of a set have no counterpart in the other input.
         if any(s.n_frames > 1 for s in structures):
             raise ValueError(FRAME_SET_NOT_EDITED)
+        # ...AND STRUCTURES IN THE PERSON'S ORDER: an order record has no
+        # counterpart in the other input (`model/overview.md` § 2.2a).
+        if any(s.atom_order is not None for s in structures):
+            raise ValueError(REMAPPED_NOT_EDITED)
         elements: List[str] = []
         atom_names: List[str] = []
         residue_ids: List[int] = []

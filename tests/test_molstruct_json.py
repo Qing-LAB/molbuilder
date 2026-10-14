@@ -542,8 +542,8 @@ class TestApplyToStructure:
 
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, ..., 13} (`structure-molstruct.md` § 5).
-    v8, v9, v11 and v12 only ADDED optional keys, so an older file reads
+    schemas this build accepts: {7, ..., 14} (`structure-molstruct.md` § 5).
+    v8, v9, v11, v12 and v14 only ADDED optional keys, so an older file reads
     whole (an absent addition IS its default, which is exactly what the
     older version meant); v10 retired `cell_origin` and v13 `structure_hash`
     -- read and ignored, `TestARetiredKeyPassesEveryGate` -- and a v7-v12

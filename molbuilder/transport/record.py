@@ -35,7 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from ..atom_permutation import PERMUTATION_FILE
+from ..runfiles import PERMUTATION_FILE
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
 

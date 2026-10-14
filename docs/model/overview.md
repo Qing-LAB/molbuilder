@@ -154,13 +154,13 @@ engine fact, like the 1-based numbering, and it never leaks.
 
 | | the rule |
 |---|---|
-| **one home per sort key** | the sort is a pure function, `(Structure) -> (sorted Structure, permutation)`, with one implementation per key over ONE machinery: `transport/sort.py` — `sort_by(struct, key)` with the keys named in `SORT_KEYS` (`transport`: the categorical order; `held-first`: held atoms first, free atoms last), each an order handed to the shared `apply_order`, which does the remap, the bijection check and the record. A new need is a new key there, never a second machine *(built 2026-09-23)* |
+| **one home per sort key** | the sort is a pure function, `(Structure) -> SortResult`, with one implementation per key over ONE machinery: `transport/sort.py` — `sort_by(struct, key)`, the keys named in `atom_permutation` (`transport`: the categorical order; `held-first`: held atoms first, free atoms last) and each mapped in `SORT_KEYS` to an order handed to the shared `apply_order`, which does the remap, the bijection check and the record: the sorted copy carries its order record, `atom_order` (§ 2.2a; none when the sort moved nothing). A new need is a new key there, never a second machine *(built 2026-09-23; the copy's own record 2026-10-14)* |
 | **every index-carrying field moves with its atom** | `regions`, `frozen_atoms`, `annotations`, the identity columns, every per-atom array — through one map, checked to be a bijection before the copy is returned |
 | **recorded, both directions** | `atom-permutation.json` beside the record ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.1): `original_to_sorted`, `sorted_to_original` and the **`key`** that made the copy, written by `write_permutation` (`transport/sort.py`) and read by `read_permutation` (`atom_permutation.py`, the record's own module — stdlib and numpy, so it travels) — one writer, one reader, for every kind; a copy sits in every attempt of a sorted calculation, as part of its shared package |
 | **inverted at every return** | a per-atom result read from a sorted run — a force, a Mulliken charge, a projected DOS, an eigenchannel weight, a mode's eigenvector — passes through the record before it reaches any surface, and does so through `Permutation.rows_to_input_order` / `original_of`, never by hand. **The first reader that does is the SIESTA vibration's** (`spectra/vibrational_analysis.py`, from the record's own module `atom_permutation`, which travels with the job's finish; 2026-09-23): the free atoms' rows come out of `.FC` in the sorted order and are written in the input's. No per-atom transport result is parsed yet; when one is, it uses the same two methods |
-| **the sorted copy is an engine artifact** | it lives in the calculation's record (the `junction.xyz` there is the *sorted* junction) and in the decks. A surface that opens it presents it as the engine's order, with the permutation beside it — never as the person's structure |
+| **the sorted copy is an engine artifact** | it lives in the calculation's record (the `junction.xyz` there is the *sorted* junction, its order record in its sidecar — the codec's one door for an engine's record, § 2.2a) and in the decks. A surface that opens it presents it as the engine's order, with the permutation beside it — never as the person's structure |
 | **the person's interfaces speak the input order** | a displacement script for a frame group receives the base structure in input order and writes the frames in input order, as one multi-frame pair with the base as frame 0 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.9; `structure-molstruct.md` § 6.1). The sort runs per frame at prep, and because a frame inherits the base's labels the permutation is **the same for every frame of a group** |
-| **one copy, one permutation** | a structure sorted for two reasons — a junction ordered for TranSIESTA and again for force-constant contiguity — carries **one composed permutation, recorded once**. Two records for one copy is how a return leg inverts the wrong one. How the composition is built is the design's to settle (§ 14.2 above); that there is one is this contract's |
+| **one copy, one permutation** | never composed: `sort_by` refuses a structure already in an engine's order, so an engine order is made only from yours and there is one order record between them (§ 2.2a, I4; *built 2026-10-14*). Two records for one copy is how a return leg inverts the wrong one |
 
 This is a fourth translation, and it differs in kind from the three above: those
 are a base offset with no state; this is a per-structure reorder with a record.
@@ -179,7 +179,10 @@ is that its two directions cannot disagree because they share one base.
 > the code. Until it is built, § 2.2 above describes the code: the reorder
 > kept in `atom-permutation.json` beside the calculation, read by two readers.
 > As each part is built, § 2.2 is rewritten from this section, and this banner
-> goes with the last.
+> goes with the last. **Built 2026-10-14 (plan § 5ab R1, the model):** the
+> field and its order record, `sort_by` setting it and refusing a remapped
+> input, `restored()`, the refusals, the codec's guard and its one door for an
+> engine's record, sidecar v14.
 
 **Words.** *An atom's index* is its count from 0, as everywhere in this
 document (§ 2). **The order record** is what maps one order of a structure's

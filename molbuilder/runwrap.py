@@ -3937,7 +3937,8 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 #: source it is}``: the run's thread and GPU set-up, its threads sized
 #: before numpy is imported (`runtime_info`, standard library only); the
 #: progress-log writer and the unit factors it writes with; the structure
-#: codec, with the structure module (its one XYZ reader among it) and the
+#: codec, with the structure module (its one XYZ reader among it), the order
+#: record its ``atom_order`` field holds (`model/overview.md` § 2.2a) and the
 #: sidecar module its ``write_moved`` reaches; the relaxation; and a
 #: vibration's rules -- the PySCF route's, the harmonic path and
 #: thermochemistry, the result's hash and writer -- and its mode selector.
@@ -3956,6 +3957,7 @@ PYSCF_COMPANIONS: Dict[str, str] = {
     "constants.py":             "molbuilder.constants",
     "workingcopy_structure.py": "molbuilder.workingcopy_structure",
     "structure.py":             "molbuilder.structure",
+    "atom_permutation.py":      "molbuilder.atom_permutation",
     "molstruct.py":             "molbuilder.sidecars.molstruct",
     "relax_policy.py":          "molbuilder.pyscf.relax_policy",
     "end_lines.py":             "molbuilder.pyscf.end_lines",

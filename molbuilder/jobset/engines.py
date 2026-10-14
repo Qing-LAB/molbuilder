@@ -329,7 +329,7 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
 
     ``plan`` -- the folder as a prep will leave it (`jobset.planned`).
     """
-    from ..atom_permutation import PERMUTATION_FILE
+    from ..runfiles import PERMUTATION_FILE
     from .planned import Plan
     view = plan if plan is not None else Plan()
     pseudos = sorted(f"{PSEUDO_DIRNAME}/{p.name}"

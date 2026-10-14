@@ -1,13 +1,17 @@
 """The atom-permutation record -- a sorted deck's order, and the way back to the person's.
 
 MODULE  atom_permutation (L1, the job as described; stdlib + numpy only)
-ROLE    ``atom-permutation.json``: its file name, its schema, the class every
-        reader inverts it with, and its one reader
-USED-BY transport/sort.py (writes the record it sorted by), transport/compose.py
-        (the composite's record), spectra/vibrational_analysis.py and
+ROLE    the order record -- the class every reader crosses with, its one dict
+        reader, the sort keys' names, ``same_order``; and
+        ``atom-permutation.json``'s schema and reader, until the file retires
+        (`model/overview.md` § 2.2a, plan § 5ab R5)
+USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
+        (the keys, and the record it sorts by), transport/compose.py (the
+        composite's record), spectra/vibrational_analysis.py and
         spectra/siesta_vibration.py (read it back, beside the job)
 TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
-        (`runwrap.VIBRATION_COMPANIONS`)
+        (`runwrap.VIBRATION_COMPANIONS`), and in ``mb_pyscf.pyz``
+        (`runwrap.PYSCF_COMPANIONS`) as the type ``structure.py`` holds
 
 A deck written from a sorted copy -- held atoms first for a SIESTA
 force-constant run (`engines/vibration.md` § 5.2), the electrode blocks for
@@ -27,22 +31,20 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
-#: The record's file name beside a calculation -- and, as part of the
-#: calculation's shared package, in each attempt that runs from its sorted
-#: copy (`execution/job-contracts.md` § 6.1).
-# THE CATALOGUE'S NAME (`runfiles.WRITTEN`) -- imported both ways, since this
-# module travels beside a force-constant job's finish (`mb_vibration.pyz`).
-try:                                        # inside molbuilder
-    from .runfiles import PERMUTATION_FILE
-except ImportError:                         # beside a job
-    from runfiles import PERMUTATION_FILE  # type: ignore[no-redef]
-
 #: The record's schema name (registered: `job-contracts.md` § 6.1).
 PERMUTATION_SCHEMA = "molbuilder/atom-permutation@1"
+
+#: THE SORT KEYS, by name -- what a calculation needs done to the atom order:
+#: TranSIESTA's electrode blocks, or a SIESTA force-constant run's held atoms
+#: first.  Named HERE, where the order record lives, so a reader beside a job
+#: can check a record's key; ``transport.sort`` maps each name to its order.
+SORT_TRANSPORT = "transport"
+SORT_HELD_FIRST = "held-first"
+SORT_KEY_NAMES = (SORT_TRANSPORT, SORT_HELD_FIRST)
 
 
 class PermutationError(ValueError):
@@ -69,10 +71,87 @@ class Permutation:
     def n_atoms(self) -> int:
         return len(self.sorted_to_original)
 
+    @property
+    def is_identity(self) -> bool:
+        """Nothing moved -- an order that is never recorded
+        (`model/overview.md` § 2.2a, I2)."""
+        return list(self.sorted_to_original) == list(range(self.n_atoms))
+
     def original_of(self, sorted_indices) -> List[int]:
         """The input indices of atoms named by sorted position, in the
         order given."""
         return [int(self.sorted_to_original[int(j)]) for j in sorted_indices]
+
+    def sorted_of(self, original_indices) -> List[int]:
+        """The sorted positions of atoms named by their input index, in the
+        order given -- the way a selection made in the person's order is
+        asked of data in the engine's."""
+        return [int(self.original_to_sorted[int(i)]) for i in original_indices]
+
+    def to_dict(self) -> dict:
+        """The order record as the structure's metadata states it -- the key
+        and both directions (`model/structure-molstruct.md` § 1)."""
+        return {"key": self.key,
+                "sorted_to_original": list(self.sorted_to_original),
+                "original_to_sorted": list(self.original_to_sorted)}
+
+    @classmethod
+    def from_dict(cls, d, *, source: str = "the order record",
+                  n_atoms: Optional[int] = None) -> "Permutation":
+        """THE ONE READER of an order record's dict -- the structure's
+        ``atom_order`` field, a sidecar's, a deck's block's.  Refuses, naming
+        ``source``: a value that is not an object, a key that is not one of
+        :data:`SORT_KEY_NAMES`, directions that are not inverse bijections
+        (over ``n_atoms`` atoms when given), and the identity, which is never
+        recorded (`model/overview.md` § 2.2a, I2)."""
+        if isinstance(d, cls):
+            perm = d
+        else:
+            if not isinstance(d, dict):
+                raise PermutationError(
+                    f"{source}: an order record is an object {{key, "
+                    f"sorted_to_original, original_to_sorted}}; got "
+                    f"{type(d).__name__}")
+            stray = sorted(k for k in d
+                           if k not in ("key", "sorted_to_original",
+                                        "original_to_sorted"))
+            if stray:
+                raise PermutationError(
+                    f"{source}: an order record holds key, "
+                    f"sorted_to_original and original_to_sorted; it also "
+                    f"carries {stray!r}")
+            try:
+                perm = cls(
+                    original_to_sorted=tuple(int(i) for i in
+                                             d["original_to_sorted"]),
+                    sorted_to_original=tuple(int(i) for i in
+                                             d["sorted_to_original"]),
+                    key=d.get("key"))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise PermutationError(
+                    f"{source}: an order record states its key and both "
+                    f"directions as lists of atom indices ({exc})") from exc
+        if perm.key not in SORT_KEY_NAMES:
+            raise PermutationError(
+                f"{source}: the order record's key {perm.key!r} is not one of "
+                f"{', '.join(SORT_KEY_NAMES)}")
+        n = perm.n_atoms
+        o2s, s2o = perm.original_to_sorted, perm.sorted_to_original
+        if sorted(s2o) != list(range(n)) or len(o2s) != n or any(
+                s2o[o2s[i]] != i for i in range(n)):
+            raise PermutationError(
+                f"{source}: the order record's two directions are not inverse "
+                f"bijections over {n} atoms")
+        if n_atoms is not None and n != n_atoms:
+            raise PermutationError(
+                f"{source}: the order record is over {n} atoms; the structure "
+                f"holds {n_atoms}")
+        if perm.is_identity:
+            raise PermutationError(
+                f"{source}: the order record states the identity order, which "
+                f"is never recorded -- a structure in its own order carries "
+                f"none (model/overview.md § 2.2a)")
+        return perm
 
     def rows_to_input_order(self, rows, sorted_indices):
         """Per-atom rows that stand in ``sorted_indices`` order (a subset
@@ -86,10 +165,27 @@ class Permutation:
             [orig[k] for k in order]
 
 
+def same_order(a: "Optional[Permutation]", b: "Optional[Permutation]") -> bool:
+    """Whether two decks' atoms stand in the same order -- what decides that a
+    restart file one wrote may be read by the other (`model/overview.md`
+    § 2.2a, I6).  ``None`` is the person's own order, which the identity is
+    too: an order is compared by where each atom sits, not by its key."""
+    def where(p):
+        return None if p is None or p.is_identity else tuple(
+            p.sorted_to_original)
+    return where(a) == where(b)
+
+
 def read_permutation(directory) -> Permutation:
     """The permutation recorded in ``directory``, or a refusal naming the
     file: a sorted run with no record is a run whose numbers cannot be
     returned."""
+    # THE CATALOGUE'S NAME (`runfiles.WRITTEN`), imported both ways and only
+    # here: the module travels in two bundles, one without `runfiles`.
+    try:                                    # inside molbuilder
+        from .runfiles import PERMUTATION_FILE
+    except ImportError:                     # beside a job
+        from runfiles import PERMUTATION_FILE  # type: ignore[no-redef]
     p = Path(directory) / PERMUTATION_FILE
     if not p.is_file():
         raise PermutationError(
@@ -111,5 +207,6 @@ def read_permutation(directory) -> Permutation:
                        key=str(d.get("key", "") or ""))
 
 
-__all__ = ["PERMUTATION_FILE", "PERMUTATION_SCHEMA", "Permutation",
-           "PermutationError", "read_permutation"]
+__all__ = ["PERMUTATION_SCHEMA", "Permutation", "PermutationError",
+           "SORT_HELD_FIRST", "SORT_KEY_NAMES", "SORT_TRANSPORT",
+           "read_permutation", "same_order"]

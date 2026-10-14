@@ -12,8 +12,10 @@ nothing else in the system may hold a second copy of:
      structure-molstruct.md § 3), and the one serialisation
      (``molstruct.dumps``);
   4. the INVARIANTS -- every pair it writes has its sidecar, both-or-neither
-     atomicity on write.  NOT a periodicity gate on read: reading does not
-     judge (structure-periodicity.md § 8.2, 2026-08-03).
+     atomicity on write, and is in your order, an engine's record alone
+     excepted (``write(..., engine_record=True)``, model/overview.md § 2.2a).
+     NOT a periodicity gate on read: reading does not judge
+     (structure-periodicity.md § 8.2, 2026-08-03).
 
 SHAPE: one generator, and one adapter per destination.  :meth:`StructureCodec.pair`
 is the generator; :meth:`~StructureCodec.write` puts it on disk,
@@ -45,10 +47,10 @@ from typing import List, NamedTuple, Sequence, Tuple
 # installed.  What that call reaches imports only the standard library and
 # numpy; the rest of the codec reads through the package.
 try:                                        # inside molbuilder
-    from .structure import Structure
+    from .structure import REMAPPED_NOT_EDITED, Structure
     from .sidecars import molstruct
 except ImportError:                         # beside a job, in mb_pyscf.pyz
-    from structure import Structure
+    from structure import REMAPPED_NOT_EDITED, Structure
     import molstruct
 
 
@@ -257,10 +259,15 @@ class StructureCodec:
         return run_of(src) is not None and not about(src)["ours"]
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
-    def pair(self, struct: Structure, *,
-             fmt: str = "xyz") -> "StructurePair":
+    def pair(self, struct: Structure, *, fmt: str = "xyz",
+             engine_record: bool = False) -> "StructurePair":
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
+
+        A PAIR IS IN YOUR ORDER (`model/overview.md` § 2.2a, I1): a remapped
+        structure is refused, naming :meth:`Structure.restored` -- but for
+        ``engine_record``, an engine's own record written with its order
+        record beside it (:meth:`write`'s one door for it).
 
         THE ONE PLACE either is produced.  :meth:`write` puts this on disk and
         :meth:`files` hands it over as named bytes (which is what the export
@@ -291,6 +298,9 @@ class StructureCodec:
             raise ValueError(
                 f"StructureCodec.pair: unsupported format {fmt!r}; "
                 f"expected 'xyz' or 'pdb'")
+        if struct.atom_order is not None and not engine_record:
+            raise ValueError(f"a structure file is written in your order: "
+                             f"{REMAPPED_NOT_EDITED}")
         if fmt == "pdb":
             if struct.n_frames > 1:
                 raise ValueError(
@@ -371,7 +381,8 @@ class StructureCodec:
 
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *, atomic: bool = True,
-              fmt: "str | None" = None) -> Path:
+              fmt: "str | None" = None,
+              engine_record: bool = False) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
         pair on disk and return the geometry path.  THE paired-file door
         (``model/structure.md`` § 2.4): owns the pairing rule + the
@@ -386,13 +397,19 @@ class StructureCodec:
         Atomicity: each half is staged to a temp sibling and ``os.replace``-d
         (per-file atomic).  The geometry is swapped first, then the sidecar, so
         the only visible interleaving is OLD-sidecar + NEW-geometry for a tiny
-        window -- never a torn file."""
+        window -- never a torn file.
+
+        ``engine_record``: THE ONE DOOR for an engine's record in its own
+        order -- the transport calculation's composed junction, written by
+        the composer alone, its order record in the sidecar beside it
+        (`model/overview.md` § 2.2a).  Every other write is in your order."""
         target = Path(target)
         # `fmt` names the container.  Default: the one the name the caller
         # chose names (`format_named`).  A caller with its own answer (the
         # CLI's `--output-format`, which may name a format the extension does
         # not) passes it and is obeyed.
-        made = self.pair(struct, fmt=(fmt or self.format_named(target)))
+        made = self.pair(struct, fmt=(fmt or self.format_named(target)),
+                         engine_record=engine_record)
         return self._write_pair(target, made.document, made.sidecar,
                                 atomic=atomic)
 

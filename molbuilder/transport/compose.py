@@ -26,7 +26,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..atom_permutation import PERMUTATION_FILE, read_permutation
+from ..atom_permutation import read_permutation
+from ..runfiles import PERMUTATION_FILE
 from ..cell import entering
 from ..structure import Structure, atom_words
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
@@ -848,8 +849,10 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     from ..persist import write_json
     from ..workingcopy_structure import StructureCodec
     base_dir = Path(base_dir)
+    # THE ENGINE'S RECORD, in the engine's order with its order record in
+    # the sidecar (`model/overview.md` § 2.2a) -- the codec's one door for it.
     StructureCodec().write(composed.sorted.structure,
-                           base_dir / JUNCTION_GEOMETRY)
+                           base_dir / JUNCTION_GEOMETRY, engine_record=True)
     if composed.deck_text is not None:
         (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
     write_json(base_dir / PROVENANCE_FILE, composed.provenance)
@@ -973,13 +976,17 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                    f"missing")
     deck_path = base_dir / JUNCTION_DECK
     perm = read_permutation(base_dir)
+    from ..atom_permutation import same_order
     from ..workingcopy_structure import StructureCodec
     dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
-    sorted_res = SortResult(
-        structure=dev,
-        original_to_sorted=perm.original_to_sorted,
-        sorted_to_original=perm.sorted_to_original,
-        key=perm.key)
+    # THE JUNCTION CARRIES ITS OWN ORDER RECORD (`model/overview.md` § 2.2a):
+    # a record whose junction states another order than the file beside it --
+    # one composed before the junction's sidecar carried it -- is not used.
+    if not same_order(dev.atom_order, perm):
+        return _no(f"its composed junction does not state the order "
+                   f"{PERMUTATION_FILE} records -- it was composed before this "
+                   f"version kept the junction's order in its sidecar")
+    sorted_res = SortResult(structure=dev, key=perm.key)
     ion_dir = None
     if tree_root is not None:
         try:

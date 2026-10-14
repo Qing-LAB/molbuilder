@@ -104,6 +104,18 @@ door = "take"
 order = [1, 0]
 expect = { atom_z_per_frame = [[3.74, 3.80, 3.68], [3.00, 3.00, 3.00]], regions = { frozen_atoms = [1] }, rows_unchanged = true }
 
+# ---- AN ENGINE'S ORDER, AND BACK (`model/overview.md` § 2.2a) ------------ #
+# The silent failure: a set sorted for an engine and restored comes back with
+# frame 0 alone, or its frame rows on other frames.  Its atom 1 held, so the
+# held-first sort moves the atoms; the two directions are told apart by the
+# 3-cycle of `geometry_pin.toml`.
+
+[[case]]
+name = "a set sorted for an engine and restored is the set as built: every frame, its rows, its labels"
+door = "sorted_restored"
+held = [1]
+expect = { same_set = true }
+
 # ---- A FRAME SET IS NEVER EDITED (`structure.md` § 2.2e) ------------------ #
 # The silent failure: an edit rebuilt from frame 0 and the other frames were
 # gone, or moved atoms in frame 0 alone.

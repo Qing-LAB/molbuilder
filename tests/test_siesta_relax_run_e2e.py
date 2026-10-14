@@ -114,7 +114,6 @@ def test_a_finished_relaxation_answers_its_record(relaxed):
     tol = _tolerance(relaxed)
     assert rec["force_tolerance_ev_ang"] == pytest.approx(tol)
     assert rec["n_steps"] == _moves(relaxed)
-    assert rec["held_atom_idxs"] == [0]
     held = _deck_geometry(relaxed).geometry_lines()[0]
     assert rec["held_atom_keys"] == [held]
     assert rec["converged"] is True and rec["run_state"] == "ended"
@@ -148,7 +147,7 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, monkeypatch):
     assert asked["ok"] is True, asked
     record = loaded["info"]["relaxation"]
     assert record["source"] == Path(loaded["path"]).name, record
-    assert record["converged"] is True and record["held_atom_idxs"] == [0]
+    assert record["converged"] is True
     assert asked["relaxation"] == record
     assert (asked["calculation"] == loaded["info"]["calculation"]
             == contract_of(_deck(relaxed)))

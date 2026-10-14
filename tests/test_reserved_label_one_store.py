@@ -368,10 +368,12 @@ def test_the_metadata_dict_has_exactly_these_members():
     # writer against the constant; this one pins what the constant IS, so
     # adding a field to both at once still forces a conscious edit here.
     # `model/structure-molstruct.md`: "(`regions`, `cell`, `engine_offset`,
-    # `offset_by`, `axis_kind`, `vacuum`, `annotations`, `customized`)".
+    # `offset_by`, `axis_kind`, `vacuum`, `annotations`, `customized`,
+    # `atom_order`)".
     assert set(METADATA_FIELDS) == {"regions", "cell", "engine_offset",
                                     "offset_by", "axis_kind", "vacuum",
-                                    "annotations", "customized"}
+                                    "annotations", "customized",
+                                    "atom_order"}
     assert "frozen_atoms" not in METADATA_FIELDS, (
         "the reserved label is a member of `regions`, not a field beside it"
     )

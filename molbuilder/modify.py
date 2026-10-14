@@ -52,7 +52,7 @@ import numpy as np
 
 from . import cell as _cell
 from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
-                        remap_annotations)
+                        remap_annotations, restored_said)
 
 
 # --------------------------------------------------------------------- #
@@ -1112,6 +1112,10 @@ def append_structure(
     designated read).  Numbering it to ``frozen_atoms2`` would leave the
     incoming atoms carrying a label nothing recognises -- silently unfrozen.
 
+    **An engine's order** -- an addition whose atoms are in an engine's
+    order (it carries its order record) is put back in yours first, and said
+    (`model/overview.md` § 2.2a).
+
     **A stated origin** -- centring the incoming structure reframes its
     coordinates, so an offset it states (an engine's 0, an origin its author
     assigned) is dropped first, and said (plan § 5q D9).
@@ -1131,7 +1135,13 @@ def append_structure(
     if addition.n_atoms == 0:
         return struct.copy(), notes
 
-    incoming = addition
+    # THE ADDITION IN YOUR ORDER (`model/overview.md` § 2.2a): one in an
+    # engine's order is restored before it joins, since a merge joins
+    # structures in the person's order (`Structure.concat`) -- and said.
+    incoming = addition.restored()
+    if addition.atom_order is not None:
+        notes.append(restored_said("the added structure",
+                                   addition.atom_order.key))
     if center and incoming.n_atoms:
         incoming = incoming.translated(
             -np.asarray(incoming.positions, dtype=float).mean(axis=0))

@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 13,
+  "schema_version": 14,
   "n_atoms_total": 2,
   "n_frames_total": 2,
   "geometry_hash": "3b7e…(sha256 hex)",
@@ -46,6 +46,7 @@ plus the structure's **metadata fields** spread in alongside them.
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
   "customized": {"rows":   [{"name": "temperature", "value": 300, "unit": "K"}],
                  "frames": [[], [{"name": "mode", "value": 31}]]},
+  "atom_order": null,
 
   "atom_names": ["CA", "SG"],
   "residue_ids": [14, 14],
@@ -88,7 +89,7 @@ every layer (the codec, the wire, the viewer's two translation doors) folds and
 unfolds along exactly those lines.
 
 The **metadata fields** (`regions`, `cell`, `engine_offset`, `offset_by`,
-`axis_kind`, `vacuum`, `annotations`, `customized`) are exactly the set
+`axis_kind`, `vacuum`, `annotations`, `customized`, `atom_order`) are exactly the set
 `Structure`'s codec owns (`METADATA_FIELDS`) — they are **spread in, not
 re-listed**, by the writer and the reader alike
 (`structure_fields_via_dataclass` round-trips them through a scratch `Structure`
@@ -97,7 +98,7 @@ carry a field the codec doesn't know, nor a frame row set for a frame the
 document does not hold; this is what closed the `cell_origin`-dropped-on-reload
 bug).
 
-**`atom_order`** *(v14; decided 2026-10-14, not built —
+**`atom_order`** *(v14, 2026-10-14 —
 [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1)* is `null`
 for a structure in the person's input order, and for one in an engine's order
 its **order record**, written whole:
@@ -140,12 +141,17 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v13. The reader accepts {7, 8, 9, 10, 11, 12, 13} and nothing else.**
+**Current schema: v14. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 13                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13})
+SCHEMA_VERSION    = 14                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14})
 ```
+
+*(v14, 2026-10-14, plan § 5ab R1.)* **Additive**: the optional
+**`atom_order`** (§ 1), `null` for a structure in your order — which every
+pair a person's save writes is — and an engine's record's order record. A
+v7–v13 file states none and is read as your order.
 
 *(v13, 2026-10-14, plan V1.9 / M2m.)* **The pin is the geometry hash**
 (§ 3): `geometry_hash` replaces `structure_hash`, which a v7–v12 file still
@@ -283,8 +289,8 @@ at any of them is refused, not upgraded.
 | v10 | *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
 | v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
 | v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
-| **v13** | **current** *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
-| v14 | *decided 2026-10-14, not built* — the optional **`atom_order`**, the index of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the person's order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
+| v13 | *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
+| **v14** | **current** *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the person's order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
 
 ### Changing the schema
 

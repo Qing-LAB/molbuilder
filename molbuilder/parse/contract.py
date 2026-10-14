@@ -134,8 +134,8 @@ def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
     Shape (the ``info.relaxation`` block)::
 
         {"engine", "source", "n_steps", "force_tolerance_ev_ang",
-         "max_force_ev_ang", "max_force_free_ev_ang", "held_atom_idxs",
-         "held_atom_keys", "converged", "run_state", "geometry_sha256"}
+         "max_force_ev_ang", "max_force_free_ev_ang", "held_atom_keys",
+         "converged", "run_state", "geometry_sha256"}
 
     **The file is the caller's**: the one in front of the person -- the
     run door's choice for a folder (`runs.openable`, what the Results tab
@@ -230,7 +230,6 @@ def relaxation_of_output(path, traj, *,
         "force_tolerance_ev_ang": tol,
         "max_force_ev_ang": max_all,
         "max_force_free_ev_ang": max_free,
-        "held_atom_idxs": held,
         "held_atom_keys": sorted(lines[i] for i in held if i < len(lines)),
         "converged": bool(judged <= tol),
         "run_state": str(getattr(traj, "run_state", "") or ""),

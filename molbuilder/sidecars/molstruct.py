@@ -86,7 +86,11 @@ except ImportError:                  # pragma: no cover - Windows branch
 #:
 #: A version gate that admits a version the code cannot honour is worse than
 #: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 13  # 13: the pin is `geometry_hash` -- the atom lines as
+SCHEMA_VERSION = 14  # 14: + `atom_order`, the order record of a structure
+#                      in an engine's order, null in yours
+#                      (model/overview.md § 2.2a) -- additive: a 7-13 file
+#                      reads as your order.
+#                   13: the pin is `geometry_hash` -- the atom lines as
 #                      written and the cell, never the comment line
 #                      (structure-molstruct.md § 3) -- and `structure_hash`,
 #                      the file's bytes, is RETIRED: read and never
@@ -151,7 +155,10 @@ SCHEMA_VERSION = 13  # 13: the pin is `geometry_hash` -- the atom lines as
 #:
 #: v13 put `geometry_hash` in place of `structure_hash`: a 7-12 file has no
 #: geometry hash, and its pair opens unchecked -- metadata is never required.
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13})
+#:
+#: v14 added `atom_order`, absent meaning your order -- which every pair a
+#: 7-13 writer made for a person is in.
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the

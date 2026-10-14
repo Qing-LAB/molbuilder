@@ -16,6 +16,8 @@ Keys of a ``[[case]]``:
     ``exportFile`` of every frame posted to ``/api/structure/export`` and the
     files read back with ``load(frames=True)``;
     ``take`` -- ``Structure.take(order)``;
+    ``sorted_restored`` -- ``transport.sort.sort_by(set, "held-first")``,
+    the set in an engine's order, then its ``restored()``;
     ``edit`` -- the edit named by ``edit`` (``_EDITS``);
     ``read_document`` -- ``Structure.from_xyz(document)``;
     ``lone_file`` -- ``document`` written alone, no sidecar, and read through
@@ -23,6 +25,8 @@ Keys of a ``[[case]]``:
     ``StructureCodec.load(..., said_out=[...])``, which ``jobset init`` and
     the CLI print from, and ``POST /api/build/load`` with ``{path}`` and with
     ``{text, filename}`` -- each answering the same, in the same sentence.
+``held``
+    the set's held atoms, in place of the table's.
 ``refused``
     the door raises (or the route answers 400) with this text in its message.
 ``expect``
@@ -48,11 +52,14 @@ _SET = _TABLE["set"]
 _CASES = _TABLE["case"]
 
 
-def _the_set() -> Structure:
-    """The table's set, built the way a script builds one."""
+def _the_set(held=None) -> Structure:
+    """The table's set, built the way a script builds one -- ``held`` its
+    held atoms, when a row names its own."""
     frames = np.asarray(_SET["frames"], dtype=float)
+    regions = (dict(_SET["regions"]) if held is None
+               else {"frozen_atoms": list(held)})
     base = Structure(elements=list(_SET["elements"]), positions=frames[0],
-                     cell=_SET["cell"], regions=dict(_SET["regions"]))
+                     cell=_SET["cell"], regions=regions)
     built = base.with_frames(frames, frame_rows=_SET["frame_rows"])
     for row in _SET["rows"]:
         built.set_customized(row["name"], row["value"], unit=row.get("unit"),
@@ -172,7 +179,7 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
 
 @pytest.mark.parametrize("case", _CASES, ids=[c["name"] for c in _CASES])
 def test_frame_set(case, tmp_path, monkeypatch):
-    built = _the_set()
+    built = _the_set(case.get("held"))
     door = case["door"]
     refused = case.get("refused")
     expect = case.get("expect", {})
@@ -215,6 +222,12 @@ def test_frame_set(case, tmp_path, monkeypatch):
     elif door == "take":
         written = None
         act = lambda: built.take(case["order"])  # noqa: E731
+    elif door == "sorted_restored":
+        from molbuilder.transport.sort import sort_by
+        written = None
+        in_engine_order = sort_by(built, "held-first").structure
+        assert in_engine_order.atom_order is not None, "the sort moved nothing"
+        act = in_engine_order.restored
     elif door == "edit":
         written = None
         act = lambda: _EDITS[case["edit"]](built)  # noqa: E731

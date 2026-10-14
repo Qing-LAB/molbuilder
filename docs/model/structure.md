@@ -211,8 +211,10 @@ code has never done — found by review when `cell_origin` was retired. Never
 leave a "read-but-never-write" half-migration — that is the drift this contract
 exists to prevent.
 
-**The order record of a remapped structure** *(decided 2026-10-14, not built —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1)*. A ninth
+**The order record of a remapped structure** *(built 2026-10-14 in the model —
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1; the
+deck's block and `runs.view_of` are not built yet, R2, nor the browser's
+road)*. A ninth
 field, **`atom_order`**: null for a structure in your order; for one in an
 engine's order, its order record — an `atom_permutation.Permutation`: the key
 that made it (one of the keys `atom_permutation` names) and both directions,
@@ -295,7 +297,7 @@ one is TAKEN FROM A STATED OWNER:
 | `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
 | `customized` | **the first input** — its rows and its frame's rows | named values about the canvas, as `info` is; the addition's rows are not joined, because a row about one structure is not true of the merge |
 | frames | — | a merge joins one-frame structures; a frame set is refused (§ 2.2e) |
-| `atom_order` | — | *(decided 2026-10-14, not built)* `concat` refuses a remapped input; `append_structure` restores the addition first and says so (`overview.md` § 2.2a, I8); the canvas, held by an editor, is never remapped |
+| `atom_order` | — | *(2026-10-14)* `concat` refuses a remapped input; `append_structure` restores the addition first and says so (`overview.md` § 2.2a, I8); the canvas, held by an editor, is never remapped |
 
 **What the merge does not carry, it says** (`modify.append_structure`'s
 notes, shown on the page that asked): the addition's cell when the canvas has
@@ -547,7 +549,7 @@ a frame set; the browser views one and the Molbuilder tab loads one frame of it
 |---|---|
 | how many; one of them | `n_frames`; `frame_at(i)` → a one-frame Structure at frame `i`, its rows that frame's (as its own frame 0), its origin the set's (below); an index outside `0 … F−1` refused naming `F` |
 | build a set | `with_frames(coordinates, frame_rows=None)` — every frame `N` atoms of the same species in the same order; frame 0 becomes `positions` |
-| reorder the atoms | `take(order)` — the order applied to every per-atom field and every frame; the transport sort's one reorder (`transport/sort.py`), which is not an edit. *(Decided 2026-10-14, not built: `take` refuses a remapped structure — its one reorder back is `restored()`; `overview.md` § 2.2a)* |
+| reorder the atoms | `take(order)` — the order applied to every per-atom field and every frame; the transport sort's one reorder (`transport/sort.py`), which is not an edit. `take` refuses a remapped structure — its one reorder back is `restored()` (`overview.md` § 2.2a; 2026-10-14) |
 | the shared facts | labels, cell, `info`, the structure's rows change for every frame at once — they are shared |
 
 **Refused, by name**: on a set of several frames, anything that moves atoms or

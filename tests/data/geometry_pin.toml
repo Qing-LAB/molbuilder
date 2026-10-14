@@ -16,6 +16,11 @@
 # names each key.  Prep's refusal is the prep road's row
 # (`tests/data/prep_protocol.toml`).
 #
+# THE ORDER RECORD rides the same sidecar (v14, `structure-molstruct.md` § 1;
+# `model/overview.md` § 2.2a): null for a pair in your order -- every pair
+# written for a person -- and, for an engine's own record in the engine's
+# order, the key and both directions, read back whole or refused.
+#
 # A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
 
 # The pair: CO in a 10 Å box, periodic in x and y, isolated along z, the
@@ -27,6 +32,16 @@ cell = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]
 axis_kind = ["periodic", "periodic", "isolated"]
 regions = { frozen_atoms = [0] }
 title = "carbon monoxide"
+
+# The remapped pair: CO2 listed O O C, the carbon held, sorted held-first for
+# an engine -- C O O, the order record [2, 0, 1] one way and [1, 2, 0] the
+# other, so the two directions differ -- and written through the codec's one
+# door for an engine's record.
+[remapped]
+elements = ["O", "O", "C"]
+positions = [[1.16, 0.0, 0.0], [-1.16, 0.0, 0.0], [0.0, 0.0, 0.0]]
+regions = { frozen_atoms = [2] }
+key = "held-first"
 
 [[case]]
 name = "a pair as it was written opens"
@@ -95,3 +110,39 @@ said = { where = "structure.geometry_changed", severity = "warn", words = "co.xy
 [[case]]
 name = "the browser's load door says nothing of a pair as it was written"
 door = "route_load"
+
+[[case]]
+name = "a pair written before v14 states no order record, and opens in your order"
+as_v13 = true
+door = "load"
+
+# ---- THE ORDER RECORD (v14) ----------------------------------------------- #
+# The silent failure: an engine's record read back without its order record,
+# or with one direction for the other -- the restore then puts the atoms
+# somewhere else, and nothing says so.
+
+[[case]]
+name = "an engine's record opens with its order record whole, and restored is the structure it was sorted from"
+pair = "remapped"
+door = "load"
+order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [1, 2, 0] }
+
+[[case]]
+name = "an order record missing a direction is refused"
+pair = "remapped"
+sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1] } }
+door = "load"
+unreadable = "an order record states its key and both directions"
+
+[[case]]
+name = "an order record whose two directions are not inverse is refused"
+pair = "remapped"
+sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [2, 0, 1] } }
+door = "load"
+unreadable = "the order record's two directions are not inverse bijections over 3 atoms"
+
+[[case]]
+name = "a structure in an engine's order is not written as a person's pair: refused, naming restored()"
+pair = "remapped"
+door = "write"
+unreadable = "restore it to your order with restored() first"

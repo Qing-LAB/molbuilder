@@ -37,8 +37,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from ..atom_permutation import PERMUTATION_FILE, PERMUTATION_SCHEMA
-from ..structure import Structure, atom_words
+from ..atom_permutation import (PERMUTATION_SCHEMA, Permutation,
+                                SORT_HELD_FIRST, SORT_TRANSPORT)
+from ..runfiles import PERMUTATION_FILE
+from ..structure import REMAPPED_NOT_EDITED, Structure, atom_words
 
 # --------------------------------------------------------------------- #
 #  The region-label vocabulary -- `model/structure-annotations.md` § 5   #
@@ -142,19 +144,39 @@ class SortError(ValueError):
 
 @dataclass(frozen=True)
 class SortResult:
+    """A sorted copy and what the sort said.  The copy carries its own order
+    record (``structure.atom_order``, `model/overview.md` § 2.2a) -- none
+    when the sort moved nothing -- and the two directions below are VIEWS of
+    it, never a second copy."""
     structure: Structure
-    #: ``original_to_sorted[i]`` = where original atom ``i`` now sits.
-    original_to_sorted: Tuple[int, ...]
-    #: ``sorted_to_original[j]`` = which original atom sits at ``j``.
-    sorted_to_original: Tuple[int, ...]
     #: what the sort observed but did not refuse — today the one
     #: convention note.  Carried, never raised: the caller decides
     #: where a warning belongs on its surface.
     notes: Tuple[str, ...] = ()
-    #: WHICH sort produced this copy -- a name from ``SORT_KEYS``, so the
-    #: record says what was done and a reader can tell a transport order
-    #: from a held-first one.  Empty only for a result built by hand.
+    #: WHICH sort produced this copy -- a name from
+    #: ``atom_permutation.SORT_KEY_NAMES``, so the record says what was done
+    #: and a reader can tell a transport order from a held-first one.
     key: str = ""
+
+    @property
+    def _order(self) -> Permutation:
+        """The copy's order record -- the identity when the sort moved
+        nothing, which the structure does not record (I2)."""
+        if self.structure.atom_order is not None:
+            return self.structure.atom_order
+        ident = tuple(range(self.structure.n_atoms))
+        return Permutation(original_to_sorted=ident,
+                           sorted_to_original=ident, key=self.key)
+
+    @property
+    def original_to_sorted(self) -> Tuple[int, ...]:
+        """``original_to_sorted[i]`` = where original atom ``i`` now sits."""
+        return self._order.original_to_sorted
+
+    @property
+    def sorted_to_original(self) -> Tuple[int, ...]:
+        """``sorted_to_original[j]`` = which original atom sits at ``j``."""
+        return self._order.sorted_to_original
 
     def sidecar(self) -> dict:
         """The recorded permutation — what maps every downstream index
@@ -318,33 +340,34 @@ def categorical_sort(struct: Structure) -> SortResult:
 
     order = (buf_lo + _layer_major(lo) + by[REGION_BRIDGE]
              + _layer_major(hi) + buf_hi)
-    return apply_order(struct, order, notes)
+    return apply_order(struct, order, notes, key=SORT_TRANSPORT)
 
 
 #: THE KEYS, by name -- what a calculation needs done to the atom order.
 #: A kind asks ``sort_by(struct, "transport")`` or ``sort_by(struct,
-#: "held-first")``; the name travels into the record so the return leg
-#: knows which order it is undoing.  A new need is a new entry here, over
-#: the same ``apply_order``, never a second machine.
+#: "held-first")``; the name travels into the order record so the return
+#: leg knows which order it is undoing.  The names are the order record's
+#: (``atom_permutation.SORT_KEY_NAMES``); a new need is a new name there and
+#: an entry here, over the same ``apply_order``, never a second machine.
 SORT_KEYS = {
-    "transport":  lambda s: categorical_sort(s),
-    "held-first": lambda s: free_contiguous_sort(s),
+    SORT_TRANSPORT:  lambda s: categorical_sort(s),
+    SORT_HELD_FIRST: lambda s: free_contiguous_sort(s),
 }
 
 
 def sort_by(struct: Structure, key: str) -> SortResult:
-    """The one entry every kind sorts through: the named key's order,
-    the shared machinery, and the key's name stamped on the result."""
+    """THE ONE WAY INTO AN ENGINE'S ORDER (`model/overview.md` § 2.2a): the
+    named key's order, the shared machinery, the copy carrying its order
+    record.  A structure already remapped is refused -- an engine order is
+    made only from the person's, so two are never composed (I4)."""
     try:
         fn = SORT_KEYS[key]
     except KeyError:
         raise SortError(f"no sort key named {key!r}; the keys are "
                         f"{', '.join(sorted(SORT_KEYS))}") from None
-    res = fn(struct)
-    return SortResult(structure=res.structure,
-                      original_to_sorted=res.original_to_sorted,
-                      sorted_to_original=res.sorted_to_original,
-                      notes=res.notes, key=key)
+    if struct.atom_order is not None:
+        raise SortError(REMAPPED_NOT_EDITED)
+    return fn(struct)
 
 
 def free_contiguous_sort(struct: Structure) -> SortResult:
@@ -363,11 +386,11 @@ def free_contiguous_sort(struct: Structure) -> SortResult:
     held = sorted(int(i) for i in (struct.frozen_atoms or []))
     held_set = set(held)
     free = [i for i in range(n) if i not in held_set]
-    return apply_order(struct, held + free, ())
+    return apply_order(struct, held + free, (), key=SORT_HELD_FIRST)
 
 
 def apply_order(struct: Structure, order: List[int],
-                notes: Tuple[str, ...] = ()) -> SortResult:
+                notes: Tuple[str, ...] = (), *, key: str) -> SortResult:
     """The machinery every sort key shares: check the order is a bijection,
     move every per-atom field with its atom, record both directions.
 
@@ -387,11 +410,12 @@ def apply_order(struct: Structure, order: List[int],
     old_to_new = {old: new for new, old in enumerate(order)}
     # THE STRUCTURE'S OWN REORDER (`model/structure.md` § 2.2e): every
     # per-atom field moves with its atom, and so does every frame of a frame
-    # set; every other field rides whole.
+    # set; every other field rides whole.  The copy then carries its order
+    # record -- none when nothing moved, the identity never being recorded.
     sorted_struct = struct.take(order)
-    return SortResult(
-        structure=sorted_struct,
-        original_to_sorted=tuple(old_to_new[i] for i in range(n)),
-        sorted_to_original=tuple(order),
-        notes=tuple(notes),
-    )
+    perm = Permutation(original_to_sorted=tuple(old_to_new[i] for i in range(n)),
+                       sorted_to_original=tuple(int(i) for i in order),
+                       key=key)
+    if not perm.is_identity:
+        sorted_struct = sorted_struct.replace(atom_order=perm)
+    return SortResult(structure=sorted_struct, notes=tuple(notes), key=key)
