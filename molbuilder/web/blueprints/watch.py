@@ -251,7 +251,15 @@ def _run_metadata(
                    traj=traj, n_atoms=len(frames[0]) if frames else None,
                    lattice=(data or {}).get("lattice"))
     import json as _json
+    from molbuilder.issues import Issue
+    from molbuilder.periodicity_gate import notices_for_report
     return {
+        # WHAT THE LOAD SAYS OF THE RUN: a deck written before the order was
+        # recorded, said (`model/overview.md` § 2.2a, I9); none for an
+        # upload, which has no run.
+        "notices":       notices_for_report(
+            [Issue("warn", view.order_unstated, "structure.order_unstated")]
+            if view.order_unstated else []),
         # Per-atom metadata (region labels / frozen tags / annotation
         # channels) the Build tab embedded in the run's input script, as a
         # JSON string the viewer applies; None when the run carries no block.

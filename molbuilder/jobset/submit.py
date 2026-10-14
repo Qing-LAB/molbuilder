@@ -804,6 +804,7 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
     own = {Path(job.script).name, names.name(".run.sh"),
            names.name(".sbatch")}
     differ = []
+    prepared_by = None
     for path in now.plan.writes():
         rel = path.relative_to(base)
         if path.name not in own or any(attempt_index(part) is not None
@@ -812,6 +813,12 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
         if not path.is_file() or without_stamps(path.read_bytes()) != \
                 without_stamps(now.plan.read_bytes(path)):
             differ.append(str(rel))
+            # WHICH MOLBUILDER PREPARED IT, read off the deck's own record:
+            # a stage prepared before an upgrade is said so by name (plan
+            # § 5ab, the release's note).
+            if path.is_file() and path.name == Path(job.script).name:
+                from ..script_emit import written_by
+                prepared_by = written_by(path.read_text(errors="replace"))
 
     def row(j):
         # ITS JOB'S MEMBERS are the group's to check, by membership (G7).
@@ -820,13 +827,18 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
         from .model import FILENAME as JOBSET_FILENAME
         differ.append(f"its row in {JOBSET_FILENAME}")
     if differ:
+        from .. import __version__
+        upgraded = (f"; it was prepared by molbuilder {prepared_by}, and this "
+                    f"is {__version__}"
+                    if prepared_by and prepared_by != __version__ else "")
         raise SubmitError(
             f"`{job.name}` was prepared from the description as it stood "
             f"then, and prep would write {', '.join(differ)} differently now "
             f"-- the template, its run card, or what it is composed from "
-            f"changed since (job-system.md § 6.0).  Launched as it is, it "
-            f"would run the old setup on the files it takes now.  To prepare "
-            f"it as it is described now, " + _redo(base, task, jobset, job))
+            f"changed since, or molbuilder did{upgraded} (job-system.md "
+            f"§ 6.0).  Launched as it is, it would run the old setup on the "
+            f"files it takes now.  To prepare it as it is described now, "
+            + _redo(base, task, jobset, job))
     return now
 
 

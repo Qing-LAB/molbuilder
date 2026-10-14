@@ -138,10 +138,14 @@ class StructureCodec:
         says so (plan § 5q D14).
 
         ``said_out``: a caller that passes a list gets what the read says to a
-        person about this file -- a LONE ``.xyz`` (no sidecar, not an engine's
-        own file in one of our runs) is atoms and coordinates only, and its
-        comment line is quoted, never read as metadata (``model/structure.md``
-        § 2.3).  Every door that opens a file for a person says it.
+        person about this file, each an ``issues.Issue`` with its own name
+        and level -- a LONE ``.xyz`` (no sidecar, not an engine's own file in
+        one of our runs) is atoms and coordinates only, and its comment line
+        is quoted, never read as metadata (``model/structure.md`` § 2.3),
+        ``structure.lone_file``; an engine's own file of a run whose deck was
+        written before the order was recorded says so,
+        ``structure.order_unstated`` (``model/overview.md`` § 2.2a, I9).
+        Every door that opens a file for a person says them.
 
         THE PIN IS COMPARED (``structure-molstruct.md`` § 3): a sidecar whose
         geometry hash is not the file's -- its atoms or cell changed after the
@@ -200,13 +204,20 @@ class StructureCodec:
             # the file is in its engine's order (`model/overview.md` § 2.2a,
             # I5); what the run says about itself.
             from .runs import run_of, view_of
-            struct = view_of(run_of(src), n_atoms=struct.n_atoms).onto(struct)
+            view = view_of(run_of(src), n_atoms=struct.n_atoms)
+            struct = view.onto(struct)
+            if view.order_unstated and said_out is not None:
+                from .issues import Issue
+                said_out.append(Issue("warn", view.order_unstated,
+                                      "structure.order_unstated"))
         elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read
             # says so, quoting the comment line it did not read as metadata
             # (`model/structure.md` § 2.3).
-            said_out.append(lone_xyz_said(src.name, text))
+            from .issues import Issue
+            said_out.append(Issue("info", lone_xyz_said(src.name, text),
+                                  "structure.lone_file"))
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what

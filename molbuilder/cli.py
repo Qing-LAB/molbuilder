@@ -460,8 +460,8 @@ def _struct_for_validate(path, *, one_frame_only: bool = False):
     from .workingcopy_structure import StructureCodec
     said: list = []
     whole = StructureCodec().load(path, frames=True, said_out=said)
-    for line in said:                  # a lone .xyz (structure.md § 2.3)
-        click.echo(line, err=True)
+    for line in said:                  # what the read says (structure.md § 2.3)
+        click.echo(line.message, err=True)
     if whole.n_frames > 1 and one_frame_only:
         raise click.ClickException(
             f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "
@@ -1103,18 +1103,19 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     return 0
 
 
-def _order_of_its_run(path):
-    """The order record of the run of ours that holds ``path`` -- its deck's
-    (`model/overview.md` § 2.2a, I5) -- or ``None``: a file no run of ours
-    holds, or a run in your order.  A deck block that cannot be read is
-    refused, naming the deck."""
+def _declared_by_its_run(path):
+    """What the run of ours that holds ``path`` declared (`runs.declared`):
+    its order record (`model/overview.md` § 2.2a, I5), or that its deck was
+    written before the order was recorded (I9) -- ``None`` for a file no run
+    of ours holds.  A deck block that cannot be read is refused, naming the
+    deck."""
     from .deck_record import DeckRecordUnreadable
     from .runs import declared, run_of
     run = run_of(Path(path))
     if run is None:
         return None
     try:
-        return declared(run).atom_order
+        return declared(run)
     except DeckRecordUnreadable as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -1122,24 +1123,34 @@ def _order_of_its_run(path):
 def _say_a_file_is_not_its_run(path) -> None:
     """A BARE FILE READER reads a file, not a run (`model/parse.md` § 5.3):
     of a run of ours in its engine's order it says so, on stderr -- the
-    atoms it prints, and every atom index, are in that order."""
+    atoms it prints, and every atom index, are in that order -- and of a
+    run whose deck predates the record, that nothing states its order
+    (I9)."""
     if str(path) == "-":
         return
-    order = _order_of_its_run(path)
-    if order is not None:
+    said = _declared_by_its_run(path)
+    if said is None:
+        return
+    if said.atom_order is not None:
         click.echo(
-            f"note: {Path(path).name} is {order.said} -- this reads the file "
-            f"as the engine wrote it, and the atom indices in it count in "
-            f"that order; the run's own view is the Results tab, or "
+            f"note: {Path(path).name} is {said.atom_order.said} -- this reads "
+            f"the file as the engine wrote it, and the atom indices in it "
+            f"count in that order; the run's own view is the Results tab, or "
             f"`molbuilder xv2xyz --from-run`", err=True)
+    elif said.order_unstated:
+        click.echo(f"note: {said.order_unstated}", err=True)
 
 
 def _refuse_a_reordered_run(xv_path: Path) -> None:
     """A bare ``xv2xyz`` of an ``.XV`` a reordered run of ours holds is
     refused, naming ``--from-run`` (`model/overview.md` § 2.2a): its atoms
     are in its engine's order, which only the run's deck states, and a pair
-    written from them alone would be in that order, with nothing to say so."""
-    order = _order_of_its_run(xv_path)
+    written from them alone would be in that order, with nothing to say so.
+    So is one whose run's deck predates the record (I9)."""
+    said = _declared_by_its_run(xv_path)
+    if said is not None and said.order_unstated:
+        raise click.ClickException(said.order_unstated)
+    order = said.atom_order if said is not None else None
     if order is not None:
         raise click.ClickException(
             f"{xv_path.name} is {order.said}: a run of ours holds it, and its "
@@ -1182,6 +1193,10 @@ def _apply_run_metadata(struct, xv_path: Path):
         said = declared(run)
     except DeckRecordUnreadable as exc:
         raise click.ClickException(f"--from-run: {exc}") from exc
+    # A DECK WRITTEN BEFORE THE ORDER WAS RECORDED (I9): the pair would be
+    # in an order nothing states.
+    if said.order_unstated:
+        raise click.ClickException(f"--from-run: {said.order_unstated}")
     stated = (said.atom_metadata or {}).get("n_atoms_total")
     if said.atom_metadata_for() is not None and stated != struct.n_atoms:
         raise click.ClickException(

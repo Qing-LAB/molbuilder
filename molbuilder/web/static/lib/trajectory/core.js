@@ -2398,6 +2398,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     + "/.";
                 setStatus(msg, "ok");
             }
+            /* WHAT THE LOAD SAID OF THE RUN, said on its status line: a deck
+             * written before the order its atoms are in was recorded
+             * (`model/overview.md` § 2.2a, I9) -- the server's own words. */
+            const said = (Array.isArray(r.notices) ? r.notices : [])
+                .map(function (n) { return n.message; });
+            if (said.length) setStatus(said.join("  "), "warn");
             // Contract § 2: transition by the run's state.
             // _settlePostLoad starts the poll timer iff the run is live
             // (WATCHING) -- a run that is over doesn't get polled.

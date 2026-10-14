@@ -683,7 +683,7 @@ def api_build_load():
         # A LONE FILE IS ATOMS AND COORDINATES, said with its comment line
         # quoted (`model/structure.md` § 2.3).
         said = notices_for_report(
-            [Issue("info", s, "structure.lone_file") for s in lone]
+            list(lone)
             + [Issue("warn", s, "structure.geometry_changed")
                for s in changed]) + restored
         if retired.get("cell_origin") is not None:

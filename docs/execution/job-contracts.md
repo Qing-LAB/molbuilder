@@ -1521,9 +1521,10 @@ finish beside the job (through `deck_record`) alike. The split is
 `script_emit.emit_atom_metadata(struct)` — the structure's own serialiser's
 fields, spread, not re-listed. **A deck written before
 this rule** is known by its PROVENANCE block's `generator-version`, older than
-the release that brings it, for a kind that reorders: a door that builds from
-its run refuses it by name and a door that shows it says so (I9) — never by a
-file found beside it.
+the release that brings it — 2.10.0, `runs.ORDER_RECORDED_SINCE` — for a kind
+that reorders: a door that builds from its run refuses it by name and a door
+that shows it says so (I9; `runs.Declared.order_unstated`) — never by a file
+found beside it.
 
 **Rules (reconciled to code):**
 

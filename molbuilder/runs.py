@@ -336,16 +336,50 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
 #  What a run declared about its atoms (B12)                            #
 # --------------------------------------------------------------------- #
 
+#: THE RELEASE THAT BEGAN RECORDING THE ORDER A DECK'S ATOMS ARE IN
+#: (`model/overview.md` § 2.2a, I9): a deck written by an older molbuilder,
+#: for a kind that reorders, states no order record though its atoms may be
+#: in the engine's order.
+ORDER_RECORDED_SINCE = "2.10.0"
+
+
+def _reorders(run: "Run") -> bool:
+    """Whether ``run``'s kind writes its decks from a reordered copy (I9): a
+    SIESTA vibration's every stage (held atoms first, `engines/vibration.md`
+    § 5.2), and every transport rung but the electrode rungs, whose cells
+    are structures of their own (`engines/transport.md` § 4)."""
+    task = run.place.task
+    kind = str(getattr(task, "calculation", "") or "")
+    if kind == "vibration":
+        return str(task.engine) == "siesta"
+    if kind == "transport":
+        from molbuilder.transport.deck import SHAPE_OF_RUNG, rung_of
+        return SHAPE_OF_RUNG.get(rung_of(run.stage)) != "electrode"
+    return False
+
+
+def _before(version: Optional[str], since: str) -> bool:
+    """Whether ``version`` (three numbers, or ``None`` for a file written
+    before 2.0.0, which named no version) is older than ``since``."""
+    if version is None:
+        return True
+    return (tuple(int(n) for n in version.split("."))
+            < tuple(int(n) for n in since.split(".")))
+
+
 @dataclass(frozen=True)
 class Declared:
     """What a run of ours declared about its atoms -- its own deck's records
     (`architecture.md` § 3.2): the ``deck`` that says it, its
-    ``atom_metadata`` block (labels, held atoms, annotations) and its
-    ``engine_offset`` record (the axis kinds, the cell prep placed the atoms
-    in); ``None`` for a record the deck does not carry."""
+    ``atom_metadata`` block (labels, held atoms, annotations, the order
+    record) and its ``engine_offset`` record (the axis kinds, the cell prep
+    placed the atoms in); ``None`` for a record the deck does not carry.
+    ``order_unstated``, for a deck written before the order was recorded,
+    the sentence every door says of it (I9); ``None`` otherwise."""
     deck: Optional[Path] = None
     atom_metadata: Optional[Dict[str, Any]] = None
     engine_offset: Optional[Dict[str, Any]] = None
+    order_unstated: Optional[str] = None
 
     def atom_metadata_for(self, n_atoms: Optional[int] = None
                           ) -> Optional[Dict[str, Any]]:
@@ -418,11 +452,30 @@ def declared(run: Run) -> Declared:
     # deck that records nothing, the run would be shown with no labels and
     # the engine's box guessed, and nothing said.
     try:
-        return Declared(deck=deck,
+        said = Declared(deck=deck,
                         atom_metadata=read_atom_metadata_block(text),
                         engine_offset=extract_engine_offset(text))
+        order = said.atom_order
     except DeckRecordUnreadable as exc:
         raise DeckRecordUnreadable(f"{deck}: {exc}") from exc
+    # A DECK WRITTEN BEFORE THE RULE (I9): known by its own version, for a
+    # kind that reorders -- never by a file found beside it.
+    if order is None and _reorders(run):
+        from molbuilder.script_emit import written_by
+        version = written_by(text)
+        if _before(version, ORDER_RECORDED_SINCE):
+            by = (f"molbuilder {version}" if version
+                  else "a molbuilder before 2.0.0")
+            said = Declared(
+                deck=deck, atom_metadata=said.atom_metadata,
+                engine_offset=said.engine_offset,
+                order_unstated=(
+                    f"{deck.name} was prepared by {by}, before "
+                    f"{ORDER_RECORDED_SINCE} recorded the order a deck's "
+                    f"atoms are in: this run's atoms may be in the engine's "
+                    f"order, and nothing states it -- prepare the stage "
+                    f"again to have it recorded"))
+    return said
 
 
 @dataclass(frozen=True)
@@ -438,6 +491,9 @@ class RunView:
     atom_metadata: Optional[Dict[str, Any]] = None
     periodicity: Optional[Dict[str, Any]] = None
     info: Optional[Dict[str, Any]] = None
+    #: A deck written before the order was recorded: what every door says
+    #: of it (:attr:`Declared.order_unstated`, I9).
+    order_unstated: Optional[str] = None
 
     def structure(self, elements, positions):
         """One geometry step of the run as a ``Structure``, with what the
@@ -486,7 +542,8 @@ def view_of(run: Optional[Run], *, output=None, traj: Any = None,
     said = declared(run) if run is not None else Declared()
     return RunView(atom_metadata=said.atom_metadata_for(n_atoms),
                    periodicity=said.frame(lattice),
-                   info=run_info(deck=said.deck, output=output, traj=traj))
+                   info=run_info(deck=said.deck, output=output, traj=traj),
+                   order_unstated=said.order_unstated)
 
 
 def about(path) -> Dict[str, Any]:

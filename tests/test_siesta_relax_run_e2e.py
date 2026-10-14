@@ -452,3 +452,77 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
     assert got.atom_order.to_dict() == _ORDER and restored == []
     assert (got.elements, got.frozen_atoms) == (_ENGINE_ELEMENTS, [0])
     assert answer["atom_order_said"] == _SAID
+
+
+# --------------------------------------------------------------------- #
+#  A deck written before the order was recorded (I9)                     #
+# --------------------------------------------------------------------- #
+#
+# The same run, its deck as molbuilder 2.9.6 wrote it -- that version's
+# stamp, and no order record in its ATOM-METADATA block -- as the pin table
+# rewrites a sidecar as an older molbuilder wrote it.  The silent failure: a
+# run of a kind that reorders, made before 2.10.0, shown or converted as if
+# its atoms were in your order.  Every door that builds refuses it by name;
+# every door that shows it says so.
+
+_UNSTATED = ("was prepared by molbuilder 2.9.6, before 2.10.0 recorded the "
+             "order a deck's atoms are in")
+
+_PRE_RULE_ROWS = [
+    dict(name="xv2xyz --from-run refuses it by name", door="xv2xyz",
+         from_run=True),
+    dict(name="a bare xv2xyz refuses it too", door="xv2xyz"),
+    dict(name="the Results tab's load says so", door="watch_load"),
+    dict(name="SIESTA's own CO2.xyz opens saying so", door="build_load"),
+    dict(name="a bare file reader says so", door="watch_parse"),
+]
+
+
+@pytest.fixture(scope="module")
+def before_the_rule(relaxed):
+    """A copy of the run's calculation beside it, every deck of its `relax`
+    stage as 2.9.6 wrote it."""
+    import shutil
+    copy = relaxed.parent / "CO2-before-2.10.0"
+    if not copy.exists():
+        shutil.copytree(relaxed, copy)
+        for deck in copy.rglob("CO2_01_relax.fdf"):
+            lines = deck.read_text().splitlines(keepends=True)
+            kept = [re.sub(r"(generator-version\s+)\S+", r"\g<1>2.9.6", ln)
+                    for ln in lines if '"atom_order":' not in ln]
+            assert len(kept) == len(lines) - 1, deck
+            deck.write_text("".join(kept))
+    return copy
+
+
+@pytest.mark.parametrize("row", _PRE_RULE_ROWS,
+                         ids=[r["name"] for r in _PRE_RULE_ROWS])
+def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
+                                                        monkeypatch, tmp_path):
+    run = _run(before_the_rule)
+    if row["door"] in ("xv2xyz", "watch_parse"):
+        from click.testing import CliRunner
+        from molbuilder import cli
+        out = tmp_path / "co2.xyz"
+        words = (["watch", "parse", str(_out(before_the_rule)), "--frames-only"]
+                 if row["door"] == "watch_parse" else
+                 ["xv2xyz", str(run / "CO2.XV"), str(out)]
+                 + (["--from-run"] if row.get("from_run") else []))
+        said = CliRunner().invoke(cli.cli, words)
+        if row["door"] == "watch_parse":
+            assert said.exit_code == 0, said.output
+            assert _UNSTATED in said.stderr, said.stderr
+            return
+        assert said.exit_code != 0, said.output
+        assert _UNSTATED in said.output and not out.exists(), said.output
+        return
+    client = _client(before_the_rule, monkeypatch)
+    answer = (client.post("/api/watch/load", json={"path": str(run)})
+              if row["door"] == "watch_load" else
+              client.post("/api/build/load",
+                          json={"path": str(run / "CO2.xyz")})).get_json()
+    assert answer["ok"] is True, answer
+    said = [(n["severity"], _UNSTATED in n["message"])
+            for n in answer.get("notices", [])
+            if n["where"] == "structure.order_unstated"]
+    assert said == [("warn", True)], answer.get("notices")
