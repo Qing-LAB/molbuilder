@@ -350,14 +350,26 @@ class Declared:
     def atom_metadata_for(self, n_atoms: Optional[int] = None
                           ) -> Optional[Dict[str, Any]]:
         """The atom-metadata block for a structure of ``n_atoms`` -- or
-        ``None`` when it labels nothing, or was written for another atom
-        count: its labels are indices, and would name the wrong atoms."""
+        ``None`` when it says nothing (the block's one predicate,
+        ``script_emit.atom_metadata_has_something``), or was written for
+        another atom count: its labels are indices, and would name the
+        wrong atoms."""
+        from molbuilder.script_emit import atom_metadata_has_something
         md = self.atom_metadata
-        if not md or not (md.get("regions") or md.get("annotations")):
+        if not atom_metadata_has_something(md):
             return None
         if n_atoms is not None and md.get("n_atoms_total") != n_atoms:
             return None
         return md
+
+    @property
+    def atom_order(self):
+        """THE RUN'S ORDER RECORD (`model/overview.md` § 2.2a, I5): its
+        deck's, read by the order record's one reader through
+        ``deck_record.order_record_of`` -- ``None`` for a run in your order,
+        or a deck that states none."""
+        from molbuilder.deck_record import order_record_of
+        return order_record_of(self.atom_metadata, str(self.deck))
 
     def frame(self, lattice=None) -> Optional[Dict[str, Any]]:
         """The box the engine had, for coordinates that came from it
@@ -429,20 +441,30 @@ class RunView:
 
     def structure(self, elements, positions):
         """One geometry step of the run as a ``Structure``, with what the
-        run says about it: the box, set as the structure is built, under
-        the structure's own field names (plan § 5q D15); the labels; the
+        run says about it (:meth:`onto`)."""
+        from molbuilder.structure import Structure
+        return self.onto(Structure(
+            elements=[str(e) for e in elements],
+            positions=[[float(v) for v in p] for p in positions]))
+
+    def onto(self, struct):
+        """``struct`` -- the run's atoms, in its engine's order, as a file
+        of the run states them -- with what the run says about it: the box,
+        under the structure's own field names (plan § 5q D15), when the run
+        says one; the labels and the rest of its deck's ATOM-METADATA block,
+        the order record among them (`model/overview.md` § 2.2a, I5); the
         ``info`` record."""
         from molbuilder.script_emit import apply_atom_metadata
-        from molbuilder.structure import Structure
         per = self.periodicity or {}
-        struct = Structure(
-            elements=[str(e) for e in elements],
-            positions=[[float(v) for v in p] for p in positions],
-            cell=per.get("cell"),
-            engine_offset=per.get("engine_offset"),
-            offset_by=per.get("offset_by"),
-            axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
-                       else None))
+        if per.get("cell") is not None:
+            # The axis kinds the deck recorded, else the cell's own default.
+            struct = struct.replace(
+                cell=per["cell"], engine_offset=per.get("engine_offset"),
+                offset_by=per.get("offset_by"),
+                axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
+                           else None))
+        else:
+            struct = struct.copy()
         if self.atom_metadata:
             apply_atom_metadata(struct, self.atom_metadata)
         if self.info:

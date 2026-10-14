@@ -133,29 +133,28 @@ def test_emit_bench_marks_carries_version_tag():
 # --------------------------------------------------------------------- #
 
 
-def test_emit_atom_metadata_returns_none_when_both_empty():
-    """The contract's emission rule: absent block when no labels.
-    Otherwise an empty in-body block would silently suppress a
-    later .molstruct.json sidecar via the in-body-wins rule."""
-    assert sc.emit_atom_metadata({}, n_atoms_total=100) is None
-    assert sc.emit_atom_metadata(None, n_atoms_total=100) is None
+def _atoms(n: int, **metadata):
+    """``n`` hydrogens on a line, with ``metadata`` -- the structure a deck
+    is written from."""
+    from molbuilder.structure import Structure
+    return Structure(elements=["H"] * n,
+                     positions=[[float(i), 0.0, 0.0] for i in range(n)],
+                     **metadata)
+
+
+def test_emit_atom_metadata_returns_none_when_it_has_nothing_to_say():
+    """The contract's emission rule: absent block when the structure has no
+    label, channel, named value or order record.  Otherwise an empty
+    in-body block would silently suppress a later .molstruct.json sidecar
+    via the in-body-wins rule."""
+    assert sc.emit_atom_metadata(_atoms(100)) is None
 
 
 def test_emit_atom_metadata_with_regions_only():
-    block = sc.emit_atom_metadata(
-        regions={"L-electrode": [0, 1, 2], "R-electrode": [10, 11]},
-        n_atoms_total=20,
-    )
+    block = sc.emit_atom_metadata(_atoms(20, regions={
+        "L-electrode": [0, 1, 2], "R-electrode": [10, 11]}))
     assert block is not None
-    # Strip the leading "# " from each JSON body line and reparse.
-    json_lines = [
-        line[2:] if line.startswith("# ") else line[1:]
-        for line in block.splitlines()
-        if line.startswith("# ") or line == "#"
-    ]
-    # Find the JSON body (skip the marker + format header).
-    json_text = "\n".join(line for line in json_lines if line.startswith(("{", " ", "}", '"')))
-    payload = json.loads(json_text)
+    payload = _atom_metadata_payload(block)
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION
     assert payload["schema_version"] == SCHEMA_VERSION, (
         "the block must stamp the sidecar's version from the one constant -- "
@@ -181,13 +180,11 @@ def _atom_metadata_payload(block: str) -> dict:
     return json.loads("\n".join(body_lines))
 
 
-def test_emit_atom_metadata_with_the_reserved_label_only_sorts_and_dedupes():
-    """It is a label, so it normalises by the label rule and lands in the label
-    store -- there is no second key for it to land in (schema 5)."""
-    block = sc.emit_atom_metadata(
-        regions={"frozen_atoms": [5, 3, 1, 2, 1]},   # unsorted + duplicate
-        n_atoms_total=10,
-    )
+def test_emit_atom_metadata_with_the_reserved_label_only():
+    """It is a label, so it lands in the label store -- there is no second
+    key for it to land in (schema 5)."""
+    block = sc.emit_atom_metadata(_atoms(10, regions={
+        "frozen_atoms": [5, 3, 1, 2, 1]}))
     assert block is not None
     payload = _atom_metadata_payload(block)
     assert payload["regions"]["frozen_atoms"] == [1, 2, 3, 5]
@@ -199,10 +196,8 @@ def test_emit_atom_metadata_uses_zero_based_indices():
     and Structure.regions in Python).  SIESTA's
     Geometry.Constraints in engine body remains 1-based by SIESTA
     convention -- the two coexist deliberately."""
-    block = sc.emit_atom_metadata(
-        regions={"single": [0], "frozen_atoms": [0]},  # 0-based
-        n_atoms_total=1,
-    )
+    block = sc.emit_atom_metadata(_atoms(1, regions={
+        "single": [0], "frozen_atoms": [0]}))
     payload = _atom_metadata_payload(block)
     # The JSON body must contain index 0 (would be 1 if anyone
     # accidentally added +1 shifting).
@@ -215,9 +210,7 @@ def test_emit_atom_metadata_omits_the_geometry_hash():
     `geometry_hash` is NOT emitted in-body because the metadata and
     coordinates are written by the same generator pass and cannot drift
     apart by construction."""
-    block = sc.emit_atom_metadata(
-        regions={"r": [0]}, n_atoms_total=1,
-    )
+    block = sc.emit_atom_metadata(_atoms(1, regions={"r": [0]}))
     assert "geometry_hash" not in block
 
 
@@ -225,14 +218,75 @@ def test_emit_atom_metadata_honors_created_by_and_created_at():
     """A caller passes a specific ``created_by`` for traceability AND a
     real ``created_at`` timestamp, and the block carries both."""
     block = sc.emit_atom_metadata(
-        regions={"r": [0]},
-        n_atoms_total=1,
+        _atoms(1, regions={"r": [0]}),
         created_by="molbuilder jobset prep",
         created_at="2026-06-16T17:00:00-07:00",
     )
     payload = _atom_metadata_payload(block)
     assert payload["created_by"] == "molbuilder jobset prep"
     assert payload["created_at"] == "2026-06-16T17:00:00-07:00"
+
+
+#: THE BLOCK CARRIES EVERY METADATA FIELD BUT THE BOX, and its one reader
+#: and the run door read every field back (`job-contracts.md` § 3.4;
+#: `model/overview.md` § 2.2a, I5).  Each row: the structure a deck is
+#: written from, and what the block says.  CO2 listed O O C, the carbon held,
+#: sorted held-first -- C O O, the order record [2, 0, 1] one way and
+#: [1, 2, 0] the other, so the two directions differ.
+_CO2 = dict(elements=["O", "O", "C"],
+            positions=[[1.16, 0.0, 0.0], [-1.16, 0.0, 0.0], [0.0, 0.0, 0.0]])
+_BLOCK_ROWS = [
+    dict(name="named values alone -- dropped by the run door until "
+              "2026-10-14, which asked only for labels",
+         rows=[{"name": "temperature", "value": 300, "unit": "K"}],
+         says={"customized": {"rows": [{"name": "temperature", "value": 300,
+                                        "unit": "K"}], "frames": [[]]},
+               "atom_order": None}),
+    dict(name="a structure in an engine's order states its order record",
+         sorted=True,
+         says={"regions": {"frozen_atoms": [0]},
+               "atom_order": {"key": "held-first",
+                              "sorted_to_original": [2, 0, 1],
+                              "original_to_sorted": [1, 2, 0]}}),
+]
+
+
+@pytest.mark.parametrize("row", _BLOCK_ROWS,
+                         ids=[r["name"] for r in _BLOCK_ROWS])
+def test_the_block_carries_every_field_but_the_box(row, tmp_path):
+    """Written from the structure, read back by the block's one reader onto
+    the atoms as the deck lists them, and asked of the run door: every field
+    the block carries comes back, and the box is the ENGINE-OFFSET block's,
+    never this one's."""
+    from molbuilder.runs import Declared
+    from molbuilder.structure import BOX_FIELDS, Structure
+    from molbuilder.transport.sort import sort_by
+    struct = Structure(**_CO2, regions={"frozen_atoms": [2]},
+                       cell=[[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]])
+    if row.get("rows"):
+        struct = Structure(**_CO2)
+        for r in row["rows"]:
+            struct.set_customized(r["name"], r["value"], unit=r.get("unit"))
+    if row.get("sorted"):
+        struct = sort_by(struct, "held-first").structure
+    payload = _atom_metadata_payload(sc.emit_atom_metadata(struct))
+    for key, want in row["says"].items():
+        assert payload[key] == want, (key, payload[key])
+    assert not set(BOX_FIELDS) & set(payload), payload
+
+    deck = tmp_path / "x.fdf"
+    deck.write_text(sc.emit_atom_metadata(struct) + "\n")
+    declared = Declared(deck=deck, atom_metadata=sc.read_atom_metadata_block(
+        deck.read_text()))
+    assert declared.atom_metadata_for(struct.n_atoms) is not None
+    assert declared.atom_order == struct.atom_order
+    back = Structure(elements=struct.elements, positions=struct.positions)
+    assert sc.apply_atom_metadata(back, payload) is True
+    assert back.metadata_to_dict()["atom_order"] == payload["atom_order"]
+    assert back.customized == struct.customized
+    if row.get("sorted"):
+        mine = back.restored()
+        assert (mine.elements, mine.frozen_atoms) == (["O", "O", "C"], [2])
 
 
 # --------------------------------------------------------------------- #
@@ -343,9 +397,8 @@ def test_merge_user_custom_from_target_rendered_lacks_placeholder(tmp_path):
 def test_read_atom_metadata_block_round_trips_through_emit_then_parse():
     """Emit + extract should round-trip the same data."""
     emitted = sc.emit_atom_metadata(
-        regions={"L-electrode": [0, 1, 2], "bridge": [3, 4],
-                 "frozen_atoms": [0, 4]},
-        n_atoms_total=5,
+        _atoms(5, regions={"L-electrode": [0, 1, 2], "bridge": [3, 4],
+                           "frozen_atoms": [0, 4]}),
         created_by="molbuilder jobset prep",
         created_at="2026-06-16T17:00:00-07:00",
     )
@@ -402,9 +455,8 @@ def _blank_struct(n=20):
 def test_apply_atom_metadata_populates_the_label_store():
     struct = _blank_struct()
     emitted = sc.emit_atom_metadata(
-        regions={"R-electrode": [10, 11, 12], "frozen_atoms": [10, 12]},
-        n_atoms_total=20,
-    )
+        _atoms(20, regions={"R-electrode": [10, 11, 12],
+                            "frozen_atoms": [10, 12]}))
     text = "engine body\n" + emitted + "\nmore engine\n"
     assert sc.apply_atom_metadata(struct, sc.read_atom_metadata_block(text)) is True
     assert struct.regions == {"R-electrode": [10, 11, 12],
@@ -699,7 +751,7 @@ def test_a_brace_in_a_region_name_does_not_destroy_the_block():
     hostile = ["a}b", "chain}2", "}}}", "a{b", 'quote"name', "back\\slash",
                "{unbalanced", "}"]
     for label in hostile:
-        block = sc.emit_atom_metadata({label: [0, 1]}, 2,
+        block = sc.emit_atom_metadata(_atoms(2, regions={label: [0, 1]}),
                                       created_at="2026-01-01T00:00:00Z")
         assert block, f"nothing emitted for {label!r}"
         got = sc.read_atom_metadata_block(block)

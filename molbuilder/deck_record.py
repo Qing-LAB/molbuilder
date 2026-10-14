@@ -1,11 +1,13 @@
 """The molbuilder record a generated deck carries -- its fenced blocks, and the one reader of a block's JSON.
 
-MODULE  deck_record (L1, the job as described; the standard library only)
+MODULE  deck_record (L1, the job as described; the standard library at load,
+        and the order record's class where a deck's is read)
 ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
         :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
         block's JSON payload (:func:`read_json_block`), with the readers of
-        the two blocks a job reads beside itself: ENGINE-OFFSET and VIBRATION
+        what a job reads beside itself: ENGINE-OFFSET, VIBRATION, and the
+        ATOM-METADATA block's order record (:func:`order_record_of`)
 USED-BY script_emit (writes every block and reads the rest through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
         the job), runs.declared, transport/compose, runwrap and
@@ -229,10 +231,27 @@ def extract_vibration_record(text: str) -> Optional[Dict[str, Any]]:
     return read_json_block(text, BLOCK_VIBRATION)
 
 
+def order_record_of(block: Optional[Dict[str, Any]], source: str):
+    """THE DECK'S ORDER RECORD (`model/overview.md` § 2.2a, I5): an
+    ATOM-METADATA payload's ``atom_order``, read by the order record's one
+    reader (``atom_permutation.Permutation.from_dict``) -- ``None`` for a
+    deck in your order, or one that carries no block.  ``source`` names the
+    deck in a refusal.  Asked by the run door (``runs.declared``) and by the
+    finish beside a job."""
+    record = (block or {}).get("atom_order")
+    if record is None:
+        return None
+    try:                                    # inside molbuilder
+        from .atom_permutation import Permutation
+    except ImportError:                     # beside a job
+        from atom_permutation import Permutation  # type: ignore
+    return Permutation.from_dict(record, source=f"{source}: atom_order")
+
+
 __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "MARKER_RE",
-           "begin_marker", "end_marker", "read_json_block",
+           "begin_marker", "end_marker", "order_record_of", "read_json_block",
            "DeckRecordUnreadable",
            "extract_engine_offset", "extract_vibration_record",
            "without_stamps"]

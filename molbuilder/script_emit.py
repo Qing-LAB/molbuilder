@@ -412,52 +412,43 @@ def _scalar(v) -> str:
     return str(v)
 
 
-def emit_atom_metadata(regions: Dict[str, List[int]],
-                       n_atoms_total: int,
+def atom_metadata_has_something(payload: Optional[Dict[str, Any]]) -> bool:
+    """THE ONE PREDICATE for the ATOM-METADATA block (`job-contracts.md`
+    § 3.4; `model/overview.md` § 2.2a): it has something to say when any
+    field it carries does -- a label, a channel, a named value, an order
+    record (``structure.ATOM_METADATA_FIELDS``).  Asked of a structure's
+    metadata by the writer, and of a block by its reader and the run door."""
+    from molbuilder.structure import ATOM_METADATA_FIELDS
+    return bool(payload) and any(payload.get(f) for f in ATOM_METADATA_FIELDS)
+
+
+def emit_atom_metadata(struct: Any,
                        created_by: str = "molbuilder",
-                       created_at: Optional[str] = None,
-                       selection_rules: Optional[Dict[str, Any]] = None,
-                       annotations: Optional[Dict[str, Any]] = None,
-                       customized: Optional[Dict[str, Any]] = None
-                       ) -> Optional[str]:
-    """Emit the ATOM-METADATA block, or return ``None`` when there is
-    nothing to emit.
+                       created_at: Optional[str] = None) -> Optional[str]:
+    """Emit the ATOM-METADATA block of ``struct``, the structure the deck is
+    written from, or return ``None`` when it has nothing to say
+    (:func:`atom_metadata_has_something`) -- absence is the honest signal
+    that this generation had no labels, no named values and no order record.
 
     This is **data-model persistence** (``model/structure-annotations.md`` § 4a) — the
-    script's engine-agnostic, round-trippable copy of the per-atom data model,
-    the same shape as the ``.molstruct.json`` sidecar.  It is NOT engine setup
-    (frozen -> Geometry.Constraints etc. is a separate translation, § 4).
+    script's engine-agnostic, round-trippable copy of the structure's
+    metadata, the same shape as the ``.molstruct.json`` sidecar.  It is NOT
+    engine setup (frozen -> Geometry.Constraints etc. is a separate
+    translation, § 4).
 
-    Per the contract's emission rule, the block is emitted ONLY when at least
-    one of ``regions`` / ``annotations`` / ``customized`` is non-empty.
-    Absence is the honest signal that this generation had no labels.
-
-    ``customized`` is the structure's named values in the sidecar's shape
-    (``model/structure.md`` § 2.2d) -- a deck is one frame, so its own and
-    its frame's rows -- carried so a structure rebuilt from the deck says
-    what its frame is.
-
-    ``regions`` is the whole label store, so a reserved label -- ``frozen_atoms``
-    -- is IN it rather than beside it.  The block is the sidecar's shape and
-    follows it (``structure-annotations.md`` § 2); a key of its own would put
-    the same fact in the generated script twice.
-
-    Index convention: 0-based throughout the JSON payload, matching
-    ``molstruct_json`` schema v4 and the in-Python ``Structure`` model.
-    ``annotations`` are the extensible channels (schema v4+), serialised the
-    same way the sidecar serialises them.
+    **Every metadata field but the box** (``structure.ATOM_METADATA_FIELDS``;
+    the box is the ENGINE-OFFSET block's), as the structure's one serialiser
+    states it (``metadata_to_dict``) -- spread, not re-listed, so a field the
+    structure gains reaches the deck with no edit here: the label store, the
+    reserved ``frozen_atoms`` among the rest; the channels; the named values
+    (a deck is one frame, so its own and its frame's rows); and the order
+    record of a structure in an engine's order (``model/overview.md`` § 2.2a,
+    I5), ``null`` in your order.  Atom indices are 0-based, as in the
+    sidecar and the ``Structure``.
     """
-    regions = regions or {}
-    # Serialise extensible channels (AtomChannel -> JSON) exactly as the sidecar.
-    normed_annotations: Dict[str, Any] = {}
-    if annotations:
-        from molbuilder.structure import AtomChannel as _AtomChannel
-        for name, ch in annotations.items():
-            if isinstance(ch, _AtomChannel):
-                normed_annotations[name] = ch.to_json()
-            elif isinstance(ch, dict) and "kind" in ch:
-                normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
-    if not regions and not normed_annotations and not customized:
+    from molbuilder.structure import ATOM_METADATA_FIELDS
+    metadata = struct.metadata_to_dict()
+    if not atom_metadata_has_something(metadata):
         return None
     # THE VERSION THE SIDECAR STAMPS, from the one constant -- never a literal.
     #
@@ -471,19 +462,9 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SCHEMA_VERSION
     payload: Dict[str, Any] = {
         "schema_version": _SCHEMA_VERSION,
-        "n_atoms_total":  int(n_atoms_total),
+        "n_atoms_total":  int(struct.n_atoms),
+        **{f: metadata[f] for f in ATOM_METADATA_FIELDS},
     }
-    if regions:
-        payload["regions"] = {
-            k: sorted(set(int(i) for i in v))
-            for k, v in regions.items()
-        }
-    if selection_rules:
-        payload["selection_rules"] = selection_rules
-    if normed_annotations:
-        payload["annotations"] = normed_annotations
-    if customized:
-        payload["customized"] = customized
     payload["created_by"] = created_by
     if created_at:
         payload["created_at"] = created_at
@@ -1433,13 +1414,8 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         if marks:
             record.append(emit_bench_marks(**marks))
             in_record.append("BENCH-MARKS")
-    atoms = emit_atom_metadata(
-        regions=dict(getattr(struct, "regions", {}) or {}),
-        annotations=dict(getattr(struct, "annotations", {}) or {}),
-        customized=struct.metadata_to_dict()["customized"],
-        n_atoms_total=int(getattr(struct, "n_atoms", 0)),
-        created_by=spec.created_by,
-        created_at=generated_at_now())
+    atoms = emit_atom_metadata(struct, created_by=spec.created_by,
+                               created_at=generated_at_now())
     if atoms:
         record.append(atoms)
         in_record.append("ATOM-METADATA")
@@ -2016,9 +1992,12 @@ def write_script(path, text: str, *, plan=None,
 def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     """THE reader of an ATOM-METADATA payload.  One block, one reader.
 
-    ``struct`` is duck-typed: any object with a mutable ``regions`` dict will
-    do.  Returns ``True`` when labels were applied, ``False`` when the payload
-    carries none.  A caller holding a whole script extracts first --
+    Applies every field the block carries -- every metadata field but the
+    box (``structure.ATOM_METADATA_FIELDS``), the order record among them,
+    which the structure reads by its one reader (``model/overview.md``
+    § 2.2a, I5).  Returns ``True`` when the block had something to say
+    (:func:`atom_metadata_has_something`), ``False`` when it carries
+    nothing.  A caller holding a whole script extracts first --
     ``read_atom_metadata_block(text)`` -- and hands the payload here.
 
     THE RULE: the block is read as it is written today.  Nothing translates an
@@ -2048,41 +2027,25 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
             f"label the wrong atoms; re-export the labels from the structure "
             f"they belong to.")
 
-    regions = payload.get("regions") or {}
-    annotations = payload.get("annotations") or {}
-    customized = payload.get("customized")
-    if not regions and not annotations and not customized:
+    if not atom_metadata_has_something(payload):
         return False
-    # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST: assigning the two
-    # fields straight onto the structure would skip `_validate_regions` /
-    # `_validate_annotations`.
+    # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST: assigning the
+    # fields straight onto the structure would skip its validation.
     #
     # It cannot simply call that door, because `apply_metadata_dict` is a
-    # FULL REPLACE and this block is a PARTIAL: it carries labels only, so
-    # handing it over as-is would reset `cell`, a stated `engine_offset`,
-    # `vacuum` and `axis_kind` to their defaults.  So the block is completed from what the structure
-    # already holds and the whole thing goes through -- the same
-    # "complete the block, do not patch the result" shape `transport/
-    # compose.py` uses where it applies a sidecar over a `.XV`.
-    # `metadata_to_dict()` emits annotations in their JSON form and
-    # `apply_metadata_dict` parses them back, so the payload's raw JSON goes
-    # in AS-IS.
+    # FULL REPLACE and this block is a PARTIAL: it carries no box, so handing
+    # it over as-is would reset `cell`, a stated `engine_offset`, `vacuum`
+    # and `axis_kind` to their defaults.  So the block is completed from what
+    # the structure already holds and the whole thing goes through -- the
+    # same "complete the block, do not patch the result" shape
+    # `transport/compose.py` uses where it applies a sidecar over a `.XV`.
+    # Each field the block carries goes in as the block states it -- a block
+    # written before a field existed states none, and the structure keeps
+    # its own (an order record: none, your order).
+    from molbuilder.structure import ATOM_METADATA_FIELDS
     block = dict(struct.metadata_to_dict())
-    if regions:
-        # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
-        # are in here with the rest -- there is no second key to read.
-        block["regions"] = {
-            str(k): sorted({int(i) for i in v})
-            for k, v in regions.items()
-        }
-    if annotations:
-        # Extensible channels, same round-trip as the sidecar (§ 3) -- the
-        # block carries the JSON shape the door reads.
-        block["annotations"] = annotations
-    if customized:
-        # The deck's named values (`model/structure.md` § 2.2d), in the
-        # sidecar's shape; a deck is one frame, and so is what it rebuilds.
-        block["customized"] = customized
+    block.update({f: payload[f] for f in ATOM_METADATA_FIELDS
+                  if f in payload})
     struct.apply_metadata_dict(block)
     return True
 

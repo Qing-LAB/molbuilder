@@ -2259,7 +2259,7 @@ SIESTA from the label (§ 5.4), and the permutation record by its one constant,
 | `<label>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
 | `<label>_<stage>-run<N>.pyscf.log` · `<label>_<stage>.log` · `<label>_<stage>_geom.log` | the PySCF attempt — in the flat shape the last two carry the run's number too, `<label>_<stage>-run<N>.log` (`engines/pyscf.md` § 2) | the engine's own account; PySCF's own log; geomeTRIC's optimizer log | PySCF |
 | `atom-permutation.json` | the calculation root, and a copy in each attempt of a sorted calculation | the order the SIESTA decks were written in and the way back to yours (§ 5.2) | `prep` *(Retires — decided 2026-10-14, not built: each deck states its own order record, § 5.2; plan § 5ab R5)* |
-| `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks the finish reads (§ 5.3) | `prep` *(Decided 2026-10-14, not built: and its ATOM-METADATA block's order record — three blocks; `model/overview.md` § 2.2a, I5)* |
+| `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks the finish reads (§ 5.3) | `prep` — and its ATOM-METADATA block's order record, written since 2026-10-14 (`model/overview.md` § 2.2a, I5); the finish reads it from plan § 5ab R5 on |
 | `<label>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 
 ### 6.10 Schema 8 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, not built)*

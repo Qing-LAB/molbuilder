@@ -190,21 +190,17 @@ class StructureCodec:
         elif self._engine_own(src):
             # AN ENGINE'S OWN STRUCTURE FILE -- SIESTA's `<label>.xyz` in a run
             # folder -- has no sidecar, because molbuilder writes every
-            # structure as a pair and the engine writes none.  Its frame is the
-            # run's: the cell and axis kinds THAT RUN'S OWN DECK recorded
-            # (`runs.declared`), and the engine's origin, a stated 0
-            # (`model/structure-periodicity.md` § 6.0: *"Every door that makes
-            # a structure from an engine's output states it"*) -- a source
-            # molbuilder knows.
-            from .runs import declared, run_of
-            run_frame = declared(run_of(src)).frame()
-            if run_frame and run_frame.get("cell") is not None:
-                changes = {"cell": run_frame["cell"],
-                           "engine_offset": run_frame["engine_offset"],
-                           "offset_by": run_frame["offset_by"]}
-                if run_frame.get("axis_kind"):
-                    changes["axis_kind"] = tuple(run_frame["axis_kind"])
-                struct = struct.replace(**changes)
+            # structure as a pair and the engine writes none.  It is read
+            # through ITS RUN'S VIEW (`runs.view_of`), as every door that
+            # builds a structure from a run reads it: the cell and axis kinds
+            # that run's own deck recorded, and the engine's origin, a stated
+            # 0 (`model/structure-periodicity.md` § 6.0: *"Every door that
+            # makes a structure from an engine's output states it"*); the
+            # labels of its deck, and the order record of a reordered run --
+            # the file is in its engine's order (`model/overview.md` § 2.2a,
+            # I5); what the run says about itself.
+            from .runs import run_of, view_of
+            struct = view_of(run_of(src), n_atoms=struct.n_atoms).onto(struct)
         elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read

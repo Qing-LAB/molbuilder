@@ -885,8 +885,10 @@ run's deck's records, read through the run's one door, `declared(run)`
 transport citation ask, and the codec reading an engine's own structure
 file.
 
-**And the order the atoms are in** *(decided 2026-10-14, not built —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2)*. A
+**And the order the atoms are in** *(2026-10-14 —
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2; the
+bare file readers' and `xv2xyz`'s parts with R2's next step, the import in
+prep with R3)*. A
 reordered run's files are in its engine's order; a parser reads them so and
 says nothing about it — the order is what the run declared, its deck's order
 record (`atom_order`), and the run door attaches it to every structure

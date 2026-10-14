@@ -1155,8 +1155,9 @@ blocks by scanning for them.  **The grammar has one home, `molbuilder/deck_recor
 — the block names, the markers and the one reader of a block's JSON payload —
 below `script_emit`, which writes the blocks: a job reads two of them beside
 itself (`engines/vibration.md` § 5.5), where `script_emit` cannot be imported
-*(split out 2026-09-28; decided 2026-10-14, not built: three — the
-ATOM-METADATA block's order record too, `model/overview.md` § 2.2a, I5)*:
+*(split out 2026-09-28; three since 2026-10-14 — the ATOM-METADATA
+block's order record too, `deck_record.order_record_of`,
+`model/overview.md` § 2.2a, I5; the finish reads it from R5 on, plan § 5ab)*:
 
 ```
 # === molbuilder <block-name> BEGIN ===
@@ -1188,7 +1189,7 @@ block is emitted by every engine):
 | VIBRATION | ✅² | — | — | — |
 | USER-CUSTOM | ✅ | ✅ | — | ✅ |
 
-¹ Conditional — emitted only when the structure carries labels (§ 3.4). *(Decided 2026-10-14, not built: or a reordered copy's order record — a deck written from a remapped structure always carries it, `model/overview.md` § 2.2a, I5.)*
+¹ Conditional — emitted only when the structure has something the block carries: a label, a channel, a named value or an order record (§ 3.4) — so a deck written from a remapped structure always carries it (`model/overview.md` § 2.2a, I5; 2026-10-14).
 ² A force-constant deck only (`engines/vibration.md` § 5.3): the stationarity
 criterion, the person's statement and the relax stage's relaxation record,
 which the job's finish reads — written by `script_emit.emit_vibration_record`,
@@ -1475,15 +1476,18 @@ block cites that schema rather than duplicating it.
 
 ```
 # === molbuilder atom-metadata BEGIN ===
-# format: molstruct-json/v9
+# format: molstruct-json/v14
 # {
-#   "schema_version": 9,
+#   "schema_version": 14,
 #   "n_atoms_total":  212,
 #   "regions":     { "L-electrode": [11,12,…], "R-electrode": [200,…],
 #                    "bridge": [60,…], "frozen_atoms": [88, 89, …, 211] },
-#   "annotations": { … },              # optional
-#   "created_by":  "molbuilder modify",
-#   "created_at":  "2026-05-20T14:23:00Z"
+#   "annotations": { … },
+#   "customized":  null,
+#   "atom_order":  { "key": "transport", "sorted_to_original": […],
+#                    "original_to_sorted": […] },
+#   "created_by":  "molbuilder",
+#   "created_at":  "2026-10-14T14:23:00Z"
 # }
 # === molbuilder atom-metadata END ===
 ```
@@ -1498,8 +1502,10 @@ and the ``.molstruct.json`` cannot disagree.)*
 version only", and an old block "is REFUSED".  All three are wrong — see the
 rules below, and `structure-molstruct.md` § 2, which owns the schema.)*
 
-**The deck's order record** *(decided 2026-10-14, not built —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2)*. A deck
+**The deck's order record** *(2026-10-14 —
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2; the
+finish's read is R5's, and the decks written before the rule R2's last
+part)*. A deck
 written from a reordered copy — a SIESTA vibration's every stage, every
 transport rung but the electrode rungs, whose cells are structures of their
 own — states its `atom_order` in this block, the run's one order record (I5).
@@ -1509,7 +1515,11 @@ the vacuum), the split named once; **one predicate** decides the block has
 something to say — a label, a channel, a customized row or an order record —
 and **one reader** takes it, the block's reader and the order record's dict
 reader, used by `apply_atom_metadata`, `runs.declared` and the vibration
-finish beside the job (through `deck_record`) alike. **A deck written before
+finish beside the job (through `deck_record`) alike. The split is
+`structure.BOX_FIELDS` / `ATOM_METADATA_FIELDS`, the predicate
+`script_emit.atom_metadata_has_something`, the writer
+`script_emit.emit_atom_metadata(struct)` — the structure's own serialiser's
+fields, spread, not re-listed. **A deck written before
 this rule** is known by its PROVENANCE block's `generator-version`, older than
 the release that brings it, for a kind that reorders: a door that builds from
 its run refuses it by name and a door that shows it says so (I9) — never by a
@@ -1521,7 +1531,7 @@ file found beside it.
   READ from the sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`),
   never typed here or in the emitter, so this block, the `.molstruct.json` and
   this bullet cannot drift apart.  *(This bullet typed **7** four times while
-  saying not to, and the constant was 9.)*  There is **ONE reader** *(decided 2026-10-14, not built: one reader for the block's every reader — `apply_atom_metadata`, `runs.declared` and the finish — above)*,
+  saying not to, and the constant was 9.)*  There is **ONE reader** *(for the block's every reader — `apply_atom_metadata`, `runs.declared` and the finish — above, 2026-10-14)*,
   `script_emit.apply_atom_metadata`, and it applies **no version gate at
   all**: the block is read as written today, a retired layout is not
   translated, and the run still opens with whatever it does still spell the
@@ -1546,14 +1556,15 @@ file found beside it.
   reader built from the old example would find no frozen atoms and conclude the
   run froze none. Same one-authority rule as the version number two bullets up
   — cite the constant, never re-spell it.
-- **Emission is conditional.** *(Decided 2026-10-14, not built: one
-  predicate — a label, a channel, a customized row or an order record —
-  above.)* The generator emits the block **only** when
-  `regions` **or** `annotations` is non-empty — frozen atoms ARE a
-  `regions` label now, not a trigger of their own.  A label-free
-  generation has *no* block at all (not an empty one) — absence is the
-  honest signal "this generation had no labels", so it cannot later
-  suppress a sidecar the user adds afterward.
+- **Emission is conditional.** The generator emits the block **only** when
+  the one predicate says it has something to say — a label, a channel, a
+  named value or an order record (2026-10-14; the run door asked for labels
+  and channels alone, and dropped a block of named values) — frozen atoms ARE
+  a `regions` label, not a trigger of their own.  When it emits, it states
+  every field it carries, `null` or empty where the structure has none.  A
+  generation with nothing to say has *no* block at all (not an empty one) —
+  absence is the honest signal, so it cannot later suppress a sidecar the
+  user adds afterward.
 - **Indices are 0-based** (matching the sidecar and `Structure.regions` /
   `Structure.frozen_atoms`). SIESTA's engine-body `%block Geometry.Constraints`
   is **1-based** by SIESTA convention. The two coexist in one file on purpose;

@@ -210,9 +210,8 @@ leave a "read-but-never-write" half-migration — that is the drift this contrac
 exists to prevent.
 
 **The order record of a remapped structure** *(built 2026-10-14 in the model —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1, the
-browser's road with it; the deck's block and `runs.view_of` are not built
-yet, R2)*. A ninth
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1–R2:
+the model, the browser's road, the deck's block and `runs.view_of`)*. A ninth
 field, **`atom_order`**: null for a structure in your order; for one in an
 engine's order, its order record — an `atom_permutation.Permutation`: the key
 that made it (one of the keys `atom_permutation` names) and both directions,
@@ -875,19 +874,21 @@ copy of any of them:
    door that builds refuses the pair and the browser's load door says so)*; and on read, a geometry with
    no sidecar beside it is one molbuilder did not write as a pair — read as
    its atoms and coordinates (§ 2.3, *a lone file says what was read*). **An engine's own structure file** — SIESTA's `<label>.xyz`,
-   written with no sidecar, read where its run is recorded — **takes that
-   run's frame**: the cell and axis kinds its deck recorded and the
-   engine's origin, a stated 0, from that run's own deck
-   (`runs.declared(run).frame()`), because
-   `structure-periodicity.md` § 6.0 asks it of every door that makes a
-   structure from an engine's output *(2026-09-27, plan § 0a M1; from the
-   run's own deck since 2026-10-04, plan B12)*. A file molbuilder writes, or
+   written with no sidecar, read where its run is recorded — **is read
+   through that run's view** (`runs.view_of(run).onto(struct)`), as every
+   door that builds a structure from a run reads it: the run's frame — the
+   cell and axis kinds its deck recorded and the engine's origin, a stated 0,
+   because `structure-periodicity.md` § 6.0 asks it of every door that makes
+   a structure from an engine's output — its deck's labels and order record,
+   and what it says about itself *(the frame 2026-09-27, plan § 0a M1, from
+   the run's own deck since 2026-10-04, plan B12; through the view, with the
+   labels and the order, 2026-10-14)*. A file molbuilder writes, or
    one in a folder no calculation marks, reads as before. **Not** a periodicity gate: reading does not judge
    (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
 
    *2026-10-14* ([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
-   § 5ab R1; `xv2xyz --from-run` and the engine's own file through the run's
-   view are not built yet, R2): **the order record travels inside the pair** — a
+   § 5ab R1–R2; `xv2xyz --from-run` with R2's next step): **the order record
+   travels inside the pair** — a
    remapped structure's `atom_order` is a field of its sidecar (v14), read and
    written by the codec with its atoms and nowhere else (I7). **The codec
    refuses to write a remapped structure**, naming `restored()` — `write`,
