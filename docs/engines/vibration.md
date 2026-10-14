@@ -615,8 +615,8 @@ back in the input order; the PySCF deck its input atoms, before any relaxation
 the deck runs. A displacement sweep compares it and refuses two stages whose
 hashes differ (§ 5.9); nothing else does. It carries the job name as its
 second line, and it is not the pair's geometry hash
-(`model/structure-molstruct.md` § 3), a different scheme. The identity rule
-of § 10 (V1.9) replaces it.
+(`model/structure-molstruct.md` § 3), a different scheme. Schema 8 retires it:
+the result states its structure whole instead (§ 6.10, decided 2026-10-14).
 
 ### 4.4 Phase 2 — the Hessian over the free atoms
 
@@ -1677,7 +1677,9 @@ displacement SIESTA used). A sweep across stages that describe different
 atoms, share a directory, or **were measured at different geometries** — their
 results' structure hashes (§ 6.2) differ — is refused by name, the last with
 how far an atom moved between them: a relaxation's change reported as the
-displacement's would be a wrong answer that looks right. **Two modes a few
+displacement's would be a wrong answer that looks right. *(Schema 8 compares
+the structures each stage states, every atom within 10⁻⁶ Å — § 6.10 § 3,
+decided 2026-10-14.)* **Two modes a few
 wavenumbers apart can mix between stages**: a low overlap there is the pair
 turning within its own plane, not a changed motion, and the presenter says
 so beside the table.
@@ -2130,7 +2132,8 @@ stage's folder in the hierarchical layout, the calculation folder in the flat
 one. It stays one JSON file rather than a table because a mode is not one row:
 its frequency sits with an `(n_free, 3)` displacement pattern and the
 thermochemistry with its temperature curves, which a CSV would split across
-files and netCDF would put behind a binary library for a few hundred numbers.
+files. *(Schema 8 writes a NetCDF beside it, the same result as structured
+data for analysis and fast loading — § 6.10, decided 2026-10-14.)*
 The units are in the key names (`_cm1`, `_ang`, `_eh`, `_km_mol`,
 `_a4_amu`); § 6.2–6.4 say what each key is and where its number comes from.
 
@@ -2168,6 +2171,172 @@ SIESTA from the label (§ 5.4), and the permutation record by its one constant,
 | `atom-permutation.json` | the calculation root, and a copy in each attempt of a sorted calculation | the order the SIESTA decks were written in and the way back to yours (§ 5.2) | `prep` |
 | `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks the finish reads (§ 5.3) | `prep` |
 | `<label>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
+
+### 6.10 Schema 8 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, not built)*
+
+> **Decided with the user on 2026-10-14, not yet built** *(plan V1.39)*. The
+> user's words: *"why not save the whole structure with labels all in that
+> json rather than just having the fingerprint? the single json would then
+> contain all the information … having one single json file storing
+> everything removes the requirement of having a fingerprint of a structure
+> that needs to be found somewhere that could be unreliable"*; *"this would
+> also make the later planned step of generating a multi-frame structure data
+> for series of transport calculation from a vibration result easy, because
+> a single .json file would be enough for citation"*; and *"add both netcdf
+> and json writing, make sure netcdf contains meta data and are structurally
+> clean and organized with hierarchical structure"*. Until it is built,
+> § 4.3, § 5.9 and § 6.1–6.8 describe the files as written today (schema 7).
+> As each part is built it moves into the section it changes, and this
+> banner goes with the last.
+
+**Why.** A schema-7 result names the geometry it is about by `structure_hash`,
+a hash of a structure kept elsewhere — and its two writers hash different
+geometries: the SIESTA finish the force-constant reference geometry, the
+PySCF deck its input atoms before any relaxation it runs (§ 4.3), so a PySCF
+displacement sweep whose stages relaxed apart is never refused. And the file
+carries no cell, axis kinds, labels, identity columns or the structure's own
+`info`: a periodic SIESTA result cannot be opened as its structure from the
+file alone, and the frame-set generator (§ 5.10 ③) would read the labels —
+the transport partition among them — and the cell from another file, trusting
+it to match. **A result that states its structure whole needs no
+fingerprint, and the one file is the whole citation.**
+
+#### 1. The structure, whole
+
+`structure` is `Structure.to_dict()` of the **equilibrium structure** — the one
+loss-free serialiser, read back by `Structure.from_dict`
+([`model/structure.md`](?doc=model/structure.md) § 2.1):
+
+| part | what it is |
+|---|---|
+| the coordinates | the geometry the Hessian is taken at (§ 4.2): on PySCF `COORDS_EQ_ANG` — the relaxed geometry when the deck relaxed, the input otherwise; on SIESTA the force-constant reference geometry, FC step 0 (§ 5.5) — **in the input order**, SIESTA's put back through the permutation record (§ 5.2) |
+| the labels | as the run was given them: the reserved `frozen_atoms` — **the atoms this calculation held**, the partial Hessian's fixed set ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 1) — the transport partition, every other label |
+| the box | the cell, the axis kinds, the stated engine offset and whose it is, the vacuum — the run's |
+| the identity columns | atom names, residue ids and names, chain ids, when the structure carries them |
+| the channels | every annotation channel, and **the masses the analysis weighted by, on the `mass_amu` channel** — the home a mode's frame set already gives them ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
+| `info` | the structure's own store — its `info.relaxation` record when it came out of a relaxation, **whole** (a schema-7 SIESTA result kept only its step count, § 6.5) |
+
+Both writers build it with **one function both bundles carry**: the sidecar
+payload prep made for the run's structure — the PySCF deck's `_MB_SIDECAR`
+(`engines/pyscf.md` § 3), and for SIESTA a new field of the deck's `vibration`
+block (§ 5.3) — applied to the Hessian's elements and coordinates through
+`apply_metadata_dict`, the masses set as the channel. It is the combination a
+continuing stage makes (coordinates from the run, everything else as the run
+was given it). `structure.py` joins `mb_vibration.pyz`; it already travels in
+`mb_pyscf.pyz`.
+
+#### 2. One home for each fact
+
+| schema 7 | schema 8 |
+|---|---|
+| `structure_hash` | **retired** — read in a v4–v7 file, never written; the structure is stated instead |
+| `equilibrium.elements` · `equilibrium.positions_ang` | the structure's elements and coordinates |
+| `equilibrium.masses_amu` | the structure's `mass_amu` channel |
+| `frozen_atom_idxs` | the structure's `frozen_atoms` label |
+| `n_atoms_total` · `free_atom_idxs` | **stated and checked** (§ 6.6): the structure's atom count, and the complement of its held label in ascending order — the order of every mode's eigenvector rows; a file whose stated value disagrees with its structure is refused (§ 6.7) |
+
+The reader (`SpectraResults`) serves the same values to every consumer —
+the viewer's animation, the sweep, the element shares, the frame-set
+generator — from the structure in a v8 file and from the old keys in a v4–v7
+one.
+
+#### 3. The sweep compares the structures
+
+§ 5.9's *one geometry* becomes a comparison of what each stage states: the
+same elements in the same order, and every atom within **10⁻⁶ Å** of the
+reference stage's — the precision the relaxation record's fingerprint rounds
+to ([`model/parse.md`](?doc=model/parse.md) § 5b.1); otherwise the sweep is
+refused, naming the largest move, as today. A v4–v7 stage is compared by its
+`equilibrium.positions_ang`, so a sweep across the version change still reads.
+On SIESTA the stages copy one relaxed geometry and agree exactly; on PySCF
+each stage's deck relaxes on its own, and a variation that moves the relaxed
+geometry by more than 10⁻⁶ Å is the relaxation's effect the guard exists to
+keep out of the comparison.
+
+#### 4. A frame set cites one file
+
+§ 5.10 ③'s generator reads the result alone — the base structure with its
+labels and box, the masses, the mode. `info.vibration.result_sha256`, the
+sha256 of the result's JSON bytes, pins the file it was made from, and the
+transport citation door compares it with the result `info.vibration.run`
+names, refusing a mismatch (today it is written and never compared).
+
+#### 5. The data file — `<label>.spectra.nc`
+
+**The same result, as structured data**: NetCDF-4, written by the one writer
+(`write_spectra_payload`) at every write, from the payload the JSON is written
+from — one source, two files, each written atomically (a temporary beside it,
+then a rename). The JSON stays the result a person reads and the Results tab
+loads (§ 6.8); the NetCDF is the same numbers for analysis and for loading a
+large result fast — `xarray.open_dataset(path, group="modes")`. Its layout is
+**hierarchical**, one group per part of the result:
+
+```text
+/                        schema "molbuilder/spectra-data@1", spectra_schema_version 8,
+                         engine, engine_version, molbuilder_version, timestamp, label,
+                         json "<label>.spectra.json", methods_text, bibliography_keys
+/structure               dims atom, xyz, vector
+    element(atom)  position_ang(atom, xyz)  mass_amu(atom)  held(atom)
+    atom_name · residue_id · residue_name · chain_id (atom)
+    cell_ang(vector, xyz)  axis_kind(xyz)  engine_offset_ang(xyz)  vacuum_ang(xyz)
+    title, offset_by (attributes)
+    /structure/labels    dims label:  name(label)  member(label, atom)
+    /structure/channels  one group per annotation channel: its kind, and
+                         value(atom) + stated(atom) for a value channel, member(atom) for a tag
+    /structure/info      the free store: one attribute per key, a nested value as JSON text
+/equilibrium             scf_energy_eh, homo_idx (attributes)  mo_energy_eh(mo)
+/modes                   dims mode, free_atom, xyz
+    index_1based(mode)  frequency_cm1(mode)  imaginary(mode)
+    free_atom_index(free_atom)                           -- which atom each row is
+    eigenvector_canonical(mode, free_atom, xyz)  eigenvector_display(mode, free_atom, xyz)
+    zero_point_amplitude_amu12_ang(mode)  zero_point_displacement_ang(mode, free_atom, xyz)
+    ir_intensity_km_mol(mode)  raman_activity_a4_amu(mode)
+    ir_active(mode)  raman_active(mode)  activity_class(mode)
+    ir_route, ir_fd_step_ang, raman_route, raman_fd_step_ang (attributes)
+    /modes/electronic_structure   dims probe, ...: the probe of § 4.8, one row per selected mode
+/removed_motions         count;  pattern(removed, free_atom, xyz)
+/hessian                 scope, n_atoms_in_hessian, density_fit
+/relaxation              enabled, already_relaxed, n_steps, the judged forces, converged, warning
+/thermo                  regime, temperature_k, pressure, zpe_eh, h_eh, s_eh_k, g_eh, ...
+    /thermo/grid         dims temperature: every curve of § 4.7
+/phases                  phase_relaxation, phase_frequencies, phase_raman, phase_ir, phase_es
+/config  /engine_metadata  /runtime_info   what the JSON's blocks of those names hold
+```
+
+**Every variable states itself**, as the transport data file's do
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): `units`,
+`long_name`, `definition`, and its kind — given, raw, derived — from **one
+table the writer fills and the reader reads**, the transport file's `Var`
+table moved into a module both data files and both job bundles share. **A
+quantity not computed is present and says so** — fill values and
+`computed = "no"` — never omitted and never zero (§ 6.5). **Read back, the
+NetCDF gives the payload the JSON holds**, and that round trip is the file's
+test.
+
+#### 6. Where it is written, and what that needs
+
+Both files are written **by the job**, beside each other in the attempt: a run
+is not written into after it ends ([`execution/project-layout.md`](?doc=execution/project-layout.md)
+§ 1.5), so nothing on this machine adds the NetCDF later. The writer imports
+`netCDF4` in both job environments: `molbuilder-siesta` carries it (sisl's),
+**`molbuilder-pySCF` does not** — its recipe gains `netcdf4`, and every
+machine's PySCF environment is repaired. The PySCF deck writes its first
+result before any heavy work (§ 4.9), so an environment without it stops
+there, naming the environment and the repair — never a result without its
+data file.
+
+#### 7. Still to decide
+
+- **The held set across a relaxation and its vibration.** A vibration may hold
+  more atoms than the relaxation that made its geometry — the electrodes held
+  to relax, then everything but the bridge and a few surface atoms held for
+  the Hessian (a partial Hessian over a smaller region). Proposed: one held
+  label, the vibration's structure stating its own set; and the record check
+  of § 2.2 warning only when the vibration frees an atom the relaxation held
+  (its forces were never balanced), with an info line when it holds a
+  superset. Awaiting the user's word.
+- **`netcdf4` in `molbuilder-pySCF`** — an environment change, awaiting the
+  user's word.
 
 ---
 
