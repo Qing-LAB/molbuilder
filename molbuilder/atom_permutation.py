@@ -96,14 +96,14 @@ class Permutation:
                 "original_to_sorted": list(self.original_to_sorted)}
 
     @classmethod
-    def from_dict(cls, d, *, source: str = "the order record",
+    def from_dict(cls, d, *, source: str = "atom_order",
                   n_atoms: Optional[int] = None) -> "Permutation":
         """THE ONE READER of an order record's dict -- the structure's
         ``atom_order`` field, a sidecar's, a deck's block's.  Refuses, naming
         ``source``: a value that is not an object, a key that is not one of
-        :data:`SORT_KEY_NAMES`, directions that are not inverse bijections
-        (over ``n_atoms`` atoms when given), and the identity, which is never
-        recorded (`model/overview.md` § 2.2a, I2)."""
+        :data:`SORT_KEY_NAMES`, two lists that do not each name every atom
+        once and undo each other (over ``n_atoms`` atoms when given), and the
+        identity, which is never recorded (`model/overview.md` § 2.2a, I2)."""
         if isinstance(d, cls):
             perm = d
         else:
@@ -137,11 +137,12 @@ class Permutation:
                 f"{', '.join(SORT_KEY_NAMES)}")
         n = perm.n_atoms
         o2s, s2o = perm.original_to_sorted, perm.sorted_to_original
-        if sorted(s2o) != list(range(n)) or len(o2s) != n or any(
+        every = list(range(n))
+        if sorted(s2o) != every or sorted(o2s) != every or any(
                 s2o[o2s[i]] != i for i in range(n)):
             raise PermutationError(
-                f"{source}: the order record's two directions are not inverse "
-                f"bijections over {n} atoms")
+                f"{source}: the order record's two lists must each name every "
+                f"one of the {n} atoms once, and each undo the other")
         if n_atoms is not None and n != n_atoms:
             raise PermutationError(
                 f"{source}: the order record is over {n} atoms; the structure "

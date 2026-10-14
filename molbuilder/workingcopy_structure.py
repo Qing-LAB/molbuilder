@@ -259,15 +259,15 @@ class StructureCodec:
         return run_of(src) is not None and not about(src)["ours"]
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
-    def pair(self, struct: Structure, *, fmt: str = "xyz",
-             engine_record: bool = False) -> "StructurePair":
+    def pair(self, struct: Structure, *,
+             fmt: str = "xyz") -> "StructurePair":
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
 
         A PAIR IS IN YOUR ORDER (`model/overview.md` § 2.2a, I1): a remapped
-        structure is refused, naming :meth:`Structure.restored` -- but for
-        ``engine_record``, an engine's own record written with its order
-        record beside it (:meth:`write`'s one door for it).
+        structure is refused, naming :meth:`Structure.restored`.  An engine's
+        own record in its order has one door, :meth:`write`'s
+        ``engine_record``.
 
         THE ONE PLACE either is produced.  :meth:`write` puts this on disk and
         :meth:`files` hands it over as named bytes (which is what the export
@@ -294,13 +294,19 @@ class StructureCodec:
         # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
         # preference: `write` reads it off the target's suffix and `read`
         # dispatches the same way.
+        if struct.atom_order is not None:
+            raise ValueError(f"a structure file is written in your order: "
+                             f"{REMAPPED_NOT_EDITED}")
+        return self._pair(struct, fmt=fmt)
+
+    def _pair(self, struct: Structure, *, fmt: str) -> "StructurePair":
+        """:meth:`pair`'s generator, in whatever order the structure is in --
+        reached past the order's refusal by :meth:`write`'s ``engine_record``
+        alone."""
         if fmt not in ("xyz", "pdb"):
             raise ValueError(
                 f"StructureCodec.pair: unsupported format {fmt!r}; "
                 f"expected 'xyz' or 'pdb'")
-        if struct.atom_order is not None and not engine_record:
-            raise ValueError(f"a structure file is written in your order: "
-                             f"{REMAPPED_NOT_EDITED}")
         if fmt == "pdb":
             if struct.n_frames > 1:
                 raise ValueError(
@@ -408,8 +414,9 @@ class StructureCodec:
         # chose names (`format_named`).  A caller with its own answer (the
         # CLI's `--output-format`, which may name a format the extension does
         # not) passes it and is obeyed.
-        made = self.pair(struct, fmt=(fmt or self.format_named(target)),
-                         engine_record=engine_record)
+        fmt = fmt or self.format_named(target)
+        made = (self._pair(struct, fmt=fmt) if engine_record
+                else self.pair(struct, fmt=fmt))
         return self._write_pair(target, made.document, made.sidecar,
                                 atomic=atomic)
 

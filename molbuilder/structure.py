@@ -842,12 +842,18 @@ class Structure:
         self._validate_annotations(n)
         # The named values, one row set per frame.
         self.customized = normalise_customized(self.customized, self.n_frames)
-        # The order record, read by its one reader: two inverse bijections
-        # over these atoms, a named key, never the identity (I2).  Its
-        # refusal is a ValueError, as every field's here is.
+        # The order record, read by its one reader: two lists that undo each
+        # other over these atoms, a named key, never the identity (I2).  Its
+        # refusal is a ValueError, as every field's here is.  A record CARRIED
+        # from a structure whose atoms were then added or removed is that
+        # edit, refused in its one sentence.
         if self.atom_order is not None:
-            self.atom_order = _order_record_type().from_dict(
-                self.atom_order, source="Structure.atom_order", n_atoms=n)
+            Permutation = _order_record_type()
+            if (isinstance(self.atom_order, Permutation)
+                    and self.atom_order.n_atoms != n):
+                raise ValueError(REMAPPED_NOT_EDITED)
+            self.atom_order = Permutation.from_dict(self.atom_order,
+                                                    n_atoms=n)
 
     def pbc(self) -> Tuple[bool, bool, bool]:
         """Per-axis periodicity as BOOLEANS — an interop accessor, not state.

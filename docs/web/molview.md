@@ -1037,8 +1037,9 @@ page went on believing the file it had just discarded was still open.
 
 ### 6.8 Notices — what the server warns about, and how long it stays true
 
-*(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2a: the engine's order is **not** a notice. A notice is cleared at every
+*(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a; the
+Molbuilder tab's notice built, a viewer's mark not yet, plan § 5ab R2: the
+engine's order is **not** a notice. A notice is cleared at every
 change to the structure (`settle`), a label edit and a Results poll among
 them; a viewer holding a remapped structure shows its order from the
 structure's own `atom_order`, read at every settle, so the mark lasts exactly

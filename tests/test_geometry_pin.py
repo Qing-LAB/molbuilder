@@ -34,7 +34,10 @@ Keys of a ``[[case]]``:
     ``load`` -- ``StructureCodec().load(path)``, the door every builder reads
     through; ``route_load`` -- the pair in a project, then ``POST
     /api/build/load`` with ``{path}``, the browser's one load door;
-    ``write`` -- the pair written for a person, ``StructureCodec().write``.
+    ``write`` -- the pair written for a person, ``StructureCodec().write``;
+    ``route_save`` / ``route_export`` -- the structure's envelope sent to
+    ``POST /api/structure/save`` / ``/api/structure/export``, as a viewer
+    sends it, and the pair the route wrote or answered read back.
 ``sidecar_written``
     the pair's sidecar is on disk beside the geometry.
 ``refused``
@@ -110,6 +113,36 @@ def _opened_as_built(case, got: Structure) -> None:
     assert np.allclose(got.positions, want.positions)
 
 
+def _said(case, answer) -> None:
+    """The route's answer carries the row's ``said`` notice, and no other of
+    the kinds a row reads."""
+    notices = [n for n in answer.get("notices", []) if n["where"] in _SAID]
+    want = case.get("said")
+    assert [(n["where"], n["severity"]) for n in notices] == (
+        [(want["where"], want["severity"])] if want else []), notices
+    if want:
+        assert want["words"] in notices[0]["message"], notices
+
+
+def _written_by_the_route(case, built: Structure, path: Path) -> None:
+    """``built`` sent as the browser sends it -- its envelope -- to the save
+    route (written at ``path``) or the export route (its files put at
+    ``path``'s stem), the answer's notices read, and the pair read back."""
+    from molbuilder.web.app import create_app
+    client = create_app(config={}).test_client()
+    if case["door"] == "route_save":
+        answer = client.post("/api/structure/save", json={
+            "structure": built.to_dict(), "path": str(path)})
+    else:
+        answer = client.post("/api/structure/export", json={
+            "structure": built.to_dict(), "name": path.stem})
+    assert answer.status_code == 200, answer.get_json()
+    for f in answer.get_json().get("files", []):
+        (path.parent / f["name"]).write_text(f["text"])
+    _said(case, answer.get_json())
+    _opened_as_built(case, StructureCodec().load(path))
+
+
 def _edited(case, path: Path) -> None:
     """The row's edits, made to the files as a person makes them."""
     lines = path.read_text().split("\n")
@@ -144,7 +177,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
     else:
         built = _the_pair(case.get("plain", False))
     name = "co." + case.get("format", "xyz")
-    if case["door"] == "route_load":
+    if case["door"].startswith("route_"):
         from conftest import _point_the_one_door_at
         tree = _point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
         (tree / "P").mkdir()
@@ -154,6 +187,9 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
     if case["door"] == "write":
         with pytest.raises(ValueError, match=re.escape(case["unreadable"])):
             StructureCodec().write(built, path)
+        return
+    if case["door"] in ("route_save", "route_export"):
+        _written_by_the_route(case, built, path)
         return
     StructureCodec().write(built, path, engine_record=remapped)
     if case.get("sidecar_written"):
@@ -166,13 +202,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
         answer = create_app(config={}).test_client().post(
             "/api/build/load", json={"path": str(path), **case.get("body", {})})
         assert answer.status_code == 200, answer.get_json()
-        notices = [n for n in answer.get_json().get("notices", [])
-                   if n["where"] in _SAID]
-        want = case.get("said")
-        assert [(n["where"], n["severity"]) for n in notices] == (
-            [(want["where"], want["severity"])] if want else []), notices
-        if want:
-            assert want["words"] in notices[0]["message"], notices
+        _said(case, answer.get_json())
         if remapped:
             _opened_as_built(case, Structure.from_dict(
                 answer.get_json()["structure"]))

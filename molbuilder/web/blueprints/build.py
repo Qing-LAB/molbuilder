@@ -76,7 +76,7 @@ from molbuilder.pubchem import build_from_name
 from molbuilder.smiles import build_from_smiles
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.structure import Structure, restored_said
+from molbuilder.structure import Structure
 from molbuilder.validation import validate
 from .files import _resolve_within_roots, _PickerError
 
@@ -490,6 +490,10 @@ def api_structure_save():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # A PAIR IS WRITTEN IN YOUR ORDER (`model/overview.md` § 2.2a, I1): a
+    # structure a viewer held in an engine's order is restored, and said.
+    from ._shared import in_your_order
+    struct, restored = in_your_order(struct, "the structure")
     # THE SAME GATE THE EXPORT DOOR RUNS: a save and a download cannot
     # produce different bytes -- and they must not disagree about a refusal
     # either.  Runs BEFORE the overwrite gate, so nobody is asked to confirm
@@ -497,6 +501,7 @@ def api_structure_save():
     # response as `notices`, exactly as they do on export.
     from ._shared import checked_periodicity
     struct, notices = checked_periodicity(struct)
+    notices = restored + notices
     try:
         resolved = _resolve_within_roots(path)   # save-as target need not exist yet
     except _PickerError as exc:
@@ -557,11 +562,15 @@ def api_structure_export():
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # IN YOUR ORDER, as the save writes it (`model/overview.md` § 2.2a, I1).
+    from ._shared import in_your_order
+    struct, restored = in_your_order(struct, "the structure")
     # The same gate every other structure door runs, so what leaves here is
     # judged by the same rules a save is judged by -- and a cell it refuses
     # leaves as a 400 carrying the gate's sentence, not as a 500.
     from ._shared import checked_periodicity
     struct, notices = checked_periodicity(struct)
+    notices = restored + notices
     # THE STEM, reduced to its last component.  This never reaches the
     # filesystem -- ``files()`` builds names in memory -- but it does reach the
     # browser as a download name, so a path-shaped one is flattened rather than
@@ -656,10 +665,10 @@ def api_build_load():
         # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): its
         # open asks for the file restored; a viewer is answered the file as it
         # is, its order record attached.
-        restored_from = None
-        if _pbody.get("restore") is True and whole.atom_order is not None:
-            restored_from = whole.atom_order.key
-            whole = whole.restored()
+        restored: list = []
+        if _pbody.get("restore") is True:
+            from ._shared import in_your_order
+            whole, restored = in_your_order(whole, _resolved.name)
         try:
             struct = _chosen_frame(whole, _pbody)
         except (TypeError, ValueError) as exc:
@@ -676,9 +685,7 @@ def api_build_load():
         said = notices_for_report(
             [Issue("info", s, "structure.lone_file") for s in lone]
             + [Issue("warn", s, "structure.geometry_changed")
-               for s in changed]
-            + ([Issue("info", restored_said(_resolved.name, restored_from),
-                      "structure.restored")] if restored_from else []))
+               for s in changed]) + restored
         if retired.get("cell_origin") is not None:
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
             said += notices_for_report([Issue(
@@ -1130,7 +1137,10 @@ def api_task_setup_handover():
     # one home (`model/structure.md` § 2.4).  A caller appending `.xyz` here
     # would be answering a question that already has an answer.
     from molbuilder.workingcopy_structure import StructureCodec
-    from ._shared import checked_periodicity
+    from ._shared import checked_periodicity, in_your_order
+    # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md` § 2.2a,
+    # I1): one a viewer held in an engine's order is restored, and said.
+    struct, restored = in_your_order(struct, "the structure")
     # THE BOX IS JUDGED AS PREP WILL PLACE IT (`cell.entering`,
     # structure-periodicity.md § 6.0): an engine's origin is not carried into
     # the calculation, so a flush face it left is not this calculation's.
@@ -1139,6 +1149,7 @@ def api_task_setup_handover():
     _entered, struct_notices = checked_periodicity(entering(
         struct, keep_engine_frame=keeps_engine_frame(
             calculation, getattr(cfg, "already_relaxed", False))))
+    struct_notices = restored + struct_notices
     try:
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated

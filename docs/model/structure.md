@@ -210,9 +210,9 @@ leave a "read-but-never-write" half-migration — that is the drift this contrac
 exists to prevent.
 
 **The order record of a remapped structure** *(built 2026-10-14 in the model —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1; the
-deck's block and `runs.view_of` are not built yet, R2, nor the browser's
-road)*. A ninth
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1, the
+browser's road with it; the deck's block and `runs.view_of` are not built
+yet, R2)*. A ninth
 field, **`atom_order`**: null for a structure in your order; for one in an
 engine's order, its order record — an `atom_permutation.Permutation`: the key
 that made it (one of the keys `atom_permutation` names) and both directions,
@@ -885,8 +885,9 @@ copy of any of them:
    one in a folder no calculation marks, reads as before. **Not** a periodicity gate: reading does not judge
    (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
 
-   *Decided 2026-10-14, not built* ([`model/overview.md`](?doc=model/overview.md)
-   § 2.2a, plan § 5ab): **the order record travels inside the pair** — a
+   *2026-10-14* ([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
+   § 5ab R1; `xv2xyz --from-run` and the engine's own file through the run's
+   view are not built yet, R2): **the order record travels inside the pair** — a
    remapped structure's `atom_order` is a field of its sidecar (v14), read and
    written by the codec with its atoms and nowhere else (I7). **The codec
    refuses to write a remapped structure**, naming `restored()` — `write`,
@@ -894,7 +895,7 @@ copy of any of them:
    the one door for an engine's record, which the transport composer alone
    calls for its junction; so no pair molbuilder writes for a person is
    remapped (I1), and a door that writes for a person — the save, export and
-   hand-over routes, `xv2xyz --from-run` — restores first. **An engine's own
+   hand-over routes, `jobset init`, `xv2xyz --from-run` — restores first. **An engine's own
    structure file** in a reordered run is read through that run's view
    (`runs.view_of`), carrying the run's order record from its deck (I5) —
    answered as it is, marked, unless an editor asks the load to restore (I8).

@@ -152,7 +152,26 @@ name = "an order record whose two directions are not inverse is refused"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [2, 0, 1] } }
 door = "load"
-unreadable = "the order record's two directions are not inverse bijections over 3 atoms"
+unreadable = "the order record's two lists must each name every one of the 3 atoms once, and each undo the other"
+
+[[case]]
+name = "an order record naming an atom outside the structure is refused -- a negative index read from the end would undo the other list by accident"
+pair = "remapped"
+sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [-2, 2, 0] } }
+door = "load"
+unreadable = "the order record's two lists must each name every one of the 3 atoms once, and each undo the other"
+
+[[case]]
+name = "a viewer's save of a structure in an engine's order writes your order, and says so"
+pair = "remapped"
+door = "route_save"
+said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held-first); it is put back in your order" }
+
+[[case]]
+name = "...and so does its download"
+pair = "remapped"
+door = "route_export"
+said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held-first); it is put back in your order" }
 
 [[case]]
 name = "a structure in an engine's order is not written as a person's pair: refused, naming restored()"

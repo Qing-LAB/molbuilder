@@ -976,16 +976,12 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                    f"missing")
     deck_path = base_dir / JUNCTION_DECK
     perm = read_permutation(base_dir)
-    from ..atom_permutation import same_order
     from ..workingcopy_structure import StructureCodec
     dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
-    # THE JUNCTION CARRIES ITS OWN ORDER RECORD (`model/overview.md` § 2.2a):
-    # a record whose junction states another order than the file beside it --
-    # one composed before the junction's sidecar carried it -- is not used.
-    if not same_order(dev.atom_order, perm):
-        return _no(f"its composed junction does not state the order "
-                   f"{PERMUTATION_FILE} records -- it was composed before this "
-                   f"version kept the junction's order in its sidecar")
+    # THE RECORD'S ORDER IS ITS atom-permutation.json UNTIL THAT FILE RETIRES
+    # (`model/overview.md` § 2.2; plan § 5ab R5): the junction, in the
+    # engine's order, carries it -- none for the order that moved nothing.
+    dev = dev.replace(atom_order=None if perm.is_identity else perm)
     sorted_res = SortResult(structure=dev, key=perm.key)
     ion_dir = None
     if tree_root is not None:

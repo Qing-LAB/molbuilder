@@ -2249,7 +2249,7 @@ opens, and what a program reads. Every name molbuilder composes comes from
 the run-file catalogue (`runfiles.WRITTEN`), which Task setup's *what this
 calculation writes* card lists; SIESTA's own `.FC` / `.FCC` are named by
 SIESTA from the label (§ 5.4), and the permutation record by its one constant,
-`atom_permutation.PERMUTATION_FILE` (§ 5.2).
+`runfiles.PERMUTATION_FILE` (§ 5.2).
 
 | file | where | holds | written by |
 |---|---|---|---|
