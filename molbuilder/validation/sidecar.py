@@ -232,6 +232,14 @@ def _held_sets_compared(struct: Structure, rec: Mapping[str, Any]
     return len(keys_then), len(held_now), freed
 
 
+def _first_relaxation(engine: str) -> str:
+    """What relaxes the structure before the Hessian when the box is
+    unticked: SIESTA's ladder, its `relax` stage (`engines/vibration.md`
+    § 5.2a); the PySCF deck itself, its Phase 0 (§ 4.2)."""
+    return ("The ladder's `relax` stage" if str(engine).lower() == "siesta"
+            else "The deck's own relaxation (Phase 0)")
+
+
 def _held_set_finding(struct: Structure, held: Tuple[int, int, List[int]],
                       *, who: str, here: str, severity: str,
                       tail: str) -> Issue:
@@ -364,7 +372,8 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                 f"{engine} calculation -- a different level of theory, so "
                 f"the geometry is not a stationary point here."
                 + ("  " + _remedy if already_relaxed else
-                   "  The ladder relaxes it at this level first.")),
+                   f"  {_first_relaxation(engine)} relaxes it at this level "
+                   f"first.")),
             where=where))
     else:
         cal = info.get("calculation")
@@ -389,7 +398,8 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                     "theory than this calculation runs (" + "; ".join(differing)
                     + "), so its geometry is not a stationary point here."
                     + ("  " + _remedy if already_relaxed else
-                       "  The ladder relaxes it at this level first.")),
+                       f"  {_first_relaxation(engine)} relaxes it at this "
+                       f"level first.")),
                 where=where))
     # -- the held set: an atom the relaxation held, freed here -------------
     held = _held_sets_compared(struct, rec)
@@ -399,7 +409,8 @@ def check_relaxation_record(struct: Structure, *, engine: str,
             struct, held, who="The relaxation", here="this calculation",
             severity=disagree,
             tail=("  " + _remedy if already_relaxed
-                  else "  The ladder relaxes this set first.")))
+                  else f"  {_first_relaxation(engine)} relaxes this set "
+                       f"first.")))
     # -- the largest remaining force against THIS calculation's tolerance --
     judged = _judged_force(rec)
     rec_tol = rec.get("force_tolerance_ev_ang")
@@ -425,8 +436,10 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      + ("" if (already_relaxed or disagreed) else
                         "  The record already meets this calculation's "
                         "criterion: the box may be ticked and the relaxation "
-                        "skipped (a ladder already holding a `relax` stage "
-                        "runs it regardless)."))))
+                        "skipped" + (" (a ladder already holding a `relax` "
+                                     "stage runs it regardless)."
+                                     if str(engine).lower() == "siesta"
+                                     else ".")))))
     else:
         issues.append(Issue(
             severity=disagree, where=where,
@@ -436,7 +449,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      f"{float(force_tolerance_ev_ang):g} eV/Å."
                      + ("  The frequencies will be off unless it is relaxed "
                         "further.  " + _remedy if already_relaxed else
-                        "  The ladder's relaxation tightens it."))))
+                        f"  {_first_relaxation(engine)} tightens it."))))
     return issues
 
 

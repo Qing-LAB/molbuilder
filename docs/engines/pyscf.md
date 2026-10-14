@@ -588,8 +588,8 @@ in-script loop over stages, and no stage list in the engine config.
   SIESTA uses, because a stage name says which rung of *this* ladder it is and
   nothing about which engine is running it.
 - **What a rung hands the next one** is the converged geometry
-  (`<JOB>_optimized.xyz`) and the converged density (`<JOB>.chk`), copied at
-  `prep` when the next rung's `restart` says `continue` — the same pair SIESTA
+  (`<JOB>_optimized.xyz`) and the converged density (`<JOB>.chk`), carried
+  at the next rung's first launch when its `restart` says `continue` — the same pair SIESTA
   carries as `.XV` and `.DM`, declared in
   [`job-contracts.md` § 4.2a](?doc=execution/job-contracts.md)'s warm-file rules.
   The script reads that geometry with molbuilder's one XYZ reader (§ 3); a file

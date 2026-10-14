@@ -841,7 +841,9 @@ copy of any of them:
    no pin)*; both-or-neither atomicity on write *(each half is atomic on its own today,
    the geometry replaced before the sidecar is written, so a sidecar that
    fails to write leaves the new geometry beside the old sidecar —
-   both-or-neither not built, plan § 2, V1.10)*; and on read, a geometry with
+   both-or-neither not built, plan § 2, V1.10; since v13 that state is no
+   longer silent: the old sidecar's pin does not match the new geometry, so a
+   door that builds refuses the pair and the browser's load door says so)*; and on read, a geometry with
    no sidecar beside it is one molbuilder did not write as a pair — read as
    its atoms and coordinates (§ 2.3, *a lone file says what was read*). **An engine's own structure file** — SIESTA's `<label>.xyz`,
    written with no sidecar, read where its run is recorded — **takes that
