@@ -1,4 +1,4 @@
-"""SIESTA netCDF MD history — ``<label>.MD.nc`` → :class:`TrajectoryResult`.
+"""SIESTA netCDF MD history — a run's ``.MD.nc`` → :class:`TrajectoryResult`.
 
 WHY THIS EXISTS.  The ``.out`` TEXT -- ``outcoor:`` blocks for geometry,
 ``siesta: E_KS(eV) = …`` for energy -- has two measured faults:
@@ -32,15 +32,16 @@ SIESTA 5.4.2 (``Src/md_out.F90``, ``Src/write_md_record.F``) and a live run:
      geometries: the manual calls them *"the predicted values for the next
      step"*, and a measured relaxation aligned at lag -1 to 4e-9 Ang while
      lag 0 differed by 5e-2.  There is no row for the input geometry.
-  3. **It ACCUMULATES across runs** (manual: *"accumulative even for
-     different runs"* — ``md_netcdf`` opens the existing file and appends).
-     A warm restart therefore appends to the previous run's file, so frame
-     index is NOT run-local and fact 2's lag is NOT a constant.
+  3. **SIESTA appends to whatever lies under its name** (manual:
+     *"accumulative even for different runs"* — ``md_netcdf`` opens the
+     existing file and appends).  So each run's history is its own: the run
+     script points SIESTA's name at ``<label>_<stage>-run<N>.MD.nc`` while
+     the engine runs (`job-contracts.md` § 2.2), and that is the file
+     :func:`sibling_md_nc` pairs with the run's output.
 
-Fact 3 is why :func:`align_to_reference` matches on COORDINATES rather than
-doing index arithmetic.  A hardcoded ``-1`` would be right on a fresh run and
-silently wrong on every restart — which is the workflow this project is built
-around.
+:func:`align_to_reference` matches on COORDINATES rather than doing index
+arithmetic, because the ``.out`` repeats its final geometry: fact 2's lag
+would pair that repeat with a row it is not.
 """
 
 from __future__ import annotations
@@ -104,7 +105,8 @@ class SiestaMdNcFileParser(FileParser):
 
     name = "siesta-mdnc"
     label = "SIESTA netCDF MD history (.MD.nc)"
-    hint = "the <label>.MD.nc written next to the .out when WriteMDhistory is on"
+    hint = ("a run's <label>_<stage>-run<N>.MD.nc, written beside its .out "
+            "when WriteMDhistory is on")
     output = TrajectoryResult
 
     @classmethod
@@ -152,8 +154,7 @@ class SiestaMdNcFileParser(FileParser):
             lattice=lattice,
             source_format="siesta-mdnc",
             # NOT "finished": the file says nothing about how the run ended,
-            # and a restart appends to it, so even a complete-looking file
-            # may belong to a job still running.
+            # and a complete-looking one may belong to a run still writing it.
             run_state="unknown",
             error_message=None,
             runtime_info={
@@ -162,8 +163,7 @@ class SiestaMdNcFileParser(FileParser):
                 # over the .out, and so the offset is visible in the result
                 # rather than buried in the code that applied it.
                 "mdnc_note": ("post-move geometries; frame k corresponds to "
-                              ".out frame k+1 on a fresh run, and the file "
-                              "accumulates across restarts"),
+                              ".out frame k+1"),
                 **{f"mdnc_{k}": v for k, v in series.items()},
             },
             parse_warnings=warnings,
@@ -320,12 +320,10 @@ def align_to_reference(reference: Sequence, candidate: Sequence, *,
     Returns one entry per reference frame: the index into *candidate* whose
     geometry matches, or ``None`` when nothing does.
 
-    **Matching, not arithmetic — and that is the whole point.**  The obvious
-    implementation is ``candidate[i - 1]``, which is correct on a fresh run
-    and wrong on every warm restart, because ``.MD.nc`` accumulates across
-    runs (see the module docstring, fact 3).  It is also wrong whenever the
-    ``.out`` repeats its final geometry, which a relaxation does.  Comparing
-    coordinates costs a few array subtractions and is immune to both.
+    **Matching, not arithmetic.**  The obvious implementation is
+    ``candidate[i - 1]``, which is wrong whenever the ``.out`` repeats its
+    final geometry, which a relaxation does.  Comparing coordinates costs a
+    few array subtractions and is immune to it.
 
     *tol* is in Angstrom and compares the max per-atom displacement.  The
     default is deliberately loose relative to the 4e-9 agreement measured on
@@ -382,18 +380,20 @@ def _system_label_of(out_path: Path) -> Optional[str]:
 
 
 def sibling_md_nc(out_path: Path) -> Optional[Path]:
-    """The ``.MD.nc`` belonging to *out_path*, or None: ``<label>.MD.nc``
-    beside it, ``<label>`` being the SystemLabel the output states itself
-    (:func:`_system_label_of`).  SIESTA names its history from that label,
-    while a run of ours names the output ``<label>_<token>-run<N>.out``, so
-    the output's own line is what pairs the two -- read from the file,
-    never the lone ``.MD.nc`` of a folder (`model/parse.md` § 5.3).
+    """The run's own history beside *out_path*, or None: the output's name
+    with the history's role, ``<label>_<token>-run<N>.MD.nc`` -- the name the
+    run script points SIESTA's at while the engine runs (`job-contracts.md`
+    § 2.2) -- read back with the SystemLabel the output states itself
+    (:func:`_system_label_of`), never the lone ``.MD.nc`` of a folder; an
+    output that names no run reads only itself (`model/parse.md` § 5.3).
     """
+    from molbuilder.runfiles import compose, parse
     out_path = Path(out_path)
     label = _system_label_of(out_path)
-    if not label:
+    own = parse(out_path.name, label) if label else None
+    if own is None or own.run is None:
         return None
-    nc = out_path.parent / f"{label}.MD.nc"
+    nc = out_path.parent / compose(label, ".MD.nc", own.stage, own.run)
     return nc if nc.is_file() else None
 
 

@@ -222,14 +222,16 @@ def test_the_folder_answers_for_the_stage_that_ran(flat):
         got["record"]["deck"])
     files = {f["name"]: f for f in got["files"]}
     engines = [p.name for p in flat.glob("fdf.*.log")] + [
-        "H2.XV", "H2.xyz", "H2.MD.nc"]
+        "H2.XV", "H2.xyz"]
     for name in engines:
         assert (files[name]["role"], files[name]["about"]) == (
             None, {"ours": False}), files[name]
-    for name, stage in (("H2_01_coarse.fdf", "01_coarse"),
-                        ("H2_02_medium.fdf", "02_medium")):
+    for name, role, stage in (("H2_01_coarse.fdf", ".fdf", "01_coarse"),
+                              ("H2_02_medium.fdf", ".fdf", "02_medium"),
+                              ("H2_01_coarse-run0.MD.nc", ".MD.nc",
+                               "01_coarse")):
         assert (files[name]["role"], files[name]["stage"],
-                files[name]["about"]["ours"]) == (".fdf", stage, True), (
+                files[name]["about"]["ours"]) == (role, stage, True), (
             files[name])
 
 
@@ -259,7 +261,7 @@ def test_each_run_reads_its_own_deck_and_nothing_else(flat, monkeypatch):
     np.testing.assert_allclose(box["cell"], np.eye(3) * _BOX, atol=1e-4)
     # ITS OWN OUTPUT NAMES ITS COMPANIONS AND ITS HELD ATOMS (§ 5.3).
     rt = d["data"]["runtime_info"]
-    assert rt.get("mdnc_source") == "H2.MD.nc", rt
+    assert rt.get("mdnc_source") == "H2_01_coarse-run0.MD.nc", rt
     assert rt.get("frozen_atoms") == [0], rt
     # ITS OWN DECK STATES ITS CONTRACT, though the folder holds two decks.
     calc = d["info"]["calculation"]
@@ -592,26 +594,49 @@ def test_the_engines_own_log_says_what_it_used_and_what_nobody_set(flat):
 
 
 # --------------------------------------------------------------------- #
-#  The MD history SIESTA names by its label (`model/parse.md` § 6)        #
+#  SIESTA's history, each run's own (`job-contracts.md` § 2.2;           #
+#  `model/parse.md` § 5a)                                                #
 # --------------------------------------------------------------------- #
 
 def _md_nc(flat: Path) -> Path:
-    return flat / "H2.MD.nc"
+    return flat / "H2_01_coarse-run0.MD.nc"
 
 
-def test_the_history_is_found_by_the_label_the_output_prints(flat):
+def test_the_history_is_found_by_the_output_s_own_name(flat):
     """The output carries the stage and the run index, ``H2_01_coarse-run0
-    .out``; SIESTA names the history ``H2.MD.nc`` and prints the label --
-    which is how the output finds its own (`siesta_mdnc.sibling_md_nc`,
-    § 5.3).
+    .out``, and the run's history the same, ``H2_01_coarse-run0.MD.nc`` --
+    which is how the output finds its own, read back with the label it prints
+    (`siesta_mdnc.sibling_md_nc`, § 5.3) -- and the output's frames are
+    upgraded from it.
 
-    MUTATION THIS MUST FAIL AGAINST: the label line not read -- the
-    trajectory falls back to the output's four-decimal coordinates."""
+    MUTATION THIS MUST FAIL AGAINST: the run's file not composed from the
+    output's name -- the trajectory keeps the output's four-decimal
+    coordinates."""
     from molbuilder.parse import parse
     res = parse(str(_out(flat)))
-    assert res.runtime_info.get("mdnc_source") == "H2.MD.nc", res.runtime_info
+    assert res.runtime_info.get("mdnc_source") == _md_nc(flat).name, (
+        res.runtime_info)
     assert res.runtime_info.get("mdnc_coords_upgraded", 0) >= 1, (
         res.runtime_info)
+
+
+def test_every_run_s_history_is_its_own(road):
+    """Each run writes its steps into a history of its own, whatever came
+    before it in the folder: the capped stage started over as its run 1, the
+    chained calculation's `medium` after `coarse`, and `coarse` launched
+    again warm after `medium` -- each run's rows are its own output's steps,
+    and SIESTA's shared name is not left behind (`job-contracts.md` § 2.2).
+
+    MUTATION THIS MUST FAIL AGAINST: the run script laying no pointer --
+    SIESTA appends every run to ``H2.MD.nc`` and no run has a history of its
+    own."""
+    from support.road import history_is_the_runs_own
+    for folder, out in ((road["capped"], "H2_01_coarse-run0.out"),
+                        (road["capped"], "H2_01_coarse-run1.out"),
+                        (road["chain"], "H2_01_coarse-run0.out"),
+                        (road["chain"], "H2_02_medium-run0.out"),
+                        (road["chain"], "H2_01_coarse-run1.out")):
+        history_is_the_runs_own(folder / out, "H2")
 
 
 def test_the_history_is_claimed_by_its_reader_and_routed_there(flat):
@@ -628,9 +653,9 @@ def test_the_history_is_claimed_by_its_reader_and_routed_there(flat):
 
 
 def test_the_history_says_only_what_it_holds(flat):
-    """No run state -- a restart appends to the file, so a complete-looking
-    history may belong to a live run -- no forces and no SCF; coordinates
-    converted from Bohr by the file's own attribute (an H2 bond, Å)."""
+    """No run state -- a complete-looking history may belong to a live
+    run -- no forces and no SCF; coordinates converted from Bohr by the
+    file's own attribute (an H2 bond, Å)."""
     from molbuilder.parse import parse
     res = parse(str(_md_nc(flat)))
     assert res.run_state == "unknown"

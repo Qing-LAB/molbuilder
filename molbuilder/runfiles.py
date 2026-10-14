@@ -812,6 +812,12 @@ class Artifact:
     #: machine with a queue*, *MOLBUILDER_PARSE_LOG set*.  A card that listed
     #: such a file unconditionally named a file the run may never write.
     only: str = ""
+    #: THE ENGINE WRITES IT UNDER ITS OWN NAME, ``<SystemLabel><role>``,
+    #: appending, when the deck turns on the catalogue item named here --
+    #: SIESTA's history (`job-contracts.md` § 2.2).  The run script points
+    #: that name at the run's own file while the engine runs, so the file
+    #: holds the run's steps alone.  ``""`` for every other file.
+    written_when: str = ""
 
 
 #: THE FIXED NAMES -- files molbuilder writes that are not named on the label,
@@ -982,6 +988,42 @@ WRITTEN: "tuple[Artifact, ...]" = (
              kind="result", writer="the run script, from the engine's "
                                    "stdout",
              door="parse.engines._run_ending.ending_of"),
+    # SIESTA'S HISTORY, EACH RUN'S OWN (`job-contracts.md` § 2.2): SIESTA
+    # appends to `<SystemLabel><role>`, and the run script points that name
+    # at the run's file while the engine runs -- in every shape, as `.out`.
+    Artifact(".MD.nc", "every step of the run as SIESTA computed it -- "
+                       "coordinates, cell and energies in full precision "
+                       "(netCDF)",
+             attempt="always", engine="siesta", kind="result",
+             written_when="write_md_history",
+             writer="SIESTA, through its own name, which the run script "
+                    "points at this file while the engine runs",
+             door="parse.engines.siesta_mdnc.SiestaMdNcFileParser",
+             only="the deck turns on `WriteMDhistory` -- a relaxation's "
+                  "does, unless set off"),
+    Artifact(".MD", "the same steps, unformatted, for SIESTA's own tools",
+             attempt="always", engine="siesta", kind="result",
+             written_when="write_md_history",
+             writer="SIESTA, through its own name, which the run script "
+                    "points at this file while the engine runs",
+             only="the deck turns on `WriteMDhistory` -- a relaxation's "
+                  "does, unless set off"),
+    Artifact(".MDE", "a line per step: its energies, temperature, volume "
+                     "and pressure",
+             attempt="always", engine="siesta", kind="result",
+             written_when="write_md_history",
+             writer="SIESTA, through its own name, which the run script "
+                    "points at this file while the engine runs",
+             only="the deck turns on `WriteMDhistory` -- a relaxation's "
+                  "does, unless set off"),
+    Artifact(".ANI", "every step's coordinates, an animation VMD, "
+                     "xcrysden and OVITO open",
+             attempt="always", engine="siesta", kind="result",
+             written_when="write_md_xmol",
+             writer="SIESTA, through its own name, which the run script "
+                    "points at this file while the engine runs",
+             only="the deck turns on `WriteMDXmol` -- a relaxation's "
+                  "does, unless set off"),
     # `attempt="maybe"` for the SAME reason `.out` above has it.
     Artifact(".pyscf.log", "the same, for PySCF — it writes here and not "
                            "to .out", attempt="maybe",
@@ -1420,6 +1462,15 @@ def shared_numbered_roles() -> "tuple[str, ...]":
     (`runrecord`'s refusal, `jobset migrate`) asks the catalogue, never a
     list of its own."""
     return tuple(a.role for a in ON_THE_LABEL if a.attempt == "shared")
+
+
+def pointed_roles(engine: str) -> "tuple[tuple[str, str], ...]":
+    """``(role, catalogue item)`` for each file ``engine`` writes under its
+    own name that is a run's own (:attr:`Artifact.written_when`) -- read off
+    the rows, so the run script that points the engine's name at the run's
+    file asks the catalogue, never a list of its own."""
+    return tuple((a.role, a.written_when) for a in ON_THE_LABEL
+                 if a.written_when and a.engine == engine)
 
 
 @dataclass(frozen=True)
@@ -1867,7 +1918,11 @@ def row_for(path, label: Optional[str] = None) -> Optional[Artifact]:
         rec = parse(base, label)
         if rec is not None:
             for a in ON_THE_LABEL:
-                if a.role == rec.role:
+                # A ROW THAT ALWAYS NUMBERS ITS FILES is not a name with no
+                # run's number: SIESTA's own `<label>.MD.nc` is the engine's,
+                # the run's `<base>-run<N>.MD.nc` the row's.
+                if a.role == rec.role and (rec.run is not None
+                                           or a.attempt != "always"):
                     return a
     in_launch = p.parent.name == LAUNCH_DIR
     for a in WRITTEN:

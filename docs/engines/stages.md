@@ -1939,7 +1939,7 @@ one. Two of its properties are the reason:
 **Why not one flat directory.** A flat folder was the earlier answer here, on the
 grounds that a shared basename makes continuing free (`job-contracts.md § 2.1`
 Rule 2). It does — and it also means every stage writes over the last one. The
-restart files are the obvious casualty, but they are not the worst: `.ANI`,
+restart files are the obvious casualty, but they are not the worst:
 `.STRUCT_OUT`, `.EIG` and every other engine output is keyed by `SystemLabel`,
 which is *identical* across stages by design. Run three stages flat and you keep
 one set of results — the last — plus three `.out` logs. For a framework whose

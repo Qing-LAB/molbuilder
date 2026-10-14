@@ -269,10 +269,12 @@ au_bdt_relax/
 ├── <label>_01_coarse-run0.molwatch.log  progress log -- and .continued-from
 │                                        when the run continues from another
 ├── <label>_01_coarse.runwrap-<stamp>.log   the wrapper's session log
+├── <label>_01_coarse-run0.MD.nc         SIESTA's history of that run alone
+│     (and .MD, .MDE, .ANI)              (job-contracts.md § 2.2)
 │
 ├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
 ├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage
-└── <label>.ANI  <label>.EIG        ⚠ likewise
+└── <label>.EIG                     ⚠ likewise
 ```
 
 *Each run of a flat stage has its own launch record,
@@ -422,7 +424,7 @@ is because *depth* differs — never because the rule does.
 | Rule | Flat | Hierarchical |
 |---|---|---|
 | **A directory is a container or a run, never both** (§ 1.4) | the directory is a **run** — it is a leaf | calculation and stage are **containers**; `run-N/` is a **run** |
-| **A result is never overwritten** | holds for *stdout* (`-run0`, `-run1`); **does not hold for warm files**, which are shared by design | holds for everything — an attempt is immutable (§ 1.5) |
+| **A result is never overwritten** | holds for every run's own files — its *stdout* and SIESTA's history among them (`-run0`, `-run1`); **does not hold for warm files**, which are shared by design | holds for everything — an attempt is immutable (§ 1.5) |
 | **Every file shares one basename** — the id | yes; only decks and stdout take a stage suffix | yes, and across stages too |
 | **Where the deck comes from** | `prep` renders it beside the package | `prep` renders it into the stage's directory |
 | | *both from template ⊕ the stage's values ⊕ this machine (§ 2.2)* | |
@@ -1740,27 +1742,19 @@ new attempt, for real, right then:
 | `bdt_au.XV` | the **relaxed coordinates** (and the cell) | always — this is the point of continuing |
 | `bdt_au.DM` | the converged **density matrix**, so the first SCF starts warm | when the description says to reuse it |
 | `bdt_au.CG` | the optimiser's own history | **only if both stages use the same algorithm** — CG history means nothing to Broyden |
-| `bdt_au.MD.nc` `.MD` `.MDE` `.ANI` | the **accumulated record** of every step so far | always — see below; these are appended to, not read |
 
-**The last row carries for a different reason than the first three, and the
-reason is the shape.** SIESTA *opens and appends* to those four; it never reads
-them back, so none of them has an `honoured_by` keyword and none of them warms
-anything. They are copied so that **the layout cannot change the data**.
-
-In `flat`, every attempt and every stage of a calculation shares one directory,
-so the engine appends and one `bdt_au.MD.nc` ends up holding the whole thing.
-In `hierarchical`, each attempt is its own directory — so without carrying them
-a continued stage starts with empty records, and the earlier frames exist only
-in the previous attempt's copy. The same calculation, continued the same way,
-would yield a different record depending on a layout flag. Carrying them
-restores parity: the engine appends to what came before, exactly as it would
-have in flat.
-
-`.MD.nc` is the one molbuilder itself reads — it is the trajectory source
-(`model/parse.md` § 5a), and reading a truncated one would silently shorten a
-continued stage's history. The other three are for external tools. A run that
-wrote none of them (`write_md_history` / `write_md_xmol` off) simply has nothing
-to copy, and `materialize` skips a file that is not there.
+**SIESTA's history is not carried: each run's is its own** *(F-MDNC,
+2026-10-13)*. SIESTA appends every step to `.MD.nc`, `.MD`, `.MDE` and `.ANI`
+and reads none of them back, so none warms anything. Each is named for the run
+that wrote it, `<label>_<NN>_<stage>-run<N>.MD.nc`, in either shape — the run
+script points SIESTA's name for it at that file while the engine runs
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2) — so **the
+layout cannot change the data**: a run's history holds that run's steps, flat
+or hierarchical, and a stage's steps are read with its own output. *(Until
+2026-10-13 the four carried, so that a hierarchical stage's history held every
+step before it as the one shared file in a flat folder did; read beside a
+run's output, those were another run's rows, and the reader matched the second
+run of a flat stage to the first run's.)*
 
 ```mermaid
 flowchart LR
@@ -1924,7 +1918,9 @@ Three rules, and everything else follows:
 
 > **Every directory in this tree is made by Python, and every file put in one is
 > a real file, never a link. The wrapper activates an environment and runs an
-> engine as its child, in a directory it was handed** (`running-a-job.md § 2.2a`).
+> engine as its child, in a directory it was handed** (`running-a-job.md § 2.2a`;
+> naming the run's output is the one thing it lays down beside the engine —
+> invariant 6a, § 7).
 
 The engine never writes above itself — whatever a run continues from is a real
 copy put there before it starts (§ 1.6).
@@ -2723,6 +2719,10 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA force-constant job's finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
 | `<base>.molwatch.log` *(hierarchical)* · `<base>-run<N>.molwatch.log` *(flat)* | the run as it happens — coordinates, energy and forces, one block per step | prep seeds the first run's, in the attempt -- in the flat shape numbered for run 0; PySCF's deck writes each step into its run's own, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
 | `<base>-run<N>.out` *(SIESTA)* | the run's output as the engine printed it | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
+| `<base>-run<N>.MD.nc` *(SIESTA)* — only: the deck turns on `WriteMDhistory` -- a relaxation's does, unless set off | every step of the run as SIESTA computed it -- coordinates, cell and energies in full precision (netCDF) | SIESTA, through its own name, which the run script points at this file while the engine runs | `parse.engines.siesta_mdnc.SiestaMdNcFileParser` | result |
+| `<base>-run<N>.MD` *(SIESTA)* — only: the deck turns on `WriteMDhistory` -- a relaxation's does, unless set off | the same steps, unformatted, for SIESTA's own tools | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
+| `<base>-run<N>.MDE` *(SIESTA)* — only: the deck turns on `WriteMDhistory` -- a relaxation's does, unless set off | a line per step: its energies, temperature, volume and pressure | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
+| `<base>-run<N>.ANI` *(SIESTA)* — only: the deck turns on `WriteMDXmol` -- a relaxation's does, unless set off | every step's coordinates, an animation VMD, xcrysden and OVITO open | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
 | `<base>-run<N>.pyscf.log` *(PySCF)* | the same, for PySCF — it writes here and not to .out | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
 | `<base>.log` *(hierarchical)* · `<base>-run<N>.log` *(flat)* *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
 | `<base>_geom.log` *(hierarchical)* · `<base>-run<N>_geom.log` *(flat)* *(PySCF)* | geomeTRIC's optimizer log | geomeTRIC, under the prefix the deck hands it | none | result |
@@ -2746,19 +2746,20 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 
 None of these is ours to name. SIESTA names its files by `SystemLabel`, so they
 carry no stage and no run index; in the flat shape there is one set at the root,
-overwritten or appended by each stage that runs. PySCF writes nothing its deck
+overwritten by each stage that runs — all but its history, which SIESTA appends
+to and the run script names for the run (below). PySCF writes nothing its deck
 does not name (§ 5.3).
 
 | | SIESTA's files | the door |
 |---|---|---|
 | **read** | `<label>.XV` | the registry's `SiestaXVFileParser` (`read_xv_with_cell`) — the Results tab, the transport citation, `xv2xyz` |
 | | `<label>.xyz` | `StructureCodec.load`, the box from the run's own deck (`runs.declared`, `model/structure-periodicity.md` § 6.0) |
-| | `<label>.MD.nc` | `parse.engines.siesta_mdnc.sibling_md_nc`, by the label the `.out` prints (`reinit: System Label:`) — the `.out`'s frames are upgraded from it |
 | | `fdf.<stamp>.log` | the run record's setup, paired with the `.out` by its stamp (`parse.dirs.record`) |
 | | `<El>.ion` | a transport calculation citing the run |
 | | `<label>.ORB_INDX` | the transport record's PDOS, at the device point the transmission gathered (`transport.record`, through the run door's `Run.on_label`) |
 | | every row of `siesta/warm-files.toml` | for presence only: the run script's banner, and which engine a folder holds |
-| **carried** | `.XV .DM .MD.nc .MD .MDE .ANI`; `.CG` between stages of one optimizer | `warmfiles.warm_list` (§ 5.3) |
+| **carried** | `.XV .DM`; `.CG` between stages of one optimizer | `warmfiles.warm_list` (§ 5.3) |
+| **named for the run** | `<label>.MD.nc` `.MD` `.MDE` `.ANI` — SIESTA's names for its history, each pointing at the run's own file while the engine runs, `<base>-run<N>.MD.nc` and its three siblings (§ 5.3), the pointer removed when it exits (`job-contracts.md` § 2.2) | none — the run's own file is read |
 | **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending`), `MESSAGES`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS`, `.BONDS_FINAL`, `.EIG`, `.FA`, `.FAC`, `.HSX`, `.KP`, `.MD_CAR`, `.STRUCT_NEXT_ITER`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | ⚠ `.BONDS` is spelled `.Bonds` in `siesta/warm-files.toml` (D26) |
 | **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias sweep; `<label>.TBT.AVTRANS_<pair>` | `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too: both channels' transmission and both `.nc` files, summed and kept per spin (`tbtnc.spin_dos`, 2026-10-11) |
 
@@ -3051,7 +3052,12 @@ than no invariant, because it fails a directory that is working correctly.
 6a. **Every directory in this tree is made by Python, and every file put in one
    is a real file.** The wrapper activates an environment and runs the engine
    as its child in a directory it was handed; it creates no directory and
-   arranges no file (`running-a-job.md § 2.2a`). *Test:* the SIESTA run
+   arranges no file (`running-a-job.md § 2.2a`) — but for naming the run's
+   output, the one thing only the run can name: its stdout through the tee,
+   and SIESTA's history through a pointer from SIESTA's name to the run's own
+   file, laid as the engine starts and removed when it exits. The pointer is
+   no file put in: it leads to a file of the same run, in the same folder,
+   which the engine is about to write (`job-contracts.md` § 2.2, § 2.6). *Test:* the SIESTA run
    script is held by the road — the catalogue rows
    (`tests/data/the_catalogue.toml`) launch it and need the run's files where
    launch ran it; the PySCF run script, which runs only in the e2e tier, is

@@ -795,7 +795,7 @@ default = true
 group = "output"
 label = "Write MD history (.MD/.MDE)"
 help = """
-Accumulate the trajectory into <label>.MD -- positions and velocities (and cell, for a variable cell) at every step -- plus <label>.MDE, a short per-step line of energy, temperature and the like.  Both are appended across runs, so a restarted job extends them rather than replacing them.
+Write the trajectory into the run's own <label>_<stage>-run<N>.MD -- positions and velocities (and cell, for a variable cell) at every step -- plus its .MDE, a short per-step line of energy, temperature and the like, and on a build with netCDF (the packaged one) its .MD.nc, the same steps in full precision, which the Results tab reads.  Each run keeps its own: SIESTA appends to the file under its name, and the run script points that name at the run's file while the engine runs, so a run launched again or retried starts a history of its own.
 
 SIESTA ships this off; we ship it on, because it is the only complete record of what the trajectory did.
 
@@ -816,9 +816,9 @@ default = true
 group = "output"
 label = "Write XMOL animation (.ANI)"
 help = """
-Accumulate every step's coordinates into <label>.ANI, a plain-text multi-frame .xyz in Angstrom that xcrysden, VMD and OVITO open directly as an animation.  Appended across runs, so a restart extends it.
+Write every step's coordinates into the run's own <label>_<stage>-run<N>.ANI, a plain-text multi-frame .xyz in Angstrom that xcrysden, VMD and OVITO open directly as an animation.  Each run keeps its own, as its .MD history does.
 WHY THIS IS A SWITCH AND NOT JUST ON: SIESTA defaults it to `.not. WriteCoorStep` (read_options.F90), so the two keywords are coupled.  This project ships WriteCoorStep on, which resolves that default to OFF -- setting this explicitly is the only way to stop one keyword silently deciding another.
-MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates come from <label>.MD.nc, which carries full double precision rather than text; .ANI is listed among a run's files but never parsed.  So it is purely for opening the trajectory in an external viewer -- turn it off if disk matters and you do not need that, and nothing inside molbuilder changes.
+MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates come from the run's .MD.nc, which carries full double precision rather than text; .ANI is listed among a run's files but never parsed.  So it is purely for opening the trajectory in an external viewer -- turn it off if disk matters and you do not need that, and nothing inside molbuilder changes.
 """
 
 [item.write_hs]

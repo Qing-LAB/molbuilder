@@ -373,6 +373,28 @@ are declared in each engine's `warm-files.toml` instead, and the two
 declarations are **disjoint by construction** (a file is the engine's restart
 state *or* one we wrote, never both; the suite checks it).
 
+**SIESTA's history is a run's own, named for the run** *(F-MDNC,
+2026-10-13)*. SIESTA appends every step to four files it opens by its own
+name, `<SystemLabel>.MD.nc`, `.MD`, `.MDE` and `.ANI`, and reads none of them
+back. Opened under that name in a folder several runs share — a flat stage's,
+an attempt a warm retry re-runs in — one file collects every run's steps, and
+a run's output cannot be told its own rows: measured on the flat end-to-end
+calculation (2026-10-08), the second run's `.MD.nc` held 12 rows where each
+run's output has 8 frames, and the reader paired the second run's frames with
+the first run's rows. So each is a row of `WRITTEN`, named like the run's
+output, `<label>_<stage>-run<N><role>`, in every shape, and the run script
+points SIESTA's name for it at that file while the engine runs (§ 2.6): a run
+starts with no history and writes its steps alone, and a run launched again, a
+retry or a stage after it appends nothing to an earlier run's. Which of the
+four a run writes is its deck's — `WriteMDhistory` the first three,
+`WriteMDXmol` the animation — and the row names the catalogue item
+(`Artifact.written_when`). None is carried to a continuing run (§ 4.2).
+A folder where SIESTA's name already holds a history *file* — kept so by a
+molbuilder before 2.9.6, every run appending to it — stops the run before its
+engine starts, naming the file (§ 2.6): it is history no reader takes now, and
+the person moves it aside; a cold launch's sweep removes it with the rest of
+the engine's state (§ 4.1).
+
 The `.molwatch.log` is the progress channel every run has. Prep seeds it — the
 initial geometry as step 0 — before the engine starts, so a viewer pointed at a
 prepared run finds something; PySCF's deck writes each step into it, and SIESTA
@@ -975,7 +997,7 @@ wrapper contains these and nothing else:
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
 | **Background job monitor** | launches `mb_monitor.pyz` beside the run at `nice 19`, watching the wrapper's own PID — the monitor and the framework readers it reads the run through, one file; the EXIT trap stops it and waits for its closing lines (`run-reports.md` §§ 2.4, 2.6). Opt out with `MB_MONITOR=0` |
 | **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
-| **Launch SIESTA + capture exit** | the engine, run as a child, and its exit code; on a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then — after the job's finish, when it has one (the next two rows) — the conclusion marker, on the main line |
+| **Launch SIESTA + capture exit** | the engine, run as a child, and its exit code; its output named for the run — stdout through the tee, and SIESTA's history (§ 2.2): just before the engine starts, SIESTA's name for each history file the deck writes is pointed at the run's own file, and the pointer is removed when the engine exits (and by the EXIT trap). A name that already holds a file — SIESTA's history kept as before 2.9.6, or a SIESTA run started by hand — stops the run before the engine, naming it: the pointer never replaces a file. On a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then — after the job's finish, when it has one (the next two rows) — the conclusion marker, on the main line |
 | **Can the job finish itself?** | *(a job with a finish — a SIESTA force-constant stage, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.5)* before the engine starts, once the run index is known: the finish bundle's `loads` verb on the job's own python (`$_mb_py`, probed by the monitor block). A job env that cannot run it stops here, before the run it would throw away, and says so in the conclusion marker (`rc=1 at …; finish cannot load (<bundle>)`), which reads `failed` (`running-a-job.md` § 4.2). A dry run has already exited |
 | **The calculation's own result** | *(a job with a finish)* after the engine exits cleanly: logs `finish started:` and runs the bundle on the job's python, which derives the result beside the run. Its failure is the job's — the marker records its exit status and names the failed finish (`…; finish failed (<bundle>)`), and the wrapper exits with it; an output that ended, beside that log line and no marker yet, reads `running` (`running-a-job.md` § 4.2) |
 
@@ -1022,7 +1044,8 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   module-load / venv scheme ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)). (The old illustrative `conda run -n … --no-capture-output`
   example is outdated.)
 - **Outputs are run-indexed and never clobbered.** stdout goes to
-  `my-job-runN.out` (SIESTA) / `my-job-runN.pyscf.log` (PySCF). The number is
+  `my-job-runN.out` (SIESTA) / `my-job-runN.pyscf.log` (PySCF), and SIESTA's
+  history to `my-job_<stage>-runN.MD.nc` and its three siblings (§ 2.2). The number is
   `launch`'s: it decides it and hands it to the run script as `--run N`, and
   the script refuses to start without one
   ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1). The
@@ -2518,7 +2541,8 @@ the stale one. The rules that generate every name there:
 
 **Who names the file decides whether it carries the stage.** A file **SIESTA**
 names is bare, because SIESTA looks for `<SystemLabel>.XV` and molbuilder has no
-say. A file **molbuilder** names for a stage carries `_<stage>` — in the
+say — except its history, which SIESTA only appends to: the run script points
+SIESTA's name for it at the run's own file, so molbuilder names it (§ 2.2). A file **molbuilder** names for a stage carries `_<stage>` — in the
 hierarchy that repeats what the directory says, and the repetition is the point:
 without it every stage directory holds an identically-named deck, and two
 swapped by a bad copy or a resumed `prep` disagree with nothing

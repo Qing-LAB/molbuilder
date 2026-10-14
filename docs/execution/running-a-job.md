@@ -184,6 +184,13 @@ stating because it is easy to break by accretion.
 > reports on the run it started — its output, its monitor, how it ended. It
 > creates no directory and arranges no file: that is Python's, on the host,
 > before the wrapper is invoked.**
+>
+> **Naming the run's output is the one thing it lays down beside the engine**,
+> because only the run knows its number — a warm retry's is decided on the
+> node: its stdout, through the tee, and SIESTA's history, whose name SIESTA
+> takes from its label — the run script points that name at the run's own
+> file while the engine runs and removes the pointer when it exits
+> ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2, § 2.6).
 
 **Why bash at all:**
 

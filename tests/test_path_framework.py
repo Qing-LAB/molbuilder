@@ -265,7 +265,7 @@ def test_the_survey_does_not_claim_an_engines_files():
     """
     t = _tool()
     known = {needle for needle, _door, _what in t.OWNED}
-    for engine_file in (".XV", ".DM", ".STRUCT_OUT", ".ANI", ".TSHS"):
+    for engine_file in (".XV", ".DM", ".STRUCT_OUT", ".TSHS"):
         assert engine_file not in known, (
             f"{engine_file} is the ENGINE's; no door of ours composes it")
 

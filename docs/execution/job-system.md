@@ -1943,7 +1943,7 @@ launched and how, what geometry it continued from, and what it left behind:
 STAGE 03_tight -- running
 
   deck            bdt_relax_03_tight.fdf
-  declares        bdt_relax.XV, bdt_relax.DM, bdt_relax.MD.nc, bdt_relax.MD, bdt_relax.MDE, bdt_relax.ANI, bdt_relax.CG
+  declares        bdt_relax.XV, bdt_relax.DM, bdt_relax.CG
   resources       n=32, c=2
   attempt         run-1   (of run-0, run-1)
   launched        submit as job 481923 at 2026-08-10T19:04:08Z
@@ -2121,7 +2121,7 @@ so a refusal leaves an attempt an earlier prep set up as it was. Either way `lau
 the stage continues from, and the decision ledger records it:
 
 ```text
-  continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): copied H2.XV, H2.DM, H2.MD.nc, H2.MD, H2.MDE, H2.ANI
+  continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): copied H2.XV, H2.DM
 ```
 
 (The optimiser's `H2.CG` is carried only between stages that use the same

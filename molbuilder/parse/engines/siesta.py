@@ -401,9 +401,10 @@ class SiestaOutFileParser(FileParser):
         traj = SiestaParser.parse(str(path))
         # THE .out STAYS THE TRAJECTORY; the netCDF only sharpens it.
         #
-        # SIESTA writes <label>.MD.nc beside the .out whenever
-        # WriteMDhistory is on and the binary was built with -DCDF (both
-        # true for the packaged env).  It holds the same geometries and
+        # A run's own history, <label>_<stage>-run<N>.MD.nc, lies beside its
+        # .out whenever WriteMDhistory is on and the binary was built with
+        # -DCDF (both true for the packaged env; `job-contracts.md` § 2.2).
+        # It holds the same geometries and
         # energies WITHOUT having gone through a Fortran text formatter --
         # full double precision instead of the .out's four decimals, and
         # none of the fixed-width column collisions this module carries a

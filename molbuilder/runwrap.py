@@ -172,6 +172,65 @@ def _last_run_block(names) -> str:
         f"printf '%s\\n' \"{run}\" > \"{rec}\"\n")
 
 
+def _history_block(names, deck_text: Optional[str]) -> str:
+    """Bash that points SIESTA's name for each history file this deck writes
+    at the run's own file, just before the engine starts
+    (`job-contracts.md` § 2.2, § 2.6): SIESTA appends every step to
+    ``<SystemLabel><role>``, so the run's history then holds its steps alone.
+    Which of them the deck writes is the deck's to say -- the catalogue item
+    each row names (`runfiles.pointed_roles`), read from the deck as SIESTA
+    reads it, and the name SIESTA uses is the deck's ``SystemLabel``.  A name
+    that already holds a file stops the run before the engine, saying so in
+    its conclusion: the pointer never replaces a file.  ``""`` for a deck
+    that writes no history."""
+    from .parse.fdf import fdf_true
+    from .runfiles import compose, pointed_roles
+    from .script_emit import parameter
+    if deck_text is None:
+        return ""
+
+    def on(item: str) -> bool:
+        said = parameter(item, "siesta", deck_text=deck_text).value
+        return said is not None and fdf_true(str(said).split())
+
+    roles = [role for role, item in pointed_roles("siesta") if on(item)]
+    if not roles:
+        return ""
+    label = parameter("system_label", "siesta", deck_text=deck_text).value
+    if not label or not _SAFE_WRAPPER_NAME_RE.fullmatch(str(label)):
+        raise WrapperError(
+            f"{names.name('.fdf')} writes SIESTA's history and states "
+            f"{'no SystemLabel' if not label else f'SystemLabel {label!r}'}"
+            f" -- SIESTA names its history from it, and the run script "
+            f"points that name at the run's own file.")
+    pairs = [(compose(str(label), role), _bash_name(names, role))
+             for role in roles]
+    return (
+        "# --- SIESTA's history, this run's own -------------------\n"
+        "# SIESTA appends every step to <SystemLabel><role>; each such name\n"
+        "# points at this run's file while the engine runs, and the pointer\n"
+        "# goes when it exits (job-contracts.md 2.2, 2.6).  A name that\n"
+        "# holds a file stops the run here: the pointer never replaces one.\n"
+        "_mb_point() {\n"
+        '    if [ -e "$1" ] && [ ! -L "$1" ]; then\n'
+        '        _log ERROR "$1 is a file, and SIESTA would append this '
+        'run\'s steps to it -- move it aside and launch again '
+        '(job-contracts.md 2.2)"\n'
+        '        echo "ERROR: $1 is a file: SIESTA appends its history to '
+        'it, and this run keeps its own ($2).  The engine was not '
+        'started; move $1 aside and launch again." >&2\n'
+        '        printf "rc=1 at %s; SIESTA\'s history name holds a file '
+        '(%s)\\n" "$(date)" "$1" > "$_concluded"\n'
+        "        exit 1\n"
+        "    fi\n"
+        '    rm -f "$1"\n'
+        '    ln -s "$2" "$1"\n'
+        '    _mb_pointed="$_mb_pointed $1"\n'
+        "}\n"
+        + "".join(f'_mb_point "{ours}" "{run}"\n' for ours, run in pairs)
+    )
+
+
 def _retry_record_block(names) -> str:
     """The lines a warm retry writes ITS OWN LAUNCH RECORD with, before it
     re-runs -- where the stage's names say a run's record is its own (the
@@ -3048,6 +3107,16 @@ def render_run_wrapper(script_path: Path, *,
         f"        _mb_w=$((_mb_w + 1))\n"
         f"    done\n"
         f"}}\n"
+        # SIESTA'S HISTORY POINTERS, removed when the engine exits and by
+        # this trap (`job-contracts.md` § 2.6) -- a no-op unless a run
+        # script laid one (`_history_block`).
+        f'_mb_pointed=""\n'
+        f"_mb_unpoint() {{\n"
+        f"    for _mb_p in $_mb_pointed; do\n"
+        f'        if [ -L "$_mb_p" ]; then rm -f "$_mb_p"; fi\n'
+        f"    done\n"
+        f'    _mb_pointed=""\n'
+        f"}}\n"
         f"_mb_cleanup_ran=0\n"
         f"_mb_cleanup() {{\n"
         # Idempotence guard: a caught signal runs cleanup and exits,
@@ -3060,6 +3129,7 @@ def render_run_wrapper(script_path: Path, *,
         # trap mid-body and skip the MPS teardown below (R9).  Same for a
         # vanished MPS control daemon under pipefail.
         f"    _mb_stop_monitor TERM || true\n"
+        f"    _mb_unpoint || true\n"
         f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" '
         f"2>/dev/null || true\n"
         # BOTH conditions (E-3, 2026-08-13): _mps_started says a daemon
@@ -3237,6 +3307,7 @@ def render_run_wrapper(script_path: Path, *,
                f'${{_mb_engine_args[@]+"${{_mb_engine_args[@]}}"}}\n'
                f'}}\n'
                if continue_retries and continue_retries > 0 else "")
+            + _history_block(names, deck_text)
             + _last_run_block(names)
             + f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
@@ -3244,6 +3315,7 @@ def render_run_wrapper(script_path: Path, *,
             f'"$_scf_timing_log"\n'
             f"_siesta_exit=${{PIPESTATUS[0]}}\n"
             f"set -e\n"
+            f"_mb_unpoint\n"
             f"_t_end=$(date +%s.%N)\n"
             f'_siesta_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
             f"'BEGIN{{printf \"%.1f\", b-a}}')\n"

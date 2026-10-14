@@ -507,7 +507,7 @@ molbuilder/parse/
 ├── engines/       # engine output → FileParsers, over the reading layer (§ 4a)
 │   ├── siesta.py · pyscf.py · molwatch.py   # registered → TrajectoryResult
 │   ├── siesta_fdflog.py       # registered: fdf.<stamp>.log → EngineParamsResult (§ 5d.3)
-│   ├── siesta_mdnc.py         # registered: <label>.MD.nc — sibling upgrade (§ 5a)
+│   ├── siesta_mdnc.py         # registered: a run's .MD.nc — sibling upgrade (§ 5a)
 │   ├── siesta_grammar.py      # the SIESTA family's output lines (§ 5d.5)   ─┐
 │   ├── molwatch_grammar.py    # the progress log's lines                     │ stdlib;
 │   ├── siesta_reader.py       # SiestaReader — the SIESTA reading pass        │ travel in
@@ -867,10 +867,11 @@ the message cannot drift from it.
 ### 5.3 What this door does NOT own — and what no file parser guesses
 
 **A file parser reads its own file.** It may open a companion only where the
-engine names that companion from something the file itself states — SIESTA's
-`<SystemLabel>.MD.nc`, its label read from the `.out`'s own `reinit: System
-Label:` line (§ 5a); a geomeTRIC trajectory's run files, named on the stem its
-own name begins with (`<stem>_geom_optim.xyz`: `<stem>.molwatch.log`,
+companion is named from something the file itself states — a SIESTA run's
+history, `<label>_<stage>-run<N>.MD.nc`, the output's own name with the
+history's role, read back with the label the `.out` prints on its `reinit:
+System Label:` line (§ 5a); a geomeTRIC trajectory's run files, named on the
+stem its own name begins with (`<stem>_geom_optim.xyz`: `<stem>.molwatch.log`,
 `<stem>.log`, `<stem>-run<N>.pyscf.log`). A file that names no run reads only
 itself. That is reading, not searching, and it stays in the parser:
 a FileParser never depends on the directory composer.
@@ -1213,7 +1214,7 @@ Three parsers do this today:
 |---|---|---|
 | `engines/pyscf.py` | `<prefix>.qdata.txt` | per-step max force |
 | `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state, the atoms the run holds (§ 5.3) |
-| `engines/siesta.py` | `<label>.MD.nc` | coordinates + per-step energy, in full precision |
+| `engines/siesta.py` | the run's own `<label>_<stage>-run<N>.MD.nc` | coordinates + per-step energy, in full precision |
 
 **The rules, which are what keep this from becoming a second source of truth:**
 
@@ -1232,8 +1233,11 @@ Three parsers do this today:
 
 ### The SIESTA case, and the trap in it
 
-`<label>.MD.nc` is netCDF, written whenever `WriteMDhistory` is on and the
-binary was built with `-DCDF` (both true for the packaged `molbuilder-siesta`).
+The history is netCDF, written whenever `WriteMDhistory` is on and the
+binary was built with `-DCDF` (both true for the packaged `molbuilder-siesta`),
+and each run's is its own: SIESTA opens `<SystemLabel>.MD.nc` and the run
+script points that name at `<label>_<stage>-run<N>.MD.nc` while the engine
+runs (`execution/job-contracts.md` § 2.2).
 It matters because the `.out` is a Fortran-formatted text file: it prints
 `E_KS(eV) = -30.4405` — **four decimals**, coarser than the step-to-step energy
 change near convergence — and its fixed-width columns collide when values grow
@@ -1259,10 +1263,13 @@ Two more properties shape the reader:
 - **There is no row for the input geometry.** So the merged trajectory keeps
   the `.out`'s own frame 0 — the structure the user submitted, and the frame
   every other one is read against.
-- **The file accumulates across runs** (SIESTA appends on restart). Frame index
-  is therefore not run-local, which is why `align_to_reference` matches on
-  **coordinates** rather than doing index arithmetic: a hardcoded lag is right
-  on a fresh run and wrong on every warm one.
+- **A row is matched to its frame by coordinates**, not by index
+  (`align_to_reference`): the `.out` repeats its final geometry, so index
+  arithmetic would pair that repeat with nothing or with the wrong row. Each
+  history holds its own run's rows alone — SIESTA appends to whatever lies
+  under its name, which is why a run's history is the run's own *(until
+  2026-10-13 one file held every run in a folder, and a second run's frames
+  were matched to the first run's rows)*.
 
 Units come from each variable's own `unit` attribute (`xa` is Bohr while
 `volume` is `Ang**3` *in the same file*), and an unrecognised unit is refused

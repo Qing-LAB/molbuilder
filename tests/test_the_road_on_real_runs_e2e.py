@@ -147,6 +147,23 @@ def test_the_next_stage_builds_on_the_newest_run_of_the_stage_before_it(
     _records(b / "02_medium" / "run-0", "01_coarse/run-2")
 
 
+def test_every_run_s_history_is_its_own(real_h2_layered):
+    """A run that continues its stage's own run (`coarse`'s run-1, warm) and
+    one that continues the stage before it (`medium`'s run-0) take no history
+    from the run they continue: each holds its own steps, as the first run
+    does (`job-contracts.md` § 2.2; `project-layout.md` § 2.3.4).
+
+    MUTATION THIS MUST FAIL AGAINST: the run script laying no pointer --
+    SIESTA writes ``H2.MD.nc`` in each run folder, and no run has a history
+    of its own."""
+    from support.road import history_is_the_runs_own
+    b = real_h2_layered.bundle
+    for out in ("01_coarse/run-0/H2_01_coarse-run0.out",
+                "01_coarse/run-1/H2_01_coarse-run0.out",
+                "02_medium/run-0/H2_02_medium-run0.out"):
+        history_is_the_runs_own(b / out, "H2")
+
+
 def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):
     """The server's one answer to a viewer about a stage's newest run
     (`runs.run_answer`, `web/results.md` § 4.1): finished, and not live."""

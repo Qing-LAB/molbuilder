@@ -7,9 +7,9 @@ BOOKKEEPING, because every mistake in it is silent:
     every scalar on the same row describes the geometry just evaluated.  Pair
     them naively and every energy in the trajectory is off by one move, with
     a plausible-looking plot and nothing raised;
-  * the file has no row for the input geometry, and it ACCUMULATES across
-    restarts, so aligning it to the .out by index arithmetic is right on a
-    fresh run and wrong on a warm one;
+  * the file has no row for the input geometry, and the .out repeats its
+    final one, so aligning the two by index arithmetic pairs a frame with a
+    row it is not;
   * ``xa`` is Bohr while ``volume`` is Ang**3 IN THE SAME FILE, so a blanket
     unit assumption is wrong even when it looks consistent.
 
@@ -42,16 +42,6 @@ def _frames(*bonds: float):
 
 
 # ---- alignment --------------------------------------------------- #
-
-
-def test_alignment_matches_by_geometry_not_by_index():
-    """A warm restart appends to the existing .MD.nc, so the candidate list
-    can carry a previous run's frames in front.  Index arithmetic gets this
-    wrong; matching does not."""
-    ref = _frames(1.00, 1.10, 1.20)
-    stale = _frames(9.00, 9.10)                     # a previous run's tail
-    candidate = stale + ref
-    assert align_to_reference(ref, candidate) == [2, 3, 4]
 
 
 def test_alignment_reports_a_miss_rather_than_guessing():

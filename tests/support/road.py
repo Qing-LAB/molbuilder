@@ -614,6 +614,33 @@ def _road_card_written(specs, bundle) -> None:
                 f"no such file is there: {sorted(held)}")
 
 
+def history_is_the_runs_own(out: Path, label: str) -> None:
+    """A SIESTA run's history is its own (`job-contracts.md` § 2.2): SIESTA's
+    own name for it, ``<label>.MD.nc``, not left in the folder once the engine
+    has exited; and the run's ``<label>_<stage>-run<N>.MD.nc`` beside its
+    output ``out``, which the output's frames are upgraded from, each row a
+    step of that output in its order -- but the last, a move the run stopped
+    before evaluating (`model/parse.md` § 5a: row k is the geometry after
+    move k+1).  A run that made no move -- relaxed at its first step --
+    writes none, and its output is paired with nothing."""
+    from molbuilder.parse import parse
+    from molbuilder.parse.engines.siesta_mdnc import align_to_reference
+    assert not (out.parent / f"{label}.MD.nc").exists(), (
+        f"SIESTA's own name for the history is still in {out.parent}")
+    own = out.with_name(out.name[:-len(".out")] + ".MD.nc")
+    got = parse(str(out))
+    if not own.is_file():
+        assert "mdnc_source" not in got.runtime_info, got.runtime_info
+        return
+    assert got.runtime_info.get("mdnc_source") == own.name, got.runtime_info
+    rows = parse(str(own)).frames
+    matched = [j for j in align_to_reference(got.frames, rows)
+               if j is not None]
+    assert matched in (list(range(len(rows))), list(range(len(rows) - 1))), (
+        f"{own.name}: {len(rows)} rows, and {out.name}'s frames are "
+        f"{matched} of them -- rows that are not this run's steps")
+
+
 def _as_written(path: Path):
     """A file as it stands: its bytes and its write time to the
     nanosecond -- a file written again with the same bytes is still written
