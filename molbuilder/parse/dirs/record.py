@@ -158,9 +158,9 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
     out_head = _read(out, head=_HEAD)
     fdf_log = _fdf_log_of(d, out_head) if out is not None else None
 
-    # THE WRAPPER LOG WHOSE FIRST SECTION IS RUN N: a retry appends its own
-    # section to the first log and opens one of its own -- the pairing
-    # `run_status` reads SIESTA's stderr by (`wrapper_log.log_of_run`).
+    # THE WRAPPER LOG WHOSE FIRST SECTION IS RUN N: each start writes its
+    # own -- the pairing `run_status` reads SIESTA's stderr by
+    # (`wrapper_log.log_of_run`).
     from ...wrapper_log import log_of_run, read_wrapper_log
     section: Dict[str, Any] = {}
     section_text = ""

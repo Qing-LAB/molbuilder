@@ -256,21 +256,24 @@ def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
 
 
 def test_each_run_is_paired_with_its_own_session_log(stopped):
-    """The warm retry re-execs the wrapper with its output still going to
-    the first log and opens a log of its own, so the first log holds run 0
-    AND run 1's section.  A run's log is the one whose FIRST section is that
-    run -- the pairing the run record and ``run_status`` both use
-    (`wrapper_log.logs_by_run`)."""
-    from molbuilder.wrapper_log import first_run_index, log_of_run
+    """Each start of the wrapper writes its own session log, and the warm
+    retry hands back the output it was started with before it starts again,
+    so run 0's log holds run 0 alone and run 1's holds run 1
+    (`running-a-job.md` § 3.5) -- each found as its run's, the pairing the
+    run record and ``run_status`` both use (`wrapper_log.logs_by_run`).
+
+    MUTATION THIS MUST FAIL AGAINST: the retry re-execs with its output
+    still going to the first log -- run 0's log holds run 1's section too."""
+    from molbuilder.wrapper_log import log_of_run, read_wrapper_log
 
     first = log_of_run(stopped, "H2", 0, "01_coarse")
     second = log_of_run(stopped, "H2", 1, "01_coarse")
     assert first is not None and second is not None and first != second, (
         sorted(p.name for p in stopped.iterdir()))
-    assert (first_run_index(first), first_run_index(second)) == (0, 1)
-    assert "run index: 1" in first.read_text(errors="replace"), (
-        "the retry's section did not reach the first log, so this run does "
-        "not show why the FIRST section decides")
+    for log, run in ((first, 0), (second, 1)):
+        sections = read_wrapper_log(log.read_text(errors="replace"))
+        assert [s.get("run_index") for s in sections] == [run], (
+            log.name, sections)
     assert log_of_run(stopped, "H2", 2, "01_coarse") is None
     assert log_of_run(stopped, "H2", 0, None) is None
 

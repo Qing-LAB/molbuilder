@@ -1437,8 +1437,9 @@ latest `-runN` of the stage the directory's status speaks for (§ 5.1), and
 lists each earlier run with its ending. Its files are that run's `-runN`
 artifacts; SIESTA's `fdf.<stamp>.log` whose stamp is the `.out`'s `>> Start of
 run` to the second — SIESTA opens the log in that second; and the wrapper log
-whose FIRST section is run N — a retry appends its own section to the first
-log, so a log merely *containing* run N is not its log. `run.json`,
+whose first section is run N — each start of the wrapper writes its own, a warm
+retry handing back the output it was started with before it starts again
+(`execution/running-a-job.md` § 3.5). `run.json`,
 `.gathered-from`, the deck and the pseudopotential files belong to the attempt,
 not to one run.
 

@@ -15,11 +15,11 @@ finish began (`running-a-job.md` § 4.2).
 MONITOR_COMPANIONS`), so the monitor pairs a run with its log exactly as the
 Results tab does.
 
-ONE SECTION PER RUN.  A warm retry re-execs the wrapper with its output
-still going to the first log, and opens a log of its own -- measured on the
-2026-09-25 device: its first log holds run 0 and then run 1, its second run
-1 alone -- so a log is read as sections, each opening with the start banner,
-and the run a log is FOR is its first section's (:func:`log_of_run`).
+ONE LOG PER START.  Each start of the wrapper opens a log of its own, and a
+warm retry hands back the output it was started with before it starts again
+(`running-a-job.md` § 3.5), so a log holds its start alone.  A log is read as
+sections, each opening with the start banner, and the run a log is FOR is its
+first section's (:func:`log_of_run`).
 """
 from __future__ import annotations
 
@@ -152,9 +152,8 @@ def first_run_index(path) -> Optional[int]:
 def logs_by_run(directory, label: str
                 ) -> Dict[Tuple[Optional[str], int], Path]:
     """Every session log of ``label`` here, by the run it is FOR --
-    ``(stage, run) -> path``, the run being the log's FIRST section's (a
-    retry's section in the first log is not its log -- see the module's
-    note), the newest log where several are that run's.  The stage is the
+    ``(stage, run) -> path``, the run being the log's first section's (the
+    module's note), the newest log where several are that run's.  The stage is the
     name's: the log and the run's output are named from the same deck, so
     they carry the same token, and in a flat directory every stage's logs
     sit side by side."""

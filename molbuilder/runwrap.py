@@ -2580,6 +2580,11 @@ def render_run_wrapper(script_path: Path, *,
         _prog = getattr(r, "program", None) or "siesta"
         # WHAT THE LOG CALLS IT: a transmission run is TBtrans.
         _prog_label = "TBtrans" if _prog == "tbtrans" else "SIESTA"
+        # A RETRY ANSWERS AN SCF STOP OR A RELAXATION OUT OF MOVES
+        # (`running-a-job.md` § 3.5), and TBtrans ends in neither: its run
+        # script carries no retry whatever the budget, and its banner says
+        # why.
+        _retries = 0 if _prog == "tbtrans" else (continue_retries or 0)
         env_prefix += (
             # The block NAME is job-contracts.md § 2.6's row and stays
             # stable; the binary inside is _prog.
@@ -2757,9 +2762,12 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  Launch mode   : $_launch_note"\n'
             # WHAT A RETRY WILL ACTUALLY DO ON THIS DECK.  The budget is the user's (it travels; see the note in
             # `render_run_wrapper`); the description is the deck's.
-            + (f'echo "  Retry policy  : up to {continue_retries} '
+            + (f'echo "  Retry policy  : up to {_retries} '
                f'retry(s) on non-convergence -- {_retry["policy"]}"\n'
-               if continue_retries and continue_retries > 0 else
+               if _retries > 0 else
+               'echo "  Retry policy  : none -- TBtrans runs no SCF and no '
+               'relaxation, so no ending of it is retried"\n'
+               if _prog == "tbtrans" else
                'echo "  Retry policy  : none (halt on non-convergence)"\n')
             + 'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
             'OPENBLAS=1, MKL=1"\n'
@@ -3281,7 +3289,7 @@ def render_run_wrapper(script_path: Path, *,
                              cores="$_mb_cores", gpu=gpu_mode)
             + _finish_check_block(finish)
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
-               f'_siesta_retry_max={continue_retries}\n'
+               f'_siesta_retry_max={_retries}\n'
                f'# Retry: re-exec this wrapper as the NEXT RUN -- --run N+1,\n'
                f'# with --continue; what the engine reads back is the banner\'s\n'
                f'# retry line -- warm, cold, or from the first step of a run\n'
@@ -3303,10 +3311,12 @@ def render_run_wrapper(script_path: Path, *,
                f'    echo "" >&2\n'
                f'    _mb_stop_monitor USR1 || true\n'
                f'    export MB_RETRY_N=$_mb_next\n'
+               f'    exec 1>&"$_mb_out" 2>&"$_mb_err" {{_mb_out}}>&- '
+               f'{{_mb_err}}>&-\n'
                f'    exec bash "$_mb_self" --continue --run "$_mb_next_run" '
                f'${{_mb_engine_args[@]+"${{_mb_engine_args[@]}}"}}\n'
                f'}}\n'
-               if continue_retries and continue_retries > 0 else "")
+               if _retries > 0 else "")
             + _history_block(names, deck_text)
             + _last_run_block(names)
             + f"_t_start=$(date +%s.%N)\n"
@@ -3401,7 +3411,7 @@ def render_run_wrapper(script_path: Path, *,
                + f'{_retry["after"]}.'
                + '" >&2\n'
                '    fi\n'
-               if continue_retries and continue_retries > 0 else "")
+               if _retries > 0 else "")
             + '    # CONCLUDED -- an error is a conclusion (project-\n'
             '    # layout.md 1.6, "the other file"): the engine returned\n'
             '    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
@@ -3413,7 +3423,7 @@ def render_run_wrapper(script_path: Path, *,
             "fi\n"
             + (f"\n"
                f"# --- Geometry-cap check + warm-retry "
-               f"(up to {continue_retries} retries) ---\n"
+               f"(up to {_retries} retries) ---\n"
                f"# A relaxation that exhausts its MD step budget UNCONVERGED\n"
                f"# still exits 0 and prints its final geometry as unrelaxed\n"
                f"# (a converged one as relaxed; Src/siesta_analysis.F90).\n"
@@ -3433,7 +3443,7 @@ def render_run_wrapper(script_path: Path, *,
                f'retry(s)."\n'
                f'fi\n'
                f'\n'
-               if continue_retries and continue_retries > 0 else "")
+               if _retries > 0 else "")
             + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
             + '$_out_file"\n'
             + _finish_block(finish, script_name)
@@ -3610,7 +3620,10 @@ def render_run_wrapper(script_path: Path, *,
         f"# resolve wherever it runs from.\n"
         f"# It opens BEFORE the launch-door gate (U10), so a refusal is a\n"
         f"# fact on disk -- the log alone answers what happened, even when\n"
-        f"# nothing ran.\n"
+        f"# nothing ran.  The output it was started with is kept: a warm\n"
+        f"# retry hands it back before it starts again, so each start's\n"
+        f"# log holds that start alone (running-a-job.md 3.5).\n"
+        f"exec {{_mb_out}}>&1 {{_mb_err}}>&2\n"
         f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
         f"\n"
         f"# --- Launch-door gate (one door: jobset launch) ----------\n"

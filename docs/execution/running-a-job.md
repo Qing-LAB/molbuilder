@@ -486,7 +486,11 @@ run's number (`--run N+1`), when its run ended in one of two ways a warm
 restart can fix. The budget is the template's
 `continue_retries` (*Warm-retry budget*, 0–5, default 1), carried on
 `Resources` (`job-contracts.md` § 6.2) and bounded by the exported
-`MB_RETRY_N`; a benchmark trial's is `0`, one run whatever happens.
+`MB_RETRY_N`; a benchmark trial's is `0`, one run whatever happens. **A
+TBtrans run is never retried**: it runs no SCF and no relaxation, so neither
+ending below can occur, and its script carries no retry and says so on its
+banner's retry line whatever the budget *(F19b: it promised retries on
+non-convergence)*.
 
 | the run ended | SIESTA shows it by | the wrapper asks | the retry resumes from |
 |---|---|---|---|
@@ -540,7 +544,11 @@ process and directory, with the same `-np`/`--omp` and the next run's number,
 so the run index advances in place (`-run0` → `-run1`,
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) and only the
 last run writes the conclusion marker. The monitor is stopped with SIGUSR1,
-not an ending (§ 4.1).
+not an ending (§ 4.1). **Each try keeps its own session log**: the wrapper
+hands back the stdout and stderr it was started with before it re-execs, so
+the retry's output goes to its own log and to where the job's output goes,
+never into the try before it *(F19b, 2026-10-13: a retry's output went on
+into the first try's log, which held both)*.
 
 **In the flat shape the retry is a run with its own launch record.** Before
 it re-execs, the wrapper writes `<base>-run<N+1>.run.json` through the
