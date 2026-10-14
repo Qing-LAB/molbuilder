@@ -865,10 +865,11 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         implies.
         Every outbound path below goes through this one call."""
 
-    def files(self, struct, target) -> list[tuple[Path, bytes]]:
+    def files(self, struct, target, *, fmt=None) -> list[tuple[Path, bytes]]:
         """TO THE WIRE. The pair as bytes WITH THE NAMES THEY BELONG UNDER --
-        `target`'s suffix corrected to the one `pair` chose. What `write`
-        writes, without writing it."""
+        `target`'s suffix corrected to the one `pair` chose, the format the
+        target names unless `fmt` says (the export door's is XYZ). What
+        `write` writes, without writing it."""
 
     def write(self, struct, target, *, atomic=True, fmt=None) -> Path:
         """TO DISK. The pair as one unit: geometry to `target`, and the

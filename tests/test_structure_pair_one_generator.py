@@ -77,14 +77,16 @@ def _plain() -> Structure:
 #  The disk and the wire agree                                          #
 # --------------------------------------------------------------------- #
 
+@pytest.mark.parametrize("name", ["wire.xyz", "wire.pdb"])
 @pytest.mark.parametrize("make", [_with_metadata, _plain], ids=["metadata", "plain"])
-def test_what_write_puts_on_disk_is_what_files_hands_over(tmp_path, make):
+def test_what_write_puts_on_disk_is_what_files_hands_over(tmp_path, make, name):
     """`files()` is "what write() writes, without writing it". If the two can
     disagree, one of them is a second answer to what a saved structure looks
-    like — which is the whole defect this pins.
+    like — which is the whole defect this pins.  A destination naming `.pdb`
+    is a PDB to both (`model/structure.md` § 2.4, *the format choice*).
     """
     struct = make()
-    target = tmp_path / "wire.xyz"
+    target = tmp_path / name
     StructureCodec().write(struct, target)
 
     handed = dict(StructureCodec().files(struct, target))

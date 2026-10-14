@@ -169,7 +169,8 @@ class StructureCodec:
         # any non-ASCII in the XYZ comment line or PDB residue names.  Same
         # hardening molstruct_json / spectra_json / transport_json carry.
         text = src.read_text(encoding="utf-8-sig")
-        if suffix == ".pdb":
+        fmt = self.format_named(src)
+        if fmt == "pdb":
             struct = Structure.from_pdb(text)
         else:
             struct = Structure.from_xyz(text)
@@ -178,7 +179,7 @@ class StructureCodec:
             payload = molstruct.load(sidecar_path, retired_out=retired_out)
             pinned = payload.get("geometry_hash")
             if pinned is not None and pinned != molstruct.geometry_hash(
-                    text, suffix[1:], payload["cell"], payload["axis_kind"]):
+                    text, fmt, payload["cell"], payload["axis_kind"]):
                 if changed_out is None:
                     raise molstruct.GeometryChangedError(
                         geometry_changed_said(src.name))
@@ -202,7 +203,7 @@ class StructureCodec:
                 if run_frame.get("axis_kind"):
                     changes["axis_kind"] = tuple(run_frame["axis_kind"])
                 struct = struct.replace(**changes)
-        elif suffix == ".xyz" and said_out is not None:
+        elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read
             # says so, quoting the comment line it did not read as metadata
@@ -317,8 +318,17 @@ class StructureCodec:
                              suffix=(".pdb" if fmt == "pdb"
                                      else self.GEOMETRY_SUFFIX))
 
+    @staticmethod
+    def format_named(target) -> str:
+        """The container a destination names: ``pdb`` for a ``.pdb``, ``xyz``
+        for every other name (``model/structure.md`` § 2.4, *the format
+        choice*).  :meth:`load` dispatches on that same suffix -- which is
+        what makes write->read a round trip rather than a coincidence."""
+        return "pdb" if Path(target).suffix.lower() == ".pdb" else "xyz"
+
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
-    def files(self, struct: Structure, target) -> List[Tuple[Path, bytes]]:
+    def files(self, struct: Structure, target, *,
+              fmt: "str | None" = None) -> List[Tuple[Path, bytes]]:
         """The pair as bytes, WITH THE NAMES THEY BELONG UNDER -- what
         :meth:`write` writes, without writing it, and what the export door
         answers with.
@@ -327,7 +337,9 @@ class StructureCodec:
         guessed -- the pairing rule is the codec's.  Hand this a bare stem and it
         comes back named correctly; hand it a full ``<stem>.xyz`` and the suffix
         is corrected in place, which is why comparing this against :meth:`write`
-        still compares the same paths.
+        still compares the same paths.  ``fmt`` as :meth:`write` takes it: by
+        default the format the target names (:meth:`format_named`), so a
+        ``.pdb`` is a PDB, named so; a caller with its own answer passes it.
 
         Contrast :meth:`write`, which does NOT correct the name: a project save
         was given an exact path through a picker with an overwrite gate on it,
@@ -335,8 +347,9 @@ class StructureCodec:
         else.  Different questions (model/structure.md § 2.4).
         """
         target = Path(target)
-        made = self.pair(struct)
-        if target.suffix.lower() in self._REPLACEABLE_SUFFIXES:
+        made = self.pair(struct, fmt=(fmt or self.format_named(target)))
+        if (target.suffix.lower() in self._REPLACEABLE_SUFFIXES
+                or target.suffix.lower() == made.suffix):
             target = target.with_suffix(made.suffix)
         else:
             target = target.with_name(target.name + made.suffix)
@@ -375,14 +388,11 @@ class StructureCodec:
         the only visible interleaving is OLD-sidecar + NEW-geometry for a tiny
         window -- never a torn file."""
         target = Path(target)
-        # `fmt` names the container.  Default: read it off the name the caller
-        # chose, because `read` dispatches on that same suffix -- which is what
-        # makes write->read a round trip rather than a coincidence.  A caller
-        # with its own answer (the CLI's `--output-format`, which may name a
-        # format the extension does not) passes it and is obeyed.
-        made = self.pair(struct,
-                         fmt=(fmt or ("pdb" if target.suffix.lower() == ".pdb"
-                                      else "xyz")))   # the ONE generator
+        # `fmt` names the container.  Default: the one the name the caller
+        # chose names (`format_named`).  A caller with its own answer (the
+        # CLI's `--output-format`, which may name a format the extension does
+        # not) passes it and is obeyed.
+        made = self.pair(struct, fmt=(fmt or self.format_named(target)))
         return self._write_pair(target, made.document, made.sidecar,
                                 atomic=atomic)
 
