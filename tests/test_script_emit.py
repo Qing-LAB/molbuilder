@@ -363,14 +363,31 @@ def test_read_atom_metadata_block_returns_none_when_block_missing():
     assert sc.read_atom_metadata_block("SystemLabel siesta\nBlockSize 64\n") is None
 
 
-def test_read_atom_metadata_block_returns_none_on_malformed_json():
-    text = (
-        "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v3\n"
-        "# {this is not valid json\n"
-        "# === molbuilder atom-metadata END ===\n"
-    )
-    assert sc.read_atom_metadata_block(text) is None
+@pytest.mark.parametrize("text, words", [
+    ("# === molbuilder atom-metadata BEGIN ===\n"
+     "# format: molstruct-json/v3\n"
+     "# {this is not valid json\n"
+     "# === molbuilder atom-metadata END ===\n", "does not parse"),
+    ("# === molbuilder atom-metadata BEGIN ===\n"
+     '# {"n_atoms_total": 1}\n', "no BEGIN/END pair"),
+    ('# {"n_atoms_total": 1}\n'
+     "# === molbuilder atom-metadata END ===\n", "no BEGIN/END pair"),
+    ("# === molbuilder atom-metadata BEGIN ===\n"
+     "# format: molstruct-json/v3\n"
+     "# === molbuilder atom-metadata END ===\n", "holds no JSON object"),
+], ids=["json-broken", "no-end", "no-begin", "no-object"])
+def test_a_block_present_and_unreadable_is_refused_not_read_as_none(text,
+                                                                    words):
+    """A deck's molbuilder block is a record nobody edits
+    (`execution/job-contracts.md` § 3.1).  One broken by hand used to read as
+    `None` -- the answer for a deck that carries no block -- so the run was
+    shown with no labels and nothing said (plan A1.4).  It is refused, naming
+    the block and the way out."""
+    from molbuilder.deck_record import DeckRecordUnreadable
+    with pytest.raises(DeckRecordUnreadable) as exc:
+        sc.read_atom_metadata_block(text)
+    assert words in str(exc.value) and "atom-metadata" in str(exc.value)
+    assert "molbuilder checkpoint restore" in str(exc.value)
 
 
 def _blank_struct(n=20):

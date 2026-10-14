@@ -448,6 +448,17 @@ def create_app(*, config=None) -> Flask:
     def _periodicity_refused(exc):
         return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # A RUN'S DECK WHOSE MOLBUILDER BLOCK CANNOT BE READ is refused by the run
+    # door (`runs.declared`), naming the deck and the way out; it leaves every
+    # route as a 400 with that sentence, here, once -- a route that reads a
+    # run's view inherits it rather than answering an HTML 500
+    # (`execution/job-contracts.md` § 3.1).
+    from molbuilder.deck_record import DeckRecordUnreadable
+
+    @app.errorhandler(DeckRecordUnreadable)
+    def _deck_record_unreadable(exc):
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
     # --- Security headers ----------------------------------------- #
     #
     # Defense-in-depth headers for the internet-deployment use case

@@ -240,6 +240,7 @@ def composed_for_prep(base, task, plan):
     prep makes from the calculation's own copy -- and its bytes go into the
     plan."""
     from ..atom_permutation import PermutationError
+    from ..deck_record import DeckRecordUnreadable
     from ..projects import find_projects_root
     from ..transport.compose import (ComposeError, compose_junction,
                                      load_compose_record,
@@ -296,7 +297,8 @@ def composed_for_prep(base, task, plan):
             for name in names:
                 plan.bytes(Path(base) / name, (Path(tmp) / name).read_bytes())
         return composed
-    except (ComposeError, SortError, PermutationError) as exc:
+    except (ComposeError, SortError, PermutationError,
+            DeckRecordUnreadable) as exc:
         raise PrepError(str(exc)) from exc
 
 

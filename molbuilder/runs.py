@@ -389,7 +389,9 @@ def declared(run: Run) -> Declared:
     (:attr:`Run.deck`) by the readers of molbuilder's blocks, never from a
     file looked for beside an output by its name (`model/parse.md` § 5.3,
     plan B12).  A run with no deck here, or one whose deck carries neither
-    record, declares nothing."""
+    record, declares nothing; a block its deck carries and that cannot be
+    read is refused, :class:`deck_record.DeckRecordUnreadable` naming the
+    deck."""
     deck = run.deck
     if deck is None:
         return Declared()
@@ -397,11 +399,18 @@ def declared(run: Run) -> Declared:
         text = deck.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return Declared(deck=deck)
-    from molbuilder.deck_record import extract_engine_offset
+    from molbuilder.deck_record import (DeckRecordUnreadable,
+                                        extract_engine_offset)
     from molbuilder.script_emit import read_atom_metadata_block
-    return Declared(deck=deck,
-                    atom_metadata=read_atom_metadata_block(text),
-                    engine_offset=extract_engine_offset(text))
+    # A BLOCK THAT CANNOT BE READ IS REFUSED, naming the deck -- read as a
+    # deck that records nothing, the run would be shown with no labels and
+    # the engine's box guessed, and nothing said.
+    try:
+        return Declared(deck=deck,
+                        atom_metadata=read_atom_metadata_block(text),
+                        engine_offset=extract_engine_offset(text))
+    except DeckRecordUnreadable as exc:
+        raise DeckRecordUnreadable(f"{deck}: {exc}") from exc
 
 
 @dataclass(frozen=True)

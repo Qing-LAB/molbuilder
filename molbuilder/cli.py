@@ -1115,7 +1115,11 @@ def _apply_run_metadata(struct, xv_path: Path):
             f"folder as part of a calculation (calcdir.json, or task.json "
             f"above it; project-layout.md § 1.4a), so nothing declares its "
             f"atoms.  Without --from-run the .XV converts on its own.")
-    said = declared(run)
+    from .deck_record import DeckRecordUnreadable
+    try:
+        said = declared(run)
+    except DeckRecordUnreadable as exc:
+        raise click.ClickException(f"--from-run: {exc}") from exc
     stated = (said.atom_metadata or {}).get("n_atoms_total")
     if said.atom_metadata_for() is not None and stated != struct.n_atoms:
         raise click.ClickException(

@@ -461,8 +461,15 @@ class AtomChannel:
 
     @classmethod
     def from_json(cls, obj: dict) -> "AtomChannel":
-        """Inverse of :meth:`to_json` (value keys back to ints)."""
-        kind = obj["kind"]
+        """Inverse of :meth:`to_json` (value keys back to ints).  A channel
+        that is not an object, or states no ``kind``, is refused as a wrong
+        ``kind`` is -- a :class:`ValueError` the sidecar reader names its
+        file in, never a bare ``KeyError``."""
+        if not isinstance(obj, dict):
+            raise ValueError(
+                f"a channel is an object {{kind, data}}; got "
+                f"{type(obj).__name__}")
+        kind = obj.get("kind")
         raw = obj.get("data")
         if kind == "value":
             data: Any = {int(k): v for k, v in (raw or {}).items()}
@@ -480,8 +487,15 @@ def annotations_from_json(obj: Optional[dict]) -> "dict[str, AtomChannel]":
     """Deserialize an annotations map from the sidecar (§ 3).  STRICT: each
     value must be a JSON channel dict.  ``AtomChannel`` objects live only
     in-memory on a Structure; the metadata dict that crosses the API boundary
-    (metadata_to_dict / apply_metadata_dict / to_dict) is always JSON."""
-    return {name: AtomChannel.from_json(v) for name, v in (obj or {}).items()}
+    (metadata_to_dict / apply_metadata_dict / to_dict) is always JSON.  A
+    channel that cannot be read is refused naming it."""
+    out: "dict[str, AtomChannel]" = {}
+    for name, v in (obj or {}).items():
+        try:
+            out[name] = AtomChannel.from_json(v)
+        except ValueError as exc:
+            raise ValueError(f"annotation channel {name!r}: {exc}") from exc
+    return out
 
 
 def copy_annotations(ann: "dict[str, AtomChannel]") -> "dict[str, AtomChannel]":

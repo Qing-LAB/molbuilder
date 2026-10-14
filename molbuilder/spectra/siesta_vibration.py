@@ -63,7 +63,8 @@ try:                                        # inside molbuilder
     from ..parse.engines.siesta_reader import SiestaReader
     from ..parse.fdf import fdf_key, read_fdf, parse_fdf_params, system_label
     from ..runfiles import compose
-    from ..deck_record import extract_engine_offset, extract_vibration_record
+    from ..deck_record import (DeckRecordUnreadable, extract_engine_offset,
+                               extract_vibration_record)
     from ..engine_atom_index import from_engine_index, siesta_atom_index
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import LOG_CLOCK, LOG_LINE
@@ -78,7 +79,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_reader import SiestaReader
     from fdf import fdf_key, read_fdf, parse_fdf_params, system_label
     from runfiles import compose
-    from deck_record import extract_engine_offset, extract_vibration_record
+    from deck_record import (DeckRecordUnreadable, extract_engine_offset,
+                             extract_vibration_record)
     from engine_atom_index import from_engine_index, siesta_atom_index
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import LOG_CLOCK, LOG_LINE
@@ -221,12 +223,15 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
             f"was not written from the held-first copy "
             f"(engines/vibration.md 5.2)")
 
-    offset = extract_engine_offset(text)
+    try:
+        offset = extract_engine_offset(text)
+        record = extract_vibration_record(text)
+    except DeckRecordUnreadable as exc:
+        raise FinishError(f"{deck.name}: {exc}") from exc
     if not offset or len(offset.get("axis_kind") or ()) != 3:
         raise FinishError(
             f"{deck.name} carries no engine-offset block, so nothing says "
             f"which axes repeat: re-prep the stage")
-    record = extract_vibration_record(text)
     if record is None:
         raise FinishError(
             f"{deck.name} carries no vibration block -- the stationarity "

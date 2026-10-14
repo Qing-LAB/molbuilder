@@ -1163,6 +1163,17 @@ itself (`engines/vibration.md` § 5.5), where `script_emit` cannot be imported
 # === molbuilder <block-name> END ===
 ```
 
+**A block the deck does not carry records nothing; one it carries and that
+cannot be read is refused.** Its fences not a BEGIN/END pair, no JSON object
+between them, or JSON that does not parse: the one reader raises
+`deck_record.DeckRecordUnreadable`, which the run door (`runs.declared`)
+names the deck in, and every surface says — a route as a 400 with the
+sentence, the CLI and prep as their error, a job's finish as its own. The
+blocks are records molbuilder writes and nobody edits, so the way out is the
+folder's saved state (`molbuilder checkpoint restore`) or a stage prepared
+again; read as a deck that records nothing, a broken ATOM-METADATA showed the
+run with no labels and said nothing *(until 2026-10-14, plan A1.4)*.
+
 **Which generator emits which block** (verified against code — not every
 block is emitted by every engine):
 

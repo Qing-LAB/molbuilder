@@ -125,36 +125,56 @@ def _brace_delta(line: str) -> int:
     return depth
 
 
+class DeckRecordUnreadable(ValueError):
+    """A deck carries the molbuilder block it names, and the block cannot be
+    read: its fences are not a BEGIN/END pair, it holds no JSON object, or
+    its JSON does not parse.  The block is a record molbuilder writes and
+    nobody edits (`execution/job-contracts.md` § 3.1), so this is refused,
+    never read as a deck that records nothing."""
+
+
+def _unreadable(name: str, why: str) -> DeckRecordUnreadable:
+    return DeckRecordUnreadable(
+        f"its molbuilder {name} block {why}.  The block is a record "
+        f"molbuilder writes, not one edited by hand: restore the folder to "
+        f"a saved state (`molbuilder checkpoint restore`), or prepare the "
+        f"stage again")
+
+
 def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
     """Find the molbuilder block ``name`` in ``text`` and return its JSON
     payload as a dict -- the ONE reader for every JSON-payload block
     (ATOM-METADATA, ENGINE-OFFSET, VIBRATION), so their parsing cannot
     drift.
 
-    Returns ``None`` when:
-      * No such block is present.
-      * The block markers are unbalanced.
-      * The JSON between markers fails to parse.
+    Returns ``None`` when no such block is present: the deck records
+    nothing of it.  A block that IS present and cannot be read -- its
+    markers not a BEGIN/END pair, no JSON object between them, or JSON that
+    fails to parse -- raises :class:`DeckRecordUnreadable`.
 
     Comment-prefix-per-line is stripped before JSON parsing.
     """
     lines = text.splitlines()
     begin_idx: Optional[int] = None
     end_idx: Optional[int] = None
+    seen = False
     for i, line in enumerate(lines):
         m = MARKER_RE.match(line)
         if not m:
             continue
         if m.group(1) != name:
             continue
+        seen = True
         if m.group(2) == "BEGIN":
             begin_idx = i
             end_idx = None
         elif m.group(2) == "END" and begin_idx is not None:
             end_idx = i
             break
-    if begin_idx is None or end_idx is None:
+    if not seen:
         return None
+    if begin_idx is None or end_idx is None:
+        raise _unreadable(name, "has no BEGIN/END pair of fences")
     # Inner lines: strip leading "# " (or "#") to recover JSON.
     inner: List[str] = []
     for raw in lines[begin_idx + 1: end_idx]:
@@ -183,11 +203,12 @@ def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
         if brace_depth <= 0:
             break
     if not json_lines:
-        return None
+        raise _unreadable(name, "holds no JSON object")
     try:
         return json.loads("\n".join(json_lines))
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        raise _unreadable(name, f"holds JSON that does not parse ({exc})") \
+            from exc
 
 
 def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
@@ -212,5 +233,6 @@ __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "MARKER_RE",
            "begin_marker", "end_marker", "read_json_block",
+           "DeckRecordUnreadable",
            "extract_engine_offset", "extract_vibration_record",
            "without_stamps"]

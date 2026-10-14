@@ -1,6 +1,7 @@
 """.molstruct.json annotations (model/structure-annotations.md § 3)."""
 import json
 import numpy as np
+import pytest
 
 from molbuilder.structure import Structure, AtomChannel, annotations_to_json
 from molbuilder.sidecars import molstruct
@@ -54,17 +55,25 @@ def test_the_annotations_key_is_optional(tmp_path):
     assert back.frozen_atoms == [0]
 
 
-def test_load_rejects_out_of_range_annotation(tmp_path):
-    import pytest
+@pytest.mark.parametrize("channel, words", [
+    ({"kind": "tag", "data": [5]}, "out of range"),          # idx 5 >= 2
+    ({"data": [0]}, "AtomChannel.kind must be one of"),       # no kind
+    ("str", "a channel is an object"),
+], ids=["index-out-of-range", "no-kind", "not-an-object"])
+def test_load_refuses_a_malformed_channel_naming_its_file(tmp_path, channel,
+                                                          words):
+    """A channel edited by hand into a shape no writer makes is refused AT LOAD
+    (mirrors regions/frozen), naming the sidecar and the channel -- so a bad
+    sidecar fails early + clearly, never as a bare `KeyError('kind')` that
+    names nothing (plan A1.4)."""
     p = StructureCodec().write(
         Structure(elements=["C", "C"],
                   positions=np.arange(6, dtype=float).reshape(2, 3)),
         tmp_path / "bad.xyz")
     side = molstruct.sidecar_path_for(p)
-    side.write_text(json.dumps(dict(
-        json.loads(side.read_text()),
-        annotations={"x": {"kind": "tag", "data": [5]}})))   # idx 5 >= 2
-    # Annotation indices are validated against n_atoms_total AT LOAD
-    # (mirrors regions/frozen), so a bad sidecar fails early + clearly.
-    with pytest.raises(molstruct.MolstructJsonError, match="out of range"):
+    side.write_text(json.dumps(dict(json.loads(side.read_text()),
+                                    annotations={"x": channel})))
+    with pytest.raises(molstruct.MolstructJsonError) as exc:
         StructureCodec().load(p)
+    assert words in str(exc.value), exc.value
+    assert str(side) in str(exc.value) and "'x'" in str(exc.value), exc.value
