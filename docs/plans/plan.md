@@ -787,10 +787,9 @@ held the same atoms).
 **The rule, decided:**
 
 1. **Stated, never silent.** A structure or per-atom result in an engine's
-   reordered order carries the state **remapped** — at the reading side too:
-   the parser and the run door mark every per-atom result they read from a
-   reordered run, the run's index with it. Nothing is reordered silently while
-   it is read: the raw view stays the engine's, and says so.
+   reordered order carries the state **remapped**, its index with it. The run
+   door marks what it builds from a reordered run; the parsers stay the
+   engine's file view, and nothing is reordered silently while it is read.
 2. **"Remapped" is never stated without its index.** A sidecar in the remapped
    state carries the full index — the reordering's key and both directions,
    in the shape of `atom-permutation.json`, read by its one reader
@@ -804,10 +803,10 @@ held the same atoms).
    its sidecar). A force-constant run's restored spectrum already is one
    (`spectra.json`).
 4. **A door that builds from a reordered run's output** — prep (V1.41's
-   force-constant stage among them), the Results export, `xv2xyz --from-run`,
-   a transport citation — takes the restored result; when there is none, it
-   **warns and restores** through the index; a remapped state with no index
-   is rule 2's refusal.
+   force-constant stage among them), a transport citation, the Molbuilder
+   tab's append — **restores** through the index and says so; a remapped state
+   with no index cannot exist (rule 2). The Results export and
+   `xv2xyz --from-run` build nothing: they carry the state and its index.
 5. **The Molbuilder tab**, loading a remapped structure, **warns and offers
    restore**: the atoms back in the input order, every per-atom field with
    them.
@@ -921,17 +920,96 @@ travel, read and write together, no split handling")*:
 - **Stray engine indices**: `held_atom_idxs` cut (V1.42);
   `fc_range_1based` stated as the engine's, under `engine_metadata` where it is.
 
+*The validation round* *(2026-10-14: two fresh agents read the approved plan
+against every reader and writer at `03b09e7c`; each finding re-read before it
+is used here)*. What it changed — ◆ marks a choice the round forced, for the
+user's word with R0:
+
+- **Reordering a remapped structure composes** ◆: `Structure.take` composes
+  its order into the field's index (the new `sorted_to_original[j]` is the
+  old `[order[j]]`) and clears the field when the composition is the
+  identity — so a restore is `take` through the field and a second sort is
+  one composed permutation (§ 2.2's *one copy, one permutation*), never a
+  stale index under a new order. `SortResult`'s tuples become a view of the
+  sorted structure's field — one source from R2 on.
+- **One restore, one sentence** ◆: `Structure.restored()` — `take` through the
+  field — is called by every door (the route, prep, the citation, the
+  append, the CLI's `modify`); an edit that adds or removes atoms on a
+  remapped structure is refused by one constant naming it, as a frame set's
+  is (`_carry_nonatom`); `concat` (the Molbuilder tab's append, reached by a
+  load into an open tab) restores a remapped addition and says so.
+- **The warning is the structure's state, not a notice** ◆: the browser's
+  notices clear at every settle (`model.js`), a label edit or a Results poll
+  among them; the Molbuilder tab and the Results tab show the state from the
+  structure's field, read at every settle.
+- **Restore clears the selection**: an `OPERATIONS` column for a reorder (a
+  count kept, every index moved), and `molview.md` § 11.1's table gains it.
+- **The browser's third hand list**: `getStructure()` (`model.js`) lists the
+  master copy field by field too; one function each way, all three.
+- **The index rides inside the deck's ATOM-METADATA block**, the block
+  written from `metadata_to_dict` and read wherever it is read
+  (`emit_atom_metadata`'s gate, `apply_atom_metadata`'s early return,
+  `Declared.atom_metadata_for`, `render_deck`'s note) — never a `RunView`
+  attribute of its own (`watch._frame0_structure` rebuilds the view from the
+  block); a field refusal surfaces (`watch.py`'s blanket `except` goes).
+- **The codec's engine-own branch is a run door**: SIESTA's own `<label>.xyz`
+  in a reordered run (`WriteCoorXmol`, on by default) opens through the run's
+  view, marked.
+- **A run made before RMP** ◆: its index is in `atom-permutation.json` and its
+  deck states none. A door that builds refuses it by name — *prepared before
+  this version recorded its atoms' order; prepare the stage again* — as the
+  vibration finish already refuses an old deck; a viewer says it and shows
+  the engine's order; an old transport record is not loaded
+  (`load_compose_record` answers why). No reader of the old file remains.
+- **One source for a door that holds the run** ◆: prep and the citation
+  restore through the run's deck index, always; the restored pair is the
+  person's copy, for the Results tab and the Molbuilder tab — so V1.41's
+  deck bytes never depend on which of two sources exists, and R3 does not
+  wait on R4.
+- **The citation restores both geometries**: `_run_geometry`'s relaxed
+  structure and its starting geometry (the leads' *unmoved* gate compares
+  the two), and the cited-pair branch too; **a run that is not a geometry
+  relaxation is refused** through the verdict `_classify_run` already reads
+  (`CitedRun.verdict`), as `CITATION_CONDITION` states.
+- **The `relax` finish** ◆: keyed on the deck written from a remapped
+  structure; each finish's failure policy a column of `_FINISH_BUNDLES` — the
+  force constants' failure the job's, as now, the restore's said in the
+  session log and never stopping the relaxation, its load check a warning;
+  the payload in a deck block read by `deck_record`, built by
+  `pyscf/input._sidecar_for`'s rule — the **run's box**, the engine's origin
+  stated, never the person's design cell; the final rows permuted through the
+  deck's index before `write_moved`; the catalogue row kept out of the run's
+  result roles (`runs.about`), so the run door never puts the deck's sorted
+  labels on it.
+- **The density handed from `relax` to `freq`** ◆: the `.DM` is ordered as
+  `relax`'s deck; when the two decks' indices differ (the held set grew
+  between the preps), `freq` starts its reference SCF cold
+  (`DM.UseSaveDM .false.`) and says so — the force constants are unchanged.
+- **Stray engine indices**: `held_atom_idxs` cut in R1 (it outlives a
+  restore otherwise); `fc_range_1based` is the engine's numbering wherever it
+  is written — `spectra.json`'s `engine_metadata` and `fc-sweep.json`'s stage
+  rows, where the sweep reads `.FC` with it — and is named so.
+- **Stages prepared before the upgrade** and not yet launched are refused at
+  launch (`submit._as_described` compares the re-planned deck); the refusal
+  names the version that prepared them, not *the template changed*.
+- **Placement**: `atom_order` in `METADATA_FIELDS` — a v14 sidecar writes
+  `null` for the person's order, so "absent" reads "null or absent"; the
+  field's key one of `SORT_KEYS`, required; the identity read as no index,
+  the split reader answering it.
+- **Untrue in the survey, corrected**: transport writes its record's index
+  when it composes, not at every prep.
+
 *The order, each phase closed as a milestone (§ 0a):*
 
-| phase | what | contracts |
+| phase | what | tests |
 |---|---|---|
-| **R0** | the contracts, for the user's review before code | `model/overview.md` § 2.2; `model/structure.md` § 2.1–2.2e; `model/structure-molstruct.md` (v14); `model/parse.md` § 3, § 5.3; `execution/job-contracts.md` § 3.1, § 6.1, § 6.3; `engines/vibration.md` § 5.2a, § 5.5; `engines/transport.md` § 2a.12, § 3.1; `web/web-api.md`; `web/molview.md`; `web/results.md`; `configuration.md`'s bundle rule |
-| **R1** | the model: the field and its reader, sidecar v14, the codec, atom-count edits refused, restore (`take`), the browser's two directions, `/api/modify/restore`, the Molbuilder tab's warning | tests: `geometry_pin.toml` (v14 rows), `frame_sets.toml` (restore over a set), the model and browser round trips |
-| **R2** | said at the source: `sort_by` sets the field; the deck states it; `declared` reads it; `view_of` marks; the Results tab shows it; the export carries it | the Results route's rows |
-| **R3** | restored where it builds: V1.41, `_structure_for`, the transport citation (and its condition), `xv2xyz --from-run`; the by-hand maps through the record's reader | `prep_protocol.toml` (a held set grown between the preps, flat and hierarchical; a remapped source) |
-| **R4** | what a run leaves: the `relax` finish writing the restored pair, its bundle, the catalogue's rows | e2e on T-CO2's ladder |
-| **R5** | `atom-permutation.json` retired; `.transport.nc` carrying the index; the stray engine indices | the vibration and transport e2e |
-| **R6** | the transport report: the junction drawn in the person's order, the PDOS selections mapped through the record — the sorted order never shown | `engines/transport.md` § 2a.12, `web/results.md` |
+| **R0** | the contracts, for the user's review before code — `model/overview.md` § 2.2; `model/structure.md` § 2.1–2.2e (and § 2.2 step 4's *two translators*); `model/structure-molstruct.md` (v14); `model/structure-annotations.md` § 4a; `model/parse.md` § 3, § 5.3, § 5b.1; `execution/job-contracts.md` § 3.1, § 3.4, § 6.1, § 6.3; `execution/project-layout.md` § 1.6.3, § 5.1; `execution/architecture.md` § 3.2; `execution/job-system.md` § 3; `engines/vibration.md` § 5.2, § 5.2a, § 5.5, § 6.5, § 6.9, § 7 (I7), § 8, § 10; `engines/transport.md` § 2a.12, § 3.1; `science/normal-modes.md`'s order note; `web/web-api.md`; `web/molview.md` § 6.2, § 6.8, § 11.1; `web/results.md`; `configuration.md`'s bundle rule | — |
+| **R1** | the model: `atom_order` and the record's dict reader; `take` composing; `restored()` and the one refusal; `concat` restoring; sidecar v14; the codec; `held_atom_idxs` cut; the browser's three hand lists made one function each way; the state shown from the field; `/api/modify/restore` with its `OPERATIONS` row and the CLI's | `geometry_pin.toml` (v14 rows, an incomplete index refused), `frame_sets.toml` (restore over a set), the model and browser round trips — every order a **3-cycle** (O O C with the carbon held: `[2, 0, 1]`), so the two directions differ |
+| **R2** | said at the source: `sort_by` setting the field, `SortResult` a view of it; the deck's block from `metadata_to_dict`; `declared` and `view_of` marking; the codec's engine-own branch; the Results tab's state; the export and `xv2xyz --from-run` carrying it; a pre-RMP run said or refused; launch naming the version | the Results route's rows |
+| **R3** | restored where it builds: V1.41 through `relax`'s deck index (the run door, not a parser class); `_structure_for`; the citation (both geometries, the pair branch, the kind refused); the by-hand maps through the record's reader | the SIESTA vibration e2e on T-CO2's ladder (O O C, a held set grown between the preps) — not `prep_protocol.toml`, whose road runs no engine |
+| **R4** | what a run leaves: the `relax` finish (its policy, its payload block, the run's box), the catalogue row, the cold `freq` start when the orders differ | the same e2e |
+| **R5** | `atom-permutation.json` retired: the vibration finish reading its deck, the transport record's junction carrying the field (`record.py`'s provenance key and its schema, `compose.record_files`, `.transport.nc`'s atom axis), no reader of the old file left | the vibration and transport e2e — the transport junction's input order **permuted**, so its sort is not the identity |
+| **R6** | the transport report: a server door restoring the junction for drawing (`junction.xyz` stays sorted on disk — the device's regions and the leads are read from it); the PDOS selections mapped in, and `outside_device` back out, through the record | a partial PDOS selection on the permuted junction |
 
 **Decided with it** *(the user, 2026-10-14)*: the field's name and home as
 above; `atom-permutation.json` retired; no restored pair for transport rungs;
