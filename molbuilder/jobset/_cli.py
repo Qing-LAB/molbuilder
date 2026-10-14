@@ -1836,6 +1836,50 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
         raise
 
 
+def _how_runs_ended(results, plan, js, base):
+    """A RUN HERE, WAITED ON, IS SAID AS IT ENDED (`job-system.md`, *A run
+    here, waited on*): every member of a submission that ran here is read
+    through the one status door -- the rows `jobset status` prints, a swept
+    rung's from its points, a benchmark's trials against its calculation, as
+    `status` reads them -- and a submission any member of which did not
+    finish is ``failed``, the row's own words its ``detail``."""
+    if not any(r.status == "ran" for r in results):
+        return results
+    from dataclasses import replace
+    from .commands import command
+    from .materialize import bench_owner
+    from .runstatus import jobset_status
+    at = base
+    if js.kind == "sweep":
+        owner = bench_owner(base)
+        if owner is not None:
+            at = owner[0]
+    try:
+        rows = {s.ref.name: s for s in jobset_status(js, at).stages}
+    except (OSError, ValueError, KeyError) as exc:
+        raise click.ClickException(
+            f"the run ended, and how it ended could not be read: {exc}\n"
+            f"  {command('status', base=base)}")
+    members = {s.name: [m.job.name for m in s.members]
+               for s in plan.submissions}
+    out = []
+    for r in results:
+        if r.status != "ran":
+            out.append(r)
+            continue
+        said = []
+        for name in members.get(r.name, []):
+            row = rows.get(name)
+            if row is None:
+                said.append(f"{name}: not in the status")
+            elif row.state != "finished":
+                said.append(f"{name}: {row.state}"
+                            + (f" -- {row.detail}" if row.detail else ""))
+        out.append(replace(r, status="failed", detail="; ".join(said))
+                   if said else r)
+    return out
+
+
 def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             domain, dry_run: bool, time_text, mem_text, gpu_domain,
             auto_yes, trial_timeout_min, only_side, cold: bool,
@@ -2104,12 +2148,17 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             click.echo("nothing submitted." if mode == "submit"
                        else "nothing launched.")
             return
+        if not plan.background:
+            results = _how_runs_ended(results, plan, js, base)
 
     verb = (("WOULD start" if plan.background else "WOULD run") if dry_run
             else "result")
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else
-                (f"rc={r.returncode}" if r.returncode is not None else
+                (f"rc={r.returncode}"
+                 + (f" -- {r.detail}" if r.status == "failed" and r.detail
+                    else "")
+                 if r.returncode is not None else
                  (r.detail or "") if r.status in ("started", "submitted")
                  else ""))
         # a skipped trial was not run and WOULD not be -- its verb says so;
@@ -2121,6 +2170,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
              # no command of its own
              else "takes    " if r.status == "takes"
              else "pending  " if r.status == "stays pending"
+             # A RUN HERE THAT DID NOT FINISH says so in its first word.
+             else "FAILED   " if r.status == "failed"
              else verb)
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.shown}] {tail}".rstrip())
@@ -2149,6 +2200,11 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                    if plan.background else
                    "next -- look before the next stage:\n    "
                    + command("status", base=base))
+    # A RUN HERE THAT DID NOT FINISH ENDS THE LAUNCH WITH 1 (`job-system.md`,
+    # *A run here, waited on*): how it ended is on its line above, in the
+    # status door's words, so a script trusting the exit status is told.
+    if not dry_run and any(r.status == "failed" for r in results):
+        click.get_current_context().exit(1)
 
 
 # --------------------------------------------------------------------- #

@@ -84,6 +84,21 @@ def field_value(line: str) -> Optional[float]:
     return maybe_float(rest.strip()) if sep else None
 
 
+#: THE RESIDUALS EACH SCF ROW CARRIES, in the order every surface says and
+#: draws them (`web/trajectory.md` § 3.0): ``name`` as the run says it,
+#: ``key`` the row's, ``unit`` its own, ``criterion`` the key of the test that
+#: bounds it in ``scf_criteria`` -- ``None`` for one the engine reports and
+#: does not converge on.  ONE DECLARATION AN ENGINE: the readers' live lines
+#: read it, and every run serves it with its facts (``scf_residuals``), so a
+#: page draws what the run says, never a list of its own.
+#: PySCF requires dE and |g| together (`scf.hf.kernel`); |ddm|, the density
+#: matrix's change, it reports and does not converge on.
+SCF_RESIDUALS = (
+    {"name": "dE",  "key": "delta_E", "unit": "eV", "criterion": "dE"},
+    {"name": "|g|", "key": "gnorm",   "unit": "eV", "criterion": "|g|"},
+    {"name": "ddm", "key": "ddm",     "unit": "",   "criterion": None},
+)
+
 #: The one SCF phase of a run this log records -- the key its
 #: :func:`scf_criteria` are stated under, beside SIESTA's ``periodic`` and
 #: ``negf`` (`web/trajectory.md` § 3).

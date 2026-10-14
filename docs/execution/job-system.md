@@ -2242,6 +2242,19 @@ run script copies everything it prints — standard output and error — into it
 or `ask` the flag is refused, naming why: a scheduler's job already runs
 without anyone waiting on it.
 
+**A run here, waited on, ends the launch with how it ended** *(user,
+2026-10-13: "if you already know a job fails why … do you not report
+failure?")*. When the process ends, the launch reads each member's state
+through the one status door (`parse.dirs.run_status`; the standard is
+[`running-a-job.md`](?doc=execution/running-a-job.md), *The order of
+evidence*: **finished**, a run that ended on its own with exit code 0;
+**failed**, one that ended with any other, or whose output states a stop) and
+prints it in that door's words — the words `jobset status` prints. The launch
+exits **0 when every member finished, 1 when any failed**, so a script or a
+person that trusts the exit status is told what happened. Left in the
+background, the launch exits 0 having said *started*: the run has not ended,
+and its state is `jobset status`'s.
+
 **A benchmark's walk.** A benchmark's trials sent together — a resource shelf
 on a queue ([`generator.md`](?doc=execution/generator.md) § 4.3a), or its
 unlaunched trials run here — go as one submission walking them in order, through

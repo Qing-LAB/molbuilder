@@ -254,7 +254,7 @@ every field of the two engine classes has its help in the catalogue, and
 `help_for` is the only reader.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **519 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **524 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
 `wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
 `es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
@@ -270,7 +270,10 @@ default until then (`transport.md` § 6.1b) — and 512 at 2.1.0 (2026-10-11)
 with `ts_solution_method`, `tbt_solution_method`, `ts_hartree_fix` and
 `negf_neq_fermi_cutoff_kt`, four TranSIESTA / tbtrans lines the decks left
 unsaid until then (`transport.md` § 2a.13), and 519 at 2.3.0 with the device's
-charge check, `ts_scf_dq_converge` and `ts_scf_dq_tolerance` —
+charge check, `ts_scf_dq_converge` and `ts_scf_dq_tolerance`, and 524 at
+2.9.5 with `h_tolerance` -- `SCF.H.Tolerance`, the Hamiltonian test SIESTA
+requires beside the density matrix's, which the decks left to SIESTA's own
+1e-3 eV until then —
 every fall in the series came from deleting a home rather than from adding a
 check, and the rises are items gaining a home: two merged items gaining a
 second engine, whose declarations `config/state.py` writes once, and eight

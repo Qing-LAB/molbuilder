@@ -230,6 +230,7 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     crit = _MG.scf_criteria(runtime)
     if crit:
         out["scf_criteria"] = crit
+    out["scf_residuals"] = [dict(r) for r in _MG.SCF_RESIDUALS]
 
     # THE FOOTER, through its one reader, over the whole file in order: a
     # log is appended across attempts, and an earlier attempt's error
@@ -491,7 +492,7 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
     # molwatch parser surfaces these when the user loads the .log
     # directly — same data, same field names, just sourced via the
     # sibling file (read once, above).
-    for key in ("convergence_targets", "scf_criteria"):
+    for key in ("convergence_targets", "scf_criteria", "scf_residuals"):
         if key in mw_meta:
             runtime_info[key] = mw_meta[key]
     run_state = mw_meta.get("run_state", "unknown")

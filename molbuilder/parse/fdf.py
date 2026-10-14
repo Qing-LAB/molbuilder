@@ -159,6 +159,7 @@ class FdfParams:
     mixing_weight: Optional[float] = None
     pulay_history: Optional[int] = None
     dm_tolerance: Optional[float] = None
+    h_tolerance_ev: Optional[float] = None
     dm_energy_tolerance_ev: Optional[float] = None
     scf_energy_converge: Optional[bool] = None
 
@@ -220,10 +221,11 @@ def _read_state(sc, p: "FdfParams") -> None:
 def _read_scf(sc, p: "FdfParams", source: str) -> None:
     """The deck's SCF mixer and criteria, by the keywords SIESTA 5.4.2 reads
     (``SCF.Mixer.Weight``, ``SCF.Mixer.History``, ``DM.Tolerance``,
-    ``DM.EnergyTolerance``, ``SCF.FreeE.Converge``) -- the ones molbuilder's
-    writer spells, each item's ``engine_key``.  ``DM.EnergyTolerance`` is a
-    physical value: its unit is required, as SIESTA requires it, and read
-    in eV, the catalogue's unit."""
+    ``SCF.H.Tolerance``, ``DM.EnergyTolerance``, ``SCF.FreeE.Converge``) --
+    the ones molbuilder's writer spells, each item's ``engine_key``.
+    ``SCF.H.Tolerance`` and ``DM.EnergyTolerance`` are physical values: their
+    unit is required, as SIESTA requires it, and read in eV, the catalogue's
+    unit."""
     if sc.get("scfmixerweight"):
         p.mixing_weight = _to_float(sc["scfmixerweight"][0])
     if sc.get("scfmixerhistory"):
@@ -231,6 +233,13 @@ def _read_scf(sc, p: "FdfParams", source: str) -> None:
         p.pulay_history = int(v) if v is not None and v == int(v) else None
     if sc.get("dmtolerance"):
         p.dm_tolerance = _to_float(sc["dmtolerance"][0])
+    toks = sc.get("scfhtolerance")
+    if toks:
+        v = _to_float(toks[0])
+        if v is not None:
+            p.h_tolerance_ev = energy_ev(
+                v, toks[1] if len(toks) > 1 else None,
+                what="SCF.H.Tolerance", source=source)
     toks = sc.get("dmenergytolerance")
     if toks:
         v = _to_float(toks[0])

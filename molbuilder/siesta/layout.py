@@ -31,7 +31,8 @@ XC_SECTION = Section(
 #: The SCF settings above the free-energy pair.
 SCF_SECTION = Section(
     "SCF",
-    ("solution_method", "mixing_weight", "pulay_history", "dm_tolerance"),
+    ("solution_method", "mixing_weight", "pulay_history", "dm_tolerance",
+     "h_tolerance"),
 )
 
 #: What the run writes out.  All booleans, and **all emitted in both states**
@@ -205,7 +206,7 @@ _PAD = {
     # one keyword at a time -- and they are kept exactly, because a person who
     # diffs two generations of a deck should see values change, not alignment.
     "solution_method": 18, "mixing_weight": 19, "pulay_history": 21,
-    "dm_tolerance": 18,
+    "dm_tolerance": 18, "h_tolerance": 18,
     "write_forces": 19, "write_coor_step": 19, "write_coor_xmol": 19,
     "write_md_history": 19, "write_md_xmol": 19, "write_hs": 19,
     "dm_energy_tolerance": 19, "scf_energy_converge": 19,
@@ -225,7 +226,8 @@ _PAD = {
 
 #: Items SIESTA wants in scientific notation.  Formatting is spelling, so it
 #: is the engine's business and lives beside the rest of the spelling.
-_FMT = {"dm_tolerance": ".1e", "dm_energy_tolerance": ".1e",
+_FMT = {"dm_tolerance": ".1e", "h_tolerance": ".1e",
+        "dm_energy_tolerance": ".1e",
         "bias_voltage_v": ".4f", "negf_eq_pole_ev": ".4f",
         "negf_neq_eta_ev": ".6f", "ts_elecs_eta_ev": ".6f",
         "tbt_elecs_eta_ev": ".6f",

@@ -68,8 +68,44 @@
      * moved 3 meV); Plotly's default would write them "-1.211221373M". */
     const ENERGY_AXIS = Object.freeze({ exponentformat: "none" });
 
+    /* A SMALL CHART'S LEGEND, under its x-axis title -- the trajectory
+     * viewer's max force and its SCF energy and residuals, the transport
+     * report's SCF (`web/trajectory.md` § 2): drawn only when ``shown``
+     * (more than one trace to tell apart), and the bottom margin grown to
+     * hold it, so it never lies on the axis title.  ``{showlegend, legend,
+     * bottom}`` -- ``bottom`` the chart's margin below. */
+    function legendBelow(shown) {
+        return {
+            showlegend: !!shown,
+            legend: { orientation: "h", x: 0.5, xanchor: "center",
+                      y: -0.22, yanchor: "top", font: { size: 9 },
+                      bgcolor: "rgba(0,0,0,0)" },
+            bottom: shown ? 58 : 32,
+        };
+    }
+
+    /* A THRESHOLD a chart is judged against -- a dashed line across it at
+     * ``value``, its label at the right end above it -- as ``{shape,
+     * note}``, for the layout's ``shapes`` and ``annotations``.  ``log``:
+     * the y-axis is logarithmic, where Plotly places a shape by the value
+     * and an annotation by its log10 -- so the label is put on its line,
+     * not at 10^value (`web/trajectory.md` § 3). */
+    function thresholdMark(value, text, colour, log) {
+        return {
+            shape: { type: "line", xref: "paper", x0: 0, x1: 1,
+                     yref: "y", y0: value, y1: value,
+                     line: { color: colour, width: 1.5, dash: "dash" } },
+            note: { xref: "paper", x: 1, xanchor: "right", yref: "y",
+                    y: log ? Math.log10(value) : value, yanchor: "bottom",
+                    text: text, font: { size: 9, color: colour },
+                    showarrow: false },
+        };
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.plotTheme = plotTheme;
     root.molbuilder.themedLayout = themedLayout;
     root.molbuilder.energyAxis = ENERGY_AXIS;
+    root.molbuilder.legendBelow = legendBelow;
+    root.molbuilder.thresholdMark = thresholdMark;
 })(typeof window !== "undefined" ? window : this);

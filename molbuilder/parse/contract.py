@@ -75,7 +75,8 @@ K_MESH_RECORD_KEYS = ("kgrid", "kgrid_displacement")
 #: so a pair saved from a run carries them as its deck does.  Not a level of
 #: theory: nothing compares them, and they make no record on their own.
 SCF_RECORD_KEYS = ("mixing_weight", "pulay_history", "dm_tolerance",
-                   "dm_energy_tolerance", "scf_energy_converge")
+                   "h_tolerance", "dm_energy_tolerance",
+                   "scf_energy_converge")
 
 
 def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
@@ -274,6 +275,7 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
         "mixing_weight":            p.mixing_weight,
         "pulay_history":            p.pulay_history,
         "dm_tolerance":             p.dm_tolerance,
+        "h_tolerance":              p.h_tolerance_ev,
         "dm_energy_tolerance":      p.dm_energy_tolerance_ev,
         "scf_energy_converge":      p.scf_energy_converge,
     }.items() if v is not None}

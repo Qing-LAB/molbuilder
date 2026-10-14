@@ -1220,7 +1220,7 @@ def test_siesta_form_schema_matches_documented_layout():
     assert got == [
         ("system",      6),
         ("method",      6),
-        ("accuracy",    7),
+        ("accuracy",    8),
         ("convergence", 4),
         # `write_forces` and `write_coor_step` are fixed by the rung on
         # every SIESTA kind (`engines/template.md` § 6.4) and shown

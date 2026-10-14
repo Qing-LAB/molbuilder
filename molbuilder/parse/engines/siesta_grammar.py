@@ -48,6 +48,21 @@ SCF_ROW = re.compile(SCF_PREFIX_ERE + r"([0-9]+)[ \t]+(.+)$")
 #: The phases, as each cycle carries them.  The periodic SCF is SIESTA's own;
 #: the NEGF loop is TranSIESTA's, which a device runs after the periodic
 #: initialization (``transiesta: Initialization run using siesta``).
+#: THE RESIDUALS EACH SCF ROW CARRIES, in the order every surface says and
+#: draws them (`web/trajectory.md` § 3.0): ``name`` as the run says it,
+#: ``key`` the row's, ``unit`` its own, ``criterion`` the key of the test that
+#: bounds it in ``scf_criteria`` -- ``None`` for one the engine reports and
+#: does not converge on.  ONE DECLARATION AN ENGINE: the readers' live lines
+#: read it, and every run serves it with its facts (``scf_residuals``), so a
+#: page draws what the run says, never a list of its own.
+#: SIESTA 5 requires dDmax and dHmax together (`read_options.F90`); a
+#: TranSIESTA NEGF loop adds the cell's charge error where it converges it.
+SCF_RESIDUALS = (
+    {"name": "dDmax", "key": "dDmax", "unit": "",   "criterion": "dDmax"},
+    {"name": "dHmax", "key": "dHmax", "unit": "eV", "criterion": "dHmax"},
+    {"name": "dQ",    "key": "dq",    "unit": "e",  "criterion": "dq"},
+)
+
 PHASE_PERIODIC = "periodic"
 PHASE_NEGF = "negf"
 

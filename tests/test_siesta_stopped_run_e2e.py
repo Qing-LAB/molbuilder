@@ -51,6 +51,11 @@ _CANNOT_CONVERGE = {"max_scf_iter": "10", "mixing_weight": "0.001",
                     "pulay_history": "0", "dm_tolerance": "1e-08"}
 
 
+#: What the stopped run's launch answered -- the fixture's, read by the test
+#: that the launch said how it ended.
+_LAUNCH = {}
+
+
 def _jobset(*args):
     from click.testing import CliRunner
 
@@ -131,10 +136,11 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         deck = (attempt / "H2_01_coarse.fdf").read_text()
         assert any(ln.split()[:2] == ["MaxSCFIterations", "10"]
                    for ln in deck.splitlines()), deck[-2000:]
-        # The run fails -- that is its point -- so the verb's exit is not
-        # asserted; what it left is.
-        _jobset("launch", "task", "--stage", "coarse", "--bundle", str(bundle),
-                "--mode", "direct", "--yes")
+        # The run fails -- that is its point -- and the launch says so: its
+        # exit and its words are asserted below, beside what it left.
+        _LAUNCH["coarse"] = _jobset("launch", "task", "--stage", "coarse",
+                                    "--bundle", str(bundle),
+                                    "--mode", "direct", "--yes")
         assert (attempt / "H2_01_coarse-run0.out").is_file(), \
             sorted(p.name for p in attempt.iterdir())
         yield attempt
@@ -144,7 +150,10 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
 
 def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     """The folder's status quotes the line that stopped the run -- the SCF's,
-    which SIESTA states as fatal, and not the ``die`` lines after it."""
+    which SIESTA states as fatal, and not the ``die`` lines after it -- and
+    the launch that waited on it said the same, in the same words, and
+    exited 1 (`job-system.md`, *A run here, waited on*): a script trusting
+    the exit status is told the run failed."""
     from molbuilder.parse.dirs import run_status
     from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
 
@@ -158,6 +167,12 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
         end = st.endings[name]
         assert (end.run_state, end.cause) == ("stopped",
                                               SCF_NOT_CONV_MARKER), end
+
+    said = _LAUNCH["coarse"]
+    assert said.exit_code == 1, said.output
+    line = next(ln for ln in said.output.splitlines()
+                if ln.strip().startswith("FAILED"))
+    assert f"coarse: failed -- {st.detail}" in line, line
 
 
 @pytest.fixture(scope="module")

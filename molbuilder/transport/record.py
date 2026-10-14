@@ -565,6 +565,8 @@ def _science(out: Path, answers: str) -> Dict:
     fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c} for c in hist]
     if info.get("scf_criteria"):
         fact["scf_criteria"] = info["scf_criteria"]
+    if info.get("scf_residuals"):
+        fact["scf_residuals"] = info["scf_residuals"]
     if info.get("scf_phases"):
         fact["scf_phases"] = info["scf_phases"]
     # THE NEGF PHASE'S OWN FIGURES -- never the periodic start's

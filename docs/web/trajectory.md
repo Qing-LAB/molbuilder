@@ -45,10 +45,16 @@ Below the movie are up to four plots, each answering one question about the run:
 | **Total energy** | energy vs optimization step | is it settling to a minimum? |
 | **Max force** | the largest force vs step | is the geometry converging? |
 | **SCF energy** | energy across the current step's SCF cycles | is this step's electronic loop settling? |
-| **SCF residual** | the SCF gradient/residual (log scale) | is the electronic loop converging? |
+| **SCF residuals** | every residual the engine converges on, each in its own unit and against its own tolerance line (log scale) — SIESTA's dDmax and dHmax, a NEGF loop's dQ; PySCF's \|g\| and dE (§ 3) | is the electronic loop converging, on every test it must pass? |
 
 Two of them hide themselves when there's no data (the SCF plots only appear once
-a run reports SCF cycles), and the grid reflows to fill the gap.
+a run reports SCF cycles), and the grid reflows to fill the gap. **Two rules
+every one of them draws by, from the one chart theme** (`lib/plot-theme.js`):
+a chart with more than one trace names them in a legend under its x-axis
+title, its bottom margin grown to hold it (`legendBelow`), and every threshold
+a chart is judged against is a dashed line labelled on itself at its right end,
+on a linear axis or a log one (`thresholdMark` — Plotly places a label on a log
+axis by its log10, a line by its value).
 
 **The max-force plot has two lines when the run has frozen atoms** — a thin
 dashed line for *all atoms* (informational, includes the fixed ones) and a solid
@@ -64,6 +70,23 @@ and the SCF line (§ 4) names it; a run with one phase — every relaxation, eve
 PySCF run — draws one trace (`model/parse.md` § 5d.5).
 
 ## 3. Convergence targets
+
+### 3.0 What converged means — two levels, every test at each
+
+*(user, 2026-10-13: "contract document of what convergence conditions are
+extracted, ploted and their meaning etc should be updated")*
+
+| level | converged when | extracted from | drawn |
+|---|---|---|---|
+| **each SCF** — the electrons, inside every geometry step and every single point | **every residual the engine requires is below its tolerance in the same cycle.** SIESTA 5: dDmax ≤ `DM.Tolerance` **and** dHmax ≤ `SCF.H.Tolerance` (`read_options.F90`: both required unless the Harris energy is the criterion, which molbuilder never sets; both written in every deck, [`engines/siesta.md`](?doc=engines/siesta.md) § 3, row 8). A TranSIESTA device's NEGF loop: the same two at TranSIESTA's own tolerances, and dQ ≤ the charge tolerance where the run converges the charge. PySCF: dE ≤ `conv_tol` **and** \|g\| ≤ `conv_tol_grad` | each cycle's row of the output (the residuals); the criteria from the run's own echo — SIESTA's `redata:` lines, TranSIESTA's `ts:` echo, PySCF's read-back — into `runtime_info.scf_criteria` | the **SCF residuals** plot: every residual, each against its dashed tolerance line; the **SCF energy** plot beside it |
+| **the geometry** — a relaxation | the largest force on a free atom is below the force tolerance (SIESTA's `MD.MaxForceTol`; geomeTRIC's criteria for PySCF) | each step's forces, free atoms and all atoms; the target from the `redata:` echo or the progress log's header | the **Max force** plot with its target line; the **Total energy** plot |
+
+**The levels depend on each other.** A step's forces are computed from that
+step's converged density, so an SCF stopped loose gives noisy forces and the
+optimizer chases the noise — which is why molbuilder's density-matrix
+tolerance starts a decade under SIESTA's own (`1e-5`, the item's help). **A
+residual left off the plot is a test left unseen**: the plot draws every one
+the engine requires, never one standing for the rest.
 
 The viewer reads the **targets the run was chasing** and draws them as green
 threshold lines — so you can see how far the max force or the SCF residual still
@@ -102,7 +125,16 @@ runtime header (`pyscf/input.emit_scf_criteria_readback`);
 the progress log's reader states them in eV, the unit of the residuals beside
 them, under the run's one phase, `scf` (`molwatch_grammar.scf_criteria`). A row
 that states no phase is judged in the run's one phase. The summary band lists
-every criterion, and the SCF-residual plot draws the line of the one it plots.
+every criterion; the SCF-residuals plot draws every residual the engine
+converges on **as the run declares them** — `runtime_info.scf_residuals`, each
+engine's one declaration ([`model/parse.md`](?doc=model/parse.md), the
+readers), which the SCF line (§ 4) and the transport report's convergence card
+read too; the page keeps no list — each in its own unit, named in the legend
+(dDmax is a pure number; no one unit serves the axis), and the dashed line of
+each the phase on screen requires, in the residual's colour. Both engines' rows
+carry an energy change between cycles; only PySCF's is a criterion, so only
+PySCF's is drawn as one, and PySCF's \|ddm\| — reported, bounded by nothing —
+is quoted by the run's report and not drawn.
 
 ## 4. Is it done, and how fast?
 

@@ -261,6 +261,30 @@ Rule of thumb: keep the SCF tolerance ~10x tighter than the force-precision targ
 SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For a single-point energy, 1e-4 is the engine's own answer and is enough; it is the forces that want the extra decade.
 """
 
+[item.h_tolerance]
+stages = "scf"
+citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+anchor = "SCF.H.Tolerance"
+engine_key = "SCF.H.Tolerance"
+manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
+type = "float"
+value = 0.001
+default = 0.001
+unit = "eV"
+range = [1e-06, 0.1]
+tightens = "down"
+group = "stage"
+label = "Hamiltonian tolerance"
+tier = "advanced"
+help = """
+How little the Hamiltonian's elements may change from one SCF cycle to the next -- the dHmax column of SIESTA's SCF table -- before the cycle counts as settled.
+SIESTA requires it TOGETHER with the density-matrix tolerance: a cycle is converged only when dDmax is below that one AND dHmax is below this one (read_options.F90: SCF.DM.Converge and SCF.H.Converge both default to true unless the Harris energy is the criterion, which molbuilder never sets).
+1e-3 eV is SIESTA's own default, written here so the deck states every test that decides convergence rather than leaving one to the engine.  Tighten it with the density-matrix tolerance when the forces must be accurate (relaxations, vibrations).
+"""
+
 [item.dm_energy_tolerance]
 stages = "scf"
 citation = ["transport"]   # the cited run's value starts each SCF stage (TD6, 2026-10-09; engines/transport.md 3.1)

@@ -87,3 +87,28 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
                                                  rel=5e-3), (scf, time)
     detail = page.locator("#run-state-detail").inner_text()
     assert "ended" in detail and ended.strftime(":%M:%S") in detail, detail
+
+
+def test_the_scf_plot_draws_both_tests_siesta_requires(
+        finished, page, flask_server, monkeypatch):
+    """A SIESTA SCF is converged when dDmax is under `DM.Tolerance` AND dHmax
+    under `SCF.H.Tolerance` (`web/trajectory.md` § 3.0): the residuals plot
+    draws both, each against the tolerance the run's own deck states, and
+    the SCF line quotes both.
+
+    MUTATION THIS MUST FAIL AGAINST: the plot drawing one residual standing
+    for the rest -- dHmax alone, as it did until 2.9.5."""
+    from molbuilder.parse.fdf import parse_fdf_params
+    deck = parse_fdf_params(
+        (finished / "H2_01_coarse.fdf").read_text(), source="the deck")
+    assert deck.dm_tolerance and deck.h_tolerance_ev, deck
+    _open(page, flask_server, finished, monkeypatch)
+    drawn = page.evaluate(
+        "() => { const el = document.getElementById('scf-gnorm-plot');"
+        " return { names: (el.data || []).map(t => t.name),"
+        "          lines: ((el.layout || {}).shapes || []).map(s => s.y0) }; }")
+    assert "dDmax" in drawn["names"] and "dHmax (eV)" in drawn["names"], drawn
+    assert sorted(drawn["lines"]) == pytest.approx(
+        sorted([deck.dm_tolerance, deck.h_tolerance_ev])), drawn
+    scf = page.locator("#scf-status").inner_text()
+    assert "dDmax=" in scf and "dHmax=" in scf, scf

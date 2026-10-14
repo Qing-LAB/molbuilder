@@ -568,9 +568,9 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ are several frames                │ │ clickable, the table below it    │ │
 │ └───────────────────────────────────┘ └──────────────────────────────────┘ │
 │ ┌ Convergence [ seed | electrode L | electrode R | device ] ─────────────┐ │
-│ │ each rung's SCF: energy and residual per iteration; the device's two    │ │
+│ │ each rung's SCF: energy and residuals per iteration; the device's two   │ │
 │ │ phases — periodic start, then NEGF — as separate traces; its NEGF E_F,  │ │
-│ │ iterations and charge; the tolerance line; how the run ended (its chip) │ │
+│ │ iterations, charge; each residual's tolerance; how the run ended (chip) │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │
 │ ┌ Rungs and provenance ──────────────────────────────────────────────────┐ │
 │ │ one row per rung: state chip, detail, E_F, energy, iterations,          │ │

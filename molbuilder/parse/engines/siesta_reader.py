@@ -992,7 +992,8 @@ class SiestaReader:
         if cycle is not None:
             out["phase"] = cycle.get("phase")
             out["cycle"] = cycle.get("cycle")
-            for key in ("energy", "dDmax", "dHmax", "dq"):
+            for key in ("energy",) + tuple(
+                    r["key"] for r in _G.SCF_RESIDUALS):
                 v = cycle.get(key)
                 if isinstance(v, (int, float)) and math.isfinite(v):
                     out[key] = v
@@ -1012,11 +1013,10 @@ class SiestaReader:
         if crit:
             out["criteria"] = crit
         mine = crit.get(out.get("phase") or "", {})
-        residuals = {name: (out[key], mine.get(key, {}).get("tolerance"),
-                            mine.get(key, {}).get("unit", ""))
-                     for name, key in (("dDmax", "dDmax"), ("dHmax", "dHmax"),
-                                       ("dQ", "dq"))
-                     if key in out}
+        residuals = {r["name"]: (out[r["key"]],
+                                 mine.get(r["criterion"], {}).get("tolerance"),
+                                 r["unit"])
+                     for r in _G.SCF_RESIDUALS if r["key"] in out}
         if residuals:
             out["residuals"] = residuals
         targets = {k: v for k, v in
@@ -1107,6 +1107,9 @@ class SiestaReader:
         crit = self.criteria(negf=bool(counts.get(_G.PHASE_NEGF)))
         if crit:
             self.runtime_info["scf_criteria"] = crit
+        # WHAT EACH SCF ROW MEASURES, the engine's one declaration.
+        self.runtime_info["scf_residuals"] = [dict(r) for r in
+                                              _G.SCF_RESIDUALS]
         return {"steps": self.steps, "live_scf": live_scf,
                 "lattice": self.lattice, "run_state": self.run_state,
                 "scf_converged": self.scf_converged,

@@ -423,8 +423,9 @@ const WORKSPACE_TAG = "results:transport";
             e.hidden = !any;
             r.hidden = !any;
             if (any) {
-                root.molbuilder.scfPlot.draw(e, r, runs,
-                                             { criteria: src.scf_criteria || {} });
+                root.molbuilder.scfPlot.draw(e, r, runs, {
+                    criteria: src.scf_criteria || {},
+                    residuals: src.scf_residuals || [] });
             }
         });
     }

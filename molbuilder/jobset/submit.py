@@ -98,8 +98,10 @@ class JobResult:
     code, which every reader matches -- and ``said`` the sentence shown
     beside it, when there is one:
 
-    * ``submitted`` / ``ran`` / ``failed`` -- it went; ``started`` -- it went
-      here, in the background;
+    * ``submitted`` / ``ran`` -- it went; ``ran``, here and waited on, its
+      process ended; ``failed`` -- it ran here and a member did not finish,
+      by the status door (the launch verb's reading, ``detail`` its words);
+      ``started`` -- it went here, in the background;
     * ``planned`` (dry-run) / ``asked`` (``--mode ask``: nothing was sent,
       and ``prediction`` carries what the scheduler said; ``command`` is the
       line that would be SENT) / ``not asked`` (past the query cap);
@@ -1834,8 +1836,10 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
                     + ([JobResult(m.name, [], "rides", said=s.rides)
                         for m in s.members] if s.rides else []))
         rc = proc.wait()
-        return ([JobResult(s.name, s.command, "ran" if rc == 0 else "failed",
-                           returncode=rc)]
+        # IT RAN HERE AND ENDED -- how it ended is the status door's, read
+        # by the launch verb once every submission has gone (`_cli`,
+        # `job-system.md`, *A run here, waited on*).
+        return ([JobResult(s.name, s.command, "ran", returncode=rc)]
                 + ([JobResult(m.name, [], "rides", said=s.rides)
                     for m in s.members] if s.rides else []))
     try:

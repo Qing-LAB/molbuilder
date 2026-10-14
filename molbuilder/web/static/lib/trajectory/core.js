@@ -1006,6 +1006,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
         return (crit && typeof crit === "object") ? crit : {};
     }
 
+    // WHAT EACH SCF ROW MEASURES -- the engine's one declaration, served
+    // with the run (`runtime_info.scf_residuals`, web/trajectory.md § 3.0)
+    // -- or `[]` when the run states none.
+    function _scfResiduals() {
+        const rt = state.data && state.data.runtime_info;
+        const said = rt && rt.scf_residuals;
+        return Array.isArray(said) ? said : [];
+    }
+
     // Render the convergence-summary section above the plots row.
     // Shape + intent documented in docs/web/results.md
     // and templates/_trajectory_inspector.html.  Uses textContent /
@@ -1372,19 +1381,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         var forceYType = undefined;
         if (ct && typeof ct.max_force_tol_eV_per_A === "number") {
             const tol = ct.max_force_tol_eV_per_A;
-            forceShapes.push({
-                type: "line", xref: "paper",
-                x0: 0, x1: 1,
-                yref: "y", y0: tol, y1: tol,
-                line: { color: theme.success, width: 1.5, dash: "dash" },
-            });
-            forceAnnotations.push({
-                xref: "paper", x: 1, xanchor: "right",
-                yref: "y", y: tol, yanchor: "bottom",
-                text: "target " + tol.toFixed(3) + " eV/Å",
-                font: { size: 9, color: theme.success },
-                showarrow: false,
-            });
             // Log y-axis when the run is far above target.
             const allValues = state.data.max_forces || [];
             const maxSeen = allValues.reduce(
@@ -1392,12 +1388,19 @@ import { molviewFiles } from "../projects/molview-doors.js";
             if (tol > 0 && maxSeen / tol > 50) {
                 forceYType = "log";
             }
+            // THE TARGET AND ITS LABEL, ON EITHER AXIS (the theme's one
+            // threshold mark).
+            const mark = window.molbuilder.thresholdMark(
+                tol, "target " + tol.toFixed(3) + " eV/Å", theme.success,
+                forceYType === "log");
+            forceShapes.push(mark.shape);
+            forceAnnotations.push(mark.note);
         }
+        const forceLegend = window.molbuilder.legendBelow(hasBothTraces);
         window.molbuilder.plotBox.draw($("force-plot"), forceTraces,
                                        window.molbuilder.themedLayout({
             title: { text: "Max force", font: { size: 13 } },
-            margin: { l: 8, r: 12, t: 32,
-                      b: hasBothTraces ? 58 : 32 },
+            margin: { l: 8, r: 12, t: 32, b: forceLegend.bottom },
             xaxis: { title: { text: "CG step", standoff: 4 },
                      zeroline: false, automargin: true,
                      nticks: 6 },
@@ -1414,14 +1417,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                      type: forceYType,
                      zeroline: false,
                      automargin: true, nticks: 5 },
-            showlegend: hasBothTraces,
-            legend: {
-                orientation: "h",
-                x: 0.5, xanchor: "center",
-                y: -0.22, yanchor: "top",
-                font: { size: 9 },
-                bgcolor: "rgba(0,0,0,0)",
-            },
+            showlegend:  forceLegend.showlegend,
+            legend:      forceLegend.legend,
             shapes:      forceShapes,
             annotations: forceAnnotations,
         }, theme), { displayModeBar: false });
@@ -1479,20 +1476,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
         const cycles   = current.map(c => c.cycle);
 
-        // The residual the status line quotes: PySCF's |g|, else SIESTA's
-        // dHmax -- what the SCF plot draws (`scfPlot.residualOf`).
-        let residual, residualName, residualUnit;
-        if (current[0].gnorm !== undefined) {
-            residual      = current.map(c => c.gnorm);
-            residualName  = "|g|";
-            residualUnit  = "eV";     // an energy: dE over orbital rotations
-        } else if (current[0].dHmax !== undefined) {
-            residual      = current.map(c => c.dHmax);
-            residualName  = "dHmax";
-            residualUnit  = "eV";
-        } else {
-            residual = null;
-        }
+        // THE RESIDUALS THE STATUS LINE QUOTES are the ones the SCF plot
+        // draws -- every one the engine converges on, as the run declares
+        // them (`runtime_info.scf_residuals`, web/trajectory.md § 3.0).
+        const residuals = window.molbuilder.scfPlot.residualsOf(
+            current, _scfResiduals());
 
         // Engine-aware labels.  state.format is WHICH ENGINE RAN --
         // "siesta", "pyscf", or "unknown" -- decided on the server by
@@ -1527,12 +1515,19 @@ import { molviewFiles } from "../projects/molview-doors.js";
         let statusText = stepLabel + " " + stepIdx
             + " — SCF cycle " + cycles[cycles.length - 1]
             + " (" + current.length + " iters)";
-        if (residual !== null) {
-            const lastResid = residual[residual.length - 1];
-            statusText += ", " + residualName + "="
-                       + lastResid.toExponential(2) + " " + residualUnit;
+        const last = current[current.length - 1];
+        for (const x of residuals) {
+            if (typeof last[x.key] === "number") {
+                statusText += ", " + x.name + "="
+                           + Math.abs(last[x.key]).toExponential(2)
+                           + (x.unit ? " " + x.unit : "");
+            }
         }
-        statusText += ", ΔE=" + lastDe.toExponential(2) + " eV";
+        // ΔE BESIDE THEM, unless it is one of them (PySCF's dE).
+        if (!residuals.some((x) => x.key === "delta_E")
+                && typeof lastDe === "number") {
+            statusText += ", ΔE=" + lastDe.toExponential(2) + " eV";
+        }
 
         /* THE RATE IS THE SCF-TIMING INSTRUMENT'S (`model/parse.md` § 2a P-T4,
          * § 5c): the server reads the run's timing log through the one reader
@@ -1561,6 +1556,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         window.molbuilder.scfPlot.draw(scfEnergyEl, scfGnormEl,
                                        [{ name: "", rows: current }], {
             criteria: _scfCriteria(),
+            residuals: _scfResiduals(),
             energyTitle: "SCF energy (current step)",
         });
     }

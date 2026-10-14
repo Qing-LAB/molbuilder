@@ -302,6 +302,14 @@ class SiestaConfig:
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
     })
+    h_tolerance: float = field(default=1e-3, metadata={
+        "category": ("accuracy",),
+        "workflow_group": "stage",
+        "label": "Hamiltonian tolerance", "unit": "eV",
+        "engine_key":  'SCF.H.Tolerance',
+        "range": (1e-6, 1e-1),
+        "tier":  "advanced",
+    })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "category": ("accuracy",),
         "workflow_group": "stage",

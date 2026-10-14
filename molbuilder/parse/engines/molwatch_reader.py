@@ -319,13 +319,12 @@ class MolwatchReader:
                 crit = _MG.scf_criteria(self.runtime_info).get(
                     _MG.SCF_PHASE, {})
                 residuals = {
-                    name: (last[key],
-                           (crit.get(name) or {}).get("tolerance"), unit)
-                    for name, key, unit in (("dE", "delta_E", "eV"),
-                                            ("|g|", "gnorm", "eV"),
-                                            ("ddm", "ddm", ""))
-                    if isinstance(last.get(key), (int, float))
-                    and math.isfinite(last[key])}
+                    r["name"]: (last[r["key"]],
+                                (crit.get(r["criterion"]) or {}).get(
+                                    "tolerance"), r["unit"])
+                    for r in _MG.SCF_RESIDUALS
+                    if isinstance(last.get(r["key"]), (int, float))
+                    and math.isfinite(last[r["key"]])}
                 if residuals:
                     out["residuals"] = residuals
             out["steps_done"] = len(done)
@@ -345,6 +344,9 @@ class MolwatchReader:
         crit = _MG.scf_criteria(self.runtime_info)
         if crit:
             self.runtime_info["scf_criteria"] = crit
+        # WHAT EACH SCF ROW MEASURES, the engine's one declaration.
+        self.runtime_info["scf_residuals"] = [dict(r) for r in
+                                              _MG.SCF_RESIDUALS]
         return {"blocks": self.blocks, "engine": self.engine,
                 "run_state": self.run_state,
                 "error_message": self.error_message,

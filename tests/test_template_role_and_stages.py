@@ -124,8 +124,8 @@ class TestStages:
         # declared by `stages`, so no surface offers them on that rung and
         # every door refuses them there by name.
         scf = {"solution_method", "mixing_weight", "pulay_history",
-               "dm_tolerance", "dm_energy_tolerance", "scf_energy_converge",
-               "max_scf_iter", "scf_must_converge"}
+               "dm_tolerance", "h_tolerance", "dm_energy_tolerance",
+               "scf_energy_converge", "max_scf_iter", "scf_must_converge"}
         # ...and so are the diagonaliser and the output switches a person
         # sets, which tbtrans compiles nothing to read (2026-10-11).
         scf |= {"block_size", "parallel_over_k", "diag_algorithm", "use_gpu",

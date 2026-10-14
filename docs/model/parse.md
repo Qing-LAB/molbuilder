@@ -605,8 +605,17 @@ flowchart LR
 | reads | a SIESTA-family `.out` | a `.molwatch.log`; `stage` picks a staged header's targets |
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
-| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` among them |
+| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` — `runtime_info.scf_criteria` and `.scf_residuals` among them | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
 | also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
+
+**What each SCF row measures is declared once an engine** — `siesta_grammar.
+SCF_RESIDUALS` (dDmax, dHmax, a NEGF loop's dQ) and `molwatch_grammar.
+SCF_RESIDUALS` (dE, \|g\|, and \|ddm\|, which PySCF reports and does not
+converge on): each residual's name, its row key, its unit and the criterion
+that bounds it. Both readers' `now()` read it, and `finish()` serves it as
+`runtime_info.scf_residuals` — the transport record carries a rung's beside its
+criteria — so every surface that shows an SCF draws and quotes what the run
+declares ([`web/trajectory.md`](?doc=web/trajectory.md) § 3.0).
 
 `now()` states a key only when the output does:
 
