@@ -5,9 +5,12 @@ vibration gate's verdicts on a structure that carries it (§ 2.2, the record
 table).
 
 ``jobset init --calculation vibration`` (hierarchical) -> ``prep task --group 1``
--> ``launch task --stage relax --mode direct``, on an H2 in a 10 Å box, isolated, its
-first atom held: the `relax` stage of the kind's own ladder, at the kind's
-own tight tolerance.
+-> ``launch task --stage relax --mode direct``, on the road's CO2 in a 10 Å
+box, isolated, listed O O C with its carbon held: the `relax` stage of the
+kind's own ladder, at the kind's own tight tolerance, its deck written in the
+engine's held-first order (`engines/vibration.md` § 5.2) -- and what the
+run's order means for every door that shows or writes it
+(`model/overview.md` § 2.2a).
 
 Every expectation is what the run was given -- the structure written here,
 the deck prep wrote -- or the rule of the record applied to the run's own
@@ -24,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
+from _road import CO2_ELEMENTS, CO2_HELD, conda_hook, env_available
 
 pytestmark = [
     pytest.mark.engine,
@@ -37,9 +40,9 @@ _BOX = 10.0
 
 
 @pytest.fixture(scope="module")
-def relaxed(real_h2_relaxed_for_vibration):
+def relaxed(real_relaxed_for_vibration):
     """The calculation, its `relax` stage run: the bundle."""
-    return real_h2_relaxed_for_vibration
+    return real_relaxed_for_vibration
 
 
 def _run(bundle: Path) -> Path:
@@ -47,11 +50,11 @@ def _run(bundle: Path) -> Path:
 
 
 def _out(bundle: Path) -> Path:
-    return _run(bundle) / "H2_01_relax-run0.out"
+    return _run(bundle) / "CO2_01_relax-run0.out"
 
 
 def _deck(bundle: Path) -> Path:
-    return _run(bundle) / "H2_01_relax.fdf"
+    return _run(bundle) / "CO2_01_relax.fdf"
 
 
 def _tolerance(bundle: Path) -> float:
@@ -65,12 +68,14 @@ def _tolerance(bundle: Path) -> float:
 
 def _deck_geometry(bundle: Path):
     """The structure as the deck hands it to SIESTA -- its own coordinate
-    block, read by fdf's label rule."""
+    block and its species block, read by fdf's label rule: the atoms in the
+    order the engine was given them."""
     from molbuilder.parse.fdf import fdf_key, read_fdf
     from molbuilder.structure import Structure
-    rows = read_fdf(_deck(bundle).read_text())[1][
-        fdf_key("AtomicCoordinatesAndAtomicSpecies")]
-    return Structure(elements=["H", "H"],
+    blocks = read_fdf(_deck(bundle).read_text())[1]
+    species = {int(r[0]): r[2] for r in blocks[fdf_key("ChemicalSpeciesLabel")]}
+    rows = blocks[fdf_key("AtomicCoordinatesAndAtomicSpecies")]
+    return Structure(elements=[species[int(r[3])] for r in rows],
                      positions=np.array([[float(x) for x in r[:3]]
                                          for r in rows]))
 
@@ -88,7 +93,8 @@ def _final_geometry(bundle: Path):
         if len(words) < 3:
             break
         pos.append([float(w) for w in words[:3]])
-    return Structure(elements=["H", "H"], positions=np.array(pos))
+    return Structure(elements=_deck_geometry(bundle).elements,
+                     positions=np.array(pos))
 
 
 def _moves(bundle: Path) -> int:
@@ -121,7 +127,8 @@ def test_a_finished_relaxation_answers_its_record(relaxed):
     assert rec["max_force_ev_ang"] >= rec["max_force_free_ev_ang"]
     final = _final_geometry(relaxed)
     assert rec["geometry_sha256"] == final.geometry_fingerprint()
-    swapped = Structure(elements=["H", "H"], positions=final.positions[::-1])
+    swapped = Structure(elements=final.elements[::-1],
+                        positions=final.positions[::-1])
     assert swapped.geometry_fingerprint() == rec["geometry_sha256"]
 
 
@@ -143,7 +150,7 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, monkeypatch):
                          json={"path": str(run)}).get_json()
     assert loaded["ok"] is True, loaded
     asked = client.get("/api/results/contract",
-                       query_string={"path": str(run / "H2.XV")}).get_json()
+                       query_string={"path": str(run / "CO2.XV")}).get_json()
     assert asked["ok"] is True, asked
     record = loaded["info"]["relaxation"]
     assert record["source"] == Path(loaded["path"]).name, record
@@ -179,16 +186,18 @@ def test_the_force_constants_build_on_the_relaxation(relaxed):
 # --------------------------------------------------------------------- #
 
 def _carrying_the_record(relaxed, *, shift_z: float = 0.0):
-    """The geometry the relaxation left, held atom first as the run had it,
-    with the record the run directory answers for itself -- the pair the
-    Results tab exports, through the composer it uses."""
+    """The geometry the relaxation left, held atom first as the run had it
+    (an oxygen moved by ``shift_z``), with the record the run directory
+    answers for itself -- the pair the Results tab exports, through the
+    composer it uses."""
     from molbuilder.parse.dirs.run_info import run_info
     from molbuilder.runs import declared, openable, run_of
     from molbuilder.structure import Structure
     run = _run(relaxed)
-    pos = _final_geometry(relaxed).positions.copy()
+    final = _final_geometry(relaxed)
+    pos = final.positions.copy()
     pos[1, 2] += shift_z
-    s = Structure(elements=["H", "H"], positions=pos,
+    s = Structure(elements=final.elements, positions=pos,
                   regions={"frozen_atoms": [0]},
                   cell=np.diag([_BOX] * 3), axis_kind=("isolated",) * 3)
     s.apply_info_dict(run_info(deck=declared(run_of(run)).deck,
@@ -214,7 +223,7 @@ def _ev(x: float) -> str:
 
 def _cfg(**over):
     from molbuilder.config.siesta import SiestaConfig
-    return SiestaConfig(system_label="h2", psml_lib="pseudopotential", **over)
+    return SiestaConfig(system_label="co2", psml_lib="pseudopotential", **over)
 
 
 def test_a_matching_record_answers_the_ticked_box_with_its_numbers(relaxed):
@@ -281,7 +290,7 @@ def test_a_record_at_another_level_of_theory_warns(relaxed):
     assert len(found) == 1, found
     assert f"basis_size: relaxed with {ran}, this run {other}" \
         in found[0].message
-    pfound = _record_findings(s, PySCFConfig(job_name="h2",
+    pfound = _record_findings(s, PySCFConfig(job_name="co2",
                                              already_relaxed=True))
     assert any(i.severity == "warn"
                and "relaxed on siesta; this is a pyscf calculation"
@@ -291,7 +300,7 @@ def test_a_record_at_another_level_of_theory_warns(relaxed):
 def test_a_record_at_another_charge_warns(relaxed):
     """ES7 (`science/chemistry-correctness.md` § 2a): the electronic state is
     part of the level of theory the record is compared against, resolved --
-    H2 at -2 keeps the electron count even, so the parity rule does not
+    CO2 at -2 keeps the electron count even, so the parity rule does not
     answer first."""
     s = _carrying_the_record(relaxed)
     found = [i for i in _record_findings(
@@ -320,3 +329,126 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
     assert len(found) == 1 and found[0].severity == "info", found
     assert "No relaxation record travels with this structure" \
         in found[0].message
+
+
+# --------------------------------------------------------------------- #
+#  The order the run's atoms are in (`model/overview.md` § 2.2a)         #
+# --------------------------------------------------------------------- #
+#
+# The run's deck is written in the engine's held-first order: the held
+# carbon, then the oxygens as listed (`engines/vibration.md` § 5.2).  The
+# silent failure every row guards: a run in its engine's order shown, saved or
+# converted as if it were in yours -- the carbon taken for the first oxygen --
+# with nothing to say so.
+
+#: The decks' order record: the road's CO2 (O O C, the carbon held), held
+#: atoms first -- a 3-cycle, so the two directions differ.
+_ORDER = {"key": "held-first", "sorted_to_original": [2, 0, 1],
+          "original_to_sorted": [1, 2, 0]}
+_ENGINE_ELEMENTS = ["C", "O", "O"]
+_SAID = "in the engine's order (held atoms first)"
+_RESTORED = ("was in an engine's order (held atoms first); it is put back "
+             "in your order")
+
+_ORDER_ROWS = [
+    dict(name="the deck is written in the engine's order and states it; "
+              "the run door reads it", door="deck"),
+    dict(name="the Results tab's load answers the run in the engine's "
+              "order, its labels and order record on it, and the viewer "
+              "marks it", door="watch_load"),
+    dict(name="SIESTA's own CO2.xyz opens through its run's view, in the "
+              "engine's order, marked", door="build_load"),
+    dict(name="...and in your order when an editor opens it, saying so",
+         door="build_load", body={"restore": True}),
+    dict(name="a bare xv2xyz of the run's .XV is refused, naming "
+              "--from-run", door="xv2xyz"),
+    dict(name="xv2xyz --from-run writes the pair in your order, and says so",
+         door="xv2xyz", from_run=True),
+    dict(name="a bare file reader reads the run's output as the engine wrote "
+              "it, and says so", door="watch_parse"),
+]
+
+
+def _client(relaxed, monkeypatch):
+    """The app, its file picker rooted at the run's projects tree."""
+    from molbuilder import diagnostics
+    from molbuilder.web.app import create_app
+    root = next(p for p in relaxed.parents if p.name == "projects")
+    monkeypatch.setattr(type(diagnostics.get_capabilities()),
+                        "file_picker_roots",
+                        lambda self: ((root.resolve(), "projects"),))
+    return create_app(config={}).test_client()
+
+
+def _in_your_order(struct) -> None:
+    """The road's CO2 as it was written: O O C, the carbon held, no order
+    record."""
+    assert (struct.elements, struct.frozen_atoms, struct.atom_order) == (
+        CO2_ELEMENTS, CO2_HELD, None), struct
+
+
+@pytest.mark.parametrize("row", _ORDER_ROWS,
+                         ids=[r["name"] for r in _ORDER_ROWS])
+def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
+                                                     monkeypatch, tmp_path):
+    from molbuilder.structure import Structure
+    run = _run(relaxed)
+    if row["door"] == "deck":
+        from molbuilder.runs import declared, run_of
+        assert _deck_geometry(relaxed).elements == _ENGINE_ELEMENTS
+        assert declared(run_of(run)).atom_order.to_dict() == _ORDER
+        return
+    if row["door"] == "watch_parse":
+        from click.testing import CliRunner
+        from molbuilder import cli
+        said = CliRunner().invoke(cli.cli, ["watch", "parse", str(_out(relaxed)),
+                                            "--frames-only"])
+        assert said.exit_code == 0, said.output
+        assert f"note: {_out(relaxed).name} is {_SAID}" in said.stderr, (
+            said.stderr)
+        return
+    if row["door"] == "xv2xyz":
+        from click.testing import CliRunner
+        from molbuilder import cli
+        from molbuilder.workingcopy_structure import StructureCodec
+        out = tmp_path / "co2.xyz"
+        said = CliRunner().invoke(cli.cli, [
+            "xv2xyz", str(run / "CO2.XV"), str(out)]
+            + (["--from-run"] if row.get("from_run") else []))
+        if not row.get("from_run"):
+            assert said.exit_code != 0, said.output
+            assert "--from-run" in said.output and _SAID in said.output
+            assert not out.exists()
+            return
+        assert said.exit_code == 0, said.output
+        assert f"CO2.XV {_RESTORED}" in said.output, said.output
+        _in_your_order(StructureCodec().load(out))
+        return
+    client = _client(relaxed, monkeypatch)
+    if row["door"] == "watch_load":
+        loaded = client.post("/api/watch/load",
+                             json={"path": str(run)}).get_json()
+        assert loaded["ok"] is True, loaded
+        env = loaded["structure"]
+        assert env["metadata"]["atom_order"] == _ORDER
+        assert env["elements"] == _ENGINE_ELEMENTS
+        assert env["metadata"]["regions"]["frozen_atoms"] == [0]
+        # ...and installed in the viewer, as its frame 0 is: marked.
+        shown = client.post("/api/build/load",
+                            json={"structure": env}).get_json()
+        assert shown["ok"] is True and shown["atom_order_said"] == _SAID
+        return
+    answer = client.post("/api/build/load", json={
+        "path": str(run / "CO2.xyz"), **row.get("body", {})}).get_json()
+    assert answer["ok"] is True, answer
+    got = Structure.from_dict(answer["structure"])
+    restored = [n["message"] for n in answer.get("notices", [])
+                if n["where"] == "structure.restored"]
+    if row.get("body", {}).get("restore"):
+        _in_your_order(got)
+        assert restored == [f"CO2.xyz {_RESTORED}"], answer.get("notices")
+        assert answer["atom_order_said"] is None
+        return
+    assert got.atom_order.to_dict() == _ORDER and restored == []
+    assert (got.elements, got.frozen_atoms) == (_ENGINE_ELEMENTS, [0])
+    assert answer["atom_order_said"] == _SAID

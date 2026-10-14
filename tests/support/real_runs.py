@@ -26,9 +26,10 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`bench` (``real_h2_bench``) -- a two-trial benchmark of the same
   H2's `coarse`: one trial launched by name, then the rest by a launch of
   the benchmark under a per-trial bound;
-* :func:`relaxed_for_vibration` (``real_h2_relaxed_for_vibration``) -- the
-  vibration kind's `relax` stage of a held H2
-  (`_road.h2_relaxed_for_vibration`).
+* :func:`relaxed_for_vibration` (``real_relaxed_for_vibration``) -- the
+  vibration kind's `relax` stage of the road's CO2, listed O O C with the
+  carbon held, so its decks are in the engine's held-first order
+  (`_road.co2_relaxed_for_vibration`; plan T-CO2).
 """
 from __future__ import annotations
 
@@ -216,8 +217,9 @@ def bench(tmp_path_factory) -> RealRun:
 
 
 def relaxed_for_vibration(tmp_path_factory):
-    """The vibration kind's `relax` stage of a held H2, run: the bundle."""
-    from _road import h2_relaxed_for_vibration
+    """The vibration kind's `relax` stage of the road's CO2, run: the
+    bundle."""
+    from _road import co2_relaxed_for_vibration
     with _on_the_road(tmp_path_factory, "vibration") as tree:
-        bundle = h2_relaxed_for_vibration(tree)
+        bundle = co2_relaxed_for_vibration(tree)
     return bundle

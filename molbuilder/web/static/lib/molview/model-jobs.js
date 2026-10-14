@@ -291,6 +291,12 @@ export function structureFromServer(payload) {
             /* Every other metadata key, carried whole and never opened
              * (`SHAPED_METADATA_KEYS`). */
             otherMetadata: otherMetadata,
+            /* THE ORDER THE ATOMS ARE IN, in the server's words -- worked
+             * out there from the order record, like the resolved box
+             * (`model/overview.md` § 2.2a): null in your order.  Shown, never
+             * sent back. */
+            orderSaid: typeof payload.atom_order_said === "string"
+                ? payload.atom_order_said : null,
         },
         /* THE FRAMES, each with its coordinates and its rows (§ 6.1): one
          * entry per frame in every list.  One frame is the atoms' own

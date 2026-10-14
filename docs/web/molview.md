@@ -522,6 +522,7 @@ classDiagram
       +Map info
       +Row[] customized
       +Map otherMetadata
+      +string orderSaid
     }
     class AtomFacts {
       +string[] labels
@@ -594,6 +595,7 @@ classDiagram
 | `info` | the records that describe the structure without being it (§ 8.4a) | **Shared by every frame**, carried verbatim; never hashed, never gated for the host's writes |
 | `customized` | `Row[]` — `{name, value, unit?, note?}`, the structure's named values (`model/structure.md` § 2.2d) | **Shared by every frame.** Part of the structure: written only through `data.customized` (§ 9.3), gated like any edit (§ 9.4) |
 | `otherMetadata` | every other key of the structure's metadata, as the server stated it — today `atom_order`, the order record (`model/overview.md` § 2.2a) | **Shared by every frame**, carried whole and never opened: in from the envelope's `metadata`, back out into it |
+| `orderSaid` | the order the atoms are in, in the server's words — *in the engine's order (held atoms first)* — or `null` in your order | **Worked out by the server** from the order record, like the resolved box (`atom_order_said` on the answer); shown, never sent back (§ 6.8) |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 | `rowsPerFrame` | `Row[][]` or `null` | `rowsPerFrame[f]` = frame `f`'s own `customized` rows; `null` when no frame has one, otherwise exactly one entry per frame. Folded in from the envelope's `metadata.customized.frames` and out again only by the two translators (§ 11.1), as the annotations are |
@@ -1037,13 +1039,13 @@ page went on believing the file it had just discarded was still open.
 
 ### 6.8 Notices — what the server warns about, and how long it stays true
 
-*(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a; the
-Molbuilder tab's notice built, a viewer's mark not yet, plan § 5ab R2: the
-engine's order is **not** a notice. A notice is cleared at every
+*(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
+§ 5ab R1–R2: the engine's order is **not** a notice. A notice is cleared at every
 change to the structure (`settle`), a label edit and a Results poll among
 them; a viewer holding a remapped structure shows its order from the
 structure's own `atom_order`, read at every settle, so the mark lasts exactly
-as long as the state. The Molbuilder tab's open of a remapped file says once,
+as long as the state — one line above the tabs, `.molviewer-order`, in the
+words the server sends beside the structure (`orderSaid`, § 6.2). The Molbuilder tab's open of a remapped file says once,
 as a notice of that load — `structure.restored`, info, naming the key — that it
 restored it: true of the load, and the editor then holds the person's order.)*
 
@@ -2042,7 +2044,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 
 | Call | Parameters | Answers |
 |---|---|---|
-| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, frames, forcesPerFrame, rowsPerFrame}` |
+| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, orderSaid, frames, forcesPerFrame, rowsPerFrame}` |
 | `getAtoms()` | — | `[{index, element, labels, residue}]` |
 | `getElements()` · `getCoordinates()` | — | the elements; `{frames, forcesPerFrame}` |
 | `getRegions()` | — | `{label: [atom…]}` |
@@ -2171,7 +2173,7 @@ structure**, so one read holds them all.
 
 | You want… | Ask | You get |
 |---|---|---|
-| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
+| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, otherMetadata, orderSaid, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
 | to **send** the structure to the server | `exportFile(range)` | the same facts **in the server's words**, for **one frame** (the one on screen, unless a range says otherwise), plus the name it came in under |
 
 **A tab never converts between them.** The renaming is a translation, and this

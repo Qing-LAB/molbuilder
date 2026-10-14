@@ -1088,12 +1088,63 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     note = "defaults (a bare .XV states only the geometry and the lattice)"
     if from_run:
         struct, note = _apply_run_metadata(struct, xv_path)
+        # A PAIR IS WRITTEN IN YOUR ORDER (`model/overview.md` § 2.2a, I1):
+        # a reordered run's geometry is restored, and said.
+        struct, restored = struct.in_your_order(xv_path.name)
+        if restored:
+            click.echo(restored)
+    else:
+        _refuse_a_reordered_run(xv_path)
 
     StructureCodec().write(struct, xyz_path)
     click.echo(f"Wrote the pair at {xyz_path}: {struct.n_atoms} atoms, "
                f"cell preserved")
     click.echo(f"  metadata: {note}")
     return 0
+
+
+def _order_of_its_run(path):
+    """The order record of the run of ours that holds ``path`` -- its deck's
+    (`model/overview.md` § 2.2a, I5) -- or ``None``: a file no run of ours
+    holds, or a run in your order.  A deck block that cannot be read is
+    refused, naming the deck."""
+    from .deck_record import DeckRecordUnreadable
+    from .runs import declared, run_of
+    run = run_of(Path(path))
+    if run is None:
+        return None
+    try:
+        return declared(run).atom_order
+    except DeckRecordUnreadable as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _say_a_file_is_not_its_run(path) -> None:
+    """A BARE FILE READER reads a file, not a run (`model/parse.md` § 5.3):
+    of a run of ours in its engine's order it says so, on stderr -- the
+    atoms it prints, and every atom index, are in that order."""
+    if str(path) == "-":
+        return
+    order = _order_of_its_run(path)
+    if order is not None:
+        click.echo(
+            f"note: {Path(path).name} is {order.said} -- this reads the file "
+            f"as the engine wrote it, and the atom indices in it count in "
+            f"that order; the run's own view is the Results tab, or "
+            f"`molbuilder xv2xyz --from-run`", err=True)
+
+
+def _refuse_a_reordered_run(xv_path: Path) -> None:
+    """A bare ``xv2xyz`` of an ``.XV`` a reordered run of ours holds is
+    refused, naming ``--from-run`` (`model/overview.md` § 2.2a): its atoms
+    are in its engine's order, which only the run's deck states, and a pair
+    written from them alone would be in that order, with nothing to say so."""
+    order = _order_of_its_run(xv_path)
+    if order is not None:
+        raise click.ClickException(
+            f"{xv_path.name} is {order.said}: a run of ours holds it, and its "
+            f"deck states the order.  Convert it with --from-run, which takes "
+            f"the run's labels and puts the atoms back in your order.")
 
 
 def _apply_run_metadata(struct, xv_path: Path):
@@ -1712,6 +1763,7 @@ def cmd_runtime_info(input_path, out_path, pretty):
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
+    _say_a_file_is_not_its_run(input_path)
 
     # frozen_atoms is a Python set in-memory; convert to a sorted list
     # for JSON.  Any other non-JSON-native types should fail loudly so
@@ -3284,6 +3336,7 @@ def cmd_watch_parse(input_path, frames_only, pretty):
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
+    _say_a_file_is_not_its_run(input_path)
 
     payload = trajectory_to_legacy_dict(traj)
     if frames_only:
@@ -3352,6 +3405,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
                    f"follows one run artifact; name the file inside it.",
                    err=True)
         sys.exit(2)
+    _say_a_file_is_not_its_run(input_path)
 
     last_n = 0
     last_state = "running"

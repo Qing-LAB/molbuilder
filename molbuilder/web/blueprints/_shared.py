@@ -392,6 +392,10 @@ def structure_to_dict(
         # the envelope must be able to carry).
         "periodicity":   wire["periodicity"],
         "annotations":   wire["annotations"],
+        # The order the atoms are in, in words, worked out by the structure
+        # like the resolved box (`model/overview.md` § 2.2a): what a viewer
+        # holding an engine's order marks itself with; none in your order.
+        "atom_order_said": wire["atom_order_said"],
         "issues":        base["issues"],
         "extra":         base["extra"],
         # Legacy aliases for existing modify-tab consumers (identity columns

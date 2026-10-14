@@ -887,14 +887,14 @@ file.
 
 **And the order the atoms are in** *(2026-10-14 —
 [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2; the
-bare file readers' and `xv2xyz`'s parts with R2's next step, the import in
-prep with R3)*. A
+import in prep is R3's)*. A
 reordered run's files are in its engine's order; a parser reads them so and
 says nothing about it — the order is what the run declared, its deck's order
 record (`atom_order`), and the run door attaches it to every structure
 `view_of` builds (I5). The parsers stay the engine's file view; a bare file
 reader (`watch parse`, `watch tail`, `runtime-info`) reads a file, not a run,
-and says so — and a bare `xv2xyz`, which writes a pair, refuses an `.XV` a
+and says so — a line on stderr, of a file a run of ours holds in its engine's
+order — and a bare `xv2xyz`, which writes a pair, refuses an `.XV` a
 reordered run of ours holds, naming `--from-run`. **No door builds a run's
 structure from a parser class it imports** — `jobset.prep._vibration_stage_geometry`
 does today (plan V1.41) — it asks the run door.

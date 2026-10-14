@@ -138,7 +138,7 @@ name = "...and in your order when an editor opens it, saying so -- the Molbuilde
 pair = "remapped"
 door = "route_load"
 body = { restore = true }
-said = { where = "structure.restored", severity = "info", words = "co.xyz was in an engine's order (held-first); it is put back in your order" }
+said = { where = "structure.restored", severity = "info", words = "co.xyz was in an engine's order (held atoms first); it is put back in your order" }
 
 [[case]]
 name = "an order record missing a direction is refused"
@@ -172,13 +172,13 @@ unreadable = "an order record states its key and both directions as lists of who
 name = "a viewer's save of a structure in an engine's order writes your order, and says so"
 pair = "remapped"
 door = "route_save"
-said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held-first); it is put back in your order" }
+said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held atoms first); it is put back in your order" }
 
 [[case]]
 name = "...and so does its download"
 pair = "remapped"
 door = "route_export"
-said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held-first); it is put back in your order" }
+said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held atoms first); it is put back in your order" }
 
 [[case]]
 name = "a structure in an engine's order is not written as a person's pair: refused, naming restored()"

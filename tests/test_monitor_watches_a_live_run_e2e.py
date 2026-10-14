@@ -2,7 +2,7 @@
 files it ships with reading one with molbuilder absent.
 
 The run is made in this pass, on the road, once for every module that reads
-it: a vibration's `relax` stage, an H2 with one atom held, run with the real
+it: a vibration's `relax` stage, the road's CO2 with its carbon held, run with the real
 SIESTA (`support/real_runs.py`).
 The monitor is then shown that run as it grew -- a copy of the run's own
 folder, its output written up to a line and grown on, under its own names
@@ -39,14 +39,14 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-_STEM = "H2_01_relax"
+_STEM = "CO2_01_relax"
 _OUT = f"{_STEM}-run0.out"
 
 
 @pytest.fixture(scope="module")
-def run(real_h2_relaxed_for_vibration):
+def run(real_relaxed_for_vibration):
     """The relaxation's run folder, made on the road."""
-    return real_h2_relaxed_for_vibration / "01_relax" / "run-0"
+    return real_relaxed_for_vibration / "01_relax" / "run-0"
 
 
 @pytest.fixture(autouse=True)
@@ -134,7 +134,7 @@ def _replay(run: Path, tmp_path: Path, upto: int):
             fh.write("".join(lines[at["n"]:to]))
         at["n"] = to
     return there, monitor.WatchedRun(
-        names=RunNames.of("H2", "01_relax", "hierarchical"), run=0,
+        names=RunNames.of("CO2", "01_relax", "hierarchical"), run=0,
         directory=there), grow
 
 
@@ -472,7 +472,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         "                      ('grammar', P._G), ('rules', P.compile_rules),\n"
         "                      ('names', M._rf))}\n"
         "where['from'] = os.path.basename(os.path.dirname(M.__file__))\n"
-        f"w = M.WatchedRun(names=M._rf.RunNames.of('H2', '01_relax', "
+        f"w = M.WatchedRun(names=M._rf.RunNames.of('CO2', '01_relax', "
         f"'hierarchical'), run=0)\n"
         "st = w.conclude(w.read(0.0, 1.0))\n"
         "print(json.dumps({'where': where, 'state': st.state,\n"

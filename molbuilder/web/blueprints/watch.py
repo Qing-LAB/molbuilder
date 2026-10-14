@@ -195,27 +195,26 @@ def _frame0_structure(
     the frames from the parsed logs, the labels from the run's input script,
     the box from its output logs -- so the assembly belongs here too.
 
-    Returns ``None`` when there are no frames; never raises, because a run
-    whose metadata cannot be recovered must still open.
+    Returns ``None`` when there are no frames.  A field the run's deck states
+    that cannot be read -- an order record, a label for another atom count --
+    is REFUSED, the structure's own ``ValueError``, which the path load
+    answers with its sentence: the view applies every field the deck states
+    (`model/overview.md` § 2.2a, I5), and a run shown without the one it
+    could not read would be shown in an order nothing marks.
     """
     frames = (data or {}).get("frames")
     if not frames:
         return None
-    try:
-        import json as _json
-        from molbuilder.runs import RunView
-        meta_json = meta.get("atom_metadata")
-        view = RunView(atom_metadata=(_json.loads(meta_json)
-                                      if meta_json else None),
-                       periodicity=meta.get("periodicity"),
-                       info=meta.get("info"))
-        first = frames[0]
-        return view.structure([a[0] for a in first],
-                              [a[1:4] for a in first]).to_dict()
-    except Exception:                                   # noqa: BLE001
-        # A run that cannot be assembled still OPENS -- the frames are the
-        # point, and the tab falls back to what it always had.
-        return None
+    import json as _json
+    from molbuilder.runs import RunView
+    meta_json = meta.get("atom_metadata")
+    view = RunView(atom_metadata=(_json.loads(meta_json)
+                                  if meta_json else None),
+                   periodicity=meta.get("periodicity"),
+                   info=meta.get("info"))
+    first = frames[0]
+    return view.structure([a[0] for a in first],
+                          [a[1:4] for a in first]).to_dict()
 
 
 def _run_metadata(
@@ -474,6 +473,12 @@ def api_load():
     meta = _run_metadata(state["data"], output=path,
                          traj=(_parsed[1] if _parsed and _parsed[0] == path
                                else None))
+    try:
+        frame0 = _frame0_structure(state["data"], meta)
+    except ValueError as exc:
+        return jsonify({"ok": False,
+                        "error": f"{path}: the run's structure could not be "
+                                 f"read from what its deck states -- {exc}"}), 400
     return jsonify({
         "ok":               True,
         "path":             state["path"],
@@ -490,7 +495,7 @@ def api_load():
         "run":              run,
         # FRAME 0 AS AN ENVELOPE -- what the viewer installs.  The parcels below
         # stay because the Cell page reads them directly.
-        "structure":        _frame0_structure(state["data"], meta),
+        "structure":        frame0,
         **meta,
     })
 

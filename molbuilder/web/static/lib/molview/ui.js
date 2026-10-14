@@ -1351,6 +1351,23 @@ function mountPanel(doc, card, model) {
     const panelNotices = el("ul", "issues-panel molviewer-notices");
     panelNotices.hidden = true;
     root.appendChild(panelNotices);
+    /* THE ORDER THE ATOMS ARE IN (`model/overview.md` § 2.2a; § 6.8): a
+     * viewer holding a structure in an engine's order says so, in the
+     * server's words for it, read from the structure at every redraw --
+     * never a notice, which a change to the structure clears.  An editor
+     * never holds one: its load asks for your order (I8). */
+    const orderLine = el("p", "molviewer-order");
+    orderLine.hidden = true;
+    root.appendChild(orderLine);
+    function drawOrder() {
+        const s = model.getStructure();
+        const said = s && s.orderSaid;
+        orderLine.hidden = !said;
+        orderLine.textContent = said
+            ? "The atoms are listed " + said + "; a save or a download "
+              + "writes them in your order."
+            : "";
+    }
     root.appendChild(pages.selection);
     root.appendChild(pages.cell);
     root.appendChild(pages.info);
@@ -2975,9 +2992,11 @@ function mountPanel(doc, card, model) {
         draw(model.selection.getState());
         drawCell();
         drawInfo();
+        drawOrder();
     });
     drawCell();
     drawInfo();
+    drawOrder();
 
     card.panel.appendChild(root);
 

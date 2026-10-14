@@ -887,7 +887,7 @@ copy of any of them:
    (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
 
    *2026-10-14* ([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
-   § 5ab R1–R2; `xv2xyz --from-run` with R2's next step): **the order record
+   § 5ab R1–R2): **the order record
    travels inside the pair** — a
    remapped structure's `atom_order` is a field of its sidecar (v14), read and
    written by the codec with its atoms and nowhere else (I7). **The codec
@@ -1011,10 +1011,9 @@ molbuilder dna ATGC > seq.xyz                      # Structure on stdout
 **A remapped file on the command line** *([`model/overview.md`](?doc=model/overview.md)
 § 2.2a, I8)*: `molbuilder modify` is an editor — it opens a remapped pair
 restored, says so, and its agreement says the atom indices it takes count in
-your order, not the file's *(built 2026-10-14)*; `xv2xyz --from-run` writes
-the run's geometry restored; a bare `xv2xyz` of an `.XV` a reordered run of
-ours holds is refused, naming `--from-run` *(these two decided 2026-10-14, not
-built — plan § 5ab R2)*.
+your order, not the file's; `xv2xyz --from-run` writes the run's geometry
+restored, and says so; a bare `xv2xyz` of an `.XV` a reordered run of ours
+holds is refused, naming `--from-run` *(2026-10-14, plan § 5ab R1–R2)*.
 
 **Both sides of the CLI now go through the door.** Reads: `jobset prep`
 reads the calculation's structure through `StructureCodec().load`

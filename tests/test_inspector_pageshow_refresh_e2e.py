@@ -87,12 +87,12 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 
 
 @pytest.fixture(scope="module")
-def live_output(real_h2_relaxed_for_vibration):
+def live_output(real_relaxed_for_vibration):
     """A real run's output -- the trajectory inspector's primary file type
     -- made on the road with the real SIESTA, once in this pass
-    (`support/real_runs.py`): an H2 relaxation, its moves the frames."""
-    return (real_h2_relaxed_for_vibration / "01_relax" / "run-0"
-            / "H2_01_relax-run0.out")
+    (`support/real_runs.py`): a CO2 relaxation, its moves the frames."""
+    return (real_relaxed_for_vibration / "01_relax" / "run-0"
+            / "CO2_01_relax-run0.out")
 
 
 @pytest.fixture

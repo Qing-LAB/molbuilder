@@ -421,8 +421,8 @@ _AGREEMENT_ROWS = [
          left=["S", "C", "S"]),
     dict(name="an engine's record, opened in your order: the indices count "
               "in yours", remapped=True, delete="0",
-         said=("in.xyz was in an engine's order (held-first); it is put back "
-               "in your order", "count from 0",
+         said=("in.xyz was in an engine's order (held atoms first); it is put "
+               "back in your order", "count from 0",
                "They count in your order, not the file's", "atom index 0 (O)",
                "--yes"),
          left=["O", "C"]),

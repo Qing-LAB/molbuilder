@@ -46,6 +46,12 @@ SORT_TRANSPORT = "transport"
 SORT_HELD_FIRST = "held-first"
 SORT_KEY_NAMES = (SORT_TRANSPORT, SORT_HELD_FIRST)
 
+#: WHAT EACH ORDER IS CALLED where a person reads it -- the viewer's mark and
+#: every door that says it restored a structure (`model/overview.md`
+#: § 2.2a; `web/results.md` § 4): one table, beside the names.
+SORT_KEY_WORDS = {SORT_TRANSPORT: "TranSIESTA's order",
+                  SORT_HELD_FIRST: "held atoms first"}
+
 
 class PermutationError(ValueError):
     """A record that cannot put a run's rows back in the input order: absent,
@@ -92,6 +98,18 @@ class Permutation:
     @property
     def n_atoms(self) -> int:
         return len(self.sorted_to_original)
+
+    @property
+    def words(self) -> str:
+        """What this order is called where a person reads it
+        (:data:`SORT_KEY_WORDS`)."""
+        return SORT_KEY_WORDS.get(self.key, self.key)
+
+    @property
+    def said(self) -> str:
+        """The viewer's mark of a structure in this order: *in the engine's
+        order (held atoms first)*."""
+        return f"in the engine's order ({self.words})"
 
     @property
     def is_identity(self) -> bool:
@@ -213,5 +231,6 @@ def read_permutation(directory) -> Permutation:
 
 
 __all__ = ["PERMUTATION_SCHEMA", "Permutation", "PermutationError",
-           "SORT_HELD_FIRST", "SORT_KEY_NAMES", "SORT_TRANSPORT",
+           "SORT_HELD_FIRST", "SORT_KEY_NAMES", "SORT_KEY_WORDS",
+           "SORT_TRANSPORT",
            "read_permutation", "same_order"]

@@ -1443,8 +1443,8 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
     # legitimately added updates this line, on purpose.
     assert out["keys"] == ["annotations", "channelDefs", "customized",
                            "elements", "forcesPerFrame", "frames", "info",
-                           "otherMetadata", "periodicity", "rowsPerFrame",
-                           "title"], (
+                           "orderSaid", "otherMetadata", "periodicity",
+                           "rowsPerFrame", "title"], (
         f"the one read does not carry § 6.2's fields: {out['keys']}"
     )
     # The four facts § 9.3 names, each read off that single answer.

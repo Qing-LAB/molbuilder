@@ -5,7 +5,8 @@ relativistic, PBE (`nc-sr-04_pbe_standard`): ONCVPSP-3.3.0, PSML 1.1,
 generated 2017-10-31. They are here because the tests that start a real
 SIESTA need one pseudopotential per species SIESTA accepts, and it refuses to
 start without one: H for H2 and the hydrogen chain, C and O for the
-relaxation-to-vibration road on CO2 (`docs/plans/plan.md`, row T-CO2).
+relaxation-to-vibration road on CO2 (`docs/plans/plan.md`, row T-CO2). The
+road (`tests/_road.live_siesta`) puts all three in every live tree's library.
 
 | file | sha256 |
 |---|---|

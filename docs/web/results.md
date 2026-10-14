@@ -748,16 +748,19 @@ cover lifts when the viewer signals it has painted, or failed to (a viewer
 that cannot load its file says so and signals too), or after a 15-second
 safety timeout.
 
-**A reordered run is shown in the engine's order, marked** *(decided
-2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
-plan § 5ab R2)*: a SIESTA vibration's stages and the transport rungs (all but
+**A reordered run is shown in the engine's order, marked** *(2026-10-14 —
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2; the
+transport report's drawing is R6's)*: a SIESTA vibration's stages and the transport rungs (all but
 the electrode rungs, which run on a cell of their own) run on a reordered
 copy; their frames, forces, held atoms and labels agree with each other in
-the engine's order, and the viewer's head says so — *in the engine's order
-(held atoms first)*, or *(TranSIESTA's order)* — from the structure's
-`atom_order`, read at every settle, never a notice that a poll would clear. Saving or exporting from it writes the person's order, restored
-(I1); the transport report draws its junction restored (R6). Today the view is
-the engine's order, unmarked.
+the engine's order, and the viewer says so above its tabs — *The atoms are
+listed in the engine's order (held atoms first)*, or *(TranSIESTA's order)*,
+*; a save or a download writes them in your order* — from the structure it
+holds, at every redraw, never a notice that a poll would clear: the server
+words it from the order record (`atom_permutation.SORT_KEY_WORDS`), as it
+works out the resolved box. Saving or exporting from it writes the person's
+order, restored, and says so (I1); the transport report draws its junction
+restored (R6).
 
 The viewers you can land in — **six, all from the result dropdown**
 ([`presenters.md`](?doc=web/presenters.md) § 1 is the registry's own list).

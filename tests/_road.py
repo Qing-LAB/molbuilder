@@ -39,9 +39,10 @@ def env_bin(name: str) -> Path:
     return Path(prefix) / "bin" if prefix else Path("/nonexistent")
 
 
-#: The one pseudopotential a live H2 run needs: an input, checked in
-#: (`tests/fixtures/psml/README.md`).
-H_PSML = Path(__file__).resolve().parent / "fixtures" / "psml" / "H.psml"
+#: The pseudopotentials a live run needs -- H, C and O, one PseudoDojo
+#: release: inputs, checked in (`tests/fixtures/psml/README.md`).
+PSML_DIR = Path(__file__).resolve().parent / "fixtures" / "psml"
+H_PSML = PSML_DIR / "H.psml"
 
 
 def set_template_value(template: Path, name: str, value: str) -> None:
@@ -63,8 +64,8 @@ def live_siesta(tree: Path, tmp_path_factory):
     a module fixture does not get), this box probed with the conda the
     wrapper sources (`configuration.md` § 4), the env's own ``bin`` ahead of
     the suite's stub toolchain, the working folder beside the tree, and the
-    H pseudopotential in the tree's library.  Yields the monkeypatch, undone
-    on exit."""
+    checked-in pseudopotentials -- H, C, O -- in the tree's library.  Yields
+    the monkeypatch, undone on exit."""
     import os
     import shutil
 
@@ -83,17 +84,28 @@ def live_siesta(tree: Path, tmp_path_factory):
         assert (bin_ / "siesta").is_file(), bin_
         mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
         (tree / "pseudopotential").mkdir(exist_ok=True)
-        shutil.copy(H_PSML, tree / "pseudopotential" / "H.psml")
+        for psml in sorted(PSML_DIR.glob("*.psml")):
+            shutil.copy(psml, tree / "pseudopotential" / psml.name)
         yield mp
     finally:
         mp.undo()
 
 
-def h2_relaxed_for_vibration(tree: Path) -> Path:
-    """`jobset init --calculation vibration` on an H2 in a 10 Å box,
-    isolated, its first atom held (the kind's own ladder, `relax` then
-    `freq`), and its `relax` stage prepared and launched here -- one rank, one
-    thread: the bundle.  Called inside :func:`live_siesta`."""
+#: THE ROAD'S CO2 (plan T-CO2): listed O O C, the carbon held, so the
+#: held-first order a SIESTA vibration's decks are written in is a 3-cycle --
+#: C O O, the order record [2, 0, 1] one way and [1, 2, 0] the other -- and a
+#: restore in the wrong direction gives another answer.  Linear, in a 10 Å box
+#: isolated on every axis; one C=O a little long, so the relaxation moves.
+CO2_ELEMENTS = ["O", "O", "C"]
+CO2_POSITIONS = [[5.0, 5.0, 6.20], [5.0, 5.0, 3.84], [5.0, 5.0, 5.0]]
+CO2_HELD = [2]
+
+
+def co2_relaxed_for_vibration(tree: Path) -> Path:
+    """`jobset init --calculation vibration` on the road's CO2
+    (:data:`CO2_ELEMENTS`), its carbon held (the kind's own ladder, `relax`
+    then `freq`), and its `relax` stage prepared and launched here -- one
+    rank, one thread: the bundle.  Called inside :func:`live_siesta`."""
     import json
 
     import numpy as np
@@ -103,17 +115,17 @@ def h2_relaxed_for_vibration(tree: Path) -> Path:
     from support.road import jobset
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
     StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  regions={"frozen_atoms": [0]},
+        Structure(elements=list(CO2_ELEMENTS),
+                  positions=np.array(CO2_POSITIONS),
+                  regions={"frozen_atoms": list(CO2_HELD)},
                   cell=np.diag([10.0] * 3), axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "h2.xyz")
-    r = jobset("init", "--structure", "P/structure/h2.xyz",
-               "--bundle", "P/freq/H2", "--engine", "siesta",
+        tree / "P" / "structure" / "co2.xyz")
+    r = jobset("init", "--structure", "P/structure/co2.xyz",
+               "--bundle", "P/freq/CO2", "--engine", "siesta",
                "--calculation", "vibration", "--shape", "hierarchical",
-               "--name", "H2", "--psml-lib", "pseudopotential")
+               "--name", "CO2", "--psml-lib", "pseudopotential")
     assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "freq" / "H2"
+    bundle = tree / "P" / "freq" / "CO2"
     task = json.loads((bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"], task
     task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
@@ -124,7 +136,7 @@ def h2_relaxed_for_vibration(tree: Path) -> Path:
     r = jobset("launch", "task", "--stage", "relax", "--bundle", bundle,
                "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
-    out = bundle / "01_relax" / "run-0" / "H2_01_relax-run0.out"
+    out = bundle / "01_relax" / "run-0" / "CO2_01_relax-run0.out"
     assert ">> End of run" in out.read_text(errors="replace"), (
         "the relaxation did not reach its end")
     return bundle

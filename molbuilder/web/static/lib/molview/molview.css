@@ -1399,6 +1399,16 @@
 .molviewer-notices.issues-panel .issue-item {
     font: var(--molviewer-text-2xs)/1.35 var(--molviewer-control-family);
 }
+/* THE ORDER THE ATOMS ARE IN (molview.md § 6.8): one quiet line above the
+   tabs, read from the structure -- dim text in the notes' size, the export
+   menu's metadata note's tokens. */
+.molviewer-order {
+    margin: var(--molviewer-space-xs) 0 0 0;
+    color: var(--molviewer-color-text-dim);
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-normal)
+          var(--molviewer-control-family);
+}
+.molviewer-order[hidden] { display: none; }
 
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
 .molviewer-selection-header-tabs { align-items: center; }

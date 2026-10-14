@@ -163,12 +163,13 @@ REMAPPED_NOT_EDITED = (
     "restore it to your order with restored() first (model/overview.md § 2.2a)")
 
 
-def restored_said(what: str, key: str) -> str:
+def restored_said(what: str, order) -> str:
     """What a door that restored a structure says of it (``model/overview.md``
-    § 2.2a): ``what`` -- the file, the added structure -- and the key of the
-    order it was in.  One sentence, so every door says the same thing."""
-    return (f"{what} was in an engine's order ({key}); it is put back in "
-            f"your order")
+    § 2.2a): ``what`` -- the file, the added structure -- and the order it
+    was in, in its words (``atom_permutation.SORT_KEY_WORDS``).  One
+    sentence, so every door says the same thing."""
+    return (f"{what} was in an engine's order ({order.words}); it is put "
+            f"back in your order")
 
 
 def _order_record_type():
@@ -1286,6 +1287,13 @@ class Structure:
             # so the viewer's Metadata pane shows exactly what the pair
             # will carry.
             "info":          dict(self.info),
+            # THE ORDER THE ATOMS ARE IN, in words, worked out HERE like the
+            # resolved box (`model/overview.md` § 2.2a; `web/results.md`
+            # § 4): *in the engine's order (held atoms first)* for a
+            # structure carrying an order record, none in yours.  The record
+            # itself rides the structure's own dict.
+            "atom_order_said": (self.atom_order.said
+                                if self.atom_order is not None else None),
         }
 
     def _validate_regions(self, n: int) -> None:
@@ -1657,7 +1665,7 @@ class Structure:
         addition of a merge."""
         if self.atom_order is None:
             return self, None
-        return self.restored(), restored_said(what, self.atom_order.key)
+        return self.restored(), restored_said(what, self.atom_order)
 
     def _reordered(self, order: Sequence[int], **also) -> "Structure":
         """The reorder :meth:`take` and :meth:`restored` share."""
