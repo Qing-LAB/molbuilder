@@ -462,6 +462,12 @@ def _struct_for_validate(path, *, one_frame_only: bool = False):
     whole = StructureCodec().load(path, frames=True, said_out=said)
     for line in said:                  # what the read says (structure.md § 2.3)
         click.echo(line.message, err=True)
+    # AN EDIT IS ONLY IN YOUR ORDER (I8, I9): the editing command refuses a
+    # file of a run whose deck predates the record, by the sentence said.
+    from .runs import ORDER_UNSTATED
+    for line in said:
+        if one_frame_only and line.where == ORDER_UNSTATED:
+            raise click.ClickException(line.message)
     if whole.n_frames > 1 and one_frame_only:
         raise click.ClickException(
             f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "
@@ -1135,8 +1141,9 @@ def _say_a_file_is_not_its_run(path) -> None:
         click.echo(
             f"note: {Path(path).name} is {said.atom_order.said} -- this reads "
             f"the file as the engine wrote it, and the atom indices in it "
-            f"count in that order; the run's own view is the Results tab, or "
-            f"`molbuilder xv2xyz --from-run`", err=True)
+            f"count in that order; the Results tab shows the run marked so, "
+            f"and `molbuilder xv2xyz --from-run` writes it in your order",
+            err=True)
     elif said.order_unstated:
         click.echo(f"note: {said.order_unstated}", err=True)
 
@@ -1153,9 +1160,9 @@ def _refuse_a_reordered_run(xv_path: Path) -> None:
     order = said.atom_order if said is not None else None
     if order is not None:
         raise click.ClickException(
-            f"{xv_path.name} is {order.said}: a run of ours holds it, and its "
-            f"deck states the order.  Convert it with --from-run, which takes "
-            f"the run's labels and puts the atoms back in your order.")
+            f"{xv_path.name} is {order.said}, as its run's deck states.  "
+            f"Convert it with --from-run, which takes the run's labels and "
+            f"puts the atoms back in your order.")
 
 
 def _apply_run_metadata(struct, xv_path: Path):

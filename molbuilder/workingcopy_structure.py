@@ -208,8 +208,9 @@ class StructureCodec:
             struct = view.onto(struct)
             if view.order_unstated and said_out is not None:
                 from .issues import Issue
+                from .runs import ORDER_UNSTATED
                 said_out.append(Issue("warn", view.order_unstated,
-                                      "structure.order_unstated"))
+                                      ORDER_UNSTATED))
         elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read

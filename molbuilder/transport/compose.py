@@ -273,6 +273,13 @@ def _classify_pair(path: Path) -> CitedPair:
     from ..sidecars.molstruct import sidecar_path_for
     from ..workingcopy_structure import StructureCodec
     sidecar = sidecar_path_for(path)
+    # A PAIR IS ITS .xyz WITH ITS .molstruct.json -- an engine's own file in
+    # a run, read with what its run states, is not one: cite the run.
+    if not sidecar.is_file():
+        raise ComposeError(
+            f"{path} carries no info.calculation -- it has no .molstruct.json "
+            f"beside it -- so nothing says which settings its geometry was "
+            f"optimized with.  {CITATION_CONDITION}.")
     try:
         struct = StructureCodec().load(path, frames=True)
     except (ValueError, OSError) as exc:
@@ -281,12 +288,10 @@ def _classify_pair(path: Path) -> CitedPair:
     calc = (struct.info or {}).get("calculation")
     if not isinstance(calc, dict) or not isinstance(calc.get("contract"),
                                                     dict):
-        why = ("it has no .molstruct.json beside it" if not sidecar.is_file()
-               else f"{sidecar.name} records no optimization")
         raise ComposeError(
-            f"{path} carries no info.calculation -- {why} -- so nothing says "
-            f"which settings its geometry was optimized with.  "
-            f"{CITATION_CONDITION}.")
+            f"{path} carries no info.calculation -- {sidecar.name} records no "
+            f"optimization -- so nothing says which settings its geometry was "
+            f"optimized with.  {CITATION_CONDITION}.")
     _frames_keep_the_leads(struct, path)
     # A MODE'S FRAME SET'S DEFINITION, checked here -- the door every road
     # that cites passes -- so a set the record would average wrongly is

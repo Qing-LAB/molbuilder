@@ -242,10 +242,18 @@ def order_record_of(block: Optional[Dict[str, Any]], source: str):
     if record is None:
         return None
     try:                                    # inside molbuilder
-        from .atom_permutation import Permutation
+        from .atom_permutation import Permutation, PermutationError
     except ImportError:                     # beside a job
-        from atom_permutation import Permutation  # type: ignore
-    return Permutation.from_dict(record, source=f"{source}: atom_order")
+        from atom_permutation import Permutation, PermutationError  # type: ignore
+    # A RECORD THE DECK CARRIES AND THAT CANNOT BE READ is its block refused,
+    # naming the way out, as every unreadable block is (`job-contracts.md`
+    # § 3.1) -- on every surface that reads it.
+    try:
+        return Permutation.from_dict(record, source="atom_order")
+    except PermutationError as exc:
+        raise _unreadable(BLOCK_ATOM_METADATA,
+                          f"holds an order record that cannot be read "
+                          f"({exc})") from exc
 
 
 __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",

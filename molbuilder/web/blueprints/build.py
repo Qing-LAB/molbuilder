@@ -629,7 +629,7 @@ def api_build_load():
     A path load answers the file AS IT IS -- a pair in an engine's order
     with its order record -- unless ``restore: true``, which an editor's open
     asks: then in your order, through ``Structure.restored()``, said in a
-    ``structure.restored`` notice naming the key (``model/overview.md``
+    ``structure.restored`` notice naming the order in its words (``model/overview.md``
     § 2.2a, I8).
     """
     # FILE-ONLY load through the ONE authority (``model/structure.md`` § 2.4): a project
@@ -667,6 +667,12 @@ def api_build_load():
         # is, its order record attached.
         restored: list = []
         if _pbody.get("restore") is True:
+            # ...AND A FILE WHOSE ORDER NOTHING STATES IS NOT OPENED IN AN
+            # EDITOR (I8, I9): refused with the sentence said of it.
+            from molbuilder.runs import ORDER_UNSTATED
+            for s in lone:
+                if s.where == ORDER_UNSTATED:
+                    return jsonify({"ok": False, "error": s.message}), 400
             from ._shared import in_your_order
             whole, restored = in_your_order(whole, _resolved.name)
         try:

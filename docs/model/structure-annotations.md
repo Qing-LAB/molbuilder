@@ -185,23 +185,27 @@ would reject the envelope-less block. *(The browser posted it back to
 `/api/build/load` beside a text until 2026-09-25.)*
 
 **The block states the deck's order record, and the block is the serialiser's**
-*(decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, plan § 5ab R2)*. A deck written from a reordered copy states its
-`atom_order` in this block (I5) — the run's one order record, read by the run
-door through `runs.declared` and nowhere else. **The block carries every
-metadata field but the box** — the labels, the channels, the customized rows,
-the order record — and the deck's ENGINE-OFFSET block carries the box (the
-cell, the stated origin, the axis kinds, the vacuum), as it does today, so no
-fact is stated twice in one deck; the split is named once (the box fields),
-not as today's hand list (`emit_atom_metadata`'s `regions`, `annotations`,
-`customized`). **One predicate decides the block has something to say**, and
-one reader takes it — the block's reader and the order record's dict reader —
-for `apply_atom_metadata`, `Declared.atom_metadata_for` and the finish alike:
-today the three gates differ (`atom_metadata_for` counts only `regions` and
-`annotations`, so a deck stating only customized rows is dropped). The bridge
-above then **marks** what it builds: the Results tab shows a reordered run's
-structure in the engine's order with its order record, and a save from it is
-restored (I1).
+*(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
+§ 5ab R2)*. A deck written from a reordered copy states its `atom_order` in
+this block (I5) — the run's one order record, read by the run door through
+`runs.declared` and nowhere else. **The block carries every metadata field
+but the box** — the labels, the channels, the customized rows, the order
+record — and the deck's ENGINE-OFFSET block states where the atoms were
+placed (the resolved cell, which holds the vacuum; the offset applied; the
+axis kinds; whether the origin was stated), so no fact is stated twice in one
+deck; the split is named once (`structure.BOX_FIELDS` / `ATOM_METADATA_FIELDS`),
+and the writer takes the structure (`emit_atom_metadata(struct)`), spreading
+its serialiser's fields. **One predicate decides the block has something to
+say** (`script_emit.atom_metadata_has_something`), and one reader takes it —
+the block's reader and the order record's dict reader — for
+`apply_atom_metadata`, `Declared.atom_metadata_for` and the finish alike
+(until 2026-10-14 `atom_metadata_for` counted only `regions` and
+`annotations`, so a deck stating only customized rows was dropped). A deck is
+one frame: read onto the several frames an engine wrote from it, its named
+values are the structure's rows and the first frame's. The bridge above then
+**marks** what it builds: the Results tab shows a reordered run's structure in
+the engine's order with its order record, and a save from it is restored
+(I1).
 
 ### 4b. Engine translation (one-way: data model → engine input)
 

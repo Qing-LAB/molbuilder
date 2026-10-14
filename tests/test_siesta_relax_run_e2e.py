@@ -366,6 +366,8 @@ _ORDER_ROWS = [
          door="xv2xyz", from_run=True),
     dict(name="a bare file reader reads the run's output as the engine wrote "
               "it, and says so", door="watch_parse"),
+    dict(name="SIESTA's own CO2.xyz is not a pair a transport calculation "
+              "cites: refused by name -- cite the run", door="cite"),
 ]
 
 
@@ -397,6 +399,13 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
         from molbuilder.runs import declared, run_of
         assert _deck_geometry(relaxed).elements == _ENGINE_ELEMENTS
         assert declared(run_of(run)).atom_order.to_dict() == _ORDER
+        return
+    if row["door"] == "cite":
+        from molbuilder.transport.compose import ComposeError, resolve_citation
+        root = next(p for p in relaxed.parents if p.name == "projects")
+        with pytest.raises(ComposeError, match="it has no .molstruct.json "
+                                               "beside it"):
+            resolve_citation(str((run / "CO2.xyz").relative_to(root)), root)
         return
     if row["door"] == "watch_parse":
         from click.testing import CliRunner
@@ -475,6 +484,11 @@ _PRE_RULE_ROWS = [
     dict(name="the Results tab's load says so", door="watch_load"),
     dict(name="SIESTA's own CO2.xyz opens saying so", door="build_load"),
     dict(name="a bare file reader says so", door="watch_parse"),
+    dict(name="jobset init refuses to build a calculation from its CO2.xyz",
+         door="init"),
+    dict(name="an editor's open refuses it -- an editor holds only your order",
+         door="build_load", body={"restore": True}),
+    dict(name="molbuilder modify refuses it", door="modify"),
 ]
 
 
@@ -500,6 +514,28 @@ def before_the_rule(relaxed):
 def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
                                                         monkeypatch, tmp_path):
     run = _run(before_the_rule)
+    if row["door"] in ("init", "modify"):
+        from click.testing import CliRunner
+        from molbuilder import cli
+        out = tmp_path / "co2.xyz"
+        root = next(p for p in before_the_rule.parents if p.name == "projects")
+        again = root / "P" / "init-refused"
+        if row["door"] == "init":
+            from conftest import _point_the_one_door_at
+            from support.road import jobset
+            _point_the_one_door_at(root.parent, monkeypatch.setenv)
+            said = jobset("init", "--structure", str(run / "CO2.xyz"),
+                          "--bundle", str(again), "--shape", "hierarchical",
+                          "--engine", "siesta", "--calculation", "optimization",
+                          "--name", "CO2", "--psml-lib", "pseudopotential")
+        else:
+            said = CliRunner().invoke(cli.cli, [
+                "modify", str(run / "CO2.xyz"), str(out), "--rotate", "z:90"])
+        assert said.exit_code != 0, said.output
+        assert _UNSTATED in said.output, said.output
+        assert not (again / "task.json").exists() if row["door"] == "init" \
+            else not out.exists()
+        return
     if row["door"] in ("xv2xyz", "watch_parse"):
         from click.testing import CliRunner
         from molbuilder import cli
@@ -519,10 +555,68 @@ def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
     client = _client(before_the_rule, monkeypatch)
     answer = (client.post("/api/watch/load", json={"path": str(run)})
               if row["door"] == "watch_load" else
-              client.post("/api/build/load",
-                          json={"path": str(run / "CO2.xyz")})).get_json()
+              client.post("/api/build/load", json={
+                  "path": str(run / "CO2.xyz"),
+                  **row.get("body", {})})).get_json()
+    if row.get("body", {}).get("restore"):
+        assert answer["ok"] is False and _UNSTATED in answer["error"], answer
+        return
     assert answer["ok"] is True, answer
     said = [(n["severity"], _UNSTATED in n["message"])
             for n in answer.get("notices", [])
             if n["where"] == "structure.order_unstated"]
     assert said == [("warn", True)], answer.get("notices")
+
+
+# --------------------------------------------------------------------- #
+#  An order record that cannot be read (`job-contracts.md` § 3.1)        #
+# --------------------------------------------------------------------- #
+#
+# The same run, its deck's order record broken by hand -- an atom named
+# twice.  The silent failure: read as a deck with no order, the run shown in
+# your order though it is not.  Every surface refuses it, naming the deck
+# and the way out.
+
+_BROKEN_ROWS = [
+    dict(name="the Results tab's load refuses it with its sentence",
+         door="watch_load"),
+    dict(name="xv2xyz --from-run refuses it", door="xv2xyz"),
+]
+
+
+@pytest.fixture(scope="module")
+def broken_order(relaxed):
+    """A copy of the run's calculation beside it, its `relax` decks' order
+    record naming one atom twice."""
+    import shutil
+    copy = relaxed.parent / "CO2-broken-order"
+    if not copy.exists():
+        shutil.copytree(relaxed, copy)
+        for deck in copy.rglob("CO2_01_relax.fdf"):
+            text = deck.read_text()
+            assert '"sorted_to_original":[2,0,1]' in text, deck
+            deck.write_text(text.replace('"sorted_to_original":[2,0,1]',
+                                         '"sorted_to_original":[2,0,0]'))
+    return copy
+
+
+@pytest.mark.parametrize("row", _BROKEN_ROWS,
+                         ids=[r["name"] for r in _BROKEN_ROWS])
+def test_an_order_record_that_cannot_be_read_is_refused(row, broken_order,
+                                                       monkeypatch, tmp_path):
+    run = _run(broken_order)
+    words = "holds an order record that cannot be read"
+    if row["door"] == "xv2xyz":
+        from click.testing import CliRunner
+        from molbuilder import cli
+        said = CliRunner().invoke(cli.cli, [
+            "xv2xyz", str(run / "CO2.XV"), str(tmp_path / "co2.xyz"),
+            "--from-run"])
+        assert said.exit_code != 0 and words in said.output, said.output
+        assert "checkpoint restore" in said.output
+        return
+    answer = _client(broken_order, monkeypatch).post(
+        "/api/watch/load", json={"path": str(run)})
+    assert answer.status_code == 400, answer.get_data(as_text=True)[:300]
+    assert words in answer.get_json()["error"], answer.get_json()
+

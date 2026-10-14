@@ -342,6 +342,10 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
 #: in the engine's order.
 ORDER_RECORDED_SINCE = "2.10.0"
 
+#: The notice a door that shows such a run says it in; a door that builds
+#: from it refuses with the same sentence (I9).
+ORDER_UNSTATED = "structure.order_unstated"
+
 
 def _reorders(run: "Run") -> bool:
     """Whether ``run``'s kind writes its decks from a reordered copy (I9): a

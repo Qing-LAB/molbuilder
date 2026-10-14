@@ -810,15 +810,14 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
         if path.name not in own or any(attempt_index(part) is not None
                                        for part in rel.parts):
             continue
+        # WHICH MOLBUILDER PREPARED IT, read off the deck's own record: a
+        # stage prepared before an upgrade is said so by name (R-L15).
+        if path.is_file() and path.name == Path(job.script).name:
+            from ..script_emit import written_by
+            prepared_by = written_by(path.read_text(errors="replace"))
         if not path.is_file() or without_stamps(path.read_bytes()) != \
                 without_stamps(now.plan.read_bytes(path)):
             differ.append(str(rel))
-            # WHICH MOLBUILDER PREPARED IT, read off the deck's own record:
-            # a stage prepared before an upgrade is said so by name (plan
-            # § 5ab, the release's note).
-            if path.is_file() and path.name == Path(job.script).name:
-                from ..script_emit import written_by
-                prepared_by = written_by(path.read_text(errors="replace"))
 
     def row(j):
         # ITS JOB'S MEMBERS are the group's to check, by membership (G7).

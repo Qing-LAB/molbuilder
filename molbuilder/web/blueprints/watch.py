@@ -196,11 +196,12 @@ def _frame0_structure(
     the box from its output logs -- so the assembly belongs here too.
 
     Returns ``None`` when there are no frames.  A field the run's deck states
-    that cannot be read -- an order record, a label for another atom count --
-    is REFUSED, the structure's own ``ValueError``, which the path load
-    answers with its sentence: the view applies every field the deck states
-    (`model/overview.md` § 2.2a, I5), and a run shown without the one it
-    could not read would be shown in an order nothing marks.
+    that the structure refuses is REFUSED, the structure's own
+    ``ValueError``, which the path load answers with its sentence: the view
+    applies every field the deck states (`model/overview.md` § 2.2a, I5),
+    and a run shown without the one it could not apply would be shown in an
+    order nothing marks.  (A block that cannot be read at all is refused
+    before here, by the run door.)
     """
     frames = (data or {}).get("frames")
     if not frames:
@@ -253,12 +254,13 @@ def _run_metadata(
     import json as _json
     from molbuilder.issues import Issue
     from molbuilder.periodicity_gate import notices_for_report
+    from molbuilder.runs import ORDER_UNSTATED
     return {
         # WHAT THE LOAD SAYS OF THE RUN: a deck written before the order was
         # recorded, said (`model/overview.md` § 2.2a, I9); none for an
         # upload, which has no run.
         "notices":       notices_for_report(
-            [Issue("warn", view.order_unstated, "structure.order_unstated")]
+            [Issue("warn", view.order_unstated, ORDER_UNSTATED)]
             if view.order_unstated else []),
         # Per-atom metadata (region labels / frozen tags / annotation
         # channels) the Build tab embedded in the run's input script, as a

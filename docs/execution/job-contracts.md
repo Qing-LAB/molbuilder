@@ -1509,9 +1509,7 @@ part)*. A deck
 written from a reordered copy — a SIESTA vibration's every stage, every
 transport rung but the electrode rungs, whose cells are structures of their
 own — states its `atom_order` in this block, the run's one order record (I5).
-**The block carries every metadata field but the box** (the deck's
-ENGINE-OFFSET block carries the cell, the stated origin, the axis kinds and
-the vacuum), the split named once; **one predicate** decides the block has
+**The block carries every metadata field but the box** (the deck's ENGINE-OFFSET block states where the atoms were placed — the resolved cell, which holds the vacuum, the offset applied, the axis kinds, whether the origin was stated), the split named once; **one predicate** decides the block has
 something to say — a label, a channel, a customized row or an order record —
 and **one reader** takes it, the block's reader and the order record's dict
 reader, used by `apply_atom_metadata`, `runs.declared` and the vibration

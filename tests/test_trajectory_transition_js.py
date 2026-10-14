@@ -479,6 +479,7 @@ def _poll_once(*, changed, run, held=None, path="/p/run.molwatch.log"):
         }}
         function _renderBadge() {{}}
         function setStatus() {{}}
+        function _withRunNotes() {{}}
         function dispose() {{}}
         const state = {{
             machine: "WATCHING",

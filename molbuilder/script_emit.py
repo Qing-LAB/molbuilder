@@ -2046,6 +2046,15 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     block = dict(struct.metadata_to_dict())
     block.update({f: payload[f] for f in ATOM_METADATA_FIELDS
                   if f in payload})
+    # A DECK IS ONE FRAME, and an engine may write several from it -- a
+    # relaxation's steps, the first of them the deck's own geometry.  Its
+    # named values are then the structure's rows and the first frame's;
+    # the steps after it carry none of the deck's frame.
+    custom, n_frames = block.get("customized"), struct.n_frames
+    if custom and n_frames > 1 and len(custom.get("frames") or []) == 1:
+        block["customized"] = {
+            "rows": custom.get("rows") or [],
+            "frames": [custom["frames"][0]] + [[] for _ in range(n_frames - 1)]}
     struct.apply_metadata_dict(block)
     return True
 

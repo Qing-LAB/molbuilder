@@ -1046,7 +1046,7 @@ them; a viewer holding a remapped structure shows its order from the
 structure's own `atom_order`, read at every settle, so the mark lasts exactly
 as long as the state — one line above the tabs, `.molviewer-order`, in the
 words the server sends beside the structure (`orderSaid`, § 6.2). The Molbuilder tab's open of a remapped file says once,
-as a notice of that load — `structure.restored`, info, naming the key — that it
+as a notice of that load — `structure.restored`, info, naming the order in its words — that it
 restored it: true of the load, and the editor then holds the person's order.)*
 
 Some answers come back with **notices**: `{severity, message, where, about}`, in plain language,

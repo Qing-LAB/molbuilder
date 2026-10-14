@@ -237,6 +237,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // upload).  Keep-on-undefined, like the three above: a poll with
             // new content leaves it out.
             run: null,
+            // WHAT THE LOAD SAID OF THE RUN -- today a deck prepared before
+            // the order its atoms are in was recorded (`model/overview.md`
+            // § 2.2a, I9) -- the server's own notices.  Kept per file, like
+            // the metadata, and carried on every summary line the tab
+            // writes (`_withRunNotes`), so a poll does not wipe it.
+            notices: null,
         },
 
         viewState: {
@@ -303,6 +309,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         alias("periodicity",  "fileState");
         alias("info",         "fileState");
         alias("structure",    "fileState");
+        alias("notices",      "fileState");
         alias("firstFit",     "viewState");
         alias("pollTimer",    "lifecycle");
         alias("pollInFlight", "lifecycle");
@@ -359,6 +366,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.info         = null;
             state.fileState.structure    = null;
             state.fileState.run          = null;
+            state.fileState.notices      = null;
             // Reset viewState per matrix: refit the camera on the next render.  The
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
@@ -389,6 +397,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.info         = null;
             state.fileState.structure    = null;
             state.fileState.run          = null;
+            state.fileState.notices      = null;
             state.viewState.firstFit     = true;
             state.machine = "IDLE";
             return;
@@ -503,6 +512,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // had nothing new; a poll with new content leaves it out.
             if (payload.run !== undefined)
                 state.fileState.run = payload.run;
+            if (payload.notices !== undefined)
+                state.fileState.notices = payload.notices;
             return;
         }
         // Unknown target: silent no-op.  Future targets (the
@@ -633,6 +644,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (!errMsg) return null;
         const s = String(errMsg).trim();
         return s.length > 120 ? s.slice(0, 117) + "..." : s;
+    }
+
+    /* A SUMMARY LINE, WITH WHAT THE LOAD SAID OF THE RUN after it: the
+     * kept notices (I9), each in the server's words -- the line then a
+     * warning, whatever it said on its own. */
+    function _withRunNotes(msg, kind) {
+        const said = (Array.isArray(state.notices) ? state.notices : [])
+            .map(function (n) { return n.message; });
+        if (!said.length) return setStatus(msg, kind);
+        setStatus((msg ? msg + "  " : "") + said.join("  "), "warn");
     }
 
     function setStatus(msg, kind) {
@@ -1607,7 +1628,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 return;
             }
             if (!r.changed) {
-                setStatus(
+                _withRunNotes(
                     "Up to date \u2014 " + state.data.frames.length
                     + " " + (state.label || "") + " frames "
                     + "(checked " + new Date().toLocaleTimeString() + ").",
@@ -2268,7 +2289,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * "where did it come from" (molview.md \u00a7 9.5), so the tab that did
          * the load is what says it.  The badge carries the run's state and
          * the frame bar its frames; this line carries what neither does. */
-        setStatus(_cellCameFromTheRun()
+        _withRunNotes(_cellCameFromTheRun()
                   ? "Unit cell from the run (its output, or the box its deck"
                     + " placed the atoms in), not set by you."
                   : "", null);
@@ -2384,6 +2405,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // null for an upload, which belongs to no run
                 // (web/results.md § 4.1).
                 run:          r.run !== undefined ? r.run : null,
+                // What the load said of the run (I9) -- kept with the file.
+                notices:      Array.isArray(r.notices) ? r.notices : null,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so
@@ -2396,14 +2419,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // No mtime: the badge carries the run's time.
                 const msg = "Loaded \u201c" + fileNm + "\u201d from " + baseDir
                     + "/.";
-                setStatus(msg, "ok");
+                _withRunNotes(msg, "ok");
             }
-            /* WHAT THE LOAD SAID OF THE RUN, said on its status line: a deck
-             * written before the order its atoms are in was recorded
-             * (`model/overview.md` § 2.2a, I9) -- the server's own words. */
-            const said = (Array.isArray(r.notices) ? r.notices : [])
-                .map(function (n) { return n.message; });
-            if (said.length) setStatus(said.join("  "), "warn");
             // Contract § 2: transition by the run's state.
             // _settlePostLoad starts the poll timer iff the run is live
             // (WATCHING) -- a run that is over doesn't get polled.

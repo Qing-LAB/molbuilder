@@ -130,10 +130,11 @@ METADATA_FIELDS = ("regions", "cell", "engine_offset", "offset_by",
                    "atom_order")
 
 #: THE SPLIT A DECK MAKES, NAMED ONCE (`model/overview.md` § 2.2a;
-#: `execution/job-contracts.md` § 3.4): the box -- where the atoms were
-#: placed, which the deck's ENGINE-OFFSET block states -- and every other
-#: metadata field, which its ATOM-METADATA block carries: the labels, the
-#: channels, the named values, the order record.
+#: `execution/job-contracts.md` § 3.4): the box -- which the deck states as
+#: where its atoms were placed, its ENGINE-OFFSET block (the resolved cell,
+#: which holds the vacuum) -- and every other metadata field, which its
+#: ATOM-METADATA block carries: the labels, the channels, the named values,
+#: the order record.
 BOX_FIELDS = ("cell", "engine_offset", "offset_by", "axis_kind", "vacuum")
 ATOM_METADATA_FIELDS = tuple(f for f in METADATA_FIELDS
                              if f not in BOX_FIELDS)
