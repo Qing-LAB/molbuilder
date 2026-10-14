@@ -2372,13 +2372,14 @@ result before any heavy work (§ 4.9), so an environment without it stops
 there, naming the environment and the repair — never a result without its
 data file.
 
-#### 7. Still to decide
+#### 7. Decided with it
 
 - ~~**The held set across a relaxation and its vibration.**~~ *Decided
   2026-10-14*: one held label, the vibration's structure stating its own set,
   and the relaxation's held set in its record — § 2.3a, built.
-- **`netcdf4` in `molbuilder-pySCF`** — an environment change, awaiting the
-  user's word.
+- ~~**`netcdf4` in `molbuilder-pySCF`**~~ *Approved by the user 2026-10-14*:
+  the recipe gains it, and the SIESTA recipes list it too, where it now comes
+  only through sisl.
 
 ---
 
