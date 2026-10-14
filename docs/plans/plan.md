@@ -23,6 +23,18 @@ lists that had grown beside § 2 — *Unscheduled*, the leftovers of § 0b and
 § 0c, W56's and W57's open lines, the items "carried" by archived sections —
 are folded into § 2, so R3's one table is one table again.
 
+**Cleaned 2026-10-13** *(user: "clean up plan/todo")*: the rows done since
+moved to [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)
+(Q17, Q18, eleven of § 2's, Q19's phase-1 record); § 5aa, the groups, built
+from 2.7.0, moved whole to
+[`archive/2026-10-13-5aa-groups.md`](?doc=archive/2026-10-13-5aa-groups.md),
+nothing of it open (two small code items in Q19's Python list); Q13 says what
+is done since; the handover is current. **Ordered 2026-10-13** *(user:
+"consolidate the plan for a logical priority for the remaining work")*: the
+queue and the milestone table, drifted apart and behind the work, replaced by
+one list in priority order (§ 0a, *THE ORDER*). There is no other to-do list:
+this file is it.
+
 ---
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-10-13)*
@@ -44,22 +56,10 @@ the task's Prep after the group tabs (2.9.4, the user's request; `web/
 task-setup.md` §§ 7a, 9a.1, 11). Q19's row holds the detail and what its
 reviews left open.
 
-**Before that — Q17, transport over a set of frames** *(2026-10-08 → 10; its
-record archived, § 5z)*. A transport calculation cites a finished relaxation
-run (one structure) or a structure pair that records its optimization — one
-frame, or several: a mode's frame set (its weighted average beside the
-frames) or a plain family (each frame its own curve). It runs a point per
-frame and voltage; the record, the data file `<label>.transport.nc` (every
-result on its grid), the Results tab's *one frame / all frames* on every
-chart, the Transport tab's frame-set card and Task setup's echo; one Plotly
-box for every Results chart. Reviewed in two rounds; walked through the road
-on an H2 frame set in Chrome; the user's rulings on the review's calls built
-(plain words on the card, the Setup card's line per form, a plain message
-where the report is not on screen, *a cited pair is left alone*).
-
-**Also done — Q18, the CSS sweep** *(2026-10-10)*: the defects its row
-lists, one chart theme (`lib/plot-theme.js`) and one series palette
-(`--series-1…5`) for every chart.
+**Before that**: Q17, transport over a set of frames (2026-10-10, § 5z,
+archived); Q18, the CSS sweep (2026-10-10); § 5aa, the groups — a stage's
+group in `task.json`, every group prepared at once, a group's inputs gathered
+at its first launch (2.7.0, archived 2026-10-13).
 
 **molbuilder 2.0.0** *(2026-10-11, tag `v2.0.0`; the user: "we are closer
 to release")*: the version has one home (`molbuilder/__init__.py`), every deck
@@ -71,9 +71,11 @@ from now on"): the middle number for new functionality only, the last for
 everything else, once per push -- 2.1.0 to 2.9.0 moved the middle number for
 any change to a file, too loosely, and stand as given.
 
-**Next, in order** (the queue, § 0a): Q19's later phases when the user
-takes them; **Q5**, **Q7**, **Q9**, **Q12**, **Q13**, **Q11** — as the
-queue orders them.
+**Next, in order** (§ 0a, *THE ORDER*, consolidated 2026-10-13): **1** wrong
+or lost results; **2** finish what the framework half-built; **3** tidy the
+code and the pages (Q19's later phases among it); **4** prove the whole road
+in the browser; **5** the documents; **6** new science, each designed with
+the user first.
 
 **The AuBDTAu workflow is the user's, on Sol**, once the framework is
 established *(the user, 2026-10-10: "no, you should not run it on this
@@ -88,14 +90,9 @@ job keys (`jobset migrate`); and the walk's AuBDTAu relaxation
 one k-point on a slab periodic in x and y — check a relaxation's mesh before
 citing it.
 
-**Waiting on the user**:
-- **The frame generator's amplitude** — V1.25's row in § 2 holds the
-  proposal. Decided when the generator is designed.
-- § 2's *the user's word* rows: E7, EL-W, PL-R's first question, K22's design,
-  V1.26 (M10).
-
-**Owed by the next e2e pass** (M2n; on the user's word): § 2's DOC-TOC (a
-docs-tab test writes into the checkout) — retire.
+**No decision waits on the user** (§ 0a, *THE ORDER*, says why). **Only Sol
+can show**, when the user is there: the junction on Sol (E13), the Sol memory
+measurement, a group's header under a real scheduler, the AuBDTAu workflow.
 
 ---
 
@@ -142,45 +139,47 @@ the same day, with what it turned out to be.
 > milestone and reviewed with agent full code text review to validate
 > results"; the order itself: "yes, that order works. go ahead")*
 
-### THE QUEUE — what is in hand, in order *(2026-10-02; rewritten 2026-10-09)*
+### THE ORDER — the remaining work, by priority *(2026-10-13)*
 
-> *(user, 2026-10-02: "consolidate your plan so we don't lose track of these
-> items and correctly prioritize and plan in a persistent plan and correctly
-> update as we move down the list"; "we need to get the transport task
-> finished asap")*
+> *(user, 2026-10-13: "consolidate the plan for a logical priority for the
+> remaining work")* — proposed by Claude from a read of every open row and
+> section; **the user's to change**. It replaces the queue (the Q rows) and
+> the milestone table (the M rows), which had drifted apart and behind the
+> work — transport's surface (Q5, M5) was finished on 2026-10-11 and still
+> listed, M2j was closed and still listed, M8's CSS was the same work as
+> Q19's. Both, as they stood, are in
+> [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md).
 
-**Read this first.** It is every item in hand, in the order it is worked; the
-milestone table below and § 2 keep each item's detail. A row moves in the
-commit that moves it, and a row is never re-ordered without saying who ruled
-it.
+**Why this order.** The user's goal, 2026-10-10: *"we focus on workflow and
+validation of design of framework, not yet on science"*. So: first what can
+give a wrong answer without saying so; then the framework pieces left half
+built; then the tidy-up, while nothing new is being built on the code; then
+the whole road proved in the browser on the result; then the documents,
+written from what is then true; new science last, each designed with the user
+first. Inside a step the listed order holds; every row is re-derived against
+the code when it is taken (§ 2's rule), and a step closes as a milestone does
+(below).
 
-| # | item | state | next |
+| # | step | what it is, plainly | its items — the detail is in § 2 or the section named |
 |---|---|---|---|
-| **Q19** | **Three passes — CSS, small UI, Python** *(proposed 2026-10-13 from three read-only surveys; the user: "go with your recommendations … think at framework level or larger scope where the snippet sits, need a systematic point of view for fixing"; for Python: "make sure final outcome to be checked against design contract, and reviewed in their full code/text and validated correctly")* — **small UI**: P1 the four rule defects and the fence rule (one `pageBusy.run`, every Task setup edit through it; V1.14's suffix, R2-15, MV-RES, LOAD-T; stale comments), P2 the design calls (the shape shown fixed with its way back, one answer `prep.shape_fixed`; the chip's budget advice removed; the five generators on one chain), P3 the prep report served as lines — **the wording to keep is the user's call**, P4 the small shared helpers; and the four found while measuring, fixed with P1 as proposed: the stale comments (F3, F4), one "x ago" (F7, `lib/time-ago.js`), the markdown editor's `beforeunload` guard gone (F9, `runtime.md`'s retirement said for every page), the transport road said once — the Describe line names the *After you describe* card (F5); **CSS**: P1 one dialog system (`lib/dialog.js`, `warningModal.confirm` the one confirm loaded by the header, no native `prompt`/`confirm`/`alert` — the 16 alerts now notifications, `ui-contract.md` § 11), later phases on the user's word with decisions 1–8 as recommended; *found while measuring, open*: three animations ignore the reduced-motion setting the contract says all honour; the layout test claims every page and skips Transport, This machine and JupyterNB; **Python**: P1 pyflakes to zero, `notify.sign` → `monitor.sign_report`, the doc drift, a full-code-text review by a fresh agent; | **small UI P1 and P2, CSS P1 and Python P1 done 2026-10-13** (2.9.2, `22ae300d`): the small UI pass reviewed in two rounds, CSS P1 and Python P1 in one each, by fresh agents on the full code and contract text — every finding re-read in the code, then fixed or answered; every new or changed test broken once, red. **The one confirm unified** *(user, 2026-10-13: "yes, unify the confirm")*: `warning-modal.js` is a module built on `lib/dialog.js` — one dialog at a time with every other, Esc and a click off it answer no; its 16 tests became 7 rows. **Open from the reviews:** MolView's export dialog is a third modal, a `div` overlay outside the component (`lib/molview/ui.js`), with CSS's later phases; the layer index has no row for `template`, `runrecord`, `kmesh`, `workingcopy_structure`, `frameset`, `resolve`, `placement`, `describe`, `projects`, `jupyter`, `auth_setup`, `spectra/`, and four L1 modules import upward inside functions (`electronic_state` → `template`, `task` → `jobset.commands`, `warmfiles` → `jobset.model`, `runfiles` → `sidecars.molstruct`; `trajectory_log/emitter` → `pyscf.end_lines` at the top) — the Python pass's phase 5 | the none2e batch ran 2026-10-13 (7,218 tests; its one failure a real duplicate — the SMILES and name panels' `generate` — moved into the shared chain, `panelDeps.generateText`, its slot checks with it); the dialogs walked headless on an isolated tree (no browser dialog, nothing written); **pushed as 2.9.2** (`22ae300d`, on the user's word); the server's 40 numerical threads **capped at one, 2026-10-13** (the user: "one thread may be enough for handling the light tasks"; `ops/deployment.md` § 1.0f — the supervisor's child alone; the server's numpy paths 0.1–4 ms either way, a job-side eigensolve 100× slower on forty threads under the machine's load) — both supervisors, one environment (`reload_protocol.server_environment`); `serve start`'s child no longer names `--no-supervise`; 2.9.3 (`fa6bc2ce`), in effect on port 8888 since its stop and start at 13:55 that day (the child: one thread, `OPENBLAS_NUM_THREADS=1`). **Next: the passes' later phases, on the user's word** |
-| **Q5** | **Transport's surface, the rest** — § 5u.1 steps 7 (the TranSIESTA / TBtrans items still unsaid), 8 (one panel per engine) and 10 (every value says where it came from); the deck viewer W30 ④, which lost its home when step 9 closed | **open — in hand from 2026-10-11**: step 10 done, step 7 done (2.1.0), the deck viewer done 2026-10-11 — every calculation's ladder, not transport's alone (W30 ④); step 8 next, on the user's word *(said to the user 2026-10-11; TD13 retired the same day)* | § 5u.1 |
-| **Q7** | **M4 — the engine offset finished**: P4's three items (§ 5q.6) | open | § 5q.6 |
-| **Q9** | **M11's remainder** — K13, K14's parallel model, K16's fence, K18, K17's open list, K22 (the user's design word first), K9, then W50's step 3 | open | § 5w |
-| **Q12** | **the rest of the work order below**: M2j closed at its review, M2k's GPU half, M2m, M2n, M3, M6 P5, M8, M10 | open | the table below |
-| **Q13** | **The task's left items** — `prep task` / `launch task` built 2026-10-08 (`214cc19d`, `91629b67`), Task setup's Prep card seen in a real browser (`1a28e67f`) | **left**: `tests/test_task_setup_prep_e2e.py` drives the per-tab Prep buttons that are gone — judged and rewritten or retired (e2e on the user's word); a group's header under a real scheduler (Sol); `prep_group` re-plans each member after the save and prints each member's notes (§ 2, F9) | § 2, F9 |
-| **Q11** | **The named-queue check in two doors** — `placement.launch_refusal` (`placement.py:28`) and `scheduler/place.place` (`scheduler/place.py:78`) | open | one door, asked by both |
-| **Q8** | **Ruled 2026-10-02, not built**: one `proxy.trust` setting replacing `auth.trust_proxy` and `rate_limit.trust_proxy` (`configuration.md` § 8); a benchmark's grid stated by the description, refused when it is not — no grid the machine proposes | ruled | one config milestone |
-| **Q2f** | **Absolute imports, package-wide** *(user, 2026-10-03: "i agree with a, but like a focused session for that with agents and reviews. let's finish this main goal of transport and framework related tasks")* — every `from ..x import y` inside `molbuilder/` becomes `from molbuilder.x import y`, the rule written into the conventions; **and the shipped files' imports in the same session** *(ruled 2026-10-06, W57 decision 1: "B, with Q2f as one session")*: each zip (`mb_monitor.pyz`, `mb_vibration.pyz`, `mb_pyscf.pyz`) keeps molbuilder's folder layout so the package's absolute import resolves inside it (user, 2026-10-06: "for the first form of import why can't we use absolute path?"); the try/except ImportError pairs leave the 22 shipped files. Until then a NEW module is written absolute | the user's word — its own session | after the transport and framework goal — a script with an agent review, then the full batch |
+| **1** | **Wrong or lost results** | places where molbuilder can show, read or keep the wrong data and not say so | T1 (the Results movie not redrawn on a live update); F-MDNC (a flat stage launched again reads the earlier run's history rows — decided: each run keeps its own history); F19b (a retry's log mixed into the first try's); M2m / V1.9 (a structure changed after it was described is not caught — the hash checked on read, prep refusing it); § 5r steps 2–4 (A1.11 `X` taken as an element, A1.5 / A1.13 the `.pdb` name, A1.4 a silent unreadable record, V1.10 a structure pair half written, A1.1 a left-handed cell passed in silence); X3 (the Cell page commits a box with no seam verdict); PDB-T (a PDB title past column 80); F14 (the free atoms' max force and TranSIESTA's *FORCES WRONG* never shown); K17 (`ParallelOverK`, the pseudopotential name fallback, the geomeTRIC log — § 5w.1); W40 (a direct launch exits 0 when its job failed — decided: it exits with its run's status); PL-R's defect (`summarize` reports the latest of a trial's runs without saying there were two) |
+| **2** | **Finish what the framework half-built** | pieces whose design is agreed and partly built, so two ways of doing one thing live side by side | M3 the run record (W35, § 5t.3: P2's remainder, P4 the contour, divergence and the monitor's warnings); M6 P5 (W34, § 5s.3: the charge and spin a run actually used, read back and set against what was asked); M2k the GPU claim and match, and W36 ⑦ (an inherited thread count guarded); § 5w's remainder (M11: K13 one atomic writer, K14 each engine's parallel model as data, K16 the wrapper fence, K18 a PySCF run's level of theory, K9 each engine default declared once with its source); Q11 (the named-queue check in one door); Q8 (one `proxy.trust`; a benchmark's grid stated by its description); M4 (W33 P4, § 5q.6: the design-frame exports, the transport validation subject); W44 (a stage's required files, checked — or a ruling that prep's gather replaces it); W45 (checkpointing's owed half); W48 (facts the catalogue and the config classes both state); N10's two calculation-root checks; X4 ② ③; W41; W57-M, W57-K, W57-O; A1.14 |
+| **3** | **Tidy the code and the pages** | no change to what molbuilder does; the same thing done one way, in one place | Q19's later phases — small UI P3–P4; the CSS phases, M8's W1–W6, W13 and W15 (sealing MolView) folded in as one CSS programme; Python phases 2–5 with S1 (§ 0a's Q19 row lists them); § 5r's remainder (A1.6, A1.8–A1.10, A1.15, A1.17–A1.20), then A1.21 (the audit of the rest of the tree); § 8 rows 10 and 11; F9 (a group prep's notes once, not per member); the tests — PYF-T, L2, T-ENV, R11, W57-T, DOC-TOC (retire); Q2f (absolute imports — agreed 2026-10-03, done as its own focused session with agent reviews, as the user asked) |
+| **4** | **Prove the whole road** | each kind of calculation driven start to finish through the browser and the printed commands, on the code as it then is | M3 P6 = W50 step 3 (an optimization, a vibration and a transport calculation: the parameter tab, the hand-over, Task setup, `prep` / `launch`, the Results tab — every step through the designed doors); M2n's leftovers (the sweep for tests that read text; W57-G, rules held by an assertion on a real run; W56-H, a PySCF relaxation with a held atom; K11 judged); the full batch after it |
+| **5** | **The documents** | the contracts brought to what is true, and made findable | § 7's four indexes (steps 2–4); § 8 row 13; M4's document sweep (§ 5q.5's list); § 5t P5 (the Makov-Payne script); § 5w.2's text sweep (after K9); E14 (two references checked into `references.bib`); TPL, SMALL and CARRY, each re-derived when taken |
+| **6** | **New science** | new things a person can do — each brought to the user as a design, with its science (`scientific-review`: the literature, the numbers, the cost), before any code | M10, from a vibration mode to the current (W42; V1.24, V1.26 — its decision owed, V1.27, V1.34) with V1.25, the mode-displaced frame set (its amplitude the user's); the vibration's other open rows (V1.12, V1.15, V1.17, V1.33, V1.37, V1.38); § 5e, a person's own engine text (W47); S13, transport's convergence sweep; K22, per-atom starting spins (the user's design word); § 9.2, ATOM as an optional pseudopotential check |
 
-Done rows, archived (`archive/2026-10-09-plan-consolidation.md`, with the
-earlier ones in `archive/2026-10-08-plan-consolidation.md`): **Q2d** (W55, units
-1–12; 12b-2 dropped, 12c/12d built `ac2d5741`, 12e defined nowhere), **Q2g**
-(the file manifest; D29's document list corrected 2026-10-09), **Q4** (TD9),
-**Q6** (step 9 done — § 5x B6; step 8 → Q5; step 11 → Q17), **Q10**, **Q14**
-(§ 5x, B0–B9), **Q15** (§ 5y, `22ac10d9`, `4963406b`), **Q16** (`archive/2026-10-09-plan-consolidation.md` § 5z,
-`a19ddfcc` and after), **Q17** (§ 5z, archived 2026-10-10), **Q18** — Q17's and Q18's rows in
-[`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md); before them Q1, Q2, Q2c, Q2e, Q2h, Q3.
+**No decision waits on the user.** The questions this list used to carry
+were answered on 2026-10-13 from the contracts and the user's own rulings
+(W40, F-MDNC, PL-R in § 2; EL-W and E7 in
+[`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)).
+Step 6's designs — V1.25's amplitude, V1.26, K22 — are brought with their
+science when that step starts. **Only Sol can show** (the user's runs, when
+the user is there; none on this workstation, *the user, 2026-10-10*): E13 (the
+junction on Sol), the Sol memory measurement (M2n), a group's header under a
+real scheduler (Q13), the AuBDTAu workflow.
 
-**Why transport comes before M11's remainder** *(2026-10-02)*: the user's word
-above. The K items left are framework-wide (writers, allocations, the run
-record's rows) and transport's decks pass through them, so each is done when a
-transport step needs it, the rest after.
-
-**How a milestone closes:**
+**How a step closes** (each is a milestone):
 1. its items are built — the contract first wherever an item changes a rule,
    then the code, then a test that drives the road (`jobset
    init/prep/launch/summarize`, or the page on a live server) and is broken on
@@ -192,33 +191,25 @@ transport step needs it, the rest after.
    its evidence;
 4. every finding is re-read against the code before it is acted on, then fixed
    or answered;
-5. this row records the commits, the review and its outcome — and only then
-   does the next milestone start.
+5. this section records the commits, the review and its outcome — and only
+   then does the next step start.
 
-A full test batch (`tools/testrun.py`) runs at the end of M2 (M2n) and at the
-end of each programme after it, with nothing changing under it.
+A full test batch (`tools/testrun.py`) runs at the end of each step, with
+nothing changing under it; the last ran 2026-10-13 (the non-e2e suite, 7,218
+tests, and the e2e batch, 302, all passing).
 
-| # | milestone | items | done when | status |
-|---|---|---|---|---|
-| **M2j** | status owns the ladder | W38 F8 | every described stage in status; launched-and-unfinished attempts never hidden; the Results tab reads status | **looks built** (2026-10-09 validation): the Results door reads `jobset_status` (`results.py:198-211`), `runstatus.every_run` lists every attempt (`runstatus.py:240-275`), `status <stage>` lists its attempts (`_cli.py:723`); the queued-attempt question dropped by the 2026-10-07 ruling — **closed by its review**, with M2k |
-| **M2k** | what a job runs with | W36 ⑦, W38's GPU half | one placement and one record (done, unit 11a: `placement.py:182,236,130`, `model.py:267`); the precedence table (`running-a-job.md:430`); the GPU request (9b part 4); **the GPU claim / match** | partly — the claim / match half and W36 ⑦ open |
-| **M2m** | the structure's identity | V1.9 (with X4 ⑤ and W39's hash) | the identity rule written in `structure-molstruct.md` § 3 — two hashes, where each is minted and checked — then built: the hash checked on read, prep refusing a structure whose hash moved; a frame-set citation pinned by its two files' sha256 meanwhile (`archive/2026-10-09-plan-consolidation.md`, § 5z.8 F.3) | open — W39's own part (the `customized` section, the API, the pane) built `c93da223` |
-| **M2n** | the text, then the batch | W36 ⑪; the document rows of § 2 (DOC-*) | the full batch green; then the engine e2e runs owed by closed milestones (M2b⁗, M2b⁵, and the six files M2d did not run), the Sol memory measurement, and the sweep for tests that read text | open — the last e2e batch ran 2026-10-05 |
-| **M3** | the run record, the rest | W35: P2's remainder, P4, P5, P6 | W35's own done-conditions (§ 5t.3) | open |
-| **M4** | the engine offset, finished | W33 P4 | § 5q.6 | open |
-| **M5** | transport | § 5u.1 steps 7, 8, 10; Q17 | each step's done-when | steps 1–6 and 9 done; step 11 is Q17 |
-| **M6** | charge and spin | W34 P5 | § 5s.3 | P0–P4 built (decision 4's refusal: `citation_defaults.py:196-207`); **P5 open** |
-| **M8** | MolView sealing, the CSS | W15; W1–W6, W13 | each row's own | open |
-| **M10** | from a mode to the current | W42 (V1.24–V1.27 folded in) | V1.26's decision; then W42's order P1–P6 | decided 2026-09-28 (W42: D1–D5, D7, D8; D6 as recommended); V1.26's decision owed; after the work order. V1.25 — the frame-set generator — is unblocked by W39 and feeds Q17 |
-| **M11** | every parameter, end to end | W50 → § 5w | W50's own: a static full-text review per track, each finding verified and fixed at its owner, then the road in the browser | the reviews done 2026-09-29; their 22 mechanism classes (K1–K22) — K1–K8, K10–K12, K15, K19, K20 done; the rest § 5w |
+**The Q19 row** — the three passes, its phase 1 done and its later phases
+listed — stays here as step 3's detail:
 
-Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 2026-10-03), **M2g** (9b part 3), M2h, M2i, M2l, M7, M9 (folded into M10).
+| # | item | state | next |
+|---|---|---|---|
+| **Q19** | **Three passes — CSS, small UI, Python** *(proposed 2026-10-13 from three read-only surveys; the user: "go with your recommendations … think at framework level or larger scope where the snippet sits, need a systematic point of view for fixing"; for Python: "make sure final outcome to be checked against design contract, and reviewed in their full code/text and validated correctly")* | **phase 1 done 2026-10-13**, each part reviewed by fresh agents on the full code and contract text: 2.9.2 (small UI P1–P2 — one page fence, the shape shown fixed, the chip's advice gone, the five generators on one chain; CSS P1 — one dialog component, no browser dialog left; Python P1 — the package pyflakes-clean), 2.9.3 (the server's one numerical thread), 2.9.4 (Task setup as a checklist and the save bar, the user's request). Its record: [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md) | **open — step 3, in this order** (the user approved the passes' recommendations, 2026-10-13) — **small UI**: P3 prep's answer served as lines (the wording to keep is the user's call), P4 one element builder, one path helper, one download helper, and keyboard access (the sidebar rows, glyph buttons named); Structure optimization's *discard unsaved changes?* on Load (a design call: the viewer is read-only, `runtime.md` puts the question on a dirty canvas). **CSS**, decisions 1–8 as recommended: one button vocabulary, a flat `.card` variant for Results' restatements, `.num-table` reused, tokens for durations, z-index layers, weights and line heights, the sealed modules' palettes (`vibrationview`, `spectrumchart`, `docs-render`), the stylesheet order, `.lock-reason`'s raw values, the junction card's control under its prose; MolView's export dialog, a third modal outside `lib/dialog.js`; three animations that ignore reduced motion; the layout test skipping Transport, This machine and JupyterNB. **Python** phases 2–5: the files a calculation holds read once (`JobSet.of`, the template text, `Shape.named(task.shape)`), `done` returning its `RunStatus`, one instruments reader, the long functions (`render_run_wrapper`, the engines' `spec_for`), `RunRef` for `written_at` and the continuation's fields, S1's wrapper hook per engine, prep's planning — one path for a single run and a swept stage (named when the groups closed; measured before acting), and three small dead guards with the cold sweep's docstring (`next_step`'s `s is None`, the `bench=` that is always false, `_with_notify`'s `None` tests — round B of 2026-10-12 did not re-read them); phase 5 the layer index's missing rows and four upward imports |
 
 ---
 
 ## 2. OPEN — the one list
 
-**Every open item, in one table** *(consolidated 2026-09-10 at the user's instruction: "consolidate plan and to do, archive finished things and untrue things, clean it up so we have one list"; re-consolidated 2026-10-09)*. A design section (§ 5e–§ 9) keeps the *why* and the order of its own work and sends its rows here; the queue (§ 0a) says when.
+**Every open item, in one table** *(consolidated 2026-09-10 at the user's instruction: "consolidate plan and to do, archive finished things and untrue things, clean it up so we have one list"; re-consolidated 2026-10-09)*. A design section (§ 5e–§ 9) keeps the *why* and the order of its own work and sends its rows here; the order (§ 0a) says when.
 
 **A row is evidence of when it was written** — re-derive it against the code before acting (the rule, `archive/2026-10-08-plan-consolidation.md` § 5a). Each row below was re-read at its cited place on 2026-10-09; *Re-checked* says what was found. The long histories of the rows that had grown to tens of lines (W36, W38, W41, W30, W32, X4, W52, W54) are in [`archive/2026-10-09-plan-consolidation.md`](?doc=archive/2026-10-09-plan-consolidation.md), verbatim; the row here is what is left.
 
@@ -226,7 +217,6 @@ Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 20
 
 | # | area | item | from | state |
 |---|---|---|---|---|
-| **E7** | engine / science | **D7's cluster half** — the prep→submit→watch loop for a **run** through SLURM on Sol. **2026-09-10, the user: "we have tested it on Sol" — and the row must not contradict that.** What is actually on disk here: Sol slurm records exist (`optimization/sol/AuBDTAu-slabcorrected/01_coarse/bench/launch/slurm.62380919.out`, real ids) and every `kind: "run"` ledger entry in `projects/` is `workstation`/`direct`. That is the absence of a LOCAL record, which the earlier wording ("No `kind: run` submission exists on any Sol tree") presented as the absence of the WORK. A tree on Sol is not in this repo. **This row needs the user to say whether it is closed, not another file scan** | roadmap § 1 | needs the user · *Re-checked 2026-10-09:* open, the user's word; the run's folder is now `projects/Au-BDT-Au.old/optimization/sol/AuBDTAu-slabcorrected/`. |
 | **T1** | front end / results | **A live poll that must rebuild does not update the movie — the cause found by reading, 2026-10-09.** Found 2026-09-07: grow the feed 4 → 6 while the frame at `oldLen − 1` moves, so `canAppend` (`lib/trajectory/core.js:2159`) refuses and `applyNewData` (`:2136`) rebuilds; the status says 6 frames and the bar holds 4. **Why:** the Results viewer is mounted read-only (`core.js:595-596`); `rebuildModel` re-installs without `enforce` (`:915-921`); MolView's § 9.4 guard returns `null` for a read-only viewer already HOLDING a structure (`molview/model.js` ~`:1112-1116`) — so every rebuild after the first, and the two resync paths (`:2290`, `:2311`), is a silent no-op. `web/molview.md` § 8 marks it | found 2026-09-07; `web/results.md` § 4.1, `web/molview.md` § 9.3–9.4 | **open — a defect against § 9.4**: the rebuild installs through the read-only door's own replace (`enforce`), and a test drives the 4 → 6 rebuild in the browser model |
 | **E13** | engine / science | **The first real junction walk — BDT–Au on Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5 — archived 2026-09-10 — and E7) and the browser and deck walks (W12 — archived 2026-09-10 — and E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | **the Sol half only** — after § 5u step 4; the workstation half ran 2026-09-29 (the Au–BDT–Au ladder to T(E) on `claude-au-bdt-au`, TD8's acceptance ladder) and is archived *(2026-10-08)* · *Re-checked 2026-10-09:* open — the Sol half only; the workstation half closed by TD8 and Q15's run E. |
 | **E14** | science / references | **Reed 2006 and Stokbro 2003 into `science/references.bib`.** `engines/transport.md` § 8 cites both (and Solomon 2008 beside them); none is in the `.bib`, and the rule is that an entry is added when a passage cites it. The 2026-10-08 archive reason — *no live document cites them* — was untrue | roadmap § 7.3 | **reopened 2026-10-09** — each entry checked against the paper before it goes in (§ 7.3) |
@@ -239,7 +229,7 @@ Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 20
 | ↳ | **V1.17** | **Four held systems through the whole road**, today rank rows only: acetylene with both carbons held (the collinear trap end to end), NH₃ with its three hydrogens held (nothing removed), an empty held list reproducing the free path *exactly* (what makes "the free case is the held case with nothing held" a fact), the water dimer with one molecule held (the over-removal guard) | `vibration.md` § 9 | open · *Re-checked 2026-10-09:* open (`vibration.md` § 10). |
 | ↳ | **V1.24** | **Mode matching across runs** (needs a design): the overlap of eigenvectors in the shared free subspace, mass-weighted — the active-region convergence test (Models A/B/C) and the PySCF-against-SIESTA comparison of one molecule are the same calculation | `science/normal-modes.md` § 4b.6 F, § 4b.3 | open · *Re-checked 2026-10-09:* open — M10. |
 | ↳ | **V1.25** | **The mode-displaced frame set** *(decided 2026-09-24, user)*: a generator that writes ONE multi-frame pair — the base as frame 0, then `R_A(Q) = R_A⁰ + Q·L_canonical` with `R_F` unmoved at the zero-point amplitude and its thermal growth — from a spectra file, for a named mode; the rule (run, mode, amplitudes) recorded in the pair's `info`. It is the interface to transport's frame axis (W32); a person's own script writes the same pair. Level one of `vibration.md` § 5.6. *W42 (draft 2026-09-28) proposes one set for many modes, at the Gauss–Hermite nodes of the thermal distribution (D6, D7)* | `engines/transport.md` § 2a.9 · `model/structure-molstruct.md` § 6.1 · `science/normal-modes.md` § 4b.6 G | **contract written 2026-09-24; re-ruled 2026-09-29 (TD10)**: the generator is a separate backend procedure, designed on its own — the equilibrium relaxed structure and a normal mode in, one multi-frame structure out — and **each frame's parameter set goes in the structure's `customized` section (W39), not `info`**; transport is its consumer, never its builder. Open, after W39 · *Re-checked 2026-10-09:* unblocked — W39 built in `c93da223`. The contract is `vibration.md` § 5.10 ③: the generator, its own module, writes one frame set for **one** mode (user, 2026-10-09) — `with_frames`, the mode on the structure's rows, each frame's node and `weight` through `set_customized(…, frame=i)`, frame 0's weight included, the set's summing to 1. **Its amplitude, to design** (the user, 2026-10-09: *"how much should the max displacement of a selected vibrational mode use? ... temperature involved? how about local EF enhanced (such as SERS in Raman etc) mode? what's the good starting point"*) — proposed 2026-10-09: the spread is the mode's own, `σ² = (ħ/2ω)(2n+1)` — thermal `n` from the experiment's temperature (zero-point above ~300 cm⁻¹ at 300 K, temperature-driven for contact modes), a stated effective `n` / `T_eff` for a pumped mode (SERS: incoherent, still Gaussian, wider), the max displacement then an output; a coherently driven mode is the one case where the max displacement `A` is the input — the arcsine distribution, Gauss–Chebyshev frames at `0, ±0.866 A`, weights `⅓` each; always a warning past a stated fraction of the nearest-neighbour distance. Its consumer, Q17, is built (a person's script writes the same set today, as the real-junction e2e's does). |
-| ↳ | **V1.26** | **`Δρ_ν(r)` maps** (needs a decision): SIESTA's density grid at `±Q_ν`, differenced — the discussion's intermediate quantity before any oscillator strength on a metal | `science/normal-modes.md` § 4b.7 | open — M10; its decision is owed · *Re-checked 2026-10-09:* open — M10; its decision owed. |
+| ↳ | **V1.26** | **`Δρ_ν(r)` maps** (decided with M10's design, step 6): SIESTA's density grid at `±Q_ν`, differenced — the discussion's intermediate quantity before any oscillator strength on a metal | `science/normal-modes.md` § 4b.7 | open — M10; its decision is owed · *Re-checked 2026-10-09:* open — M10; its decision owed. |
 | ↳ | **V1.27** | **The PySCF probe** (decided — W42's D8): five points per mode instead of two; the coupling per zero-point amplitude `g_ν = ∂ε/∂Q · √(ħ/2ω)` in meV written beside `ΔE/(2A)`; a molecule-projected frontier quantity for a cluster whose HOMO and LUMO are metal states. *Decided with W42 (D8, 2026-09-28): the probe runs on the thermal nodes* | `vibration.md` § 4.8; `science/normal-modes.md` § 4b.5 F–G | open — M10 · *Re-checked 2026-10-09:* decided (D8), not built — M10. |
 | ↳ | **V1.33** | **The Task setup tab re-derives the vibration ladder in JavaScript** (`proposedFromHandover`, `task-setup/viewer.js:2775`, spells `relax`/`freq` and the box rule by hand; `_afterRunLines` is gone) while Python owns it (`pyscf/stages.py:120`, `vibration_stages`). A second copy of one rule; the hand-over or the folder answer should carry the proposed ladder computed server-side, and the page should ask the description which rung is the force-constant one. Found by the 2026-09-24 review | `vibration.md` § 2.2, § 5.2a | open *(re-cited 2026-10-08)* · *Re-checked 2026-10-09:* the JavaScript copy is now `task-setup/viewer.js:2807-2838`; Python's `pyscf/stages.py:120`. |
 | ↳ | **V1.34** | **The response screen — which mode to take to transport** (decided with W42, 2026-09-28): the vibration kind's half of W42 — each mode's character at load, the charge each mode moves from the force-constant run, the frame set at thermal nodes (V1.25), the PySCF probe on them (V1.27) | `vibration.md` § 5.10 · `science/normal-modes.md` § 4c | open — M10 (W42 decided) · *Re-checked 2026-10-09:* open — M10. |
@@ -250,10 +240,9 @@ Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 20
 | **W35** | parse / execution / web | **THE RUN RECORD — what ran, with what, and how it went, for every run; one SIESTA-family reader; the transport report** *(user, 2026-09-26: "include in the report of transport results ... all indicators that can provide scientific information, progress tracking and symptom of non-convergence"; "parameters used for calculating transport should be similarly reported ... check what we did for the other tasks, and find the best way to honestly and fully record what is the computation setup and scientific setup, and how result evolves in the record, and output report"; "fdf parser need unified upgrade"; "get the framework and code unified and finalized")*. One record per attempt, composed on read — computation, setup (default · asked · engine used), the deck, every iteration of every phase from one grammar, the verdict with its symptoms — read by a Run panel for every kind and by a transport report built from its rungs; the NEGF contour stated rather than left to TranSIESTA's fallback. Found by a device that diverged for eleven hours with every reader saying otherwise | `model/parse.md` § 5d · `engines/transport.md` § 2a.12 · § 5t | **P0–P1 done (`a4c1d28e`); decision 10 done — the monitor, the wrapper's endings and the report fields through the framework; P2: the record and the Run panel built (2026-09-27), the rest below** · *Re-checked 2026-10-09:* M3 — P2's remainder, P4, P5, P6 (§ 5t.3). |
 | **W36** | execution / packaging | **The run-independence review (2026-09-27), agreed item by item** *(user: "i need to go through all of them so we have agreement before i let you just go ahead to fix all")* — its full text, ① to ⑪ with each agreement, is in the 2026-10-09 archive. ①–⑥, ⑧, ⑨ and ⑩ are built. **⑦, open: the job inherits the whole shell** — `submit.py:1232` passes `{**os.environ}` and `:307` `--export ALL`, and the wrapper honours `OMP_NUM_THREADS` (`runwrap.py:2224-2236`); the agreed fix is *keep inheriting, guarded*: launch hands `-np` / `-omp`, which win (`submit._run_sh_args`), so an inherited count cannot resize a launched run — what is unbuilt is the by-hand path and the log naming an override. `running-a-job.md` § 2.0a states this; its § 3.2–3.3 precedence still puts `OMP_NUM_THREADS` second, against ⑦'s *"a bare OMP_NUM_THREADS no longer sets it"* — one table, written when ⑦ is built. **⑪, done 2026-10-09**: the `$MOLBUILDER_ROOT` text is gone from `job-contracts.md` § 2.5, `repo_root`'s docstring names its real callers | `execution/running-a-job.md` § 2.0a, § 3.3 | ⑦ open — M2k |
 | **W38** | execution / front end | **The multi-door review (2026-09-27): one fact, two or more code paths that can answer it differently** *(user: "we are looking for framework level unification and consistency")* — F1–F9 and M1–M5, its full text in the 2026-10-09 archive. Built: F2 F3 (M2f), F4 F5 (M2i), F7, F9, M1–M5, F1 F6's one placement and one record (unit 11a), the bias chain's copy list from the one door (`submit.py:2014-2022`, the warm list's `along` row), F8 (M2j — the Results door reads `jobset_status`, `results.py:198-211`; `every_run`, `runstatus.py:240-275`). **Open: M2k's GPU claim / match half** | `execution/gpu.md` § 1 | the GPU half open — M2k; M2j closed at its review |
-| **W40** | execution | **`jobset launch --mode direct` exits 0 when the job it ran failed.** Found 2026-09-27 by M1's fixture: a PySCF run died at activation, the decision ledger recorded `"status": "failed", "returncode": 1`, and the command still exited 0 -- so a script (or a test) that trusts the exit status is told the run succeeded. No contract states launch's exit status for a direct job (`_cli.py:1993-2010` sets none, 2026-10-08) | `execution/running-a-job.md` · `jobset/_cli.py` | **needs a decision** · *Re-checked 2026-10-09:* open — the launch report (`_cli.py:2031-2071`) returns 0 whatever the run's rc, and no contract states the exit status; under the explicitness rule a foreground direct launch exits with its run's status (`--background` reports *started*) — written in `running-a-job.md` first. Its proposed home M2f is done; it goes with the next launch work. |
+| **W40** | execution | **`jobset launch --mode direct` exits 0 when the job it ran failed.** Found 2026-09-27 by M1's fixture: a PySCF run died at activation, the decision ledger recorded `"status": "failed", "returncode": 1`, and the command still exited 0 -- so a script (or a test) that trusts the exit status is told the run succeeded. No contract states launch's exit status for a direct job (`_cli.py:1993-2010` sets none, 2026-10-08) | `execution/running-a-job.md` · `jobset/_cli.py` | **decided 2026-10-13** — by the explicitness rule, as its own re-check said: a foreground direct launch exits with its run's status, and `--background` exits 0 having said *started*; written in `running-a-job.md` first, then `_cli.py` — step 1 |
 | **W41** | engines / results | **A SIESTA vibration's finish, the remainder** *(user, 2026-09-28: "siesta only gave some optimization ...")* — the finish built (M2b′, M2b″: the job derives its spectrum, `mb_vibration.pyz`); the measurement and the rulings are in the 2026-10-09 archive. **Left:** the force-constant `.out` titled *"SIESTA optimization"* — the title guessed from the suffix (`lib/inspectors/trajectory.js:108-115`), against `web/results.md` § 0.3; I7's sorted positions; the ⚠ beside an in-tolerance stationarity sentence; Makov–Payne run by hand; the finish parsing the whole output where FC step 0 suffices; PySCF leaving `ir_fd_step_ang` out of its record — written `null` under the explicitness rule. Re-running a failed finish is settled by rule (no recovery machinery; launch again) | `engines/vibration.md` § 5.5, `web/results.md` § 0.3 | open |
 | **W42** | engines / science | **FROM A MODE TO THE CURRENT — which vibration to take to transport** *(user, 2026-09-28: "think about this and how the spectrum calculation can be enriched by the additional electronic state/PDOS calculation, and propose an improvement in the vibration calculation contract/document/design and see how we can move forward ... this is after all the other issues are done, so this is just a draft for next step, do not implement")*. The science, `science/normal-modes.md` § 4c (proposed): at a metal the molecule's orbitals are resonances and the junction has a Fermi level, so the current sees `T(E)` near `E_F`, not the HOMO–LUMO gap; a mode acts on a level `ε_r` or on the coupling `Γ` (the contact modes, whose exponential coupling gives a large positive curvature); a DC measurement, thermal or light-driven, sees the second derivative, `⟨ΔG⟩_ν/G = ½ T″σ²/T₀`, and the two scores — the level shift at `σ`, the conductance change — are kept side by side; three frames at the Gauss–Hermite nodes of the thermal distribution give the curvature and the second-order average at once; one transmission at the base screens every mode by the rigid-shift estimate `T″ ≈ g_ε² ∂²T₀/∂E²`; the free atoms' projected DOS and their own states (the extended molecule's MPSH) stand in for HOMO and LUMO. **The design, proposed:** `engines/vibration.md` § 5.10 — ① each mode's character (element shares, the free part's whole-body share, the bond stretches at `σ`), derived at load, no calculation and no new label; ② the charge each mode moves between the held anchor and the free part, from the force-constant run's own displaced SCFs; ③ V1.25's frame set for many modes at the Gauss–Hermite nodes — *made by V1.25's separate procedure, each frame's parameters in the structure's `customized` section (TD10, 2026-09-29)*; ④ an `electronic` kind — one SCF per frame, each job's finish writing `E_F`, the charges, the projected DOS and, with sisl, the levels; ⑤ `summarize` over a frame set, electronic or transport, writing `<label>.mode-response.json` — slope, curvature and thermal average per mode, levels followed by overlap, the rigid-shift estimate beside the explicit value; ⑥ the ranking table in that record's presenter; the PySCF probe on the same nodes (V1.27). Folds in V1.24–V1.27. **Decided with the draft** *(user, 2026-09-28: "the anchor is the fixed atoms. we don't specify the anchor, the atoms is labeled already with fixing or unfixed")*: D1 — the anchor is the held atoms and every projection is over the free atoms, per element, with no new label; D2 — then not needed, the result already carries the free and held atoms. **Decided 2026-09-28, the user's answers:** D3 — yes, the charge each mode moves, *"and result presentation should include the correct data and UI design to present it"*; D4 — yes, an `electronic` kind, *"and make it clear the difference between pySCF and siesta, from setup and calculation and presentation"*; D5 — sisl in every SIESTA env, *"so it is always available when we need them ... fix the install-env and other env related setup to get this consistently done - do not reinvent wheel as we have a full system of install implemented"* (built with the M2b‴ milestone); D7 — the thermal nodes, as recommended (the displaced structures the electronic and transport runs compute on — not the animation, which the user asked about); D8 — the PySCF probe on the same nodes, as recommended. **Taken as recommended unless the user objects:** D6, one displaced-structure set for many modes. **Registered with it:** E2 — a vibrational-only result records no pressure (built with M2b‴); E3 — a command that re-runs a failed finish on its attempt, the user's yes owed. **Order, once agreed:** P0 the decisions; P1 ① (no engine); P2 ② — measured first, whether SIESTA prints the populations at every FC step; P3 ③ with its displacement statement, checked by the frame set's citation promises (W32 ②); P4 ④ and ⑤ for the `electronic` kind — the frame axis for one kind first; P5 transport on the frame set (W32 ③–⑤, behind W32's gate) and ⑤'s transport half; P6 ⑥. Validation H₂, then the carbon-chain junction, then Au–BDT–Au. **Found while drafting, fixed with M2b‴:** the SIESTA deck's commented population hint spelled the retired `WriteMullikenPop` (`siesta/input.py`); it names 5.4.2's `Charge.Mulliken` and `Charge.Mulliken.Format` | `science/normal-modes.md` § 4c · `engines/vibration.md` § 5.10 · `engines/transport.md` § 2a.9 | **draft 2026-09-28 — decided D1–D5, D7, D8; D6 as recommended; after the current work order** · *Re-checked 2026-10-09:* decided, M10; V1.26's decision owed; the frame set it uses is V1.25's — **D6 (*one set for many modes*) reversed 2026-10-09: one mode a set, each its own transport calculation**. |
-| **W43** | engines / front end / results | **TRANSPORT — THE ONE LIST (M5).** Transport's open work, consolidated 2026-09-29 from W10, W24, W25, W27, W30, W32, § 5c.3, § 5o, § 5p and `engines/transport.md` § 3.6 / § 3.8.5 after an inventory read each against the code: eleven steps in order, seven decisions that are the user's, the claims the documents make that the code contradicts, and 54 citations of a document that no longer exists *(user: "continue to work on transport as the next item on plan remember to correctly update the plan and consolidate")* | § 5u · `engines/transport.md` § 6.1b | → **§ 5x** (Q14 — transport made whole; its *state at a glance* is the current state) and **§ 5u.1** (the step table); the Au–BDT–Au ladder ran to T(E) on 2026-09-29 and is the acceptance ladder (TD8) *(pointer refreshed 2026-10-08)* · *Re-checked 2026-10-09:* a pointer — § 5u.1. |
 | **W44** | execution | **A stage's `required` files, and the check that its run directory holds them — designed in four contracts, built in none.** `execution/job-contracts.md` § 4.4 (`:141`; *"Neither half of this is built … the catalogue carries no `required` item"*), `engines/template.md` § 12.1 row 8, `engines/stages.md` (*"the check itself is unbuilt"*); `worked-example.md`'s gap 13 names the hazard — *a TranSIESTA ladder starting without its `.TSHS`* — and `run-identity.md` states it as if it were checked. Found by the 2026-09-29 coverage check | `job-contracts.md` § 4.4 · `template.md` § 12.1 | open — beside M2g/M2h (the restart-file list, the hand-over), or a ruling that prep's gather refusals replace it · *Re-checked 2026-10-09:* open — `job-contracts.md:141` says neither half is built; `template.md` § 12.1 row 8. |
 | **W45** | execution / checkpoint | **Checkpointing's owed half.** The save is always (prep and Task setup's Save call `checkpoint.save_before`, `prep.py:1890`, `:2851-2856`; `checkpointing.md` § 12 A3 ✅). **Left:** a `checkpoint verify` verb (the CLI has init, save, list, tag, restore, config — `cli.py:2885-3132`; `verify_archive` is reached only from restore, `checkpoint.py:839,1695`); invariants S2, S3, S4, S6 and L8 without a test (`checkpointing.md` § 13.4 points here), A3's test and S5's run-layer half with no row before this one; `project-layout.md`'s invariant 16 and § 6.1 say the archive does not reach a bench trial's `.DM`, against S1 (*every regular file goes to git or the archive*), which the code follows — the layout's sentence is corrected to S1 when this is built; § 12's S2/S4/S6/L8 still read *"needs the layout / the description"*, which exist | `execution/checkpointing.md` § 12, § 13.4 | open |
 | **W47** | engines / execution | **A person's own deck text: § 5e's engine additions and the USER-CUSTOM zone's carrier.** No `user_custom` item exists, so in the staged path the zone is emitted empty and a person's text does not survive (`template.md`, `job-contracts.md`, `worked-example.md`'s gap 12); § 5e (*a person's own engine text, as an input*) is a design with no row and says the zone's defects are *"listed where they belong"* — they were listed nowhere | § 5e · `template.md` § 12.1 row 1 | open — § 5e not started · *Re-checked 2026-10-09:* open, § 5e not started. `engines/template.md` § 9.2 disagrees with § 5e on four points — the carrier (a catalogue item `user_custom` against a separate input), the zone's role, stage overrides against a per-addition switch, the placement; § 5e is the user's ruling of 2026-09-05 and owns it, its open question 1 leaves the zone's fate to its design. `template.md` § 12.1 row 1. |
@@ -290,19 +279,15 @@ Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 20
 | **S1** | architecture seams | **`runwrap` reaches into the engines.** The wrapper writer branches on which engine it is writing for — what a cold restart clears, how the label is read back out of a deck, how the launch line is formed. Until it moves, *adding an engine edits `runwrap.py`*, which is exactly what `generator.md` § 7's *"adding an engine adds files and edits none"* exists to catch | `backend-architecture.md` § 5 (its **W1**) | **measured open** — three engine branches in `runwrap.py` and 22 lines carrying an engine-name literal (2026-10-08; four branches and 128 literals when last counted, 2026-09-06) · *Re-checked 2026-10-13:* conditions on an engine at `runwrap.py:592`, `:772`/`:816`, `:1914`, `:1962`, `:2116`, `:3171`, `:3183`, `:3432`, `:3920`; 22 lines carry an engine-name literal. Closed by the Python pass's phase 4 as proposed (Q19: one wrapper hook per engine on `jobset/engines.engine_seam`), when the user takes it. |
 | **S13** | architecture seams | **Transport convergence sweep** — auto-vary transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops moving. `transport.md` § 2 already tells a reader not to trust a single point blindly, so the document promises what the code does not offer | `engines/transport.md` § 8 | **measured: not built, re-verified 2026-09-20.** Nothing in the tree names it at all now — even the `transport/wizard.py` comment that used to is gone, so the only record that it is owed is `engines/transport.md` § 8 and this row · **→ after § 5u step 4, unscheduled** (§ 5u.5: a sweep needs a ladder that has produced a curve) · *Re-checked 2026-10-09:* open; `transport.md` § 8 now cites this row. |
 | **N10** | parse / front end | **A CALCULATION ROOT IS NOT A RUN DIRECTORY, and the Results tab has only one notion.** Measured on the real transport ladder: `jobset_status` answers 5 stages all `pending, prepped, not launched`; `run_status` -- which `/api/results/dir` calls unconditionally -- answers `running, no result file yet`, so the tab tells a person a calculation nobody launched is running. The tab offers that root its own INPUT structure as the result, and says nothing about the five stages. `transport.md` § 2a.12 has required the ladder's state, the curve with its treatment named, and the provenance chain since before the surface was built. **The predicate already exists** -- `checkpoint._is_bundle_root` -- and a second copy in `parse/dirs` would be instance 14 of § 8 | § 5c.3, `transport.md` § 2a.12 | **RE-MEASURED 2026-09-23 — the headline defect is CLOSED; (e) folded into § 5u step 9 (2026-10-08); the two-predicate question open.** § 5c.3's two premises are both stale: `/api/results/dir` no longer calls `run_status` unconditionally (`results.py:185-229` asks `calcdirs` first — `record` / `read` / `root_of` — and builds the ladder there; a container gets `status: None`), and the public owner that landed is a NEW module, `calcdirs`, **not** the `checkpoint._is_bundle_root` step (a) proposed — which is still private at `checkpoint.py:379`. So (a) is superseded, (b) is done in substance but via `place == CONTAINER` rather than a `jobset_status` ladder (`jobset_status` has zero hits in `results.py`), (f) is DONE (`inspectors/transport.js:180-205` renders the provenance chain), and **(c) the payload and (d) the ladder view are DONE 2026-09-24** (`ladder` on `/api/results/dir`, the empty-state card's table, `results.md` § 2.4); **(e) the inspector's parser → § 5u step 9** — `transport.js` no longer calls `JSON.parse` (2026-10-08); what remains of the reader is step 9's. **AND A NEW, SMALLER QUESTION:** there are now TWO predicates for *is this a calculation root* on DIFFERENT evidence — `_is_bundle_root` tests for `task.json`/`job-set.json` existing, `container_or_run` reads `task.json`'s `shape`. The § 8 duplication § 5c.3 warned about is real in a milder form, found by a browser walk that 2,800 passing tests missed · *Re-checked 2026-10-09:* `container_or_run` is gone (`runs.place_of`, `runs.py:56`); two root checks remain on different evidence — `checkpoint._is_bundle_root` (`:379-382`, task.json or job-set.json) and `calcdirs.root_of` (`:109-130`, task.json). No failure on molbuilder's road (job-set.json always sits beside task.json): the unification only. |
-| **W24** | front end / transport | → § 5u.1 step 8 (one panel per engine) | — | pointer |
-| **W25** | engines / transport | → § 5u.1 step 7 (the TranSIESTA / TBtrans items still unsaid) | — | pointer |
-| **W30** | front end / engines | **The transport parameter surface** (`engines/transport.md` § 3.8; its full text in the 2026-10-09 archive) — ① ② built 2026-09-24; ③'s remainder → § 5u.1 step 10; ⑤ → step 8; **④ the deck viewer — built 2026-10-11, for every calculation** *(user: "we should expand this to other tasks as well where we may have different stages and different runs")*: the Results tab's ladder gives each run — each attempt, frame and voltage — an *input* and a *check report* button, opening the deck it read and the `.validation.txt` prep wrote, in the sidebar's file viewer (`web/results.md` § 2.4; `runs.Run.prepared` / `Run.report`) | `engines/transport.md` § 3.8 | ④ **done** |
 | **F9** | execution | **A group prep prints its pseudopotential copy lines and the `geometry.h_ratio` note (a warning until 2026-10-11) once per rung** (three times each) — found on the road walk 2026-10-08, not reached by B8 | § 5x.7 F9 | open · *Re-checked 2026-10-09:* `prep_group` (`prep.py:2970`) does not de-duplicate the members' notes; its h_ratio half is A1.12. |
 | **F11** | execution | **The wrapper's kill line is unseen on a killed point**, and two more mechanisms have not been seen on the road: a **cold sweep** (`launch task --stage device --cold` on a finished sweep) and the **take-over hop** (a point taken over from a run that took it over). One walk closes all three — ~45 minutes of this machine (a device point ≈ 15 min), launched through Task setup and left to run; **waits for the user's go** | § 5x.7 | open — the user's · *Re-checked 2026-10-09:* the cold sweep is seen on Q15's run E (`tests/test_transport_on_a_real_junction_e2e.py:238-240, 396-409`); the kill line and the take-over hop are not. |
 | **F14** | parse | **The unconstrained max force and a periodic slab's pressure are never shown** (the monitor and wrapper print the constrained max); TranSIESTA's *FORCES WRONG* is not captured | § 5x.7 F14 | open · *Re-checked 2026-10-09:* no `FORCES WRONG` capture anywhere; `report_fields.py:58-61` offers `max_force` to a TranSIESTA device (§ 5t.4). |
 | **F19b** | execution | **A retry's `exec` inherits the first try's tee**, so run0's session log holds run1's session too; the tbtrans wrapper says *Retry policy: up to 1 retry on non-convergence* for a program that converges nothing | § 5x.7 F19 | open · *Re-checked 2026-10-09:* open. |
-| **F-MDNC** | parse | **A flat stage launched again shares SIESTA's history file with the run before it**: after a second run in a flat folder `<label>.MD.nc` holds more rows than that run wrote (12 rows, where each run's output has 8 frames; measured on the end-to-end flat calculation 2026-10-08), and pairing the second run's output with it (`siesta_mdnc.align_to_reference`) matched rows 0–5 and then row 11 -- the earlier run's rows first. Whether the reader takes the newest run's rows, or a run that starts over sets the old history aside, is a design question. *(2026-10-10, the Q17-c review: the transport citation of a flat relaxation reads the same output and history — and a flat root speaks for its highest stage launched, so an earlier stage launched again after a later one leaves the later stage's output beside the earlier's history.)* | § 5y, the flat module's second launch | open · *Re-checked 2026-10-09:* open. |
+| **F-MDNC** | parse | **A flat stage launched again shares SIESTA's history file with the run before it**: after a second run in a flat folder `<label>.MD.nc` holds more rows than that run wrote (12 rows, where each run's output has 8 frames; measured on the end-to-end flat calculation 2026-10-08), and pairing the second run's output with it (`siesta_mdnc.align_to_reference`) matched rows 0–5 and then row 11 -- the earlier run's rows first. Whether the reader takes the newest run's rows, or a run that starts over sets the old history aside, is a design question. *(2026-10-10, the Q17-c review: the transport citation of a flat relaxation reads the same output and history — and a flat root speaks for its highest stage launched, so an earlier stage launched again after a later one leaves the later stage's output beside the earlier's history.)* | § 5y, the flat module's second launch | **decided 2026-10-13** — each run's history is its own: the flat shape keeps it under the run's name, as it names the run's other files (`<base>-run<N>.run.json`, `.continued-from`, `.molwatch.log`; § 7.2 of `web/task-setup.md`), so a stage launched again starts with none and a reader pairs a run's output with that run's history. Not the newest rows of one shared file: the counts do not even add up (12 rows after two runs of 8), so a reader would be guessing. `job-contracts.md` § 2.3's grammar and `runfiles.WRITTEN` first — step 1 |
 | **T-ENV** | tests | **Installer tests answer the environment manager in-process**: `tests/test_envs_one_answer_about_an_env.py` (H6, `dispatch_into_env` replaced to return a typed PySCF verify answer) and the stubs `tests/test_envs_install.py` writes -- a command's answer swapped in-process, which tier 1 forbids (`testing.md` § 0); judged under § 5y's rule in their own pass | § 5y | open · *Re-checked 2026-10-09:* open (`tests/test_envs_one_answer_about_an_env.py:182`). |
 | **PYF-T** | code hygiene | **The tests, `tools/` and `scripts/` are not pyflakes-clean**: 56 findings — 52 in tests, 3 in `tools/`, 1 in `scripts/` (47 unused imports, 7 unused locals, 2 f-strings without a placeholder), measured 2026-10-13 with `python -m pyflakes $(git ls-files '*.py' ':!:molbuilder/*' ':!:tests/data/*')` — the package is clean (`conventions.md` § 1) | Q19's Python P1 | open — each read before it is removed: an unused import in a test can be a fixture pulled in by name |
 | **L2** | tests | **`tests/field/test_ask_the_target.py` fails instead of skipping when invoked outside its batch** (`. does not read as a machine record`: the record path is unset) — a field test gates itself on its backend (`testing.md` § 3) | B8 round 2 | open · *Re-checked 2026-10-09:* open — `tests/field/test_ask_the_target.py:49-51` asserts instead of skipping. |
 | **W56-2** | transport / citation | **The citation reads a cited run beside the run door.** `compose.py:252-262` refuses a folder holding more than one `.fdf`, so a flat relaxation of several stages — which jobset makes — cannot be cited, and its remedy (*"Keep one deck"*) tells the person to edit a run folder; the labels come from that deck's block or a lone `sidecars_in` file (`:445-468`), not from `runs.declared(run)` (`runs.py:308`), the one reader of a run | `engines/transport.md` § 3.1 | **built 2026-10-09 with Q17-c**: a cited folder is the run it speaks for (`runs.run_of`), its deck `Run.deck`, its geometry `runs.openable` and `view_of`, its labels `runs.declared` — the one-`.fdf` refusal and the sidecar-beside fallback gone (`compose._classify_run`, `labeled_citation_structure`) |
-| **EL-W** | transport / labels | **An electrode label that is not frozen is a warning** (`validation/sidecar.py:107`); making it an error is one word (§ 5p.3g, parked 2026-09-17) | `engines/transport.md` § 4 | the user's word |
 | **R11** | execution / tests | **Launch's test-only renderer fallback.** Three test files call the wrapper renderer; two rely on its fallback, and both hand-write `environment.json` — a hand-built record `testing.md:54-55` retires: `tests/test_launch_door_gate.py:37-46`, `tests/test_warm_file_inventory.py:30-55`. Then `machine_record` becomes required in `render_run_wrapper` and the fallback goes (`runwrap.py:2944-2945`, `:2968-2970`); launch's own (`_render_sbatch_for`, `runwrap.py:4224-4228`) stays | § 0b (W54) | open — judge the two tests first |
 | **W57-G** | execution / tests | **Rules no test holds since the W57 retirements**: a killed run leaves no conclusion marker (an engine-tier kill); a stage's `overrides` (no road key for it); the PySCF effective-parameters fence (an engine-tier assertion on the H₂ log); `set -e` across the preamble; a warm retry's own launch record (`retry_of`, 0 test hits); MPS and ranks-per-GPU (only the `run_sh_lacks` side, `gpu_contract.toml:188`) | W57 (2026-10-07) | open — each an assertion on a real run of M2n's batch, never a fake |
 | **W57-M** | execution / PySCF | **A stated PySCF memory cap reaching `max_memory`** — only the unset rows exist (`launch_values.toml:206-216`); none for a stated cap reaching `max_memory = N` (`pyscf/input.py:494`) | W57 | open |
@@ -310,9 +295,11 @@ Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 20
 | **W57-O** | execution / records | **Old-data tolerances**, each an explicit error under *build molbuilder, don't clean up handcrafted input*: `record.py:1323-1324` skips the conflict check when a copy names no machine; `script_generation` refused by name in three doors (`runtime_config.py:705-715,958`; `jobset/machine.py:137`; `envs/initconfig.py:253-259`) — one door; `Environment.from_dict` drops unknown keys (`record.py:363-398`) | W57 | open |
 | **W57-K** | execution / library | **A kind left to a default.** Fifteen functions default their kind to `"optimization"` — `template.py:1003`, `siesta/input.py:555`, `script_emit.py:1043`, `pyscf/stages.py:33`, `validation/siesta.py:648`, `validation/__init__.py:122`, `validation/stages.py:49,117`, `pyscf/input.py:171`, `_shared.py:540`, `siesta/stages.py:91`, `kmesh.py:130`, `validation/siesta.py:197`, `validation/pyscf.py:166`, `_shared.py:711` — every caller on the road states it; ~150 calls, most in tests, lean on the default. And `template.MIGRATE_HINT` (`template.py:2290-2293`) names `--bundle` without a complete command | W57 (explicitness) | open |
 | **W56-H** | tests / PySCF | **A PySCF relaxation with a held atom, end to end** — its progress log's `# frozen_atoms` line and a trajectory read with the atom held; only the vibration e2e holds one today (`test_vibration_e2e.py:501-537`) | W56 | open — M2n's batch |
-| **PL-R** | execution / layout | **`project-layout.md`'s owed rulings**: *must every stage be measured, and how is a verdict whose environment changed shown* — the user's; `summarize` reporting the latest of two runs without saying so (`:687-693`) — a defect under the explicitness rule, fixed, not ruled. (*May one folder hold two ladders* is no question: one `task.json` per folder) | `execution/project-layout.md` | the first the user's; the second open |
+| **PL-R** | execution / layout | **`project-layout.md`'s owed rulings**: *must every stage be measured, and how is a verdict whose environment changed shown* — the user's; `summarize` reporting the latest of two runs without saying so (`:687-693`) — a defect under the explicitness rule, fixed, not ruled. (*May one folder hold two ladders* is no question: one `task.json` per folder) | `execution/project-layout.md` | **answered 2026-10-13** — *must every stage be measured*: no, the contracts say so already (a run needs no benchmark, and any stage may be measured, which one a judgement — `web/task-setup.md` § 6.2b, § 11); *a verdict whose environment changed*: shown with the environment it was measured in, and a difference from today's said beside it — never set aside or applied for the person (finding is not permission, `generator.md` § 4.3a), written into `project-layout.md` with step 1's fix. **The defect, step 1**: `summarize` says how many runs a trial has and which it reports — `project-layout.md`'s own condition |
 | **DOC-TOC** | tests / docs | **A test writes into the checkout when a document is new.** `tests/test_docs_tab.py::test_toc_returns_each_document_once` asks `/api/docs/toc` over the real `docs/`, and the toc builder persists an unlisted document into `docs/toc.json` (`web/blueprints/docs.py:329-345`) — the suite's checkout guard (`conftest.the_suite_leaves_your_checkout_alone`) fired on it 2026-10-09, when this consolidation added its archive. The same rule is held on an isolated tree by `:200` and `:249` | found 2026-10-09 | open — judged redundant: retire it |
-| **Q11** | execution / scheduler | → the queue, Q11 (the named-queue check in two doors) | — | pointer |
+| **Q11** | execution / scheduler | **The named-queue check in two doors** — `placement.launch_refusal` (`placement.py:28`) and `scheduler/place.place` (`scheduler/place.py:78`) | the queue of 2026-10-02 | open — step 2: one door, asked by both |
+| **Q8** | configuration | **Ruled 2026-10-02, not built**: one `proxy.trust` setting replacing `auth.trust_proxy` and `rate_limit.trust_proxy` (`configuration.md` § 8); a benchmark's grid stated by the description, refused when it is not — no grid the machine proposes | the queue of 2026-10-02 | ruled, not built — step 2 |
+| **Q2f** | code hygiene | **Absolute imports, package-wide** *(user, 2026-10-03: "i agree with a, but like a focused session for that with agents and reviews. let's finish this main goal of transport and framework related tasks")* — every `from ..x import y` inside `molbuilder/` becomes `from molbuilder.x import y`, the rule written into the conventions; **and the shipped files' imports in the same session** *(ruled 2026-10-06, W57 decision 1: "B, with Q2f as one session")*: each zip (`mb_monitor.pyz`, `mb_vibration.pyz`, `mb_pyscf.pyz`) keeps molbuilder's folder layout so the package's absolute import resolves inside it (user, 2026-10-06: "for the first form of import why can't we use absolute path?"); the try/except ImportError pairs leave the 22 shipped files. Until then a NEW module is written absolute | the queue of 2026-10-03 | agreed (option a) — its own focused session in step 3, as the user asked: a script with an agent review, then the full batch |
 | **PDB-T** | model / codec | **`to_pdb` writes a title longer than 70 characters past column 80** of the TITLE record — invalid PDB (`structure.py:1978`, `{self.title:<70s}`; `model/structure.md` § 2.2c) | found 2026-10-09 | open |
 | **CARRY** | various | **Smaller items carried by archived sections**, each to become its own row when taken: `tools/classify_source_reads.py`'s `_OVERRIDES` re-keyed by anchor, not line (`:102,117`; § 5h); TS6's `setInterval` pin (`tests/test_results_state_contract_spectra_js.py:238`; node v24 present — unblocked) and TS9's undocumented-test count to re-measure (§ 5m); `generator_mismatch`'s severity (`validation/siesta.py:149`), `detect()` unable to say why it refused (`parse/registry.py:46-89`), Task setup acting on `onChange` (`task-setup/viewer.js:3811-3839`) (§ 10); P6 — an A/B swap passes `tests/test_backends.py:306`; P7 — the `ByElement(("Au",))` mutant lives in `tests/test_atom_selection.py:342-355`; P12 — `lib/projects/checkpoint.js:33`'s no-poll property is prose; § 11.5a's error surface, unwritten; `LAYER_TOL_ANG` untested (§ 11); the route-catalogue sweep (`web-api.md`: 11 documented routes that did not exist, 9 live ones undocumented, 2026-10-08 — re-measure after 2026-10-09's corrections); the noted items in M2a (an unreadable zip or an exception escaping `main` reports in Python's words; a failing `ending` exits 1, which the wrapper treats as 2), M2b (the Build route's peptide branch collects no warnings, so the C-terminus warning reaches no web user) and M2c (`create_app(config={})` reads the disk config through the snapshot); N5d (the label handed to the wrapper through a `Resources` field — waits for a yes); `BlockSize` as a benchmark axis — built as a value axis (`prep_inputs.py:94-106`), re-derive what is left | the archived sections | open |
 | **TPL** | engines / template | **`engines/template.md` § 12.1's open rows without one of their own**: row 3 — G3's `kind`, which no layer dispatches on; row 4 — `read_by` declared and unconsumed (no caller asks `select(read_by=…)`); row 5 — `kind = "monitor"` with no items; row 7 — BENCH-MARKS SIESTA-only. (Row 1 is W47, row 8 W44, row 6 closed) | `engines/template.md` § 12.1 | open |
@@ -906,7 +893,7 @@ overtaken (2: the record is read through `runs.folder_answer`,
 * **6.** **Symptoms are P4's**; P2 carries asked ≠ used only. Open with P4.
 
 
-## 5u. Transport — the one list (M5, W43) *(consolidated 2026-09-29)*
+## 5u. Transport — the one list (M5, W43) *(consolidated 2026-09-29)* — DONE 2026-10-11 but for S13 (the convergence sweep, step 6) and E13 (the junction on Sol, the user's)
 
 *(user, 2026-09-29: "after all work on spectrum is done and review is green,
 continue to work on transport as the next item on plan remember to correctly
@@ -942,7 +929,7 @@ absorbed point here (§ 5u.5).
 | **11** | **The frame axis → Q17 (§ 5z)** — on step 5's group (its *Left*). **Done 2026-10-10** (Q17, archived) | W32 ②, ③, ⑤ (④ left transport by TD10's ruling: transport is handed a multi-frame structure and reads each frame's details from its `customized` section; the generator is V1.25's own procedure) | as W32 states them, the frame walk on step 5's groups; step 9 ③ with it |
 | **12** | **A transport description's life** *(user, 2026-10-11, on the AuBDTAu walk; design B of the framework analysis — who writes which part, when)*: ① Describe is one act and the server writes it (`/api/transport/describe` writes the template and `task.json` into a folder holding none, through `describe.write_description` with `jobset init`'s two refusals) — `engines/transport.md` § 3.8.2a, `web/handover-procedure.md` § 4, § 6; ② once written, Task setup is its editor as every kind's: the Stages card's rows are the ladder's rungs, fixed and numbered — only the seed removed or added back (ruling Q4) — the picker naming the rungs that read each item, the shape shown fixed — what a kind fixes is `task.fixed_by_kind`, which the reader enforces (`web/task-setup.md` § 4, § 5.3); ③ the launch rows stand on every rung's run card, blank — the catalogue's `run_card` (§ 6.2b); ④ ~~the junction card's centring offer~~ — built at 2.5.0, retired at 2.6.0: the junction enters the calculation centred (row 13 ①); ⑤ the swap choice reaches the description (the sender never sent it) | — | built and reviewed twice; `AuBDTAu/transport/transport_lowbias`'s junction composes centred |
 | **13** | **Found on the 2026-10-11 browser walk — the user's word first** (the road ran: Describe wrote the description through the server, Task setup echoed it, Preview refused until the launch rows were stated, then composed the AuBDTAu junction centred): ① ~~D7~~ — **ruled 2026-10-11, built at 2.6.0**: a structure entering a new calculation is centred unless its origin is a person's; a vibration's input stated relaxed keeps the engine's frame (`structure-periodicity.md` § 6.0, *Entering a new calculation*; the sidecar records whose the origin is, v12); D7, lost in `d7f37054` with no decision, is subsumed and 2.5.0's `centre_junction` retired; ② **closed 2026-10-13 (2.9.1): `stages = "scf"` on both, `template.fixed_answers` for the one-answer rule** — the transmission tab echoed `WriteForces` / `WriteCoorStep` as fixed on, though tbtrans writes neither — § 6.1b keeps their one answer for every rung on purpose; limit them to the SIESTA rungs (`stages`), or keep; ③ **closed 2026-10-13 (2.9.1): the locked box shows the list's points (`locked.per_point`, `formSchema.showPoints`)** — the device's and transmission's *Bias voltage* echo was an empty box — show the bias list's points; ④ **closed 2026-10-13 (2.9.1): counted against the heavy non-metals, none on a gold lead** — the H/heavy reference note counted gold as heavy — 0/75 on every lead; ⑤ **closed 2026-10-13 (2.9.1): it names Task setup's card, then the key and the flag** — the run card's refusal named `task.json` and flags, not the card on the page; ⑥ ~~at ~1200 px the Transport tab's main column is narrow: the rung strip overflows and the run card's number boxes show a dash~~ — **fixed 2026-10-11** (second walk): the `.tabs` strip wraps (tabs 4–5 were clipped out of reach), and the run card's boxes are typed text inputs, so the theme styles them. **The second walk, end to end on `claude-transport-walk/transport/e2e-walk{,2}`** (Describe → refused again → Task setup: stages edited, seed removed and added back, Save, run cards, Preview, Prep → Results), fixed: ⑦ the machine card and `STAGE-PLAN.md` listed `molbuilder.json`'s `launch._comment` as a value it supplied (`config_provenance`); ⑧ a Prep's answer stopped before the terminal's *next* line, and every rung's tab named its stage alone, so a group's one launch was shown nowhere — the answer carries `next`, and the tabs ask the status door's rule (`runstatus.launch_words`, D4); ⑨ a waiting rung read *"…from seed, whose newest run, 01_seed/run-0, which has not been launched"*; ⑩ the Transport tab drew all five rung forms three times on load — restoring the shared panel fired its change listener; ⑪ the describe refusals named the folder by its absolute path. **Open, the user's word first**: ⑫ **closed 2026-10-13 (2.8.0): a blank transmission mesh is the rule's, and its hint reads *not chosen · (3 x the shared k-point mesh)*** — the transmission grid's one-line hint read *"not chosen · 15, 15, 1 you set this"*: the value is the 3× rule's (`kmesh.transmission_start`) on the shared mesh the person set, and the line says neither the rule nor its purpose, which only ⓘ help gives (§ 0.3b) — proposed: *"3 × the shared k-point mesh (5, 5): T(E) needs a finer in-plane mesh than the density; converge until T(E_F) moves < 1 %"*. Traced 2026-10-11: the cited AuBDTAu run is 3 × 3 × 1, offset 0; the user's `transport_lowbias` set 5 × 5 × 1 (→ 15 × 15 × 1); the 4 × 4 seen on the walk was the walk's own test edit, since undone in the user's note. Parity and Γ, from SIESTA 5.4.2's source: the block form reaches `find_kgrid` with `firm_displ = .true.` (`kpoint_t.F90` `setup_mp`; tbtrans's `m_tbt_kpoint.F90` likewise), so the 0.0 offset is kept, and the index runs −(n−1)/2 … n/2 — Γ is a sample on an odd or an even count; an even count adds the zone edge. The 3× rule keeps parity (5 → 15, 4 → 12). A parity rule, if wanted, is chosen with the literature first; ⑬ ~~GPU binding on a machine with no queue~~ — **withdrawn**: the box is the calculation's own switch (`execution/gpu.md` G9, the person's column of § 1), and the queue card writes `allocation` whole (`web/task-setup.md` § 6); a machine fact decides nothing about it; ⑭ **moot 2026-10-13: the seed is always kept** — without the seed the stage folders renumbered (`01_electrode_L/`) while the rows read *2 · electrode_L*; ⑮ **closed 2026-10-13 (2.9.1): MolView's hidden radios positioned in their labels — they had stretched the document** — a focus jump (find-in-page, `scrollIntoView`) scrolled the window itself, leaving the header off-screen and a blank band below — `body`'s `overflow: hidden` reaches the viewport, which can still be scrolled by script | — | each ruled; the ruled ones built |
-| **14** | **Groups are stages' numbers; prep writes every group; launch gathers** *(user, 2026-10-11, after the browser walk found the page treating a group's one job as three stages: "the prep UI clearly still treats each stage separately ... steps that are beyond logic"; "the checkbox for grouping is awkward: it cannot assign different groups"; "prep should be able to prepare all groups at the same time ... that's the launch status, not the prep")*. **Ruled 2026-10-11, the four questions as put**: ① each stage states a **group number** in `task.json` (`stages[i].group`), edited on Task setup's Stages card: the first stage is group 1, each later one repeats the number above it or adds one; a stage may not repeat the number of a group holding a stage it builds on; the defaults repeat where allowed (transport 1 1 1 2 3); ② one tab per group on Task setup, holding the group's one run card — what the job shares (ranks, cores per rank, GPU use and count, queue) written to every member's `execution`; the wall per stage, the job asking their sum; ③ **one prep prepares every group** — each group one job — and **the gather moves to launch**: `launch task` sends the next group, first checking each stage's upstream newest run finished and ran the deck described now, copying the inputs with their `.gathered-from`, refusing before anything is sent when not; ④ a stage **prepared and never launched may be prepared again** (no run's record to falsify). **The design, traced and reviewed: § 5aa** — V settled (the force-constant stage keeps its geometry in its deck), R answered by a save before a group's first launch (put to the user with the contract). Contract first: `job-system.md` (*The task*, the states, § 5.0, § 5.4, § 6.0), `project-layout.md` § 1.6.6, `stages.md` (the field), `transport.md` § 1.1, `task-setup.md` (§ 5.3, § 11, the run card), `web-api.md`; then code; then the user's `lowbias` setup proved in the browser (this machine; a Sol preview) | the walk's grouped-prep refusal on `AuBDTAu/transport/lowbias` (2026-10-11: the job's resources stated on the seed only) | proved through the browser on the user's setup, two review rounds |
+| **14** | **Groups are stages' numbers; prep writes every group; launch gathers** *(user, 2026-10-11, after the browser walk found the page treating a group's one job as three stages: "the prep UI clearly still treats each stage separately ... steps that are beyond logic"; "the checkbox for grouping is awkward: it cannot assign different groups"; "prep should be able to prepare all groups at the same time ... that's the launch status, not the prep")*. **Ruled 2026-10-11, the four questions as put**: ① each stage states a **group number** in `task.json` (`stages[i].group`), edited on Task setup's Stages card: the first stage is group 1, each later one repeats the number above it or adds one; a stage may not repeat the number of a group holding a stage it builds on; the defaults repeat where allowed (transport 1 1 1 2 3); ② one tab per group on Task setup, holding the group's one run card — what the job shares (ranks, cores per rank, GPU use and count, queue) written to every member's `execution`; the wall per stage, the job asking their sum; ③ **one prep prepares every group** — each group one job — and **the gather moves to launch**: `launch task` sends the next group, first checking each stage's upstream newest run finished and ran the deck described now, copying the inputs with their `.gathered-from`, refusing before anything is sent when not; ④ a stage **prepared and never launched may be prepared again** (no run's record to falsify). **The design, traced and reviewed: § 5aa** — V settled (the force-constant stage keeps its geometry in its deck), R answered by a save before a group's first launch (put to the user with the contract). Contract first: `job-system.md` (*The task*, the states, § 5.0, § 5.4, § 6.0), `project-layout.md` § 1.6.6, `stages.md` (the field), `transport.md` § 1.1, `task-setup.md` (§ 5.3, § 11, the run card), `web-api.md`; then code; then the user's `lowbias` setup proved in the browser (this machine; a Sol preview) | the walk's grouped-prep refusal on `AuBDTAu/transport/lowbias` (2026-10-11: the job's resources stated on the seed only) | proved through the browser on the user's setup, two review rounds — **done 2026-10-12** (2.7.0; § 5aa, archived) |
 
 **TD12 — settled 2026-10-09** (§ 2, TD12): `engines/transport.md` § 6.1b states what tbtrans reads and the deck's header says so; the four SCF rungs carry their own SCF settings and the transmission none, its tab saying why (`RUNG_NOTES`), the user's word on B8 U1's cut.
 
@@ -979,824 +966,18 @@ questions as put, and the user's words, are in the archive.)*
 ---
 
 
-## 5aa. Groups, every group prepared at once, and a run's inputs taken at launch — the design *(plan § 5u.1 row 14; user, 2026-10-11; two review rounds 2026-10-11, revision 3)*
+## 5aa. Groups, every group prepared at once, a run's inputs taken at launch — ARCHIVED 2026-10-13
 
-> *"we want to combine certain stages ... as one grouped job ... but the prep
-> UI clearly still treats each stage separately"* · *"the checkbox for grouping
-> is awkward: it cannot assign different groups"* · *"the prep should be able
-> to prepare all groups at the same time ... that's the launch status, not the
-> prep"* · *"the stages should have a group number assigned to it, either
-> repeat the last group number or add one"* · *"consolidate such this is a
-> framework that would work for other tasks as well - we don't need a patch"* ·
-> *"think hard to find the best balance between flexibility, logical, and
-> cleanness"*.
-
-**Ruled 2026-10-11** (the four questions as put): a stage's group number lives
-in `task.json`; a group's wall is its members' walls summed; the upstream files
-are copied **at launch**; a stage prepared and **never launched** may be
-prepared again. **Settled by the trace:** V (§ 5aa.4 — option (a) withdrawn)
-and R (§ 5aa.5 — option (i) withdrawn; the answer, a save before a group's
-first launch, is put to the user with the contract).
-
-### 5aa.1 The model
-
-* **A group is a job.** Each stage states a number; the stages with one number
-  are one job, launched together; the numbers run in ladder order.
-* **Two kinds of hand-over, told apart by what the next stage's deck needs.**
-  - **Files** — the next run reads them when it starts: an optimization
-    ladder's `.XV`/`.DM`/history (SIESTA) or `_optimized.xyz`/`.chk` (PySCF);
-    transport's `.DM`, the leads' `.TSHS`, the device's `.TS.HSX`. The deck
-    does not depend on them, so **it is prepared any time, and the files are
-    taken when the run is launched**.
-  - **Values written into the deck** — one case: a SIESTA force-constant
-    stage, whose deck holds `relax`'s relaxed coordinates and cell (§ 5aa.4).
-    **It is prepared once `relax` has finished**, its source run decided at its
-    prep; its file hand-over (relax's `.DM`, read under `DM.UseSaveDM .true.`)
-    is copied at its first launch **from that same run**.
-* **Prep makes what a stage IS** — deck, run script, header, job row — and
-  reads another stage's run only for a value hand-over.
-* **Launch makes a RUN and fills it with what it starts from** — the file
-  hand-overs, decided at the launch that uses them, recorded in the run.
-  **A group's first launch saves the folder's state first**, as prep does
-  before it writes: the state a redo of that group restores — every run
-  upstream already in it (§ 5aa.5).
-* **Nothing starts a stage but you, and you still look first** (`job-system.md`
-  § 5.4, *the gap is the feature*): the gap moves from before prep to before
-  launch, where the run is spent.
-
-### 5aa.2 What the code does today (traced and cross-checked 2026-10-11; file:line at that date)
-
-| fact | where |
-|---|---|
-| a stage is **ready** to prep only when what it builds on has a newest run that finished — transport by `gather_sources`, every other kind by `continuation_answer`; else **waiting** | `jobset/ready.py:60-95` |
-| prep opens `run-0` with the stage's own files (deck, run script, header, pseudos, `atom-permutation.json`, bundles) and **copies in what it continues from** (`warm_carry`, `.continued-from`) or **gathers** (transport, `.gathered-from`), per point for a swept rung | `prep._open_attempts` 1327-1353 → `materialize.prepare_attempt` 678-812 (`bring_files` 591-633, carry 783-790); `prep.transport_inputs` 1766-1930, `_gather_into` 1933-1940; `open_sweep_run` (materialize 648-675) |
-| **every run folder holds its own copy of the deck and run script** | `materialize.bring_files` 591-633 (seen: `01_seed/run-0/e2e-walk_01_seed.fdf`) |
-| the first launch **runs in prep's `run-0`** (an unlaunched last attempt is reused) | `materialize.resolve_attempt` 500-521; `submit._plan_member` 748-752 |
-| a relaunch opens `run-<n+1>`: warm from its own latest run when the stage continues (`Job.relaunch_continues`: not a force-constant stage, not `restart: clean`), else empty; cold from none; a single-run transport rung **re-copies the inputs its prep gathered** from the run `.gathered-from` names (refused when one is gone), a swept one from its previous run's copies | `continuation.relaunch` 501-537; `submit._plan_member` 753-778, `_carry_the_gather` 799-827, `_carry_sweep_gather` 2159-2182 |
-| `--from` exists on **prep only**; `launch --cold` on a stage never launched is refused | `_cli.py:1083`; `submit._refuse_cold_first` 632-644 |
-| launch checks **no upstream run's state** (prep does) | prep: `continuation._by_default` 468-498, `prep.transport_inputs` |
-| **an earlier run's facts are read from the stage's one job row and today's description, not from the run**: the optimizer a `.CG` may follow (`warm_carry` against the job row), a swept rung's points (today's bias list, the frame record) | `model.warm_carry` 453-490; `materialize._source_job`; `transport/stages.points_in` 247-252; `runstatus._sweep_status`; `transport/record.py:352` |
-| prep places each member of a group alone and renders the header with the summed wall without admitting the sum; launch admits it | `prep.prep_group` 3141-3168; `submit._sbatch_request` 270-275 |
-| the printed ways back name *"the state saved before X's prep"* (`commands.rollback`); `continuation._by_default` prints `prep … --cold` / `--from` | `submit.py:494, 642, 730, 822, 2003`; `prep.py:1824, 1922`; `continuation.py:444, 495` |
-| launch writes its planned files **before** it sends (`carry_out`), so a refused `sbatch` leaves them | `submit.py:1161` |
-| a group: several `--stage` at one prep — any pick none of whose stages builds on another and that share one allocation (`envelope`: queue, ranks, cores per rank, GPUs, GPU use, binding the same; wall summed; memory largest); `Job.group` (names) + `launch/<g>.sbatch`. **Stages named together at launch also go as one group**, a header rendered then | `prep.prep_group` 3080-3224; `group.py` 36-112; `submit._plan_group` 2252-2357 |
-| with nothing named, `launch task` offers a relaunch **only when nothing prepared is waiting** | `_cli._launch_unit` 1211-1261 (1238-1247) |
-| "prepared" = the stage has a row in `job-set.json`; prepared again is refused, naming the rollback to the state before its prep | `prep.prepared_already` 2468-2507; checkpoint 2a 2696-2702 |
-| a checkpoint restore **overwrites the folder**: runs made after the state are gone unless saved | `checkpointing.md` § 7 (A5) |
-| the SIESTA force-constant deck is written **at `relax`'s relaxed coordinates and cell**, read at prep from relax's output, with the relaxation record in its `vibration` block | `prep._vibration_stage_geometry` 349-469; `_vibration_block` 318-346 |
-| it writes `MD.UseSaveXV .false.` because **a force-constant run writes its LAST DISPLACEMENT to `<label>.XV`** (measured 2026-09-23) — a deck reading it would take a nudged geometry as the stationary point; a re-run restarts at `FC.First` (`[vibration] resumes = false`) | `siesta/vibration_deck.py:108-127`; `siesta/warm-files.toml:155-170` |
-| the vibration finish reads the reference geometry from FC step 0 of its own output, the cell from the deck, masses, criterion and relaxation record from the deck's block | `spectra/siesta_vibration.py:228-255, 286-308` |
-| a transport frame count is read from the composition record on disk — "no record yet means nothing is prepared: 1" | `transport/stages.frames_of` 203-212 |
-| transport's fourth gate compares the upstream's **ran** deck with what the upstream renders **now**; nothing compares the downstream's own prepared deck with now | `prep.transport_inputs` 1886-1924 |
-| a benchmark is its own lane: trials opened cold, nothing copied in; a force-constant stage's trials written at relax's geometry read at `prep bench` | `prep.py:2805-2823, 650-654`; `submit._walk_of` 1791-1797 |
-| every file hand-over is read at run start — SIESTA `.XV` (`MD.UseSaveXV`), `.DM`, `.CG` for the same optimizer; its history (`.MD.nc`, `.MD`, `.MDE`, `.ANI`) is appended to, never read; PySCF `_optimized.xyz` and `.chk` when the stage continues; transport `.DM`, `.TSHS`, `.TS.HSX` | `siesta/warm-files.toml:45-115`; `pyscf/input.py:437-460`; `transport/stages.stage_inputs` 255-290 |
-| a task's stage has `name`, `overrides`, `execution` (the run card, which holds `restart`); `task.py` is the stdlib-only description layer | `task.py:17-31, 306-331, 1138-1187` |
-
-### 5aa.3 Every situation, and what the design does
-
-**Kinds and shapes.**
-
-| # | situation | today | the design |
-|---|---|---|---|
-| K1 | SIESTA optimization ladder, hierarchical | prep medium only after coarse finished; copies `.XV`/`.DM`/history (+`.CG`, same optimizer) into `run-0` | defaults 1, 2, 3; prep writes all; the first launch of medium takes coarse's newest run, which must have finished (D5: an older one never stands in), and copies the same files |
-| K2 | same, flat | nothing copied; prep requires the stage before finished and writes the flat `.continued-from` | prep writes all; the first launch requires the stage before's latest run finished and writes the flat `.continued-from` (launch already does on a flat relaunch) |
-| K3 | a stage set `restart: clean` | builds on nothing | may share the group above; nothing copied |
-| K4 | PySCF ladder | `.chk`, `_optimized.xyz` | as K1 |
-| K5 | SIESTA vibration, relax → freq | freq prepped after relax finished; deck at relax's geometry; relax's restart files copied into `run-0` at prep (`.DM` read) | freq is preparable once relax has finished, its source run decided at its prep (`--from` a relax run); prep-all prepares the groups before it and says freq's group waits for relax before it can be prepared; its first launch copies relax's files **from the run its prep took** (recorded on its job), never the newest |
-| K6 | SIESTA vibration stated relaxed (freq only) | the structure as given | one group, nothing upstream |
-| K7 | SIESTA displacement sweep | each FC stage after relax; flat refused | defaults 1, 2, 2 …; each FC stage as K5 |
-| K8 | PySCF vibration | one rung | unchanged |
-| K9 | transport | seed + leads one group; device after they finish (gathering); transmission after the device | defaults 1 1 1 2 3; prep writes all five; the first launch of group 2 gathers (the three gates, `transport.md` § 6.1: prepared · its newest run finished, every point done, and the deck it renders now · the file there) into `run-0`, per point for a swept rung |
-| K10 | transport without the seed | | ~~defaults 1 1 2 3~~ — withdrawn 2026-10-12: every ladder keeps its seed (`task.fixed_by_kind`) |
-| K11 | transport bias sweep (self-consistent) | per point gathers at prep | per point at the first launch; the walk and a relaunch's point takeover unchanged |
-| K12 | transport over a frame set | frame × voltage points; the frame count read from disk | **the frame count comes from the junction composed in the same prep** (the plan holds the composition record before any member is planned), never from disk — else a prep-all plans the device and transmission with one frame |
-| K13 | benchmark | its own lane | unchanged and outside groups; a force-constant stage's benchmark still waits for relax (K5). **Found, to verify by a test before any fix (separate item):** a force-constant trial's deck keeps the kind's `DM.UseSaveDM .true.`, which `agreement.check_trial_starts_cold` refuses at `launch bench` |
-
-**Groups.**
-
-| # | situation | the design |
-|---|---|---|
-| G1 | the rule | the first stage is group 1; each later stage repeats the number above it or adds one; a stage may not repeat the number of a group holding a stage it builds on (`group.upstream_of`). **Where checked:** the reader (`task.py`, stdlib) checks the numbers' shape — whole numbers from 1, each the one above or one more; the building-on rule needs the template and the engine, so it is prep's preflight (`stages.md` § 6.6) and the folder route's answer to the page, said beside the row |
-| G2 | defaults for a new description (`jobset init`, the hand-over's Save, the transport describe door) | repeat where allowed — transport 1 1 1 2 3, an optimization ladder 1 2 3, clean stages 1 1 1 — written before any run card exists |
-| G3 | one job's allocation | as `envelope` today; the group's run card writes each shared value into every member's `execution` **when you set it**; members that already disagree are shown disagreeing, never overwritten unasked, and prep's `envelope` still refuses a disagreement by name |
-| G4 | numbers changed for groups prepared and never launched | **groups are compared by membership** (`Job.group`, the names), never by number — numbers are positions, and removing a stage shifts them. A prep whose picked group's membership changed, or that touches a prepared group whose membership changed, forms every such job again in the same prep, the stale header removed; `prep --group N` naming only some of them is refused, naming the others (nothing prepared unseen) |
-| G5 | a launched stage's group membership changed | refused at prep (it reads the run records): a launched stage's group is fixed, as its deck is; a renumbering alone (a stage removed above it) is no change |
-| G6 | relaunch | a member alone (D4), or its whole group; **stages named together at launch no longer form a group** — a group is its number (`submit._plan_group`'s launch-time header retired) |
-| G7 | a launch whose prepared jobs' memberships disagree with the description's groups | refused, naming the prep that forms the jobs again (G4) |
-| G8 | a group's job admitted | prep admits the **group's** request — the summed wall, the largest memory, the shared ranks/cores/GPUs — against the queue it names, as a run's is (`placement.admitted`), so a prep-all that passes is one launch takes (R9) |
-| G9 | the first launch of one member of a group of several | refused: a group goes whole the first time; a member alone is a relaunch (D4) |
-
-**Prep.**
-
-| # | situation | the design |
-|---|---|---|
-| P1 | `prep task` with nothing named | shows the groups, asks once — every group not prepared and preparable pre-selected; one save; each group one job. With nobody to ask, refused, naming `prep task --group N …` — nothing prepared unseen |
-| P2 | `prep task --group N` (repeatable) | those groups |
-| P3 | what may be prepared | every described stage, except a stage with a value hand-over (K5) whose upstream has not finished; the description's checks, the machine, the placement and every deck's gates as today |
-| P4 | a stage prepared and never launched, prepared again (ruled ④) | allowed — its job row replaced, its deck/scripts/header rendered again, its `run-0` reused and emptied of anything an earlier prep or a refused send put there; the folder saved first. **A group is prepared again whole.** Reverses 2026-10-02's *"refuse it, redo via rollback"* for a stage never launched |
-| P5 | a launched stage, prepared again | refused, as today — earlier runs' facts are read from the stage's job row and the description (§ 5aa.2), so its runs must keep the deck and row they ran with; the way back is § 5aa.5's |
-| P6 | the plan identity | no upstream copies at prep: stable while upstream runs end |
-| P7 | the machine | set at the first prep, as today |
-| P8 | what prep says | each group, its job, its files; for a file hand-over, *"at launch: takes <files> from <stage>'s newest run, which must have finished"*; for K5, the run it was written at |
-
-**Launch.**
-
-| # | situation | the design |
-|---|---|---|
-| L1 | `launch task`, nothing named | the prepared groups not launched whose upstream has finished — one: sent, several: asked (D3); none of those: the stages launched before, offered to launch again (today's rule, `_launch_unit`), beside what each waiting group waits for |
-| L2 | `launch task --group N` | refused before anything is sent if a member's upstream has not finished — in the status door's words, with the command |
-| L3 | a stage's FIRST launch, file hand-over | the one door, asked at launch: the stage before's newest run, which must have finished (D5), or the transport gather; `--from RUN` / `--cold` as prep takes them today, for a launch of one stage (L3a); copied into `run-0`, recorded (`.continued-from` / `.gathered-from` → `run.json`), ledger `continues` / `gathers`. K5: its files from the run its prep took |
-| L3a | `--from` / `--cold` on a first launch | a launch of ONE stage; a group's members each take their default |
-| L4 | **the prepared stage is still what the description gives now** | at every launch that takes inputs — a first launch, and a relaunch with `--from` / `--gather` (L6) — each member's prepared files (deck, run script, header, job row: its resources included) are compared with what prep's own plan would write now (`Plan.identity`, stamps masked; the allocation included, since a deck's values follow it — `BlockSize` from `mpi_np`; K5 planned at the relax run its prep took); a difference is refused, naming the prep again (a stage never launched) or § 5aa.5's way back (a launched one). Without it, an edit after prep-all — a template value, a run card's ranks, a re-prep of group 1 alone — would run the old job on new files, unsaid. A plain relaunch (warm or cold, nothing taken anew) runs the stage as prepared, as today |
-| L5 | a relaunch | unchanged: warm from its own latest run, `--cold` none; a transport rung keeps its gathered inputs |
-| L6 | a launched stage takes a newer upstream | `launch --from RUN` (an independent stage) and `launch --gather` (transport: the upstreams' newest finished runs, the three gates) on a relaunch — decided at the launch that uses it, recorded; warm or cold is the person's (2026-10-07) |
-| L7 | the plan shown and asked | per member, what its run takes and from where, before the one question; `--dry-run` shows it, writes nothing |
-| L8 | a refused send | an unlaunched `run-0` is filled anew at every launch until one is sent — what a refused send left is cleared first, so a later `--from` or a newer upstream is taken (`project-layout.md` § 1.6.3); K5's files are refilled from the run its prep took |
-| L11 | the save before a first launch | a group's first launch saves the folder's state, at the send, before anything is written — once its plan stands, as prep's checkpoint 5 — and says which; the ledger records it (§ 5aa.5) |
-| L9 | upstream failed / not converged | the door's answers, as prep's today: failed refused (name `--from`), not converged taken with a warning, the transport gates |
-| L10 | the walk (group, bias sweep) | unchanged |
-
-**Status and surfaces.**
-
-| # | situation | the design |
-|---|---|---|
-| U1 | states | described → prepared (pending: *ready to launch* or *waits for X*) → launched → ended; a K5 stage not prepared: *waits for relax before it can be prepared* |
-| U2 | `jobset status`, the Results ladder | the same door |
-| U3 | Task setup — Stages card | a **Group** column: the number with *same as above* / *new group*; the building-on rule said beside the row (the folder route) |
-| U4 | Task setup — Prep box | the groups, each: not prepared · prepared (never launched → **Prep again**) · launched; Preview and Prep for the picked |
-| U5 | Task setup — tabs | **one tab per group**: its run card (shared values; a wall row per member, the job's wall their sum), and per member its *measure it* (benchmark, K13) and its lines; the launch line carries the Continue-from choice (L3a) |
-| U6 | commands | the group's prep and launch; a member alone for a relaunch (D4) |
-
-**Migration.**
-
-| # | situation | the design |
-|---|---|---|
-| M1 | a `task.json` with no `group` | refused by the reader, naming `jobset migrate`: prepared stages take the groups `job-set.json` records; the rest repeat the number above only where the rule allows it (no stage it builds on in that group, `group.upstream_of`) **and** their run cards share the allocation, else add one. A prepared grouping the rule cannot state (non-adjacent stages) is refused by name, and the person decides |
-| M2 | a `run-0` filled by a prep under today's rule, never launched | as L8: filled anew at the first launch |
-
-### 5aa.4 V — settled by the trace: the force-constant stage keeps its geometry in its deck
-
-Option (a) — write the force-constant deck from the structure and let SIESTA
-read relax's `.XV` — is **withdrawn**: a force-constant run writes its last
-displacement into `.XV` (`vibration_deck.py:119-127`, measured), so a retry
-in the same folder (`continue_retries`) would start from a nudged geometry,
-and the finish, whose reference is FC step 0 of its own output, could not
-tell. The deck holding relax's coordinates is the design's reason, not an
-accident. So a force-constant stage is the one value hand-over: preparable
-once `relax` has finished, its source decided at its prep (`--from` a relax
-run), as today.
-
-### 5aa.5 R — redoing a launched stage: a save before a group's first launch
-
-With every group prepared at once, *"redo via rollback to the state before its
-prep"* restores the state before the one prep — and removes every run made
-since, the earlier groups' included (`checkpointing.md` § 7, A5). Every printed
-way back says it today (§ 5aa.2).
-
-**Withdrawn, (i) — prepare a launched stage again in place.** Its runs keep
-their own deck, but molbuilder reads an earlier run's facts from the stage's
-one job row and today's description (the optimizer a `.CG` follows, a swept
-rung's points): preparing again would make it misread its own runs.
-
-**The answer: a group's first launch saves the folder's state first** (L11).
-That state holds every run upstream of the group — they had to finish before
-it could launch — and the group as prepared, never launched. **Redoing a
-launched stage = restoring the state saved before its group's first launch,
-then preparing it again** (P4: never launched there). Only the runs made since
-— the group's own, and anything that built on them — are removed, and the
-restore names them first (A5). Every printed way back
-(`commands.rollback` and its callers, § 5aa.2) names that state; a stage never
-launched needs no restore (P4). Today's rule, *a launched stage is not
-prepared again*, stands.
-
-### 5aa.6 The contract, then the code
-
-**Contract (written first, shown for a yes):** `job-system.md` (*The task*; *What molbuilder does for you* rule 3;
-the states; § 5.0 agreement 4–5, checkpoints 2, 2a, 4a, 6, the preview; § 5.4
-the two ladders, *A stage launched again*; § 6.0 step 1, step 4) ·
-`project-layout.md` § 1.6 lead, § 1.6.2, § 1.6.3 (the table: `.continued-from`
-by launch; the prepared row), § 1.6.5, § 1.6.6, § 1.6.7 (`prep --cold` moves to
-launch) · `stages.md` (the `group` field; § 6.6 the preflight's group check) ·
-`architecture.md` § 3.2 · `job-contracts.md` (the copy at launch, :109) ·
-`transport.md` § 1.1, § 2a.11, § 2a.14 (:2045), § 6.1 (:3759, :3813) and its restatements (:1510, :2197-2260, :4466)
-· `vibration.md` § 5.2a (the force-constant stage named as the value
-hand-over; its files at its first launch from the run its prep took) · `task-setup.md` § 5.3, § 6, § 11 · `web-api.md` (prep, commands,
-folder) · `checkpointing.md` § 9 (a group's first launch saves, L11).
-
-**Code:** `task.py` (the field and its shape) · `jobset/ready.py` (preparable;
-launch readiness) · `jobset/prep.py` (prep groups; no file copy, no gather;
-re-prep; the frame count from the plan; the group rule in the preflight;
-`--group`) · `jobset/continuation.py` (the one door, asked by launch) ·
-`jobset/submit.py` (first-launch take, L4's plan check, L8's refill, L11's save, `--from`
-/ `--gather` on a relaunch, the upstream gate, G9; launch-time grouping retired) ·
-`jobset/commands.py` and every printed way back (`rollback` callers; `prep --from/--cold` → launch) ·
-`jobset/placement.py` (G8, the group's request admitted at prep) ·
-`jobset/_cli.py` (`--group`; launch flags; L1's offer) · `jobset/runstatus.py`
-· `jobset/migrate.py` (M1) · every description writer (G2) · Task setup page
-and routes (U3–U6) · Results ladder.
-
-### 5aa.7 Tests
-
-Retired or rewritten (each asserts prep's copying or prep's waiting):
-`test_the_road_on_real_runs_e2e.py:113`, `test_restart_group.py:135`,
-`test_status_lists_the_ladder.py:42`, `test_hand_overs.py:33`,
-`test_task_setup_prep_e2e.py:1265`, and the transport e2e cases reading
-`.gathered-from` written at prep (`test_transport_on_a_real_junction_e2e.py`
-:925). New rows through the road (`init → prep → launch --dry-run`): G1's
-refused cases, P1, P4, G4 (membership, a removed stage), G8, G9, L2, L3, L4 (a template edit and a run-card edit after prep, each refused), L6, L8, L11 (the save, and a redo restoring it keeps the upstream runs).
-Engine e2e on the user's word.
-
-### 5aa.7a The contract — written 2026-10-11
-
-Written into `stages.md` (§ 2, § 3, § 6, § 6.6), `job-system.md` (*The task*,
-*What molbuilder does for you*, § 5.0, § 5.3, § 5.4, § 6.0), `project-layout.md`
-(§ 1.6–1.6.7, § 2.3, the manifest), `architecture.md`, `job-contracts.md`,
-`transport.md`, `vibration.md` (§ 5.2a), `task-setup.md` (§ 5, § 5.3, § 6.2b,
-§ 11), `web-api.md`, `checkpointing.md` § 9, `results.md`, `running-a-job.md`,
-`run-identity.md`, `script-preparation.md`, `tuning.md` and the worked
-examples; one fresh review of the written text, its 15 findings fixed (the save
-rule's restatements, the prep route's answer, the restore's reach — every run
-since the save, `--from` / `--cold` speaking for one stage: `--stage` or a
-one-stage `--group`, and on prep for every force-constant stage it prepares).
-**Awaiting the user's yes before code.**
-
-### 5aa.8 Before the work, and done when
-
-2.6.0 (uncommitted) is committed first, on the user's word; this lands as its
-own minor version (`task.json` gains a field; readers refuse one without it,
-naming `jobset migrate`). Done when the contract is agreed, the code built
-through the framework, two review rounds passed, and the user's
-`AuBDTAu/transport/lowbias` prepared whole through the browser — this machine,
-and a Sol preview — with group 1 launched by the user.
-
-**Status 2026-10-12.** Built; the contract's one state machine and its two
-flows are in `job-system.md`, *The task* (a stage, a group and a run; `prep
-task` and `launch task`; three worked examples), each read off the code.
-Review round 1 (two fresh agents, contract-first and code-first) and its
-revision; round 2 the same, and its revision; the non-e2e suite 7204 passed;
-every diagram of every doc touched parses with the vendored mermaid. Lowbias
-prepared on this machine through Task setup, a Sol preview made (the folder
-restored to its prepared state after), a dry run of group 1's launch clean.
-Two simplifications, agreed 2026-10-12 and built: prep plans every member
-of the groups picked into ONE plan and writes that plan after its one save
-(the second planning pass gone, § 5.0 rule 3 kept); every run opened and
-never launched is emptied whole by whatever fills it, a first launch giving
-prep's own files back as they lie (`empty_taken` and the `whole` switch
-gone). **Open:** group 1 launched by the user; the e2e files rewritten for
-the groups and the gather at launch, run on the user's word; one member
-planner for a single run and a swept rung — the next milestone, after 2.7.0.
-
----
-
-### 5aa.9 The unification — one framework for prep and launch *(user, 2026-10-12: "a clean, logical, well unified structure and api system to support our flexibility, simplicity, explicity"; "do this now"; "make sure this is a framework level design and api level unification … diagram updated to include this and explain relation between layers/api/roles")*
-
-Three fresh reviews (the contract as a set; the code's structure; the contract
-cross-validated against the code) fed one revision. **Ruled 2026-10-12:** a
-swept run whose points all ended reads *finished*, convergence in its own
-column (never folded into the state); a job's member list is `members`
-(`group` is only ever the number — `job-set.json` migrated); the ready door
-does not re-plan a stage — *ready to launch* means its inputs are there, the
-launch compares the files.
-
-**The framework (code + `job-system.md` § 9, its layers diagram and API table):**
-surfaces → one entry per verb → the work (which members) → ONE member planner
-per verb (prep: `plan_stage`, quiet, no save/ledger; launch: `_plan_member`,
-every layout) → the run filler (one folder, a run of points, flat) → the
-submission builder (one job; a group's walk; a run's points' walk; a
-benchmark's shelves) → save, write, send, record; the doors underneath answer
-and never write (ready — `ready.task_state` read once; continuation; gather —
-its own module; run; group — `header_path`, `may_share`; commands — one
-`way_back`).
-
-**Work list** (✓ when done):
-- [x] F1 launch: one member planner, `_plan_member` (one run folder, a run
-  of points, flat) → `_first_launch` (every kind through
-  `ready.first_launch_takes`, the force-constant `--cold`/`--from` refusals
-  moved in) / `_launch_again` (`_newest_launched`); `_points_walk` the
-  points' submission builder (was `_plan_sweep`); `_plan_trial` for a
-  benchmark trial; a group refuses a run of points by name; the job row's
-  `members` excluded from launch's comparison (an F7 regression, caught by
-  a new prep-protocol row)
-- [x] F2 `jobset/gather.py` — the gather door (`gather_sources`,
-  `transport_inputs`, `gather_into`, `composed_junction`, `rung_deck_now`);
-  `jobset/transport_rung.py` — the transport rung builder prep and the
-  gather both ask; `errors.user_error_as_prep` public
-- [x] F3 prep: `read_description` (1), `checked` (3–4), `plan_stage` — the
-  one member planner, no ledger/save, `quiet` for launch — and the verbs
-  `prep_task` (groups: read and checked once, every member into one plan,
-  the preflight notes recorded once) and `prep_bench`; launch's description
-  check through `plan_stage(quiet=True)` (no deck warnings at launch);
-  `prep_stage` retired, tests on the verbs (`conftest.prep_the_group_of`)
-- [x] F4 `ready.task_state` → `TaskState` (task, template, plan, stages,
-  groups; `prep_offer`, `launch_offer`, `group(n)`, `text()`), read once by
-  prep's question, the launch offer, status, init's and describe's next
-  line, the folder and commands routes; `plan_launch` with nothing named
-  names the line a person types
-- [x] F5 `commands.way_back` — one composer of a stage's way back (launch's
-  `_redo`, ready's force-constant refusal, migrate's run-number line);
-  `regrouped` names a launched group's way back instead of a prep that
-  would be refused
-- [x] F6 one job name, `group.names_for` (prep's header, launch's send;
-  `header_of` names a job already written by its rows); the share rule
-  applied by the page to the groups as edited, from each stage's
-  `builds_on` in the folder answer — `check_groups` the one refusal
-- [x] F7 `Job.members` (and the wire), migrated — `GroupAnswer.members`, the
-  folder route's `members`, the status row's `group` (the number) and
-  `members`; `jobset migrate` renames `group` (`.pre-2.7.0`); `lowbias`
-  migrated on a copy, group 1 still ready — the real one needs `jobset migrate`
-- [x] F8 one "prepared" door, `ready.job_of` (prep, the gather, the CLI);
-  public names for what crosses modules (`continuation.source_stage`,
-  `stage_before`, `cannot_be_named`, `unreadable`; `engines.pseudo_dir`,
-  `screen_pseudos`, `siesta_provide_pseudos`); a walk's header is
-  `runwrap.walk_header` (`submit.into_launch` retired)
-- [x] D the reviews' defects: STAGE-PLAN.md written once per prep, every
-  member's line, a column for each stage's job mates, the Order sentence
-  rewritten; the commands route's "prepared" is the ready door's; a launched
-  group's edited membership refused by name (a member launched alone named);
-  names matched by `stage_key` in `_the_group`; a launched stage's row and
-  its job's header kept when the description drops it (so one described
-  again is launched); `Readiness.blocked` — waits / regrouped / unreadable /
-  again — and `detail` says which; status's next step for an unreadable
-  record; prep's next line the bare `launch task`; flags and mode checked
-  before a question; a swept run *finished* when every point's run
-  finished, convergence in its column, each point's `state`; `--from` on
-  the alone line; the machine-limit refusal's retired rule; one
-  force-constant takes line (`ready.written_at_takes`); stale wording and
-  comments; dead fields (`Readiness.continuation/gather`, `readiness`'s
-  `from_attempt/cold`, `Attempt.continued_from/cold`, the CLI's
-  unreachable resolver, the folder's `prepared.task/placed`, `launchable`)
-- [x] G the diagrams, read off the code as built and parsed with the app's
-  own mermaid: `job-system.md` § 9.1 — the layers (surfaces, entries, the
-  work, the member planners, the run fillers, the submission builders,
-  save/write/send/record, the doors), each box its module and API; the
-  roles table and the doors table; one `prep task` and one `launch task`
-  as sequence diagrams, call by call. *The task* — the stage, group and run
-  machines, every edge its act and module, each state its door; the two
-  flows, their refusal nodes naming rows of the refusal table
-- [x] C the contract: *The task* rewritten as the one contract (what a stage
-  takes and when — the build-on rule's one home; the machines with the
-  missing edges and states: ready ↔ waits, preparable → waits, the
-  restores, removed, the unreadable record, queued → finished/failed, the
-  flat note; one refusal table, R-P1–15 and R-L1–25; the examples
-  corrected); § 5.0 in the code's order, its rules pointers to their homes;
-  § 5.3's grammar (one `--group` at launch; `--from`/`--cold` scoped); § 5.4
-  and § 6.0 mechanism, pointing to *The task*; the history notes and plan
-  labels out of these sections. The other documents (project-layout,
-  stages, transport, checkpointing, task-setup, web-api, job-contracts,
-  architecture, results, changelog) — review A's D1–D8, I5, I9–I12, S1–S5,
-  S11–S15, O1–O3 — each rule one clause and a link outside its home; the
-  changelog's 2.7.0 row the file and command changes
-- [~] T tests updated and added as rows; the full non-e2e suite; diagrams
-  render; two fresh review rounds. **Round 1** (2026-10-12: the contract as
-  a set; the code's structure; the contract traced against the code) —
-  revised: a launch `sbatch` took with an id it did not print is recorded
-  (id unknown, said); a stage put into a launched group answered by the ready
-  door and prep (`group.launched_without`, `joined_launched`), and the page
-  opens it a group of its own; warm, a stage's own restart files stand over
-  the gather (a device's `.DM`), one carry for a run and its points; a
-  relax-less force-constant stage's `--from`/`--cold` refused; the way back
-  named by the members a group was launched with; a benchmark's placement
-  refusal names its own way back; the Prep box's lines include its prep;
-  prep's own command-line refusals written down; the description read and
-  checked once per launch; dead names (`TaskState.group`, the status row's
-  `members`, `prep._not_again`) out; the contract's state machines (prepare
-  again, unreadable, removed, launched-members-changed), flows (each refusal
-  at its step) and refusal table (R-P16–20, R-L26–36; conditions corrected)
-  revised, the rules pointing to their homes across the documents. **Then**:
-  the hand-built path/parse audit (user, 2026-10-12), an e2e in the browser
-  on an H2 ladder reading every generated script whole — the continue and
-  hand-over steps unified (user) — and round 2. **The e2e, 2026-10-12**
-  (`projects/claude-e2e-27/optimization/H2`, headless — the Chrome extension
-  not connected): Task setup — `tight` added with `restart: clean` into
-  `medium`'s group (Save refused it first while it continued from `medium`),
-  run cards, Preview, Prep; `launch task` (group 1), `--group 2` (the walk:
-  `medium` from `01_coarse/run-0`, its `.XV` read; `tight` from its deck),
-  `--stage coarse` again warm (run-1, the CG history read) and `--cold`
-  (run-2, nothing read); status, Results and Task setup after; a Sol copy
-  (`H2sol`) prepared for every header, R-L11 and R-L6 refused as the worked
-  example says. Found in the generated text and fixed: a deck's header named
-  `launch task --stage <it>`, refused for a member of a group of several
-  (R-L6) — it names the group's first launch and the stage alone
-  (`identity.deck_launch`); the SIESTA deck said *prep copies in* what its
-  first launch copies; the preview's *at launch: takes* listed `.CG` the
-  launch withholds (CG → Broyden) — it asks the pair's rule
-  (`ready.carried_from` → `model.warm_carry`; a prep-protocol row,
-  mutation-checked); the way back in a run script's banner and usage, the
-  deck-agreement note and the vibration remedy said *the state saved before
-  its prep* — one wording, `identity.way_back_words` / `LAUNCHED_WAY_BACK`
-  (a benchmark's stays its prep's); the `.sbatch` header's *Submit with: cd
-  <projdir>; sbatch X* — a line the run script's gate refuses, with no run
-  number — names `jobset launch` and the hand form; the walk script's
-  unused chain flags and its `run_trial` (`run_member`); a cold launch
-  again's *to start it over, --cold*. **Then** round 2
-
-### 5aa.10 One hand-over, the audit's items, the e2e's small findings *(user, 2026-10-12: "yes, do the hand-over design and all the audit items, address the minor issues that you did not change, make sure all are consistent, clarify how the state of each run and stage is marked/recorded? by a file name? is that file listed in the manifest?")*
-
-No visible change to what a run's records say — the same text in the same
-files; it is the unification approved. Contract first (`job-system.md` *The
-states* and § 5.4, `project-layout.md` § 1.6, the catalogue's rows), then
-the code; then the e2e's launches again on the H2 ladder, every generated
-file read; then round 2.
-
-**Work list** (✓ when done):
-- [x] S how a state is marked: *The states* gains the one table — each
-  state, the file(s) that mark it, its manifest row and its door; every such
-  file checked to be in the manifest (`project-layout.md` § 5)
-- [x] H one hand-over: `runrecord.RunRef` — a run as a record names it (its
-  folder from the calculation's; where runs share the folder, its own name),
-  one text, written and read one way (`.continued-from`, `.gathered-from`,
-  `run.json`'s `continued_from`); `materialize.HandOver` — the run that
-  takes, the files each from its run, the record (`continued` / `gathered`),
-  copied with the plan or by the walk; `materialize.hand_over` — the one
-  executor (the attempt's carry, the gather, the gather carried on a launch
-  again, a point taken over, a point's start, a run of points continuing, a
-  flat run's record at the send); the walk script's start copies read off
-  the point's `HandOver`; `_Member.hands`
-- [x] A2 the stage's newest run, one rule: `runrecord.newest_run` (runs that
-  share a folder: the newest launched, by the launch records; a folder of the
-  run's own: its newest try) — `run_of`, `run_state_of`, `run_files`,
-  `continuation.read_run` (its patch out), the flat defaults
-- [x] A5 a run's files through the run door: the displacement sweep's
-  `.spectra.json` / `.FC`, the transport record's `.ORB_INDX` and decks
-  (`Run.on_label`, `Run.deck`; no deck is an error, never a default), the
-  force-constant finish's `.FC` composed
-- [x] A9 `paths` reads a benchmark container's name; one `JobSet` reader, a
-  planned plan's too (`JobSet.load(path, plan=)`); one `slot-provenance.json` reader; the
-  unnumbered name composed once (`RunNames.unnumbered`); a walk's names from
-  one composer; one deck reader for *does it warm-start*
-- [x] C broad excepts narrowed (each says what it catches, or raises);
-  dead code out (`validation/identity.py`, `runfiles.is_carried`,
-  `materialize.trials_in`, `Run.carried` renamed and used); private helpers
-  crossing modules made public (`parse.fdf`, `script_emit`'s record
-  readers, `rundir`, the engine seam's hooks, `runwrap`'s header renderer,
-  the bench check); `JobResult.status` one closed set, the sentence its own
-  field; `trajectory.js`'s carried roles; the deck roles from the catalogue;
-  the run script's placeholders filled
-- [x] M the e2e's small findings: `STAGE-PLAN.md` lists the machine record
-  the same prep writes; the run script's *Mode* line names the restart files
-  that lie there; the effective-parameters block says what its columns are;
-  Save's group refusal names `restart: clean` beside a new group; the
-  *waits for … Launch it* line
-- [x] R `run-identity.md` § 5 rewritten (user, 2026-10-12: *"yes, rewrite
-  § 5"*): each case refused, closed by the layout, or said by `launch` and the
-  banner; a changed cell said by nothing — `validation/identity.py`, never
-  called, retired; ID-CHK closed
-- [x] F the flat layout's record *(user, 2026-10-12: "your recommendation is
-  ok" — option (b))*: a flat run's record names the run whose restart files
-  it reads, the last run in the folder of any stage (`runrecord.last_run`),
-  and `launch` says so beside the stage's own latest run
-  (`continuation.flat_files`); a flat force-constant stage's launch reads
-  the `relax` run its record names (`runfiles.parse_run_name`) — e2e on a
-  flat chain, mutation-checked
-- [x] T targeted tests, mutation-checked; the e2e's launches again; the full
-  non-e2e suite once; round 2. **2026-10-12**: the full non-e2e suite, one
-  row judged (the Mode line's words are `job-contracts.md` § 4.4's — kept,
-  only `<files>` now the ones lying there); the e2e — road, flat, vibration,
-  transport junction — each run's `.continued-from` and `run.json` read
-  through their doors (road; a flat chain added for the record written at
-  the send); found and fixed: a test still calling `Run.carried`, and the
-  junction test's template comparison holding `psml_lib`, which § 3.1 makes
-  differ (a cited run's pseudopotentials travel with it). **Round 2** (two
-  fresh reviews: the contract against the code; the unification's code) —
-  fixed: `fdf_true` lacked libfdf's `y` (read from SIESTA 5.4.2's
-  `fdf.F90`; `1` is not one) and two more word lists folded in; an
-  unreadable `.gathered-from` / `.continued-from` said on its status row,
-  never the whole status, and a record that is not text read as not
-  reading; the launch output's row label from its code; `gather` and
-  `runs.speaking` ask the one answer (`latest_attempt`, `newest_run`); the
-  run record reads one run for every part; a flat force-constant stage's
-  launch reads the `relax` run its record names (`runfiles.run_of_name`);
-  the status detail's reason from `commands.reason_of`, beside the block
-  format; `BENCH_DIRNAME`; the provenance compared resolved on both sides;
-  the states table's door column, who reads each record, a flat warm
-  retry's record, where a point's inputs come from and what a point taken
-  over keeps (transport § 2a.11), the flat layout's shared restart files
-  said rather than claimed as one run's, and stale names in docs and
-  comments. Left as they are, said: a cited transport record fails whole on
-  an unreadable provenance record (it is a claim); `RunRef.within` beside
-  `run_folder`; the sidecar's `fc_file` field, written, no longer read
-
-### 5aa.11 Review rounds A and B — the contract, the code, the UI, the CSS *(user, 2026-10-12: "do another two rounds agent review ... check for inconsistency, duplicated code/design, redundance, detect over engineering, logical problems and UI design problems. check css system ... detect handcrafted magic number, detect bad smell of bad design")*
-
-**Round A** (four fresh reviewers, each finding verified against the code
-before it is acted on) — triage; ✓ fixed:
-
-*Defects, fixed now:*
-- [x] UI: a folder answer that fails, or a description its reader refuses,
-  leaves the last folder's description for Save to write here — one
-  refusal state (`refuseFolder`), Save held; the mode is the folder
-  answer's own
-- [x] UI: the queue card shown in a hand-over drops its values — shown with a
-  description only; hand edits read back into the queue and notify cards;
-  a card's write over text that does not parse refused out loud
-- [x] UI: the bench grid's fit stale after a machine or folder change; a
-  refused Save drops its findings; the group card's wall sentence (worked out
-  a second time, and wrong); the remove-column question outlives its answer
-- [x] Python: the transport record's unreadable `.gathered-from`; each swept
-  point's seeded progress log at its own frame; `--mode ask` on a run of
-  points in the point's folder; a named trial's way back; the queue-named
-  refusal once, in `_sbatch_request` (a group had none); the per-node core
-  cap named; the converged verdict structured (`RunStatus.verdict`), never
-  parsed back from its words
-- [x] Python: the notify file read's `UnicodeDecodeError`; four broad
-  excepts (`contract.relaxation_of`, `registry` sniffer, `_cli`'s task
-  read, `_folder_bench_refusal`); group numbering twice (`default_groups`,
-  `migrate`); job matching by two rules (`stage_key` / exact, a bare
-  `next()`); dead code (bench `parse_sacct_mem`, `Refusal.as_issue`,
-  `Partition.has_gpu`, `Directives.queue`, `activity.CLASSES`,
-  `STEP_INDEX`, `prep_inputs`' unreachable fallback, `_launch_unit`'s `js`);
-  comments contradicting code; `runwrap`'s dead label checks; also
-  `JobResult.to_dict`, `script_emit._extract_header_text` (its tests only),
-  `gpu_share_notes`' node-fit branch, `record`'s private exports
-- [x] Contract vs code: a queued warm launch of a run of points read
-  *failed*; the gather's "launch it again" for a run still running; an
-  unreadable record of another run escaping `status` / launch whole
-  (`gather`, `flat_files`); launch's usage refusals not written down; a
-  prep's save refusal unrecorded; `--cold` "at its first launch" in three
-  texts and R-L12; `prep_stage` named in architecture.md; the floor table;
-  the class diagram; the flat force-constant `--from` line naming a refused
-  prep; the states table's *opened* door
-- [x] UI: the hand-over's Send into a folder nobody checked (`task-handover.js`
-  `safeSave` → `writeFile` into the checked `dest`, under the page fence);
-  Transport's electrode rename kept across junctions (a pick starts without
-  it; Describe waits for the panels drawn for the citation); the road text
-  after Describe; Results' "open the report first" (held across the ladder's
-  redraw), the deck's View path (`record_dir`), `_pickRun`'s failures and late
-  answers; `removeChannel` not checking `ok`; the Spectrum Send wording; the
-  640 px drawer breakpoint (the stylesheet's answer, one number); dead JS
-  (the retired lock's subscriber, `CM_ASSETS`, the dialog test seams)
-- [x] CSS: page sheets re-owning generic controls (`spectra/style.css`),
-  Modify's second severity classes (its edit line a `.status` through
-  `lib/status.js`), the banner restyled per tab (padding only), Results'
-  sheet styling the inspector module's classes (`lib/inspectors/
-  inspector-card.css`; the boundary test's known list empty), `!important`
-  where specificity already wins, inline styles in templates, dead rules
-  (`a.btn-like`, `.structure-viewer`, `.molviewer-label-predefined`, five
-  unused tokens), every fallback mirroring its token, raw colours in the
-  sidebar, the trajectory inspector's inline colour, the off-grid spacings
-  with a token
-
-*Design calls, for the user:*
-- UI: Structure optimization's *discard unsaved changes?* on Load — the
-  viewer is read-only and a load leaves the parameters as typed, while
-  `runtime.md` puts the question on a dirty canvas; dropping it changes what
-  the page offers (and `test_build_e2e`'s gate test)
-- UI: the shape offered after it is fixed (disable it with its way back, as
-  the machine card); the fence claimed by every card edit (§ 7a says so);
-  prep's answer lines served rather than composed in the page; keyboard
-  access (the tabs pattern once, the sidebar rows, glyph buttons named);
-  the detection chip's atom-count advice, which no contract states; one
-  element builder, one path helper, one download helper — *the shape, the
-  fence and the chip done 2026-10-13 (Q19, small UI P1–P2); the rest are
-  Q19's later phases*
-- CSS: one modal component (`.mb-dialog`) — *done 2026-10-13, Q19's CSS P1* —
-  and one button vocabulary; a flat
-  `.card` variant for Results' six restatements; `.num-table` reused; one
-  tab-strip component; tokens for durations, z-index layers, weights and
-  line heights; the sealed modules' own palettes (`vibrationview`,
-  `spectrumchart`, `docs-render`) — named in § 2, or brought onto the
-  tokens; the stylesheet load order
-- Python: the files a calculation holds read once (`JobSet.of`, the
-  template text, `Shape.named(task.shape)`); `done` returning its
-  `RunStatus` and `run_state_of` everywhere; one instruments reader; the
-  long functions (`render_run_wrapper`, the engines' `spec_for`); the
-  floors' upward imports and lazy cycles; `RunRef` for `written_at` and the
-  continuation's fields — *Q19's Python phases 2–5*; `runwrap`'s f-strings
-  without placeholders, gone (pyflakes finds none, 2026-10-13)
-
-**Round B** (four fresh reviewers on the result, 2026-10-12) — triage; each
-finding re-read in the code before it was acted on:
-
-*Found by the suite, fixed first:* a generator in `_plan_calculation` read
-`stage_key` imported only when a job set already existed — a first prep
-raised `NameError` (282 failures); the stage's job is now `JobSet.job`'s.
-
-*Defects and conformance, fixed:*
-- [x] Launch: a transport rung launched warm, then `--cold`, lost the seed's
-  density — a run's gather is carried one hop at a time through
-  `.continued-from` (`submit._carried_gather`); a record that does not read
-  refused once, in `plan_launch`, and written down (R-L21); `--from` naming a
-  run never launched — the run the launch fills among them — refused (R-L37);
-  a flat force-constant stage read at the `relax` run its prep took, said as
-  *the run its deck is written at*; a cold relaunch's carried inputs in the
-  ledger (`gathers`)
-- [x] Prep and status: a swept rung's seeded progress log moved into the
-  run's point (and the real-junction e2e asserts it); the way back says the
-  change after the restore (`way_back_words(change=)`); the bench grid's GPU
-  share judged at ranks per GPU, never a sentence's word; a point's row
-  decided on its state and verdict (`opened`, `converged`), an unread start
-  in its own key (`start_unread`), one *taken over* rule (`_taken_over`);
-  `migrate`'s launched flat stage; ask mode's missing header through
-  `_no_sbatch`; the cited run asked at its one run; a flat `written_at` that
-  does not read refused; the cap notes keyed by domain
-- [x] Python hygiene: the step errors one tuple (`errors.step_errors`); jobs
-  looked up by `JobSet.job`; the dead `gpu_side` / `prefer_gpu` chain,
-  `render_stage_refs`, `_register_engine_validator`, two one-caller wrappers,
-  the `hasattr` guard, the validation package's unused private imports;
-  broad excepts narrowed (`_cli`, `configured_mode`, `read_description`,
-  `_folder_ladder`); stale comments and docstrings (ledger, runwrap's dual
-  test, `numbered`, `materialize`, `migrate_cmd`, the header's *at prep*);
-  pyflakes clean on every changed file but the autouse fixture imports and
-  runwrap's f-strings
-- [x] UI: the page fence holds the keyboard too and shows Cancel only with
-  cancelers (`page-busy.js`, ui-contract § 10, its test mutation-checked);
-  Describe opens only on panels that drew, the last citation's schemas
-  cleared, a late citation answer dropped (`_citeSeq`); a transport
-  Describe has no Cancel (its door writes in one act), a cancelled write
-  says it may have landed; the road after Describe one group per launch;
-  *one calculation per folder* (Rule 1 renamed); `safeSave` /
-  `saveToWorkspace` deleted with their tests and every stale mention; the
-  status lines through `lib/status.js` (Results' ladder, Structure
-  optimization's hand-over, Modify's bootstrap, Spectrum's copy note, the
-  markdown editor's bar); the structure pair named by the folder answer
-  (`structure_pair`); This machine's Test held while it runs; the dead
-  `molbuilderTab` hook
-- [x] CSS: the chemistry card's id rules no longer re-pick `.status` and
-  `.hint`; every line reservation `1lh`; MolView's per-control padding and
-  family that its panel rule overrode; the run-history graph's lanes on
-  tokens; the page copy of the disabled-input rule; `.rec-diff-name` in its
-  owner's sheet; form-schema's `!important`; § 3's breakpoint list recounted
-
-*Design calls, for the user (beside round A's):*
-- Execution: `runrecord.last_run` orders a flat group's runs by
-  `launched_at`, and a warm retry inside the group writes its record later
-  than the member after it — the rule (§ 5.4) and the code share the flaw;
-  the order wanted is the walk's
-- UI: the closed drawer kept out of the Tab order (`inert`) and the Run
-  panel's toggle keeping focus — with round A's keyboard-access call; one
-  `pageBusy.run(reason, cancelers, fn)` for the three *claim unless held*
-  copies; one debounce helper
-- CSS: the local severity callouts (`.ps-preview-status`,
-  `.inspector-inline-error`, `.selection-bootstrap-error`, `.transport-warn`,
-  `.bench-mismatch`) drawn as finding rows or `.status`; one disclosure
-  (`<summary>`) look — eight today, Modify's a copy of form-schema's; one
-  failed-mount look (`.inspector-error` vs the partial factory's unstyled
-  `error-card`); the busy cover twice (`.results-loading-*`); one inline
-  `code` chip; one markdown typography; a chrome tier for the `--ps-*` tokens
-  other modules borrow; global tokens for the accent rule (3/4 px), letter
-  spacing, the page caps; Task setup's two viewport queries as container
-  queries; the banner's padding per tab; `--warn` (vivid) beside
-  `.status.warn` (soft)
-
-*The user's rulings on the calls (2026-10-12):*
-- [x] e2e: the whole batch run (278 of 301 at first), and the device
-  launched warm, then `--cold`, added to the real-junction e2e (mutation-
-  checked: the gather carried one hop only drops the seed's `.DM`).  The 24
-  failures, each judged: two regressions of this round, fixed at their
-  owner -- the tab strip's listeners outliving the spectrum inspector's
-  dispose (the strip registers through its owner's scope, `listeners`,
-  ui-contract § 4.1) and the page fence's focus scrolling a refusal out of
-  view (`preventScroll`, § 10); stale tests brought to the contract -- the
-  Task setup fixtures' stages without a group (stages.md § 2), Modify's
-  `.is-active` panel (shown by `hidden`, § 4.1), the monitor bundle broken
-  where prep wrote it (a first launch opens its run from the stage's files,
-  job-system.md § 6.0 step 4), the PySCF probes started with their run's
-  number (`runtime_info.run_given`, W57); one teardown was this session's
-  own edit under the checkout guard
-- [x] A flat calculation's LAST RUN is a record, not a comparison of
-  timestamps *(user: "there should be a record manifest of the last run so
-  that is the key information what is the last run")*: one file in the
-  folder naming it (`<label>.last-run`), written by the run script the
-  moment its engine starts, in the manifest, read by every reader of "the
-  last run here"; § 5.4 and `runrecord.last_run` rewritten
-- [x] Structure optimization's *discard unsaved changes?* on Load removed,
-  its browser test retired
-- [x] Keyboard access, one pass: the tabs pattern once (`tab-strip.js`) and
-  used everywhere, the closed drawer out of the Tab order, the Run panel's
-  toggle keeping focus, every glyph button named
-- [x] runwrap's f-strings without placeholders (mechanical)
-- [x] The run card is the job's container (user, 2026-10-12, on
-  `AuBDTAu/transport/lowbias`: "different groups have different default
-  group of parameters"): one row per setting in one order on every card,
-  written into the members that read it, a value on a non-reading member
-  shown with its ×, the add list what some member reads (`task-setup.md`
-  § 6.2b; `runCard`)
-- [x] `diag_algorithm` defaults to `ELPA-1STAGE` (user: "we know that works
-  better for most cases"; `engines/siesta.md` § 7)
-- [x] A transport ladder always keeps its seed (user, 2026-10-12: "Always
-  keep the seed"): ruling Q4's skip withdrawn — `task.fixed_by_kind` the five
-  rungs, the reader refusing any other list, no × or add-back on the page,
-  the ladder's inputs without their seed switch
-- [x] The run card, second pass (user, 2026-10-12, on `lowbias`: "the last
-  group does not have all parameters listed and it's not possible now to add"
-  the GPU switch; "framework level solution, not patching"): the same rows on
-  every card (`runRowNames`), a row no member reads shown and not editable;
-  `gpu_count` read where `use_gpu` is (the catalogue's `stages` — `tbtrans`
-  has no GPU path); a run-card value on a rung that does not read it refused
-  by Save and prep as an override there is (`validation.task`,
-  `template.reads`); a blank row shows what the run uses, the empty stage
-  cell's helper (`defaultText`) — the calculation's block, else the
-  template's value (`task-setup.md` § 6.2b). `lowbias`'s template, written
-  before the new default, records ScaLAPACK as *not chosen*: the template is
-  the calculation's own, and a molbuilder default does not rewrite it
-- [x] A prepared stage refused at launch (R-L15) because molbuilder itself
-  changed between the prep and the launch, no setting changed: the rule
-  stands, by its purpose -- prepared files are the product of the
-  description, the machine's record and molbuilder's code, and files the
-  current code would not write make a run its readers cannot read back (the
-  old run script wrote no `.last-run`); a prep again costs no compute
-- [x] The Transport tab's chemistry card is asked on the real junction's
-  road (user: "rebuild it on the real relaxation"): the relaxation run cited
-  through the tab's restored session -- the charge 0 by rule, the cited
-  unrestricted spin floating (ES6, ES7), restricted stated on the panel --
-  and `test_chemistry_card_e2e`'s case on a hand-written junction, which
-  § 3.1 refuses since Q17-c, gone
-- [x] *Every rung that runs an SCF* is one named set (user: "build the named
-  set"): `paths.ROLE_SETS["scf"]` beside the roles, cited `stages = "scf"`
-  by the fifteen rows that wrote it out, read as its roles
-  (`template._stages_from`, a name no set has refused) -- every item reads
-  as before; a calculation's own template writes the roles out
-  (`template.md` § 5, § 6.4)
-- [x] The run card's × only where it removes what the field cannot: a row
-  added on the card and not filled, and a value on a member that does not
-  read it (user, 2026-10-12: "i clicked "x" and it stayed"); a standing
-  row is cleared by its blank (`task-setup.md` § 6.2b; `standingRows`)
-- [x] **The browser walk, 2026-10-13** (user: "use the AuBDTAu
-  optimization run as starting citation, create a project by yourself,
-  vigorously check all UI components"): headless Chromium on a scratch
-  copy of the tree -- New project, New folder, the junction picker by
-  mouse and keyboard, the shared panel and two rungs' values set, the
-  bias builder, Describe; Task setup's every card, the machine, three run
-  cards, Save, Preview, Prep; `launch --dry-run` of group 1 and the
-  refusal of group 2; Results on the cited run.  Every value landed where
-  set (template sources, the rungs' overrides, the bias, the run cards).
-  Fixed: Describe left disabled when a newer rung draw superseded the
-  citation's (the newest draw settles it, a citation voids those in
-  flight); the picker's root opened by hand (its state said closed) and
-  its meta line moving the rows under a double-click (anchored, its line
-  reserved); the lock note's doubled arrow; checkbox fields spread down a
-  tall row (`align-content: start`); Describe a bare `full-btn` in an
-  action row (`primary`, as the other tabs' send); the run card's value
-  cut at 16ch (sized to what it says, `--ts-runval-min`); the prep answer
-  box past the card (`min-width: 0`); "Pick a group" after every group was
-  prepared; the run-count marker's two builders (one, `ranMark`); the
-  sidebar's rows a click alone (a listbox, ui-contract § 4.1) and its
-  create bar leaving Download alone (two by two); 52 raw font weights
-  (their tokens); the energy charts' ticks all alike at a fixed count of
-  figures (one shared axis rule, `plot-theme.energyAxis`)
-- [x] A projects root not named `projects` refused (2026-10-13): the
-  contract already says the tree is the folder named `projects` wherever
-  it is (`job-contracts.md` § 2.5), so `paths.projects` and
-  `$MOLBUILDER_PROJECTS` move it and never rename it --
-  `projects.named_projects`, asked by the resolver and by `envs
-  init-config` before it writes; the tests that pointed the root at
-  `tmp_path`, `tree` or `fixtures` build in the conftest's tree
-- [x] **The transport k-point grids, investigated and consolidated
-  (2026-10-13, 2.8.0)** (user: "a thorough investigation ... with
-  literature/manual/document review"; "yes to A, B and C"): read against the
-  SIESTA 5.4.2 source and manual on this machine and the literature, every
-  reference Crossref-checked. The grids molbuilder wrote were right; the
-  reasons were not, in about ten places -- a lead's points along z do not
-  smooth the self-energy (the endless lead is summed exactly, Lopez Sancho),
-  they decide the Hamiltonian and Fermi level it is built from and aligned
-  to (`m_ts_electrode.F90:1462`); the leads and the device share one in-plane
-  mesh because the lead is the bulk of the device's electrode region, which
-  TranSIESTA checks (`ts_electrode.F90:1235`), not because Σ "pairs with H at
-  the same k". Built: A -- `electrode_kz` warned below 50, the manual's
-  floor; B -- a blank `tbt_k_grid` is three times the shared mesh, worked
-  out by `kmesh.mesh_for` so it follows `kgrid`, named in the deck's
-  provenance (`resolve.BLANK_ANSWERED_BY`), never recorded as the person's or
-  the citation's (closes § 5u.1 row 13 ⑫); C -- a transmission mesh the
-  person set coarser than the shared mesh is warned (`kmesh.check`).
-  `transport.md` § 0.2-0.3b rewritten with the per-stage table, the
-  dependency diagram, the setup order and the citations; the Transport
-  tab's k-points card as one section per stage, each stage's note with its
-  k-points, the stage labels one spelling (`_rungLabel`, "1 · seed" -- the
-  rung's panel said "1. seed", read as a card number), the rail's stage list
-  numbered once. Four references added (`Brandbyge2002`, `LopezSancho1985`,
-  `Thygesen2005b`, `SiestaManual542`). Row 13 ⑭ (the folders renumbering
-  without the seed) is moot: the seed is always kept
-- [x] **The k-point wording, one vocabulary (2026-10-13, 2.9.0)** (user:
-  "the language are vague to state k-point,k-grid or mesh etc
-  inconsistently"): *k-point grid* everywhere (never *mesh*, SIESTA's
-  real-space grid), *in the electrode plane (x, y)* and *along z* (never
-  *transverse*), *stage* on the Transport tab; each reason in full sentences
-  with its background -- the contract § 0.2-0.3b and every k-point passage
-  of it, `siesta.md` § 6.1, `science/overview.md`, the four items' labels and
-  help, the stage notes, the k-points card, `kmesh`'s findings, the decks'
-  k-point comments. Done by an agent, every edit re-read; the § 2a.7 and
-  § 3.8 passages that still gave the old reasons were corrected with it.
-  Left as they are: "transverse" where it names the cell's geometry (§ 4,
-  § 5's I12), and the engine's own message, *"found incompatible k-grids"*
-- Open, for the CSS pass: two modal vocabularies (`.mb-dialog`,
-  `.molbuilder-projects-dialog`) and the sidebar's native `prompt()`
-  (rename, a state's name); the projects dialog's raw `13px/1.45`, sizes
-  and hex fallbacks; `.lock-reason`'s raw `2px` / `1.35`; the junction
-  card's control under nine paragraphs of prose. *The two vocabularies, the
-  native prompts and the projects dialog's raw values done 2026-10-13 (Q19,
-  CSS P1: one dialog component, the sidebar's own deleted with its values, no
-  native dialog left — rename was already in-page, a state's name was a
-  `prompt()`); `.lock-reason`'s values go with CSS P2's tokens, the junction
-  card's control with decision 3 (six paragraphs, not nine).*
-- 2.7.0 is committed with these once the tests pass; the CSS group and the
-  Python group of design calls follow as their own passes, each proposed
-  before it is built
-
-*Not done here, and why:* a test for the warm-then-cold device needs a real
-engine run (an e2e, on the user's word); the cold sweep's docstring against
-its case arms and three small dead guards (`next_step`'s `s is None`, the
-`bench=` that is always false, `_with_notify`'s `None` tests) were not
-re-read whole.
+Built from 2.7.0: a stage's group number in `task.json`, prep preparing every
+group picked in one plan, a group's inputs gathered at its first launch, one
+hand-over, and review rounds A and B. The design, its trace, its reviews and
+its status are verbatim in
+[`archive/2026-10-13-5aa-groups.md`](?doc=archive/2026-10-13-5aa-groups.md);
+the rules live in `execution/job-system.md`, *The task*, and
+`web/task-setup.md` §§ 5, 11. Nothing of it is open: the engine e2e batch
+passed on the grouped code (302 tests, 2026-10-13), and two small code items
+it named are in Q19's Python list, with its design calls for the UI, the CSS
+and the Python.
 
 ## 5z. Q17 — transport over a set of frames — ARCHIVED 2026-10-10
 
@@ -1842,7 +1023,7 @@ values written to two significant figures by one formatter, `as_written`
 `placement.py:63`; its blank budget superseded — an unstated value is refused
 (`jobset/model.py:66-70`, `runwrap.py:3445-3447`, the 2026-10-02 rule).
 
-### 5w.1 Open, in Q9's order
+### 5w.1 Open, in this order (step 2 of § 0a's order)
 
 | | what is left | where it is | done when |
 |---|---|---|---|
@@ -1851,7 +1032,7 @@ values written to two significant figures by one formatter, `as_written`
 | **K16** | **the wrapper fence narrowed** — the SIESTA fence lists every SIESTA item (`runwrap.py:1746`), PySCF narrows by calculation only (`pyscf/layout.py:313-314`), against `parse.md` § 5d.3a's *engine, calculation and stage* (marked not built) | `model/parse.md` § 5d.3a | the fence writes the rung's own items |
 | **K18** | **a PySCF run's level of theory** — `parse/contract.py:28-46` reads SIESTA decks only (`pyscf.md:135`) | `parse.contract.contract_of` | a PySCF deck's basis, method, functional, charge and spin read by the one reader; the Results export carries `info.calculation` for a PySCF run |
 | **K17** | **physics needing a build or a refusal**: SO-C10/C11 — `ParallelOverK` automatic over k (`siesta/input.py:443-446`), ignoring ELPA, its help silent on the deviation, and counted before time reversal (`kmesh.py:111-114`); SO-C12 — `find_psml`'s case and prefix fallback (`siesta/input.py:222-235`) against `pseudopotentials.md` § 9.1's exact name; **PO-C4 — the geomeTRIC log**: § 5w.3 of 2026-09-29 dropped its promise, but `runfiles.py:994-1000`, `pyscf/input.py:49`, `:1518-1522`, `pyscf.md:137`, `project-layout.md:2683` and `vibration.md:2093` still promise `_geom.log`, and PySCF 2.14 substitutes its stream-only `log.ini` when `geometric/log.ini` is absent (`geometric_solver.py:147-150`) — confirmed on an H₂ PySCF run, then the promise dropped everywhere; PO-C10 — the ECP read back; PO-C12 — a `-V` functional with D3; PS-C13 — mode numbers bounded at prep (`validation/spectra.py:107-134`); T-F4/F34 — Task setup's add and rename on a transport ladder (`task-setup/viewer.js:1253-1266`); the vibration's level-of-theory check skipping the recorded k-mesh (`parse/contract.py:63-68`); PS-C3 and PS-C2's builds (their refusals are in: `validation/spectra.py:386-415`, `validation/chemistry.py:378-391`) | as listed | each built, refused, or its promise removed |
-| **K22** | **per-atom starting spins** — **the user's design word first**: where the starting moments live (the structure's per-atom data, or a template item) and how SIESTA is told them (`DM.InitSpin`). Measured 2026-10-08: an unrestricted hydrogen junction cannot run — every rung's moment floats, the aligned start leaves no minority density, the empty channel's GGA potential puts its states near 3000 eV; the suite's transport run is restricted until this is built (`tests/test_transport_on_a_real_junction_e2e.py:26-32`) | no `DM.InitSpin` writer | designed, ruled, built, and a polarized junction run end to end |
+| **K22** | **per-atom starting spins** — **designed in step 6, brought with its science**: where the starting moments live (the structure's per-atom data, or a template item) and how SIESTA is told them (`DM.InitSpin`). Measured 2026-10-08: an unrestricted hydrogen junction cannot run — every rung's moment floats, the aligned start leaves no minority density, the empty channel's GGA potential puts its states near 3000 eV; the suite's transport run is restricted until this is built (`tests/test_transport_on_a_real_junction_e2e.py:26-32`) | no `DM.InitSpin` writer | designed, ruled, built, and a polarized junction run end to end |
 | **K21** | ~~**a polarized junction's panels**~~ — **done 2026-10-11**: the polarized run `claude-transport-walk/transport/h-spin` made through the browser and run on the road; both `.nc` files read (`tbtnc.tbt_files`, `spin_dos`), the report drawing ↑, ↓ and their total by colour and legend in T(E), DOS, eigenchannels and the I–V *(user: "use color/legend to correctly present up and down spin and total current")* — `web/results.md` § 2.5 | `transport/tbtnc.py` · `transport/record.py` · `lib/inspectors/transport.js` | ✅ |
 | **K9** | **engine facts restated in prose** — each item's engine default declared once with its source, the help's deviation sentence, the template comment and the deck's *not set* line written from it, checked against SIESTA's fdf log of a minimal run; not started (`template.py:150-290` has `manual`, no default-with-source field) | `engines/template.md` § 6.5–6.6 | the declaration, then the check with the e2e step (ruled 2026-09-29) |
 | **K11** | its road test — the leads and the seed concluded, `mesh_cutoff` changed, the device's prep refused — is not in `tests/`; judged now that § 5x B2–B4 are done: kept as an assertion on M2n's real run, or retired | — | judged |
@@ -2121,9 +1302,13 @@ check`.
 
 ## Archived sections — pointers
 
+- [`archive/2026-10-13-5aa-groups.md`](?doc=archive/2026-10-13-5aa-groups.md)
+  — § 5aa (the groups) whole, as it stood when the plan was cleaned on
+  2026-10-13.
 - [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)
   — the rows of § 2 and the queue done, settled or closed by 2026-10-13
-  (after 2.9.3), each verbatim under its verdict.
+  (after 2.9.3), each verbatim under its verdict; and Q19's row as it stood
+  after its phase 1.
 - [`archive/2026-10-10-q17.md`](?doc=archive/2026-10-10-q17.md)
   — § 5z (Q17) as it stood at its close, its queue row, and the handover
   of 2026-10-09/10.
