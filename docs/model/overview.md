@@ -82,7 +82,7 @@ when parsed. Nothing invents an index; that order *is* the identity.
 store, `/api/selection/*`, the `.molstruct.json` sidecar, the ATOM-METADATA
 block, and all metadata (`regions`/`annotations`). These indices
 are valid only against the structure they were computed on — **pinned by
-`structure_hash`**; a mismatch must refuse, not mis-apply.
+`geometry_hash`** (`structure-molstruct.md` § 3); a mismatch must refuse, not mis-apply.
 
 **TRANSLATED** — only at three boundaries, each with one API — and **NORMALISED** at a fourth, § 2.2, which is a reorder and not an offset:
 

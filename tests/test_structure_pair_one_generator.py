@@ -48,12 +48,12 @@ def _a_clock_that_does_not_tick_mid_test(monkeypatch):
 
 
 def _with_metadata() -> Structure:
-    """Metadata applied the way it actually arrives — through the codec's own
-    door, which coerces and validates. Assigning the fields directly bypasses
-    that and builds a Structure the rest of the system could not have made."""
+    """Metadata applied the way it actually arrives — through
+    `apply_metadata_dict`, the one dict->struct authority, which coerces and
+    validates. Assigning the fields directly bypasses that and builds a
+    Structure the rest of the system could not have made."""
     s = Structure.from_xyz("3\n\nC 0 0 0\nO 1 0 0\nH 0 1 0\n")
-    molstruct.apply_to_structure(s, {
-        "n_atoms_total": 3,
+    s.apply_metadata_dict({
         "regions":       {"L-electrode": [0], "α-helix": [2],
                           "frozen_atoms": [1]},
         "cell":          [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]],
@@ -118,38 +118,18 @@ def test_a_non_ascii_label_survives_both_paths_identically(tmp_path):
     assert json.loads(given)["regions"]["α-helix"] == [2]
 
 
-def test_a_plain_structure_gets_no_sidecar_from_either(tmp_path):
-    """"No `.json` means no metadata" is how the load door reads a pair, so a
-    structure with nothing worth keeping must produce no sidecar — from the
-    writer AND from anything that hands the pair over.
+def test_a_plain_structure_gets_its_sidecar_from_either(tmp_path):
+    """Every pair has its sidecar, a structure with nothing to say about its
+    atoms included -- it carries the pin (`structure-molstruct.md` § 3) --
+    from the writer AND from anything that hands the pair over.
     """
     target = tmp_path / "plain.xyz"
     StructureCodec().write(_plain(), target)
 
-    assert not molstruct.sidecar_path_for(target).exists()
+    side = molstruct.sidecar_path_for(target)
+    assert side.is_file(), "a plain structure was written without its sidecar"
     handed = [p for p, _ in StructureCodec().files(_plain(), target)]
-    assert handed == [target], f"a sidecar was handed over for a plain structure: {handed}"
-
-    made = StructureCodec().pair(_plain())
-    assert made.keep_sidecar is False
-    assert made.sidecar["schema_version"], (
-        "the payload is still built — a blob is a round trip, not a file, and "
-        "its reader expects one"
-    )
-
-
-def test_a_stale_sidecar_is_removed_rather_than_left_disagreeing(tmp_path):
-    """A structure that loses its metadata must lose its sidecar, or the pair on
-    disk says two different things about the same atoms.
-    """
-    target = tmp_path / "was-labelled.xyz"
-    StructureCodec().write(_with_metadata(), target)
-    assert molstruct.sidecar_path_for(target).exists()
-
-    StructureCodec().write(_plain(), target)
-    assert not molstruct.sidecar_path_for(target).exists(), (
-        "the old sidecar outlived the metadata it described"
-    )
+    assert handed == [target, side], f"the pair handed over: {handed}"
 
 
 # --------------------------------------------------------------------- #
@@ -289,7 +269,7 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
     side_out = json.loads(next(f["text"] for f in out["files"]
                                if f["name"].endswith(".json")))
 
-    volatile = {"created_at", "structure_hash", "schema_version"}
+    volatile = {"created_at", "schema_version"}
     diffs = {k: (side_in.get(k), side_out.get(k))
              for k in set(side_in) | set(side_out)
              if k not in volatile and side_in.get(k) != side_out.get(k)}
@@ -312,7 +292,6 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
 
     KILL SITES, verified red at introduction: the sidecar writer dropping
     the identity spread; the reader skipping the identity apply."""
-    import json
 
     from molbuilder.modify import delete_atoms
     from molbuilder.structure import Structure
@@ -333,7 +312,7 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
                                    "data": {"1": -0.4, "2": 0.1}}},
     })
     StructureCodec().write(s, tmp_path / "a.xyz")
-    side = json.loads((tmp_path / "a.molstruct.json").read_text())
+    side = molstruct.load(tmp_path / "a.molstruct.json")
     assert side["residue_names"] == ["AUX", "CYS", "CYS"]
 
     back = StructureCodec().read(tmp_path / "a.xyz")

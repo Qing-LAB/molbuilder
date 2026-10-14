@@ -2,7 +2,7 @@
 
 The READ side; the write side -- ``save``, ``with_lock``,
 ``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
-``sha256_of_file`` -- is :mod:`molbuilder.sidecars.molstruct`.
+``geometry_hash`` -- is :mod:`molbuilder.sidecars.molstruct`.
 
 The sidecar carries per-atom region + frozen-atom metadata that
 rides next to a structure file (``<stem>.molstruct.json``).
@@ -23,7 +23,10 @@ from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
     SCHEMA_VERSION,
     ENVELOPE_KEYS,
+    RETIRED_ENVELOPE_KEYS,
     MolstructJsonError,
+    is_geometry_hash,
+    is_sidecar,
     normalise_selection_rules,
     structure_fields_via_dataclass,
 )
@@ -39,7 +42,7 @@ def _normalised_dict(
     *,
     n_atoms_total: int,
     n_frames_total: Optional[int],
-    structure_hash: str,
+    geometry_hash: Optional[str],
     fields: Dict[str, Any],
     selection_rules: Optional[Dict[str, Any]] = None,
     identity: Optional[Dict[str, Any]] = None,
@@ -62,11 +65,10 @@ def _normalised_dict(
             f"n_atoms_total must be a non-negative int; got "
             f"{n_atoms_total!r}"
         )
-    if not isinstance(structure_hash, str) or len(structure_hash) < 16:
+    if geometry_hash is not None and not is_geometry_hash(geometry_hash):
         raise MolstructJsonError(
-            f"structure_hash must be a hex string (got "
-            f"{structure_hash!r})"
-        )
+            f"geometry_hash must be a sha256 hex string (got "
+            f"{geometry_hash!r})")
 
     if n_frames_total is not None and (
             isinstance(n_frames_total, bool)
@@ -111,7 +113,10 @@ def _normalised_dict(
         "n_atoms_total":   n_atoms_total,
         **({"n_frames_total": n_frames_total}
            if n_frames_total is not None else {}),
-        "structure_hash":  structure_hash,
+        # THE PIN, when the file states one (v13): a v7-v12 file has none,
+        # and its pair opens unchecked (`structure-molstruct.md` § 3).
+        **({"geometry_hash": geometry_hash}
+           if geometry_hash is not None else {}),
         # SPREAD, not re-listed -- the same rule the write side follows, and for
         # the same reason: a field added to (or removed from) the dataclass must
         # ride onto both sides with no edit here.
@@ -177,9 +182,11 @@ def load_text(text: str, *, source: str = "<sidecar>",
             f"anything the old format kept elsewhere has to be applied again."
         )
 
-    # `n_frames_total` is v11's: every v11 writer states it (§ 1).
-    required = ("n_atoms_total", "structure_hash") + (
-        ("n_frames_total",) if sv >= 11 else ())
+    # `n_frames_total` is v11's, `geometry_hash` v13's: every writer of
+    # that version states it (§ 1, § 3).
+    required = (("n_atoms_total",)
+                + (("n_frames_total",) if sv >= 11 else ())
+                + (("geometry_hash",) if sv >= 13 else ()))
     for key in required:
         if key not in data:
             raise MolstructJsonError(
@@ -193,12 +200,6 @@ def load_text(text: str, *, source: str = "<sidecar>",
             f"negative int; got {n!r}"
         )
 
-    sh = data["structure_hash"]
-    if not isinstance(sh, str) or len(sh) < 16:
-        raise MolstructJsonError(
-            f"sidecar {source}: structure_hash must be a hex "
-            f"string of >= 16 chars; got {sh!r}"
-        )
 
     # A KEY NOBODY READS IS METADATA THE WRITER THINKS IT SAVED.  Checked
     # HERE, where the payload is still whole: this function reads the keys it
@@ -215,7 +216,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # and the files carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
     known = (set(METADATA_FIELDS) | set(IDENTITY_FIELDS)
              | set(ENVELOPE_KEYS) | {"info"} | set(RETIRED_METADATA_KEYS)
-             | set(RETIRED_IDENTITY_KEYS))
+             | set(RETIRED_IDENTITY_KEYS) | set(RETIRED_ENVELOPE_KEYS))
     stray = sorted(k for k in data if k not in known)
     if stray:
         raise MolstructJsonError(
@@ -237,7 +238,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
         return _normalised_dict(
             n_atoms_total   = n,
             n_frames_total  = data.get("n_frames_total"),
-            structure_hash  = sh,
+            geometry_hash   = data.get("geometry_hash"),
             # SPREAD, never listed: every field the Structure names, read by
             # the same tuple the writer spreads (`model/structure.md` § 2.2).
             fields          = {k: data.get(k) for k in METADATA_FIELDS},
@@ -282,7 +283,7 @@ class MolstructSidecarFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return path.name.endswith(".molstruct.json") and path.is_file()
+        return is_sidecar(path) and path.is_file()
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:

@@ -30,10 +30,10 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 12,
+  "schema_version": 13,
   "n_atoms_total": 2,
   "n_frames_total": 2,
-  "structure_hash": "9f2c…(sha256 hex)",
+  "geometry_hash": "3b7e…(sha256 hex)",
   "created_by": "molbuilder",
   "created_at": "2026-07-26T12:00:00Z",
 
@@ -71,7 +71,7 @@ of them: its sidecar holds the envelope, the metadata fields and
 | `schema_version` | the on-disk schema (§ 2) — the reader checks it first |
 | `n_atoms_total` | atom count the metadata was computed against; a mismatch on load is refused, never mis-applied |
 | `n_frames_total` | *(v11)* frame count of the paired document — what `customized.frames` is indexed against; a mismatch on load is refused like the atom count's (§ 3) |
-| `structure_hash` | sha256 content hash of the paired geometry (hex, ≥16 chars) — the integrity pin (§ 3) |
+| `geometry_hash` | *(v13)* sha256 of the paired geometry's atom lines and the cell they sit in (hex) — the integrity pin (§ 3); a v7–v12 file carries `structure_hash`, a hash of the geometry file's bytes, read and never compared |
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
 | `selection_rules` | a sidecar-**only** pass-through, **not** a `Structure` field (§ 4) |
 
@@ -119,12 +119,20 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v12. The reader accepts {7, 8, 9, 10, 11, 12} and nothing else.**
+**Current schema: v13. The reader accepts {7, 8, 9, 10, 11, 12, 13} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 12                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12})
+SCHEMA_VERSION    = 13                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13})
 ```
+
+*(v13, 2026-10-14, plan V1.9 / M2m.)* **The pin is the geometry hash**
+(§ 3): `geometry_hash` replaces `structure_hash`, which a v7–v12 file still
+carries and the reader takes without comparing — a retired envelope key, never
+written again. A v7–v12 file has no geometry hash, so its pair opens unchecked:
+metadata is never required (below). **And every pair molbuilder writes has its
+sidecar**, a structure with nothing to say about its atoms included, because
+the sidecar holds the pin (`model/structure.md` § 2.4).
 
 *(v12, 2026-10-11.)* **Additive**: the optional **`offset_by`** beside
 `engine_offset` — whose the stated offset is, `person` (an origin assigned on
@@ -166,9 +174,10 @@ refused, with an error naming what changed and what to do — never
 partially read.
 
 **Retired keys.** A key the schema once wrote and no longer does — `pbc` and
-`cell_origin` (metadata; the second by decision, v10) and `title` (identity) —
-is listed in `RETIRED_METADATA_KEYS` /
-`RETIRED_IDENTITY_KEYS` (`structure.py`) and passes **three gates**: tolerated
+`cell_origin` (metadata; the second by decision, v10), `title` (identity) and
+`structure_hash` (the envelope's, v13) — is listed in `RETIRED_METADATA_KEYS` /
+`RETIRED_IDENTITY_KEYS` (`structure.py`) / `RETIRED_ENVELOPE_KEYS`
+(`sidecars/molstruct.py`) and passes **three gates**: tolerated
 on read, so a file already on disk is not refused as carrying a stray key;
 never applied; dropped on rewrite, so the pair heals on its next save. Every
 gate has to know every retired key — a guard that disagrees with its
@@ -252,7 +261,8 @@ at any of them is refused, not upgraded.
 | v9 | *(2026-08-29)* the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one | **Still readable**
 | v10 | *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
 | v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
-| **v12** | **current** *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
+| v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
+| **v13** | **current** *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
 
 ### Changing the schema
 
@@ -268,38 +278,77 @@ decision the reader enforces:
 
 ---
 
-## 3. `structure_hash` — the integrity pin
+## 3. `geometry_hash` — the integrity pin
 
-> **`info` never enters the hash** (2026-08-29): the store describes
-> the structure — a recorded contract, a note — and recording MORE
-> about the same atoms must not read as a different structure.  Nor does
-> any metadata field: the hash is the geometry document's bytes alone
-> (below), every frame of it.  *(This said "geometry + the structural
-> metadata" until 2026-10-09; `StructureCodec.pair` has always hashed the
-> document only.)*  An identity over the geometry AND the structural
-> metadata is W39's identity hash, which is not defined and waits on M2m's
-> ruling (plan § 2, V1.9 / M2m); until then a frame-set citation is pinned by
-> the two files' sha256, as a cited run's files are (plan § 5z, Q17-c).
+*(v13, 2026-10-14: plan V1.9's rule, settled 2026-09-22, built as M2m. Until
+then the pin was `structure_hash`, the sha256 of the geometry file's bytes,
+and no reader compared it — compared, it would have refused a comment line a
+person edited, which `model/structure.md` § 2.2c lets them do.)*
 
+The sidecar's labels are indexed by atom, and its cell is the box these atoms
+sit in. Applied to a geometry that changed after it was written, they land on
+atoms they were not set for — a calculation described with one structure and
+prepared from an edited one runs the edited atoms under the old labels and
+cell, and nothing says so. `geometry_hash` pins the sidecar to the geometry it
+was written with.
 
-`structure_hash` is the sha256 of the paired geometry file's bytes
-(`sha256_of_file`, stable across platforms). It ties a sidecar to *the exact
-structure it was computed on*: the metadata is indexed by atom position, so
-applying it to a different geometry would mis-assign labels.
+**What it covers.** The sha256 (hex) of these lines, in order, each ending in
+a newline:
 
-Two independent guards, deliberately kept separate:
-- **On apply** (`apply_to_structure`), the sidecar's `n_atoms_total` must equal
-  the structure's atom count, and its `n_frames_total` (v11) the structure's
-  frame count, or the apply is **refused** (`MolstructPairingError`, never
-  partially applied): labels are indexed by atom and `customized.frames` by
-  frame, and a near-miss in either puts a fact on the wrong one. A v7–v10 file
-  states no frame count and holds nothing indexed by frame. `structure_hash`
-  is **not** verified here.
-- **The caller** compares `structure_hash` against the geometry it loaded, to
-  detect a sidecar paired with a *changed* structure — a stricter check the
-  file-access layer owns. *(Not built — plan § 2, V1.9 / M2m: no reader
-  compares it today; the reader checks only that it is a hex string of at
-  least 16 characters, `parse/sidecars/molstruct.py:196-200`.)*
+| line | holds |
+|---|---|
+| `frame` | before each frame's atoms, in the document's order |
+| one per atom | the atom line's fields as written, one space between — the numbers' own text, so no number is parsed or rounded |
+| `cell` and the cell | the sidecar's cell, its three rows as the sidecar states them (`cell none` when it states none) |
+| `axis_kind` and the kinds | the sidecar's axis kinds (`axis_kind none` when it states none) |
+
+A `.pdb`'s atom lines are its `ATOM` / `HETATM` records, its atom and
+residue names among their fields.
+
+**What it leaves out, and why.** The comment line — the title, the geometry
+file's own and a person's to edit (`model/structure.md` § 2.2c). The engine
+offset and whose it is — where the box is placed around the atoms, which moves
+no atom against another or against its periodic images. The labels, channels,
+identity columns, `customized` rows, `info` and timestamps — what the sidecar
+says *about* the atoms, never the atoms: recording more about the same atoms is
+not a different structure.
+
+**Who makes it.** Every writer of a pair, over the document it writes:
+`StructureCodec.pair` — a project save, an export, the CLI's writers, a
+calculation's `.source` pair — and `write_moved`, a run's saved geometry
+(`model/structure.md` § 2.4). Nothing else computes one to store.
+
+**Who checks it.** The one read door, `StructureCodec.load`, computes it over
+the file it read with the sidecar's cell and axis kinds and compares. When they
+differ:
+
+- **refused** — `GeometryChangedError`, naming the file and the way out — by
+  every door that builds something from the structure: prep reading a
+  calculation's structure, `jobset init`, the CLI, a deck's file reader, a
+  transport citation of a pair;
+- **said** — the file opens, the load saying its labels and cell were saved for
+  other coordinates — by the browser's load route, the one door of the
+  Molbuilder and Results tabs, because reading does not judge
+  (`structure-periodicity.md` § 8.2) and the way out is there: the Molbuilder
+  tab shows the structure with the sidecar's labels and cell, and saving it
+  writes the pair anew, its hash made over what is saved.
+
+A sidecar written before v13 carries no geometry hash, and its pair opens
+unchecked (§ 2, *metadata is never required*).
+
+**The count guard is the other half, and it stays apart.** On apply
+(`apply_to_structure`) the sidecar's `n_atoms_total` must equal the
+structure's atom count, and its `n_frames_total` (v11) the frame count, or the
+apply is **refused** everywhere (`MolstructPairingError`, never partially
+applied): labels are indexed by atom and `customized.frames` by frame, so a
+near-miss puts a fact on the wrong one — there is nothing to open. A v7–v10
+file states no frame count and holds nothing indexed by frame.
+
+**What it is not.** It is not the identity of a structure across calculations
+— whether two runs ran the same atoms, labels aside. That second hash, over the
+labels and identity columns, and the check when two runs are joined, are W39's
+(plan V1.9); until then a frame-set citation is pinned by its two files' sha256,
+as a cited run's files are (plan § 5z, Q17-c).
 
 ---
 
@@ -335,11 +384,11 @@ flowchart LR
 | Function | Role |
 |---|---|
 | `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
-| `to_dict(fields, n_atoms_total, n_frames_total, structure_hash, …)` | build the envelope + spread the validated metadata fields |
+| `to_dict(fields, n_atoms_total, n_frames_total, geometry_hash, …)` | build the envelope + spread the validated metadata fields |
 | `save(path, …)` | atomic write (temp sibling + `os.replace`) |
 | `load(path)` / `load_text(text)` | read + validate the version → a normalised metadata dict |
 | `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
-| `MolstructJsonError` / `MolstructPairingError` | the payload is unreadable / the payload is for a **different structure**. Separate types because § 3's two guards get different answers: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing* |
+| `MolstructJsonError` / `MolstructPairingError` / `GeometryChangedError` | the payload is unreadable / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
 
 Callers do not touch the field list — `Structure`'s two metadata methods are the
 sole namers (`structure.md § 2.2`). The higher-level paired-file door

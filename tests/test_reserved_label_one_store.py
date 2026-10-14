@@ -429,9 +429,13 @@ def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
     )
     assert saved["regions"] == {"L-electrode": [0], FROZEN_LABEL: [1, 2]}
 
-    s = Structure.from_xyz("3\n\nC 0 0 0\nO 1 0 0\nH 0 1 0\n")
-    with pytest.raises(Exception, match=r"neither a structure metadata field"):
-        molstruct.apply_to_structure(s, dict(saved, frozen_atoms=[0]))
+    # The pre-v7 second key, put back by hand: the read door refuses it.
+    molstruct.sidecar_path_for(target).write_text(
+        json.dumps(dict(saved, frozen_atoms=[0])), "utf-8")
+    with pytest.raises(molstruct.MolstructJsonError,
+                       match=r"\['frozen_atoms'\], which this version does "
+                             r"not read"):
+        StructureCodec().load(target)
 
 
 def test_an_atom_on_the_wire_has_exactly_these_members(served):

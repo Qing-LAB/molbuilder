@@ -210,14 +210,15 @@ def test_emit_atom_metadata_uses_zero_based_indices():
     assert payload["regions"]["frozen_atoms"] == [0]
 
 
-def test_emit_atom_metadata_omits_structure_hash():
-    """Per the contract: structure_hash is NOT emitted in-body because
-    the metadata and coordinates are written by the same generator
-    pass and cannot drift apart by construction."""
+def test_emit_atom_metadata_omits_the_geometry_hash():
+    """Per the contract (`job-contracts.md`, the in-body atom metadata):
+    `geometry_hash` is NOT emitted in-body because the metadata and
+    coordinates are written by the same generator pass and cannot drift
+    apart by construction."""
     block = sc.emit_atom_metadata(
         regions={"r": [0]}, n_atoms_total=1,
     )
-    assert "structure_hash" not in block
+    assert "geometry_hash" not in block
 
 
 def test_emit_atom_metadata_honors_created_by_and_created_at():

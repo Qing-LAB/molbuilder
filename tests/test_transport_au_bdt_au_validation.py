@@ -152,36 +152,24 @@ _FIX_XYZ      = _HERE / "data" / "au_bdt_au.xyz"
 _FIX_SIDECAR  = _HERE / "data" / "au_bdt_au.molstruct.json"
 
 
-def test_xyz_fixture_loads_with_18_atoms():
-    """Sanity: the committed XYZ parses + has the documented
-    composition (3 Au + 12 bridge + 3 Au = 18 atoms)."""
-    from molbuilder.structure import Structure
-    struct = Structure.from_xyz(_FIX_XYZ.read_text())
+def test_fixture_pair_opens_through_the_read_door():
+    """The committed pair opens through the read door with the documented
+    composition (3 Au + 12 bridge + 3 Au = 18 atoms) and the L-electrode /
+    bridge / R-electrode labels, contiguous as Brandbyge 2002 § III and the
+    preflight require.  Its sidecar pins its XYZ (`structure-molstruct.md`
+    § 3), and the door compares the pin -- so a stray XYZ edit without
+    writing the pair again is refused there rather than carried into a
+    deck."""
+    from molbuilder.sidecars.molstruct import load
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert load(_FIX_SIDECAR).get("geometry_hash"), "the fixture pins nothing"
+    struct = StructureCodec().load(_FIX_XYZ)
     assert struct.n_atoms == 18
     counts = {e: struct.elements.count(e) for e in set(struct.elements)}
     assert counts == {"Au": 6, "S": 2, "C": 6, "H": 4}
-
-
-def test_sidecar_carries_correct_region_labels():
-    """The .molstruct.json sidecar must contain L-electrode / bridge
-    / R-electrode regions with the contiguous indices Brandbyge
-    2002 § III + our preflight check require."""
-    from molbuilder.sidecars.molstruct import load
-    data = load(_FIX_SIDECAR)   # returns a dict
-    regions = data["regions"]
-    assert regions["L-electrode"] == [0, 1, 2]
-    assert regions["bridge"]      == list(range(3, 15))
-    assert regions["R-electrode"] == [15, 16, 17]
-
-
-def test_fixture_sidecar_hash_matches_xyz():
-    """The sidecar's structure_hash must match the SHA-256 of the
-    XYZ bytes.  Pin so a stray XYZ edit without regenerating the
-    sidecar surfaces as a hash mismatch (stale-sidecar guard from
-    the molstruct_json contract)."""
-    from molbuilder.sidecars.molstruct import load, sha256_of_file
-    data = load(_FIX_SIDECAR)
-    assert data["structure_hash"] == sha256_of_file(_FIX_XYZ)
+    assert struct.regions == {"L-electrode": [0, 1, 2],
+                              "bridge": list(range(3, 15)),
+                              "R-electrode": [15, 16, 17]}, struct.regions
 
 
 # --------------------------------------------------------------------- #
@@ -190,15 +178,9 @@ def test_fixture_sidecar_hash_matches_xyz():
 
 
 def _struct_with_sidecar():
-    """Load the XYZ and apply the sidecar regions to the Structure."""
-    from molbuilder.structure import Structure
-    from molbuilder.sidecars.molstruct import load, apply_to_structure
-    struct = Structure.from_xyz(_FIX_XYZ.read_text())
-    data = load(_FIX_SIDECAR)
-    # ``apply_to_structure`` mutates struct.regions + struct.frozen_atoms
-    # in place.
-    apply_to_structure(struct, data)
-    return struct
+    """The committed pair, its labels applied -- through the one read door."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    return StructureCodec().load(_FIX_XYZ)
 
 
 def _live_device_deck(label="au_bdt_au_test", rung="device"):
@@ -359,8 +341,8 @@ def test_fixture_regenerated_from_textbook_chemistry():
     Tolerance: 0.001 Å.  Below that we're catching floating-point
     formatting drift, not chemistry.
     """
-    from molbuilder.structure import Structure
-    committed = Structure.from_xyz(_FIX_XYZ.read_text())
+    from molbuilder.workingcopy_structure import StructureCodec
+    committed = StructureCodec().load(_FIX_XYZ)
     rebuilt   = _build_au_bdt_au_coords()
     assert len(committed.elements) == len(rebuilt) == 18
 

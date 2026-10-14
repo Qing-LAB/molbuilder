@@ -47,9 +47,6 @@ from .files import _PickerError
 bp = Blueprint("selection", __name__)
 
 
-_SUPPORTED_STRUCTURE_SUFFIXES = (".xyz", ".pdb")
-
-
 def _bad_request(msg: str, status: int = 400):
     # Uniform error envelope (`web/web-api.md` § 1 -- the four
     # status buckets; decided 2026-05-25).  Both ``ok``

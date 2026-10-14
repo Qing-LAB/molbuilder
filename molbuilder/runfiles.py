@@ -1886,15 +1886,14 @@ def saved_pair_row(path) -> Optional["tuple[str, str]"]:
     structure -- or ``None``.  The pairing is the codec's
     (`sidecars.molstruct.sidecar_path_for`); a structure it opens is `.xyz`
     or `.pdb`."""
-    from .sidecars.molstruct import SUFFIX, sidecar_path_for
+    from .sidecars.molstruct import (GEOMETRY_SUFFIXES, geometry_for,
+                                     is_sidecar, sidecar_path_for)
     p = Path(path)
-    if p.name.endswith(SUFFIX):
-        stem = p.name[:-len(SUFFIX)]
-        if any((p.parent / f"{stem}{ext}").is_file()
-               for ext in (".xyz", ".pdb")):
+    if is_sidecar(p):
+        if geometry_for(p) is not None:
             return SAVED_PAIR_WHAT["sidecar"], SAVED_PAIR_WRITER
         return None
-    if p.suffix in (".xyz", ".pdb") and sidecar_path_for(p).is_file():
+    if p.suffix in GEOMETRY_SUFFIXES and sidecar_path_for(p).is_file():
         return SAVED_PAIR_WHAT["structure"], SAVED_PAIR_WRITER
     return None
 

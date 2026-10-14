@@ -117,23 +117,25 @@ class TestSidecarRoundTrip:
     (structure-periodicity.md § 7).  k-grid is NOT a geometry field, so it's
     neither written nor read."""
 
-    def test_round_trip_through_to_dict_and_apply(self):
+    def test_round_trip_through_the_pair(self, tmp_path):
+        import json
         from molbuilder.sidecars import molstruct as ms
-        d = ms.to_dict(
-            {"cell": [[5, 0, 0], [0, 5, 0], [0, 0, 10]],
-             "axis_kind": ["periodic", "periodic", "transport"],
-             "vacuum": [0.0, 0.0, 0.0]},
-            n_atoms_total=2, structure_hash="a" * 64,
-        )
-        assert d["axis_kind"] == ["periodic", "periodic", "transport"]
+        from molbuilder.workingcopy_structure import StructureCodec
+        p = StructureCodec().write(
+            Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]],
+                      cell=np.array([[5, 0, 0], [0, 5, 0], [0, 0, 10]],
+                                    dtype=float),
+                      axis_kind=("periodic", "periodic", "transport"),
+                      vacuum=[0.0, 0.0, 0.0]),
+            tmp_path / "x.xyz")
+        # k-grid is not geometry -> not in the sidecar.
+        assert "kgrid" not in json.loads(ms.sidecar_path_for(p).read_text())
+
+        s = StructureCodec().load(p)
+        assert s.axis_kind == ("periodic", "periodic", "transport")
         # WHAT WENT IN COMES BACK.  [0,0,0] is a deliberate zero and survives
         # as one; `null` is "nobody chose" and survives as that.
-        assert d["vacuum"] == [0.0, 0.0, 0.0]
-        assert "kgrid" not in d   # k-grid is not geometry -> not in the sidecar
-
-        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
-        ms.apply_to_structure(s, d)
-        assert s.axis_kind == ("periodic", "periodic", "transport")
+        assert list(s.vacuum) == [0.0, 0.0, 0.0]
         assert not hasattr(s, "kgrid")
         assert s.pbc() == (True, True, True)  # the accessor: transport -> True
 
@@ -142,7 +144,7 @@ class TestSidecarRoundTrip:
         from molbuilder.sidecars import molstruct as ms
         with pytest.raises(ms.MolstructJsonError, match="axis_kind"):
             ms.to_dict({"axis_kind": ["periodic", "nope", "isolated"]},
-                       n_atoms_total=1, structure_hash="a" * 64)
+                       n_atoms_total=1, geometry_hash="a" * 64)
 
 
 class TestElectrodeCaptureCell:

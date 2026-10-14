@@ -120,34 +120,6 @@ def test_read_write_pair_round_trip_preserves_all_metadata(tmp_path):
     assert side["engine_offset"] == [-0.5, -1.5, -2.5]
 
 
-def test_write_plain_molecule_writes_no_sidecar(tmp_path):
-    """No metadata worth persisting => no ``.json`` half (``no .json == empty
-    metadata``)."""
-    s = Structure(elements=["H", "H"],
-                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]))
-    xyz = tmp_path / "h2.xyz"
-    StructureCodec().write(s, xyz)
-    assert xyz.exists()
-    assert not (tmp_path / "h2.molstruct.json").exists()
-    # Round-trips to an equivalent (metadata-empty) structure.
-    r = StructureCodec().read(xyz)
-    assert r.metadata_to_dict() == s.metadata_to_dict()
-
-
-def test_write_removes_stale_sidecar_when_metadata_cleared(tmp_path):
-    """Writing a now-plain structure over a path that had a sidecar removes the
-    stale ``.json`` so the pair can't disagree."""
-    xyz = tmp_path / "m.xyz"
-    codec = StructureCodec()
-    codec.write(_fully_populated_structure(), xyz)
-    assert (tmp_path / "m.molstruct.json").exists()
-    # Re-write with a plain structure (same atom count, no metadata).
-    plain = Structure(elements=["C", "O"],
-                      positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.2]]))
-    codec.write(plain, xyz)
-    assert not (tmp_path / "m.molstruct.json").exists()
-
-
 # --------------------------------------------------------------------------- #
 #  § 5.3  Wire view carries the server-resolved origin                         #
 # --------------------------------------------------------------------------- #
@@ -641,12 +613,14 @@ class TestTitleBelongsToTheGeometryFile:
         p = self._pair(tmp_path, "human.xyz", "anneal at T=300K, run 3")
         assert codec.load(p).title == "anneal at T=300K, run 3"
 
-        # 3. A COMMENT LINE DOES NOT CONJURE A SIDECAR to hold one string
-        # that is already in the file beside it.
+        # 3. THE SIDECAR DOES NOT CARRY IT -- a second home for one string
+        # already in the file beside it.
         p = self._pair(tmp_path, "named.xyz", "water dimer")
         codec.write(codec.load(p), p)
-        assert not molstruct.sidecar_path_for(p).exists(), \
-            "a comment line alone wrote a sidecar"
+        import json
+        assert "title" not in json.loads(
+            molstruct.sidecar_path_for(p).read_text()), \
+            "the comment line was copied into the sidecar"
 
         # 4. AND AN EDIT TO THAT LINE IS HONOURED -- the one line of a
         # structure file a person can obviously edit.  Written here THROUGH

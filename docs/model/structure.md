@@ -177,7 +177,7 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
   legible.
 - **NOT in scope** (they sit *around* the contract): `selection_rules` (a
   sidecar-only pass-through) and the sidecar **envelope** (`schema_version` /
-  `n_atoms_total` / `structure_hash` / `created_by` / `created_at`) — see
+  `n_atoms_total` / `geometry_hash` / `created_by` / `created_at`) — see
   `structure-molstruct.md`.
 
 **To add a metadata key:** (1) add the field to the dataclass with its
@@ -216,7 +216,7 @@ part of the structure:
 
 - **Not structural.** No emitter reads it; it never enters the
   frozen/region machinery. Nothing in a deck depends on it.
-- **Not in the hash.** `structure_hash` is computed without it, so
+- **Not in the hash.** `geometry_hash` is computed without it, so
   recording or removing a key never changes the identity of the
   coordinates (`structure-molstruct.md`).
 - **Not gated.** § 9.4's one question — *"does this change the structure
@@ -330,7 +330,7 @@ no rule anywhere.
 | the PDB `TITLE` record | `from_pdb` |
 | ~~the **sidecar's identity block**~~ | **retired** by the rule below — `title` is in `RETIRED_IDENTITY_KEYS`: tolerated on read, never applied |
 | the **upload filename** | `web/blueprints/build.py:720` — `from_xyz(text, title=filename or None)` (and `from_pdb` beside it) |
-| the **file stem** | `parse/coords/pyscf_geom.py:41-42` — *"mirror the file stem onto Structure.title"* |
+| the **file stem** | `parse/coords/pyscf_geom.py:42-43` — *"mirror the file stem onto Structure.title"* |
 
 #### Where it went — four writers, one of them now retired
 
@@ -339,7 +339,7 @@ no rule anywhere.
 | `to_xyz:1958` | the comment line — `(comment or self.title or "Built by molbuilder")` |
 | ~~`to_extxyz`~~ | **retired** 2026-10-09 with the extended-XYZ writer (§ 2.3, *the comment line is never metadata*) |
 | `to_pdb:1978` | `TITLE     {self.title:<70s}` — padded to 70 characters, never cut: a longer title runs past the record's column 80 |
-| ~~`identity_to_dict`~~ | **retired** — it no longer emits the title, so a comment line makes no sidecar |
+| ~~`identity_to_dict`~~ | **retired** — it no longer emits the title, so the sidecar never carries the comment line |
 
 #### It is not carried by the door that carries the others
 
@@ -405,8 +405,10 @@ forgets.
   survives whole. That protects what the verbatim read was FOR — ASE's reader
   shreds a human comment into `{'water': True, 'molecule': True}` — while
   refusing to call a header a name.
-* **`identity_to_dict` does not emit it**, so a comment line no longer makes
-  `keep_sidecar` true, and a `.xyz` with a comment gets no `.molstruct.json`.
+* **`identity_to_dict` does not emit it**, so a comment line is never something
+  the sidecar says. *(It made `keep_sidecar` true, and a `.xyz` with a comment
+  got a `.molstruct.json` for it alone, until 2026-09-23; since v13 every pair
+  molbuilder writes has its sidecar, for its geometry hash, § 2.4.)*
 * **`apply_to_structure` does not touch it** — neither applying a stored copy
   over the comment line nor, as it used to, **resetting it to `""`** when the
   sidecar named none. That reset silently erased the comment line of every
@@ -829,15 +831,19 @@ copy of any of them:
    holds (§ 2.2e), its comment line the title and nothing else (§ 2.3, *the
    comment line is never metadata*); `.pdb` when the destination names it, a
    frame set written to a `.pdb` refused, PDB holding one geometry;
-3. **the sidecar envelope** — `schema_version`, the `structure_hash` pinning it
-   to its geometry, and the one serialisation (`molstruct.dumps`);
-4. **the invariants** — `no .json == empty metadata` in both directions,
-   both-or-neither atomicity on write *(each half is atomic on its own today,
+3. **the sidecar envelope** — `schema_version`, the `geometry_hash` pinning it
+   to its geometry and checked on every read (`structure-molstruct.md` § 3),
+   and the one serialisation (`molstruct.dumps`);
+4. **the invariants** — **every pair molbuilder writes has its sidecar**, a
+   structure with nothing to say about its atoms included, because the
+   sidecar carries the pin *(v13, 2026-10-14; until then a structure with
+   nothing to say was written as the geometry alone, so a plain molecule had
+   no pin)*; both-or-neither atomicity on write *(each half is atomic on its own today,
    the geometry replaced before the sidecar is written, so a sidecar that
    fails to write leaves the new geometry beside the old sidecar —
-   both-or-neither not built, plan § 2, V1.10)*, and `no .json == empty metadata`
-   on read **for every file molbuilder wrote**, which is every pair it
-   writes. **An engine's own structure file** — SIESTA's `<label>.xyz`,
+   both-or-neither not built, plan § 2, V1.10)*; and on read, a geometry with
+   no sidecar beside it is one molbuilder did not write as a pair — read as
+   its atoms and coordinates (§ 2.3, *a lone file says what was read*). **An engine's own structure file** — SIESTA's `<label>.xyz`,
    written with no sidecar, read where its run is recorded — **takes that
    run's frame**: the cell and axis kinds its deck recorded and the
    engine's origin, a stated 0, from that run's own deck
@@ -854,8 +860,9 @@ copy of any of them:
 class StructureCodec:                       # L2 (may use the L2 sidecar codec)
     def pair(self, struct, *, fmt="xyz") -> StructurePair:
         """THE GENERATOR. A Structure as the two things that represent it
-        outside memory: the coordinate document, the sidecar payload, whether
-        that payload is worth keeping, and the suffix the format implies.
+        outside memory: the coordinate document, the sidecar payload -- its
+        geometry hash made over that document -- and the suffix the format
+        implies.
         Every outbound path below goes through this one call."""
 
     def files(self, struct, target) -> list[tuple[Path, bytes]]:
@@ -864,8 +871,9 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         writes, without writing it."""
 
     def write(self, struct, target, *, atomic=True, fmt=None) -> Path:
-        """TO DISK. The pair as one unit: geometry to `target`, and (when there
-        is non-default metadata) the sidecar to sidecar_path_for(target).
+        """TO DISK. The pair as one unit: geometry to `target`, and the
+        sidecar, its geometry hash made over that geometry, to
+        sidecar_path_for(target).
         Atomic: each half staged to a temp sibling + os.replace'd; geometry
         swapped FIRST, then sidecar, so the only visible interleaving is
         OLD-sidecar + NEW-geometry for a tiny window -- never a torn file.
@@ -877,7 +885,7 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         MOVED, where only the new coordinates are at hand: they become the
         document through `Structure.to_xyz`, and `sidecar` -- the payload
         `pair` made for the structure before it moved -- goes beside it with
-        its `structure_hash` pinned to the new document, through `write`'s
+        its `geometry_hash` made over the new document, through `write`'s
         own write path. The PySCF script calls it for every geometry it
         saves, imported from `mb_pyscf.pyz` (`engines/pyscf.md` § 3)."""
 
@@ -887,7 +895,9 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         to the whole set, then answering frame 0, frame `frame`, or with
         `frames=True` every frame (§ 2.3, *Which frame*).
         Missing sidecar = empty metadata (NOT an error), except an engine's
-        own file where its run is recorded: that run's frame. READING DOES NOT
+        own file where its run is recorded: that run's frame. A sidecar whose
+        geometry hash the file no longer matches is refused -- or, for the
+        browser's load door, said (`structure-molstruct.md` § 3). READING DOES NOT
         JUDGE: a box nothing can be done with LOADS, and is refused at the
         doors that ACT on it (`structure-periodicity.md` § 8.2, decided
         2026-08-03 -- raising here made such a file unopenable and therefore
@@ -952,10 +962,12 @@ molbuilder dna ATGC > seq.xyz                      # Structure on stdout
 
 **Both sides of the CLI now go through the door.** Reads: `jobset prep`
 reads the calculation's structure through `StructureCodec().load`
-(`jobset/prep.py:490`), and so does SIESTA's file reader
-(`siesta/input.py:1713`); every deck is made from that structure, so every
-emitter sees regions and frozen atoms (SIESTA writes `Geometry.Constraints`
-from them). `pyscf/input.py` reads no file: it is handed the structure prep
+(`jobset/prep.py::_structure_for`); every deck is made from that structure,
+so every emitter sees regions and frozen atoms (SIESTA writes
+`Geometry.Constraints` from them). *(SIESTA's own file reader,
+`siesta/input.py::_struct_from_file`, re-dispatched on the extension in front
+of the door, read a `.pdb` pair's cell as none, and had no caller; deleted
+2026-10-14.)* `pyscf/input.py` reads no file: it is handed the structure prep
 read. *(This named `molbuilder
 pyscf` and "the `fdf` path" as the two readers; both verbs are deleted — `fdf`
 2026-08-11, `pyscf` 2026-09-17 — and the door they went through is now reached
@@ -1027,7 +1039,7 @@ task #75).
 | Door | Does | Server seam |
 |---|---|---|
 | `openMolecule(path, {confirmDiscard?})` | dirty-gate → `molview.data.installMolecule({path})` | `POST /api/build/load` (`build.py:596`) → `StructureCodec.read` |
-| *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + real `structure_hash`) |
+| *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + the `geometry_hash` of what it writes) |
 
 `openMolecule` is **only** for a project-file path. A generated structure
 (smiles/dna/…) has no file, so the generators' page hands its envelope to

@@ -19,7 +19,6 @@ viewport layout.  Each needs writing from the contract the same way.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -1025,8 +1024,10 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     assert (tmp_path / "saved_by_test.xyz").exists()
     assert (tmp_path / "saved_by_test.molstruct.json").exists(), \
         "the sidecar carries the labels; a lone .xyz silently loses them"
-    sidecar = json.loads((tmp_path / "saved_by_test.molstruct.json").read_text())
-    assert sidecar["regions"] == {"SOLVENT": [0, 1, 2]}
+    # The saved pair opens through the one read door, its labels with it.
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert StructureCodec().load(tmp_path / "saved_by_test.xyz").regions == {
+        "SOLVENT": [0, 1, 2]}
     assert "saved_by_test.xyz" in page.locator("#save-readout").inner_text()
 
 

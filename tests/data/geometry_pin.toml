@@ -1,0 +1,97 @@
+# THE PIN -- `docs/model/structure-molstruct.md` § 3: every pair molbuilder
+# writes carries, in its sidecar, the geometry hash of the atom lines and the
+# cell it was written for; the one read door compares it with the file it
+# reads.  A door that builds from the structure refuses a pair whose atoms or
+# cell changed after it was written; the browser's load door opens it and says
+# so, because the Molbuilder tab is where it is saved anew.  The comment line,
+# the labels and anything the sidecar says ABOUT the atoms are not the pin.
+#
+# The silent failure every row guards: a structure edited after its pair was
+# written -- prepared, cited, opened -- with the old labels and cell applied
+# to atoms they were not set for, and nothing said.
+#
+# Every row writes the one pair below through the codec, as a project save
+# does, makes ONE EDIT a person can make to the files, and reads it back
+# through ONE DOOR.  `tests/test_geometry_pin.py` is the runner; its header
+# names each key.  Prep's refusal is the prep road's row
+# (`tests/data/prep_protocol.toml`).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+# The pair: CO in a 10 Å box, periodic in x and y, isolated along z, the
+# carbon held, a title on the comment line.
+[pair]
+elements = ["C", "O"]
+positions = [[5.0, 5.0, 4.4], [5.0, 5.0, 5.6]]
+cell = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]
+axis_kind = ["periodic", "periodic", "isolated"]
+regions = { frozen_atoms = [0] }
+title = "carbon monoxide"
+
+[[case]]
+name = "a pair as it was written opens"
+door = "load"
+
+[[case]]
+name = "a plain molecule's pair has its sidecar too, and opens"
+plain = true
+door = "load"
+sidecar_written = true
+
+[[case]]
+name = "an atom moved after the pair was written is refused"
+atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
+door = "load"
+refused = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"
+
+[[case]]
+name = "a plain molecule's moved atom is refused too -- its sidecar carries the pin"
+plain = true
+atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
+door = "load"
+refused = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"
+
+[[case]]
+name = "the comment line is the title, a person's to edit: the pair opens"
+comment = "my CO, retitled by hand"
+door = "load"
+
+[[case]]
+name = "a cell changed in the sidecar is refused -- the box is part of the geometry"
+sidecar = { cell = [[12.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]] }
+door = "load"
+refused = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"
+
+[[case]]
+name = "the axis kinds changed in the sidecar are refused"
+sidecar = { axis_kind = ["periodic", "periodic", "periodic"] }
+door = "load"
+refused = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"
+
+[[case]]
+name = "a label changed in the sidecar is what it says about the atoms, not the atoms: the pair opens"
+sidecar = { regions = { frozen_atoms = [1] } }
+door = "load"
+
+[[case]]
+name = "a pair written before v13 states no pin, and opens unchecked though an atom moved"
+as_v12 = true
+atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
+door = "load"
+
+[[case]]
+name = "a .pdb pair's moved atom is refused -- its ATOM records are its atom lines"
+format = "pdb"
+atom_line = { index = 1, line = "ATOM      2  O   MOL A   1       5.000   5.000   5.700  1.00  0.00           O" }
+door = "load"
+refused = "co.pdb's atoms or cell are not the ones its .molstruct.json was saved with"
+
+[[case]]
+name = "the browser's load door opens a changed pair, its labels applied, and says so -- the Molbuilder tab saves it anew"
+atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
+door = "route_load"
+said = { where = "structure.geometry_changed", severity = "warn", words = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with" }
+
+[[case]]
+name = "the browser's load door says nothing of a pair as it was written"
+door = "route_load"

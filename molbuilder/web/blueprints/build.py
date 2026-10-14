@@ -468,7 +468,7 @@ def api_structure_save():
     symmetric inverse of the file-only load below.  The browser hands the SETTLED model
     as the structure envelope (web-api.md § 1); the SERVER writes the ``<stem>.xyz`` + ``<stem>.molstruct.json``
     pair via ``StructureCodec.write``.  Python owns the pairing, the write order/atomicity,
-    AND the sidecar schema -- ``write`` stamps ``schema_version`` + a real ``structure_hash``
+    AND the sidecar schema -- ``write`` stamps ``schema_version`` + the ``geometry_hash`` of what it writes
     (``molstruct.to_dict``), so the pair the load door reads back is VALID.  The browser
     never authors the sidecar envelope (the drift that made a browser-written sidecar
     unloadable).  Body: ``{"path": "<project-relative .xyz>", "structure": {...},
@@ -526,7 +526,7 @@ def api_structure_export():
     code paths agreeing.
 
     That division exists because the browser cannot produce the pair itself. The
-    sidecar's envelope -- ``schema_version``, and the ``structure_hash`` pinning
+    sidecar's envelope -- ``schema_version``, and the ``geometry_hash`` pinning
     it to its geometry -- is the codec's.
 
     Body: the ENVELOPE (web-api.md § 1) plus an optional stem --
@@ -634,9 +634,13 @@ def api_build_load():
             return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
         retired: Dict[str, Any] = {}
         lone: list = []
+        # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
+        # Molbuilder tab fixes it through (`structure-molstruct.md` § 3).
+        changed: list = []
         try:
             whole = StructureCodec().read(_resolved, frames=True,
-                                          retired_out=retired, said_out=lone)
+                                          retired_out=retired, said_out=lone,
+                                          changed_out=changed)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
@@ -653,8 +657,10 @@ def api_build_load():
         from molbuilder.periodicity_gate import notices_for_report
         # A LONE FILE IS ATOMS AND COORDINATES, said with its comment line
         # quoted (`model/structure.md` § 2.3).
-        said = notices_for_report([Issue("info", s, "structure.lone_file")
-                                   for s in lone])
+        said = notices_for_report(
+            [Issue("info", s, "structure.lone_file") for s in lone]
+            + [Issue("warn", s, "structure.geometry_changed")
+               for s in changed])
         if retired.get("cell_origin") is not None:
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
             said += notices_for_report([Issue(

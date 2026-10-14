@@ -49,6 +49,16 @@ gpu = { a100 = 4 }
 node_types = [{ cores = 48, nodes = 5, gpu = { a100 = 4 } }]
 
 # ===================================================================== #
+#  THE STRUCTURE IS THE ONE IT WAS DESCRIBED WITH                       #
+#  (`model/structure-molstruct.md` § 3)                                 #
+# ===================================================================== #
+
+[[case]]
+name = "a structure whose atom moved after it was described is refused at prep, in the read door's words -- its labels and cell were saved for other coordinates"
+source_edited = { atom = 1, line = "H 5.000000 5.000000 5.900000" }
+refused = ["the structure has changed since this calculation was described", "atoms or cell are not the ones its .molstruct.json was saved with"]
+
+# ===================================================================== #
 #  A GROUP PREPARED AND NEVER LAUNCHED IS PREPARED AGAIN               #
 # ===================================================================== #
 

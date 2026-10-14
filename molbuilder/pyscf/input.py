@@ -1559,8 +1559,8 @@ def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
     ``StructureCodec().pair(struct).sidecar`` produced at compose time
     (:func:`_sidecar_for`), so the labels, cell and periodicity a run
     writes out are the ones it was given, not a second derivation of them;
-    ``write_moved`` re-pins only its ``structure_hash``, because the
-    coordinates have moved.
+    ``write_moved`` renews only its ``geometry_hash``, made over the
+    coordinates that moved.
     """
     out: List[str] = []
     out.append("# ============================================================")

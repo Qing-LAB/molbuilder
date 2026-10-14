@@ -21,8 +21,8 @@ Public surface here
   invariant violations.  Canonical home; the read-side re-imports.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct
   .json`` derivation.
-* :func:`sha256_of_file`            — content hash for the
-  ``structure_hash`` field.
+* :func:`geometry_hash`             — the pin: a geometry's atom lines and
+  the cell the sidecar states for them (``structure-molstruct.md`` § 3).
 * :func:`to_dict`                   — build the canonical sidecar
   dict from the metadata FIELDS dict + envelope.  Normalises + validates.
 * :func:`with_lock`                 — POSIX advisory lock context-
@@ -86,7 +86,13 @@ except ImportError:                  # pragma: no cover - Windows branch
 #:
 #: A version gate that admits a version the code cannot honour is worse than
 #: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 12  # 12: + the OPTIONAL `offset_by` -- whose the
+SCHEMA_VERSION = 13  # 13: the pin is `geometry_hash` -- the atom lines as
+#                      written and the cell, never the comment line
+#                      (structure-molstruct.md § 3) -- and `structure_hash`,
+#                      the file's bytes, is RETIRED: read and never
+#                      compared, never written again.  Additive: a 7-12
+#                      file opens unchecked.
+#                   12: + the OPTIONAL `offset_by` -- whose the
 #                      stated `engine_offset` is, the person's or the
 #                      engine's (model/structure-periodicity.md § 6.0) --
 #                      additive: a 7-11 file's stated offset reads as the
@@ -105,7 +111,7 @@ SCHEMA_VERSION = 12  # 12: + the OPTIONAL `offset_by` -- whose the
 #                    9: + the OPTIONAL `info` block (the free-form
 #                      NON-structural store -- additive; absent
 #                      means "nothing recorded", and it never enters
-#                      structure_hash).
+#                      the pin).
 #                    8: + the OPTIONAL identity columns
 #                      (structure.IDENTITY_FIELDS, canonical-dict spellings,
 #                      written only when real -- user ruling: additive
@@ -142,20 +148,35 @@ SCHEMA_VERSION = 12  # 12: + the OPTIONAL `offset_by` -- whose the
 #:
 #: v12 added `offset_by`, absent meaning an offset whose kind nobody recorded
 #: -- read as the person's, so the file is placed exactly as before.
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12})
+#:
+#: v13 put `geometry_hash` in place of `structure_hash`: a 7-12 file has no
+#: geometry hash, and its pair opens unchecked -- metadata is never required.
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
 #: gate exactly the fields it owns and REFUSE anything that is neither, instead
 #: of passing the whole payload and letting unknown keys fall on the floor.
 ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "n_frames_total",
-                 "structure_hash", "selection_rules", "created_by",
+                 "geometry_hash", "selection_rules", "created_by",
                  "created_at")
+
+#: An envelope key the schema once wrote and no longer does -- tolerated on
+#: read, never applied, dropped on rewrite, as `structure.RETIRED_METADATA_KEYS`
+#: (`structure-molstruct.md` § 2, *Retired keys*): `structure_hash`, the
+#: sha256 of the geometry file's bytes, until v13.
+RETIRED_ENVELOPE_KEYS = ("structure_hash",)
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 #: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
 #: name and a finder (:func:`sidecars_in`, `project-layout.md` § 4.5).
 SUFFIX = ".molstruct.json"
+
+#: THE GEOMETRY FILES A SIDECAR PAIRS WITH -- the two formats the one read
+#: door opens (`StructureCodec.load`, `model/structure.md` § 2.4).  Asked
+#: here, beside the pairing rule, by everything that tells a structure file
+#: from another file.
+GEOMETRY_SUFFIXES = (".xyz", ".pdb")
 
 
 class MolstructJsonError(ValueError):
@@ -168,11 +189,9 @@ class MolstructPairingError(MolstructJsonError):
     """THIS METADATA IS NOT FOR THIS STRUCTURE -- the one condition above
     that no surface may answer leniently.
 
-    `structure-molstruct.md` § 3 states the guards as **"two independent
-    guards, deliberately kept separate"**: the atom count, checked here on
-    apply, and `structure_hash`, checked by the caller against the geometry
-    it loaded.  Both answer the same question -- does this metadata describe
-    *these* atoms? -- and the answer is binary, because the metadata is
+    `structure-molstruct.md` § 3: the atom and frame count, checked here on
+    apply, answers *does this metadata describe these atoms?* -- and the
+    answer is binary, because the metadata is
     indexed by atom position and a near-miss mis-assigns every label after
     the first inserted atom.  So § 2 says a mismatch "is refused, never
     mis-applied", and `apply_to_structure` is documented as never partially
@@ -186,6 +205,16 @@ class MolstructPairingError(MolstructJsonError):
     unfixable.  A block for a *different structure* is not a version fact and
     gets no such leniency anywhere.
     """
+
+
+class GeometryChangedError(MolstructJsonError):
+    """THESE ATOMS, AT OTHER COORDINATES: the sidecar's geometry hash is not
+    the file's -- its atom lines or the cell changed after the pair was
+    written, so its labels and cell may sit on the wrong atoms
+    (`structure-molstruct.md` § 3).  Not a :class:`MolstructPairingError`:
+    the labels still apply, atom for atom, so a door that only shows the
+    structure opens it, saying so, and the person saves it anew; every door
+    that builds something from it refuses."""
 
 
 # --------------------------------------------------------------------- #
@@ -235,15 +264,66 @@ def is_sidecar(path: Union[str, Path]) -> bool:
     return Path(path).name.endswith(SUFFIX)
 
 
-def sha256_of_file(path: Union[str, Path]) -> str:
-    """Hex SHA-256 of ``path``'s bytes.  Used as the
-    ``structure_hash`` invariant pin.  Stable across platforms (we
-    hash file CONTENT, not metadata)."""
-    h = _hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def geometry_for(sidecar: Union[str, Path]) -> Optional[Path]:
+    """The geometry file a sidecar sits beside -- the pairing rule read
+    backwards: ``<stem>.xyz`` or ``<stem>.pdb`` beside
+    ``<stem>.molstruct.json``, whichever is there; ``None`` when neither is,
+    or when ``sidecar`` is not one."""
+    p = Path(sidecar)
+    if not is_sidecar(p):
+        return None
+    stem = p.name[:-len(SUFFIX)]
+    for ext in GEOMETRY_SUFFIXES:
+        if (p.parent / f"{stem}{ext}").is_file():
+            return p.parent / f"{stem}{ext}"
+    return None
+
+
+def _atom_lines(document: str, fmt: str) -> "List[List[str]]":
+    """The atom lines of a geometry document, frame by frame, as written:
+    an XYZ's every frame block, its count line and comment line left out;
+    a PDB's ATOM and HETATM records, one frame."""
+    lines = document.splitlines()
+    if fmt == "pdb":
+        return [[ln for ln in lines
+                 if ln.startswith("ATOM  ") or ln.startswith("HETATM")]]
+    frames: List[List[str]] = []
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip():
+            i += 1
+            continue
+        n = int(lines[i].split()[0])
+        frames.append(lines[i + 2:i + 2 + n])
+        i += 2 + n
+    return frames
+
+
+def geometry_hash(document: str, fmt: str, cell, axis_kind) -> str:
+    """THE PIN (`structure-molstruct.md` § 3): the sha256 (hex) of a
+    geometry's atom lines -- each one's fields as written, one space between,
+    after a ``frame`` line per frame -- then the cell and the axis kinds the
+    sidecar states for them, ``none`` for one it states none of.  Never the
+    comment line, the offset, the labels or the times.  ``fmt`` is the
+    document's format, ``xyz`` or ``pdb``.  Made by every writer of a pair
+    over the document it writes, and by the read door over the file it
+    reads, to compare."""
+    rows: List[str] = []
+    for frame in _atom_lines(document, fmt):
+        rows.append("frame")
+        rows.extend(" ".join(line.split()) for line in frame)
+    rows.append("cell " + ("none" if cell is None else _json.dumps(
+        [[float(v) for v in row] for row in cell])))
+    rows.append("axis_kind " + ("none" if axis_kind is None else _json.dumps(
+        [str(k) for k in axis_kind])))
+    return _hashlib.sha256(
+        "".join(r + "\n" for r in rows).encode("utf-8")).hexdigest()
+
+
+def is_geometry_hash(value) -> bool:
+    """A geometry hash's form: 64 lowercase hexadecimal characters."""
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value))
 
 
 def _now_iso_z() -> str:
@@ -352,7 +432,7 @@ def to_dict(
     identity: Optional[Dict[str, Any]] = None,
     n_atoms_total: int,
     n_frames_total: int = 1,
-    structure_hash: str,
+    geometry_hash: str,
     selection_rules: Optional[Dict[str, Any]] = None,
     info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
@@ -370,7 +450,7 @@ def to_dict(
     metadata API set speaks the same format.
 
     The envelope (``schema_version`` / ``n_atoms_total`` / ``n_frames_total``
-    / ``structure_hash`` / ``created_*``) and the sidecar-only ``selection_rules`` (keyed by region
+    / ``geometry_hash`` / ``created_*``) and the sidecar-only ``selection_rules`` (keyed by region
     label or the literal ``"frozen_atoms"``, each a JSON rule tree validated by
     re-parsing through :func:`molbuilder.selection.from_json`) are layered on.
     Doesn't write anywhere; use :func:`save` for that.
@@ -380,11 +460,10 @@ def to_dict(
             f"n_atoms_total must be a non-negative int; got "
             f"{n_atoms_total!r}"
         )
-    if not isinstance(structure_hash, str) or len(structure_hash) < 16:
+    if not is_geometry_hash(geometry_hash):
         raise MolstructJsonError(
-            f"structure_hash must be a hex string (got "
-            f"{structure_hash!r})"
-        )
+            f"geometry_hash must be a sha256 hex string (got "
+            f"{geometry_hash!r})")
     if isinstance(n_frames_total, bool) or not isinstance(n_frames_total, int) \
             or n_frames_total < 1:
         raise MolstructJsonError(
@@ -444,7 +523,7 @@ def to_dict(
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
         "n_frames_total":  n_frames_total,
-        "structure_hash":  structure_hash,
+        "geometry_hash":   geometry_hash,
         # The Structure metadata block, VERBATIM from the ONE codec
         # (metadata_to_dict, via structure_fields_via_dataclass): every field
         # of METADATA_FIELDS -- and never a retired key.  Spread -- NOT re-listed -- so a field added to the
@@ -616,8 +695,8 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     :class:`MolstructPairingError` rather than the base error, so a lenient
     surface can keep this guard while forgiving the version failures below
     (see that class for why the two must not share an answer).  The sidecar's
-    ``structure_hash`` is NOT verified here (the caller compares it against the
-    on-disk XYZ's hash with a path it knows about).  A key that is neither a
+    ``geometry_hash`` is NOT verified here: the read door compares it with the
+    file it read (`StructureCodec.load`).  A key that is neither a
     structure metadata field nor an envelope key is REFUSED here rather than
     ignored -- a key nobody reads is metadata the writer thinks it saved.
     """
@@ -654,7 +733,8 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
              and k not in IDENTITY_FIELDS and k != "info"
              and k not in RETIRED_METADATA_KEYS
-             and k not in RETIRED_IDENTITY_KEYS]
+             and k not in RETIRED_IDENTITY_KEYS
+             and k not in RETIRED_ENVELOPE_KEYS]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "
@@ -735,11 +815,16 @@ __all__ = [
     "dumps",
     "MolstructJsonError",
     "MolstructPairingError",
+    "GeometryChangedError",
+    "geometry_hash",
+    "is_geometry_hash",
+    "GEOMETRY_SUFFIXES",
+    "geometry_for",
+    "is_sidecar",
     "apply_to_structure",
     "load",
     "load_text",
     "save",
-    "sha256_of_file",
     "sidecar_path_for",
     "to_dict",
     "with_lock",

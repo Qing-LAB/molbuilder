@@ -26,7 +26,7 @@ Public surface
   :func:`emit_user_custom_placeholder`.
 * In-body application — :func:`apply_atom_metadata` (mutates
   a Structure from the embedded ATOM-METADATA JSON; mirrors the
-  sidecar protocol minus the structure_hash check).
+  sidecar protocol minus the geometry_hash check).
 * USER-CUSTOM round-trip — :func:`replace_user_custom_inner`,
   :func:`merge_user_custom_from_target`.
 * Provenance helpers — :func:`molbuilder_git_sha`,
@@ -2007,7 +2007,7 @@ def write_script(path, text: str, *, plan=None,
 #  In-body atom-metadata: apply to Structure                            #
 # --------------------------------------------------------------------- #
 #
-# The in-body atom-metadata deliberately omits ``structure_hash`` per the
+# The in-body atom-metadata deliberately omits ``geometry_hash`` per the
 # contract (metadata + coordinates are written by the same generator pass
 # and cannot drift apart by construction), so the sidecar's loader, which
 # validates the hash, is the wrong entry point for in-body payloads.

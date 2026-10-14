@@ -277,20 +277,18 @@ class TestTwoVerdictsOneChecker:
         lose the labels with it.  A LEFT-HANDED box had always loaded; this
         one is the same kind of wrong and now behaves the same way.
         """
-        import json
         import numpy as np
         from molbuilder.structure import Structure
         from molbuilder.workingcopy_structure import StructureCodec
 
         xyz = tmp_path / "t.xyz"
+        # THE BOX AS SAVED, through the writer -- the pin made over it, so
+        # what is read is a pair as written (`structure-molstruct.md` § 3).
         StructureCodec().write(
             Structure(elements=["Au", "Au"],
                       positions=np.array([[0., 0, 0], [1.4, 1.4, 0]]),
-                      cell=np.diag([10., 10., 10.])), xyz)
-        side = tmp_path / "t.molstruct.json"
-        payload = json.loads(side.read_text())
-        payload["cell"] = [[10., 0, 0], [0, 10., 0], [0, 0, 0.]]
-        side.write_text(json.dumps(payload))
+                      cell=np.array([[10., 0, 0], [0, 10., 0], [0, 0, 0.]])),
+            xyz)
 
         out = StructureCodec().load(xyz)          # must not raise
         assert out.cell is not None, "the box the user has to fix was dropped"

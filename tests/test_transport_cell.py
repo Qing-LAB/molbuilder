@@ -2,6 +2,8 @@
 round-trip (the hex-Au(111) fix)."""
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -82,27 +84,31 @@ def test_copy_translated_preserve_cell_and_axis_kind():
 
 
 def test_sidecar_cell_round_trip(tmp_path):
-    d = msj.to_dict({"cell": HEX,
-                     "axis_kind": ("periodic", "periodic", "isolated")},
-                    n_atoms_total=1, structure_hash="0" * 32)
-    assert d["axis_kind"] == ["periodic", "periodic", "isolated"]
-    assert "pbc" not in d, "the retired duplicate must not be written again"
-    p = tmp_path / "x.molstruct.json"
-    msj.save(p, d)
-    loaded = msj.load(p)
-    s = Structure(elements=["C"], positions=np.zeros((1, 3)))
-    msj.apply_to_structure(s, loaded)
+    """The cell and the axis kinds, through the pair: written by the codec,
+    read back by its one door -- and `pbc`, retired, is not written again."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    p = StructureCodec().write(
+        Structure(elements=["C"], positions=np.zeros((1, 3)), cell=HEX,
+                  axis_kind=("periodic", "periodic", "isolated")),
+        tmp_path / "x.xyz")
+    assert "pbc" not in json.loads(msj.sidecar_path_for(p).read_text()), (
+        "the retired duplicate must not be written again")
+    s = StructureCodec().load(p)
     assert np.allclose(s.cell, HEX)
     assert s.axis_kind == ("periodic", "periodic", "isolated")
     assert s.pbc() == (True, True, False)
 
 
-def test_sidecar_without_cell_is_nonperiodic():
-    d = msj.to_dict(n_atoms_total=1, structure_hash="0" * 32)
-    del d["cell"]
-    s = Structure(elements=["C"], positions=np.zeros((1, 3)))
-    msj.apply_to_structure(s, d)
+def test_a_pair_without_a_cell_is_nonperiodic(tmp_path):
+    """A plain molecule's pair -- its sidecar written too, since v13 -- reads
+    back with no cell, never one invented on the way."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    p = StructureCodec().write(
+        Structure(elements=["C"], positions=np.zeros((1, 3))),
+        tmp_path / "x.xyz")
+    s = StructureCodec().load(p)
     assert s.cell is None
+    assert s.pbc() == (False, False, False)
 
 
 # ------------------------------------------------------------------ #

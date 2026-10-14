@@ -786,27 +786,30 @@ class TestLoaderGate:
     def _write_pair_stating_no_offset(self, dirpath, v9_corner=None):
         """A pair whose sidecar holds an explicit cell and NO origin, with the
         atoms outside it at the world origin — the hemeC state, and a legal one.
-        Written BY HAND rather than through ``write()`` so it reaches the read
-        seam exactly as a file on disk would.
+        Written through the codec, as a save writes it.
 
-        ``v9_corner`` writes it as a v9 pair carrying that retired
-        ``cell_origin`` instead -- what the electrode builder stored flush
-        against the atoms, the placement TranSIESTA refused."""
+        ``v9_corner`` rewrites its sidecar as a molbuilder before v10 wrote it:
+        schema 9, carrying that retired ``cell_origin`` -- what the electrode
+        builder stored flush against the atoms, the placement TranSIESTA
+        refused -- its pin the retired ``structure_hash``, and none of the
+        keys v10-v13 added."""
         import json as _json
+        from molbuilder.sidecars import molstruct
         from molbuilder.workingcopy_structure import StructureCodec
         s = _mol()                          # atoms near (10,10,10), vac 2.5
         s.cell = np.eye(3) * 7.0            # explicit cell, no origin,
         s.__post_init__()                   # atoms far outside [0, cell)
-        made = StructureCodec().pair(s)
-        side = dict(made.sidecar)
+        path = StructureCodec().write(s, dirpath / "m.xyz")
         if v9_corner is not None:
-            side["schema_version"] = 9
-            side.pop("engine_offset", None)
-            side["cell_origin"] = list(v9_corner)
-        (dirpath / "m.xyz").write_text(made.document, encoding="utf-8")
-        (dirpath / "m.molstruct.json").write_text(
-            _json.dumps(side), encoding="utf-8")
-        return dirpath / "m.xyz"
+            sidecar = molstruct.sidecar_path_for(path)
+            side = _json.loads(sidecar.read_text(encoding="utf-8"))
+            for later in ("engine_offset", "offset_by", "customized",
+                          "n_frames_total", "geometry_hash"):
+                side.pop(later, None)
+            side.update(schema_version=9, structure_hash="0" * 64,
+                        cell_origin=list(v9_corner))
+            sidecar.write_text(_json.dumps(side), encoding="utf-8")
+        return path
 
     @pytest.mark.parametrize("v9_corner", [None, [10.0, 10.0, 10.0]],
                              ids=["v10-automatic", "v9-with-a-retired-corner"])
@@ -1022,15 +1025,15 @@ class TestReadingDoesNotJudge:
     """
 
     def _pair(self, tmp_path, cell):
-        import json as _json
-        from molbuilder.sidecars.molstruct import sha256_of_file
-        (tmp_path / "wire.xyz").write_text("2\nx\nO 0 0 0\nH 1 0 0\n")
-        (tmp_path / "wire.molstruct.json").write_text(_json.dumps({
-            "schema_version": 7, "n_atoms_total": 2,
-            "structure_hash": sha256_of_file(tmp_path / "wire.xyz"),
-            "cell": cell, "regions": {"frozen_atoms": [0]},
-        }))
-        return tmp_path / "wire.xyz"
+        """The pair as a save writes it, its cell ``cell`` -- a structure
+        holds an unusable box until a door that computes refuses it."""
+        from molbuilder.workingcopy_structure import StructureCodec
+        return StructureCodec().write(
+            Structure(elements=["O", "H"],
+                      positions=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+                      cell=np.array(cell, dtype=float),
+                      regions={"frozen_atoms": [0]}),
+            tmp_path / "wire.xyz")
 
     def test_an_unusable_box_still_opens_with_its_labels(self, tmp_path):
         """A pair whose sidecar holds a left-handed cell OPENS -- with its regions
@@ -1083,7 +1086,6 @@ class TestTheLoadAnswerIsNotSilent:
         """
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
-        import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         monkeypatch.chdir(tmp_path)
         # The tree is THIS tmp one.  `projects_root` resolves from the
@@ -1096,10 +1098,7 @@ class TestTheLoadAnswerIsNotSilent:
         s.cell = np.eye(3) * 7.0
         s.engine_offset = np.array([-50.0, -50.0, -50.0])   # the corner at 50 Å
         s.__post_init__()
-        made = StructureCodec().pair(s)
-        (sdir / "m.xyz").write_text(made.document, encoding="utf-8")
-        (sdir / "m.molstruct.json").write_text(
-            _json.dumps(made.sidecar), encoding="utf-8")
+        StructureCodec().write(s, sdir / "m.xyz")
         set_capabilities(Capabilities(runtime_config={},
                                       conda_binary="/usr/bin/conda"))
         try:

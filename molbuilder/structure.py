@@ -639,7 +639,7 @@ class Structure:
     customized:    Optional[Dict[str, Any]] = None
     #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
     #: pane shows -- that is NOT part of the structure: no emitter reads
-    #: it, it never enters `structure_hash`, and the read-only gate does
+    #: it, it never enters `geometry_hash`, and the read-only gate does
     #: not apply to it.  Those three are why it sits outside
     #: METADATA_FIELDS, which is the strictly-enumerated STRUCTURAL block
     #: (hash input, gate-controlled, unknown keys refused); `info` is the
@@ -935,7 +935,7 @@ class Structure:
     # SCOPE = the dataclass's OWN metadata (periodicity + selection tags +
     # annotations).  ``selection_rules`` is NOT a Structure field (a sidecar-only
     # pass-through) and the JSON envelope (schema_version / n_atoms_total /
-    # structure_hash / created_by / created_at) belongs to the sidecar layer;
+    # geometry_hash / created_by / created_at) belongs to the sidecar layer;
     # both sit AROUND this contract, not inside it.
 
     def metadata_to_dict(self) -> dict:
@@ -978,9 +978,7 @@ class Structure:
         # `.xyz` comment line and the PDB TITLE record
         # (``model/structure.md`` § 2.2c).  Persisting it here gives one fact
         # two homes with no authority between them: a hand-edited comment line
-        # is then silently overridden by this copy, and a non-empty title
-        # alone makes ``keep_sidecar`` true, so a `.molstruct.json` exists
-        # to hold one string already in the file beside it.
+        # is then silently overridden by this copy.
         if self.atom_names is not None \
                 and list(self.atom_names) != list(self.elements):
             out["atom_names"] = list(self.atom_names)
@@ -1660,8 +1658,8 @@ class Structure:
         vibration kind's deck is written from a copy sorted held-first, and
         the gate judges that copy.
 
-        Not :attr:`structure_hash` (the sidecar's pin over the written
-        document's bytes, which a formatting choice changes) and not
+        Not the sidecar's ``geometry_hash`` (its pin over the atom lines as
+        written and the cell, in the file's own order) and not
         `sidecars.spectra.structure_hash_text` (the artifact's pin over the
         input order with the job's label in it): this is a fact about the
         geometry alone.  Labels, cell and metadata are left out on purpose;

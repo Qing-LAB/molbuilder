@@ -449,19 +449,27 @@ def _structure_for(task, base: Path, pset):
     against a structure that has since changed would otherwise build a
     different calculation under the same id — § 1's second failure mode.
     """
+    from ..sidecars.molstruct import GeometryChangedError
     from ..workingcopy_structure import StructureCodec
     codec = StructureCodec()
     src = Path(task.structure.source)
     # The codec, not the bare loader: describe writes the structure as the
-    # pair when it carries metadata (--vacuum lives NOWHERE a bare .xyz can
-    # put it), and the codec applies the .molstruct.json when present and
-    # changes nothing when absent.  The suffix-corrected candidate is the
+    # pair (--vacuum lives NOWHERE a bare .xyz can put it), and the codec
+    # applies the .molstruct.json and compares its pin with the file
+    # (`structure-molstruct.md` § 3).  The suffix-corrected candidate is the
     # codec's own naming rule (a .pdb source travels as <stem>.xyz).
     for candidate in (base / src.name,
                       (base / src.name).with_suffix(codec.GEOMETRY_SUFFIX),
                       src):
         if candidate.is_file():
-            struct = codec.load(candidate)
+            try:
+                struct = codec.load(candidate)
+            except GeometryChangedError as exc:
+                # THE PIN (`structure-molstruct.md` § 3): the atoms or the
+                # cell moved after the pair was written -- a deck rendered
+                # now would put the old labels on them.
+                raise PrepError(f"the structure has changed since this "
+                                f"calculation was described: {exc}") from None
             break
     else:
         raise PrepError(

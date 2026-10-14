@@ -127,8 +127,8 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
             assert got.regions == built.regions
             assert np.allclose(got.cell, built.cell)
         elif key == "sidecar":
-            payload = json.loads(written.with_name(
-                written.stem + ".molstruct.json").read_text())
+            from molbuilder.sidecars import molstruct
+            payload = molstruct.load(molstruct.sidecar_path_for(written))
             for k, v in want.items():
                 assert payload[k] == v, (k, payload[k])
         elif key == "n_frames":

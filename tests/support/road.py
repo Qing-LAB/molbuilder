@@ -257,7 +257,10 @@ def calls_made(calls: Path):
 # and the target named as the row's own prep names them; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `regrouped` -- each stage's group set
-# anew, one number a stage, through the same Save; `own_warm_files` -- the calculation's own restart-file
+# anew, one number a stage, through the same Save; `source_edited` --
+# `{atom, line}`: the calculation's structure file edited by hand after it was
+# described, its `atom`-th atom line replaced by `line`, its sidecar
+# untouched; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` / `resumes`
 # (`_road_own_warm_files`),
@@ -425,6 +428,17 @@ def _road_ladder_edited(case, bundle) -> None:
         "/api/task-setup/save",
         json={"dest": str(bundle), "text": json.dumps(task)})
     assert r.status_code == 200, (r.get_json() or {}).get("error")
+
+
+def _road_source_edited(edit, bundle) -> None:
+    """The calculation's structure file edited by hand after it was
+    described: its ``atom``-th atom line (0-based) replaced by ``line``,
+    the sidecar beside it untouched (`structure-molstruct.md` § 3)."""
+    from molbuilder.task import read_task
+    src = bundle / Path(read_task(bundle / "task.json").structure.source).name
+    lines = src.read_text().split("\n")
+    lines[2 + edit["atom"]] = edit["line"]
+    src.write_text("\n".join(lines))
 
 
 def _road_regrouped(groups, bundle) -> None:
@@ -877,6 +891,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
+    if "source_edited" in case:
+        _road_source_edited(case["source_edited"], bundle)
     if "regrouped" in case:
         _road_regrouped(case["regrouped"], bundle)
     kind = "bench" if "bench" in case else "task"

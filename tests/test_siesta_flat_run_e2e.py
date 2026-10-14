@@ -420,23 +420,24 @@ def test_the_xv_reader_reads_what_siesta_wrote(flat):
 def test_xv2xyz_writes_the_pair_and_the_next_deck_takes_its_frame(flat,
                                                                   tmp_path):
     """A bare ``.XV`` becomes the PAIR, so the cell has somewhere to go, and
-    what the deck generator reopens is the run's frame: the cell, and the
-    coordinates at the engine's origin -- a stated offset of 0
-    (`model/structure-periodicity.md` § 6.0)."""
+    what prep reopens -- through the one read door, `StructureCodec.load` --
+    is the run's frame: the cell, and the coordinates at the engine's origin
+    -- a stated offset of 0 (`model/structure-periodicity.md` § 6.0)."""
     from click.testing import CliRunner
 
     from molbuilder import cli
     from molbuilder.cell import to_engine
     from molbuilder.parse.coords import read_xv
-    from molbuilder.siesta.input import _struct_from_file
+    from molbuilder.workingcopy_structure import StructureCodec
     out = tmp_path / "h2.xyz"
     res = CliRunner().invoke(cli.cli, ["xv2xyz", str(flat / "H2.XV"),
                                        str(out)])
     assert res.exit_code == 0, res.output
     assert out.is_file() and (tmp_path / "h2.molstruct.json").is_file()
     assert out.read_text().splitlines()[0].strip() == "2"
-    s, cell = _struct_from_file(str(out))
-    np.testing.assert_allclose(np.asarray(cell), np.eye(3) * _BOX, atol=1e-4)
+    s = StructureCodec().load(out)
+    np.testing.assert_allclose(np.asarray(s.cell), np.eye(3) * _BOX,
+                               atol=1e-4)
     assert s.axis_kind == ("periodic", "periodic", "periodic")
     frame = to_engine(s)
     assert frame.stated, "the pair lost the .XV's origin"

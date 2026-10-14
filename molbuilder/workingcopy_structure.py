@@ -7,11 +7,13 @@ nothing else in the system may hold a second copy of:
   1. the PAIRING RULE -- how the sidecar's name follows the geometry's;
   2. the FORMAT CHOICE -- plain ``.xyz``, a block per frame the structure holds,
      decided by the count and never asked as a separate question;
-  3. the SIDECAR ENVELOPE -- ``schema_version``, the ``structure_hash`` pinning
-     it to its geometry, and the one serialisation (``molstruct.dumps``);
-  4. the INVARIANTS -- ``no .json == empty metadata`` in both directions,
-     both-or-neither atomicity on write.  NOT a periodicity gate on read:
-     reading does not judge (structure-periodicity.md § 8.2, 2026-08-03).
+  3. the SIDECAR ENVELOPE -- ``schema_version``, the ``geometry_hash`` pinning
+     it to its geometry (made on every write, compared on every read --
+     structure-molstruct.md § 3), and the one serialisation
+     (``molstruct.dumps``);
+  4. the INVARIANTS -- every pair it writes has its sidecar, both-or-neither
+     atomicity on write.  NOT a periodicity gate on read: reading does not
+     judge (structure-periodicity.md § 8.2, 2026-08-03).
 
 SHAPE: one generator, and one adapter per destination.  :meth:`StructureCodec.pair`
 is the generator; :meth:`~StructureCodec.write` puts it on disk,
@@ -33,10 +35,9 @@ Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stac
 from __future__ import annotations
 
 
-import hashlib
 import os
 from pathlib import Path
-from typing import List, NamedTuple, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Sequence, Tuple
 
 # TWO WAYS, because this module travels: the PySCF script writes every
 # geometry it saves through it (`write_moved`), imported from `mb_pyscf.pyz`
@@ -53,8 +54,7 @@ except ImportError:                         # beside a job, in mb_pyscf.pyz
 
 class StructurePair(NamedTuple):
     """What a Structure looks like outside memory: the coordinate document, the
-    sidecar payload beside it, whether that payload is worth keeping, and the
-    extension it belongs under.
+    sidecar payload beside it, and the extension it belongs under.
 
     ONE shape for every consumer -- disk, bytes, wire -- so "what does this
     structure look like when it leaves" has one answer instead of one per caller.
@@ -70,35 +70,7 @@ class StructurePair(NamedTuple):
     """
     document: str
     sidecar: dict
-    keep_sidecar: bool
     suffix: str
-
-
-def _sha256_bytes(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()
-
-
-#: What a structure with nothing stated serialises to.  Built once from the
-#: authority itself rather than typed out, and n-independent (every value is
-#: a store-level default, none of them per-atom).
-_DEFAULT_METADATA: Optional[dict] = None
-
-
-def _metadata_is_default(meta: dict) -> bool:
-    """True when a metadata dict (``Structure.metadata_to_dict`` output)
-    carries nothing worth a sidecar.  Decides whether the
-    ``.molstruct.json`` half of the pair exists at all
-    (``no .json == empty metadata``).
-
-    ASKED OF THE AUTHORITY, not re-enumerated.  Comparing against the authority's own empty output cannot drift, and a
-    field added to ``METADATA_FIELDS`` is covered without touching this.
-    """
-    global _DEFAULT_METADATA
-    if _DEFAULT_METADATA is None:
-        from .structure import Structure
-        _DEFAULT_METADATA = Structure(
-            elements=[], positions=[]).metadata_to_dict()
-    return meta == _DEFAULT_METADATA
 
 
 def lone_xyz_said(name: str, text: str) -> str:
@@ -116,6 +88,17 @@ def lone_xyz_said(name: str, text: str) -> str:
                if comment else "")
             + ".  Set what you meant on the Molbuilder tab, its Cell and "
             "Metadata pages; saving there writes it to the .molstruct.json.")
+
+
+def geometry_changed_said(name: str) -> str:
+    """What the read says of a pair whose sidecar's geometry hash is not the
+    file's (``structure-molstruct.md`` § 3) -- the refusal of a door that
+    builds from it, and the notice of the browser's load door, one sentence."""
+    return (f"{name}'s atoms or cell are not the ones its .molstruct.json was "
+            f"saved with -- the file changed after the pair was written, so "
+            f"its labels and cell may sit on the wrong atoms.  Open it on the "
+            f"Molbuilder tab, check its labels and cell, and save it there: "
+            f"that writes the pair anew.")
 
 
 class StructureCodec:
@@ -138,7 +121,8 @@ class StructureCodec:
              frame: "int | None" = None,
              frames: bool = False,
              retired_out: "dict | None" = None,
-             said_out: "list | None" = None) -> Structure:
+             said_out: "list | None" = None,
+             changed_out: "list | None" = None) -> Structure:
         """Read the pair back into a Structure.
 
         WHICH FRAME (``model/structure.md`` § 2.3, *Which frame*): the pair is
@@ -156,6 +140,13 @@ class StructureCodec:
         own file in one of our runs) is atoms and coordinates only, and its
         comment line is quoted, never read as metadata (``model/structure.md``
         § 2.3).  Every door that opens a file for a person says it.
+
+        THE PIN IS COMPARED (``structure-molstruct.md`` § 3): a sidecar whose
+        geometry hash is not the file's -- its atoms or cell changed after the
+        pair was written -- is refused, :class:`molstruct.GeometryChangedError`;
+        a door that only shows the structure passes ``changed_out``, a list,
+        and gets the pair, the sentence appended to it.  A sidecar written
+        before v13 states no hash, and its pair opens unchecked.
         """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
@@ -163,7 +154,7 @@ class StructureCodec:
         # .pdb read as XYZ chokes on its "HEADER ..." first line.  An unknown
         # extension is an EXPLICIT error, not a silent from_xyz attempt.
         suffix = src.suffix.lower()
-        if suffix not in (".xyz", ".pdb"):
+        if suffix not in molstruct.GEOMETRY_SUFFIXES:
             raise ValueError(
                 f"StructureCodec.load: unsupported structure format "
                 f"{src.suffix!r} for {src.name!r}; expected .xyz or .pdb")
@@ -184,8 +175,15 @@ class StructureCodec:
             struct = Structure.from_xyz(text)
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
-            molstruct.apply_to_structure(
-                struct, molstruct.load(sidecar_path, retired_out=retired_out))
+            payload = molstruct.load(sidecar_path, retired_out=retired_out)
+            pinned = payload.get("geometry_hash")
+            if pinned is not None and pinned != molstruct.geometry_hash(
+                    text, suffix[1:], payload["cell"], payload["axis_kind"]):
+                if changed_out is None:
+                    raise molstruct.GeometryChangedError(
+                        geometry_changed_said(src.name))
+                changed_out.append(geometry_changed_said(src.name))
+            molstruct.apply_to_structure(struct, payload)
         elif self._engine_own(src):
             # AN ENGINE'S OWN STRUCTURE FILE -- SIESTA's `<label>.xyz` in a run
             # folder -- has no sidecar, because molbuilder writes every
@@ -268,10 +266,9 @@ class StructureCodec:
         route returns) -- so a structure saved to a project and the same
         structure downloaded cannot differ.
 
-        ``keep_sidecar`` is False when the metadata is all default -- a plain
-        molecule with no cell, labels, frozen atoms or annotations.  Then the
-        pair is the document alone and a stale sidecar beside it is removed, so
-        "no .json" always means "no metadata" (:meth:`load` reads it that way).
+        THE SIDECAR IS ALWAYS PART OF IT, a plain molecule's with nothing to
+        say included: it carries the pin, the geometry hash made over this
+        document (``structure-molstruct.md`` § 3), which :meth:`load` compares.
         """
         # PLAIN XYZ, A BLOCK PER FRAME the structure holds (`model/structure.md`
         # § 2.2e), each comment line the title and nothing else: the comment
@@ -285,7 +282,7 @@ class StructureCodec:
         # THE SIDECAR IS BUILT ONCE.  The labels and the cell are the
         # structure's shared identity -- the same for frame 0 and frame 400 --
         # so there is one .json beside a frame set, not one per frame.  Its
-        # hash pins it to the document actually written.
+        # geometry hash pins it to the document actually written.
         # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
         # preference: `write` reads it off the target's suffix and `read`
         # dispatches the same way.
@@ -305,22 +302,18 @@ class StructureCodec:
         # The REAL identity columns ride the sidecar (schema 8, 2026-08-20):
         # additive "extra" -- an xyz-born structure's synthesized placeholders
         # come back empty here and the sidecar is unchanged; a PDB-born
-        # residue identity stops being erased by a save.  And real identity is
-        # by itself a reason for the sidecar to EXIST: it is exactly the
-        # "something to say" the keep rule asks about.
+        # residue identity stops being erased by a save.
         identity = struct.identity_to_dict()
         payload = molstruct.to_dict(
             meta,
             identity       = identity,
             n_atoms_total  = struct.n_atoms,
             n_frames_total = struct.n_frames,
-            structure_hash = _sha256_bytes(document.encode("utf-8")),
+            geometry_hash  = molstruct.geometry_hash(
+                document, fmt, meta["cell"], meta["axis_kind"]),
             info           = dict(struct.info) if struct.info else None,
         )
         return StructurePair(document=document, sidecar=payload,
-                             keep_sidecar=(not _metadata_is_default(meta)
-                                           or bool(identity)
-                                           or bool(struct.info)),
                              suffix=(".pdb" if fmt == "pdb"
                                      else self.GEOMETRY_SUFFIX))
 
@@ -347,11 +340,9 @@ class StructureCodec:
             target = target.with_suffix(made.suffix)
         else:
             target = target.with_name(target.name + made.suffix)
-        out = [(target, made.document.encode("utf-8"))]
-        if made.keep_sidecar:
-            out.append((molstruct.sidecar_path_for(target),
-                        molstruct.dumps(made.sidecar).encode("utf-8")))
-        return out
+        return [(target, made.document.encode("utf-8")),
+                (molstruct.sidecar_path_for(target),
+                 molstruct.dumps(made.sidecar).encode("utf-8"))]
 
     def source_files(self, struct: Structure,
                      label: str) -> List[Tuple[Path, bytes]]:
@@ -382,9 +373,7 @@ class StructureCodec:
         Atomicity: each half is staged to a temp sibling and ``os.replace``-d
         (per-file atomic).  The geometry is swapped first, then the sidecar, so
         the only visible interleaving is OLD-sidecar + NEW-geometry for a tiny
-        window -- never a torn file.  When ``struct`` carries no metadata worth
-        persisting AND a stale sidecar exists, it is removed so the pair can't
-        disagree (``no .json == empty metadata``, matching :meth:`load`)."""
+        window -- never a torn file."""
         target = Path(target)
         # `fmt` names the container.  Default: read it off the name the caller
         # chose, because `read` dispatches on that same suffix -- which is what
@@ -394,8 +383,7 @@ class StructureCodec:
         made = self.pair(struct,
                          fmt=(fmt or ("pdb" if target.suffix.lower() == ".pdb"
                                       else "xyz")))   # the ONE generator
-        return self._write_pair(target, made.document,
-                                made.sidecar if made.keep_sidecar else None,
+        return self._write_pair(target, made.document, made.sidecar,
                                 atomic=atomic)
 
     def write_moved(self, target, elements: Sequence[str], positions,
@@ -410,7 +398,7 @@ class StructureCodec:
         its comment line.  ``sidecar`` is the payload :meth:`pair` made for
         the structure before it moved -- its labels, cell and periodicity
         are the ones the run was given, never derived a second time -- and
-        only its envelope is renewed: ``structure_hash`` pinned to the new
+        only its envelope is renewed: ``geometry_hash`` made over the new
         document, ``created_at`` the moment it is written.
         It is always written: it states the engine's origin
         (``engine_offset`` 0), which a document alone cannot.  Written
@@ -418,20 +406,22 @@ class StructureCodec:
         """
         document = Structure(elements=list(elements),
                              positions=positions).to_xyz(comment=comment)
-        # THE ENVELOPE IS OF THIS WRITE: the hash pinned to the document
-        # written, and the time it was written -- `pair` stamped the moment
-        # the payload was made, which for a run's geometry is render time.
+        # THE ENVELOPE IS OF THIS WRITE: the geometry hash made over the
+        # document written, with the cell the payload states, and the time it
+        # was written -- `pair` stamped the moment the payload was made,
+        # which for a run's geometry is render time.
         payload = dict(sidecar,
-                       structure_hash=_sha256_bytes(document.encode("utf-8")),
+                       geometry_hash=molstruct.geometry_hash(
+                           document, "xyz", sidecar["cell"],
+                           sidecar["axis_kind"]),
                        created_at=molstruct._now_iso_z())
         return self._write_pair(Path(target), document, payload)
 
     @staticmethod
-    def _write_pair(target: Path, document: str, sidecar: Optional[dict], *,
+    def _write_pair(target: Path, document: str, sidecar: dict, *,
                     atomic: bool = True) -> Path:
         """Both halves to disk, in :meth:`write`'s order: the document first,
-        then the sidecar, or -- with ``sidecar`` None -- the removal of a
-        stale one, so the pair cannot disagree."""
+        then the sidecar."""
         target.parent.mkdir(parents=True, exist_ok=True)
         sidecar_path = molstruct.sidecar_path_for(target)
 
@@ -458,10 +448,7 @@ class StructureCodec:
             with open(target, "w", encoding="utf-8") as fh:
                 fh.write(document)
 
-        if sidecar is not None:
-            molstruct.save(sidecar_path, sidecar)  # tempfile + os.replace
-        elif sidecar_path.exists():
-            sidecar_path.unlink()
+        molstruct.save(sidecar_path, sidecar)  # tempfile + os.replace
         return target
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #
@@ -469,13 +456,16 @@ class StructureCodec:
              frame: "int | None" = None,
              frames: bool = False,
              retired_out: "dict | None" = None,
-             said_out: "list | None" = None) -> Structure:
+             said_out: "list | None" = None,
+             changed_out: "list | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error -- except an engine's own file where its
         run is recorded, which reads with that run's frame; see `load`).
         ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
         ``retired_out`` collects the retired keys it carried, ``said_out``
-        what it says about a lone file."""
+        what it says about a lone file, ``changed_out`` a changed geometry,
+        opened rather than refused (see `load`)."""
         return self.load(source_path, frame=frame, frames=frames,
-                         retired_out=retired_out, said_out=said_out)
+                         retired_out=retired_out, said_out=said_out,
+                         changed_out=changed_out)

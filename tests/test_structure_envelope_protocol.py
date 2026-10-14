@@ -269,14 +269,16 @@ def test_export_returns_what_a_save_would_write(client, tmp_path):
     )
 
 
-def test_export_offers_no_sidecar_when_a_save_would_write_none(client):
-    """"No `.json` means no metadata" is how the load door reads a pair, so a
-    plain structure must come back as ONE file — exactly what a save writes."""
+def test_export_hands_over_the_pair_a_save_writes(client):
+    """Every pair has its sidecar, a plain structure's too -- it carries the
+    pin (`structure-molstruct.md` § 3) -- so the export hands over exactly
+    the two files a save writes."""
     answer = client.post("/api/structure/export", json=_envelope()).get_json()
     assert answer["ok"] is True
-    assert [f["name"] for f in answer["files"]] == ["structure.xyz"], (
-        f"a plain structure got a sidecar it would not have been saved with, "
-        f"or a name nobody asked for: {answer['files']}")
+    assert [f["name"] for f in answer["files"]] == [
+        "structure.xyz", "structure.molstruct.json"], (
+        f"the export is not the pair a save writes, or a name nobody asked "
+        f"for: {answer['files']}")
 
 
 def test_export_names_the_files_so_no_caller_has_to(client):
@@ -289,7 +291,8 @@ def test_export_names_the_files_so_no_caller_has_to(client):
 
     one = client.post("/api/structure/export",
                       json=dict(_envelope(), name="wire")).get_json()
-    assert [f["name"] for f in one["files"]] == ["wire.xyz"]
+    assert [f["name"] for f in one["files"]] == ["wire.xyz",
+                                                 "wire.molstruct.json"]
 
     # A frame set's frames ride INSIDE the envelope, in place of `positions`
     # (`model/structure.md` § 2.1).
@@ -299,7 +302,8 @@ def test_export_names_the_files_so_no_caller_has_to(client):
     env["structure"]["frames"] = frames
     many = client.post("/api/structure/export",
                        json=dict(env, name="wire")).get_json()
-    assert [f["name"] for f in many["files"]] == ["wire.xyz"], (
+    assert [f["name"] for f in many["files"]] == ["wire.xyz",
+                                                  "wire.molstruct.json"], (
         "a range must be named under the extension that reads it back -- "
         "extended XYZ is a superset of plain XYZ and shares its extension")
     assert many["frames"] == 2

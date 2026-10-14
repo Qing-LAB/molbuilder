@@ -233,14 +233,9 @@ def _resolve_within_roots(raw_path: str) -> Path:
 # longer matches a structure on disk; sidecar-aware loads can't find
 # it; user's labels silently disappear).
 #
-# This is the single source of truth for which suffixes have paired
-# sidecars + what the sidecar's path looks like.  Code that handles
-# structure files in other contexts (the modify-tab Save flow, the
-# transport script generator, ...) reads the sidecar directly via
-# ``molstruct.sidecar_path_for``; this helper exists to give the
-# files blueprint a layered, file-tree-shaped view.
-
-_STRUCTURE_SUFFIXES = (".xyz", ".pdb")
+# Which suffixes pair, and what a sidecar's path is, are the pairing
+# module's (``molstruct.GEOMETRY_SUFFIXES``, ``molstruct.sidecar_path_for``);
+# these helpers give the files blueprint its file-tree-shaped view of them.
 
 
 def _paired_sidecar_path(structure_path: Path) -> Path:
@@ -265,7 +260,8 @@ def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
     are never pair-tracked.  Renaming a sidecar directly is allowed
     but treated as a single-file operation.
     """
-    if structure_path.suffix.lower() not in _STRUCTURE_SUFFIXES:
+    from molbuilder.sidecars.molstruct import GEOMETRY_SUFFIXES
+    if structure_path.suffix.lower() not in GEOMETRY_SUFFIXES:
         return None
     sidecar = _paired_sidecar_path(structure_path)
     return sidecar if sidecar.exists() else None

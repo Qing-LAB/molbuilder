@@ -127,11 +127,10 @@ def _emit(struct: Structure, *,
           pyscf_atom_block: bool) -> None:
     """Write the built Structure to whatever destinations the user asked
     for.  No destination at all -> dump XYZ to stdout (Unix-pipeable)."""
-    # THE PAIR IS THE FILE here too (`model/structure.md` § 2.4).  A freshly
-    # built molecule usually has nothing to put in a sidecar, and then the
-    # codec writes none -- "no .json == empty metadata" holds either way --
-    # and a builder that DOES produce metadata (the DNA/RNA duplex builders
-    # set residue identity) keeps it.
+    # THE PAIR IS THE FILE here too (`model/structure.md` § 2.4): the codec
+    # writes the geometry and its sidecar, which carries the pin and
+    # whatever the builder set -- the DNA/RNA duplex builders' residue
+    # identity among it.
     from .workingcopy_structure import StructureCodec
     codec = StructureCodec()
     wrote_anything = False

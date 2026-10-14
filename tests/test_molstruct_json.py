@@ -6,9 +6,9 @@ frozen-atom indices that XYZ can't represent.  We pin three contracts:
   1.  Round-trip identity: to_dict -> save -> load -> apply matches.
   2.  Strict validation: malformed sidecars raise MolstructJsonError
       with a message pointing at the file.
-  3.  Invariant pinning: structure_hash + n_atoms_total catch the
-      cases where the user edited the XYZ without re-exporting the
-      sidecar (which would otherwise silently produce wrong scripts).
+  3.  Invariant pinning: n_atoms_total catches a sidecar applied to a
+      structure of another size.  The geometry hash's comparison is the
+      read door's, `tests/test_geometry_pin.py`.
 """
 
 from __future__ import annotations
@@ -22,6 +22,12 @@ import pytest
 
 from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
+
+#: A geometry hash's FORM -- what the sidecar's builder and reader check.
+#: Whether one matches its file is the read door's question
+#: (`StructureCodec.load`, `tests/test_geometry_pin.py`); nothing here
+#: opens a pair through it.
+_HASH = "b" * 64
 
 
 # --------------------------------------------------------------------- #
@@ -98,10 +104,10 @@ class TestToDict:
         can disagree -- the schema-3 shape `load` refuses outright
         (`structure-molstruct.md` § 2).
         """
-        d = msj.to_dict(n_atoms_total=4, structure_hash="a" * 64)
+        d = msj.to_dict(n_atoms_total=4, geometry_hash="a" * 64)
         assert d["schema_version"] == msj.SCHEMA_VERSION
         assert d["n_atoms_total"]  == 4
-        assert d["structure_hash"] == "a" * 64
+        assert d["geometry_hash"] == "a" * 64
         assert d["regions"]        == {}
         assert "frozen_atoms" not in d      # one label store, one key
         # Auto-generated timestamp + default created_by:
@@ -119,7 +125,7 @@ class TestToDict:
         """
         d = msj.to_dict(
             {"regions": {"L-electrode": [3, 1, 1, 0]}},
-            n_atoms_total=10, structure_hash="b" * 32,
+            n_atoms_total=10, geometry_hash=_HASH,
         )
         assert d["regions"]["L-electrode"] == [0, 1, 3]
 
@@ -128,7 +134,7 @@ class TestToDict:
         because it goes through the same store."""
         d = msj.to_dict(
             {"regions": {"frozen_atoms": [5, 1, 1, 0]}},
-            n_atoms_total=10, structure_hash="b" * 32,
+            n_atoms_total=10, geometry_hash=_HASH,
         )
         assert d["regions"]["frozen_atoms"] == [0, 1, 5]
         assert msj.frozen_atoms(d) == [0, 1, 5]
@@ -139,12 +145,12 @@ class TestToDict:
         `n_atoms_total` is the bound, and an index past it means the labels were built
         against a different structure. Caught here rather than at engine-load, where
         it would surface as a constraint on a nonexistent atom -- the same class of
-        staleness `structure_hash` exists for (`structure-molstruct.md` § 3).
+        staleness the geometry hash exists for (`structure-molstruct.md` § 3).
         """
         with pytest.raises(msj.MolstructJsonError, match="out of range"):
             msj.to_dict(
                 {"regions": {"L-electrode": [5]}},
-                n_atoms_total=3, structure_hash="b" * 32,
+                n_atoms_total=3, geometry_hash=_HASH,
             )
 
     def test_region_overlap_is_allowed(self):
@@ -153,7 +159,7 @@ class TestToDict:
         that separately at engine-load time."""
         d = msj.to_dict(
             {"regions": {"a": [0, 1], "b": [1, 2]}},
-            n_atoms_total=4, structure_hash="b" * 32,
+            n_atoms_total=4, geometry_hash=_HASH,
         )
         assert d["regions"]["a"] == [0, 1]
         assert d["regions"]["b"] == [1, 2]
@@ -169,7 +175,7 @@ class TestToDict:
         with pytest.raises(msj.MolstructJsonError, match="non-empty"):
             msj.to_dict(
                 {"regions": {"": [0]}},
-                n_atoms_total=3, structure_hash="b" * 32,
+                n_atoms_total=3, geometry_hash=_HASH,
             )
 
     def test_bad_n_atoms_raises(self):
@@ -182,19 +188,19 @@ class TestToDict:
         fires always gets switched off.
         """
         with pytest.raises(msj.MolstructJsonError, match="non-negative"):
-            msj.to_dict(n_atoms_total=-1, structure_hash="b" * 32)
+            msj.to_dict(n_atoms_total=-1, geometry_hash=_HASH)
 
     def test_bad_hash_raises(self):
-        """`structure_hash` must look like a hash, refused at build if it does not.
+        """`geometry_hash` must look like a hash, refused at build if it does not.
 
-        The sidecar's own reader deliberately does NOT verify the hash -- the caller
-        compares it against the geometry it loaded (`structure-molstruct.md` section
-        3). That makes the build-time format gate the only place a junk value is
+        The sidecar's own reader deliberately does NOT compare the hash -- the read
+        door compares it against the geometry it loaded (`structure-molstruct.md`
+        § 3). That makes the build-time format gate the only place a junk value is
         caught; written through, it would be compared later and never match, turning
         the staleness check into an unconditional refusal.
         """
         with pytest.raises(msj.MolstructJsonError, match="hex string"):
-            msj.to_dict(n_atoms_total=3, structure_hash="short")
+            msj.to_dict(n_atoms_total=3, geometry_hash="short")
 
 
 # --------------------------------------------------------------------- #
@@ -217,13 +223,13 @@ class TestSaveLoadRoundTrip:
             {"regions": {"L-electrode": [0, 1], "R-electrode": [4, 5],
                          "bridge": [2, 3], "frozen_atoms": [0, 5]}},
             n_atoms_total=6,
-            structure_hash=msj.sha256_of_file(xyz),
+            geometry_hash=_HASH,
         )
         side = msj.sidecar_path_for(xyz)
         msj.save(side, payload)
         loaded = msj.load(side)
         # Everything except created_at (timestamp) should match:
-        for key in ("schema_version", "n_atoms_total", "structure_hash",
+        for key in ("schema_version", "n_atoms_total", "geometry_hash",
                     "regions", "created_by"):
             assert loaded[key] == payload[key]
 
@@ -233,7 +239,7 @@ class TestSaveLoadRoundTrip:
         xyz = _write_xyz(tmp_path)
         payload = msj.to_dict(
             n_atoms_total=4,
-            structure_hash=msj.sha256_of_file(xyz),
+            geometry_hash=_HASH,
         )
         side = msj.sidecar_path_for(xyz)
         msj.save(side, payload)
@@ -251,7 +257,7 @@ class TestSaveLoadRoundTrip:
         payload = msj.to_dict(
             {"regions": {"α-helix": [0, 1], "β-sheet": [2, 3]}},
             n_atoms_total=4,
-            structure_hash=msj.sha256_of_file(xyz),
+            geometry_hash=_HASH,
         )
         side = msj.sidecar_path_for(xyz)
         msj.save(side, payload)
@@ -277,7 +283,7 @@ class TestSaveLoadRoundTrip:
         payload = msj.to_dict(
             {"regions": {"L-electrode": [0, 1]}},
             n_atoms_total=4,
-            structure_hash=msj.sha256_of_file(xyz),
+            geometry_hash=_HASH,
         )
         # Write the payload with a UTF-8 BOM prepended — simulates a
         # sidecar that was hand-edited in an editor that always emits
@@ -324,7 +330,7 @@ class TestWithLockSerialisation:
             payload = msj.to_dict(
                 {"regions": regions},
                 n_atoms_total=4,
-                structure_hash="0" * 64,
+                geometry_hash=_HASH,
             )
             msj.save(side, payload)
 
@@ -433,21 +439,22 @@ class TestLoadErrors:
 
 
     def test_missing_required_field(self, tmp_path):
-        """A sidecar missing `structure_hash` is refused, and the message names the
-        field.
+        """A current sidecar missing `geometry_hash` is refused, and the message
+        names the field.
 
-        `structure_hash` and `n_atoms_total` are the two integrity pins
-        (`structure-molstruct.md` § 3). A reader that tolerated an absent one
-        would apply labels from a sidecar that cannot be checked against its
-        structure -- precisely the stale-pair case the pins exist for.
+        Every v13 writer states it (`structure-molstruct.md` § 3). A reader that
+        tolerated an absent one would apply labels from a sidecar that cannot be
+        checked against its structure -- precisely the stale-pair case the pin
+        exists for.
         """
         p = tmp_path / "bad.molstruct.json"
         p.write_text(_json.dumps({
-            "schema_version": 7,
+            "schema_version": msj.SCHEMA_VERSION,
             "n_atoms_total": 3,
-            # structure_hash missing
+            "n_frames_total": 1,
+            # geometry_hash missing
         }))
-        with pytest.raises(msj.MolstructJsonError, match="structure_hash"):
+        with pytest.raises(msj.MolstructJsonError, match="geometry_hash"):
             msj.load(p)
 
     def test_load_propagates_error_with_path(self, tmp_path):
@@ -499,7 +506,7 @@ class TestApplyToStructure:
         data = msj.to_dict(
             {"regions": {"L-electrode": [0, 1], "R-electrode": [3],
                          "frozen_atoms": [0]}},
-            n_atoms_total=4, structure_hash="b" * 32,
+            n_atoms_total=4, geometry_hash=_HASH,
         )
         msj.apply_to_structure(s, data)
         assert s.regions == {"L-electrode": [0, 1], "R-electrode": [3],
@@ -516,7 +523,7 @@ class TestApplyToStructure:
         longer point" at this structure.
         """
         s = self._struct(n=3)
-        data = msj.to_dict(n_atoms_total=4, structure_hash="b" * 32)
+        data = msj.to_dict(n_atoms_total=4, geometry_hash=_HASH)
         with pytest.raises(msj.MolstructJsonError, match="no longer point"):
             msj.apply_to_structure(s, data)
 
@@ -527,7 +534,7 @@ class TestApplyToStructure:
             elements=["C"] * 3, positions=np.zeros((3, 3)),
             regions={"junk": [0]}, frozen_atoms=[2],
         )
-        data = msj.to_dict(n_atoms_total=3, structure_hash="b" * 32)
+        data = msj.to_dict(n_atoms_total=3, geometry_hash=_HASH)
         msj.apply_to_structure(s, data)
         assert s.regions == {}
         assert s.frozen_atoms == []
@@ -535,12 +542,12 @@ class TestApplyToStructure:
 
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, 8, 9, 10}.  v8 only ADDED
-    the optional identity columns and v9 only added the optional `info`
-    block, so a v7 or v8 file reads whole (an absent addition IS its
-    default, which is exactly what the older version meant); v10 retired
-    `cell_origin` -- read and ignored, `TestARetiredKeyPassesEveryGate` -- and
-    added the optional `engine_offset`, absent meaning the rule.  Everything
+    schemas this build accepts: {7, ..., 13} (`structure-molstruct.md` § 5).
+    v8, v9, v11 and v12 only ADDED optional keys, so an older file reads
+    whole (an absent addition IS its default, which is exactly what the
+    older version meant); v10 retired `cell_origin` and v13 `structure_hash`
+    -- read and ignored, `TestARetiredKeyPassesEveryGate` -- and a v7-v12
+    file states no geometry hash, so its pair opens unchecked.  Everything
     older than v7 stores the same facts in DIFFERENT places (v3's top-level
     frozen atoms) and is refused rather than silently coerced."""
 
@@ -595,7 +602,7 @@ class TestSchemaVersioning:
         one is written -- both were second homes for the same fact."""
         d = msj.to_dict(
             {"regions": {"L-electrode": [0], "frozen_atoms": [1, 2]}},
-            n_atoms_total=3, structure_hash="b" * 32,
+            n_atoms_total=3, geometry_hash=_HASH,
         )
         assert d["schema_version"] == msj.SCHEMA_VERSION
         assert d["regions"] == {"L-electrode": [0], "frozen_atoms": [1, 2]}
@@ -608,10 +615,6 @@ class TestSelectionRules:
     JSON rule tree from :mod:`molbuilder.selection`; validation
     re-parses via from_json so a malformed recipe surfaces at
     sidecar-build time, not at engine-load time."""
-
-    def _hash(self, tmp_path):
-        xyz = _write_xyz(tmp_path, n=6)
-        return msj.sha256_of_file(xyz)
 
     def test_writes_and_reads_rule_tree(self, tmp_path):
         """A `selection.py` rule tree survives the sidecar round-trip as JSON.
@@ -629,7 +632,7 @@ class TestSelectionRules:
         payload = msj.to_dict(
             {"regions": {"L-electrode": [0, 1, 2, 3]}},
             n_atoms_total=6,
-            structure_hash=self._hash(tmp_path),
+            geometry_hash=_HASH,
             selection_rules={"L-electrode": rule_to_json(rule)},
         )
         side = tmp_path / "out.molstruct.json"
@@ -652,7 +655,7 @@ class TestSelectionRules:
             msj.to_dict(
                 {"regions": {"L-electrode": [0]}},
                 n_atoms_total=6,
-                structure_hash=self._hash(tmp_path),
+                geometry_hash=_HASH,
                 selection_rules={
                     # 'bridge' isn't in regions and isn't 'frozen_atoms':
                     "bridge": rule_to_json(All()),
@@ -672,7 +675,7 @@ class TestSelectionRules:
             msj.to_dict(
                 {"regions": {"L-electrode": [0]}},
                 n_atoms_total=6,
-                structure_hash=self._hash(tmp_path),
+                geometry_hash=_HASH,
                 selection_rules={"L-electrode": {"op": "not_a_real_op"}},
             )
 
@@ -683,41 +686,12 @@ class TestSelectionRules:
         d = msj.to_dict(
             {"regions": {"frozen_atoms": [0, 1]}},
             n_atoms_total=6,
-            structure_hash=self._hash(tmp_path),
+            geometry_hash=_HASH,
             selection_rules={
                 "frozen_atoms": rule_to_json(ByElement(("Au",))),
             },
         )
         assert "frozen_atoms" in d["selection_rules"]
-
-
-class TestStructureHashInvariant:
-    def test_hash_changes_when_xyz_changes(self, tmp_path):
-        """A different XYZ file produces a different hash; this is the
-        property the transport script generator relies on to detect
-        stale sidecars."""
-        a = tmp_path / "a.xyz"
-        b = tmp_path / "b.xyz"
-        a.write_text(_toy_xyz_text(4))
-        # Different atom count -> different bytes -> different hash:
-        b.write_text(_toy_xyz_text(5))
-        assert msj.sha256_of_file(a) != msj.sha256_of_file(b)
-
-    def test_hash_is_stable_for_same_bytes(self, tmp_path):
-        """Identical bytes hash identically -- the half that makes the pin usable.
-
-        Its sibling pins that DIFFERENT bytes differ; this one pins that the same
-        structure written twice is not read as an edit. A hash that folded in the
-        path, the mtime or a salt would make every sidecar look stale against its own
-        structure (`structure-molstruct.md` § 3), and the check would be turned
-        off rather than trusted.
-        """
-        a = tmp_path / "a.xyz"
-        b = tmp_path / "b.xyz"
-        text = _toy_xyz_text(4)
-        a.write_text(text)
-        b.write_text(text)
-        assert msj.sha256_of_file(a) == msj.sha256_of_file(b)
 
 
 class TestPbcFollowsAxisKind:
@@ -734,7 +708,7 @@ class TestPbcFollowsAxisKind:
         """
         d = msj.to_dict({"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
                          "axis_kind": ["periodic", "periodic", "isolated"]},
-                        n_atoms_total=2, structure_hash="0" * 32)
+                        n_atoms_total=2, geometry_hash=_HASH)
         s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "isolated")
@@ -752,7 +726,7 @@ class TestPbcFollowsAxisKind:
         needs it. `model/structure-periodicity.md`.
         """
         d = msj.to_dict({"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]]},
-                        n_atoms_total=2, structure_hash="0" * 32)
+                        n_atoms_total=2, geometry_hash=_HASH)
         s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "periodic")
@@ -805,9 +779,9 @@ class TestInfoBlock:
 
     def test_info_never_enters_the_hash(self, tmp_path):
         """Two structures with the same atoms and different `info` have the SAME
-        `structure_hash`.
+        `geometry_hash`.
 
-        `structure_hash` answers "is this sidecar still about this structure"
+        `geometry_hash` answers "is this sidecar still about these atoms"
         (`structure-molstruct.md` § 3). `info` describes the structure rather
         than being part of it, so hashing it would make recording a note read as an
         edit -- every staleness check firing on a change that touched no atom.
@@ -817,9 +791,9 @@ class TestInfoBlock:
         b.info = {"note": "recording MORE about the same atoms"}
         StructureCodec().write(a, tmp_path / "a.xyz")
         StructureCodec().write(b, tmp_path / "b.xyz")
-        ha = _json.loads((tmp_path / "a.molstruct.json").read_text())
-        hb = _json.loads((tmp_path / "b.molstruct.json").read_text())
-        assert ha["structure_hash"] == hb["structure_hash"], (
+        ha = msj.load(tmp_path / "a.molstruct.json")
+        hb = msj.load(tmp_path / "b.molstruct.json")
+        assert ha["geometry_hash"] == hb["geometry_hash"], (
             "info DESCRIBES the structure; it must not read as a "
             "different one")
 
@@ -837,9 +811,13 @@ class TestInfoBlock:
         s = self._struct()
         s.info = {"stale": True}
         StructureCodec().write(s, tmp_path / "v8.xyz")
+        # Rewritten as a molbuilder of schema 8 wrote it: none of the keys
+        # v9-v13 added, its pin the retired `structure_hash`.
         raw = _json.loads((tmp_path / "v8.molstruct.json").read_text())
-        del raw["info"]
-        raw["schema_version"] = 8
+        for later in ("info", "engine_offset", "offset_by", "customized",
+                      "n_frames_total", "geometry_hash"):
+            raw.pop(later, None)
+        raw.update(schema_version=8, structure_hash="0" * 64)
         (tmp_path / "v8.molstruct.json").write_text(_json.dumps(raw))
         back = StructureCodec().load(tmp_path / "v8.xyz")
         assert back.info == {}, (
@@ -858,7 +836,7 @@ class TestInfoBlock:
         """
         with pytest.raises(msj.MolstructJsonError, match="JSON"):
             msj.to_dict({"regions": {}}, n_atoms_total=1,
-                        structure_hash="b" * 32,
+                        geometry_hash=_HASH,
                         info={"bad": object()})
 
 
@@ -940,7 +918,8 @@ class TestARetiredKeyPassesEveryGate:
     #: A type-appropriate value per retired key.  A retirement that forgets
     #: to add one is a FAILURE, not a silent pass -- see the assert below.
     SAMPLES = {"pbc": [True, True, False], "cell_origin": [1.0, 2.0, 3.0],
-               "title": "a name only the sidecar knows"}
+               "title": "a name only the sidecar knows",
+               "structure_hash": "0" * 64}
 
     def _payload(self, key, n=2):
         return {"schema_version": 9, "n_atoms_total": n,
@@ -955,7 +934,8 @@ class TestARetiredKeyPassesEveryGate:
         from molbuilder.parse.sidecars import molstruct as parse_molstruct
         import json
 
-        retired = tuple(RETIRED_METADATA_KEYS) + tuple(RETIRED_IDENTITY_KEYS)
+        retired = (tuple(RETIRED_METADATA_KEYS) + tuple(RETIRED_IDENTITY_KEYS)
+                   + tuple(molstruct.RETIRED_ENVELOPE_KEYS))
         assert retired, "no retired keys -- this test has nothing to guard"
         missing = [k for k in retired if k not in self.SAMPLES]
         assert not missing, (

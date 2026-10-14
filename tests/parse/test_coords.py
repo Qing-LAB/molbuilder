@@ -99,15 +99,15 @@ def test_a_pdb_keeps_what_its_author_put_in_the_sidecar(tmp_path: Path):
     MUTATION THIS MUST FAIL AGAINST: read the file with `read_text` +
     `Structure.from_pdb` instead of `StructureCodec`.
     """
-    from molbuilder.sidecars import molstruct
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
 
+    # THE PERSON'S PAIR, as molbuilder saves one: the structure with the atom
+    # they froze, written through the codec -- the .pdb and its sidecar.
     f = tmp_path / "mol.pdb"
-    f.write_text(_PDB, encoding="utf-8")
-    molstruct.save(
-        molstruct.sidecar_path_for(f),
-        molstruct.to_dict({"regions": {"frozen_atoms": [0]}},
-                          n_atoms_total=2,
-                          structure_hash=molstruct.sha256_of_file(f)))
+    authored = Structure.from_pdb(_PDB)
+    authored.regions = {"frozen_atoms": [0]}
+    StructureCodec().write(authored, f)
 
     got = detect(str(f)).parse(f).structure
     assert getattr(got, "regions", None) == {"frozen_atoms": [0]}, (

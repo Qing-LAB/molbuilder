@@ -26,40 +26,30 @@ def test_a_region_label_survives_the_sidecar_and_selects_the_same_atoms(tmp_path
 
     THE FAILURE THIS CATCHES.  `regions` decides which atoms are computed --
     which are electrode and which are device, which are frozen. The write side
-    (`Structure.metadata_to_dict` -> `molstruct.save`) and the read side
-    (`molstruct.load` -> `apply_to_structure` -> `evaluate(ByRegion(...))`) are
-    each covered on their own; an index shift introduced BETWEEN them is
-    invisible there, and `model/overview.md` § 2 names index translation as exactly where an
-    off-by-one happens.
+    (`Structure.metadata_to_dict` -> the sidecar) and the read side (the
+    sidecar -> `apply_metadata_dict` -> `evaluate(ByRegion(...))`) are each
+    covered on their own; an index shift introduced BETWEEN them is invisible
+    there, and `model/overview.md` § 2 names index translation as exactly where
+    an off-by-one happens.
 
     Contract: `model/overview.md` § 2 (the atom-identity binding) and
-    `model/structure.md` § 2.2 (`apply_metadata_dict` is the single dict->struct
-    authority).
+    `model/structure.md` § 2.2 (the pair is written and read by one codec).
 
     The assertion is on ELEMENT AND POSITION, never on the index: an index that
     round-trips while pointing at a different atom is the whole failure.
     """
-    from molbuilder.sidecars import molstruct as msj
     from molbuilder.selection import ByRegion, evaluate
+    from molbuilder.workingcopy_structure import StructureCodec
 
     src = _repeated_element_struct()
     want = {(src.elements[i], tuple(src.positions[i]))
             for i in sorted(evaluate(ByRegion("lead"), src))}
     assert len(want) == 2, "the fixture's own region is not two atoms"
 
-    # --- through the real doors, not a hand-built dict ---------------------
-    payload = msj.to_dict(src.metadata_to_dict(),
-                          n_atoms_total=len(src.elements),
-                          structure_hash="sha256:" + "0" * 64)
-    path = msj.save(tmp_path / "probe.molstruct.json", payload)
-
-    # A FRESH structure carrying the same atoms and no labels -- the reload
-    # path, where the geometry comes from the .xyz and the metadata from here.
-    reloaded = Structure(elements=list(src.elements),
-                         positions=np.array(src.positions),
-                         cell=np.diag([50.0, 50.0, 50.0]))
-    assert not (reloaded.regions or {}), "the fresh structure is already labelled"
-    msj.apply_to_structure(reloaded, msj.load(path))
+    # --- through the one door, as a project save writes and a reload reads --
+    path = tmp_path / "probe.xyz"
+    StructureCodec().write(src, path)
+    reloaded = StructureCodec().load(path)
 
     got = {(reloaded.elements[i], tuple(reloaded.positions[i]))
            for i in sorted(evaluate(ByRegion("lead"), reloaded))}

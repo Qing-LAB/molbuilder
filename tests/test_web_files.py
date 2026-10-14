@@ -1516,28 +1516,21 @@ class TestFileOperationStubs:
 
 def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
                  ext: str = ".xyz") -> tuple[Path, Path]:
-    """Drop a structure file + paired .molstruct.json on disk.  Returns
-    (structure_path, sidecar_path).  Used by the rename / move / copy
-    sidecar-pairing tests."""
-    import hashlib
-    import json
+    """A structure's pair on disk, written through the codec as a save writes
+    it.  Returns (structure_path, sidecar_path).  Used by the rename / move /
+    copy sidecar-pairing tests."""
+    import numpy as np
+    from molbuilder.sidecars import molstruct
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
     parent = picker_root / dirname if dirname else picker_root
-    parent.mkdir(parents=True, exist_ok=True)
-    struct = parent / f"{stem}{ext}"
-    xyz_text = (
-        "3\nwater\n"
-        "O 0 0 0\n" "H 0.96 0 0\n" "H -0.24 0.93 0\n"
-    )
-    struct.write_text(xyz_text)
-    sidecar = parent / f"{stem}.molstruct.json"
-    sidecar.write_text(json.dumps({
-        "schema_version": 7,
-        "n_atoms_total":  3,
-        "structure_hash": hashlib.sha256(xyz_text.encode()).hexdigest(),
-        "regions":        {"L-electrode": [0]},
-        "frozen_atoms":   [],
-        "selection_rules": {},
-    }))
+    struct = StructureCodec().write(
+        Structure(elements=["O", "H", "H"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.96, 0.0, 0.0],
+                                      [-0.24, 0.93, 0.0]]),
+                  title="water", regions={"L-electrode": [0]}),
+        parent / f"{stem}{ext}")
+    sidecar = molstruct.sidecar_path_for(struct)
     return struct, sidecar
 
 
@@ -1658,8 +1651,10 @@ class TestFilesRenameSidecarPairing:
         new_sidecar = picker_root / "bridge.molstruct.json"
         assert new_struct.exists()
         assert new_sidecar.exists()
-        import json
-        assert json.loads(new_sidecar.read_text())["n_atoms_total"] == 3
+        # The renamed pair opens through the one door, its labels with it.
+        from molbuilder.workingcopy_structure import StructureCodec
+        assert StructureCodec().load(new_struct).regions == {
+            "L-electrode": [0]}
 
     def test_pdb_rename_takes_sidecar(self, web, picker_root):
         """`.pdb` dropping out of the paired-suffix set on the rename path

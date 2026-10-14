@@ -179,7 +179,7 @@ the trajectory's atom count (mismatch → `None`, never breaks the load), and
 surfaces it as `atom_metadata`, and the same load applies it to the structure
 it answers with, through the block's one reader (`script_emit.apply_atom_metadata`).
 **Trusted fragment ≠ sidecar file:** the block omits the sidecar envelope's
-`structure_hash`, so it is applied by that reader and never through
+`geometry_hash`, so it is applied by that reader and never through
 `molstruct.load_text`, the validator for untrusted standalone files, which
 would reject the envelope-less block. *(The browser posted it back to
 `/api/build/load` beside a text until 2026-09-25.)*

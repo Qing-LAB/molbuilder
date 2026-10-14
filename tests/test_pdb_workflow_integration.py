@@ -6,8 +6,9 @@ no per-endpoint shortcuts.
 What it pins (in order):
 
   1.  /api/build/load reads the PDB and returns the per-atom rows.
-  2.  A sidecar with ``frozen_atoms`` + a region is written directly via
-      the molstruct codec (keyed by the PDB's stem).
+  2.  The structure with ``frozen_atoms`` + a region is saved through
+      /api/structure/save, as the Molbuilder tab saves it: the pair, its
+      sidecar keyed by the PDB's stem.
   3.  /api/build/load re-read picks up the sidecar (atoms carry the
       labels in ``regions``).
 
@@ -42,22 +43,6 @@ _SYNTHETIC_PDB = (
     "ATOM     15  OG  SER A   3       6.900   6.300  -0.200  1.00  0.00           O\n"
     "END\n"
 )
-
-
-def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
-    """Write a ``.molstruct.json`` sidecar next to ``struct_path`` DIRECTLY
-    via the codec."""
-    from molbuilder.sidecars import molstruct as _msj
-    from molbuilder.structure import FROZEN_LABEL
-    labels = dict(regions or {})
-    if frozen:
-        labels[FROZEN_LABEL] = list(frozen)   # a reserved label is a label
-    payload = _msj.to_dict(
-        {"regions": labels},
-        n_atoms_total=n_atoms,
-        structure_hash=_msj.sha256_of_file(struct_path),
-    )
-    _msj.save(_msj.sidecar_path_for(struct_path), payload)
 
 
 @pytest.fixture
@@ -132,6 +117,16 @@ class TestPdbWorkflowEndToEnd:
     def _path(self, pdb_path):
         return str(pdb_path.resolve())
 
+    def _saved(self, web, pdb_path, regions):
+        """The structure with ``regions`` saved over its file through the
+        save route -- the pair written by the codec, as the Molbuilder tab
+        saves it (`model/structure.md` § 3.1)."""
+        r = web.post("/api/structure/save", json={
+            "path": self._path(pdb_path),
+            "structure": self._envelope(pdb_path, regions),
+            "overwrite": True})
+        assert r.status_code == 200, r.get_json()
+
     # ----- Step 1: load the PDB through the one load door ---------- #
 
     def test_step_1_the_load_door_reads_pdb(
@@ -154,7 +149,7 @@ class TestPdbWorkflowEndToEnd:
         assert body["residue_names"][0], body["residue_names"][:3]
         assert len(body["residue_names"]) == n_atoms
 
-    # ----- Step 2: assign frozen_atoms + a region via the codec ----- #
+    # ----- Step 2: assign frozen_atoms + a region, and save -------- #
 
     def test_step_2_save_writes_current_schema_sidecar(
         self, web, pdb_under_root,
@@ -164,16 +159,15 @@ class TestPdbWorkflowEndToEnd:
         frozen_indices = [0, 1, 2]
         region_indices = [3, 4]
 
-        # The sidecar write is REPLACE-ALL: the whole sidecar (regions +
-        # frozen) is written in one shot.
-        _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
-                          regions={"L-electrode": region_indices},
-                          frozen=frozen_indices)
+        # The save writes the whole pair in one shot: the geometry and its
+        # sidecar, the labels the structure carries.
+        self._saved(web, pdb_path, {"L-electrode": region_indices,
+                                    "frozen_atoms": frozen_indices})
 
         # The sidecar lands on disk next to the PDB, keyed by stem.
         sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
         assert sidecar.exists(), (
-            f"the codec sidecar seed didn't write the sidecar at {sidecar}"
+            f"the save did not write the sidecar at {sidecar}"
         )
         on_disk = json.loads(sidecar.read_text())
         assert on_disk["n_atoms_total"] == n_atoms
@@ -190,8 +184,8 @@ class TestPdbWorkflowEndToEnd:
     ):
         pdb_path, n_atoms, _ = pdb_under_root
         # Re-run step 2's save so this test is self-contained.
-        _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
-                          regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
+        self._saved(web, pdb_path, {"L-electrode": [3, 4],
+                                    "frozen_atoms": [0, 1, 2]})
 
         body = web.post("/api/build/load",
                         json={"path": self._path(pdb_path)}).get_json()

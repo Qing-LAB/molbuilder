@@ -1688,36 +1688,3 @@ def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
     return out
 
 
-# --------------------------------------------------------------------- #
-#  File -> (Structure, cell) loader                                     #
-# --------------------------------------------------------------------- #
-
-
-def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
-    """Read an XYZ or PDB and return ``(Structure, cell_or_None)``.
-
-    Format is detected from the file extension.  An XYZ is read through
-    the codec with the sidecar beside it, which is where a cell comes
-    from -- the comment line is never metadata (`model/structure.md`
-    § 2.3) -- and the cell is returned alongside the structure so the
-    caller can preserve it in the FDF.  PDB has no native cell concept
-    here, so the cell is always ``None``.
-    """
-    p = Path(path)
-    ext = p.suffix.lower()
-    from ..workingcopy_structure import StructureCodec
-    if ext == ".pdb":
-        return StructureCodec().load(p), None
-    if ext in (".xyz", ""):
-        # THROUGH THE CODEC, which is the one reader of a structure AND the
-        # sidecar beside it (`model/structure.md` § 2.4): frozen atoms, region
-        # labels, an explicit cell or a stated vacuum arrive with the
-        # coordinates.  The codec applies the sidecar when it is there and
-        # changes nothing when it is not.
-        struct = StructureCodec().load(p)
-        cell = struct.cell
-        return struct, (np.asarray(cell, dtype=float)
-                        if cell is not None else None)
-    raise ValueError(
-        f"unsupported input extension {ext!r}; expected .xyz or .pdb"
-    )

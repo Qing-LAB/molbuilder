@@ -1684,7 +1684,7 @@ the structure, it is not the structure.  So the host's `info` doors are
 **ungated on a read-only viewer** (that is precisely what lets the
 read-only Results viewer attach the contract before an export), they
 never raise the unsaved badge, and the store never enters
-`structure_hash` (`model/structure-molstruct.md` § 3).  It rides
+`geometry_hash` (`model/structure-molstruct.md` § 3).  It rides
 `installMolecule` in and `exportFile` out, so what the pane shows is
 exactly what the `.xyz + .molstruct.json` pair will carry — and the
 **Export menu says so** (user, 2026-08-29): when the store is
