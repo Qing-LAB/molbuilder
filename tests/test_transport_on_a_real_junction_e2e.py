@@ -810,6 +810,36 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
         "pair", _N_FRAMES)
 
 
+@pytest.mark.parametrize("change, severity, words", [
+    ("hold", "info", "holds 21: every atom it held, and 1 more"),
+    ("free", "warn", "leaves atom index 8 (H) of them free"),
+], ids=["holds-more-for-the-spectrum", "frees-an-atom-the-relaxation-held"])
+def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
+        junction, change, severity, words):
+    """`engines/vibration.md` § 2.3a, on the road it was written for: the
+    junction relaxed with every atom held but the middle two, saved as a
+    pair whose `info.relaxation` record names the atoms the relaxation held
+    (`held_atom_keys`) -- history the labels do not change.  Holding one
+    middle atom more for the spectrum is the partial Hessian over fewer
+    atoms, every one balanced: information.  Freeing the left electrode's
+    atom next to the bridge, which the relaxation held, is a warning naming
+    it: its force was never balanced."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    from molbuilder.workingcopy_structure import StructureCodec
+    s = StructureCodec().load(junction.tree / junction.pair)
+    held = set(s.frozen_atoms)
+    assert len(held) == 20 and 8 in held, sorted(held)
+    s.frozen_atoms = sorted(held | {_LEAD + _WIRE // 2 - 1} if change == "hold"
+                            else held - {_LEAD - 1})
+    cfg = SiestaConfig(system_label="J", psml_lib="pseudopotential",
+                       already_relaxed=True, **RELAXED_WITH)
+    found = [i for i in validate(s, cfg, calculation="vibration")
+             if i.message.startswith("The relaxation held")]
+    assert [(i.severity, words in i.message) for i in found] == [
+        (severity, True)], found
+
+
 def _prepared_decks(run, stage):
     """The decks ``stage`` prepared: its one deck in the stage's folder, or
     each point's (`transport.stages.point_folders`) -- named by the run's

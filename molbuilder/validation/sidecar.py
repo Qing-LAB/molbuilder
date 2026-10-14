@@ -204,21 +204,55 @@ def _ev(x) -> str:
     return f"{x:.4f}" if x >= 5e-4 else f"{x:.1e}"
 
 
-def _held_sets_differ(struct: Structure, rec: Mapping[str, Any]
-                      ) -> Optional[Tuple[int, int]]:
-    """``(held then, held now)`` when a relaxation record's held set is not
-    this structure's -- compared by the atoms themselves, never by an index,
-    because a deck's copy may list them in another order; ``None`` when they
-    are the same atoms or the record keeps no set."""
+def _held_sets_compared(struct: Structure, rec: Mapping[str, Any]
+                        ) -> Optional[Tuple[int, int, List[int]]]:
+    """``(held then, held now, freed)`` when a relaxation record's held set
+    is not this structure's ``frozen_atoms`` -- compared by the atoms
+    themselves, the record's ``held_atom_keys``, never by an index, because a
+    deck's copy may list them in another order; ``None`` when they are the
+    same atoms or the record keeps no set.
+
+    ``freed`` is the indices of the atoms the relaxation held and this
+    structure leaves free: their forces were never balanced, so the
+    geometry is not stationary for them.  Empty, this calculation holds
+    every atom the relaxation held and more -- a partial Hessian over fewer
+    atoms, every one of which the relaxation moved and balanced
+    (`engines/vibration.md` § 2.3a)."""
     keys_then = rec.get("held_atom_keys")
     if not isinstance(keys_then, list):
         return None
     lines = struct.geometry_lines()
-    keys_now = sorted(lines[i] for i in (struct.frozen_atoms or [])
-                      if 0 <= int(i) < len(lines))
-    if sorted(keys_then) == keys_now:
+    held_now = {int(i) for i in (struct.frozen_atoms or [])
+                if 0 <= int(i) < len(lines)}
+    if sorted(keys_then) == sorted(lines[i] for i in held_now):
         return None
-    return len(keys_then), len(keys_now)
+    then = set(keys_then)
+    freed = [i for i, line in enumerate(lines)
+             if line in then and i not in held_now]
+    return len(keys_then), len(held_now), freed
+
+
+def _held_set_finding(struct: Structure, held: Tuple[int, int, List[int]],
+                      *, who: str, here: str, severity: str,
+                      tail: str) -> Issue:
+    """The one finding a compared held set gives (`engines/vibration.md`
+    § 2.3a): an atom the relaxation held left free here -- ``severity``,
+    naming the atoms, with ``tail`` -- or every atom it held still held,
+    and more: information, the partial Hessian over fewer atoms."""
+    then, now, freed = held
+    if freed:
+        return Issue(
+            severity=severity, where="config.already_relaxed",
+            message=(f"{who} held {then} atom(s); {here} leaves "
+                     f"{atom_words(freed, struct.elements, limit=6)} of them "
+                     f"free.  Their forces were never balanced, so the "
+                     f"geometry is not stationary for them." + tail))
+    return Issue(
+        severity="info", where="config.already_relaxed",
+        message=(f"{who} held {then} atom(s); {here} holds {now}: every "
+                 f"atom it held, and {now - then} more.  Every atom this "
+                 f"calculation moves was free, and balanced, in the "
+                 f"relaxation -- a partial Hessian over fewer atoms."))
 
 
 def _judged_force(rec: Mapping[str, Any]) -> Optional[float]:
@@ -246,9 +280,11 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     refuses: the record informs the choice, it does not make it.  One
     finding per fact: the record's absence (ticked only), a geometry the
     record does not describe, a different engine or level of theory, the
-    largest remaining force against THIS calculation's tolerance, a
-    different held set.  Ticked, a disagreement is a warning; unticked,
-    the same fact is information, because the ladder relaxes regardless.
+    largest remaining force against THIS calculation's tolerance, an atom
+    the relaxation held that this calculation frees.  Ticked, a
+    disagreement is a warning; unticked, the same fact is information,
+    because the ladder relaxes regardless.  Holding every atom the
+    relaxation held, and more, is no disagreement: an info line says so.
 
     ``relaxed_by`` is the other question, asked at a force-constant stage
     whose ladder relaxed the coordinates itself: that stage's record
@@ -355,19 +391,15 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                     + ("  " + _remedy if already_relaxed else
                        "  The ladder relaxes it at this level first.")),
                 where=where))
-    # -- the held set ------------------------------------------------------
-    held = _held_sets_differ(struct, rec)
+    # -- the held set: an atom the relaxation held, freed here -------------
+    held = _held_sets_compared(struct, rec)
     if held is not None:
-        disagreed = True
-        issues.append(Issue(
-            severity=disagree, where=where,
-            message=(f"The relaxation held {held[0]} atom(s); this "
-                     f"calculation holds {held[1]}, and they are not "
-                     f"the same atoms.  The free atoms are not the same "
-                     f"set, so the geometry is not stationary for this "
-                     f"calculation's free atoms."
-                     + ("  " + _remedy if already_relaxed
-                        else "  The ladder relaxes this set first."))))
+        disagreed = disagreed or bool(held[2])
+        issues.append(_held_set_finding(
+            struct, held, who="The relaxation", here="this calculation",
+            severity=disagree,
+            tail=("  " + _remedy if already_relaxed
+                  else "  The ladder relaxes this set first.")))
     # -- the largest remaining force against THIS calculation's tolerance --
     judged = _judged_force(rec)
     rec_tol = rec.get("force_tolerance_ev_ang")
@@ -422,8 +454,8 @@ def _ladder_relaxation_findings(struct: Structure, rec: Mapping[str, Any],
     was written for the input and is moot once the ladder has relaxed; not
     the level of theory, which is this calculation's own by construction;
     and not the geometry's fingerprint, since the coordinates are that
-    record's last frame.  The held set IS compared: a set changed between
-    the stages leaves free atoms the relaxation never balanced.
+    record's last frame.  The held set IS compared: an atom the `relax`
+    stage held and this stage frees was never balanced (§ 2.3a).
     """
     issues: List[Issue] = []
     where = "config.already_relaxed"
@@ -431,14 +463,11 @@ def _ladder_relaxation_findings(struct: Structure, rec: Mapping[str, Any],
     # (`engines/vibration.md` § 5.5).
     from ..spectra.vibrational_analysis import nonstationary_remedy
     remedy = "  " + nonstationary_remedy(stage, "siesta")
-    held = _held_sets_differ(struct, rec)
+    held = _held_sets_compared(struct, rec)
     if held is not None:
-        issues.append(Issue(
-            severity="warn", where=where,
-            message=(f"The `{stage}` stage held {held[0]} atom(s); this "
-                     f"stage holds {held[1]}, and they are not the same "
-                     f"atoms, so the geometry is not stationary for this "
-                     f"stage's free atoms." + remedy)))
+        issues.append(_held_set_finding(
+            struct, held, who=f"The `{stage}` stage", here="this stage",
+            severity="warn", tail=remedy))
     judged = _judged_force(rec)
     steps = rec.get("n_steps", "?")
     if judged is None:

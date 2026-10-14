@@ -266,8 +266,8 @@ made; the Metadata pane shows the raw store.
 | ticked | absent | the plain warning of the table above, and an info line that no record travels with this structure — the statement stands on its own and the finish measures it |
 | ticked | present, for a different geometry (another frame of that run, or edited since — the fingerprint differs) | **warning**: the record does not vouch for these coordinates |
 | any | edited by hand (`edited_by_hand`, a person's change on MolView's Metadata page — [`web/molview.md`](?doc=web/molview.md) § 8.4a) | an info line first: the record's values are the person's word, not the run's — then the findings below, read from those values |
-| ticked | present, for these coordinates | the engine, the tolerance, the steps and the largest remaining force are shown; a different engine, a different level of theory (`info.calculation` against this form's basis, functional, mesh cutoff, electronic temperature, and the charge and spin it will carry, resolved), a largest force above **this calculation's** tolerance, or a different held set is each a **warning** naming the number or the field; within tolerance at the same level is an info line |
-| unticked | present, for these coordinates, within this calculation's tolerance at the same level and held set | an info line: the record already meets this calculation's criterion, so the box may be ticked and the relaxation skipped |
+| ticked | present, for these coordinates | the engine, the tolerance, the steps and the largest remaining force are shown; a different engine, a different level of theory (`info.calculation` against this form's basis, functional, mesh cutoff, electronic temperature, and the charge and spin it will carry, resolved), a largest force above **this calculation's** tolerance, or an atom the relaxation held left free here (§ 2.3a) is each a **warning** naming the number, the field or the atoms; within tolerance at the same level is an info line, and so is holding more atoms than the relaxation held (§ 2.3a) |
+| unticked | present, for these coordinates, within this calculation's tolerance at the same level, holding every atom the relaxation held | an info line: the record already meets this calculation's criterion, so the box may be ticked and the relaxation skipped |
 | unticked | anything else | the same facts as information; the ladder relaxes regardless |
 
 Never a refusal: the record informs the person's explicit choice; it does not
@@ -295,6 +295,52 @@ with the structure it described. The
 set is never second-guessed: nothing warns you off a choice you made on
 purpose. What the run **says** about the choice is the point — the regime, the
 motions removed, the Methods sentence (§ 4.10, § 6).
+
+### 2.3a Holding more for the spectrum than for the relaxation — the label, and the record *(user, 2026-10-14)*
+
+**The common road.** A junction is relaxed with its electrode blocks held and
+every atom between them free; its relaxed geometry is exported from the
+Results tab; and before the spectrum the person holds **more** — everything but
+the molecule in the gap and a few surface metal atoms — and describes the
+vibration with the box ticked. The Hessian is then taken over the smaller
+region, with the rest fixed: a partial Hessian
+([`science/normal-modes.md`](?doc=science/normal-modes.md) § 1).
+
+**Two stores, and neither is the other.**
+
+| | where | written by | changed by |
+|---|---|---|---|
+| **`frozen_atoms`** — the atoms **this calculation** holds | the structure's `regions`, the one label store ([`model/structure-annotations.md`](?doc=model/structure-annotations.md)); every label lives there, and nowhere else | the person, in the viewer | the person, any time — it is what each calculation reads |
+| **`held_atom_keys`** — the atoms **the relaxation** held | the structure's `info.relaxation` record ([`model/parse.md`](?doc=model/parse.md) § 5b.1), beside the relaxation's steps, forces and verdict | the relaxation run, read back from its output when the structure is exported from it | nobody — a person may edit the record on MolView's Metadata page, which stamps it `edited_by_hand`, and the check then says whose word it is |
+
+The record is history, not a label: nothing is held because of it. It names
+the atoms by element and position (`Structure.geometry_lines`), never by an
+index, so a reordering does not break it; changing the labels does not change
+it; and its geometry fingerprint says whether the coordinates are still the
+ones it describes (§ 2.2).
+
+**The comparison** — at every vibration's gate (`check_relaxation_record`),
+and at a force-constant stage against its ladder's `relax` stage (§ 5.2a):
+
+| the held sets | the finding |
+|---|---|
+| the same atoms | none |
+| every atom the relaxation held is held here, and more | **information**: every atom this calculation moves was free, and balanced, in the relaxation — the partial Hessian over fewer atoms |
+| an atom the relaxation held is **free** here | a **warning** when the box is ticked, naming the atoms — their forces were never balanced, so the geometry is not stationary for them; information when unticked, since the ladder relaxes this set first |
+
+The last row is not on the common road. It is an atom the relaxation held let
+go for the spectrum — the electrode's top layer, say, the gold the sulfur
+binds to — or a structure relaxed elsewhere with a larger held set. Holding
+more never asks for it: **the force judgment stays valid**, because the
+record's largest force over the relaxation's free atoms bounds the largest
+over this calculation's fewer free atoms. A structure with no relaxation
+record has nothing to compare, and nothing is said.
+
+**The result states both** (schema 8, § 6.10): its structure's `frozen_atoms`
+is the set the Hessian held, and its `info.relaxation` the record of what the
+relaxation held. A transport calculation built from it needs only every
+electrode atom among the held ([`engines/transport.md`](?doc=engines/transport.md)
+§ 4, *what transport asks of the held set*).
 
 ### 2.4 Where results land — `frequency/` and `spectrum/`
 
@@ -1605,9 +1651,10 @@ first launch (a launched stage is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0; one never launched — a
 preview's — needs no restore), launch the `relax` stage again — it continues
 from its newest attempt, at the geometry it stopped at — and prep this stage
-again once it has finished; and a
-held set changed between the two stages, which leaves free atoms that
-relaxation never balanced *(plan V1.36, the user's word 2026-09-29)*. A bench
+again once it has finished; and an
+atom the `relax` stage held left free in this one, its force never balanced
+*(plan V1.36, the user's word 2026-09-29; holding more is information,
+§ 2.3a)*. A bench
 trial of that stage is written at the same geometry and told the same
 (`prep` hands the record to every deck at it, `spec_for`'s `relaxed_by`). The SIESTA engine
 validator defers that notice and its own *held during relaxation* line on
@@ -2327,14 +2374,9 @@ data file.
 
 #### 7. Still to decide
 
-- **The held set across a relaxation and its vibration.** A vibration may hold
-  more atoms than the relaxation that made its geometry — the electrodes held
-  to relax, then everything but the bridge and a few surface atoms held for
-  the Hessian (a partial Hessian over a smaller region). Proposed: one held
-  label, the vibration's structure stating its own set; and the record check
-  of § 2.2 warning only when the vibration frees an atom the relaxation held
-  (its forces were never balanced), with an info line when it holds a
-  superset. Awaiting the user's word.
+- ~~**The held set across a relaxation and its vibration.**~~ *Decided
+  2026-10-14*: one held label, the vibration's structure stating its own set,
+  and the relaxation's held set in its record — § 2.3a, built.
 - **`netcdf4` in `molbuilder-pySCF`** — an environment change, awaiting the
   user's word.
 

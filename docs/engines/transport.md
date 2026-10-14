@@ -604,6 +604,22 @@ bulk metal: the lead calculations replace everything beyond them by the bulk
 crystal, so they must be exactly that crystal (§ 2a.9, *the electrodes do not
 move*).
 
+**What transport asks of the held set** *(user, 2026-10-14)*: **every atom
+carrying an electrode label is held** — the citation door refuses one that is
+not, naming it (`wizard._refuse_unless_frozen_bulk`) — and nothing more.
+Holding more atoms is never refused: a junction that comes out of a
+vibration, where everything but the molecule in the gap and a few surface
+atoms was held for the spectrum ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 2.3a), carries that larger set, and its frames move only atoms the mode
+moves, so its electrode atoms stand still by construction. **The labels and
+the record are two stores**: `frozen_atoms` sits in the structure's `regions`
+with every other label — the electrode partition among them — and is what a
+calculation holds; what the junction's relaxation held is its
+`info.relaxation` record's `held_atom_keys`, history the person's labels do
+not change ([`model/parse.md`](?doc=model/parse.md) § 5b.1). A transport
+calculation runs no relaxation, so it holds nothing itself: the held set
+matters to it only as the promise that the leads are the bulk they stand for.
+
 What this run decides for every rung after it: the geometry, and — as defaults
 the person may change, one value for all five rungs — the basis, the
 functional, the mesh cutoff, the transverse k-grid and the electronic
@@ -1254,7 +1270,7 @@ tree says so without anyone having to know it.
 
 | | what is shared | valid when | gate |
 |---|---|---|---|
-| **Exact** — the electrodes | the lead Hamiltonian, used as **truth** (it becomes the self-energy) | the frame's electrode region is geometrically **identical** to the one the lead was derived from | **a displacement rule must never move an electrode atom** — checkable (tier 2), and it coincides exactly with the frozen-atom set the relaxation already carries |
+| **Exact** — the electrodes | the lead Hamiltonian, used as **truth** (it becomes the self-energy) | the frame's electrode region is geometrically **identical** to the one the lead was derived from | **a displacement rule must never move an electrode atom** — checkable (tier 2); every electrode atom is among the held atoms the relaxation already carries, which may hold more (§ 4, *what transport asks of the held set*) |
 | **Approximate** — the seed | a converged density, used only as a **starting guess** | any nearby geometry: same species, same ordering, slightly moved. The SCF converges away from it, so being imperfect costs iterations, not correctness | the orbital set must match; the geometry need only be close |
 
 The distinction matters because the two gates differ in **kind**, not in
