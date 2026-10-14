@@ -495,18 +495,9 @@ _PRE_RULE_ROWS = [
 @pytest.fixture(scope="module")
 def before_the_rule(relaxed):
     """A copy of the run's calculation beside it, every deck of its `relax`
-    stage as 2.9.6 wrote it."""
-    import shutil
-    copy = relaxed.parent / "CO2-before-2.10.0"
-    if not copy.exists():
-        shutil.copytree(relaxed, copy)
-        for deck in copy.rglob("CO2_01_relax.fdf"):
-            lines = deck.read_text().splitlines(keepends=True)
-            kept = [re.sub(r"(generator-version\s+)\S+", r"\g<1>2.9.6", ln)
-                    for ln in lines if '"atom_order":' not in ln]
-            assert len(kept) == len(lines) - 1, deck
-            deck.write_text("".join(kept))
-    return copy
+    stage as 2.9.6 wrote it (`support/real_runs.as_prepared_by_2_9_6`)."""
+    from support.real_runs import as_prepared_by_2_9_6
+    return as_prepared_by_2_9_6(relaxed)
 
 
 @pytest.mark.parametrize("row", _PRE_RULE_ROWS,
@@ -581,6 +572,9 @@ _BROKEN_ROWS = [
     dict(name="the Results tab's load refuses it with its sentence",
          door="watch_load"),
     dict(name="xv2xyz --from-run refuses it", door="xv2xyz"),
+    dict(name="molbuilder validate refuses SIESTA's own CO2.xyz with it",
+         door="validate"),
+    dict(name="molbuilder modify refuses it too", door="modify"),
 ]
 
 
@@ -606,14 +600,20 @@ def test_an_order_record_that_cannot_be_read_is_refused(row, broken_order,
                                                        monkeypatch, tmp_path):
     run = _run(broken_order)
     words = "holds an order record that cannot be read"
-    if row["door"] == "xv2xyz":
+    if row["door"] in ("xv2xyz", "validate", "modify"):
         from click.testing import CliRunner
         from molbuilder import cli
-        said = CliRunner().invoke(cli.cli, [
-            "xv2xyz", str(run / "CO2.XV"), str(tmp_path / "co2.xyz"),
-            "--from-run"])
+        said = CliRunner().invoke(cli.cli, {
+            "xv2xyz": ["xv2xyz", str(run / "CO2.XV"),
+                       str(tmp_path / "co2.xyz"), "--from-run"],
+            "validate": ["validate", str(run / "CO2.xyz")],
+            "modify": ["modify", str(run / "CO2.xyz"),
+                       str(tmp_path / "co2.xyz"), "--rotate", "z:90"],
+        }[row["door"]])
         assert said.exit_code != 0 and words in said.output, said.output
         assert "checkpoint restore" in said.output
+        assert said.exception is None or isinstance(said.exception,
+                                                    SystemExit), said.exception
         return
     answer = _client(broken_order, monkeypatch).post(
         "/api/watch/load", json={"path": str(run)})

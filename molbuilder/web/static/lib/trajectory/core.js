@@ -2203,6 +2203,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // How the run is doing -- on the load always, on a poll only when
             // the run ended with this write (web/results.md § 4.1).
             run:          r.run,
+            // What the load said of the run (I9) -- on the load only; a poll
+            // leaves it out, which keeps it.
+            notices:      r.notices,
         });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);

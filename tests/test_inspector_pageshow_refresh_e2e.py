@@ -229,3 +229,46 @@ class TestTrajectoryInspectorPageshowRefresh:
             ) from exc
 
 
+# --------------------------------------------------------------------- #
+#  A run prepared before 2.10.0: the tab says so, and keeps saying it    #
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def prepared_before_the_rule(real_relaxed_for_vibration, monkeypatch):
+    """The same run, its decks as 2.9.6 wrote them
+    (`support/real_runs.as_prepared_by_2_9_6`): its output's path, its
+    projects tree the only picker root."""
+    from support.real_runs import as_prepared_by_2_9_6
+    copy = as_prepared_by_2_9_6(real_relaxed_for_vibration)
+    root = next(p for p in copy.parents if p.name == "projects")
+    _register_tmp_as_picker_root(root, monkeypatch)
+    return str(copy / "01_relax" / "run-0" / "CO2_01_relax-run0.out")
+
+
+class TestTheTabSaysTheOrderIsNotRecorded:
+    """`model/overview.md` § 2.2a, I9: a run of a kind that reorders,
+    prepared before 2.10.0, states no order -- the Results tab's load says
+    so on the tab's status line (`web/web-api.md`, /api/watch/load), and a
+    poll that finds nothing new keeps saying it.  The silent failure: the
+    run shown as if its atoms were in your order.  Until 2026-10-14 the
+    load's warning never reached the line -- the load's hand-off dropped
+    it -- and before that a poll wiped it."""
+
+    _SAID = "was prepared by molbuilder 2.9.6, before 2.10.0 recorded"
+
+    def test_the_load_says_it_and_a_quiet_poll_keeps_it(
+            self, page, flask_server, prepared_before_the_rule):
+        _open_results_and_select(page, flask_server, prepared_before_the_rule)
+        line = ("() => (document.querySelector('#trajectory-status') || {})"
+                ".textContent || ''")
+        page.wait_for_function(f"() => ({line})().includes({self._SAID!r})",
+                               timeout=15000)
+        with page.expect_request(lambda r: "/api/watch/data" in r.url,
+                                 timeout=10000):
+            page.evaluate("document.dispatchEvent(new Event("
+                          "'visibilitychange'))")
+        page.wait_for_function(f"() => ({line})().includes('Up to date')",
+                               timeout=10000)
+        assert self._SAID in page.evaluate(line)
+

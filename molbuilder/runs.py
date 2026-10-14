@@ -407,7 +407,7 @@ class Declared:
         ``deck_record.order_record_of`` -- ``None`` for a run in your order,
         or a deck that states none."""
         from molbuilder.deck_record import order_record_of
-        return order_record_of(self.atom_metadata, str(self.deck))
+        return order_record_of(self.atom_metadata)
 
     def frame(self, lattice=None) -> Optional[Dict[str, Any]]:
         """The box the engine had, for coordinates that came from it

@@ -760,7 +760,10 @@ holds, at every redraw, never a notice that a poll would clear: the server
 words it from the order record (`atom_permutation.SORT_KEY_WORDS`), as it
 works out the resolved box. Saving or exporting from it writes the person's
 order, restored, and says so (I1); the transport report draws its junction
-restored (R6).
+restored (R6). **A run prepared before 2.10.0** states no order: the load
+says so — the trajectory tab's status line, kept on every summary line it
+writes — and a save, download or hand-over from it writes the structure as
+the engine listed it (I9; user, 2026-10-14: "Write it, warned").
 
 The viewers you can land in — **six, all from the result dropdown**
 ([`presenters.md`](?doc=web/presenters.md) § 1 is the registry's own list).

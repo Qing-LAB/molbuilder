@@ -1660,7 +1660,8 @@ class Structure:
     def in_your_order(self, what: str) -> "Tuple[Structure, Optional[str]]":
         """``(structure, said)``: this structure in the person's order, and
         the sentence a door says of it -- :func:`restored_said`, naming
-        ``what`` and the key -- or ``None`` when it was in their order
+        ``what`` and the order in its words -- or ``None`` when it was in
+        their order
         already (``model/overview.md`` § 2.2a).  Every door that crosses
         back and says so asks this: the editors, the write doors, the
         addition of a merge."""

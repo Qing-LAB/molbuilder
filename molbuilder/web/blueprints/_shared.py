@@ -1076,7 +1076,8 @@ def in_your_order(struct: Structure, what: str):
     it (``model/overview.md`` § 2.2a, I1, I8).  One in an engine's order --
     it carries its order record -- is restored through
     ``Structure.restored()`` and said in a ``structure.restored`` notice
-    naming the key (``Structure.in_your_order``); one in your order comes
+    naming the order in its words (``Structure.in_your_order``); one in
+    your order comes
     back as it is, nothing said.
     Every web door that crosses back asks it: the load route for an editor,
     the save, the export, the hand-over.  ``what`` names the structure in the

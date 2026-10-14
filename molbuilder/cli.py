@@ -454,20 +454,26 @@ def _struct_for_validate(path, *, one_frame_only: bool = False):
     says when it took one frame of several -- a line, never a refusal.
     ``one_frame_only`` is the editing command's: a file of several frames is
     REFUSED (§ 2.3: an edit acts on one structure, and the command line has
-    no one to ask which).
+    no one to ask which), and so is a file of a run whose order nothing
+    states (`model/overview.md` § 2.2a, I9: an editor holds only your order).
+    A deck block of its run that cannot be read is refused, naming it.
     """
     import numpy as np
+    from .deck_record import DeckRecordUnreadable
+    from .runs import ORDER_UNSTATED
     from .workingcopy_structure import StructureCodec
     said: list = []
-    whole = StructureCodec().load(path, frames=True, said_out=said)
-    for line in said:                  # what the read says (structure.md § 2.3)
-        click.echo(line.message, err=True)
+    try:
+        whole = StructureCodec().load(path, frames=True, said_out=said)
+    except DeckRecordUnreadable as exc:   # its run's deck (job-contracts § 3.1)
+        raise click.ClickException(str(exc)) from exc
     # AN EDIT IS ONLY IN YOUR ORDER (I8, I9): the editing command refuses a
     # file of a run whose deck predates the record, by the sentence said.
-    from .runs import ORDER_UNSTATED
     for line in said:
         if one_frame_only and line.where == ORDER_UNSTATED:
             raise click.ClickException(line.message)
+    for line in said:                  # what the read says (structure.md § 2.3)
+        click.echo(line.message, err=True)
     if whole.n_frames > 1 and one_frame_only:
         raise click.ClickException(
             f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "

@@ -1167,7 +1167,8 @@ block's order record too, `deck_record.order_record_of`,
 
 **A block the deck does not carry records nothing; one it carries and that
 cannot be read is refused.** Its fences not a BEGIN/END pair, no JSON object
-between them, or JSON that does not parse: the one reader raises
+between them, JSON that does not parse, or — the ATOM-METADATA block — an
+order record that is not one over the block's atoms (2026-10-14): the one reader raises
 `deck_record.DeckRecordUnreadable`, which the run door (`runs.declared`)
 names the deck in, and every surface says — a route as a 400 with the
 sentence, the CLI and prep as their error, a job's finish as its own. The

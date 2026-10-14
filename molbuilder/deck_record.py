@@ -129,8 +129,9 @@ def _brace_delta(line: str) -> int:
 
 class DeckRecordUnreadable(ValueError):
     """A deck carries the molbuilder block it names, and the block cannot be
-    read: its fences are not a BEGIN/END pair, it holds no JSON object, or
-    its JSON does not parse.  The block is a record molbuilder writes and
+    read: its fences are not a BEGIN/END pair, it holds no JSON object, its
+    JSON does not parse, or -- the ATOM-METADATA block -- its order record is
+    not one (:func:`order_record_of`).  The block is a record molbuilder writes and
     nobody edits (`execution/job-contracts.md` § 3.1), so this is refused,
     never read as a deck that records nothing."""
 
@@ -231,13 +232,14 @@ def extract_vibration_record(text: str) -> Optional[Dict[str, Any]]:
     return read_json_block(text, BLOCK_VIBRATION)
 
 
-def order_record_of(block: Optional[Dict[str, Any]], source: str):
+def order_record_of(block: Optional[Dict[str, Any]]):
     """THE DECK'S ORDER RECORD (`model/overview.md` § 2.2a, I5): an
     ATOM-METADATA payload's ``atom_order``, read by the order record's one
-    reader (``atom_permutation.Permutation.from_dict``) -- ``None`` for a
-    deck in your order, or one that carries no block.  ``source`` names the
-    deck in a refusal.  Asked by the run door (``runs.declared``) and by the
-    finish beside a job."""
+    reader (``atom_permutation.Permutation.from_dict``) over the block's own
+    atom count -- ``None`` for a deck in your order, or one that carries no
+    block.  A record that cannot be read is the block refused
+    (:class:`DeckRecordUnreadable`); the caller names the deck.  Asked by the
+    run door (``runs.declared``) and by the finish beside a job."""
     record = (block or {}).get("atom_order")
     if record is None:
         return None
@@ -249,7 +251,9 @@ def order_record_of(block: Optional[Dict[str, Any]], source: str):
     # naming the way out, as every unreadable block is (`job-contracts.md`
     # § 3.1) -- on every surface that reads it.
     try:
-        return Permutation.from_dict(record, source="atom_order")
+        return Permutation.from_dict(
+            record, source="atom_order",
+            n_atoms=(block or {}).get("n_atoms_total"))
     except PermutationError as exc:
         raise _unreadable(BLOCK_ATOM_METADATA,
                           f"holds an order record that cannot be read "
