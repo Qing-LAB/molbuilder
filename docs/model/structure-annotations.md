@@ -184,19 +184,24 @@ it answers with, through the block's one reader (`script_emit.apply_atom_metadat
 would reject the envelope-less block. *(The browser posted it back to
 `/api/build/load` beside a text until 2026-09-25.)*
 
-**The block states the deck's index, and the block is the serialiser's**
+**The block states the deck's order record, and the block is the serialiser's**
 *(decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
 § 2.2a, plan § 5ab R2)*. A deck written from a reordered copy states its
-`atom_order` in this block (I5) — the run's one index, read by the run door
-through `runs.declared` and nowhere else. The block is written from the
-structure's own `metadata_to_dict`, not from the hand list
-`emit_atom_metadata` takes today (`regions`, `annotations`, `customized`), so
-the index — and any field the structure gains — rides it with no edit; its
-emission gate, `apply_atom_metadata`'s early return and
-`Declared.atom_metadata_for` each count the index as something the block
-says, so a deck stating only its order is not dropped. The bridge above then
-**marks** what it builds: the Results tab shows a reordered run's structure
-in the engine's order with its index, and a save from it is restored (I1).
+`atom_order` in this block (I5) — the run's one order record, read by the run
+door through `runs.declared` and nowhere else. **The block carries every
+metadata field but the box** — the labels, the channels, the customized rows,
+the order record — and the deck's ENGINE-OFFSET block carries the box (the
+cell, the stated origin, the axis kinds, the vacuum), as it does today, so no
+fact is stated twice in one deck; the split is named once (the box fields),
+not as today's hand list (`emit_atom_metadata`'s `regions`, `annotations`,
+`customized`). **One predicate decides the block has something to say**, and
+one reader takes it — the block's reader and the order record's dict reader —
+for `apply_atom_metadata`, `Declared.atom_metadata_for` and the finish alike:
+today the three gates differ (`atom_metadata_for` counts only `regions` and
+`annotations`, so a deck stating only customized rows is dropped). The bridge
+above then **marks** what it builds: the Results tab shows a reordered run's
+structure in the engine's order with its order record, and a save from it is
+restored (I1).
 
 ### 4b. Engine translation (one-way: data model → engine input)
 

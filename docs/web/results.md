@@ -591,10 +591,10 @@ exists or is named here; nothing worked out in the browser:
 | part | data | door |
 |---|---|---|
 | ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
-| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) |
+| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) *(Decided 2026-10-14, not built: drawn in the person's order — the junction restored for drawing, `junction.xyz` itself staying the engine's record; plan § 5ab R6)* |
 | T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record — per spin channel, `(T↑ + T↓)/2` for a polarized point — each channel kept in `channels` and their sum in `transmission_total` (`record.point_transmission`) |
 | DOS and PDOS | from the transmission run's `<label>.TBT.nc` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`, written per device orbital, energy and k); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F; the **left** lead's spectral DOS (`TBT.DOS.A` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`) | **new**: read on the server with sisl's TBtrans reader (sisl 0.16 and netCDF4 are in the `molbuilder` env), k-averaged, added per point to the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on T(E)'s energy grid, E − E_F |
-| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid |
+| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid *(Decided 2026-10-14, not built: the atoms chosen in the person's order, mapped into the junction's through its order record; plan § 5ab R6)* |
 | eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | **new**, from the same `.TBT.nc`: per point `eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |
 | I–V | `iv` in the record | built (table); the curve is new, drawn from the same arrays |
 | convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | **new** in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
@@ -750,11 +750,12 @@ safety timeout.
 
 **A reordered run is shown in the engine's order, marked** *(decided
 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
-plan § 5ab R2)*: a SIESTA vibration's stages and the transport rungs run on a
-reordered copy; their frames, forces, held atoms and labels agree with each
-other in the engine's order, and the viewer says which order it is — from the
-structure's `atom_order`, read at every settle, never a notice that a poll
-would clear. Saving or exporting from it writes the person's order, restored
+plan § 5ab R2)*: a SIESTA vibration's stages and the transport rungs (all but
+the electrode rungs, which run on a cell of their own) run on a reordered
+copy; their frames, forces, held atoms and labels agree with each other in
+the engine's order, and the viewer's head says so — *in the engine's order
+(held atoms first)*, or *(TranSIESTA's order)* — from the structure's
+`atom_order`, read at every settle, never a notice that a poll would clear. Saving or exporting from it writes the person's order, restored
 (I1); the transport report draws its junction restored (R6). Today the view is
 the engine's order, unmarked.
 

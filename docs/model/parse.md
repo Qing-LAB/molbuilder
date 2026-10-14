@@ -485,7 +485,8 @@ underscore-named and not in `__all__`, which is an inconsistency worth
 resolving, not a signal to build a second door.)*
 
 **Skip detection when you already know the type** — call the parser class's
-`parse()` directly.
+`parse()` directly. *(Never to build a run's structure: that asks the run door,
+§ 5.3 — decided 2026-10-14, `model/overview.md` § 2.2a.)*
 
 ---
 
@@ -887,13 +888,14 @@ file.
 **And the order the atoms are in** *(decided 2026-10-14, not built —
 [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2)*. A
 reordered run's files are in its engine's order; a parser reads them so and
-says nothing about it — the order is what the run declared, its deck's
-`atom_order`, and the run door attaches it to every structure `view_of`
-builds (I5). The parsers stay the engine's file view; a bare file reader
-(`watch parse`, `watch tail`, `runtime-info`, a bare `xv2xyz`) reads a file,
-not a run, and says so. **No door builds a run's structure from a parser
-class it imports** — `jobset.prep._vibration_stage_geometry` does today (plan
-V1.41) — it asks the run door.
+says nothing about it — the order is what the run declared, its deck's order
+record (`atom_order`), and the run door attaches it to every structure
+`view_of` builds (I5). The parsers stay the engine's file view; a bare file
+reader (`watch parse`, `watch tail`, `runtime-info`) reads a file, not a run,
+and says so — and a bare `xv2xyz`, which writes a pair, refuses an `.XV` a
+reordered run of ours holds, naming `--from-run`. **No door builds a run's
+structure from a parser class it imports** — `jobset.prep._vibration_stage_geometry`
+does today (plan V1.41) — it asks the run door.
 
 **The atoms a run holds are stated by its own output, the same for both
 engines** *(user, 2026-10-04: "there is no reason why siesta can manage to
@@ -902,7 +904,8 @@ echoes what the engine held — `siesta: Constraint (N): pos` and the ranges
 below it, which SIESTA 5.4.2 heads with `Constraints applied in the following
 order:` when there are several blocks and with nothing above a single one —
 and a run's progress log carries `# frozen_atoms: <i> <j> …`, 0-based in
-the structure's order: prep's preview writes it for either engine, and a PySCF
+the deck's order (the engine's, for a reordered run — decided 2026-10-14,
+the run door's order record says which): prep's preview writes it for either engine, and a PySCF
 run's script writes the same line when it starts. Each reader reads them as its
 own content (`runtime_info.frozen_atoms`); a reader of a PySCF trajectory file
 takes them from the run's progress log it already reads. *(A sidecar beside the
@@ -1168,7 +1171,7 @@ geometry it left**, from the run output a viewer has open — the
 | `n_steps` | the geometry steps the run took (the last frame's step index) |
 | `force_tolerance_ev_ang` | the run's **own** criterion, as the engine echoed it — `convergence_targets.max_force_tol_eV_per_A`, flat (SIESTA's `redata:` echo, a single-stage molwatch header) or nested one level by stage (a staged molwatch header; one stage is the run's, several is `None`) |
 | `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the **largest absolute Cartesian component** over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `Max` / `Max … constrained` lines, which are that same component, when the step carries no per-atom block). The component, not a per-atom norm: it is what SIESTA's `MD.MaxForceTol` tests and what both read-backs judge by (V1.30); a norm would call a run the engine converged "not converged" by up to √3 |
-| `held_atom_idxs` · `held_atom_keys` | the atoms the run held: 0-based indices in the run's own atom order (`runtime_info.frozen_atoms`), and the same atoms as their `Structure.geometry_lines()` — element and rounded position — which is how a consumer compares held sets, because a deck's copy may list the atoms in another order. *(Decided 2026-10-14, not built: `held_atom_idxs` is cut — the record names atoms never by an index, and an index in a reordered run's order would outlive a restore; plan V1.42, RMP R1)* |
+| `held_atom_idxs` · `held_atom_keys` | the atoms the run held: 0-based indices in the run's own atom order (`runtime_info.frozen_atoms`), and the same atoms as their `Structure.geometry_lines()` — element and rounded position — which is how a consumer compares held sets, because a deck's copy may list the atoms in another order. *(Decided 2026-10-14, not built: `held_atom_idxs` is cut — the record names atoms by their lines, never by an atom index, and an atom index in a reordered run's engine order would outlive a restore; plan V1.42, RMP R1)* |
 | `converged` | the moved atoms' largest component within the run's tolerance (when a run held nothing the two figures are one figure). A run whose last step reports no force at all has no record |
 | `run_state` | how the run ended (§ 2b) |
 | `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the **sorted** `geometry_lines()` (element and position rounded to a millionth of an ångström, negative zero folded), so it is the same whatever order a copy lists the atoms in — so a consumer can tell whether the coordinates in front of it are the ones this record is about. A rigid shift is not folded in: a pair exported from a run carries the run's cell, and no deck shifts a structure that states one |

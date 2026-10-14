@@ -720,7 +720,7 @@ flowchart LR
   M --> R["&lt;label&gt;.spectra.json — the one artifact:<br/>modes · what was removed · thermochemistry ·<br/>intensities (PySCF) or null (SIESTA)"]
 ```
 
-*(Decided 2026-10-14, not built: the sorted copy carries its index and its deck states it — no `atom-permutation.json`; the finish inverts it from the deck. `model/overview.md` § 2.2a, plan § 5ab R5.)*
+*(Decided 2026-10-14, not built: the sorted copy carries its order record and its deck states it — no `atom-permutation.json`; the finish inverts it from the deck. `model/overview.md` § 2.2a, plan § 5ab R5.)*
 
 ### 4b.2 A two-atom example with real numbers
 

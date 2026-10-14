@@ -349,15 +349,18 @@ electrode atom among the held ([`engines/transport.md`](?doc=engines/transport.m
 
 **Within one ladder the held set may grow too.** A SIESTA ladder's `freq`
 stage is prepared after its `relax` stage ran, each deck a held-first sorted
-copy carrying its own index. `freq`'s prep reads `relax`'s final geometry
-through the run door, restores it to the input order through `relax`'s
-index, and sorts its own copy from it, as every prep does; `relax`'s density
-is carried only when the two decks' indices are the same, and the launch says
-so when it is not ([`model/overview.md`](?doc=model/overview.md) § 2.2a, I3–I6);
-the comparison above then judges the held set. *(Decided 2026-10-14, not
-built: today `jobset.prep._vibration_stage_geometry` takes the coordinates in
-`relax`'s sorted order, row by row — right only while the two preps held the
-same atoms; plan V1.41, RMP R3.)*
+copy carrying its own order record. `freq`'s prep reads `relax`'s final
+geometry through the run door and restores it to the input order through
+`relax`'s order record; **only its coordinates and cell are taken** — the
+labels and the held set are this prep's, the calculation's structure as it
+stands — and the prep sorts that structure as every prep does. `relax`'s
+density is read only when the two decks' order records are the same: prep
+writes `freq`'s deck not to read it otherwise (`DM.UseSaveDM .false.`, in
+either layout) and says so ([`model/overview.md`](?doc=model/overview.md)
+§ 2.2a, I3–I6); the comparison above then judges the held set. *(Decided
+2026-10-14, not built: today `jobset.prep._vibration_stage_geometry` takes the
+coordinates in `relax`'s sorted order, row by row — right only while the two
+preps held the same atoms; plan V1.41, RMP R3.)*
 
 ### 2.4 Where results land — `frequency/` and `spectrum/`
 
@@ -1150,10 +1153,13 @@ one composed permutation, recorded once (ruled); how it is composed is not
 built, and no calculation asks for both today.
 
 **Decided 2026-10-14, not built** ([`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, plan § 5ab): the copy carries its index in itself — `atom_order`, set
-by `sort_by` — and **each deck states it** in its ATOM-METADATA block (I5),
-so `atom-permutation.json` retires (R5): the finish reads its index from its
-own deck beside the job, and nothing reads a file of it. Two sorts are never
+§ 2.2a, plan § 5ab): the copy carries its order record in itself —
+`atom_order`, set by `sort_by` — and **each deck states it** in its
+ATOM-METADATA block (I5), so `atom-permutation.json` retires (R5): the finish
+reads the order record from its own deck beside the job, a deck stating none
+being in the input order (I2) — or written before the rule, and refused by
+name (I9) — and nothing reads a file of it. The example below then shows the
+record in the deck's block, not in a file. Two sorts are never
 composed: `sort_by` refuses a structure already remapped, and a door restores
 before it sorts again (I4) — so the open item above closes as *never*, not as
 *built*. The sorted order still never reaches a person: a door that shows a
@@ -1219,6 +1225,16 @@ vacuum box, and the offset stated `0` with it (`model/structure-periodicity.md`
 § 6.0: coordinates from an engine state its origin), because otherwise the
 deck re-centres the atoms in their new span, and a relaxed geometry moved
 against the real-space grid is not stationary on that grid any more.
+
+*(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
+§ 2.2a, plan § 5ab R3–R4: the geometry is read through the run door, never a
+parser class, and restored to the input order through `relax`'s order record;
+only its coordinates and cell are taken — the labels and the held set are this
+prep's — and this prep sorts its own copy, so the two decks' orders may
+differ; the `--from` row below then refuses a run that is not this
+calculation's atoms, compared in the input order; and `relax`'s restart files
+are read only when the two decks' order records are the same, prep writing
+the deck not to read them otherwise, in either layout (§ 2.3a).)*
 
 **It is the one stage of every kind whose deck is written from another stage's
 result** *(2026-10-11, `execution/job-system.md`, *The task*)*: every other
@@ -2045,7 +2061,7 @@ refused by name.
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
 | `config` | both | what the description held (the PySCF config as a dict; on SIESTA the engine, kind and stage) |
 | `methods_text` · `bibliography_keys` | both | the composed paragraph and the keys it cites (§ 4.10) |
-| `engine_metadata` | both | engine-specific facts; SIESTA: `fc_file`, `fc_displacement_ang`, `fc_range_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` (§ 5.5) |
+| `engine_metadata` | both | engine-specific facts; SIESTA: `fc_file`, `fc_displacement_ang`, `fc_range_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` (§ 5.5) *(Decided 2026-10-14, not built: `fc_range_1based` is the engine's numbering — the deck's held-first order, 1-based — named as the engine's wherever it is written, here and in `fc-sweep.json`'s stage rows; an engine fact, not an atom's identity; `model/overview.md` § 2.2a)* |
 | `runtime_info` | PySCF | CPU, threads, GPU, host |
 
 ### 6.3 A mode
@@ -2121,8 +2137,8 @@ way `homo_index` did.
 | `hessian_density_fit` | `true` / `false` | `null` |
 | `equilibrium.masses_amu` | the deck's `MASSES_AMU`, every atom | the deck's `vibration` block, every atom |
 | `modes[].ir_active` · `raman_active` · `activity_class` | from the strengths computed | `partial` — no strength is computed (§ 6.6) |
-| `engine_metadata` | `{}` | `fc_file`, `fc_displacement_ang`, `fc_range_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` |
-| beside the calculation | — | `atom-permutation.json` (§ 5.2), a copy in every attempt (the calculation's shared package) *(retires — each deck states its index, § 5.2)* |
+| `engine_metadata` | `{}` | `fc_file`, `fc_displacement_ang`, `fc_range_1based`, `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` *(`fc_range_1based`: the engine's numbering, named so — decided 2026-10-14, not built)* |
+| beside the calculation | — | `atom-permutation.json` (§ 5.2), a copy in every attempt (the calculation's shared package) *(retires — each deck states its order record, § 5.2)* |
 | what the viewer shows | the spectrum of the strengths computed, the modes table, the animation, the probe's level diagrams, the thermochemistry | **the mode positions, not a spectrum** — one line of one height at each mode, picked like a stick, with no width and no heights ([`web/spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2); the modes table (its frequency columns only) and the animation; the electronic-structure tab says the route's electronic response is the projected density of states along a mode, planned (§ 5.10); the thermochemistry as vibrational contributions ([`web/spectra.md`](?doc=web/spectra.md) § 2, § 9b.3) |
 
 **A missing number is absent, never zero.** A key an engine cannot produce is
@@ -2242,8 +2258,8 @@ SIESTA from the label (§ 5.4), and the permutation record by its one constant,
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
 | `<label>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
 | `<label>_<stage>-run<N>.pyscf.log` · `<label>_<stage>.log` · `<label>_<stage>_geom.log` | the PySCF attempt — in the flat shape the last two carry the run's number too, `<label>_<stage>-run<N>.log` (`engines/pyscf.md` § 2) | the engine's own account; PySCF's own log; geomeTRIC's optimizer log | PySCF |
-| `atom-permutation.json` | the calculation root, and a copy in each attempt of a sorted calculation | the order the SIESTA decks were written in and the way back to yours (§ 5.2) | `prep` *(Retires — decided 2026-10-14, not built: each deck states its own index, § 5.2; plan § 5ab R5)* |
-| `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks the finish reads (§ 5.3) | `prep` |
+| `atom-permutation.json` | the calculation root, and a copy in each attempt of a sorted calculation | the order the SIESTA decks were written in and the way back to yours (§ 5.2) | `prep` *(Retires — decided 2026-10-14, not built: each deck states its own order record, § 5.2; plan § 5ab R5)* |
+| `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks the finish reads (§ 5.3) | `prep` *(Decided 2026-10-14, not built: and its ATOM-METADATA block's order record — three blocks; `model/overview.md` § 2.2a, I5)* |
 | `<label>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 
 ### 6.10 Schema 8 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, not built)*
@@ -2518,7 +2534,7 @@ Each names where it holds and what pins it.
 | `molbuilder/siesta/vibration_deck.py` · `siesta/input.py::spec_for` · `siesta/layout.py::FC_SECTION` · `siesta/warm-files.toml` | the SIESTA deck (§ 5.3) |
 | `molbuilder/config/pyscf.py` · `config/siesta.py` · `data/catalogue.template.toml` | the fields and the catalogue rows of § 3 |
 | `molbuilder/transport/sort.py` · `molbuilder/atom_permutation.py` | `sort_by`, `SORT_KEYS`, `apply_order`, `write_permutation`; the record itself — `Permutation`, `read_permutation`, the file name and schema — in `atom_permutation`, which travels with the finish (§ 5.2) *(Decided 2026-10-14, not built: `write_permutation` retires; `Permutation` becomes the type of the structure's `atom_order`, read from a dict by its one reader, with `sorted_of` beside `original_of`; `sort_by` sets the field and refuses a remapped input — `model/overview.md` § 2.2a)* |
-| `molbuilder/deck_record.py` | the molbuilder blocks' grammar and their one JSON reader, with `extract_engine_offset` and `extract_vibration_record` — below `script_emit`, which writes the blocks, so the finish can read two of them beside the job (§ 5.3) |
+| `molbuilder/deck_record.py` | the molbuilder blocks' grammar and their one JSON reader, with `extract_engine_offset` and `extract_vibration_record` — below `script_emit`, which writes the blocks, so the finish can read two of them beside the job (§ 5.3) *(Decided 2026-10-14, not built: and the ATOM-METADATA block's order record, read by the one block reader with the order record's dict reader — `model/overview.md` § 2.2a, I5)* |
 | `molbuilder/validation/spectra.py` · `validation/__init__.py` | the two kinds' checks and the dispatch (§ 3.3) |
 | `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep, the relax stage's record into the deck's `vibration` block, the finish onto the stage's job; `init`'s kind gate; the bundle and the permutation brought into each attempt |
 | `molbuilder/runwrap.py` | the run wrapper — its banner names the held atoms from the deck's one spelling, and it runs the finish after a force-constant run; `VIBRATION_BUNDLE` / `VIBRATION_COMPANIONS`, what travels for the finish (§ 5.5); `PYSCF_BUNDLE` / `PYSCF_COMPANIONS`, what the PySCF script imports (`engines/pyscf.md` § 3); `bundles_for`, the one list of what travels beside a deck |
@@ -2551,7 +2567,7 @@ flowchart TB
   D --> PY; D --> SI; SI --> SUM; PY --> LOAD; SUM --> LOAD; LOAD --> VIEW
 ```
 
-*(Decided 2026-10-14, not built: the sort writes no file — the copy carries its index, and each deck states it; the finish reads it from its deck. `model/overview.md` § 2.2a, plan § 5ab.)*
+*(Decided 2026-10-14, not built: the sort writes no file — the copy carries its order record, and each deck states it; the finish reads it from its deck. `model/overview.md` § 2.2a, plan § 5ab.)*
 
 ### 8.3 The doors
 

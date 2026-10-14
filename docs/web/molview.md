@@ -497,13 +497,15 @@ above the drawing itself (§ 9.6).
 
 *(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
 § 2.2a, plan § 5ab R1: the structure carries its `atom_order` — null in the
-person's order, the index of an engine's order otherwise — with the rest of
-its metadata, and the model carries the metadata block **whole**, through one
-function each way: today `structureFromServer` and `structureForServer`
-(`model-jobs.js`) and `getStructure` (`model.js`) each list it field by field,
-and a field they do not list is dropped on every save. An editor's model
-never holds a remapped structure — the Molbuilder tab opens one restored, and
-says so (I8); a viewer's may, marked.)*
+person's order, the order record of an engine's order otherwise — with the
+rest of its metadata. **The per-atom halves stay folded onto the atoms** (the
+labels, each channel's values — what lets an edit move a label with its atom);
+**every other metadata key rides as one object the model carries and does not
+open**, through one function each way. Today `structureFromServer` and
+`structureForServer` (`model-jobs.js`) and `getStructure` (`model.js`) each
+list the keys by hand, and a key they do not list is dropped on every save.
+An editor's model never holds a remapped structure — the Molbuilder tab asks
+the load to restore, and says so (I8); a viewer's may, marked.)*
 
 ```mermaid
 classDiagram
@@ -1035,8 +1037,8 @@ change to the structure (`settle`), a label edit and a Results poll among
 them; a viewer holding a remapped structure shows its order from the
 structure's own `atom_order`, read at every settle, so the mark lasts exactly
 as long as the state. The Molbuilder tab's open of a remapped file says once,
-as a notice of that load, that it restored it — true of the load, and the
-editor then holds the person's order.)*
+as a notice of that load — `structure.restored`, info, naming the key — that it
+restored it: true of the load, and the editor then holds the person's order.)*
 
 Some answers come back with **notices**: `{severity, message, where, about}`, in plain language,
 about the structure the answer describes. They are not errors — an error fails
@@ -1958,9 +1960,10 @@ reachable without anyone remembering to add it here.
 
 ### 9.3 The model — the one place the structure lives
 
-*(Decided 2026-10-14, not built: `getStructure` returns the master copy's
-metadata block whole, through the same one function the translators use, not
-a field list of its own — `model/overview.md` § 2.2a, plan § 5ab R1.)*
+*(Decided 2026-10-14, not built: `getStructure` answers in this module's
+words, as § 9.3a says, and the metadata keys it does not open ride in it as
+the one object the translators carry — no field list of its own;
+`model/overview.md` § 2.2a, plan § 5ab R1.)*
 
 Every read of data returns a **copy**, so changing what you were given can never
 change the viewer. The two entries that are not data — `selection` and `view` —

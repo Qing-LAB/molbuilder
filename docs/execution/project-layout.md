@@ -992,7 +992,7 @@ What a run holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
 | moment | the run holds | `run_status` |
 |---|---|---|
-| prepared | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed — every one with its writer and door in § 5.3 | `pending` *(Decided 2026-10-14, not built: `atom-permutation.json` retires — each deck states its own index in its ATOM-METADATA block, `model/overview.md` § 2.2a, I5; plan § 5ab R5)* |
+| prepared | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed — every one with its writer and door in § 5.3 *(decided 2026-10-14, not built: retires — each deck states its own order record, `model/overview.md` § 2.2a, I5)* | `pending` |
 | launched — its send | + what it takes, copied in: the warm files and `.continued-from` if it continues, a transport rung's inputs and `.gathered-from` | `pending` until the record is written |
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
@@ -2652,7 +2652,7 @@ or a run said about itself; **result**, what a run produced.
 
 In the flat shape the root is also the run folder, so the files of § 5.2 and
 § 5.3 sit here too. *(Decided 2026-10-14, not built: `atom-permutation.json`
-retires — the index lives in each deck's ATOM-METADATA block and in a remapped
+retires — the order record lives in each deck's ATOM-METADATA block and in a remapped
 pair's sidecar, never a file of its own, so it can no longer be overwritten
 by the next prep in the flat shape; `model/overview.md` § 2.2a, I5 and I7;
 plan § 5ab R5.)*

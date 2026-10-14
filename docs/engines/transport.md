@@ -1425,7 +1425,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 
 | promise | why | checked how |
 |---|---|---|
-| the same atom count, in the **input order** — the script never sees the sorted copy; the sort runs per frame at prep, under one permutation for the whole group (`model/overview.md` § 2.2) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
+| the same atom count, in the **input order** — the script never sees the sorted copy; the sort runs per frame at prep, under one permutation for the whole group (`model/overview.md` § 2.2) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base *(Decided 2026-10-14, not built: each frame sorted by the one key from the input order, so every frame's deck states the same order record — `model/overview.md` § 2.2a, I5)* |
 | the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
 | **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, within `wizard.FROZEN_TOL_ANG` (10⁻³ Å), at the citation door |
@@ -1851,7 +1851,7 @@ its order — and a projected-DOS selection is mapped into the junction's order
 through its index (`sorted_of`) and its `outside_device` atoms back
 (`original_of`); the record's per-atom content and the data file's atom axis
 are in the person's order (I1). Today they are all in the junction's sorted
-order, named in words.)*
+order, which the data file states only in its atom axis's description.)*
 
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the
@@ -1958,7 +1958,7 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 | `energy_ev` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
 | `spin` | the spin channels TBtrans wrote, by the record's names — the one channel of a `non-polarized` run, or `up` and `down` |
 | `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
-| `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components *(Decided 2026-10-14, not built: on the person's side — the data file is a result molbuilder computes for the person, so its atom axis is in the person's order, restored through the junction's own index, and the record's per-atom content the same; the composed junction stays the engine's record, carrying its index in its sidecar; `model/overview.md` § 2.2a, I1; plan § 5ab R5)* |
+| `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components *(Decided 2026-10-14, not built: on the person's side — the data file is a result molbuilder computes for the person, so its atom axis is in the person's order, restored through the junction's own order record, and the record's per-atom content the same; the composed junction stays the engine's record, carrying its order record in its sidecar; `model/overview.md` § 2.2a, I1; plan § 5ab R5)* |
 | `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's `.TBT.nc` holds — those TBtrans was asked for (`TBT.T.Eig`), none where no file is read, nor for a polarized point, whose eigenchannels are one set per spin, in the record |
 | `rung` | the rungs that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names |
 | `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
@@ -2534,9 +2534,13 @@ geometry relaxation is refused**, as the condition above says, through the
 verdict `_classify_run` already reads; **a cited run's geometry crosses back
 first** — its relaxed structure and its starting geometry (the leads'
 *unmoved* gate compares the two), restored to the person's order through the
-run's own index by `_run_geometry`, the one door every reader of a cited run
-asks — and the composer sorts it for TranSIESTA from there (I3, I4). A cited
-pair is in the person's order already (I1).
+run's own order record by `_run_geometry`, the one door every reader of a
+cited run asks — and the composer sorts it for TranSIESTA from there (I3,
+I4); the composer's own maps by hand (the starting geometry indexed by
+`sorted_to_original`, the atom names a refusal gives through `atom_ids`) go
+through the order record's methods. A cited pair is in the person's order
+(I1) — though one saved before this rule from a reordered run's view cannot
+be told apart (I9).
 
 **One reader takes both kinds' settings** (`citation_defaults.citation_answers`):
 a cited run's deck through `contract_of` when the transport is described, a
@@ -4498,6 +4502,8 @@ flowchart TB
     REC -->|"the JUNCTION<br/>seed · device · transmission"| EM
     REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
 ```
+
+*(Decided 2026-10-14, not built: step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, plan § 5ab R3, R5.)*
 
 **Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
 later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,
