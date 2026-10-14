@@ -335,16 +335,18 @@
             // rendered.
             const worst = notices.some((n) => n && n.severity === "error")
                 ? "error" : "warn";
-            // WHO SPOKE is the door's: the cell gate on a hand-over, the
-            // description's own check on the transport describe, which has
-            // no Task setup to open next (`workflow.md` § 9, gates ② and ③).
+            // WHO SPOKE is the door's: on a hand-over, what the server said
+            // of the structure -- the cell gate, or a structure put back in
+            // your order (`model/overview.md` § 2.2a); the description's own
+            // check on the transport describe, which has no Task setup to
+            // open next (`workflow.md` § 9, gates ② and ③).
             // The findings themselves are the findings panel's, above.
             const count = (notices.length === 1 ? "one finding"
                            : notices.length + " findings");
             say(worst,
                 (isTransport ? described + " The description was checked: "
                              : "Wrote " + written.join(", ")
-                               + ". The cell was checked: ")
+                               + ". About the structure, ")
                 + count + " came back"
                 + (showFindings ? " — read them"
                                 : ", and this page has no findings panel "

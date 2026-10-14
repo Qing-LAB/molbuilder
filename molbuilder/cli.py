@@ -33,7 +33,7 @@ import click
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
-from .structure import Structure, atom_words, restored_said
+from .structure import Structure, atom_words
 
 
 # --------------------------------------------------------------------- #
@@ -928,13 +928,10 @@ def cmd_modify(input_path, output_path,
     n_in = struct.n_atoms
     # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): a file
     # in an engine's order is opened restored, and said.
-    restored_from = (struct.atom_order.key if struct.atom_order is not None
-                     else None)
-    if restored_from:
-        struct = struct.restored()
-        click.echo(restored_said("the input" if str(input_path) == "-"
-                                 else Path(input_path).name, restored_from),
-                   err=True)
+    struct, restored = struct.in_your_order(
+        "the input" if str(input_path) == "-" else Path(input_path).name)
+    if restored:
+        click.echo(restored, err=True)
 
     # THE ATOM INDICES TYPED, read once and agreed before anything acts.
     typed: list = []
@@ -950,7 +947,7 @@ def cmd_modify(input_path, output_path,
     if typed:
         _agree_to_atom_indices(struct, typed, auto_yes=auto_yes,
                                check_range=not op_types["--electrode"],
-                               restored=restored_from is not None)
+                               restored=restored is not None)
 
     try:
         if op_types["--delete"]:

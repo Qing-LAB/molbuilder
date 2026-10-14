@@ -626,11 +626,9 @@ def init_cmd(structure, bundle: str, shape: str,
             click.echo(line)
         # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md`
         # § 2.2a, I1): a file in an engine's order is restored, and said.
-        if whole.atom_order is not None:
-            from ..structure import restored_said
-            click.echo(restored_said(Path(structure).name,
-                                     whole.atom_order.key))
-            whole = whole.restored()
+        whole, restored = whole.in_your_order(Path(structure).name)
+        if restored:
+            click.echo(restored)
         if whole.n_frames > 1:
             from ..structure import frame_words
             click.echo(f"{Path(structure).name} holds {whole.n_frames} "

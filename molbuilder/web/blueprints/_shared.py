@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from flask import jsonify
 
 from molbuilder.structure import (
-    Structure, restored_said,
+    Structure,
 )
 from molbuilder.validation import validate_geometry
 from molbuilder.cell import resolve_and_check
@@ -1072,17 +1072,17 @@ def in_your_order(struct: Structure, what: str):
     it (``model/overview.md`` § 2.2a, I1, I8).  One in an engine's order --
     it carries its order record -- is restored through
     ``Structure.restored()`` and said in a ``structure.restored`` notice
-    naming the key; one in your order comes back as it is, nothing said.
+    naming the key (``Structure.in_your_order``); one in your order comes
+    back as it is, nothing said.
     Every web door that crosses back asks it: the load route for an editor,
     the save, the export, the hand-over.  ``what`` names the structure in the
     sentence -- the file, or "the structure"."""
-    if struct.atom_order is None:
+    struct, said = struct.in_your_order(what)
+    if said is None:
         return struct, []
     from molbuilder.issues import Issue
-    said = notices_for_report([Issue(
-        "info", restored_said(what, struct.atom_order.key),
-        "structure.restored")])
-    return struct.restored(), said
+    return struct, notices_for_report([Issue("info", said,
+                                             "structure.restored")])
 
 
 def checked_periodicity(struct):

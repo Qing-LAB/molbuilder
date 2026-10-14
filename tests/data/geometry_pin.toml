@@ -162,6 +162,13 @@ door = "load"
 unreadable = "the order record's two lists must each name every one of the 3 atoms once, and each undo the other"
 
 [[case]]
+name = "an order record whose atom index is not a whole number is refused, not rounded"
+pair = "remapped"
+sidecar = { atom_order = { key = "held-first", sorted_to_original = [2.9, 0, 1], original_to_sorted = [1, 2, 0] } }
+door = "load"
+unreadable = "an order record states its key and both directions as lists of whole atom indices"
+
+[[case]]
 name = "a viewer's save of a structure in an engine's order writes your order, and says so"
 pair = "remapped"
 door = "route_save"

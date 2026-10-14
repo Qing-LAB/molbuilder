@@ -183,8 +183,9 @@ is that its two directions cannot disagree because they share one base.
 > order record, `sort_by` setting it and refusing a remapped input,
 > `restored()`, the refusals, the codec's guard and its one door for an
 > engine's record, sidecar v14; the load route's `restore: true` and
-> `molbuilder modify` opening restored (I8); the browser carrying the field
-> whole.
+> `molbuilder modify` opening restored (I8); the save, export and hand-over
+> routes and `jobset init` restoring before they write (I1), each saying so
+> through `Structure.in_your_order`; the browser carrying the field whole.
 
 **Words.** *An atom's index* is its count from 0, as everywhere in this
 document (§ 2). **The order record** is what maps one order of a structure's

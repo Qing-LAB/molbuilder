@@ -1639,6 +1639,17 @@ class Structure:
         return self._reordered(self.atom_order.original_to_sorted,
                                atom_order=None)
 
+    def in_your_order(self, what: str) -> "Tuple[Structure, Optional[str]]":
+        """``(structure, said)``: this structure in the person's order, and
+        the sentence a door says of it -- :func:`restored_said`, naming
+        ``what`` and the key -- or ``None`` when it was in their order
+        already (``model/overview.md`` § 2.2a).  Every door that crosses
+        back and says so asks this: the editors, the write doors, the
+        addition of a merge."""
+        if self.atom_order is None:
+            return self, None
+        return self.restored(), restored_said(what, self.atom_order.key)
+
     def _reordered(self, order: Sequence[int], **also) -> "Structure":
         """The reorder :meth:`take` and :meth:`restored` share."""
         n = self.n_atoms

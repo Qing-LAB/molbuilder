@@ -53,6 +53,28 @@ class PermutationError(ValueError):
     The message names the file, ready to surface verbatim."""
 
 
+def _two_lists(o2s, s2o, source: str) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
+    """THE ONE CHECK of an order record's two lists, for both its readers
+    (:meth:`Permutation.from_dict`, :func:`read_permutation`): each a list of
+    whole atom indices, each naming every one of its atoms once, each undoing
+    the other.  Refused naming ``source``."""
+    def indices(v):
+        if not isinstance(v, (list, tuple)) or not all(
+                isinstance(i, int) and not isinstance(i, bool) for i in v):
+            raise PermutationError(
+                f"{source}: an order record states its key and both "
+                f"directions as lists of whole atom indices")
+        return tuple(v)
+    o2s, s2o = indices(o2s), indices(s2o)
+    n, every = len(s2o), list(range(len(s2o)))
+    if sorted(s2o) != every or sorted(o2s) != every or any(
+            s2o[o2s[i]] != i for i in range(n)):
+        raise PermutationError(
+            f"{source}: the order record's two lists must each name every "
+            f"one of the {n} atoms once, and each undo the other")
+    return o2s, s2o
+
+
 @dataclass(frozen=True)
 class Permutation:
     """A recorded permutation, read back -- the return leg of § 2.2.
@@ -120,29 +142,16 @@ class Permutation:
                     f"{source}: an order record holds key, "
                     f"sorted_to_original and original_to_sorted; it also "
                     f"carries {stray!r}")
-            try:
-                perm = cls(
-                    original_to_sorted=tuple(int(i) for i in
-                                             d["original_to_sorted"]),
-                    sorted_to_original=tuple(int(i) for i in
-                                             d["sorted_to_original"]),
-                    key=d.get("key"))
-            except (KeyError, TypeError, ValueError) as exc:
-                raise PermutationError(
-                    f"{source}: an order record states its key and both "
-                    f"directions as lists of atom indices ({exc})") from exc
+            o2s, s2o = _two_lists(d.get("original_to_sorted"),
+                                  d.get("sorted_to_original"), source)
+            perm = cls(original_to_sorted=o2s, sorted_to_original=s2o,
+                       key=d.get("key"))
         if perm.key not in SORT_KEY_NAMES:
             raise PermutationError(
                 f"{source}: the order record's key {perm.key!r} is not one of "
                 f"{', '.join(SORT_KEY_NAMES)}")
         n = perm.n_atoms
-        o2s, s2o = perm.original_to_sorted, perm.sorted_to_original
-        every = list(range(n))
-        if sorted(s2o) != every or sorted(o2s) != every or any(
-                s2o[o2s[i]] != i for i in range(n)):
-            raise PermutationError(
-                f"{source}: the order record's two lists must each name every "
-                f"one of the {n} atoms once, and each undo the other")
+        _two_lists(perm.original_to_sorted, perm.sorted_to_original, source)
         if n_atoms is not None and n != n_atoms:
             raise PermutationError(
                 f"{source}: the order record is over {n} atoms; the structure "
@@ -197,13 +206,8 @@ def read_permutation(directory) -> Permutation:
     if d.get("schema") != PERMUTATION_SCHEMA:
         raise PermutationError(f"{p}: schema {d.get('schema')!r} is not "
                                f"{PERMUTATION_SCHEMA!r}")
-    o2s = tuple(int(i) for i in d["original_to_sorted"])
-    s2o = tuple(int(i) for i in d["sorted_to_original"])
-    n = len(s2o)
-    if sorted(s2o) != list(range(n)) or len(o2s) != n or any(
-            s2o[o2s[i]] != i for i in range(n)):
-        raise PermutationError(f"{p}: the two directions are not inverse "
-                               f"bijections over {n} atoms")
+    o2s, s2o = _two_lists(d.get("original_to_sorted"),
+                          d.get("sorted_to_original"), str(p))
     return Permutation(original_to_sorted=o2s, sorted_to_original=s2o,
                        key=str(d.get("key", "") or ""))
 

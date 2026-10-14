@@ -52,7 +52,7 @@ import numpy as np
 
 from . import cell as _cell
 from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
-                        remap_annotations, restored_said)
+                        remap_annotations)
 
 
 # --------------------------------------------------------------------- #
@@ -1138,10 +1138,9 @@ def append_structure(
     # THE ADDITION IN YOUR ORDER (`model/overview.md` § 2.2a): one in an
     # engine's order is restored before it joins, since a merge joins
     # structures in the person's order (`Structure.concat`) -- and said.
-    incoming = addition.restored()
-    if addition.atom_order is not None:
-        notes.append(restored_said("the added structure",
-                                   addition.atom_order.key))
+    incoming, said = addition.in_your_order("the added structure")
+    if said:
+        notes.append(said)
     if center and incoming.n_atoms:
         incoming = incoming.translated(
             -np.asarray(incoming.positions, dtype=float).mean(axis=0))
