@@ -531,12 +531,9 @@ def _emit_initial_state() -> List[str]:
                " <x:14.8f> <y:14.8f> <z:14.8f>'  in Å")
     out.append("#   joined with '\\n'; SHA-256 of UTF-8 bytes.")
     out.append("#")
-    out.append("# Recorded in the JSON under 'structure_hash' so a future")
-    out.append("# loader can detect a mismatch between the saved spectrum")
-    out.append("# and the user's current geometry (e.g. you re-loaded a file")
-    out.append("# and edited a coordinate -- the spectrum no longer applies).")
-    out.append("# The hash is provenance / audit data; no production code")
-    out.append("# enforces it today.")
+    out.append("# Recorded in the JSON under 'structure_hash'; a displacement")
+    out.append("# sweep refuses two stages whose hashes differ")
+    out.append("# (engines/vibration.md 4.3).")
     # ONE spelling of the hash, the artifact writer's own, imported from
     # mb_pyscf.pyz so the SIESTA derivation and this deck cannot compute two
     # different ones.

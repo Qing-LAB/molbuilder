@@ -608,13 +608,15 @@ five correct constrained minima, and the warning reached the web UI.
 
 **The structure hash** (`structure_hash`, `sha256:…`) is computed by
 `sidecars.spectra.structure_hash_text` over `n_atoms`, the label and one line
-per input atom, imported by the deck from `mb_pyscf.pyz`, so the SIESTA
-derivation and the PySCF deck cannot hash differently. It is provenance for a reader; nothing enforces
-it — its docstring's promise that *the parser can refuse to merge results from
-a different molecule* is not kept, because it carries the job name as its
-second line and never matches the codec's own pair hash, which is over the
-document's bytes, a different scheme. The identity rule of § 10 (V1.9)
-replaces it.
+per atom in the input order, imported by the deck from `mb_pyscf.pyz`, so the
+SIESTA derivation and the PySCF deck hash with one function. Each hashes its
+own geometry: the SIESTA derivation the force-constant reference geometry, put
+back in the input order; the PySCF deck its input atoms, before any relaxation
+the deck runs. A displacement sweep compares it and refuses two stages whose
+hashes differ (§ 5.9); nothing else does. It carries the job name as its
+second line, and it is not the pair's geometry hash
+(`model/structure-molstruct.md` § 3), a different scheme. The identity rule
+of § 10 (V1.9) replaces it.
 
 ### 4.4 Phase 2 — the Hessian over the free atoms
 
@@ -1952,7 +1954,7 @@ refused by name.
 | key | written by | meaning |
 |---|---|---|
 | `schema_version` · `engine` · `engine_version` · `molbuilder_version` · `timestamp` | both | provenance; `engine` is `pyscf` or `siesta` |
-| `structure_hash` | both, through one function (§ 4.3) | `sha256:` over `n_atoms`, the label and the input atom lines — a reader's provenance, not a gate |
+| `structure_hash` | both, through one function (§ 4.3) | `sha256:` over `n_atoms`, the label and the atom lines in the input order — a displacement sweep refuses two stages whose hashes differ (§ 5.9) |
 | `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **input** order (SIESTA: inverted through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise |
 | `equilibrium.{scf_energy_eh, mo_energies_eh, homo_idx}` | PySCF | the reference SCF and its orbital ladder — the **energy subgroup** of the equilibrium block, which travels whole or not at all: **`null` in all three on SIESTA** (a periodic engine has a Fermi level, not a HOMO), and `null` in one slot only is a broken file. The two geometry keys below are separate and always present |
 | `equilibrium.{elements, positions_ang}` | both | the geometry the Hessian is taken at (§ 4.2) — what the animation draws from |
@@ -2190,7 +2192,7 @@ Each names where it holds and what pins it.
 | I12 | **A cost claim is read from the code** (R8): the advisories say what the code skips, and what it cannot | `validation/spectra.py`; § 4.4, § 5.7 | review |
 | I13 | **The Methods paragraph is composed once**, route-neutral before the run, the route added at load; the count it states is R2's, and the level of theory `is_dft`'s | `spectra/methods.py`, `_loaded` in `web/blueprints/spectra.py` | `tests/spectra/test_methods.py`; the IR-only and solvated runs assert the text; `test_a_hartree_fock_deck_names_no_functional` the level of theory |
 | I14 | **Absent is never zero** in the file, on both engines; the equilibrium energy subgroup travels whole or not at all | `SpectraResults.__post_init__`, `spectra/vibrational_analysis.py` | `tests/spectra/test_types.py`, the SIESTA fixture test |
-| I15 | **One hash**: `structure_hash_text` has one home, and the deck imports it | `sidecars/spectra.py` | review (the SIESTA and PySCF files hash the same structure identically) |
+| I15 | **One hash**: `structure_hash_text` has one home, and the deck imports it | `sidecars/spectra.py` | review (the SIESTA derivation and the PySCF deck call the one function) |
 | I16 | **The derived per-mode values are written by one function, beside what they come from, on both engines, and checked on read**; the element shares at load, never in the file (§ 6.6) | `spectra/derived.py`, `SpectraResults` (the check), `_loaded` | `tests/spectra/test_activity.py`, `test_motion_share.py`; the end-to-end runs read them from each engine's file |
 | I17 | **Every catalogue citation resolves** in `science/references.bib`, and every key the prose cites is an entry | the catalogue-refs test | `tests/spectra/test_methods.py` |
 | I18 | **No second producer**: a deck is written by `prep` from a description, through `spec_for`; there is no engine verb and the tab renders nothing | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 1 | review |

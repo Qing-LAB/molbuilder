@@ -567,9 +567,10 @@ class SpectraResults:
     the UI which modes WILL get ES data so it can show progress
     ("3 of 10 modes done").
 
-    Run identity is captured by ``structure_hash`` (SHA-256 of the
-    canonical XYZ of the input structure) so the parser can refuse
-    to merge results from a different molecule; ``engine`` +
+    ``structure_hash`` (``sidecars.spectra.structure_hash_text``) names
+    the geometry the result was taken from; a displacement sweep refuses
+    two stages whose hashes differ (`engines/vibration.md` § 4.3);
+    ``engine`` +
     ``engine_version`` + ``molbuilder_version`` give the software
     stack used; ``timestamp`` is ISO-8601 UTC.
     """
@@ -581,7 +582,7 @@ class SpectraResults:
     molbuilder_version:   str
     timestamp:            str                    # ISO-8601 UTC
 
-    structure_hash:       str                    # "sha256:..." of canonical XYZ
+    structure_hash:       str                    # structure_hash_text
     n_atoms_total:        int
     free_atom_idxs:       List[int]              # 0-based, complement of frozen
     frozen_atom_idxs:      List[int]              # 0-based
