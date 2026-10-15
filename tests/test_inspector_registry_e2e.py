@@ -271,10 +271,7 @@ class TestInspectorListenerTeardown:
             f"mount() had registered (net) {added_by_mount} -- a "
             f"listener was leaked.  Likely cause: an "
             f"``addEventListener`` call inside mountInspector that "
-            f"escaped the _on() helper (see "
-            f"tests/spectra/test_blueprint.py::"
-            f"TestSpectraDisposeContract::"
-            f"test_all_element_listeners_route_through_on_helper)."
+            f"escaped the _on() helper."
         )
 
 

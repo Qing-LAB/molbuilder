@@ -26,14 +26,10 @@ against Flask's URL map below.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# The migrated web API contract is the authoritative route-count document.
-WEB_API_MD    = REPO_ROOT / "docs" / "web" / "web-api.md"
 
 
 class TestKnownAdvisorySitesAreHTTP200:
@@ -104,40 +100,3 @@ class TestKnownServerFaultSitesAreHTTP500:
         assert "the builder fell over" in body["error"], body
 
 
-class TestRouteCountDocMatchesReality:
-    """The ``## 3. Endpoint index — all NN routes`` header in
-    web-api.md must reflect what Flask's URL map actually has —
-    otherwise the doc silently goes stale every time a route is
-    added or removed.
-
-    The regex anchors on the heading text rather than its number, so a
-    renumber does not break the test that catches the count.
-    """
-
-    def test_route_count_in_section_2_header_matches_app(self):
-        pytest.importorskip("flask")
-        from molbuilder.web.app import create_app
-        app = create_app(config={"rate_limit": {"enabled": False}})
-        # ``static`` is Flask's auto-generated ``/static/<path>`` rule;
-        # we exclude it because web-api.md only documents API +
-        # page routes (not the static-file serving rule).
-        actual = sum(
-            1 for r in app.url_map.iter_rules() if r.endpoint != "static"
-        )
-        text = WEB_API_MD.read_text()
-        m = re.search(
-            r"##\s+\d+\.\s+Endpoint index\s+—\s+all\s+(\d+)\s+routes",
-            text,
-        )
-        assert m is not None, (
-            "could not locate the 'Endpoint index — all NN routes' header "
-            "in docs/web/web-api.md.  Did the heading rename?  Update "
-            "this test's regex to match."
-        )
-        doc_count = int(m.group(1))
-        assert doc_count == actual, (
-            f"docs/web/web-api.md says {doc_count} routes; "
-            f"Flask's URL map has {actual}.  Update the heading to "
-            f"'## 3. Endpoint index — all {actual} routes' and verify "
-            f"any new routes are documented in the section bodies."
-        )

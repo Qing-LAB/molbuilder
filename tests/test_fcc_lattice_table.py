@@ -42,15 +42,6 @@ def _data():
     return json.loads(JSON_PATH.read_text())
 
 
-def test_format_is_v2():
-    """JSON declares v2.  Catches accidental downgrade to v1."""
-    fmt = _data().get("_format", "")
-    assert "v2" in fmt or "v3" in fmt, (
-        f"fcc_lattice.json must be format v2 or v3; got {fmt!r}.  "
-        f"v1 'a'-only schema is no longer supported."
-    )
-
-
 def test_every_metal_has_the_two_literature_references():
     """All 6 supported metals carry a_experimental and a_pbe."""
     metals = _data()["metals"]
@@ -105,23 +96,6 @@ def test_ni_pbe_is_spin_treatment():
         f"Ni a_pbe = {a_pbe_ni} is suspiciously small; the "
         f"non-spin-polarized value is ~3.43 A.  Use the spin-"
         f"polarized number (~3.52 A) per Janthon 2013 / Csonka 2009")
-
-
-def test_sources_block_present():
-    """The _sources block exists and carries citations for each XC.
-
-    A missing citation block means the UI tooltip would render
-    "(no source)" — guard against silent drift away from the canonical
-    reference.
-    """
-    sources = _data().get("_sources", {})
-    for key in ("experimental", "pbe"):
-        assert key in sources, f"_sources missing entry for {key!r}"
-        assert sources[key].get("citation") or sources[key].get("notes"), (
-            f"_sources.{key} carries neither citation nor notes")
-    # No source block for a per-run measurement: a bulk-cell relax in one
-    # SIESTA + PSML setup is a per-run fact, never a shared reference.
-    assert "pbe_siesta_psml" not in sources
 
 
 def test_a_v2_file_still_loads(tmp_path, monkeypatch):

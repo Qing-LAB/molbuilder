@@ -21,18 +21,11 @@ import pytest
 
 ROOT   = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
-SHEET  = STATIC / "task-setup/style.css"
 
 
 # --------------------------------------------------------------------- #
 #  The page                                                             #
 # --------------------------------------------------------------------- #
-
-def _declarations(css: str) -> list[tuple[str, str]]:
-    """(property, value) pairs, comments stripped."""
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return [(m.group(1).strip(), m.group(2).strip())
-            for m in re.finditer(r"([a-z-]+)\s*:\s*([^;{}]+)[;}]", css)]
 
 
 def test_the_tab_is_in_the_roster_and_routes():
@@ -1001,103 +994,6 @@ def test_the_handover_door_refuses_transport_by_name(web_client):
 def test_describe_attempt_stays_inside_the_tree(web_client):
     r = web_client.get("/api/transport/describe_attempt?path=../../etc")
     assert r.status_code == 400
-
-
-def test_the_sheet_writes_no_raw_palette_colour():
-    """`ui-contract.md` § 2: components never write a raw palette colour."""
-    offenders = [f"{p}: {v}" for p, v in _declarations(SHEET.read_text())
-                 if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", v)]
-    assert not offenders, (
-        "raw colours in task-setup/style.css — use a var(--token) from "
-        f"lib/tokens.css: {offenders}")
-
-def test_the_sheet_takes_spacing_and_type_from_the_scales():
-    """No magic numbers for spacing, radius or type size.
-
-    The `--space-*` / `--text-*` / `--radius*` scales exist so the rhythm is
-    uniform and retunable in one file.  Exempt: `0`, and the handful of
-    properties whose value is genuinely not a scale step (border widths,
-    percentages, `1px` hairlines, and the media-query breakpoints, which are
-    not declarations at all).
-    """
-    scale_props = (
-        "padding", "padding-top", "padding-right", "padding-bottom",
-        "padding-left", "margin", "margin-top", "margin-right",
-        "margin-bottom", "margin-left", "gap", "row-gap", "column-gap",
-        "font-size", "border-radius", "top",
-    )
-    offenders = []
-    for prop, val in _declarations(SHEET.read_text()):
-        if prop not in scale_props:
-            continue
-        for tok in val.split():
-            if re.fullmatch(r"-?\d*\.?\d+(px|rem|em)", tok) and not tok.startswith("0"):
-                offenders.append(f"{prop}: {val}")
-                break
-    assert not offenders, (
-        "magic numbers in task-setup/style.css — use --space-*, --text-* or "
-        f"--radius*: {offenders}")
-
-
-def test_the_sheet_names_no_token_that_does_not_exist():
-    """**A gap the raw-colour test leaves open, found 2026-08-27.**
-
-    `test_the_sheet_writes_no_raw_palette_colour` forbids a hex literal —
-    so `var(--danger, #e06c6c)` fails it and `var(--danger)` passes. But
-    `--danger` is defined nowhere: the palette calls it `--error`. A
-    `var()` naming a token that does not exist resolves to *nothing*, so
-    the colour is simply unset and the rule silently does not apply.
-
-    Passing the first test made the second failure invisible, which is the
-    shape worth guarding: the rule that catches the loud mistake let the
-    quiet one through.
-    """
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
-    defined = set()
-    for f in root.rglob("*.css"):
-        defined |= set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", f.read_text(),
-                                  re.M))
-    sheet = (root / "task-setup/style.css").read_text()
-    # strip comments first -- prose about `var(--token)` is not a usage
-    sheet = re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
-    used = set(re.findall(r"var\((--[a-z0-9-]+)", sheet))
-    missing = sorted(used - defined)
-    assert not missing, (
-        f"task-setup/style.css names token(s) nothing defines: {missing}. "
-        f"A var() with no definition resolves to nothing, so the property "
-        f"silently does not apply.")
-
-def test_every_page_class_in_the_markup_is_styled_somewhere():
-    """**A class that matches no rule fails exactly like a token that names
-    nothing: silently.** Found in the browser 2026-08-27 — renaming a card
-    fixed its ids but left three classes as `ts-dest-*` while the sheet had
-    moved to `.ts-reports-*`, so the layout rules simply did not apply and
-    the inputs rendered at their default width.
-
-    Only this page's own prefixes are checked: `card`, `hint`, `btn` and
-    friends are the app's and live elsewhere.
-    """
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "molbuilder/web"
-    html = (root / "templates/task_setup.html").read_text()
-    used = set()
-    for attr in re.findall(r'class="([^"{}]+)"', html):
-        used |= {c for c in attr.split() if c.startswith(("ts-", "ps-"))}
-    styled = set()
-    for f in (root / "static").rglob("*.css"):
-        styled |= set(re.findall(r"\.((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
-    # classes the JS toggles rather than the sheet naming them directly
-    from_js = set()
-    for f in (root / "static").rglob("*.js"):
-        from_js |= set(re.findall(r"[\"'`]((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
-    orphans = sorted(used - styled - from_js)
-    assert not orphans, (
-        f"class(es) in task_setup.html that no stylesheet and no script "
-        f"ever names: {orphans}. A class matching nothing applies nothing, "
-        f"and says so nowhere.")
 
 
 # --------------------------------------------------------------------- #

@@ -1857,8 +1857,7 @@ These stop the next round of parallel parse paths:
    lint-enforced.)
 2. **The block readers do NO I/O.** They take a string; a path-taking caller
    reads the file and passes the body — some callers hold the text from a
-   request body rather than a path. Guarded by
-   `test_script_emit.py::test_the_block_readers_do_no_io`.
+   request body rather than a path. Held by review.
 3. **FileParsers do not spawn subprocesses, network calls, or threads** —
    parsing is pure local-file I/O; background work belongs to the JobMonitor.
 4. **`ParseResult` subclasses are frozen.** Never mutate after construction; use

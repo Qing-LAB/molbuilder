@@ -903,21 +903,6 @@ def test_the_mechanism_never_looks_inside_a_state():
     assert out["wrote"][1] == "a string" and out["wrote"][2] == [1, 2, 3]
 
 
-def test_the_history_draws_no_control_of_its_own():
-    """§ 13.3: "a mounted viewer draws no save-state or retract button of its
-    own, and the calls work all the same when a host wires its own."
-
-    § 11.2: saving a state carries no decision, and a host knows better than a
-    viewer when it is worth offering one.
-    """
-    code = (MODULE_DIR / "history.js").read_text()
-    for token in ("document.", "createElement", "addEventListener", "innerHTML"):
-        assert token not in code, (
-            f"the history reaches the DOM ({token}) — it is offered as calls, "
-            "not as a control"
-        )
-
-
 # ---------------------------------------------------------------------------
 # § 11.2 — a read waits for a write that has not finished
 # ---------------------------------------------------------------------------

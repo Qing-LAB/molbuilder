@@ -898,22 +898,6 @@ def test_the_engine_offers_no_read_of_the_data_or_the_frame():
     )
 
 
-def test_the_engine_runs_no_change_notification_of_its_own():
-    """§ 7 level 5's third never: "run a change notification of its own."
-
-    Notifying is the model's job (§ 6.4), and a second notifier is how two
-    subscribers come to see different states.
-    """
-    code = ENGINE.read_text()
-    for token in ("subscribe", "addEventListener", "notify", "listeners"):
-        assert token not in code, (
-            f"the renderEngine has a notification mechanism ({token}) — telling "
-            "anyone is the model's job"
-        )
-
-
-
-
 def test_one_menu_two_owners():
     """§ 8.5: the View menu writes to two different stores, and § 9.6's question
     is what sorts them — does working out what a frame contains require reading

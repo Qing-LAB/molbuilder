@@ -967,20 +967,6 @@ def test_states_honours_the_limit_the_python_example_uses(calc):
         "a limit past the end is not an error")
 
 
-def test_no_python_caller_can_ask_for_a_text_only_restore(calc):
-    """A4 names **three** surfaces, and this is the third.
-
-    The CLI flag and the route field are each tested on their own surface.
-    For the Python keyword **the absence of the parameter is the rule**,
-    exactly as it is for the classification's directory argument (S1c).
-    """
-    import inspect
-    params = set(inspect.signature(Repo.restore).parameters)
-    assert params == {"self", "state", "force"}, (
-        f"Repo.restore takes {sorted(params)}; a restore returns the whole "
-        f"folder or it does not happen (A4)")
-
-
 def test_a_missing_git_is_its_own_error_and_says_how_to_fix_it(calc,
                                                                monkeypatch):
     """One of the five subclasses § 15 names.

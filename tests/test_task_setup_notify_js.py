@@ -313,8 +313,6 @@ def test_ticking_nothing_writes_an_EMPTY_LIST_not_nothing():
     assert doc["notify"]["channels"] == []
 
 
-
-
 def test_a_channels_secret_never_reaches_the_description():
     """A channel's URL and signing key must not travel in `task.json`.
 
@@ -344,10 +342,6 @@ def test_a_channels_secret_never_reaches_the_description():
             f"{secret!r} reached task.json -- a description travels to a "
             f"cluster and into a citation; the channel's credentials must "
             f"not go with it")
-
-
-
-
 
 
 def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
@@ -416,27 +410,6 @@ def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
     assert out["afterSync"] == out["afterPatch"], (
         "serialising the model destroyed what the card had just written -- "
         "`patchDoc` did not move `_task` with the buffer")
-
-
-def test_no_two_elements_share_an_id_in_the_task_setup_page():
-    """**Found in the browser, 2026-08-27, and it fails in silence.**
-
-    A `ts-reports-card` was first written as `ts-dest-card` — a name
-    already taken by the *Where this saves* card, where "dest" means the
-    destination FOLDER. `getElementById` returns the first match, so the
-    new card's JS would have read and written the wrong section entirely,
-    with no error anywhere.
-
-    Duplicate ids are invalid HTML and this is the failure mode: not a
-    crash, but the wrong element quietly answering.
-    """
-    import re
-    from pathlib import Path
-    html = (Path(__file__).resolve().parents[1]
-            / "molbuilder/web/templates/task_setup.html").read_text()
-    ids = re.findall(r'\bid="([^"]+)"', html)
-    dupes = sorted({i for i in ids if ids.count(i) > 1})
-    assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
 
 
 def test_a_card_that_could_not_ask_keeps_the_descriptions_report_list():

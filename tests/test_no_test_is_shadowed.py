@@ -21,7 +21,6 @@ import ast
 from collections import defaultdict
 from pathlib import Path
 
-import pytest
 
 TESTS = Path(__file__).resolve().parent
 
@@ -127,49 +126,6 @@ def test_the_scan_catches_a_shadowed_definition():
 # ---------------------------------------------------------------------------
 #  The same defect, in the product
 # ---------------------------------------------------------------------------
-
-PKG = Path(__file__).resolve().parents[1] / "molbuilder"
-
-
-def test_no_definition_in_the_package_is_shadowed():
-    """The rule above is about paste artefacts, not about tests.
-
-    On 2026-09-04 the identical artefact landed in the PRODUCT: a botched revert left `parse/contract.py` with two
-    `_siesta_contract`, two `_ENGINES`, two `_STDOUT_SUFFIX` and two
-    `engine_of` -- 74 dead lines, one of them an `engine_of` carrying
-    `contract_of`'s body under `engine_of`'s docstring.  Every test passed,
-    because Python's last definition wins and the last one was right.
-
-    A reader editing the dead copy sees no change; a reader deleting "the
-    duplicate" has even odds of deleting the live one and shipping an
-    `engine_of` that returns a dict.  pyflakes reports it, and pyflakes is
-    not in CI -- so the guard belongs here, where the suite runs.
-    """
-    findings: list[str] = []
-    scanned = 0
-    for path in sorted(PKG.rglob("*.py")):
-        if "vendor" in path.parts:
-            continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (SyntaxError, UnicodeDecodeError):    # pragma: no cover
-            continue
-        scanned += 1
-        for name, lines in _shadowed(tree):
-            findings.append(
-                f"  {path.relative_to(PKG)}::{name}  "
-                f"defined at lines {', '.join(map(str, lines))}")
-
-    # Same anti-vacuity guard as above: a scan that reaches nothing is
-    # indistinguishable from a clean package.
-    assert scanned >= 100, f"only {scanned} package modules parsed -- blind"
-
-    assert not findings, (
-        "these names are defined more than once in one scope, so only the "
-        "LAST definition exists.  Every earlier one is dead code that reads "
-        "as live:\n\n" + "\n".join(findings)
-        + "\n\nDelete the dead copy -- and check WHICH one is dead before "
-          "deleting, because the survivor is the last, not the first.")
 
 
 def test_the_package_scan_spares_a_property_setter_pair():

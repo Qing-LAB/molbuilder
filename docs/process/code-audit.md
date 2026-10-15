@@ -229,15 +229,12 @@ module binds — `from <module> import *` dies on a name it does not have
 (`molbuilder.envs` named `subprocess` and `shutil` there while importing
 neither).
 
-**This class is the one that stays a test**, and `testing.md` § 3a draws the
-line: a *property of the shipped artifact* is a legitimate thing to assert —
-it names no implementation and survives any rewrite that keeps the property —
-while *the presence of one line of implementation* is a pin. A set difference
-over tokens is the first; `"saveState(" in body` is the second. Seven such
-checks live in `tests/test_task_setup_tab.py` and
-`tests/test_task_setup_notify_js.py`; they were deleted in the first pass of
-this clean-up and restored, because "reads a shipped file" is not the test —
-*what it asks of it* is.
+**This class is review's, never a test's** *(the user, 2026-10-15: "tests
+focus on outcome. period")*: a test runs the code and checks what came out,
+and one that reads a source file, a sheet or a template for what is in it is
+retired. Where a rule's break reaches a person — an id twice on a page, a
+control with no handler — the test asks the page as served, as
+`tests/test_page_ids_unique.py` does.
 
 What review adds here is the half a set difference cannot see: whether the
 thing a name resolves TO is the right thing. A class that matches a rule

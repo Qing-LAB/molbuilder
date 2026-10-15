@@ -160,36 +160,3 @@ def test_generic_error_preserves_network_error_label():
     assert out.startswith("Network error:"), (
         f"Generic Error must yield 'Network error:'; got {out!r}"
     )
-
-
-# --------------------------------------------------------------------- #
-#  Source-text guard: the formatter has exactly one home                #
-# --------------------------------------------------------------------- #
-
-
-def test_the_formatter_has_exactly_one_home():
-    """No file spells the SyntaxError rule for itself.
-
-    A copy is what this catches: any active source that branches on
-    ``e.name === "SyntaxError"`` to build a message is a second opinion
-    about what a failed fetch means.  `lib/projects/api.js` is exempt by
-    name -- ``_fetchEnvelope`` makes the same distinction while normalising
-    a whole response into ``{ok, ...}``, which is an envelope contract
-    rather than this sentence, and folding them together would put a
-    response shape and a message in one function.
-    """
-    import re as _re
-    static = _ROOT / "molbuilder/web/static"
-    exempt = {"lib/fetch-error.js", "lib/projects/api.js"}
-    offenders = []
-    for js in sorted(static.rglob("*.js")):
-        rel = js.relative_to(static).as_posix()
-        if rel in exempt or "vendor/" in rel:
-            continue
-        body = "\n".join(l for l in js.read_text(encoding="utf-8").splitlines()
-                         if not l.strip().startswith(("*", "//", "/*")))
-        if _re.search(r'name\s*===\s*"SyntaxError"', body):
-            offenders.append(rel)
-    assert not offenders, (
-        "these files build their own non-JSON message instead of calling "
-        "molbuilder.fetchError.format(): " + ", ".join(offenders))

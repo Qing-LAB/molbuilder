@@ -48,14 +48,9 @@ def test_a_sweep_proposes_no_wall_and_no_memory():
     by nobody.  The wall and the memory are the person's to state
     (`execution/submission.md` S1, S2).
     """
-    import molbuilder.bench.result as _r
-    assert not hasattr(_r, "recommend_resources"), (
-        "the benchmark must not size a wall or a memory")
-
     res = build_bench_result(
         _pts(), environment={"schema": "molbuilder/environment@1",
                              "scheduler": "slurm"}, system={})
-    assert not hasattr(res, "recommend")
     assert "recommend" not in res.to_dict()
 
 

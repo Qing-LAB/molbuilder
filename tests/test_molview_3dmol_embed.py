@@ -27,7 +27,6 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
-from tests._molview_sources import module_code, module_files
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -485,94 +484,9 @@ def test_the_window_clears_to_the_cards_ground_and_a_redraw_keeps_it():
     assert out["chosen"] == "#ff0000", "a chosen background did not reach the drawing"
 
 
-def test_no_layer_names_a_colour_for_the_window():
-    """The ground has ONE home, and it is the stylesheet (§ 5.2 — a second copy
-    is the one somebody forgets). The layers above may pass a colour a USER
-    chose; none of them may carry a default of its own.
-
-    This is written as a source check because the defect is invisible at runtime:
-    two agreeing literals behave exactly like one value until one of them moves.
-    """
-    offenders = {}
-    for name, path in module_files().items():
-        if name == "3dmol-embed.js":
-            continue                      # the sealed layer holds the last resort
-        code = "\n".join(
-            line for line in path.read_text().splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
-        hits = [word for word in ('"white"', "'white'", "backgroundColor") if word in code]
-        if hits:
-            offenders[name] = hits
-    assert offenders == {}, (
-        f"a layer above the drawing names the window's own colour: {offenders}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # § 4, § 5.3, § 6.7 — what the module as a whole must not contain
 # ---------------------------------------------------------------------------
-
-def _module_sources():
-    """The module's layers, plus the stylesheet — which is not reachable by
-    import but is unmistakably the module's (§ 8.1–8.3 lean on it)."""
-    return sorted(list(module_files().values()) + [MODULE_DIR / "molview.css"])
-
-
-
-
-def _module_code():
-    return module_code()
-
-
-def test_the_module_owns_no_file_route():
-    """§ 6.7: "MolView owns no file route" — files on disk are the projects
-    module's. `exportFile()` returns bytes and stops there (§ 11.3: "neither has
-    MolView writing a file").
-
-    Note what this does NOT ban: the network. § 11.1 lists the routes MolView
-    calls, so a blanket ban on `fetch` would contradict the contract — see
-    ``test_the_module_calls_only_the_routes_the_contract_describes``.
-    """
-    offenders = {}
-    for name, code in _module_code().items():
-        # NOT banned: the anchor `download` attribute. § 11.3 names it
-        # explicitly — "save-to-project and download differ only in destination
-        # … and NEITHER has MolView writing a file". Handing the browser bytes
-        # the user asked for is the Export menu's whole job; what § 6.7 forbids
-        # is a file ROUTE and a filesystem handle.
-        hits = [t for t in ("/api/files/", "showSaveFilePicker", "createWritable",
-                            "FileSystemHandle", "require(\"fs\")") if t in code]
-        if hits:
-            offenders[name] = hits
-    assert offenders == {}, f"the module reaches a file route: {offenders}"
-
-
-def test_the_module_calls_only_the_routes_the_contract_describes():
-    """Every route the module reaches must be one the contract describes, so that
-    a fact leaving by an undescribed path is visible.
-
-    § 11.1 lists four: load a structure, perform one geometry edit, resolve a
-    cell, and the filter (§ 9.5).
-
-    If a fifth appears, either the contract gained a route or the module grew
-    one it should not have. Both are worth stopping for.
-    """
-    import re
-
-    found = set()
-    for code in _module_code().values():
-        for hit in re.findall(r'"(/api/[^"]*)"', code):
-            found.add(hit.split("/api/")[1].split('" +')[0])
-    # `/api/modify/` is completed with the operation name, which IS the route
-    # segment (§ 11.1), so it appears as a prefix.
-    assert found == {
-        "build/load",                # § 11.1 — load a structure
-        "modify/",                   # § 11.1 — one geometry edit
-        "structure/periodicity",     # § 11.1 — resolve a cell
-        "selection/eval",            # § 9.5  — the filter
-    }, f"the module reaches a route the contract does not describe: {sorted(found)}"
-
 
 def test_the_module_neither_publishes_nor_reads_a_global():
     """§ 4: "it is imported by name, it reaches nothing else by name, and nothing
@@ -593,24 +507,6 @@ def test_the_module_neither_publishes_nor_reads_a_global():
     assert out["published"] == [], (
         f"the module published into the app's global namespace: {out['published']}"
     )
-
-
-def test_the_app_namespace_is_never_typed_in_the_source():
-    """§ 4 in both directions. Publishing and reading are the same mechanism, so
-    a rebuild that removes one and leaves the other has sealed nothing.
-    """
-    offenders = {}
-    for path in _module_sources():
-        text = path.read_text()
-        code = "\n".join(
-            line for line in text.splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
-        if "molbuilder." in code or "window.molbuilder" in code:
-            offenders[path.name] = [
-                line.strip() for line in code.splitlines() if "molbuilder." in line
-            ]
-    assert offenders == {}, f"the app's global namespace is named in: {offenders}"
 
 
 def test_every_shown_frame_is_clickable_not_just_the_wired_one():

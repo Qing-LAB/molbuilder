@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import re
-
 
 from molbuilder.siesta import SiestaConfig
 
@@ -22,50 +20,6 @@ def test_gap_5_siesta_pao_energy_shift_default_is_tight():
         "SiestaConfig.pao_energy_shift default is too loose for "
         "production work; should be <= 0.01 Ry."
     )
-
-
-# --------------------------------------------------------------------- #
-#  Gap 7: installation guide pins the supported SIESTA release           #
-# --------------------------------------------------------------------- #
-
-
-def test_gap_7_installation_documents_siesta_version():
-    """The installation guide names the SIESTA release the RECIPES pin — read
-    from `recipes.py`, not retyped here.
-
-    THE FAILURE THIS CATCHES.  A person following the guide builds a different
-    SIESTA from the one molbuilder was measured against.  `.fdf` input format
-    and TranSiesta output format are version-sensitive, and `recipes.py` pins a
-    version deliberately so the source build and the packaged env stay
-    identical -- "a paper-citable, reproducible default", in its own words.
-
-    Contract: `ops/installation.md`, and `envs/recipes.py` as the pin's one
-    home.  The version is taken from the packaged conda spec rather than from
-    `_SIESTA_REF`, because that one honours `MOLBUILDER_SIESTA_TAG` and would
-    make this test fail on a developer machine that has legitimately overridden
-    it -- the packaged pin is a literal and is what the guide describes.
-    """
-    from pathlib import Path
-    from molbuilder.envs.recipes import builtin_recipes
-
-    pinned = set()
-    for rec in builtin_recipes():
-        for spec in rec.conda_specs:
-            m = re.match(r"siesta=([0-9][0-9.]*)=", spec)
-            if m:
-                pinned.add(m.group(1))
-    assert pinned, (
-        "no recipe pins a `siesta=<version>=` conda spec any more -- repoint "
-        "this test at wherever the pin moved, do not delete it")
-
-    guide = (Path(__file__).parent.parent / "docs" / "ops" / "installation.md"
-             ).read_text(encoding="utf-8")
-    assert "siesta" in guide.lower()
-    missing = sorted(v for v in pinned if v not in guide)
-    assert not missing, (
-        f"`envs/recipes.py` pins SIESTA {missing} and `ops/installation.md` "
-        f"never names it, so the guide builds a different SIESTA from the one "
-        f"molbuilder was measured against. Pinned: {sorted(pinned)}")
 
 
 # --------------------------------------------------------------------- #

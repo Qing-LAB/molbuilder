@@ -26,11 +26,9 @@ quietly widen what the next Delete removes.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from tests._node_esm import run_node
-from tests._molview_sources import module_files
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -76,22 +74,6 @@ def _store(snippet: str):
 
 def _model(snippet: str):
     return run_node([], MODEL_PRELUDE + snippet, globals_js=SERVER)
-
-
-def _sources() -> dict:
-    """Every layer of the module, comments stripped.
-
-    Stripped because this file's own prose quotes the names it forbids, and a
-    guard that reads its neighbours' explanations is a guard that fires on the
-    commit documenting it.
-    """
-    out = {}
-    for name, path in module_files().items():
-        text = path.read_text()
-        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-        text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
-        out[name] = text
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -340,78 +322,6 @@ def test_a_pick_that_is_no_longer_in_the_structure_is_dropped():
     assert out["measured"] == [1]
 
 
-# ---------------------------------------------------------------------------
-# Source pins — where the track may and may not be named
-# ---------------------------------------------------------------------------
-
-def test_only_the_view_context_lane_persists_the_track():
-    """§ 11.2b: *looking is not changing*.  The track is written in one file and
-    no other — not `history.js` (a state, a draft, the badge), not
-    `model-jobs.js` (a request body), not the export paths."""
-    src = _sources()
-
-    # READING is not the wall.  The track has readers by design — the readout
-    # draws it, the drawing marks it, the router picks into it — and each is
-    # listed with what it does, so a NEW name here is a decision somebody made
-    # rather than a line that slipped in.
-    readers = {
-        "stores.js":      "owns it",
-        "model.js":       "assembles it and routes clicks into it",
-        "ui.js":          "the rail toggle and the readout",
-        "render-engine.js": "derives the marks on the picked atoms (§ 11.6)",
-        "ui-context.js":  "the one lane that persists it (§ 11.2b)",
-        # The window's click still goes through `model.pickAtom` -- WHICH track it
-        # lands in is still not this file's opinion.  What it now asks is
-        # whether the ruler is on, and that is a different question: under
-        # isolate the drawn numbering is not the real one, so the entry
-        # translates the index (§ 6.5's map) and lets a MEASURING click
-        # through while still refusing a SELECTING one -- because isolate
-        # draws only the selected atoms, and clicking one to toggle it would
-        # make it vanish under the cursor.  The guard is about this entry, not
-        # about the tracks, which is why it can live here without the routing
-        # following it.
-        "mount.js":       "asks whether the ruler is on, to let a pick "
-                          "through under isolate (§ 11.6)",
-        # The marks are ARROWS, so the sealed layer names the thing it is
-        # drawing.  It draws only -- it is handed which
-        # atoms, in order, and owns what a mark LOOKS like (§ 6.5); it reads no
-        # track and decides nothing about one.
-        "3dmol-embed.js": "draws the marks, one arrow per step (§ 11.6)",
-    }
-    named = sorted(n for n, t in src.items() if "measurement" in t.lower())
-    assert named == sorted(readers), (
-        f"the track is named in {named}; the readers it is allowed are "
-        f"{sorted(readers)} — a new one is a decision, not an oversight")
-
-    # WHAT IT MAY NEVER REACH, each for its own reason.
-    assert "measurement" not in src["history.js"], \
-        "a measurement is not an edit: no state, no draft, no badge"
-    assert "measurement" not in src["model-jobs.js"], \
-        "the track must never leave the browser in a request body"
-    assert "measurement" in src["ui-context.js"], \
-        "the <owner>:ui lane is where it IS kept (§ 11.2b)"
-
-
-def test_the_readout_reads_the_track_and_not_the_selection():
-    """§ 11.6: the readout reads the track.  A readout
-    reading `selection` would look identical until the user selected an atom
-    for an edit and got a measurement they never asked for."""
-    ui = _sources()["ui.js"]
-    body = ui.split("function mountReadout", 1)[1].split("\nfunction ", 1)[0]
-    assert "model.measurement" in body
-    assert "model.selection" not in body, \
-        "the readout must take its atoms from the track alone"
-
-
-def test_the_geometric_vertex_guess_is_gone():
-    """A track is only ever built by clicks, so a geometric vertex guess has
-    no case to serve (`archive/2026-09-01-modify-redesign-plan.md` § 1.3)."""
-    ui = _sources()["ui.js"]
-    assert "byGeometry" not in ui and "orderedForMeasurement" not in ui
-
-
-
-
 # ---------------------------------------------------------------------- #
 #  THE CLEARING RULE HAS ONE HOME (§ 11.6, user 2026-08-31)               #
 #                                                                        #
@@ -602,58 +512,5 @@ def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages():
 #  until someone writes that code.                                       #
 # ---------------------------------------------------------------------- #
 
-#: What the model hands a consumer (model.js).  Anything else named on a
-#: `.measurement.` is a reach past the surface into the store.
-_SURFACE = {"getState", "positions", "subscribe", "setActive",
-            "requestPicking", "clear"}
 
 _STATIC = REPO / "molbuilder" / "web" / "static"
-
-
-def _outside_module_js():
-    for path in sorted(_STATIC.rglob("*.js")):
-        rel = path.relative_to(_STATIC).as_posix()
-        if rel.startswith("lib/molview/") or rel.startswith("vendor/"):
-            continue
-        yield rel, path
-
-
-def test_no_consumer_reaches_past_the_measurement_surface():
-    offenders = {}
-    for rel, path in _outside_module_js():
-        src = path.read_text(encoding="utf-8", errors="ignore")
-        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-        src = re.sub(r"^\s*//.*$", "", src, flags=re.M)
-        for m in re.finditer(r"\.measurement\s*\.\s*(\w+)", src):
-            if m.group(1) not in _SURFACE:
-                offenders.setdefault(rel, set()).add(m.group(1))
-    assert not offenders, (
-        f"these reach past the measurement surface: "
-        f"{ {k: sorted(v) for k, v in offenders.items()} }.  The model hands "
-        f"out {sorted(_SURFACE)} and nothing else; a pick is written through "
-        f"`pickAtom` alone (molview.md § 11.6)."
-    )
-    # ...and the scan is not vacuous: the two real consumers must be seen.
-    seen = {rel for rel, p in _outside_module_js()
-            if ".measurement." in p.read_text(encoding="utf-8", errors="ignore")}
-    assert {"modify/periodicity.js", "modify/viewer.js"} <= seen, (
-        f"the corpus lost its known consumers, so a pass means nothing: {seen}"
-    )
-
-
-def test_no_consumer_imports_a_molview_internal():
-    """The module is `index.js` and its two exports.  A consumer that imports
-    `model.js` or `stores.js` directly has the store itself, and every rule
-    above is moot."""
-    offenders = {}
-    for rel, path in _outside_module_js():
-        src = path.read_text(encoding="utf-8", errors="ignore")
-        for m in re.finditer(r"""from\s+["'][^"']*molview/([\w.-]+)["']""", src):
-            if m.group(1) != "index.js":
-                offenders.setdefault(rel, set()).add(m.group(1))
-    assert not offenders, (
-        f"these import a MolView internal instead of index.js: "
-        f"{ {k: sorted(v) for k, v in offenders.items()} } — "
-        f"'a consumer that imports any of them directly has broken the "
-        f"module, not found a shortcut' (molview.md § 4)"
-    )

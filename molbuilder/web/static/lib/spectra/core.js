@@ -3396,10 +3396,7 @@
         const C = (window.molbuilder || {}).constants;
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
         // Route through the _on() helper so dispose() tears this down
-        // with every other listener registered in this module.  Pinned by
-        // tests/spectra/test_blueprint.py::
-        // TestSpectraDisposeContract::
-        // test_all_element_listeners_route_through_on_helper.
+        // with every other listener registered in this module.
         _on(document, C.EVENT_REFRESH_REQUESTED, () => {
             const p = state.fileState.path;
             if (!p) return;     // not yet loaded; nothing to refresh

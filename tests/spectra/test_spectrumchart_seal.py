@@ -1,15 +1,9 @@
-"""SpectrumChart `_seal.js` — the obligations `web/spectrumchart.md` § 4,
-§ 8.4 and § 11 lay on it.
+"""SpectrumChart `_seal.js` — what `web/spectrumchart.md` § 8.4 asks of it.
 
-Two kinds of check, and the split is deliberate:
-
-  * what can be read off the files — the module imports nothing from outside
-    it, the stylesheet keeps to its own names and holds no loose values (§ 4, § 11).
-    These are static facts, so they are checked statically rather than mimed;
-  * what the seal DOES with a drawing library — the six doors, the palette, the
-    click that comes up as a position (§ 8.4). Run in node against a stand-in
-    that takes Plotly's place, per § 12's middle level: the stand-in replaces the
-    LIBRARY, never a file of this module.
+What the seal DOES with a drawing library — the six doors, the palette, the
+click that comes up as a position (§ 8.4). Run in node against a stand-in that
+takes Plotly's place, per § 12's middle level: the stand-in replaces the
+LIBRARY, never a file of this module.
 
 What is left over is the loading path itself — a real `<link>` and a real
 `<script>` reaching a real server — which belongs to § 12's third level, a real
@@ -18,7 +12,6 @@ page, and is not mimed here.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -30,7 +23,6 @@ MODULE = (
     / "molbuilder" / "web" / "static" / "lib" / "spectrumchart"
 )
 SEAL = MODULE / "_seal.js"
-STYLE = MODULE / "_style.css"
 
 # The browser stand-in already used by the MolView JS tests: it stands in for the
 # BROWSER, not for any module, so it serves here unchanged rather than being
@@ -151,42 +143,7 @@ def seal(snippet: str):
 # --- § 4  the module is self-contained ---------------------------------------
 
 
-
-def test_nothing_in_the_module_imports_from_outside_it():
-    """§ 4 — self-contained: it reaches nothing else in the app by name."""
-    for path in MODULE.glob("*.js"):
-        source = re.sub(r"/\*.*?\*/", "", path.read_text(), flags=re.S)
-        specs = re.findall(r"""(?m)^\s*import\s[^;]*?from\s*["']([^"']+)["']""", source)
-        specs += re.findall(r"""import\(\s*["']([^"']+)["']""", source)
-        for spec in specs:
-            assert spec.startswith("."), f"{path.name} imports {spec}"
-
-
 # --- § 11  the stylesheet keeps to itself -----------------------------------
-
-def test_every_selector_is_the_modules_own_name():
-    """§ 11 — the sheet stays this module's: no bare names, no element selectors."""
-    body = re.sub(r"/\*.*?\*/", "", STYLE.read_text(), flags=re.S)
-    for selector in re.findall(r"^\s*([^@{}]+?)\s*\{", body, flags=re.M):
-        for part in selector.split(","):
-            part = part.strip()
-            assert part.startswith(".spectrumchart"), f"selector escapes the module: {part!r}"
-
-
-
-
-def test_values_are_declared_once_and_read_by_name():
-    """§ 11 — its values sit in one block; the rules below read them."""
-    body = re.sub(r"/\*.*?\*/", "", STYLE.read_text(), flags=re.S)
-    blocks = re.findall(r"\{(.*?)\}", body, flags=re.S)
-    for block in blocks:
-        for line in block.splitlines():
-            line = line.strip()
-            if not line or line.startswith("--"):
-                continue  # the declaration block itself
-            assert not re.search(r"#[0-9a-fA-F]{3,8}\b", line), f"loose colour: {line}"
-            if re.search(r"\b\d+px\b", line) and "var(" not in line:
-                pytest.fail(f"loose length: {line}")
 
 
 # The three § 11 box traps are read off the painted chart, in

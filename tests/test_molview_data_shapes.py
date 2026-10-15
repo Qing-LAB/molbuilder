@@ -24,7 +24,6 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
-from tests._molview_sources import module_code
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -141,27 +140,6 @@ def test_a_typed_range_shifts_once_at_any_size():
     assert out["unknown"] == "0-3, all", (
         "a token this does not recognise passes through — the server validates "
         "the rule, and dropping it silently would hide a typo"
-    )
-
-
-def test_no_other_file_in_the_module_computes_its_own_shift():
-    """§ 11.5: "MolView never writes a bare +1 of its own anywhere."
-
-    The rule is what stops the panel, the labels and the readout drifting apart,
-    so it has to be checked across the module rather than inside one file.
-    """
-    import re
-
-    offenders = {}
-    for name, code in module_code().items():
-        if name == "_atom.js":
-            continue                        # the single home
-        # An index arithmetic literal: `something + 1` / `- 1` near an index name.
-        hits = re.findall(r"\b(?:index|idx|atom|i|n)\s*[+\-]\s*1\b", code)
-        if hits:
-            offenders[name] = hits
-    assert offenders == {}, (
-        f"a bare +/-1 on an atom number outside the one translation: {offenders}"
     )
 
 

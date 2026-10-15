@@ -69,8 +69,3 @@ def test_every_rows_license_file_is_beside_its_files():
     assert not missing, missing
 
 
-def test_every_component_is_cited():
-    citations = _section(README.read_text(), "Citations")
-    cited = set(re.findall(r"^- \*\*([^*]+)\*\*", citations, re.M))
-    uncited = [name for name, _f, _n in _rows() if name not in cited]
-    assert not uncited, f"no citation line under ## Citations for {uncited}"

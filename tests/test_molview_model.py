@@ -895,7 +895,6 @@ def test_the_reserved_label_needs_no_boundary_translation():
     assert out["frozen"] == [0], "the designated read did not find it in the labels"
 
 
-
 # ---------------------------------------------------------------------------
 # § 6.4 — master copy, then range, then frame, then notify
 # ---------------------------------------------------------------------------
@@ -1732,17 +1731,6 @@ def test_one_frame_reads_the_same_way_as_many():
     assert out["oneCount"] == 1 and out["manyCount"] == 400
     assert out["oneExports"] and out["manyExports"]
     assert out["oneFrameShape"] == out["manyFrameShape"] == 2
-
-
-def test_the_model_never_names_the_drawing_library():
-    """§ 7 level 3: the model NEVER touches the drawing library.
-
-    § 5.3: everything above the sealed layer can be read end to end without
-    learning which library draws the molecule.
-    """
-    for name in ("model.js", "model-jobs.js"):
-        text = (MODULE_DIR / name).read_text()
-        assert "3Dmol" not in text, f"{name} names the drawing library"
 
 
 # ---------------------------------------------------------------------------

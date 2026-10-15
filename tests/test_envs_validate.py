@@ -51,23 +51,10 @@ def test_no_probes_is_not_a_pass():
 
 
 def test_the_long_upstream_suites_are_not_optional():
-    """There is deliberately no way to skip them -- see the module docstring.
-
-    A source build is verified by nobody upstream: it is compiled here
-    against this host's CUDA, gcc and MPI, so upstream's own suite is the
-    only evidence the binary computes correctly.  A knob was drafted and
-    withdrawn 2026-09-12.  This test exists so re-adding one is a decision
-    rather than a drift.
-    """
-    import inspect
-    from molbuilder.envs import validate as V
-
-    params = inspect.signature(V.validate_recipe).parameters
-    for knob in ("skip", "only", "quick", "deep"):
-        assert knob not in params, (
-            f"`{knob}` would let a source build go unverified -- read the "
-            f"module docstring before adding it")
-    # And every registered probe is still in the list the CLI runs.
+    """Upstream's own suites are in the list the CLI runs -- see the module
+    docstring.  A source build is verified by nobody upstream: it is
+    compiled here against this host's CUDA, gcc and MPI, so upstream's own
+    suite is the only evidence the binary computes correctly."""
     slugs = [row[0] for row in _RECIPE_PROBES["molbuilder-siesta-gpu"]]
     for required in ("siesta ctest", "elpa make check"):
         assert required in slugs, f"{required} must stay in the suite"

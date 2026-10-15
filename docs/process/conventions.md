@@ -27,10 +27,10 @@ item says so:
   module, or a shipped monitor file that fails beside the job
   (`tests/test_monitor_watches_a_live_run_e2e.py`).
 - **The parse layer stays pure.** The block readers take a string and do **no
-  I/O** (`tests/test_script_emit.py::test_the_block_readers_do_no_io`), the file
-  parsers do **no subprocess / network / threads**, and the parse core carries
-  **no engine-specific names** (`tests/parse/test_audit_gaps.py`). These keep the
-  parse module reusable and testable without a filesystem.
+  I/O**, the file parsers do **no subprocess / network / threads**, and the
+  parse core carries **no engine-specific names** (`model/parse.md` § 7), held
+  by review. These keep the parse module reusable and testable without a
+  filesystem.
 - **The package is `pyflakes`-clean, checked at every milestone's review**
   (`plans/plan.md` § 0a): `python -m pyflakes $(git ls-files 'molbuilder/*.py'
   ':!:molbuilder/data/*')` answers nothing. It doesn't lint style, only "would
@@ -287,7 +287,7 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 - `test_pyscf_bundle_runs_alone.py` — every module the PySCF script imports loads
   from `mb_pyscf.pyz` with molbuilder absent, and writes a pair the package's codec
   reads back.
-- `parse/test_scripts.py`, `parse/test_audit_gaps.py` — the parse-layer purity gates.
+- `parse/test_scripts.py` — the parse layer's script readers.
 - `test_negative_body_assert_lint.py` — the status-guarded-assert meta-lint.
 - `test_cli.py` (+ `test_cli_runtime_info.py`, `test_cli_tls.py`) — every
   subcommand's `--help`, routing, and the dataclass→flag bridge.

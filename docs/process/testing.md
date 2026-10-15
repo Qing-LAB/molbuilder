@@ -491,18 +491,20 @@ the renderer (`spec_for` → `script_emit.render_deck`) directly only for a
 refusal the road cannot reach — the deck check handed a deck `prep` never
 writes — and its docstring says so.
 
-**Reading a shipped file is not automatically wrong — asserting on its
-spelling is.** These are legitimate, because the *artifact itself* is the
-thing under test:
-
-- no inline `<script>` in a template — a CSP property of what ships;
-- a static file is served at all, with the right status and caching headers;
-- every asset a template names exists on disk
-  (`test_wheel_ships_the_front_end.py`);
-- a stylesheet declares no raw hex colours, or no duplicate selector.
-
-The test is *"which question is this asking?"* — a property of the shipped
-artifact, or the presence of one line of implementation.
+**Tests focus on outcome. Period** *(the user, 2026-10-15)*. A property of
+what ships is asked of what ships — the page as served
+(`test_page_ids_unique.py`), a response's headers (`test_security_headers.py`)
+— never of the template, sheet, module or document it was made from. A test
+that reads such a file for what is in it keeps its place only where its rule's
+break is silent and no run can show it: a test silently never run
+(`test_no_test_is_shadowed.py`), your `projects/` tree touched by the suite
+(`test_no_tests_read_the_projects_tree.py`), an assertion that passes against
+a 404 (`test_negative_body_assert_lint.py`), runtime text written into the page
+as markup (`test_xss_audit.py`), a vendored file shipped without its licence
+(`test_vendor_notices.py`), a composed name found by hand
+(`test_path_framework.py`). A test that guards a real rule by reading a file
+stays until a test of the outcome replaces it — plan, TST, lists each with
+the outcome test that replaces it; every other one was retired 2026-10-15.
 
 **What replaces a retired pin is REVIEW, not silence.** The claims those
 tests make are real; what is wrong is asking a grep to check them. The four
@@ -653,8 +655,10 @@ These are the durable patterns — follow them and the e2e tests stay stable:
 
 ## 6. A few named test patterns
 
-- **Artifact lints** — assert a property that must hold across *every* file in a
-  class, checked on the artifact rather than on a runtime. E.g.
+- **Artifact lints** — kept only where § 3a names them; the rest are replaced
+  by tests of the outcome (plan, TST). A lint asserts a property that must hold
+  across *every* file in a class, checked on the artifact rather than on a
+  runtime. E.g.
   `test_no_inline_scripts.py` scans every served template for an inline `<script>`
   (the CSP `script-src 'self'` rule would break at runtime otherwise), and
   `test_negative_body_assert_lint.py` AST-lints the *test suite* so a "body lacks X"

@@ -174,18 +174,6 @@ def test_no_stage_carries_a_nonconvergence_policy():
                                        for f in dataclasses.fields(SiestaConfig)}
 
 
-def test_the_nonconvergence_policy_left_with_the_edges_it_was():
-    """§ 3: *"its entire effect is the edge between one attempt and the next."*
-
-    Reinstating a per-stage policy means giving it a home in the description
-    **and** a reader that does something with it.
-    """
-    import molbuilder.siesta.stages as stages_mod
-
-    assert not hasattr(stages_mod, "stages_to_jobset")
-    assert not hasattr(stages_mod, "build_siesta_stage_bundle")
-
-
 def test_continue_retries_is_a_shared_field_not_a_stage_one():
     """§ 3's other half: it passes both questions, so it is ordinary.
     What made it look special is only where it lands (the wrapper)."""

@@ -1,36 +1,11 @@
-"""Doc-claims contract — a closed vocabulary means the same thing in every
-place that names it.
+"""What a contract states, run through the code: `block_size`'s two states,
+the vocabulary a declared type must come from, the Task setup tab refusing a
+folder with two templates, and the allocation example `engines/stages.md`
+§ 6.8a prints, read back by the reader that stores it.
 
-**The rule.** A vocabulary that is closed in code (``template.KINDS``,
-``template.CATEGORIES``, the fields of ``jobset.Resources`` …) is also
-*enumerated in prose* by the contract that owns it. Those two lists must agree,
-in both directions: a member the document omits is a member no reader learns
-about, and a member the document names that the code does not have is a reader
-sent looking for something that is not there.
-
-**Why this exists** (`docs/archive/2026-08-14-template-execution-review.md`
-§ 22.1). A full-text review on 2026-08-14 found the same enumeration wrong in
-two documents at once:
-
-* ``jobset.Resources`` had **nine** fields. ``job-contracts.md`` § 6.2 said
-  nine — it had said *"seven"*, was corrected, and was pinned with a test.
-  ``job-system.md`` § 3 still showed **seven**, in a class diagram AND in an
-  annotated example whose own caption two lines above said *"ALL NINE fields
-  are always written"*.
-* The fix to the contract never reached the guide, **because nothing connected
-  them.** That is the defect this file closes: not a wrong number, but a
-  correction that could not propagate.
-
-**What this cannot do, stated so nobody assumes otherwise.** It checks
-enumerations, not prose. The same review found four passages describing an
-eigensolver-routing rule that had been deleted, a floor-3 module importing from
-an engine package, and an invariant claiming a mechanism nobody wrote — none of
-which any test of this shape can see. Roughly a third of that review was
-mechanical; this is that third.
-
-**Adding a vocabulary here is the point.** When a new closed set appears, add a
-row: the test is the maintenance mechanism for the cross-index (§ 21.1), which
-is otherwise a snapshot that rots the moment someone edits a document.
+`test_a_tier_table_stated_in_prose_is_the_table_the_code_ships` compares
+`tuning.md`'s tier table with the code's; it stays until a test of the deck
+`prep` writes for each tier replaces it (plan, TST).
 """
 from __future__ import annotations
 
@@ -41,123 +16,8 @@ from pathlib import Path
 import pytest
 
 from molbuilder import template
-from molbuilder.jobset.model import Job, Resources, WarmFile
-from molbuilder.task import Stage, Task
 
 DOCS = Path(__file__).resolve().parents[1] / "docs"
-
-
-def _members(obj) -> tuple:
-    """The vocabulary: a tuple of strings, or a dataclass's field names."""
-    if dataclasses.is_dataclass(obj):
-        return tuple(f.name for f in dataclasses.fields(obj))
-    return tuple(obj)
-
-
-#: ``id: (the code's vocabulary, the document that OWNS it)``.
-#:
-#: The owner is the contract a reader is sent to for the definitive list --
-#: `job-contracts.md` § 6.3's rule, applied to vocabularies: *if any other
-#: document disagrees with the owner, the other is the bug.*
-VOCABULARIES = {
-    "item kind":        (template.KINDS,       "engines/template.md"),
-    "category":         (template.CATEGORIES,  "engines/template.md"),
-    "item type":        (template.TYPES,       "engines/template.md"),
-    "Resources field":  (Resources,            "execution/job-contracts.md"),
-    "Job field":        (Job,                  "execution/job-contracts.md"),
-    "WarmFile field":   (WarmFile,             "execution/job-contracts.md"),
-    "Stage field":      (Stage,                "engines/stages.md"),
-}
-
-
-@pytest.mark.parametrize("vocab_id", sorted(VOCABULARIES))
-def test_the_owning_document_names_every_member(vocab_id):
-    """Every member of a closed vocabulary appears in its owning contract.
-
-    A member the document never names is a member no reader learns about --
-    which is how ``continue_retries`` and ``max_memory_mb`` were invisible in
-    `job-system.md` § 3 while riding every `job-set.json` on disk.
-    """
-    members, doc_rel = VOCABULARIES[vocab_id]
-    text = (DOCS / doc_rel).read_text(encoding="utf-8")
-    missing = [m for m in _members(members) if m not in text]
-    assert not missing, (
-        f"{doc_rel} owns the {vocab_id} vocabulary but never names "
-        f"{missing}.  Either the document is stale, or the member was added to "
-        f"the code without the contract that defines it "
-        f"(archive/2026-08-14-template-execution-review.md § 22.1)."
-    )
-
-
-#: `Resources`' field count, in ENGLISH -- the spelling § 6.2 uses.  Kept as a
-#: map rather than a literal so raising the count is one edit here plus one in
-#: the contract, which is exactly the pair this test exists to keep together.
-_COUNT_WORD = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
-               12: "twelve", 13: "thirteen", 14: "fourteen",
-               15: "fifteen", 16: "sixteen"}
-
-
-def test_the_tab_count_is_stated_in_prose_and_true():
-    """`tabs.md` § 1 states the roster size in prose, and it is the one place
-    the count is decided anywhere.
-
-    It had drifted **three tabs** by 2026-09-01, and in three different
-    directions at once: `web/overview.md` said six and its diagram listed six
-    (omitting Task setup), `archive/2026-09-01-roadmap.md` said seven ship, `README.md` said six
-    ship, and eight shipped. Every one of those landed with a note saying the
-    screenshots needed re-capturing; none of them was a mechanism.
-
-    This checks the owner. The restatements are prose in four files and stay
-    that way — but with the owner pinned, a sweep has something true to sweep
-    towards.
-    """
-    from molbuilder.web.tabs import TABS
-    text = (DOCS / "web/tabs.md").read_text(encoding="utf-8")
-    m = re.search(r"There are \*\*([a-z]+) tabs\*\*", text)
-    assert m, (
-        "tabs.md § 1 no longer states the roster size in prose. The count is "
-        "what drifted last time (five vs six vs seven, with eight shipping), "
-        "so it is worth stating and worth pinning."
-    )
-    assert m.group(1) == _COUNT_WORD.get(len(TABS), "?"), (
-        f"TABS has {len(TABS)} entries; tabs.md § 1 says {m.group(1)!r}.  A "
-        f"tab arrives with its row in § 1's table, or it does not arrive")
-
-
-def test_the_resources_field_count_is_stated_in_prose_and_true():
-    """The instance that motivated this file, kept as its own test.
-
-    `job-contracts.md` § 6.2 states the count in prose, so the NUMBER is
-    checkable and not only the member list.  It was wrong once in both
-    directions -- the contract said seven while its own table carried eight,
-    and the guide showed seven while its own caption said nine.
-    """
-    n = len(dataclasses.fields(Resources))
-    text = (DOCS / "execution/job-contracts.md").read_text(encoding="utf-8")
-    m = re.search(r"holds exactly \*\*([a-z]+)\*\* fields", text)
-    assert m, (
-        "job-contracts.md § 6.2 no longer states the field COUNT in prose. "
-        "The count is what drifted last time (seven vs nine), so it is worth "
-        "stating and worth pinning."
-    )
-    assert m.group(1) == _COUNT_WORD.get(n, "?"), (
-        f"Resources has {n} fields; § 6.2 says {m.group(1)!r}.  A field "
-        f"arrives with its § 6.2 decision, or it does not arrive")
-
-
-def test_the_template_required_keys_agree_across_their_three_homes():
-    """§ 3's *"four required keys"* is stated in three places.
-
-    The reader (`_REQUIRED_ITEM_KEYS`), the contract (§ 3's table), and
-    ``Item``'s docstring -- which named a DIFFERENT four (`name`, `kind`,
-    `type`, `help`) until this was found, omitting `category` and adding the
-    key that is not a key at all.
-    """
-    required = template._REQUIRED_ITEM_KEYS
-    assert set(required) == {"kind", "category", "type", "help"}, required
-    text = (DOCS / "engines/template.md").read_text(encoding="utf-8")
-    for key in required:
-        assert f"`{key}`" in text, f"§ 3 never names the required key {key!r}"
 
 
 # --------------------------------------------------------------------- #
@@ -169,83 +29,6 @@ def test_the_template_required_keys_agree_across_their_three_homes():
 #  REQUIRED on every item.  A contract whose illustrations its own reader #
 #  would refuse teaches the wrong shape to everyone who copies one.       #
 # --------------------------------------------------------------------- #
-
-def _fenced_toml(doc_rel: str):
-    """Every ```toml block in a document, de-indented, with its index."""
-    text = (DOCS / doc_rel).read_text(encoding="utf-8")
-    for i, block in enumerate(re.findall(r"```toml\n(.*?)```", text, re.S)):
-        # Some examples are indented inside a list item; TOML does not mind
-        # leading spaces on a key line, but a uniform two-space indent is
-        # stripped so the block reads as it would on disk.
-        yield i, "\n".join(ln[2:] if ln.startswith("  ") else ln
-                            for ln in block.splitlines())
-
-
-def test_every_template_example_parses_as_toml():
-    """§ 6.3's example carried ``category`` twice. TOML forbids a duplicate
-    key, so the contract's illustration of the format could not be loaded by
-    the format's own reader."""
-    import tomllib
-    for i, body in _fenced_toml("engines/template.md"):
-        try:
-            tomllib.loads(body)
-        except Exception as exc:              # noqa: BLE001 - report any of them
-            pytest.fail(f"engines/template.md fenced toml block {i} does not "
-                        f"parse: {exc}\n{body[:400]}")
-
-
-def test_every_template_example_item_carries_the_required_keys():
-    """And each ``[item.*]`` satisfies § 3 -- the same four the reader wants,
-    with a ``type`` from the closed vocabulary."""
-    import tomllib
-    bad = []
-    for i, body in _fenced_toml("engines/template.md"):
-        try:
-            parsed = tomllib.loads(body)
-        except Exception:
-            continue                          # the test above owns parse errors
-        for name, item in (parsed.get("item") or {}).items():
-            missing = [k for k in template._REQUIRED_ITEM_KEYS if k not in item]
-            if missing:
-                bad.append(f"block {i}, item {name!r}: missing {missing}")
-            t = item.get("type")
-            if t is not None and t not in template.TYPES:
-                bad.append(f"block {i}, item {name!r}: type {t!r} is not in "
-                           f"TYPES {template.TYPES}")
-    assert not bad, (
-        "engines/template.md illustrates items its own reader would refuse:\n  "
-        + "\n  ".join(bad)
-        + "\n(§ 3 lists the required keys; § 5 the type vocabulary.)"
-    )
-
-
-def test_the_frozen_label_in_the_spec_matches_the_code_constant():
-    """`job-contracts.md` § 3.4's ATOM-METADATA example must spell the frozen
-    label the way the code writes it.
-
-    It said ``"frozen"`` until 2026-08-14 while ``structure.FROZEN_LABEL`` is
-    ``"frozen_atoms"``.  The SHAPE was right -- frozen is an ordinary label
-    inside ``regions`` -- and the NAME was not, which matters more than a typo:
-    that example is the specification a reader of these labels is written
-    from, and **transport** is the named consumer (electrode / bridge / frozen
-    membership).  A reader built from the old example looks up ``"frozen"``,
-    finds nothing, and concludes the run froze no atoms.
-
-    Guards the direction that actually drifts -- the doc spelling a constant
-    instead of citing it.
-    """
-    from molbuilder.structure import FROZEN_LABEL
-    text = (DOCS / "execution/job-contracts.md").read_text(encoding="utf-8")
-    block = text[text.index("### 3.4"):text.index("### 3.5")]
-    assert f'"{FROZEN_LABEL}"' in block, (
-        f"job-contracts.md § 3.4 never spells the frozen label "
-        f"{FROZEN_LABEL!r} as the code writes it.  Either the example drifted, "
-        f"or structure.FROZEN_LABEL changed and § 3.4 did not follow."
-    )
-    assert '"frozen":' not in block, (
-        'job-contracts.md § 3.4 still shows the retired label `"frozen":` -- '
-        f'the code writes {FROZEN_LABEL!r} inside `regions`.'
-    )
 
 
 def test_block_size_is_a_plain_int_and_survives_the_round_trip():
@@ -296,81 +79,10 @@ def test_block_size_is_a_plain_int_and_survives_the_round_trip():
 #  shape everyone copies, so a wrong one teaches a wrong classification.  #
 # --------------------------------------------------------------------- #
 
-#: Keys where the document and the catalogue must agree exactly when the
-#: document chooses to show them.  ``value`` is deliberately absent: an
-#: example may legitimately show a different answer than the shipped default,
-#: because the answer is what a person chose.  ``help`` is absent for the same
-#: reason as ``value`` plus one more -- the catalogue's own prose is long, and
-#: § 12 says in as many words that its example abridges it.
-_ILLUSTRATED = ("kind", "type", "anchor", "engine_key", "expands",
-                "category", "engines", "resolver", "group", "unit",
-                "range", "optional", "tier", "pattern", "default")
-
 
 def _catalogue_items():
     import tomllib
     return tomllib.loads(template.load_catalogue())["item"]
-
-
-def test_every_documented_item_matches_the_catalogue():
-    """An ``[item.x]`` in a contract either IS the catalogue's ``x`` or is
-    flagged as not built.
-
-    Two failures are possible and both matter:
-
-    * the document names an item the catalogue does not carry -- a reader
-      copies it, and their template is refused by its own reader;
-    * the document shows a real item with a key the catalogue spells
-      differently -- which is how § 4.2 taught that ``species_order`` is a
-      ``deck`` item for three days, contradicting the catalogue and § 6's own
-      definition at once.
-
-    **An unbuilt item is allowed, and must say so on the same line.** § 9.2
-    illustrates ``user_custom`` deliberately, because that section is where
-    the missing schema field is specified.
-    """
-    cat = _catalogue_items()
-    docs_with_examples = ("engines/template.md", "engines/stages.md",
-                          "execution/job-contracts.md")
-    problems = []
-    for doc_rel in docs_with_examples:
-        text = (DOCS / doc_rel).read_text(encoding="utf-8")
-        for i, body in _fenced_toml(doc_rel):
-            import tomllib
-            try:
-                parsed = tomllib.loads(body)
-            except Exception:
-                continue                       # Gate A owns parse errors
-            for name, shown in (parsed.get("item") or {}).items():
-                real = cat.get(name)
-                if real is None:
-                    # Permitted only where the block itself says it is unbuilt.
-                    if re.search(r"not built|NOT BUILT|does not exist|"
-                                 r"needs a schema field|§ ?12\.1", body):
-                        continue
-                    problems.append(
-                        f"{doc_rel} block {i}: [item.{name}] is in no "
-                        f"catalogue. Either it was renamed, or the example is "
-                        f"aspirational -- say so in the block and it passes.")
-                    continue
-                for key in _ILLUSTRATED:
-                    if key not in shown:
-                        continue               # showing a subset is fine
-                    want, got = real.get(key), shown[key]
-                    if isinstance(want, list) and isinstance(got, list):
-                        same = list(want) == list(got)
-                    else:
-                        same = want == got
-                    if not same:
-                        problems.append(
-                            f"{doc_rel} block {i}: [item.{name}] shows "
-                            f"{key}={got!r}, the catalogue says {want!r}")
-    assert not problems, (
-        "a worked example disagrees with the catalogue it illustrates:\n  "
-        + "\n  ".join(problems)
-        + "\n(engines/template.md § 4.2 -- an example is the shape people "
-          "copy, so a wrong one is a wrong classification taught.)"
-    )
 
 
 # --------------------------------------------------------------------- #
@@ -466,34 +178,6 @@ MEASURED = {
         ("engines/stages.md", r"\*\*It is \d+ and (\d+) now\*\*",
          lambda: _stage_group("pyscf")),
 }
-
-
-@pytest.mark.parametrize("claim_id", sorted(MEASURED))
-def test_a_number_stated_in_prose_is_the_number_the_code_has(claim_id):
-    """Every count a contract states about the code is measured on every run.
-
-    A count is a claim, and it decays in one direction only -- the code grows
-    and the sentence does not.  Four of these were wrong simultaneously on
-    2026-08-17, one of them by 145, and each had been correct when written.
-
-    **Adding a row here is the point**, exactly as it is for ``VOCABULARIES``:
-    when a document states a new measurement, register it, or accept that it
-    is true only on the day it is typed.
-    """
-    doc_rel, pattern, measure = MEASURED[claim_id]
-    text = (DOCS / doc_rel).read_text(encoding="utf-8")
-    m = re.search(pattern, text)
-    assert m, (
-        f"{doc_rel} no longer states {claim_id} in the shape this test reads "
-        f"(/{pattern}/).  Either the sentence was reworded -- update the "
-        f"pattern -- or the claim was dropped, and then this row should be "
-        f"dropped with it.")
-    stated, actual = int(m.group(1)), measure()
-    assert stated == actual, (
-        f"{doc_rel} says {stated} for {claim_id}; the code has {actual}.\n"
-        f"  the sentence: {m.group(0)!r}\n"
-        f"A count is an argument only while it is true (engines/template.md "
-        f"§ 2.1a).")
 
 
 # --------------------------------------------------------------------- #
@@ -694,44 +378,6 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
         f"leftover: {body['error']!r}")
 
 
-def test_the_two_clock_derivation_homes_are_real_functions():
-    """`parse.md` § 2a names the ONE place each derivation happens.  A
-    contract that points at a function nobody wrote sends a reader
-    looking for something that is not there -- and both names in that
-    table were invented when the rule was first written (2026-08-24):
-    `to_legacy_payload` and `_merge_stage_payloads`, neither of which
-    has ever existed.
-
-    Narrow on purpose.  A repo-wide `file.py::symbol` linter would be the
-    general form, and a first pass at one turned up ~20 candidates that
-    are mostly module-level constants and partial paths -- worth its own
-    task, not worth shipping with that much noise.  This pins the table
-    the rule depends on.
-    """
-    import re
-    root = Path(__file__).resolve().parents[1]
-    doc = (root / "docs" / "model" / "parse.md").read_text(encoding="utf-8")
-    rows = re.findall(r"`([A-Za-z0-9_/]+\.py)::([A-Za-z_][A-Za-z0-9_]*)`", doc)
-    assert rows, "§ 2a's derivation table could not be parsed -- repoint this"
-    missing = []
-    for mod, sym in rows:
-        # A contract may legitimately cite the TEST that guards a rule, and
-        # § 7 #2 does exactly that.  Resolve against both trees before
-        # calling a citation broken.
-        for base in ("molbuilder", "tests"):
-            f = root / base / mod
-            if f.is_file():
-                break
-        else:
-            missing.append(f"{mod} (no such file)")
-            continue
-        if not re.search(rf"^\s*(?:async\s+)?(?:def|class)\s+{re.escape(sym)}\b",
-                         f.read_text(encoding="utf-8"), re.M):
-            missing.append(f"{mod}::{sym} (not defined there)")
-    assert not missing, (
-        "parse.md names code that does not exist: " + ", ".join(missing))
-
-
 def test_the_allocation_example_in_its_OWNING_contract_is_what_the_reader_stores():
     """§ 6.8a of `engines/stages.md` owns the `allocation` block, and the
     example it prints must be the spelling the reader actually stores.
@@ -787,31 +433,3 @@ def test_the_allocation_example_in_its_OWNING_contract_is_what_the_reader_stores
 # --------------------------------------------------------------------- #
 
 
-def test_the_documented_command_roster_is_the_shipped_one():
-    """`conventions.md` § 3's catalogue and `cli.commands`, set-equal.
-
-    **What a wrong roster costs.** § 3 is where a person looks up what the CLI
-    can do, and decisions 7 and 34 (*"there is no `molbuilder run`"*, *"there is
-    no `molbuilder fdf`"* — *"a second way in is a second way to lose your
-    results"*) are enforced by that list being true. On 2026-09-17 it said
-    **13**, listed `pyscf` — deleted that day — and omitted seven live groups.
-    A reader would have concluded the framework could not do seven things it
-    does, and that it could do one it cannot.
-    """
-    from molbuilder.cli import cli
-
-    doc = (DOCS / "process" / "conventions.md").read_text(encoding="utf-8")
-    start = doc.index("### The command catalogue")
-    table = doc[start:doc.index("**NO ENGINE HAS A VERB EITHER**", start)]
-    documented = set()
-    for line in table.splitlines():
-        if not line.startswith("|") or set(line) <= set("|- "):
-            continue
-        documented |= set(re.findall(r"`([a-z][a-z0-9-]*)`", line.split("|")[1]))
-
-    shipped = set(cli.commands)
-    assert documented == shipped, (
-        "conventions.md § 3's command catalogue and `cli.commands` disagree "
-        "-- and § 3 is where a person looks up what the CLI can do:\n"
-        f"  documented but not shipped: {sorted(documented - shipped)}\n"
-        f"  shipped but not documented: {sorted(shipped - documented)}")

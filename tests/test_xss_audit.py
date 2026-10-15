@@ -1,10 +1,8 @@
-"""Nothing a person, a file or a server supplies is parsed as markup, or run as
-code, by the JavaScript the app serves -- except through the counted
-PRODUCERS below.
+"""Nothing a person, a file or a server supplies is parsed as markup by the
+JavaScript the app serves -- except through the counted PRODUCERS below.
 
 GOAL -- the failure these catch: a runtime string reaching a DOM API that
-parses HTML, or one that runs code.  The markup half has been measured: on
-2026-09-14 a person-chosen folder name going into ``innerHTML``
+parses HTML.  Measured: on 2026-09-14 a person-chosen folder name going into ``innerHTML``
 (`jupyternb/index.js`), and on 2026-09-25 three sites an independent review
 found behind this file's own allowlist -- the projects sidebar's roots error
 and the spectrum chart's two failure notices, all spliced in raw while the
@@ -20,7 +18,6 @@ bundles served verbatim, whose provenance is ``static/vendor/README.md``.
 from __future__ import annotations
 
 import bisect
-import re
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
@@ -505,156 +502,3 @@ def test_the_reader_flags_every_form_and_only_those(src, expected):
     """The lint above is only as good as its reader: each row is a statement
     it must flag or must pass, and a text match gets at least one wrong."""
     assert len(html_writes(src)) == expected, html_writes(src)
-
-
-# --------------------------------------------------------------------- #
-#  Code is never run from a string                                      #
-# --------------------------------------------------------------------- #
-
-
-class TestNoEvalOrFunctionConstructor:
-    """``eval`` and ``new Function(string)`` are arbitrary-code-
-    execution sinks if any user-controllable string reaches them.
-    The whole project should be free of them; pin the invariant."""
-
-    @pytest.mark.parametrize("js_path", _all_js_files(),
-                             ids=lambda p: str(p.relative_to(STATIC_ROOT)))
-    def test_file_has_no_eval_or_new_Function(self, js_path):
-        src = _strip_js_comments(js_path.read_text())
-        # Plain ``eval(...)`` call.
-        bad_eval = re.findall(r'\beval\s*\(', src)
-        # ``new Function("...")``.
-        bad_func = re.findall(r'\bnew\s+Function\s*\(', src)
-        # setTimeout / setInterval with STRING first argument (the
-        # legacy form that eval-evaluates the string).
-        bad_timer = re.findall(
-            r'\bset(Timeout|Interval)\s*\(\s*[\'"]', src,
-        )
-        # Dynamic eval bypass: ``obj["constructor"]("...")`` or
-        # ``obj.constructor.constructor("...")`` -- the
-        # ``constructor`` trick reaches Function() without literally
-        # writing ``new Function``.
-        bad_ctor = re.findall(
-            r'\[\s*[\'"]constructor[\'"]\s*\]', src,
-        )
-        assert not bad_eval, f"eval() call in {js_path.name}"
-        assert not bad_func, f"new Function() in {js_path.name}"
-        assert not bad_timer, (
-            f"set{'/'.join(bad_timer)} with string arg in {js_path.name}"
-        )
-        assert not bad_ctor, (
-            f"dynamic [\"constructor\"] access in {js_path.name} -- "
-            f"this is the eval-bypass pattern (obj['constructor']"
-            f"('return ...')) and shouldn't appear in our code"
-        )
-
-
-class TestNoJavascriptUrlScheme:
-    """``element.href = 'javascript:...'`` executes the URL as JS
-    when the user clicks the link.  Same for ``src``, ``action``,
-    ``formaction``.  Pin that no JS source sets these properties to
-    a ``javascript:`` literal AND that all dynamic assignments use
-    only blob/static URLs.
-
-    Today every dynamic href in the codebase is either a literal
-    route ("/watch" / "/spectra" / etc.) or a ``URL.createObjectURL``
-    blob URL.  This test fires if either invariant breaks.
-    """
-
-    @pytest.mark.parametrize("js_path", _all_js_files(),
-                             ids=lambda p: str(p.relative_to(STATIC_ROOT)))
-    def test_no_javascript_scheme_in_url_attribute_writes(self, js_path):
-        src = _strip_js_comments(js_path.read_text())
-        # Literal "javascript:" in any string assigned to href / src
-        # / action / formaction.
-        bad = re.findall(
-            r'\.(?:href|src|action|formaction|srcdoc)\s*='
-            r'\s*["\'`][^"\'`]*javascript:',
-            src, flags=re.I,
-        )
-        assert not bad, (
-            f"{js_path.name} writes a javascript: URL into a URL "
-            f"property; this triggers code execution on user click"
-        )
-
-
-class TestNoEventHandlerAttributeWrites:
-    """Writing ``el.setAttribute('onclick', ...)`` or assigning to
-    ``el.onerror = userControlledString`` is XSS via the event-
-    handler attribute.  Pin no setAttribute('on*', ...) in the
-    codebase + flag dynamic on-property writes for review."""
-
-    @pytest.mark.parametrize("js_path", _all_js_files(),
-                             ids=lambda p: str(p.relative_to(STATIC_ROOT)))
-    def test_no_setAttribute_event_handler(self, js_path):
-        src = _strip_js_comments(js_path.read_text())
-        bad = re.findall(
-            r'\.setAttribute\s*\(\s*["\']on[a-z]+["\']',
-            src, flags=re.I,
-        )
-        assert not bad, (
-            f"{js_path.name} writes an event-handler attribute via "
-            f"setAttribute; use addEventListener instead"
-        )
-
-
-class TestJinjaAutoescapeNeverDisabled:
-    """Jinja's autoescape filter is the project's last line of defense
-    against XSS via server-rendered HTML.  Any ``{{ var | safe }}``
-    or ``Markup(...)`` call disables escape and re-opens the
-    injection surface.
-
-    Today every template variable is either (a) a literal Python
-    string set inside the template via ``{% set ... %}``, or (b)
-    one of {url_for, active_tab, current_user} — none currently
-    user-controllable except current_user.email, which is itself
-    validated upstream by the auth provider and the allowlist.
-    But ``| safe`` is a footgun: a future refactor that
-    interpolates a sidebar-selected filename into the tagline
-    would silently break with autoescape off.
-
-    Use literal Unicode characters (—, ·, →, ★, etc.) in template
-    strings instead of HTML entities like ``&mdash;``/``&middot;``
-    -- both render identically; the former survives autoescape
-    (the entity form renders as visible "&mdash;" text because
-    Jinja writes the leading ``&`` as ``&amp;``).
-    """
-
-    @pytest.fixture
-    def templates_dir(self):
-        return (Path(__file__).resolve().parent.parent
-                / "molbuilder" / "web" / "templates")
-
-    @staticmethod
-    def _strip_jinja_and_html_comments(text):
-        """Drop ``{# ... #}`` Jinja comments and ``<!-- ... -->``
-        HTML comments so a comment legitimately mentioning the
-        bypass pattern (e.g., a docstring explaining the security
-        history) doesn't trip the scanner.  Preserves newlines so
-        future line-number assertions stay aligned."""
-        out = re.sub(r"\{#-?.*?-?#\}", "", text, flags=re.S)
-        out = re.sub(r"<!--.*?-->",   "", out,  flags=re.S)
-        return out
-
-    def test_no_safe_filter_in_any_template(self, templates_dir):
-        offenders = []
-        for tpl in templates_dir.rglob("*.html"):
-            text = self._strip_jinja_and_html_comments(tpl.read_text())
-            # ``{{ x | safe }}`` -- the canonical autoescape-bypass.
-            if re.search(r"\|\s*safe\b", text):
-                offenders.append(str(tpl.relative_to(templates_dir)))
-        assert not offenders, (
-            f"templates use Jinja's ``| safe`` filter (XSS bypass): "
-            f"{offenders}.  Use literal Unicode (—, →, ...) instead "
-            f"of HTML entities so autoescape can stay on."
-        )
-
-    def test_no_Markup_call_in_any_template(self, templates_dir):
-        offenders = []
-        for tpl in templates_dir.rglob("*.html"):
-            text = self._strip_jinja_and_html_comments(tpl.read_text())
-            if re.search(r"\bMarkup\s*\(", text):
-                offenders.append(str(tpl.relative_to(templates_dir)))
-        assert not offenders, (
-            f"templates use Markup() (autoescape bypass): {offenders}"
-        )

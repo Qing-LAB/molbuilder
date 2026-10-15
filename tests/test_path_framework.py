@@ -112,23 +112,6 @@ def test_an_exemption_cannot_excuse_a_handcrafted_site():
         + "\n".join(f"  {k} -> {v!r}" for k, v in offenders.items()))
 
 
-def test_every_exemption_carries_a_reason():
-    """A bare verdict is not a decision anyone can re-check.
-
-    The whole value of the exemption list is that someone READ the site; the
-    reason is the evidence of that, and the next person needs it to know
-    whether the judgement still holds.  **Non-empty, not long** -- a length
-    floor would be a rule no document states, and some of these sites really
-    are one clause ("conda-meta's own naming"); what must not happen is a
-    verdict with nothing behind it.
-    """
-    t = _tool()
-    thin = sorted(k for k, (_v, why) in t._OVERRIDES.items() if not why.strip())
-    assert not thin, (
-        "these exemptions state a verdict with no reason:\n"
-        + "\n".join(f"  {k}" for k in thin))
-
-
 # --------------------------------------------------------------------------- #
 # 2.  The mutation test -- the guard must actually catch one.                  #
 # --------------------------------------------------------------------------- #
@@ -255,21 +238,6 @@ def test_the_survey_derives_its_vocabulary_from_the_catalogue():
         f"`OWNED` must derive from `runfiles.WRITTEN`, never restate it.")
 
 
-def test_the_survey_does_not_claim_an_engines_files():
-    """`.XV` and `.STRUCT_OUT` are not in the survey's owned vocabulary.
-
-    The other half: a survey that claims an engine's output
-    sends the next person looking for a door that cannot exist, because
-    `job-contracts.md` § 4.2 is explicit that what an engine writes is not
-    enumerable -- *"a snapshot pretending to be a rule."*
-    """
-    t = _tool()
-    known = {needle for needle, _door, _what in t.OWNED}
-    for engine_file in (".XV", ".DM", ".STRUCT_OUT", ".TSHS"):
-        assert engine_file not in known, (
-            f"{engine_file} is the ENGINE's; no door of ours composes it")
-
-
 # --------------------------------------------------------------------------- #
 # 4.  The COMPOSE half -- the population a search survey cannot see.          #
 # --------------------------------------------------------------------------- #
@@ -367,19 +335,6 @@ def test_the_compose_guard_catches_a_new_hand_built_name(tmp_path, source,
             f"{[r['text'] for r in rows]}")
 
 
-def test_the_grammar_modules_are_exempt_by_identity_not_by_override():
-    """`runfiles` and `paths` compose these names for a living.
-
-    Exempting them with an override would be a lie about why: they are not
-    sites someone read and excused, they are the composers. So they are skipped
-    by module path, and the list of them is short enough to be checkable.
-    """
-    t = _tool()
-    assert t.GRAMMAR_MODULES == ("molbuilder/runfiles.py", "molbuilder/paths.py")
-    for mod in t.GRAMMAR_MODULES:
-        assert (ROOT / mod).is_file(), f"{mod} is exempted and does not exist"
-
-
 # --------------------------------------------------------------------------- #
 # 5.  The THIRD axis -- a directory of the hierarchy, spelled at a caller.    #
 # --------------------------------------------------------------------------- #
@@ -427,8 +382,6 @@ def test_no_segment_exemption_has_come_unanchored():
     assert not stale, (
         "these segment exemptions match no site any more:\n"
         + "\n".join(f"  {k}" for k in stale))
-
-
 
 
 _INVENTS_A_SEGMENT = '''\
@@ -489,25 +442,3 @@ def test_the_segment_guard_catches_an_invented_container(tmp_path, source,
             f"{[(r['how'], r['line']) for r in hits]}")
 
 
-def test_the_segment_pass_is_scoped_and_says_why():
-    """The vocabulary is a calculation's containers, not every directory name.
-
-    A broad net over every `X / "plain-name"` finds 67 segments across 128 sites
-    at 11% precision — units (`Ha/`, `eV/`), a MIME type (`application/json`),
-    conda's trees (`bin`, `conda-meta`, `opt`), git's (`refs/`). Measured
-    2026-09-08. This asserts the scope stayed small, so nobody widens it back
-    into a nag list without reading § 5l.4.
-    """
-    t = _tool()
-    assert len(t.CALC_CONTAINERS) <= 6, (
-        f"the segment vocabulary grew to {sorted(t.CALC_CONTAINERS)} — levels "
-        f"① and ② are `projects.py`'s (CANONICAL_TOPICS is declared AND "
-        f"validated), and a broad vocabulary is what makes this a nag list")
-    # levels ①/② must NOT be in here: `transport` and `user` are topic names and
-    # also ordinary words, and including them flagged a schema string and a
-    # GitHub endpoint.
-    from molbuilder.projects import CANONICAL_TOPICS
-    assert not (set(CANONICAL_TOPICS) & set(t.CALC_CONTAINERS)), (
-        "a canonical TOPIC is in the calculation-container vocabulary; topics "
-        "are validated by `projects.validate_topic` and including them here "
-        "measured 2 false positives out of 2")

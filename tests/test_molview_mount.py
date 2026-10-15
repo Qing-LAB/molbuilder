@@ -22,8 +22,6 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
-from tests._molview_sources import (module_code, module_dependencies,
-                                    module_files)
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -149,28 +147,6 @@ def test_mounting_needs_only_a_host_and_a_workspace_door():
 # ---------------------------------------------------------------------------
 # § 8 — mount always resolves
 # ---------------------------------------------------------------------------
-
-def test_the_modules_molview_depends_on_are_these_and_no_others():
-    """§ 4 is about the BOUNDARY, not about isolation.
-
-    MolView may reach DOWN to a shared module -- it reuses
-    `lib/validation-findings.js` rather than growing a second renderer for a
-    finding, and it already resolves its colours to the app's tokens. What
-    would break the module is a dependency that is not a decision: a reach
-    SIDEWAYS into another viewer, or a third module arriving through an
-    import nobody looked at.
-
-    So the set is named here and has to be edited deliberately. The
-    accompanying rule is the one the mount test checks: however MolView
-    reaches a dependency, it is by IMPORT and never off a global (§ 4 --
-    "nothing it needs comes from a global").
-    """
-    assert sorted(module_dependencies()) == ["validation-findings.js"], (
-        f"MolView's dependencies changed: {sorted(module_dependencies())}. "
-        f"Depending downward on a shared module is fine and is why this list "
-        f"is not empty — but each one is a design decision, so add it here "
-        f"with the reason."
-    )
 
 
 def test_mount_always_resolves_with_a_working_dispose():
@@ -998,31 +974,6 @@ def test_two_viewers_on_one_page_share_no_name():
 # § 6.7 — no hand-rolled file handling
 # ---------------------------------------------------------------------------
 
-def test_the_module_writes_no_file_handling_of_its_own():
-    """§ 6.7: "MolView does not build a download link, does not make an object
-    URL, does not touch a filesystem API, and does not call a file endpoint."
-
-    The rule is worth checking flatly because the alternative looks so reasonable
-    in the moment: offering a download is four lines of DOM, and writing them is
-    quicker than threading a door through. It went that way once, and the result
-    was a viewer that knew how to put a file on a user's disk — a second place
-    that knowledge lived, outside every rule that applies to the real one.
-    """
-    # THE MODULE IS WHAT THE ENTRY POINT REACHES, not what the directory holds.
-    # The demo page is a CONSUMER — it supplies the door rather than living
-    # behind it — so it is not a layer and this rule is not its. That is
-    # structural, not a name on a list (§ 13.1).
-    offenders = {}
-    for name, code in module_code().items():
-        hits = [t for t in ("createObjectURL", ".download =", "showSaveFilePicker",
-                            "createWritable", "FileSystemHandle", "/api/files/")
-                if t in code]
-        if hits:
-            offenders[name] = hits
-    assert offenders == {}, (
-        f"the module handles files itself instead of through the door: {offenders}"
-    )
-
 
 def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     """§ 11.7: what leaves is "what the viewer holds — the atoms, their positions,
@@ -1224,39 +1175,6 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
         f"the chosen range did not reach exportFile: {out['frameCount']}"
     )
     assert out["dialogGone"] is True
-
-
-def test_the_browser_writes_no_coordinate_document():
-    """§ 11.7's rule, checked at the source rather than at one call site: the
-    module contains no coordinate writer at all. One exception survives — a
-    trajectory frame the server has never seen — and it is named there; a writer
-    that reappears anywhere else has broken the rule quietly.
-
-    Checked against the CODE, comments stripped: naming a format in prose is how
-    the rule gets explained, and using it is how the rule gets broken.
-    """
-    import re as _re
-
-    def code_of(text):
-        text = _re.sub(r"/\*[\s\S]*?\*/", "", text)     # block comments
-        return _re.sub(r"(?m)^\s*//.*$", "", text)      # line comments
-
-    for path in sorted(MODULE_DIR.glob("*.js")):
-        # `demo.js` is a HOST, not the module -- it reaches MolView only through
-        # the entry point (pinned above), and turning a structure into bytes is
-        # exactly a host's job. It asks the server for them.
-        if path.name == "demo.js":
-            continue
-        body = code_of(path.read_text(encoding="utf-8"))
-        assert ".molstruct.json" not in body, (
-            f"{path.name} writes the sidecar filename -- the server owns that format"
-        )
-        assert ".xyz" not in body, (
-            f"{path.name} writes a coordinate filename"
-        )
-        assert not _re.search(r"lines\.push\(.*elements\[", body), (
-            f"{path.name} assembles a coordinate document"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -2358,47 +2276,6 @@ def test_loading_a_structure_reaches_the_drawing():
     )
     assert out["swapped"] is True, "scrubbing did not reach the drawing"
     assert out["painted"] is True, "nothing was ever painted"
-
-
-# ---------------------------------------------------------------------------
-# § 8.1–8.3 — the stylesheet is the design system, not a suggestion
-# ---------------------------------------------------------------------------
-
-def test_every_class_the_module_writes_is_one_the_stylesheet_defines():
-    """The stylesheet IS MolView's design system (§ 8.1–8.3), so a class name the
-    module invents is a control with no design — it falls through to the
-    browser's defaults and looks like nothing else on the card.
-
-    That is not a cosmetic problem. It happened because writing `class="…"` is
-    the same four keystrokes whether the rule exists or not, so nothing pushes
-    back at the moment of writing. This is what pushes back: the vocabulary is
-    the stylesheet's, and the module may only use words it already has.
-
-    It also catches the reverse of a real bug — a control styled by a rule that
-    was renamed out from under it.
-    """
-    import re
-
-    css = (MODULE_DIR / "molview.css").read_text()
-    defined = set(re.findall(r"\.([a-zA-Z][\w-]*)", css))
-
-    invented = {}
-    for name, path in module_files().items():
-        code = path.read_text()
-        used = set()
-        for value in re.findall(r'el\((?:"[^"]*"|\w+),\s*"([^"]+)"\)', code):
-            used.update(value.split())
-        for value in re.findall(r'className\s*=\s*"([^"]+)"', code):
-            used.update(value.split())
-        for value in re.findall(r'classList\.(?:add|toggle)\("([^"]+)"', code):
-            used.update(value.split())
-        missing = sorted(c for c in used if c not in defined)
-        if missing:
-            invented[name] = missing
-    assert invented == {}, (
-        f"these controls are drawn with classes the stylesheet never defines, so "
-        f"they have no design at all: {invented}"
-    )
 
 
 # ---------------------------------------------------------------------------

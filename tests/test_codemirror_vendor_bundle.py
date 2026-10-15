@@ -129,9 +129,3 @@ def test_every_declared_mode_is_on_disk_and_registers_itself():
             f"{filename} carries no defineMode() — it is not a CodeMirror mode")
 
 
-def test_the_vendor_inventory_lists_the_modes():
-    """`static/vendor/README.md` is the notice + inventory; a vendored file
-    that is not in it is a licence-tracking gap (the repo's own rule)."""
-    readme = (STATIC / "vendor/README.md").read_text()
-    for filename in _declared_modes().values():
-        assert filename in readme, f"{filename} is vendored but not in the inventory"

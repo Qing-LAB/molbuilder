@@ -560,9 +560,8 @@ does.** A template is a few hundred lines read once per `prep`.
 catalogue gives it.** That is not a courtesy to the reader: an example is the
 shape everyone copies, and this one showed three items that do not exist —
 `frozen_indices` and `user_custom` were never added (§ 12), and `species_order`
-was shown as `kind="deck"` when it is `produce` (§ 6). Illustrations are now
-checked against the catalogue by
-`tests/test_doc_claims.py::test_every_documented_item_matches_the_catalogue`.
+was shown as `kind="deck"` when it is `produce` (§ 6). An illustration is
+read against the catalogue at review.
 
 The six items are chosen to show **all four `kind`s that any item carries** —
 `engine`, `deck`, `produce`, `wrapper` — and both value states. (`monitor` is

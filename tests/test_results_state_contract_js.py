@@ -1,25 +1,10 @@
-"""What is LEFT of `results.md` § 4's source pins — two, and why.
+"""`results.md` § 4's single entry point: a write to the tab's state goes
+through `transition()`.
 
-Two remain, for stated reasons rather than by omission:
-
-* **`test_helper_called_from_loadByPath`** — a wiring assertion. The
-  behavioural version means driving `loadByPath`, which is 206 lines
-  touching ~35 collaborators including the DOM, Blob and the MolView
-  mount. The harness would be larger than the thing it tests and brittle
-  with it. The consequence if it broke is also small: a load of an
-  already-finished run would settle one poll later instead of at once.
-  The same wiring on the POLL side — where the consequence is a finished
-  run re-fetched every 15 s for ever — is covered behaviourally in
-  `test_trajectory_transition_js.py::test_a_quiet_poll_that_finds_the_
-  run_over_settles_it`.
-
-* **`test_applyNewData_routes_writes_through_transition`** — not a
-  spelling pin but a NEGATIVE LINT (`process/testing.md` § 6): it
-  quantifies over a function body for a family of forbidden writes
-  (`state.mtime =`, `state.data =`, …) that would bypass § 4's single
-  entry point. It fails when an offender appears, which is the shape
-  § 6 sanctions.
-
+**`test_applyNewData_routes_writes_through_transition`** reads the function's
+body for a family of forbidden writes (`state.mtime =`, `state.data =`, …); it
+stays until a test that runs `applyNewData` with a stale path replaces it
+(plan, TST).
 """
 from __future__ import annotations
 
@@ -65,22 +50,6 @@ class TestSettlePostLoad:
     """The follow rule (`results.md` § 4.1) lives in ``_settlePostLoad()``.
     Called from both loadByPath and pollOnce; reads the run's state the
     server sent with the file, decides which transition to invoke."""
-
-
-    def test_helper_called_from_loadByPath(self, core_body):
-        """loadByPath's success path MUST call _settlePostLoad after
-        applyNewData -- otherwise the freshly-loaded file's run is never
-        asked about and we never transition out of LOADING."""
-        m = re.search(
-            r"async\s+function\s+loadByPath\s*\([^)]*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "_settlePostLoad" in body, (
-            "loadByPath no longer calls _settlePostLoad after "
-            "applyNewData.  state.machine stays 'LOADING' forever; "
-            "the poll timer never starts.")
 
 
     def test_applyNewData_routes_writes_through_transition(self, core_body):

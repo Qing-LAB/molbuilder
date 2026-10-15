@@ -6,7 +6,6 @@ pure: no rendering, no I/O.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -704,29 +703,6 @@ def test_bench_marks_extracts_version_and_fields():
     assert marks is not None
     assert marks.get("version") == "v1"
     assert any(f.get("name") == "MeshCutoff" for f in marks.get("fields", []))
-
-
-def test_the_block_readers_do_no_io():
-    """A block reader takes a STRING, and one that started opening files
-    would be a real defect, because every caller already holds the text and
-    some hold it from a request body rather than a path.
-
-    **Scoped to the reader section at BOTH ends.**  The ROUND-TRIP section
-    follows the readers and legitimately opens a file --
-    `merge_user_custom_from_target` reads the previous deck to carry your
-    USER-CUSTOM zone forward, and `write_script` writes -- so the second
-    bound is what tells I/O appearing among the readers from the boundary
-    moving.
-    """
-    src = Path(sc.__file__).read_text()
-    start = src.index("#  READING THE BLOCKS BACK")
-    end = src.index("#  ROUND-TRIP — the operations that need BOTH halves")
-    assert start < end, "the reader section must precede the round-trip one"
-    readers = src[start:end]
-    for token in ("read_text", "read_bytes", "open(", ".read()", "Path("):
-        assert token not in readers, (
-            f"a block reader touches the filesystem ({token!r}) -- they take "
-            "text in memory; reading the file is the caller's job")
 
 
 def test_a_brace_in_a_region_name_does_not_destroy_the_block():

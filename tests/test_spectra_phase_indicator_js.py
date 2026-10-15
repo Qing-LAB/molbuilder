@@ -174,21 +174,6 @@ def test_first_call_reveals_the_indicator():
     assert out["hidden"] is False
 
 
-def test_subsequent_calls_keep_it_visible():
-    """The function never sets ``hidden = true`` — once shown, it
-    stays.  This pins that no future refactor accidentally adds a
-    ``hidden = !something`` branch that would re-hide on a stale
-    poll."""
-    fn = _extract_fn_source("updatePhaseIndicator")
-    assert "hidden = false" in fn, (
-        "updatePhaseIndicator must contain `hidden = false`."
-    )
-    assert "hidden = true" not in fn, (
-        "updatePhaseIndicator must NOT contain `hidden = true` — "
-        "the indicator only reveals; it never re-hides."
-    )
-
-
 # --------------------------------------------------------------------- #
 #  Contract: missing element → silent no-op                              #
 # --------------------------------------------------------------------- #

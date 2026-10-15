@@ -322,17 +322,3 @@ def test_serve_help_advertises_cert_and_key():
     assert res.exit_code == 0
     assert "--cert" in res.output
     assert "--key" in res.output
-
-
-# --------------------------------------------------------------------- #
-#  .gitignore must list the runtime config so it never gets committed   #
-# --------------------------------------------------------------------- #
-
-
-def test_gitignore_excludes_molbuilder_json():
-    from pathlib import Path
-    repo_root = Path(__file__).resolve().parent.parent
-    gi = (repo_root / ".gitignore").read_text().splitlines()
-    assert "molbuilder.json" in gi, \
-        "molbuilder.json must be gitignored so per-machine TLS paths " \
-        "don't sync to the remote."

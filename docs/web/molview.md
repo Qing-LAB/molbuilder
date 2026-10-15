@@ -1066,9 +1066,8 @@ map that put an error in the tone of a remark.
 > rule, not a vow to reimplement every shared concern. Depending downward on a
 > presentation module is reuse; what § 4 forbids is taking it off a global, and
 > `test_mounting_needs_only_a_host_and_a_workspace_door` proves mounting still
-> publishes nothing. The dependency set itself is pinned, so the next one is a
-> decision rather than an accident — `test_the_modules_molview_depends_on_are_these_and_no_others`
-> holds the set, so read it there rather than trusting a count written here.
+> publishes nothing. Each dependency is a decision, read at review: today one,
+> `lib/validation-findings.js`.
 > MolView's sheet sets the row's type scale
 > for this panel's density and owns nothing about the severity.
 
@@ -2240,8 +2239,7 @@ screen.
 And a second read is no better for being fresh. A body that carries the envelope
 *and* `frozen_atoms` *and* `regions` *and* `periodicity` beside it has read the
 same facts four times at four moments — every one of them current, none of them
-together. Pinned by `tests/test_in_body_labels_contract.py`, which fails on a
-request body carrying any of those keys next to the structure.
+together.
 
 **With nothing loaded, a read returns nothing** rather than an empty structure.
 "There is nothing here" and "here is a structure with no atoms" are different

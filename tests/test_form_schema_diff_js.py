@@ -21,7 +21,6 @@ regression in any field-kind branch surfaces here.
 """
 from __future__ import annotations
 
-import re
 import threading
 import textwrap
 from pathlib import Path
@@ -34,9 +33,6 @@ pytest.importorskip("flask")
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder" / "web" / "static"
-FORM_CSS = STATIC / "lib" / "form-schema.css"
-TOKENS = STATIC / "lib" / "tokens.css"
-VIEWER = STATIC / "structure-optimization" / "viewer.js"
 
 
 @pytest.fixture
@@ -209,60 +205,3 @@ def test_booleans_compare_without_a_number_detour(page, flask_server):
     _set(page, {"flag": True})
     assert [d["name"] for d in _diff(page)] == ["flag"]
     assert _diff(page)[0]["current"] is True
-
-
-# ------------------------------------------------------------------ #
-# the panel, and where its parts live
-# ------------------------------------------------------------------ #
-
-def test_the_panel_resets_through_setvalues(page=None):
-    """The tab must not write the inputs itself — every field kind is
-    already handled by `setValues`, and a second writer is the drift the
-    module exists to prevent."""
-    src = VIEWER.read_text()
-    body = src.split("function mountRecommended", 1)[1].split("\n    async ", 1)[0]
-    assert "diffFromDefaults" in body, "the panel compares by hand"
-
-    # The reset handler ALONE — the panel's own checkboxes are its to
-    # build, but the form's inputs are `setValues`' to write.
-    handler = body.split('resetEl.addEventListener("click"', 1)[1]
-    handler = handler.split("\n        });", 1)[0]
-    assert "fs.setValues(" in handler, "reset writes the form by hand"
-    assert "container.querySelector" not in handler, (
-        "reset reaches into the form's inputs instead of going through "
-        "setValues, which handles every field kind")
-
-
-def test_the_panel_sheet_has_one_owner_and_no_literals():
-    """`ui-contract.md` § 1: a shared element has exactly one owner.  The
-    widget is generic — it works off `diffFromDefaults` — so it lives in
-    the forms module sheet, not a tab sheet."""
-    assert ".rec-diff" in FORM_CSS.read_text(), (
-        "the panel's styles are not in the module that owns the widget")
-    for sheet in (STATIC / "structure-optimization" / "style.css",):
-        assert ".rec-diff-list" not in sheet.read_text(), (
-            "a tab sheet is redefining the shared widget")
-
-    block = FORM_CSS.read_text().split("recommended-value panel", 1)[1]
-    block = re.sub(r"/\*.*?\*/", "", block, flags=re.S)
-    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block), (
-        "raw colour in the panel sheet; every colour is a --rec-* token")
-    assert not re.search(r"rgba?\(", block), "raw colour function in the sheet"
-
-
-def test_the_flag_tone_is_passive_not_a_call_to_action():
-    """A parameter away from its recommendation is a FLAG, not an error —
-    a 4x4x1 k-grid is a correct answer that differs.  `tokens.css` keeps
-    --warning for a call to action and --warn-soft for a passive one."""
-    toks = TOKENS.read_text()
-    m = re.search(r"--rec-flag:\s*var\((--[a-z-]+)\)", toks)
-    assert m, "--rec-flag is not defined as a token reference"
-    assert m.group(1) == "--warn-soft", (
-        f"--rec-flag borrows {m.group(1)}; a difference is not an error")
-
-
-def test_the_contract_says_the_argument_is_a_path():
-    doc = (ROOT / "docs/web/projects.md").read_text()
-    assert "publishCommit(dir, path)" in doc, (
-        "the contract still calls it `file`, which is what caused the misuse")
-    assert "FULL path" in doc

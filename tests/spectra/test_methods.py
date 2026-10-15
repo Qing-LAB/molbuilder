@@ -407,8 +407,6 @@ class TestRenderMethodsMdWithStruct:
         assert "2 frozen" in md
 
 
-
-
 # ── the HOMO rule -- ours, and it has a branch ──────────────────────────────
 
 @pytest.mark.parametrize("mo_occ,expected,why", [
@@ -460,39 +458,3 @@ def test_a_reference_with_no_occupied_levels_is_refused_not_indexed():
         homo_index([0.0, 0.0, 0.0])
 
 
-def test_every_derived_quantity_is_named_in_the_provenance_table():
-    """The provenance table in `engines/vibration.md` § 6.4 names every
-    quantitative key the emitter writes -- so a new number cannot ship
-    undocumented.
-
-    THE FAILURE THIS CATCHES.  A spectrum is a quantitative result, and the
-    chain from PySCF's own objects to the number on screen is what makes it
-    checkable by someone who did not write it. A key added to the sidecar
-    without a row here is a number with no stated origin: a reader cannot tell
-    whether molbuilder passed it through or derived it, and therefore cannot
-    tell whose bug it would be.
-
-    ARTIFACT LINT (`testing.md` § 3b): it quantifies over the class rather than
-    naming today's keys, so the next one is caught the day it is added.
-
-    Contract: `engines/vibration.md` § 6.4.
-    """
-    from pathlib import Path
-    doc = (Path(__file__).resolve().parents[2] / "docs" / "engines"
-           / "vibration.md").read_text(encoding="utf-8")
-    table = doc[doc.index("### 6.4 Where every number comes from"):
-                doc.index("**Two rules this table enforces**")]
-
-    # The quantitative keys -- values a person reads off a chart or a paper.
-    # Bookkeeping keys (schema_version, engine, elements, ...) are excluded by
-    # name, so adding one does not force a row it does not need.
-    quantitative = {
-        "scf_energy_eh", "mo_energies_eh", "homo_idx", "frequency_cm1",
-        "eigenvector_canonical", "ir_intensity_km_mol",
-        "raman_activity_a4_amu", "amplitude_ang",
-    }
-    missing = sorted(k for k in quantitative if f"`{k}`" not in table
-                     and k not in table)
-    assert not missing, (
-        f"these quantitative keys have no row in `engines/vibration.md` § 6.4, so "
-        f"nothing states where their values come from: {missing}")

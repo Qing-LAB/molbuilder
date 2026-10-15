@@ -11,10 +11,8 @@ form unhonored fails here on arrival.
 """
 from __future__ import annotations
 
-import re
 
 import numpy as np
-import pytest
 
 from molbuilder import template as T
 from molbuilder.config.pyscf import PySCFConfig
@@ -219,14 +217,5 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
         f"IGNORES them -- the honesty gap this test exists to close: "
         f"{silent}.  Honor each (pyscf.md § 7a is the door for SCF "
         f"machinery) or add it to STILL_OPEN with its plan row.")
-
-
-def test_the_open_list_matches_the_plan_not_more():
-    """The open list may only name parameters the plan actually tracks
-    -- a name parked here without a plan row is hiding, not pending."""
-    plan = open("docs/archive/2026-08-21-vibration-parameter-integration-plan.md").read()
-    unplanned = [n for n in STILL_OPEN if f"`{n}`" not in plan]
-    assert not unplanned, (
-        f"STILL_OPEN entries absent from the integration plan: {unplanned}")
 
 

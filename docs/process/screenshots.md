@@ -26,10 +26,7 @@ of these images changes.
 > landed with a note like this and none triggered the capture, because a
 > note is not a mechanism.  The count had read *five · six · seven*
 > simultaneously across three documents, all of them restating `tabs.md`
-> § 1.  The **owner** is pinned now —
-> `test_doc_claims.py::test_the_tab_count_is_stated_in_prose_and_true`
-> compares § 1's prose against `TABS` — so a new tab cannot land without at
-> least one document telling the truth.  **The captures themselves are still
+> § 1.  The **owner** is `tabs.md` § 1, the others point at it.  **The captures themselves are still
 > only a rule**: nothing can look at a PNG and count tabs in it.
 
 > **Demo data convention.**  Every screenshot uses the project at

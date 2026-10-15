@@ -7,8 +7,7 @@
  * A SEALED CSS SYSTEM, in the same sense the JavaScript is sealed.
  *
  *   * EVERY name is under one namespace, `vibview-`. There is no bare name to
- *     collide with a page's, and a page sheet reaching at one fails a guard
- *     (tests/test_css_module_boundary.py).
+ *     collide with a page's, and a page sheet does not reach at one.
  *   * EVERY value is a token declared on the module's own root, so no rule below
  *     carries a number or a colour of its own. Changing how the module looks means
  *     changing that block, not hunting literals through the file.

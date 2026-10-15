@@ -361,22 +361,3 @@ def test_fixture_regenerated_from_textbook_chemistry():
         )
 
 
-def test_bond_length_inventory_matches_readme_sources():
-    """Pin BL values against the README citations so a stealth
-    bond-length change carries a corresponding README update.
-    A future refactor can update both in lock-step; this test
-    surfaces the mismatch if the README and the dataclass drift.
-    """
-    readme = (_HERE / "data" / "au_bdt_au.README.md").read_text()
-    # Bilic-Reimers gets cited specifically; the other rows aren't
-    # tied to a single paper so we don't pin them by author.
-    assert "2.38" in readme and "Bilic" in readme
-    assert "1.40" in readme and "benzene" in readme.lower()
-    assert "1.78" in readme
-    assert "2.88" in readme
-    # And the actual BL values match the README's table.
-    assert BL.s_au_atop == 2.38
-    assert BL.cc_aromatic == 1.40
-    assert BL.cs_aromatic == 1.78
-    assert BL.au_au_fcc == 2.88
-    assert BL.ch_aromatic == 1.09

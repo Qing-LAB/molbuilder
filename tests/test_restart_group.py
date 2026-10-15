@@ -106,18 +106,6 @@ def test_a_missing_restart_field_reads_as_clean():
     assert continues(Bare()) is False
 
 
-def test_both_engines_read_restart_through_the_one_function():
-    """§ 4 rule 2 says ONE field; this is the other half -- one READING of
-    it.  Two copies of *"does this run continue?"* are two things that can
-    answer differently."""
-    import molbuilder.identity as _id
-    import molbuilder.siesta.input as _si
-    import molbuilder.pyscf.input as _pi
-    assert _si.continues is _id.continues
-    assert _pi.continues is _id.continues
-    assert not hasattr(_si, "_continues")
-
-
 # --------------------------------------------------------------------- #
 #  Rule 3 — it is per-stage, because it is an ordinary field            #
 # --------------------------------------------------------------------- #

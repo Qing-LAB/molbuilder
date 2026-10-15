@@ -287,32 +287,6 @@ def test_a_field_annotated_the_new_way_declares_the_same_item():
     assert old.optional is new.optional is True
 
 
-def test_the_module_exports_its_own_read_api_and_vocabularies():
-    """§ 1.5: `__all__` omitted the module's headline API.
-
-    `template.md` § 8.0 calls ``select`` and ``one`` **the one read API**, and
-    neither was exported; nor were the three closed vocabularies, so a surface
-    wanting to order panels by the closed six had to hard-code them or reach
-    past the declared public surface.  Both are the same failure -- a module
-    whose declared surface is narrower than the contract it implements.
-
-    **Scoped to this module deliberately.** The audit filed this against the
-    package convention on the evidence of *2 of 2 modules read*.  Measured
-    across the package on 2026-08-14: **97 modules declare ``__all__`` and 80
-    do not**, and `docs/process/package-layout.md` states no rule about either.
-    A package-wide gate needs that rule written first; asserting one here from
-    a sample of two would invent policy.
-    """
-    from molbuilder import template as _t
-    for name in ("select", "one", "CATEGORIES", "KINDS", "TYPES"):
-        assert name in _t.__all__, (
-            f"{name} is part of what template.md § 8.0 documents but is not "
-            f"in __all__ -- the module's declared surface is narrower than "
-            f"its contract")
-    # And nothing is exported that does not exist.
-    for name in _t.__all__:
-        assert hasattr(_t, name), f"__all__ names {name}, which is not defined"
-
     # NOTHING here asserts "every public name is exported".  A module's
     # namespace also holds what it imported -- ``Any``, ``Dict``, ``Optional``
     # -- and no rule anywhere says a module must re-export or hide those.
@@ -323,55 +297,6 @@ def test_the_module_exports_its_own_read_api_and_vocabularies():
 # --------------------------------------------------------------------- #
 #  The help-authoring convention `deck_note` depends on                  #
 # --------------------------------------------------------------------- #
-
-
-def test_help_prose_is_authored_one_paragraph_per_line():
-    """`script_emit.deck_note` states a convention; the catalogue must keep it.
-
-    Its rule is *"One source line is one paragraph: the catalogue writes help
-    with a hard newline between thoughts"* -- which is what lets it re-flow prose
-    to the deck's width while copying an INDENTED ladder row verbatim, so a
-    hand-aligned tier table survives.
-
-    An item whose help is instead **soft-wrapped mid-sentence** breaks that: each
-    source line is re-wrapped as its own paragraph, so a 74-column line becomes a
-    full line plus a two-word orphan, and the note reaches the deck as::
-
-        # How much memory this run may use.  Left blank -- the normal state
-        # -- it is
-        # the machine's maximum, resolved at prep on the node that granted
-        # it; set a
-
-    A line is a soft wrap when **both it and the next line are prose** -- neither
-    indented -- and it does not end a thought.  A ladder row is exempt on either
-    side: `deck_note` copies indented lines verbatim to keep a hand-aligned tier
-    table aligned, and the last row of a ladder rarely ends in a full stop.
-    """
-    import tomllib
-
-    from molbuilder.template import CATALOGUE
-
-    rows = tomllib.loads(CATALOGUE.read_text(encoding="utf-8"))
-    rows = rows.get("item", rows)
-    offenders = {}
-    for name, item in rows.items():
-        if not isinstance(item, dict):
-            continue
-        lines = (item.get("help") or "").split("\n")
-        for a, b in zip(lines, lines[1:]):
-            if not a.strip() or not b.strip():
-                continue
-            if a[:1].isspace() or b[:1].isspace():
-                continue                      # a ladder row, copied verbatim
-            if a.strip()[-1] in ".:;!?":
-                continue                      # a finished thought
-            offenders.setdefault(name, a.strip()[-40:])
-            break
-    assert offenders == {}, (
-        "these catalogue items soft-wrap their help mid-sentence, so deck_note "
-        "re-flows each line as its own paragraph and the note reaches the deck "
-        "broken:\n  "
-        + "\n  ".join(f"{k}: ...{v!r}" for k, v in sorted(offenders.items())))
 
 
 def test_the_calculation_kind_filters_the_generated_template():

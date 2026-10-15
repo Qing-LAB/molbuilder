@@ -715,93 +715,6 @@ class TestSidebarPartialAndShim:
         r = web.get("/projects")
         assert r.status_code == 404
 
-    def test_projects_module_dependency_direction(self, web, picker_root):
-        """Module deps form a DAG -- a circular import would still
-        work in ES modules but causes init-order subtleties.  Pin
-        the allowed direction:
-
-            api.js          -> (nothing in projects/)
-            state.js        -> api.js only
-            preview.js      -> state.js, api.js
-            dialogs.js      -> state.js, api.js
-            list.js         -> state.js, api.js, preview.js, dialogs.js
-            mutation-bar.js -> state.js, api.js, list.js, dialogs.js
-
-        ``projects-sidebar.js`` (entry) imports the modules and is
-        the only file allowed to.
-        """
-        def imports_from_projects(body):
-            import re
-            # Match ./projects/<name>.js or ./<name>.js (hyphen + dot OK).
-            return set(re.findall(
-                r'from\s+"\.\/projects\/([a-z][a-z0-9_-]*)\.js"|'
-                r'from\s+"\.\/([a-z][a-z0-9_-]*)\.js"',
-                body,
-            ))
-        def flat(matches):
-            return {a or b for a, b in matches}
-
-        api    = flat(imports_from_projects(
-            web.get("/static/lib/projects/api.js").get_data(as_text=True)
-        ))
-        state  = flat(imports_from_projects(
-            web.get("/static/lib/projects/state.js").get_data(as_text=True)
-        ))
-        preview = flat(imports_from_projects(
-            web.get("/static/lib/projects/preview.js").get_data(as_text=True)
-        ))
-        dialogs = flat(imports_from_projects(
-            web.get("/static/lib/projects/dialogs.js").get_data(as_text=True)
-        ))
-        list_  = flat(imports_from_projects(
-            web.get("/static/lib/projects/list.js").get_data(as_text=True)
-        ))
-        mutation_bar = flat(imports_from_projects(
-            web.get("/static/lib/projects/mutation-bar.js").get_data(as_text=True)
-        ))
-
-        # api is a leaf -- depends on nothing else in projects/.
-        assert api == set(), f"api.js should be a leaf, imports {api}"
-
-        # state depends only on api.
-        assert state <= {"api"}, (
-            f"state.js may import from api only, found {state}"
-        )
-
-        # preview depends on state + api.
-        assert preview <= {"state", "api"}, (
-            f"preview.js may import from state, api only, found {preview}"
-        )
-
-        # dialogs (2026-06-12) is a leaf-ish module: presents modal
-        # <dialog>s + handles user input.  May read from api (for the
-        # tree-picker's directory listing) + state (for the projects
-        # root anchor); never the other way.
-        assert dialogs <= {"state", "api"}, (
-            f"dialogs.js may import from state, api only, found {dialogs}"
-        )
-
-        # list depends on state, api, preview, dialogs (but NOT
-        # mutation-bar).
-        assert list_ <= {"state", "api", "preview", "dialogs"}, (
-            f"list.js may import from state/api/preview/dialogs only, "
-            f"found {list_}"
-        )
-
-        # mutation-bar is the top of
-        # the per-module stack (besides the entry).  Can depend on
-        # state, api, list, preview, dialogs.
-        assert mutation_bar <= {"state", "api", "list", "preview", "dialogs"}, (
-            f"mutation-bar.js may import from state/api/list/preview/"
-            f"dialogs only, found {mutation_bar}"
-        )
-
-        # The crucial negative: state must NOT import from any
-        # downstream module (the cycle-breaking discipline).
-        assert "list"         not in state, "state.js cannot import from list.js (cycle)"
-        assert "mutation-bar" not in state, "state.js cannot import from mutation-bar.js"
-        assert "preview"      not in state, "state.js cannot import from preview.js"
-        assert "dialogs"      not in state, "state.js cannot import from dialogs.js"
 
     def test_projects_selection_shim_removed(self, web, picker_root):
         """The per-tab selection shim coming back would put a second subscriber
@@ -1310,9 +1223,6 @@ class TestSidebarCreateUI:
         assert "Upload" in body
 
 
-class TestSidebarMkdirUI:
-    pass
-
 class TestFilesWrite:
     """POST /api/files/write covers two distinct workflows:
 
@@ -1503,10 +1413,6 @@ class TestFilesWrite:
                      json={"path": str(sub / "out.txt"), "text": 42})
         assert r.status_code == 400
         assert "string" in r.get_json()["error"]
-
-
-class TestFileOperationStubs:
-    pass
 
 
 # --------------------------------------------------------------------- #

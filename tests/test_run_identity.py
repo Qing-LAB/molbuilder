@@ -157,21 +157,6 @@ def test_a_refusal_names_the_half_that_is_wrong():
     assert "formula" not in str(bad_name.value)
 
 
-def test_the_id_is_blind_to_everything_a_stage_tunes():
-    """§ 2.1's fifth row, and the reason it matters: *that* is what makes
-    several stages one calculation rather than several.
-
-    Asserted against the signature rather than by perturbing a config,
-    because the guarantee is structural — there is no parameter through which
-    a mesh cutoff or a force tolerance could reach the id at all."""
-    import inspect
-    params = set(inspect.signature(run_id).parameters) - {"stage_names"}
-    assert params == {"label", "formula"}, (
-        "run_id grew an input. § 2.1 lists what may be in the pin and it is "
-        "two things; anything else makes tuning a parameter throw away a "
-        "geometry the user should have kept.")
-
-
 def test_the_timestamp_is_not_part_of_it():
     """§ 2. `task.Run.created` records when a description was written;
     putting it in the id would make every regeneration a cold start."""

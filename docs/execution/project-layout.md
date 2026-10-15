@@ -2627,8 +2627,8 @@ and no code does.
 **One source.** The rows of § 5.1–§ 5.3, § 5.5 and § 5.6 are
 `runfiles.WRITTEN`'s — the catalogue of every file molbuilder writes into a
 calculation folder (`job-contracts.md` § 2.2) — rendered here by
-`tools/manifest.py`, and a check fails when the two differ: **a row is edited
-in the catalogue, never in this document** *(user, 2026-10-04)*. The same rows
+`tools/manifest.py` (`python -m tools.manifest`): **a row is edited in the
+catalogue, never in this document** *(user, 2026-10-04)*. The same rows
 answer the Task setup card (`manifest`) and the Results tab's file card
 (`about`, `web/results.md` § 3b). § 5.4 is not ours to catalogue — an engine's
 output set is the engine's — and is written here by hand.

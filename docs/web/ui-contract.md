@@ -549,7 +549,7 @@ before concluding anything.
   line. Nothing errors, nothing renders differently enough to notice, and the
   comment beside it goes on describing a layout that never shipped. One shipped
   this way for months (`modify/style.css`'s op-tab strip, "bleed to card edges",
-  found 2026-08-30 and pinned by `test_css_negated_var_is_calc`).
+  found 2026-08-30).
 - Behavior → a linked `.js` file; never an inline `<script>` or `onclick=`.
 - Text into the page → `textContent` on a `createElement`ed node; outside
   § 7's four producers, `innerHTML` only ever gets `""` or one fixed literal.
