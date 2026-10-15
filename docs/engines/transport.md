@@ -645,6 +645,25 @@ a record beside `task.json`, and **every later prep reads that record** while
 it is for the cited junction; a prep composes afresh — and writes the record
 again — only when there is no usable one: none, one composed for another
 citation, or one that does not read (`transport_rung.composed_for_prep`).
+**A record written before 2.10.0** (`slot-provenance@1`) states no order for
+its junction's atoms ([`model/overview.md`](?doc=model/overview.md) § 2.2a,
+I9), and is no usable one: a prep composes the junction again from the same
+citation *(decided with the user 2026-10-15, plan UPG)*. **With a group
+already launched, the junction it ran on is never changed** *(the user: "i
+don't want to invalidate the previous calculation already launched")*: the
+prep composes the junction again in memory and compares it, in TranSIESTA's
+order, with the recorded one — the same number of atoms and frames; atom *i*
+the same element, at the same place within 10⁻⁶ Å in every frame; the same
+cell vectors within 10⁻⁶ Å and the same kind on each axis; every label the
+same set of atoms (the electrode blocks, the bridge, a buffer, the held
+atoms). **The same**: `junction.xyz` is kept as it is — its coordinates, cell
+and labels untouched — and given the new composition's order record in its
+sidecar, and `slot-provenance.json` is written at `@2`; no run folder is
+touched, and the prep saves the folder's state first, as every prep does.
+**Not the same**: the prep is refused and writes nothing, naming the first
+difference — the atom and what differs — and the state saved before the
+launched group's first launch. The launched group's runs are then taken by the
+next only when they ran the same engine input (§ 6.1's gates).
 
 #### Step 1 — the seed: the periodic density *(SIESTA; § 6.1, § 2a.15)*
 
@@ -2507,8 +2526,10 @@ the old one, so a gather refuses until a prep composes it afresh (§ 1.1, *The
 first prep*), and a rung prepared from the old record is refused at its launch
 — the way on is to prepare every group again while none is launched, or, once
 one is, its way back ([`job-system.md`](?doc=execution/job-system.md)'s *How
-the checkpoint supports you*); `--bias` must start at `0.0` (a list starts
-from equilibrium).
+the checkpoint supports you*) — except a record written before 2.10.0, to which
+a prep of the groups not yet launched adds its order record when a composition
+in memory is the same junction (*The first prep*); `--bias` must start at `0.0` (a list starts from
+equilibrium).
 
 ### 3.1 What you can cite, and what it brings
 
@@ -4081,15 +4102,48 @@ and a rung's first launch walks it, with what every stage continues from
 | gate | what it refuses |
 |---|---|
 | the upstream stage is prepared | citing a stage that was never set up |
-| its **newest** attempt FINISHED, **and its deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for its stamps — when and by which build it was written (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a swept transmission, the device's sweep run whose points are all done, each point its own (§ 2a.11) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
+| its **newest** attempt FINISHED, **and it ran the same engine input as the deck that rung renders NOW** — from the current template, junction and run card (*the same engine input*, below); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a swept transmission, the device's sweep run whose points are all done, each point its own (§ 2a.11) | integrating a result produced by a *different* calculation — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
 The newest attempt is the one asked: one that fails a gate is refused by
 name, never passed over for an older one (`job-system.md`, *The task*, D5) —
-and the copy records its provenance in `.gathered-from`.  The byte-for-byte deck gate is the load-bearing
-one: it is what makes "the device's H and the electrodes' H were built on the
-same basis, XC, mesh and electronic temperature" a *checked* fact rather than a
-hope (§ 5).
+and the copy records its provenance in `.gathered-from`.  The engine-input
+gate is the load-bearing one: it is what makes "the device's H and the
+electrodes' H were built on the same basis, XC, mesh and electronic
+temperature" a *checked* fact rather than a hope (§ 5).
+
+**The same engine input** *(decided with the user 2026-10-15, plan UPG: "if
+all that is changed is the comments …")*. The gather takes a run's file when
+the run computed what the deck this rung renders now would compute — the
+question is what the engine reads, never what molbuilder wrote around it.
+Both decks are read as SIESTA reads them, by the one fdf reader
+(`parse.fdf.read_fdf`):
+
+- **comments are not input** — molbuilder's blocks among them, which record
+  what molbuilder knows (the labels, the order record, the provenance, the
+  stamps) and never what the engine computes;
+- **a keyword is named as fdf names it** — case, `.`, `-` and `_` aside
+  (`parse.fdf.fdf_key`) — and **a value compared as a value**: a number as a
+  number (`1.0e-03` is `0.001`), a unit as written, a block row by row;
+- **every number exactly, but the geometry's**: the atomic coordinates and the
+  lattice vectors within 10⁻⁶ Å — the tolerance one geometry is compared by
+  (`engines/vibration.md` § 6.10), far below any physics and above the
+  rounding of a box placed again (measured on a real junction, 2026-10-15:
+  6.6·10⁻⁷ Å);
+- **a keyword one deck states and the other leaves out** is the same input only
+  when the stated value is the engine's own default, which the catalogue states
+  on the item (`engine_default`, [`engines/template.md`](?doc=engines/template.md)
+  § 5) — a deck that writes SIESTA's default `SCF.H.Tolerance 1.0e-03 eV`
+  computes what one that leaves it to SIESTA does.
+
+Anything else that differs is another calculation, refused by name as before,
+naming the molbuilder that wrote the deck when it was not this one. So a
+calculation carries across an upgrade of molbuilder that changed only how
+molbuilder writes its decks. **What is compared is the run's deck against the
+deck its stage renders now — nothing else**: launch's check that a stage
+prepared and never launched is still what prep writes (`job-system.md` § 6.0,
+step 1) compares every file prep writes, its stamps masked, because preparing
+such a stage again costs nothing (`prep task --group N`).
 
 **Why each stage needs a different text, in one line each** — this is the
 per-stage axis that § 3.2's floor-3 migration has to serve, and it is the

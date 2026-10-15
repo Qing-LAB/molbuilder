@@ -124,8 +124,10 @@ in, because a run launched again to tighten is the one you mean. For an
 independent ladder's stage, `--from` names any other run of this calculation
 (`<NN>_<stage>/run-<n>`), taken as said (§ 5.4); a force-constant stage's `relax` run is named at its prep, and a
 transport rung's inputs are its kind's, never named. A transport rung's gather
-keeps a second check — the upstream run ran the deck that rung's description
-renders now — and waits, naming the way, when it did not.
+keeps a second check — the upstream run ran the same engine input as the deck
+that rung's description renders now, comments and molbuilder's records aside
+([`engines/transport.md`](?doc=engines/transport.md) § 6.1, *the same engine
+input*) — and waits, naming the way, when it did not.
 
 #### The states, and what moves them
 
@@ -508,7 +510,7 @@ group's number — are said where they are typed, and written down too.
 | **R-L8** | a group whose prepared jobs hold other members than it does now | its prep, every group named | `group.regrouped` |
 | **R-L9** | `--from`, `--cold` or `--gather` on a group of several | `--stage`, for a member launched again | `submit._the_group` |
 | **R-L10** | a member of the group named is not prepared | the group's prep | `submit._the_group` |
-| **R-L11** | at a first launch, or a launch again with `--gather`: the newest run of what it builds on has not finished or is not there; a transport rung's upstream is not prepared, a run of points has points not done, the run did not run the deck its description gives now — or was written by another molbuilder — or lacks the file | that stage launched, or let finish; or the restore | `ready.first_launch_takes` (`continuation`, `gather`) |
+| **R-L11** | at a first launch, or a launch again with `--gather`: the newest run of what it builds on has not finished or is not there; a transport rung's upstream is not prepared, a run of points has points not done, the run did not run the same engine input as the deck its description gives now (`engines/transport.md` § 6.1) — said with the molbuilder that wrote it when another did — or lacks the file | that stage launched, or let finish; or the restore | `ready.first_launch_takes` (`continuation`, `gather`) |
 | **R-L12** | a force-constant stage with `--cold` at its first launch, or with `--from` at any launch — its run is its prep's | its prep's `--from` (on the hierarchical layout) | `ready.first_launch_takes`, `submit._launch_again` |
 | **R-L13** | `--from` on a transport rung, or `--cold` at its first launch — its inputs are its kind's | `--gather`, launched again; `--cold` launched again | `continuation.cannot_be_named` |
 | **R-L14** | `--gather` at a first launch, on a stage that is not a transport rung, or with `--from`; `--from` with `--cold`; on the flat layout, `--from` or `--gather`, and `--cold` at a first launch | the flag that does it, or none — a flat stage starts clean by its run card | `submit._plan_member`, `continuation.cannot_be_named` |
