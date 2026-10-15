@@ -1477,9 +1477,10 @@ def _merge_run_jobset(old: Optional[JobSet], new: JobSet,
                 else {stage_key(n) for n in ladder})
     kept = [j for j in old.jobs if stage_key(j.name) not in fresh
             and (standing is None or stage_key(j.name) in standing)]
-    merged = dataclasses.replace(
-        new, jobs=kept + list(new.jobs),
-        shared=sorted(set(old.shared) | set(new.shared)))
+    # THE SHARED PACKAGE IS THE ENGINE'S ANSWER for the folder as this prep
+    # leaves it, the same for every job (`_shared_for`) -- never carried from
+    # an older plan, which may list a file molbuilder no longer writes.
+    merged = dataclasses.replace(new, jobs=kept + list(new.jobs))
     # The plan's order is the LADDER's, not the order stages were prepared
     # in: `tight` prepared before `medium` is still listed after it.  The seq token is zero-padded (§ 6.3) so it sorts as it reads.
     from .materialize import stage_refs
@@ -1769,6 +1770,11 @@ class PrepAnswer:
     (`job-system.md` § 5.3's table)."""
     kind: str
     stage: Optional[str]
+    #: WITH NO GROUP NAMED, what the calculation's own record took: a
+    #: junction whose sidecar states no order record, its order found and
+    #: written, in one sentence (`engines/transport.md` § 1.1, *No group left
+    #: to prepare*); ``None`` for every answer about a stage.
+    recorded: Optional[str] = None
     #: The description's preflight notes (an error refuses instead).
     findings: list = dataclasses.field(default_factory=list)
     #: What the inputs said: a bench's grid -- enumerated, crossed out,
@@ -2492,57 +2498,51 @@ def prep_task(base, kind: str, *, groups: Sequence[int] = (),
                         preview=preview, plan_id=plan_id, asked=asked)
 
 
-def record_junction_order(base) -> str:
-    """**`prep task` with no group left to prepare** (`engines/transport.md`
-    § 1.1, *No group left to prepare*; `job-system.md` § 5.0, R-P3): a
-    transport calculation's junction whose sidecar states no order record,
-    checked atom for atom against its citation composed again and its record
-    written again by the one writer (`composed_for_prep`) -- the folder's
-    state saved first, nothing else written.  Answers what to print: the
-    saved state and the files written.  A refusal is written down, as every
-    prep's is, and writes nothing."""
+def _record_the_order(base, task, *, refuse, asked, preview,
+                      plan_id) -> PrepAnswer:
+    """`prep task` with no group named, on a junction whose sidecar states no
+    order record (`engines/transport.md` § 1.1, *No group left to prepare*):
+    its order found by composing the citation again and comparing it atom
+    for atom, and its record written again by the one writer
+    (`composed_for_prep`, never composing afresh) -- the folder's state
+    saved first, nothing else written.  ``refuse`` and ``asked`` are the
+    prep's own (:func:`_prep_groups`)."""
     from ..checkpoint import CheckpointError, save_before
-    from ..transport.compose import recorded_junction
     from .ledger import record as ledger
     from .planned import Plan
-    base = Path(base).resolve()
-
-    def _refuse(why: str) -> PrepError:
-        ledger(base, "prep", "refused", kind="task", groups=None, reason=why)
-        return PrepError(why)
-
-    try:
-        task = read_description(base).task
-    except (PrepError, ValueError) as exc:
-        raise _refuse(str(exc)) from None
-    recorded = recorded_junction(base)
-    if recorded is None or not recorded.order_unstated:
-        raise _refuse("no group is left to prepare, and this calculation has "
-                      "no junction whose order is to be recorded -- each "
-                      "group is prepared or launched, or waits for what it "
-                      "says.  A group prepared and never launched is "
-                      "prepared again by naming it: --group N.")
     plan = Plan()
     try:
-        composed_for_prep(base, task, plan)
+        composed_for_prep(base, task, plan, afresh=False)
     except PrepError as exc:
-        raise _refuse(str(exc)) from None
+        raise refuse(str(exc)) from None
+    written = [str(w.relative_to(base)) for w in plan.writes()]
+    answer = PrepAnswer(
+        kind="task", stage=None,
+        recorded=(f"the composed junction's order recorded -- checked "
+                  f"against its citation, atom for atom: "
+                  f"{', '.join(written)} written; no group prepared"))
+    identity = plan.identity()
+    if preview:
+        answer.preview, answer.plan_id = True, identity
+        return answer
+    if plan_id is not None and plan_id != identity:
+        raise refuse("what prep would write now differs from the plan you "
+                     "previewed -- something it is made from changed "
+                     "since.  Preview again (job-system.md § 5.0).")
     try:
         with user_error_as_prep():
             kept = save_before(base, "prep task: the junction's order record",
                                engine=str(task.engine))
     except (CheckpointError, PrepError) as exc:
-        raise _refuse(f"the folder's state could not be saved, so nothing "
-                      f"was written: {exc}") from None
+        raise refuse(f"the folder's state could not be saved, so nothing "
+                     f"was written: {exc}") from None
+    asked()
     ledger(base, "prep", "saved", groups=[], state=kept.state.short,
            note=kept.state.note, new=kept.new)
     plan.carry_out()
-    written = [str(w.relative_to(base)) for w in plan.writes()]
     ledger(base, "prep", "order recorded", writes=written)
-    return (f"{kept.said()}\nthe composed junction's order recorded -- "
-            f"checked against its citation, atom for atom: "
-            f"{', '.join(written)} written; no group was left to prepare, "
-            f"and none was prepared")
+    answer.saved = kept.said()
+    return answer
 
 
 def group_header(base, task, number: int, jobs, environment, *,
@@ -2639,10 +2639,23 @@ def _prep_groups(base, numbers: List[int], *, target, allocation,
     task = description.task
     described = sorted({st.group for st in task.stages})
     if not numbers:
+        # NO GROUP NAMED: the calculation's own record -- a junction whose
+        # sidecar states no order record -- has it recorded, and nothing else
+        # (`engines/transport.md` § 1.1, *No group left to prepare*).
+        from ..transport.compose import ComposeError, recorded_junction
+        try:
+            recorded = recorded_junction(base)
+        except ComposeError as exc:
+            raise _refuse(str(exc)) from None
+        if recorded is not None and recorded.order_unstated:
+            return [_record_the_order(base, task, refuse=_refuse,
+                                      asked=_asked, preview=preview,
+                                      plan_id=plan_id)]
         from .commands import block, prep_group_lines
         raise _refuse(
-            "`prep task` names the groups it prepares -- the description's "
-            f"groups are {', '.join(map(str, described))}:\n"
+            "`prep task` names the groups it prepares -- a group prepared "
+            "and never launched is prepared again by naming it -- and the "
+            f"description's groups are {', '.join(map(str, described))}:\n"
             + block(prep_group_lines(described, base=base)))
     unknown = [n for n in numbers if n not in described]
     if unknown:
@@ -2835,4 +2848,4 @@ def _prep_groups(base, numbers: List[int], *, target, allocation,
 
 __all__ = ["read_description", "checked", "plan_stage", "Described",
            "DECIDE", "prep_bench", "prep_task", "group_header", "PrepAnswer",
-           "prepared_already", "prepared_stages", "record_junction_order"]
+           "prepared_already", "prepared_stages"]

@@ -1143,13 +1143,6 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
         # each prepared, launched or waiting, then which to prepare --
         # answered here, or by --group.
         groups, asked = _ask_which_groups(base, list(groups))
-        if not groups:
-            from .prep import record_junction_order
-            try:
-                click.echo(record_junction_order(base))
-            except PrepError as e:
-                raise click.ClickException(str(e))
-            return
     allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
                         gres=gres, time=time_, mem=mem,
                         max_memory_mb=max_memory_mb, domain=domain)
@@ -1258,9 +1251,9 @@ def _ask_which_groups(base, named) -> tuple:
     Enter's answer (`ready.prep_offer`), the question and its answer
     ``asked``, which the entry writes down after its save.  With
     nobody to ask, refused, naming the line that picks them; with none to
-    offer, refused, the groups saying why -- or, a transport calculation's
-    junction whose sidecar states no order record, ``([], None)``: its
-    order is recorded, no group prepared (`prep.record_junction_order`)."""
+    offer, the groups shown and none named, ``([], None)``: `prep task` with
+    no group named records a junction's order or refuses, naming the groups
+    (`prep._prep_groups`; `engines/transport.md` § 1.1)."""
     from ..task import FILENAME
     from .ask import choose
     from .commands import block, prep_group_lines
@@ -1292,18 +1285,11 @@ def _ask_which_groups(base, named) -> tuple:
         return list(named), None
     pre = state.prep_offer
     if not pre:
-        # NO GROUP LEFT TO PREPARE, A JUNCTION'S ORDER TO RECORD
-        # (`engines/transport.md` § 1.1, *No group left to prepare*): `prep
-        # task` records it, preparing nothing (`prep.record_junction_order`).
-        from ..transport.compose import recorded_junction
-        recorded = recorded_junction(base)
-        if recorded is not None and recorded.order_unstated:
-            click.echo(text)
-            return [], None
-        raise _refuse(
-            text + "\nno group to prepare -- each one above is prepared or "
-            "launched, or waits for what it says.  A group prepared and "
-            "never launched is prepared again by naming it: --group N.")
+        # NO GROUP TO OFFER: prep, asked with none named, records a
+        # junction's order or refuses, naming the groups (`prep._prep_groups`;
+        # `engines/transport.md` § 1.1, *No group left to prepare*).
+        click.echo(text)
+        return [], None
     picked = choose(text, [str(n) for n in pre],
                     question="which group(s) to prepare?")
     if not picked.asked:
@@ -1337,6 +1323,13 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
     """
     def say_next(line):
         click.echo(line)
+
+    if ans.recorded:
+        # NO GROUP NAMED: the calculation's own record, and nothing else.
+        if ans.saved:
+            click.echo(ans.saved)
+        click.echo(ans.recorded)
+        return
 
     from ..runtime_config import format_provenance
     from .ledger import rel_to as _rel

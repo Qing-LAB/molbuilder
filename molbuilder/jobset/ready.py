@@ -185,6 +185,25 @@ def launched_already(base, task, stage: str, *, jobset=None) -> Optional[str]:
             + redo_launched(stage, base=base, task=task))
 
 
+def launched_stage(base, task) -> Optional[str]:
+    """The first of ``task``'s stages, in the description's order, that has
+    been launched (`materialize.ever_launched`, the one rule) -- or
+    ``None``.  A launch record that does not read raises
+    :class:`~molbuilder.runrecord.LaunchRecordError`, in its reader's
+    words."""
+    from .materialize import ever_launched
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    plan = Path(base) / JOBSET_FILENAME
+    js = JobSet.load(plan) if plan.is_file() else None
+    if js is None:
+        return None
+    for st in task.stages:
+        job = job_of(base, st.name, jobset=js)
+        if job is not None and ever_launched(js, base, job):
+            return st.name
+    return None
+
+
 def first_launch_takes(base, task, stage: str, job, jobset, *,
                        template_text: Optional[str] = None,
                        from_attempt: Optional[str] = None,
@@ -624,7 +643,7 @@ def groups_text(gs: List[GroupAnswer]) -> str:
 
 
 __all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
-           "readiness", "job_of", "launched_already",
+           "readiness", "job_of", "launched_already", "launched_stage",
            "first_launch_takes",
            "at_launch", "written_at_takes", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
            "groups_text"]

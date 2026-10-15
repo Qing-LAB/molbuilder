@@ -463,13 +463,16 @@ def declared(run: Run) -> Declared:
     block = said.atom_metadata
     if (order is None and block is not None and "atom_order" not in block
             and _reorders(run)):
+        # THE WAY ON, in the words a text read later says -- the run door
+        # does not ask whether the stage was launched (`identity`).
+        from molbuilder.identity import way_back_words
         said = Declared(
             deck=deck, atom_metadata=block, engine_offset=said.engine_offset,
             order_unstated=(
                 f"{deck.name}'s atom-metadata block states no order record "
                 f"-- it was written before the field -- so this run's atoms "
-                f"may be in the engine's order, and nothing states it -- "
-                f"prepare the stage again to have it recorded"))
+                f"may be in the engine's order, and nothing states it; to "
+                f"have it recorded, {way_back_words(None)}"))
     return said
 
 

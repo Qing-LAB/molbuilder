@@ -342,6 +342,25 @@ def _files(d: Path) -> dict:
     return {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
 
+#: WHAT THE DEVICE RAN, CHANGED SINCE -- each row a copy of the single
+#: voltage's calculation, its device launched, a template value then changed
+#: as a person changes it; its transmission prepared now and its launch asked
+#: dry is refused naming the keyword (`engines/transport.md` § 6.1, *the
+#: same engine input*): a number, a block -- the k-points' offset, which
+#: changes the grid's rows and nothing derived from its size -- and, on the
+#: copy as 2.8.0 left it, whose decks left `SCF.H.Tolerance` to SIESTA, that
+#: keyword stated at a value SIESTA does not default to.
+_ANOTHER_INPUT = [
+    dict(name="a number", copy="mesh-changed", item="mesh_cutoff",
+         value=160.0, names="MeshCutoff"),
+    dict(name="a block", copy="k-offset-changed", item="kgrid_displacement",
+         value=(0.5, 0.5, 0.0), names="kgrid_Monkhorst_Pack"),
+    dict(name="a default stated otherwise", copy="h-tolerance-on-2-8-0",
+         item="h_tolerance", value=1e-4, names="SCF.H.Tolerance",
+         as_left_by_2_8_0=True),
+]
+
+
 def _set_by_the_person(template: Path, name: str, value) -> None:
     """One item of a calculation's template changed as a person changes it
     in the file: its value -- written in, for an item left blank -- and its
@@ -597,7 +616,8 @@ def junction(tmp_path_factory):
                    "this")
             as_2_8_0_left_it(c)
         older = copy_of(single, "as-left-by-2-8-0", left_by_2_8_0)
-        run.junction_as_left = (older.bundle / JUNCTION_FILE).read_bytes()
+        run.junction_as_left = StructureCodec().load(
+            older.bundle / JUNCTION_FILE, frames=True)
         run.files_as_left = every_file(older.bundle)
         _typed(older, "record order", "prep", "task")
         run.files_recorded = every_file(older.bundle)
@@ -606,18 +626,24 @@ def junction(tmp_path_factory):
         _typed(older, "launch transmission dry", "launch", "task", "--stage",
                "transmission", "--mode", "direct", "--dry-run", "--yes")
         run.older = older
-        # ...AND ONE WHOSE MESH CHANGED after its device ran: its
-        # transmission prepared now, its launch asked dry.
-        changed = copy_of(single, "mesh-changed", lambda c: (
-            _set_by_the_person(c.bundle / "S.template.toml", "mesh_cutoff",
-                               160.0),
-            _taken(c, "prep transmission", "prep", "task",
-                   *group_words(c.bundle, "transmission"), "--target",
-                   "this")))
-        _typed(changed, "launch transmission dry", "launch", "task",
-               "--stage", "transmission", "--mode", "direct", "--dry-run",
-               "--yes")
-        run.changed = changed
+        # ...AND WHAT THE DEVICE RAN, CHANGED SINCE (`_ANOTHER_INPUT`): each
+        # a copy, changed as a person changes it, its transmission prepared
+        # now and its launch asked dry.
+        run.another = {}
+        for row in _ANOTHER_INPUT:
+            def changed_since(c, row=row):
+                if row.get("as_left_by_2_8_0"):
+                    left_by_2_8_0(c)
+                _set_by_the_person(c.bundle / "S.template.toml", row["item"],
+                                   row["value"])
+                _taken(c, "prep transmission", "prep", "task",
+                       *group_words(c.bundle, "transmission"), "--target",
+                       "this")
+            changed = copy_of(single, row["copy"], changed_since)
+            run.another[row["name"]] = _typed(
+                changed, "launch transmission dry", "launch", "task",
+                "--stage", "transmission", "--mode", "direct", "--dry-run",
+                "--yes")
 
         # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
         # the good set with one change each, cited at `jobset init`, the door
@@ -758,7 +784,9 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(
     `summarize task`'s data file and the report's PDOS -- and the record the
     report draws by carries the sentence, each naming `prep task`, which
     records it (`model/overview.md` § 2.2a, I9; `engines/transport.md`
-    § 1.1)."""
+    § 1.1).  The silent failure: an older calculation's data file and PDOS
+    naming TranSIESTA's atoms as yours, or a refusal that sends the person
+    to a step that cannot record the order."""
     from molbuilder.transport.compose import (compose_junction,
                                               load_compose_record,
                                               write_compose_record)
@@ -1040,49 +1068,104 @@ def test_a_calculation_left_by_an_older_molbuilder_goes_on(junction):
     The silent failures it guards: a launched calculation refused for
     comments and a stated default, a launched junction or its runs
     rewritten, or one whose order nothing states going on as yours."""
-    from molbuilder.jobset.materialize import stage_home
-    from molbuilder.runfiles import JUNCTION_FILE, TASK_FILE
-    from molbuilder.task import read_task
-    from molbuilder.transport.compose import read_provenance
+    from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME, JobSet
+    from molbuilder.runfiles import JUNCTION_FILE, LEDGER_FILE
+    from molbuilder.transport.compose import read_provenance, record_files
     from molbuilder.workingcopy_structure import StructureCodec
-    older = junction.older
+    older, was = junction.older, junction.junction_as_left
     said = older.said["record order"]
     assert said.exit_code == 0, said.output
     assert "order recorded" in said.output, said.output
-    assert (older.bundle / JUNCTION_FILE).read_bytes() \
-        == junction.junction_as_left
-    kept = StructureCodec().load(older.bundle / JUNCTION_FILE)
+    kept = StructureCodec().load(older.bundle / JUNCTION_FILE, frames=True)
+    assert kept.elements == was.elements
+    assert np.array_equal(kept.frames if kept.frames is not None
+                          else kept.positions,
+                          was.frames if was.frames is not None
+                          else was.positions)
+    assert np.array_equal(kept.cell, was.cell) and kept.regions == was.regions
     assert kept.atom_order is not None and kept.atom_order.to_dict() == _CHAIN
     assert read_provenance(older.bundle)["schema"] == \
         "molbuilder/slot-provenance@2"
-    task = read_task(older.bundle / TASK_FILE)
-    homes = [str(stage_home(older.bundle, task, st.name).dir.relative_to(
-        older.bundle)) for st in task.stages]
-    touched = sorted(f for f in set(junction.files_as_left)
+    # ...THE STATE SAVED FIRST, NOTHING ELSE WRITTEN: the record's files, the
+    # decision log and the checkpoint store -- its `.git/` and the
+    # `.gitignore` it manages (`checkpoint.write_gitignore`) -- and no file of
+    # any run.
+    changed = sorted(f for f in set(junction.files_as_left)
                      | set(junction.files_recorded)
-                     if f.split("/")[0] in homes
-                     and junction.files_as_left.get(f)
+                     if junction.files_as_left.get(f)
                      != junction.files_recorded.get(f))
-    assert not touched, touched
+    saved = {f for f in changed if f.startswith(".git/") or f == ".gitignore"}
+    assert saved, changed
+    assert set(changed) - saved <= {
+        *record_files(read_provenance(older.bundle)["kind"]), LEDGER_FILE}, \
+        changed
     for step in ("prep transmission", "launch transmission dry"):
         said = older.said[step]
         assert said.exit_code == 0, f"{step}: {said.output}"
     newest = older.attempt("device", 2).relative_to(older.bundle)
     assert str(newest) in said.output, said.output
+    # ...AND A FILE MOLBUILDER NO LONGER WRITES IS NOT CARRIED into the runs
+    # prepared now: the plan's shared files are the engine's answer.
+    assert "atom-permutation.json" not in JobSet.load(
+        older.bundle / JOBSET_FILENAME).shared
 
 
-def test_a_run_of_another_engine_input_is_not_taken(junction):
+@pytest.mark.parametrize("row", _ANOTHER_INPUT, ids=lambda r: r["name"])
+def test_a_run_of_another_engine_input_is_not_taken(junction, row):
     """`engines/transport.md` § 6.1, *the same engine input*: a transport
     rung's launch takes an upstream run only when it ran what the upstream
-    renders now.  The single voltage's copy with its mesh changed after its
-    device ran: the transmission's dry launch is refused, naming the
-    keyword.  The silent failure: the transmission integrating a device
-    Hamiltonian computed on another mesh -- which the upgrade's own test,
-    where every comparison comes out the same, cannot see."""
-    said = junction.changed.said["launch transmission dry"]
+    renders now.  Each row of `_ANOTHER_INPUT` -- a number, a block, a
+    keyword an older deck left to SIESTA now stated at another value --
+    changed after the device ran: the transmission's dry launch is refused,
+    naming the keyword and the device's run.  The silent failure: the
+    transmission integrating a device Hamiltonian computed on another mesh,
+    k-grid or criterion -- which the upgrade's own test, where every
+    comparison comes out the same, cannot see."""
+    said = junction.another[row["name"]]
     assert said.exit_code != 0, said.output
-    assert "MeshCutoff" in said.output and "device" in said.output, \
-        said.output
+    assert row["names"] in said.output, said.output
+    assert "04_device/run-2" in said.output, said.output
+
+
+def _same_engine_input_cases():
+    import tomllib
+    data = Path(__file__).parent / "data" / "same_engine_input.toml"
+    return tomllib.loads(data.read_text())["case"]
+
+
+@pytest.mark.parametrize("case", _same_engine_input_cases(),
+                         ids=lambda c: c["name"])
+def test_the_geometry_is_compared_where_siesta_places_it(junction, case):
+    """`engines/transport.md` § 6.1: the atoms' places are compared in Å,
+    each within 10⁻⁶ Å (`structure.SAME_PLACE_ANG`).  The device's deck
+    rendered from the recorded junction, and again from it with one bridge
+    atom moved along x by the row's distance, through the one builder
+    (`gather.rung_deck_now`) -- nothing written.  The silent failure: a
+    device run on another geometry taken as this one's, or a run refused
+    for the rounding of a box placed again."""
+    import dataclasses
+
+    from molbuilder.jobset.gather import composed_junction, rung_deck_now
+    from molbuilder.siesta.engine_input import engine_input_difference
+    from molbuilder.task import read_task
+    from molbuilder.template import find_template
+    from molbuilder.transport.sort import REGION_BRIDGE
+    base = junction.single.bundle
+    task = read_task(base / "task.json")
+    text = find_template(base, task.label).read_text()
+    composed = composed_junction(base, task)
+    atom = composed.junction.regions[REGION_BRIDGE][0]
+    positions = np.array(composed.junction.positions, dtype=float)
+    positions[atom, 0] += case["moved_ang"]
+    moved = dataclasses.replace(
+        composed, junction=composed.junction.replace(positions=positions))
+    differs = engine_input_difference(
+        rung_deck_now(base, task, "device", composed, template_text=text),
+        rung_deck_now(base, task, "device", moved, template_text=text))
+    if case.get("names"):
+        assert differs is not None and case["names"] in differs, differs
+    else:
+        assert differs is None, differs
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):

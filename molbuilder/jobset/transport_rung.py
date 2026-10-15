@@ -229,15 +229,17 @@ def transport_sources(element):
                    SET_AFTER["rung_label"])
 
 
-def composed_for_prep(base, task, plan):
+def composed_for_prep(base, task, plan, *, afresh: bool = True):
     """The junction a transport calculation's rungs describe: the record
     beside ``task.json`` when it is usable for THIS citation (the folder
     travels, `project-layout.md` § 2.1) -- written again when its order was
     found rather than read (`ComposedJunction.order_found`, a junction whose
-    sidecar states none) -- else composed afresh from the projects tree while
-    no stage is launched.  With a stage launched, the recorded junction is
-    never replaced: its runs ran on it (`engines/transport.md` § 1.1, *The
-    first prep*).
+    sidecar states none) -- else composed afresh from the projects tree,
+    when ``afresh`` and no stage is launched.  With a stage launched, the
+    recorded junction is never replaced: its runs ran on it; `prep task`
+    with no group named writes only an order it found (``afresh`` false;
+    `engines/transport.md` § 1.1, *The first prep*).  Refused otherwise,
+    by state (:func:`no_usable_record`).
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
     prep writes, by one road (:func:`_written_and_read_back`)."""
@@ -247,7 +249,6 @@ def composed_for_prep(base, task, plan):
     from ..transport.compose import (ComposeError, compose_junction,
                                      load_compose_record)
     from ..transport.sort import SortError
-    from .ready import launched_already
     citation = task.slots["junction"]
     try:
         # The tree root is resolved BEFORE the record is loaded: the
@@ -268,32 +269,9 @@ def composed_for_prep(base, task, plan):
             return (_written_and_read_back(base, composed, plan, root=root,
                                            task=task)
                     if composed.order_found else composed)
-        # A LAUNCHED STAGE RAN ON THE JUNCTION RECORDED: never replaced,
-        # whatever made the record unusable.
-        launched = next((st.name for st in task.stages
-                         if launched_already(base, task, st.name)), None)
-        if launched is not None:
-            from .commands import redo_launched
-            raise PrepError(
-                f"this calculation's junction is not composed again: "
-                f"{why[-1] if why else 'there is no usable record'}.  "
-                f"`{launched}` ran on the junction recorded, and a launched "
-                f"stage's junction is never replaced (engines/transport.md "
-                f"§ 1.1); to compose it again, "
-                + redo_launched(launched, base=base, task=task))
-        if root is None:
-            # NAME WHICH OF THE THREE: no record, one composed from another
-            # citation (a slot re-pointed after a re-relaxation), or one
-            # that does not read -- with the folder outside any tree, so
-            # nothing can be composed afresh.
-            raise PrepError(
-                f"this transport calculation cannot be composed here: "
-                f"{why[0] if why else 'there is no usable record'}.  "
-                f"And {base} is not inside a projects tree, so the "
-                f"citation {citation!r} cannot be resolved to compose "
-                f"afresh.  Prep once inside the tree that holds the "
-                f"cited junction -- the record then travels with the "
-                f"folder (engines/transport.md § 3.1).")
+        refusal = no_usable_record(base, task, why, root=root, afresh=afresh)
+        if refusal is not None:
+            raise PrepError(refusal)
         return _written_and_read_back(
             base, compose_junction(citation, tree_root=root,
                                    swap_electrodes=task.swap_electrodes),
@@ -301,6 +279,47 @@ def composed_for_prep(base, task, plan):
     except (ComposeError, SortError, PermutationError,
             DeckRecordUnreadable) as exc:
         raise PrepError(str(exc)) from exc
+
+
+def no_usable_record(base, task, why, *, root, afresh: bool
+                     ) -> "str | None":
+    """Why this calculation's junction is not composed afresh, by its state
+    -- in words, with the way on -- or ``None`` when it may be: no stage
+    launched, the projects tree here, and ``afresh``.  ``why`` is the
+    record read's reasons (`compose.load_compose_record`).  THE ONE
+    COMPOSER of this refusal, asked by prep (:func:`composed_for_prep`) and
+    by the gather, which never composes (``afresh`` false;
+    `gather.composed_junction`)."""
+    from ..runrecord import LaunchRecordError
+    from .commands import block, prep_group_lines, redo_launched
+    from .ready import launched_stage
+    reason = why[-1] if why else "there is no usable record"
+    try:
+        launched = launched_stage(base, task)
+    except LaunchRecordError as exc:
+        return (f"this calculation's junction is not composed again: "
+                f"{reason}.  And {exc}")
+    if launched is not None:
+        # A LAUNCHED STAGE RAN ON THE JUNCTION RECORDED: never replaced,
+        # whatever made the record unusable.
+        return (f"this calculation's junction is not composed again: "
+                f"{reason}.  `{launched}` ran on the junction recorded, and a "
+                f"launched stage's junction is never replaced "
+                f"(engines/transport.md § 1.1); to compose it again, "
+                + redo_launched(launched, base=base, task=task))
+    if root is None:
+        return (f"this transport calculation cannot be composed here: "
+                f"{reason}.  And {base} is not inside a projects tree, so the "
+                f"citation {task.slots['junction']!r} cannot be resolved to "
+                f"compose afresh.  Prep once inside the tree that holds the "
+                f"cited junction -- the record then travels with the folder "
+                f"(engines/transport.md § 3.1).")
+    if not afresh:
+        numbers = sorted({st.group for st in task.stages})
+        return (f"this calculation's junction is not composed again here: "
+                f"{reason}.  It is composed by a prep of the calculation's "
+                f"groups --\n" + block(prep_group_lines(numbers, base=base)))
+    return None
 
 
 def _written_and_read_back(base, composed, plan, *, root, task):

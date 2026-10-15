@@ -359,29 +359,48 @@ def with_generator_version(deck: Path, version: str) -> None:
 #: its way out.
 DECK_STATES_NO_ORDER = ("atom-metadata block states no order record",
                         "written before the field",
-                        "prepare the stage again")
+                        "prepare its group again",
+                        "once launched, go back to the state saved before "
+                        "its group's first launch")
 
 
 def decks_as_written_by(decks, version: str, block_schema: int, *,
                         without=()) -> None:
     """Each of ``decks`` as molbuilder ``version`` wrote it: its
     ATOM-METADATA block, where it has one, at ``block_schema`` with no order
-    record; the keyword lines ``without`` names absent -- what a later
-    release states and that one left to the engine; its PROVENANCE block
-    stamped ``version``."""
+    record, and its channels and named values only where they hold
+    something (`AuBDTAu/transport/lowbias_local`'s 2.8.0 decks, the pushed
+    2.9.6); the keyword lines ``without`` names absent -- what a later
+    release states and that one left to the engine, asked of each deck as
+    fdf reads it -- gone from every deck, and stated by at least one before;
+    its PROVENANCE block stamped ``version``."""
     import re
 
     from molbuilder.deck_record import extract_atom_metadata
+    from molbuilder.parse.fdf import fdf_key, read_fdf
+
+    def as_then(block):
+        block.pop("atom_order")
+        for key in ("annotations", "customized"):
+            if not block.get(key):
+                block.pop(key, None)
+        block.update(schema_version=block_schema)
+
+    stripped = {keyword: 0 for keyword in without}
     for deck in sorted(decks):
         text = deck.read_text()
         for keyword in without:
+            stated = fdf_key(keyword) in read_fdf(text)[0]
             text = re.sub(rf"(?m)^{re.escape(keyword)}\b.*\n", "", text)
+            assert fdf_key(keyword) not in read_fdf(text)[0], (deck, keyword)
+            stripped[keyword] += stated
         deck.write_text(text)
         if extract_atom_metadata(text) is not None:
-            with_atom_metadata(deck, lambda block: (
-                block.pop("atom_order"),
-                block.update(schema_version=block_schema)))
+            with_atom_metadata(deck, as_then)
         with_generator_version(deck, version)
+    # A KEYWORD NO DECK STATED stripped nothing: the copy would not be what
+    # that release left.
+    assert all(stripped.values()), stripped
 
 
 def every_deck(copy: RealRun) -> set:
@@ -431,15 +450,20 @@ def as_2_8_0_left_it(copy: RealRun) -> None:
     record, stamped 2.8.0 (:func:`decks_as_written_by`); its composed
     junction's sidecar at schema 12 -- no order record, and the file's
     `structure_hash` where later ones pin `geometry_hash`; the order record
-    in `atom-permutation.json` beside it; its composition record at
-    `slot-provenance@1`.  Its decks' coordinates are this release's own:
-    2.8.0 placed the box to within 6.6e-7 Å of them, which no copy
-    reproduces, so the 10⁻⁶ Å of the same engine input is held by review."""
+    in `atom-permutation.json` at the root, in every stage's folder and every
+    run's, and named among the plan's shared files; its composition record
+    at `slot-provenance@1`.  Its decks' coordinates are 2.8.0's own: both
+    render from the one record, which 2.8.0 wrote in this release's text."""
     import hashlib
 
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME, JobSet
+    from molbuilder.paths import attempt_dir, attempts_in
     from molbuilder.persist import write_json
-    from molbuilder.runfiles import JUNCTION_FILE, SLOT_PROVENANCE_FILE
+    from molbuilder.runfiles import (JUNCTION_FILE, SLOT_PROVENANCE_FILE,
+                                     TASK_FILE)
     from molbuilder.sidecars.molstruct import dumps, load, sidecar_path_for
+    from molbuilder.task import read_task
     from molbuilder.transport.compose import read_provenance
     decks_as_written_by(every_deck(copy), "2.8.0", 12,
                         without=("SCF.H.Tolerance",))
@@ -451,8 +475,16 @@ def as_2_8_0_left_it(copy: RealRun) -> None:
     side.write_text(dumps({
         **payload, "schema_version": 12,
         "structure_hash": hashlib.sha256(junction.read_bytes()).hexdigest()}))
-    write_json(copy.bundle / "atom-permutation.json",
-               {"schema": "molbuilder/atom-permutation@1", **order})
+    permutation = "atom-permutation.json"
+    task = read_task(copy.bundle / TASK_FILE)
+    homes = [stage_home(copy.bundle, task, st.name).dir for st in task.stages]
+    for where in [copy.bundle] + homes + [
+            attempt_dir(h, n) for h in homes for n in attempts_in(h)]:
+        write_json(where / permutation,
+                   {"schema": "molbuilder/atom-permutation@1", **order})
+    plan = JobSet.load(copy.bundle / JOBSET_FILENAME)
+    plan.shared = sorted({*plan.shared, permutation})
+    plan.write(copy.bundle / JOBSET_FILENAME)
     write_json(copy.bundle / SLOT_PROVENANCE_FILE,
                {**read_provenance(copy.bundle),
                 "schema": "molbuilder/slot-provenance@1"})

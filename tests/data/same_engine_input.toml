@@ -1,0 +1,16 @@
+# THE SAME ENGINE INPUT, ITS GEOMETRY (`engines/transport.md` § 6.1): the
+# device's deck rendered from the recorded junction, against the one rendered
+# with one bridge atom moved along x by `moved_ang` -- the atoms' places
+# compared in Å, each within 10⁻⁶ Å (`structure.SAME_PLACE_ANG`).  A row with
+# `names` is another calculation, the difference naming that block; a row
+# without is the same engine input.  Run by
+# `test_transport_on_a_real_junction_e2e.py::test_the_geometry_is_compared_where_siesta_places_it`.
+
+[[case]]
+name = "an atom moved past the tolerance is another calculation"
+moved_ang = 2.0e-6
+names = "block AtomicCoordinatesAndAtomicSpecies, row"
+
+[[case]]
+name = "an atom moved within it is the same engine input"
+moved_ang = 5.0e-7

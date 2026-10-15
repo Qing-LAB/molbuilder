@@ -122,7 +122,8 @@ XYZ_DECIMALS = 6
 #: HOW FAR TWO PLACES MAY STAND APART AND STILL BE ONE, in Å -- the rule two
 #: geometries are compared by, each atom and each lattice vector
 #: (:func:`farthest_apart`): far below any physics, above the rounding of a
-#: box placed again (6.6e-7 Å, measured on a real junction 2026-10-15).
+#: geometry's text -- six decimals of an Å, at most sqrt(3) * 5e-7, about
+#: 8.7e-7 Å per atom (`XYZ_DECIMALS`).
 #: Asked by a recorded junction checked against its composition and by two
 #: decks' engine input (`engines/transport.md` § 1.1, § 6.1).
 SAME_PLACE_ANG = 1e-6

@@ -430,8 +430,13 @@ def junction_axis_kind(cited: "CitedRun | CitedPair") -> Tuple[str, str, str]:
     """
     if isinstance(cited, CitedPair):
         return _with_transport(cited.structure.axis_kind, cited.sidecar.name)
+    from ..atom_permutation import PermutationError
+    from ..deck_record import DeckRecordUnreadable
     from ..runs import declared
-    said = declared(cited.run)
+    try:
+        said = declared(cited.run)
+    except (DeckRecordUnreadable, PermutationError) as exc:
+        raise ComposeError(str(exc)) from exc
     recorded = (said.engine_offset or {}).get("axis_kind")
     return _with_transport(recorded or ("periodic",) * 3,
                            f"the cited deck {said.deck.name}"
@@ -489,9 +494,12 @@ def _run_geometry(cited: CitedRun, kinds):
     # restored through the run's own order record -- and the composer sorts
     # it for TranSIESTA from there (`model/overview.md` § 2.2a, I3, I4).  A
     # run whose order nothing states is refused by name (I9).
+    from ..atom_permutation import PermutationError
+    from ..deck_record import DeckRecordUnreadable
     try:
         steps = steps_of(cited.run, output)
-    except (RunStepsError, OrderUnstated) as exc:
+    except (RunStepsError, OrderUnstated, DeckRecordUnreadable,
+            PermutationError) as exc:
         raise ComposeError(str(exc)) from exc
     try:
         struct = steps.last.replace(axis_kind=kinds)
@@ -937,17 +945,25 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
     codec (every frame, its order record from its sidecar), and whether that
     sidecar states the order record at all -- known by what the file states,
     never by the molbuilder that wrote it (the user, 2026-10-15:
-    "feature/format detection").  ``None`` before anything was composed.
-    Asked by the record's read for prep and the gather
-    (:func:`load_compose_record`), the transport record, its data file and a
-    selection's PDOS, and `prep task` with no group to prepare."""
+    "feature/format detection").  ``None`` before anything was composed;
+    a pair that does not read is refused in its reader's words,
+    :class:`ComposeError`.  Asked by the record's read for prep and the
+    gather (:func:`load_compose_record`), the transport record, its data
+    file and a selection's PDOS, and `prep task` with no group named."""
     from ..sidecars.molstruct import sidecar_path_for
     from ..workingcopy_structure import StructureCodec
     path = Path(base_dir) / JUNCTION_GEOMETRY
     if not path.is_file():
         return None
     stated: set = set()
-    struct = StructureCodec().load(path, frames=True, stated_out=stated)
+    try:
+        struct = StructureCodec().load(path, frames=True, stated_out=stated)
+    except ValueError as exc:
+        # THE CODEC'S REFUSALS are ValueErrors -- a sidecar that does not
+        # parse, one whose geometry pin is not the file's, an atom list that
+        # does not read (`sidecars.molstruct.MolstructJsonError` among them).
+        raise ComposeError(f"the composed junction, {path.name}, does not "
+                           f"read: {exc}") from exc
     return RecordedJunction(
         structure=struct,
         order_unstated=(
@@ -994,9 +1010,9 @@ def junction_difference(recorded: Structure,
         if d > SAME_PLACE_ANG:
             return (f"its lattice vector {i + 1} stands {d:.2e} Å from the "
                     f"recorded one")
-    if tuple(recorded.axis_kind or ()) != tuple(composed.axis_kind or ()):
-        return (f"its axes are {tuple(composed.axis_kind)}, the record's "
-                f"{tuple(recorded.axis_kind)}")
+    axes = [tuple(s.axis_kind or ()) for s in (recorded, composed)]
+    if axes[0] != axes[1]:
+        return f"its axes are {axes[1]}, the record's {axes[0]}"
     labels_r = {k: sorted(v) for k, v in (recorded.regions or {}).items()}
     labels_c = {k: sorted(v) for k, v in (composed.regions or {}).items()}
     if labels_r != labels_c:
@@ -1083,7 +1099,10 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # THE JUNCTION, IN THE ENGINE'S ORDER, CARRIES ITS OWN ORDER RECORD in its
     # sidecar (`model/overview.md` § 2.2a, I7) -- none for an order the sort
     # left as it was.
-    recorded = recorded_junction(base_dir)
+    try:
+        recorded = recorded_junction(base_dir)
+    except ComposeError as exc:
+        return _no(str(exc))
     dev = recorded.structure
     # ONE WHOSE SIDECAR STATES NO ORDER -- written before the field -- is
     # usable when its citation composed again, in memory, is the junction

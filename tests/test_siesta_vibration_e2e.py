@@ -30,6 +30,7 @@ relaxation, `support.real_runs.relaxed_for_vibration`), and `freq` is written
 at the geometry `relax` reached (§ 5.2a); ticked, `freq` alone measures at
 the geometry as given -- then a displacement sweep (§ 5.9).  A flat
 calculation's refusal of a sweep needs no engine: `test_siesta_vibration_deck`.
+The ticked road's result is then opened on the Results tab, in a browser.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Each force-constant run is thirteen single points of
@@ -343,6 +344,161 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     assert d["relaxation"]["converged"] is False
     assert d["relaxation"]["max_force_eh_bohr"] \
         > 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE
+
+
+#: named: a hidden Plotly node resized on load logs this, and nothing else
+#: may.
+_PLOTLY_HIDDEN_RESIZE = "Resize must be passed a displayed plot div"
+
+
+def _shown(page, selector):
+    """Whether ``selector`` takes up space on the page -- its computed
+    display, up its ancestors, never its attribute."""
+    return page.evaluate(
+        "(sel) => { const e = document.querySelector(sel);"
+        "  return !!e && e.getClientRects().length > 0; }", selector)
+
+
+def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
+        ticked, page, monkeypatch):
+    """**The ticked road's result, looked at**: the Results tab shows a
+    SIESTA vibration as its modes, not a spectrum (`web/spectra.md`; the
+    user, 2026-09-28: "there should be no width or spectrum for siesta
+    result. it is just mode of frequency, and animation of the mode").
+    Opened the way a person opens it, through the tab's dropdown:
+
+    * mode positions, not a spectrum: one line of one height at each mode, no
+      curve, no height numbers, no width control, under *Mode positions*, one
+      sentence saying the route computes no intensities (§ 2;
+      `spectrumchart.md` § 6.2);
+    * the modes table without the columns the route cannot compute, and the
+      run summary saying *not computed on this route* for each (§ 9b.3);
+    * no phase dot for Raman or the probe (§ 3);
+    * the electronic-structure tab naming the planned projected density of
+      states, never PySCF's ``es_mode_selection`` (§ 9b.3);
+    * the thermochemistry labelled as vibrational contributions, no
+      pressure, its bars the file's own numbers -- summing to ``F_vib`` (§ 3;
+      `engines/vibration.md` § 4.7).
+
+    Every hiding is read from the COMPUTED style, never the attribute or the
+    class: a ``display`` rule of the element's own beats ``[hidden]``.  The
+    silent failure: a SIESTA result drawn as a spectrum with heights and a
+    width it never computed, or a table offering intensities it has not.
+    """
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.runs import run_of
+    from support.live_server import serve
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(ticked.tree))
+    attempt = ticked.attempt("freq")
+    d = _the_result(attempt)
+    result = run_of(attempt).on_label(".spectra.json")
+
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: (errors.append(m.text)
+                                  if m.type == "error" else None))
+    with serve() as base:
+        page.add_init_script(
+            "try { sessionStorage.setItem('molbuilder.current_dir', "
+            f"{json.dumps(str(attempt))}); }} catch (_) {{}}")
+        page.goto(f"{base}/results")
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=str(result), timeout=20000)
+        page.select_option("#results-file-picker-select", value=str(result))
+        # the rows are drawn by the same call that decides the spectrum
+        # section (core.js renderResults), so once they are on the page
+        # that decision is too
+        page.wait_for_selector("#modes-tbody tr", state="attached",
+                               timeout=30000)
+
+        # MODE POSITIONS, NOT A SPECTRUM (§ 2): one line of one height at
+        # each mode, no curve and no height numbers, no width control, and
+        # the one sentence saying why there are no heights.
+        assert _shown(page, "#spectrum-chart")
+        assert page.inner_text("#spectrum-heading") == "Mode positions"
+        assert not _shown(page, "#broadening-fwhm")
+        assert not _shown(page, "#display-floor")
+        absent = page.inner_text("#spectrum-absent")
+        assert "not infrared or Raman intensities" in absent, absent
+        assert page.locator("#modes-tbody tr").count() == len(d["modes"])
+        drawn = page.wait_for_function(
+            "() => { const g = document.querySelector("
+            "  '#spectrum-chart .js-plotly-plot');"
+            "  if (!g || !g.data) return null;"
+            "  return {traces: g.data.map(t => ({type: t.type,"
+            "    mode: t.mode || '', x: t.x, y: t.y})),"
+            "    ticks: g.layout.yaxis.showticklabels}; }",
+            timeout=20000).json_value()
+        bars = [t for t in drawn["traces"] if t["type"] == "bar"]
+        assert len(bars) == 1, drawn
+        freqs = [m["frequency_cm1"] for m in d["modes"]]
+        assert bars[0]["x"] == pytest.approx(freqs)
+        assert len(set(bars[0]["y"])) == 1, bars[0]["y"]
+        assert not [t for t in drawn["traces"]
+                    if t["type"] == "scatter" and "lines" in t["mode"]], drawn
+        assert drawn["ticks"] is False, drawn
+
+        # THE TABLE AND THE SUMMARY BY ROUTE (§ 9b.3): what SIESTA cannot
+        # compute has no column, and the summary says so for each.
+        for col in ("raman_activity_a4_amu", "ir_intensity_km_mol",
+                    "has_es", "gap_eq_ev"):
+            assert not _shown(page, f'#modes-table th[data-col="{col}"]'), col
+        assert _shown(page, '#modes-table th[data-col="frequency_cm1"]')
+        summary = page.evaluate("""() => {
+            const dl = document.getElementById("results-summary-list");
+            const out = {};
+            dl.querySelectorAll("dt").forEach(dt => {
+                out[dt.textContent] = dt.nextElementSibling.textContent; });
+            return out; }""")
+        for line in ("IR intensities", "Raman activities",
+                     "Per-mode orbital energies"):
+            assert summary[line].startswith("not computed on this route"), \
+                (line, summary[line])
+
+        # NO DOT FOR A PHASE THE ROUTE DOES NOT HAVE (§ 3).
+        assert _shown(page, '.spectra-phase-dot[data-phase="frequencies"]')
+        assert not _shown(page, '.spectra-phase-dot[data-phase="raman"]')
+        assert not _shown(page, '.spectra-phase-dot[data-phase="es"]')
+        # the Infrared dot exists in the partial and, SIESTA computing no
+        # intensities, is not shown (web/spectra.md § 3)
+        assert page.locator('.spectra-phase-dot[data-phase="ir"]').count() == 1
+        assert not _shown(page, '.spectra-phase-dot[data-phase="ir"]')
+
+        # THE ELECTRONS' RESPONSE: planned, and named as what it will be.
+        page.click("#mode-tabbtn-es")
+        es = page.inner_text("#es-bar-diagram")
+        assert "projected density of states" in es, es
+        assert "es_mode_selection" not in es and "Mode selection" not in es, es
+
+        # THE THERMOCHEMISTRY BY ITS REGIME (§ 3): vibrational
+        # contributions, and no pressure -- none entered them.
+        assert d["thermo"]["regime"] == "vibrational-only"
+        page.click("#mode-tabbtn-thermo")
+        note = page.inner_text("#thermo-note")
+        assert "vibrational contributions only" in note, note
+        assert "F_vib" in note and "S_vib" in note, note
+        assert "P =" not in note and "atm" not in note, note
+        # ...and its bars are the file's: SIESTA carries no electronic
+        # energy, so the reference is zero, the parts add up to the last
+        # bar and the last bar is the file's own F_vib (§ 3).
+        from molbuilder import constants as C
+        kcal = C.HARTREE_EV / C.KCAL_MOL_EV
+        bars = page.wait_for_function(
+            "() => { const d = document.getElementById('thermo-decomp');"
+            "  return d && d.data && d.data[0]"
+            "  ? {x: d.data[0].x, y: d.data[0].y} : null; }",
+            timeout=20000).json_value()
+        assert bars["x"] == ["ZPE", "U_vib", "−T·S_vib", "F_vib"], bars["x"]
+        y = bars["y"]
+        assert d["equilibrium"]["scf_energy_eh"] is None
+        assert sum(y[:-1]) == pytest.approx(y[-1], abs=1e-9), y
+        assert y[-1] == pytest.approx(d["thermo"]["g_eh"] * kcal, abs=1e-6)
+        assert y[0] == pytest.approx(d["thermo"]["zpe_eh"] * kcal, abs=1e-6)
+
+    unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
+    assert unexpected == [], f"the page reported JS errors: {unexpected}"
 
 
 def _deck_coordinates(deck):

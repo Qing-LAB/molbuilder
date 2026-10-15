@@ -242,33 +242,26 @@ def composed_junction(base, task):
     """The junction this calculation is composed from -- its record beside
     ``task.json``, for the cited junction (`composed_for_prep` writes
     it before any rung's deck); read, never written: a record whose order a
-    composition in memory finds is written by prep.  A refusal of the
-    composition's is said as the gather's (:class:`PrepError`), as every
-    door that asks the gather catches it."""
+    composition in memory finds is written by prep.  With no usable record,
+    refused by its state, in the words prep says it with
+    (`transport_rung.no_usable_record`); a refusal of the composition's is
+    said as the gather's (:class:`PrepError`), as every door that asks the
+    gather catches it."""
     from ..projects import find_projects_root
     from ..transport.compose import ComposeError, load_compose_record
     from ..transport.sort import SortError
+    from .transport_rung import no_usable_record
+    root = find_projects_root(base)
     why: list = []
     try:
         composed = load_compose_record(base, citation=task.slots["junction"],
-                                       tree_root=find_projects_root(base),
-                                       why=why,
+                                       tree_root=root, why=why,
                                        swap_electrodes=task.swap_electrodes)
     except (ComposeError, SortError) as exc:
         raise PrepError(str(exc)) from exc
     if composed is None:
-        # THE RECORD IS WRITTEN BY THE CALCULATION'S FIRST PREP, beside
-        # `task.json`, and read by every prep and gather after it.
-        from .commands import block, prep_group_lines, redo_launched
-        numbers = sorted({st.group for st in task.stages})
-        raise PrepError(
-            f"this calculation's junction cannot be read for the gather: "
-            f"{why[0] if why else 'there is no composition record'}.  It "
-            f"is composed by prep; to compose it again, prepare the "
-            f"calculation's groups again while none is launched --\n"
-            + block(prep_group_lines(numbers, base=base))
-            + "\n  or, once one is, "
-            + redo_launched(task.stages[0].name, base=base, task=task))
+        raise PrepError(no_usable_record(base, task, why, root=root,
+                                         afresh=False))
     return composed
 
 

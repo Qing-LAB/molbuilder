@@ -112,15 +112,20 @@ def _geometry_difference(ran: str, now: str) -> Optional[str]:
             return (f"{block}, row {i}: the run had {la} (Z {za}), it "
                     f"renders {lb} (Z {zb}) now")
     params = [parse_fdf_params(text) for text in (ran, now)]
-    for what, a, b in ((block, params[0].coords_ang, params[1].coords_ang),
-                       ("block LatticeVectors", params[0].cell_ang,
-                        params[1].cell_ang)):
-        if a is None and b is None:
-            continue
+    states = [read_fdf(text)[1] for text in (ran, now)]
+    for what, key, a, b in (
+            (block, "atomiccoordinatesandatomicspecies",
+             params[0].coords_ang, params[1].coords_ang),
+            ("block LatticeVectors", "latticevectors",
+             params[0].cell_ang, params[1].cell_ang)):
+        if not any(key in s for s in states):
+            continue                    # neither deck states it
         if a is None or b is None:
             return (f"{what}: "
                     + ("the run's" if a is None else "the deck's now")
-                    + " does not read in Å")
+                    + " does not read in Å" + (
+                        "" if all(key in s for s in states)
+                        else " -- one deck does not state it"))
         i, d = farthest_apart(a, b)
         if d > SAME_PLACE_ANG:
             return (f"{what}, row {i + 1}: {d:.2e} Å from where the run had "

@@ -140,7 +140,8 @@ for a stage and a group, the run doors (`materialize.ever_launched`,
 `parse.dirs.run_status`) for a run. `status`, `prep`, `launch`, the Results tab
 and Task setup all ask the same doors, so they cannot disagree. **Five acts
 change what the doors read**: **`prep task`** (`prep_task`) writes a group's
-files and rows; **`launch task`** (`send_launch`) fills a run and sends it;
+files and rows — or, with no group named, an older transport junction's order
+record ([`engines/transport.md`](?doc=engines/transport.md) § 1.1); **`launch task`** (`send_launch`) fills a run and sends it;
 **the run itself** — the scheduler and the run script — writes its output and
 its conclusion; a **`checkpoint restore`** (`checkpoint`) puts the whole
 folder back; and **the description** (Task setup's Save, `describe` at
@@ -372,13 +373,15 @@ flowchart TD
     C --> D{"groups named?"}
     D -- "no — a terminal" --> Q["asked which: every group not prepared<br/>as described, and preparable, offered"]
     D -- "no — nobody to ask, or none to offer" --> R3["R-P3"]
+    D -- "no — none to offer, a junction's order to record" --> O["the junction composed again in memory, compared;<br/>its order record written, the state saved first — nothing else<br/>prep._prep_groups"]
+    O -- "a refusal" --> R21["R-P21"]
     D -- yes --> E
     Q --> E{"groups the description holds?<br/>no member launched?<br/>every group a changed job's members are in named?"}
     E -- no --> R4["R-P4 · R-P5 · R-P6 · R-P7"]
     E -- yes --> K["the description's preflight, the machine,<br/>which files answered — once<br/>prep.checked"]
     K -- "a refusal" --> R8["R-P8 · R-P9"]
     K --> F["each member planned into the one plan, nothing written:<br/>its inputs · its launch values, admitted ·<br/>a force-constant stage's relax run · its decks and run-0<br/>prep.plan_stage"]
-    F -- "a refusal" --> R10["R-P10 · R-P11 · R-P12 · R-P16 – R-P20"]
+    F -- "a refusal" --> R10["R-P10 · R-P11 · R-P12 · R-P16 – R-P21"]
     F --> G["each group of several: one allocation,<br/>its one header admitted on its queue"]
     G -- "a refusal" --> R13["R-P13"]
     G --> H{"a preview?"}
@@ -482,9 +485,9 @@ group's number — are said where they are typed, and written down too.
 |---|---|---|---|
 | **R-P1** | the folder is not a described calculation, or is one of its stage or run folders | `jobset init`; or the calculation's folder, named | `prep.read_description` |
 | **R-P2** | `task.json` or its template does not read — written by an older molbuilder, or a stage with no group | its reader's words; an older one names `jobset migrate` | `task.read_task` |
-| **R-P3** | no group named, and nobody to ask (not a terminal) — or none to offer, and no junction order to record (a transport calculation whose junction's sidecar states none records it instead, nothing else written: [`engines/transport.md`](?doc=engines/transport.md) § 1.1, *No group left to prepare*) | the line that picks them; each group says where it stands | `_cli._ask_which_groups`, `prep.record_junction_order` |
+| **R-P3** | no group named, and nobody to ask (not a terminal) — or none to offer, and no junction order to record (a transport calculation whose junction's sidecar states none records it instead, nothing else written: [`engines/transport.md`](?doc=engines/transport.md) § 1.1, *No group left to prepare*) | the line that picks them; each group says where it stands | `_cli._ask_which_groups`, `prep._prep_groups` |
 | **R-P4** | a group the description does not hold | the groups it holds | `prep._prep_groups` |
-| **R-P5** | a member of a group picked — or of a group a changed job's members are in — was launched; or the group holds a stage put beside one launched without it | the state saved before its group's first launch; for a stage put in, a group of its own | `prep._prep_groups` (`group.launched_without`, `prep.launched_already`) |
+| **R-P5** | a member of a group picked — or of a group a changed job's members are in — was launched; or the group holds a stage put beside one launched without it | the state saved before its group's first launch; for a stage put in, a group of its own | `prep._prep_groups` (`group.launched_without`, `ready.launched_already`) |
 | **R-P6** | a job whose members changed has members in groups not picked | every group to pick, in one line | `group.formed_again` |
 | **R-P7** | `--from` at prep with no force-constant stage among the groups picked | its first launch's `--from`, for a stage in a group of its own | `prep._prep_groups` |
 | **R-P8** | the description fails its own checks — a stage sharing a group with one it builds on among them | the check's words: give it a new group — or, for an independent ladder's stage, set its run card's `restart` to `clean`, and it builds on nothing | `prep.checked` (`validation.task.preflight`) |
@@ -500,6 +503,7 @@ group's number — are said where they are typed, and written down too.
 | **R-P18** | a force-constant stage's `relax` run left no geometry that reads | its reader's words; `relax` launched again | `prep._vibration_stage_geometry` |
 | **R-P19** | a flat calculation with more than one force-constant stage — they would share the one folder | the hierarchical layout, or one force-constant stage | `prep._siesta_vibration_rung` |
 | **R-P20** | a stage the description no longer holds has a launch record that does not read | the record's own words | `prep.prep_calculation` (`materialize.ever_launched`) |
+| **R-P21** | a transport calculation's junction record is not usable and a stage is launched — a launched stage's junction is never replaced; or, with no group named, its order is not found ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) | the state saved before the launched group's first launch; with none launched, a prep of its groups | `transport_rung.no_usable_record` |
 | **R-L1** | nothing is prepared | `prep task` for the first group | `_cli._load` (no `job-set.json`), `_cli._launch_unit` (none of the description's stages prepared) |
 | **R-L2** | no prepared group can go, and no stage was launched | each group says what it waits for | `_cli._launch_unit` |
 | **R-L3** | nobody to ask which — several groups could go, or none can and stages launched before are offered | one line for each | `_cli._launch_unit` |

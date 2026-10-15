@@ -642,10 +642,13 @@ from its labeled block, its cross-section the junction's (I6) and its period
 along the wire the crystal's own repeat (§ 7.1). Nothing about a lead is typed
 by a person: it is derived from the labels (§ 4). The composition is written as
 a record beside `task.json`, and **every later prep reads that record** while
-it is for the cited junction; a prep composes afresh — and writes the record
-again — only when there is no usable one — none, one composed for another
-citation, or one that does not read — and no stage is launched (below;
-`transport_rung.composed_for_prep`).
+it is for the cited junction. **No usable record** is one of three: none yet
+(before the first prep), one composed for another citation or with the leads
+named the other way round (`swap_electrodes`), or an older one whose junction
+composed again is another (below). A prep composes afresh — and writes the
+record again — only when there is no usable one and no stage is launched
+(`transport_rung.composed_for_prep`); the gather reads the same record, and
+compares an older one in memory, writing nothing.
 
 **A junction whose sidecar states no order record** — written before the
 field, `atom_order` absent — is known by what the file states, never by the
@@ -670,18 +673,17 @@ differs.
 user, 2026-10-15: "i don't want to invalidate the previous calculation
 already launched"; one rule for every junction, decided the same day)*: its
 runs ran on it. A prep that finds no usable record while a stage is launched
-— none, one composed for another citation or the other rename, one that does
-not read, one whose junction composed again is another — is refused and
-writes nothing, naming why and the state saved before the launched group's
-first launch; while none is launched, it composes afresh and writes the
-record. The launched group's runs are taken by the next only when they ran
+is refused and writes nothing, naming why and the state saved before the
+launched group's first launch (`transport_rung.no_usable_record`; R-P21);
+while none is launched, it composes afresh and writes the record. The launched group's runs are taken by the next only when they ran
 the same engine input (§ 6.1's gates).
 
-**No group left to prepare**: `prep task` with no group left to prepare records
-the order of a junction whose sidecar states none — the check above, the
-folder's state saved first, nothing else written — so a calculation an older
-molbuilder ran to its end gets its data file and its PDOS
-([`job-system.md`](?doc=execution/job-system.md) § 5.0, R-P3).
+**No group left to prepare**: `prep task` with no group named records the
+order of a junction whose sidecar states none — the check above, the
+folder's state saved first, nothing else written, and never a junction
+composed afresh: an older junction that is not the same is refused (R-P21) —
+so a calculation an older molbuilder ran to its end gets its data file and
+its PDOS ([`job-system.md`](?doc=execution/job-system.md) § 5.0, R-P3).
 
 #### Step 1 — the seed: the periodic density *(SIESTA; § 6.1, § 2a.15)*
 
@@ -2536,7 +2538,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 | Command | Does | Code |
 |---|---|---|
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
-| `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
+| `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
@@ -2548,10 +2550,8 @@ the old one, so a gather refuses until a prep composes it afresh (§ 1.1, *The
 first prep*), and a rung prepared from the old record is refused at its launch
 — the way on is to prepare every group again while none is launched, or, once
 one is, its way back ([`job-system.md`](?doc=execution/job-system.md)'s *How
-the checkpoint supports you*): a prep never replaces a junction a launched
-group ran on, and gives one whose sidecar states no order record its record
-when a composition in memory is the same junction (*The first prep*);
-`--bias` must start at `0.0` (a list starts from equilibrium).
+the checkpoint supports you*; *The first prep*); `--bias` must start at `0.0`
+(a list starts from equilibrium).
 
 ### 3.1 What you can cite, and what it brings
 
@@ -3166,7 +3166,7 @@ fixed.**
 | | |
 |---|---|
 | the `atom-metadata` fence was emitted **twice** | The framework emits it into the record; lifting `_render_seed`'s own call reproduced it in the body, and the reader stops at the first END marker — so the poorer copy won and the framework's was dead text. Two on-disk sources of truth for the region partition. No engine module calls that emitter; transport's must not either |
-| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-preparing a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. `script_emit.same_calculation` now masks exactly `generated-at`, `generator-version` and `created_at` and keeps every other byte, the region partition included |
+| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-preparing a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. the gather now asks whether the run ran the same engine input (§ 6.1): comments — molbuilder's records and stamps among them — are not compared; `script_emit.same_calculation`, which masks the stamps and keeps every other byte, is the run record's and the report's question, not the gather's |
 
 **What it did NOT do, stated so nobody reads more into it.**
 
@@ -4156,8 +4156,9 @@ SIESTA engine's own door (`siesta.engine_input.engine_input_difference`):
   and each atom the same species: the one rule two geometries are compared by
   (`structure.SAME_PLACE_ANG`, `structure.farthest_apart`; the composed
   junction's check in § 1.1 asks it too), far below any physics and above the
-  rounding of a box placed again (measured on a real junction, 2026-10-15:
-  6.6·10⁻⁷ Å);
+  rounding of the junction's text — six decimals of an Å, at most
+  √3·5·10⁻⁷ ≈ 8.7·10⁻⁷ Å per atom (7.5·10⁻⁷ Å measured on a real junction,
+  2026-10-15);
 - **a keyword one deck states and the other leaves out** is the same input only
   when the stated value is the engine's own default, which the catalogue states
   on the item (`engine_default`, [`engines/template.md`](?doc=engines/template.md)
@@ -4597,7 +4598,7 @@ flowchart TB
     REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
 ```
 
-*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, 2026-10-14. A junction whose sidecar states no order record is composed again by the next prep and, the same junction, given it.)*
+*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, 2026-10-14. A junction whose sidecar states no order record is given it as § 1.1 says, *The first prep*.)*
 
 **Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
 later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,

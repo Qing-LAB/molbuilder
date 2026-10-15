@@ -1244,21 +1244,24 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=JUNCTION_FILE, what="the composed junction",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
-             writer="a transport calculation's first prep "
+             writer="the prep that composes the junction, or records an "
+                    "older one's order "
                     "(`transport.compose.write_compose_record`)",
-             door="transport.compose.load_compose_record"),
+             door="transport.compose.recorded_junction"),
     Artifact(name=JUNCTION_SIDECAR_FILE,
              what="its cell, its region labels and the citation's record",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
-             writer="a transport calculation's first prep "
+             writer="the prep that composes the junction, or records an "
+                    "older one's order "
                     "(`transport.compose.write_compose_record`)",
-             door="transport.compose.load_compose_record"),
+             door="transport.compose.recorded_junction"),
     Artifact(name=JUNCTION_CITED_FILE,
              what="the deck the junction was cited from, as it was",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
-             writer="a transport calculation's first prep "
+             writer="the prep that composes the junction, or records an "
+                    "older one's order "
                     "(`transport.compose.write_compose_record`)",
              door="transport.compose.load_compose_record",
              only="a run is cited"),
@@ -1266,7 +1269,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="where each part of the junction came from, with hashes",
              calculation="transport", when="prep", level="calculation",
              kind="record",
-             writer="a transport calculation's first prep "
+             writer="the prep that composes the junction, or records an "
+                    "older one's order "
                     "(`transport.compose.write_compose_record`)",
              door="transport.compose.read_provenance"),
     Artifact(name=".gitignore",
