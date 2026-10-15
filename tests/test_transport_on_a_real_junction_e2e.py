@@ -96,6 +96,13 @@ def _at(place: int) -> int:
     return _LISTED.index(place)
 
 
+#: THE ORDER RECORD OF TRANSIESTA'S ORDER, the chain's, as every rung's deck
+#: and the composed junction state it.
+_CHAIN = {"key": "transport",
+          "sorted_to_original": [_at(p) for p in range(len(_LISTED))],
+          "original_to_sorted": list(_LISTED)}
+
+
 #: What the relaxation's template is set to before it runs -- each
 #: distinguishable from the catalogue's default (300 Ry / DZP / 300 K /
 #: unpolarized / a mixing weight of 0.02 and a history of 8), so a value that
@@ -573,6 +580,24 @@ def junction(tmp_path_factory):
                    "--mode", "direct", "--yes", *extra)
         run.single = single
 
+        # A CALCULATION CARRIED ACROSS AN UPGRADE (`engines/transport.md`
+        # § 1.1, *The first prep*; § 6.1, *the same engine input*; plan UPG):
+        # the single voltage's copy as molbuilder 2.8.0 left it, its
+        # transmission -- never launched -- prepared now and its launch asked
+        # dry.
+        from molbuilder.runfiles import JUNCTION_FILE
+        from support.real_runs import as_2_8_0_left_it, copy_of
+        older = copy_of(single, "as-left-by-2-8-0",
+                        lambda c: as_2_8_0_left_it(
+                            c, ("seed", "electrode_L", "electrode_R",
+                                "device")))
+        run.junction_as_left = (older.bundle / JUNCTION_FILE).read_bytes()
+        _typed(older, "prep transmission", "prep", "task",
+               *group_words(older.bundle, "transmission"), "--target", "this")
+        _typed(older, "launch transmission dry", "launch", "task", "--stage",
+               "transmission", "--mode", "direct", "--dry-run", "--yes")
+        run.older = older
+
         # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
         # the good set with one change each, cited at `jobset init`, the door
         # that refuses it; the set stating none of the definition described,
@@ -705,11 +730,11 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
 def test_the_record_answers_for_the_citation_it_was_composed_from(
         junction, tmp_path, monkeypatch):
     """`load_compose_record`'s "no record" is said in words: nothing
-    composed here, a record composed from another citation, or one composed
-    before 2.10.0 recorded the order its junction's atoms are in -- known by
-    its own schema, a record stamped `slot-provenance@1`; prep then composes
-    it again, and the data file and a selection's PDOS, which name the
-    junction's atoms in your order, are refused by name, and the record the
+    composed here, or a record composed from another citation.  And a
+    calculation whose junction's sidecar states no order record (written
+    before the field, as 2.8.0 left it) is refused by name by the doors that
+    name the junction's atoms in your order until a prep records it --
+    `summarize task`'s data file and the report's PDOS -- and the record the
     report draws by carries the sentence (`model/overview.md` § 2.2a, I9;
     `execution/job-contracts.md` § 6.1)."""
     from molbuilder.transport.compose import (compose_junction,
@@ -730,30 +755,18 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(
     assert junction.cite in why[0] and other in why[0]
     assert load_compose_record(rec, citation=junction.cite,
                                tree_root=junction.tree) is not None
-    from molbuilder.persist import write_json
-    from molbuilder.runfiles import SLOT_PROVENANCE_FILE
-    from molbuilder.transport.compose import read_provenance
-    write_json(rec / SLOT_PROVENANCE_FILE,
-               {**read_provenance(rec), "schema": "molbuilder/slot-provenance@1"})
-    why = []
-    assert load_compose_record(rec, citation=junction.cite,
-                               tree_root=junction.tree, why=why) is None
-    stated = "written before 2.10.0 recorded the order"
-    assert stated in why[0], why
-    # ...AND THE DOORS A PERSON ASKS of such a calculation -- a copy of the
-    # one run here, its record stamped `@1`: `summarize task`, whose data
-    # file names atoms in your order, and the report's PDOS, refused by name;
-    # the report's record carries the sentence for its drawing.
+    # ...AND THE DOORS A PERSON ASKS of a calculation whose junction states
+    # no order -- a copy of the one run here as 2.8.0 left it:
+    # `summarize task`, whose data file names atoms in your order, and the
+    # report's PDOS, refused by name; the report's record carries the
+    # sentence for its drawing.
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.web.app import create_app
-    from support.real_runs import copy_of
+    from support.real_runs import as_2_8_0_left_it, copy_of
     from support.road import jobset
-
-    def stamped(copy):
-        write_json(copy.bundle / SLOT_PROVENANCE_FILE,
-                   {**read_provenance(copy.bundle),
-                    "schema": "molbuilder/slot-provenance@1"})
-    old = copy_of(junction, "composed-before-2.10.0", stamped)
+    stated = "states no order record"
+    old = copy_of(junction, "as-left-by-2-8-0",
+                  lambda c: as_2_8_0_left_it(c, ()))
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
     r = jobset("summarize", "task", "--bundle", old.bundle)
     assert r.exit_code != 0 and stated in r.output, r.output
@@ -978,16 +991,42 @@ def test_every_rung_of_the_junction_states_its_order(junction):
     run door (`runs.run_of`) and its reader (`runs.declared`)."""
     from molbuilder.runs import declared, run_of
     from molbuilder.transport.stages import Point
-    chain = {"key": "transport",
-             "sorted_to_original": [_at(p) for p in range(len(_LISTED))],
-             "original_to_sorted": list(_LISTED)}
     runs = ([(junction.attempt(s), w) for s, w in
-             (("seed", chain), ("electrode_L", None), ("electrode_R", None))]
-            + [(junction.attempt(rung) / Point(volts=v).rel, chain)
+             (("seed", _CHAIN), ("electrode_L", None), ("electrode_R", None))]
+            + [(junction.attempt(rung) / Point(volts=v).rel, _CHAIN)
                for rung in ("device", "transmission") for v in _BIAS])
     for where, want in runs:
         got = declared(run_of(where)).atom_order
         assert (None if got is None else got.to_dict()) == want, where
+
+
+def test_a_calculation_left_by_an_older_molbuilder_goes_on(junction):
+    """`engines/transport.md` § 1.1 *The first prep* and § 6.1 *the same
+    engine input* (plan UPG): a transport calculation molbuilder 2.8.0 left
+    with its seed, leads and device launched -- its decks without the engine
+    default later releases state and without the order record, its
+    junction's sidecar without the field -- goes on.  The prep of its
+    transmission, never launched, finds the junction's order by composing it
+    again in memory and comparing it atom for atom: `junction.xyz` kept byte
+    for byte, the order record stated in its sidecar.  The transmission's
+    launch takes the device's newest run, which ran what the device renders
+    now in everything the engine reads.  Known by what the files state,
+    never by the molbuilder that wrote them.  The silent failures it guards:
+    a launched calculation refused for comments and a stated default, a
+    launched junction rewritten, or one whose order nothing states going on
+    as yours."""
+    from molbuilder.runfiles import JUNCTION_FILE
+    from molbuilder.workingcopy_structure import StructureCodec
+    older = junction.older
+    said = older.said["prep transmission"]
+    assert said.exit_code == 0, said.output
+    assert (older.bundle / JUNCTION_FILE).read_bytes() \
+        == junction.junction_as_left
+    kept = StructureCodec().load(older.bundle / JUNCTION_FILE)
+    assert kept.atom_order is not None and kept.atom_order.to_dict() == _CHAIN
+    said = older.said["launch transmission dry"]
+    newest = older.attempt("device", 2).relative_to(older.bundle)
+    assert said.exit_code == 0 and str(newest) in said.output, said.output
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):

@@ -790,17 +790,19 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         struct.offset_by = "person"
 
 
-def load(sidecar_path, *, retired_out=None):
+def load(sidecar_path, *, retired_out=None, stated_out=None):
     """Read-side convenience re-export: delegates to
     :func:`molbuilder.parse.sidecars.molstruct._load` so consumers
     have a single ``molbuilder.sidecars.molstruct`` namespace that
     carries the full sidecar surface (read + write).  Local import
     avoids a module-load-time cycle: parse.sidecars.molstruct
     imports MolstructJsonError + SCHEMA_VERSION from THIS module.
-    ``retired_out`` is the reader's (a retired key that carried a value).
+    ``retired_out`` is the reader's (a retired key that carried a value), and
+    ``stated_out`` (every metadata field the file states, a null one among
+    them).
     """
     from molbuilder.parse.sidecars.molstruct import _load
-    return _load(sidecar_path, retired_out=retired_out)
+    return _load(sidecar_path, retired_out=retired_out, stated_out=stated_out)
 
 
 def load_text(text, *, source="<sidecar>"):

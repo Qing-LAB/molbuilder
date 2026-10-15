@@ -244,7 +244,7 @@ def composed_for_prep(base, task, plan):
     from ..deck_record import DeckRecordUnreadable
     from ..projects import find_projects_root
     from ..transport.compose import (ComposeError, compose_junction,
-                                     load_compose_record,
+                                     load_compose_record, order_unstated,
                                      write_compose_record)
     from ..transport.sort import SortError
     citation = task.slots["junction"]
@@ -256,10 +256,17 @@ def composed_for_prep(base, task, plan):
         # out of its tree), that half degrades to UNVERIFIED honestly.
         root = find_projects_root(base)
         why: list = []
+        unstated = order_unstated(base)
         composed = load_compose_record(base, citation=citation,
                                        tree_root=root, why=why,
                                        swap_electrodes=task.swap_electrodes)
         if composed is not None:
+            if unstated:
+                # ITS ORDER FOUND, THE JUNCTION KEPT (`engines/transport.md`
+                # § 1.1, *The first prep*): the record's sidecar now states
+                # it and its provenance is written at this schema --
+                # `junction.xyz` itself is never written here.
+                _record_its_order(base, composed, plan)
             return composed
         if root is None:
             # NAME WHICH OF THE THREE: no record, one composed from another
@@ -274,15 +281,28 @@ def composed_for_prep(base, task, plan):
                 f"afresh.  Prep once inside the tree that holds the "
                 f"cited junction -- the record then travels with the "
                 f"folder (engines/transport.md § 3.1).")
+        # A LAUNCHED GROUP RAN ON THE JUNCTION RECORDED: one that composes
+        # differently now is not composed again (`engines/transport.md`
+        # § 1.1, *The first prep*).
+        from .prep import launched_already
+        launched = [st.name for st in task.stages
+                    if launched_already(base, task, st.name)]
+        if unstated and launched:
+            from .commands import redo_launched
+            raise PrepError(
+                f"this calculation's junction is not composed again: "
+                f"{why[-1] if why else unstated}.  `{launched[0]}` ran on the "
+                f"junction recorded, so it is not replaced; to compose it "
+                f"again, " + redo_launched(launched[0], base=base, task=task))
         # RENDER FROM THE RECORD, on this prep as on every later one.  The
         # fresh composition is the cited `.XV` at full float precision; the
         # record is the codec's text of it, and every later prep -- the
         # other rungs, a re-prep -- reads the record.  Rendering this one
         # from the fresh copy gave two preps of the SAME calculation two
         # sets of numbers ~1e-10 apart (measured 2026-09-25 on the
-        # ENGINE-OFFSET record), and the gather's `same_calculation`
-        # compares them as text: a value near a rounding boundary then
-        # flips, and a good seed is refused.  One source, not rounding luck.
+        # ENGINE-OFFSET record), and the gather compares the engine's input
+        # number by number: a value near a rounding boundary then flips,
+        # and a good seed is refused.  One source, not rounding luck.
         import tempfile
         with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
             names = write_compose_record(
@@ -301,6 +321,31 @@ def composed_for_prep(base, task, plan):
     except (ComposeError, SortError, PermutationError,
             DeckRecordUnreadable) as exc:
         raise PrepError(str(exc)) from exc
+
+
+def _record_its_order(base, composed, plan) -> None:
+    """The composed junction's order record written into its sidecar, and
+    its provenance at this schema -- through ``plan``, by the one writer
+    (`compose.write_compose_record`), the junction's geometry left as it is:
+    the record written aside, its `junction.xyz` the very bytes beside the
+    calculation (the sidecar pins them), and only the sidecar and the
+    provenance taken."""
+    import tempfile
+    from ..sidecars.molstruct import sidecar_path_for
+    from ..transport.compose import (JUNCTION_GEOMETRY, PROVENANCE_FILE,
+                                     write_compose_record)
+    base = Path(base)
+    with tempfile.TemporaryDirectory(prefix="molbuilder-order-") as tmp:
+        write_compose_record(tmp, composed)
+        if (Path(tmp) / JUNCTION_GEOMETRY).read_bytes() != \
+                (base / JUNCTION_GEOMETRY).read_bytes():
+            raise PrepError(
+                f"{JUNCTION_GEOMETRY} written again differs from the one "
+                f"beside the calculation, so its order record cannot be "
+                f"added to it")
+        for name in (sidecar_path_for(Path(JUNCTION_GEOMETRY)).name,
+                     PROVENANCE_FILE):
+            plan.bytes(base / name, (Path(tmp) / name).read_bytes())
 
 
 def transport_spec(task, stage: str, struct, config, state, volts=None, *,

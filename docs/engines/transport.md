@@ -645,10 +645,12 @@ a record beside `task.json`, and **every later prep reads that record** while
 it is for the cited junction; a prep composes afresh — and writes the record
 again — only when there is no usable one: none, one composed for another
 citation, or one that does not read (`transport_rung.composed_for_prep`).
-**A record written before 2.10.0** (`slot-provenance@1`) states no order for
-its junction's atoms ([`model/overview.md`](?doc=model/overview.md) § 2.2a,
-I9), and is no usable one: a prep composes the junction again from the same
-citation *(decided with the user 2026-10-15, plan UPG)*. **With a group
+**A junction whose sidecar states no order record** — written before the
+field, `atom_order` absent — is known by what the file states, never by the
+molbuilder that wrote it *(the user, 2026-10-15: "feature/format detection")*
+([`model/overview.md`](?doc=model/overview.md) § 2.2a, I9;
+`compose.order_unstated`); a prep composes the junction again from the same
+citation and compares *(decided with the user 2026-10-15, plan UPG)*. **With a group
 already launched, the junction it ran on is never changed** *(the user: "i
 don't want to invalidate the previous calculation already launched")*: the
 prep composes the junction again in memory and compares it, in TranSIESTA's
@@ -1870,9 +1872,10 @@ order; a projected-DOS selection is named in your order, mapped into the
 junction's through its order record and its `atoms` and `outside_device` back
 (`Structure.indices_of_yours`, `Structure.your_indices`). The data file's atom
 axis is in your order, the composed junction restored, and the record holds
-no atom's row — its DOS is per region. A calculation whose composition record
-was written before 2.10.0 (`slot-provenance@1`) records no order: its data
-file and a selection's PDOS are refused by name, and the report says it beside
+no atom's row — its DOS is per region. A calculation whose junction's sidecar
+states no order record (written before the field) records no order until a
+prep finds it (*The first prep*): its data file and a selection's PDOS are
+refused by name, and the report says it beside
 the drawing, which lists the atoms as TranSIESTA does (the record's
 `order_unstated`) — one check, one sentence (`transport.compose.order_unstated`;
 I9).
@@ -2528,9 +2531,9 @@ the old one, so a gather refuses until a prep composes it afresh (§ 1.1, *The
 first prep*), and a rung prepared from the old record is refused at its launch
 — the way on is to prepare every group again while none is launched, or, once
 one is, its way back ([`job-system.md`](?doc=execution/job-system.md)'s *How
-the checkpoint supports you*) — except a record written before 2.10.0, to which
-a prep of the groups not yet launched adds its order record when a composition
-in memory is the same junction (*The first prep*); `--bias` must start at `0.0` (a list starts from
+the checkpoint supports you*) — except a junction whose sidecar states no order
+record, to which a prep of the groups not yet launched adds it when a
+composition in memory is the same junction (*The first prep*); `--bias` must start at `0.0` (a list starts from
 equilibrium).
 
 ### 3.1 What you can cite, and what it brings
@@ -4139,9 +4142,10 @@ Both decks are read as SIESTA reads them, by the one fdf reader
   computes what one that leaves it to SIESTA does.
 
 Anything else that differs is another calculation, refused by name as before,
-naming the molbuilder that wrote the deck when it was not this one. So a
-calculation carries across an upgrade of molbuilder that changed only how
-molbuilder writes its decks. **What is compared is the run's deck against the
+naming the first difference — the keyword or the block row, as the run had it
+and as it renders now (`script_emit.engine_input_difference`) — never which
+molbuilder wrote the deck. So a calculation carries across an upgrade of
+molbuilder that changed only how molbuilder writes its decks. **What is compared is the run's deck against the
 deck its stage renders now — nothing else**: launch's check that a stage
 prepared and never launched is still what prep writes (`job-system.md` § 6.0,
 step 1) compares every file prep writes, its stamps masked, because preparing
@@ -4571,7 +4575,7 @@ flowchart TB
     REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
 ```
 
-*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, 2026-10-14. A record composed before 2.10.0 — `slot-provenance@1`, its own schema — is read as none, so prep composes the junction again.)*
+*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, 2026-10-14. A junction whose sidecar states no order record is composed again by the next prep and, the same junction, given it.)*
 
 **Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
 later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,

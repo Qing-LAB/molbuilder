@@ -297,6 +297,14 @@ class Item:
     #: anchors through fdf's own ``labeleq`` normalisation, which is how
     #: ``SaveHS`` finds the entry the manual spells ``Save.HS``.
     manual: str = ""
+    #: THE ENGINE'S OWN VALUE for this keyword, read from its source, on an
+    #: item whose keyword one deck may state and another leave to the engine
+    #: (`engines/template.md` § 5): a keyword one deck states at this value
+    #: and the other leaves out is the same engine input
+    #: (`script_emit.engine_input_difference`).  Not ``default``, which is
+    #: molbuilder's own.  A catalogue fact, never written into a calculation's
+    #: template.
+    engine_default: Any = None
 
     # --- bounds and presentation ---
     #: Required when type == "enum".  A member is a string or a WHOLE NUMBER
@@ -922,7 +930,7 @@ def _toml_key(k: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
-                   "choices", "value", "source", "default", "recommended", "offered", "optional", "required",
+                   "choices", "value", "source", "default", "engine_default", "recommended", "offered", "optional", "required",
                    "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
@@ -1759,6 +1767,7 @@ def _item_from(name: str, body: Any) -> Item:
         anchor=str(body.get("anchor", "") or ""),
         engine_key=str(body.get("engine_key", "") or ""),
         manual=str(body.get("manual", "") or ""),
+        engine_default=_shape(body.get("engine_default"), type_),
         expands=tuple(body.get("expands", ()) or ()),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),

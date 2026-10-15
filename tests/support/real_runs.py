@@ -378,6 +378,49 @@ def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
     return copy_of(run, "before-2.10.0", as_2_9_6_wrote_it)
 
 
+def as_2_8_0_left_it(copy: RealRun, stages) -> None:
+    """``copy`` -- a transport calculation -- as molbuilder 2.8.0 left it
+    (`AuBDTAu/transport/lowbias_local`, read 2026-10-15): every deck of its
+    ``stages`` (each run's and the stage's own) without the engine default
+    later releases state (`SCF.H.Tolerance`), its ATOM-METADATA block at
+    schema 13 with no order record, stamped 2.8.0; its composed junction's
+    sidecar written before the field (`atom_order` absent, schema 13); its
+    composition record at `slot-provenance@1`."""
+    import re
+
+    from molbuilder.deck_record import extract_atom_metadata
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.persist import write_json
+    from molbuilder.runfiles import (JUNCTION_FILE, SLOT_PROVENANCE_FILE,
+                                     TASK_FILE)
+    from molbuilder.runs import run_of
+    from molbuilder.sidecars.molstruct import dumps, load, sidecar_path_for
+    from molbuilder.task import read_task
+    from molbuilder.transport.compose import read_provenance
+    task = read_task(copy.bundle / TASK_FILE)
+    decks = set()
+    for stage in stages:
+        home = stage_home(copy.bundle, task, stage).dir
+        for attempt in sorted(home.glob("run-*")):
+            ran = run_of(attempt)
+            decks |= {ran.deck, ran.stage_deck}
+    for deck in sorted(d for d in decks if d is not None):
+        deck.write_text(re.sub(r"(?m)^SCF\.H\.Tolerance\b.*\n", "",
+                               deck.read_text()))
+        if extract_atom_metadata(deck.read_text()) is not None:
+            with_atom_metadata(deck, lambda block: (
+                block.pop("atom_order", None),
+                block.update(schema_version=13)))
+        with_generator_version(deck, "2.8.0")
+    side = sidecar_path_for(copy.bundle / JUNCTION_FILE)
+    payload = load(side)
+    payload.pop("atom_order")
+    side.write_text(dumps({**payload, "schema_version": 13}))
+    write_json(copy.bundle / SLOT_PROVENANCE_FILE,
+               {**read_provenance(copy.bundle),
+                "schema": "molbuilder/slot-provenance@1"})
+
+
 def freq_prepared_on(run: RealRun, name: str, alter,
                      tmp_path_factory) -> RealRun:
     """A copy of the calculation (:func:`copy_of`), altered by

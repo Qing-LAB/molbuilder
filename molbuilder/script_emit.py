@@ -134,11 +134,10 @@ def same_calculation(a: str, b: str) -> bool:
     compute -- so a byte comparison answers "was this file written by the same
     invocation", which is a different and much narrower question.
 
-    This exists because the transport DAG asks the useful one:
-    ``jobset/gather.py::transport_inputs`` will only carry a concluded
-    rung's output forward if that rung ran *the deck this composition renders*,
-    and a re-prep -- or a commit between two preps, which moves the sha --
-    changes the stamps and nothing else.
+    Asked where a run's deck is compared with its stage's own -- the run
+    record's ``current`` and the run's report (`runs.Run.report`).  The
+    transport gather asks a different question, what the ENGINE reads
+    (:func:`engine_input_difference`).
 
     The stamps are masked by the one rule a plan's identity is asked by too
     (`deck_record.without_stamps`): fields, never whole fences -- the
@@ -150,6 +149,106 @@ def same_calculation(a: str, b: str) -> bool:
     """
     return (without_stamps(a.encode("utf-8"))
             == without_stamps(b.encode("utf-8")))
+
+
+#: THE BLOCKS THAT ARE THE GEOMETRY, as fdf names them -- compared within
+#: `transport.compose.SAME_PLACE_ANG`, every other number exactly
+#: (`engines/transport.md` § 6.1, *the same engine input*).
+_GEOMETRY_BLOCKS = ("atomiccoordinatesandatomicspecies", "latticevectors")
+
+
+def engine_input_difference(ran: str, now: str) -> Optional[str]:
+    """THE SAME ENGINE INPUT (`engines/transport.md` § 6.1): ``None`` when
+    two SIESTA decks give the engine the same input, else the first
+    difference, in words -- the question the gather asks of a run before it
+    takes its files, never which molbuilder wrote the deck.
+
+    Both are read as SIESTA reads them, by the one fdf reader
+    (`parse.fdf.read_fdf`): comments are not input -- molbuilder's blocks
+    among them; a keyword as fdf names it; a value as a value, a number as a
+    number, a unit as written; a block row by row, the geometry's numbers
+    within `transport.compose.SAME_PLACE_ANG`.  A keyword one deck leaves out
+    is the same input as the other's statement of the engine's own default,
+    which the catalogue states on the item (``engine_default``)."""
+    from .parse.fdf import fdf_key, read_fdf
+    from .transport.compose import SAME_PLACE_ANG
+    (ran_keys, ran_blocks), (now_keys, now_blocks) = read_fdf(ran), \
+        read_fdf(now)
+    defaults = _engine_defaults()
+
+    def spelled(key: str, block: bool = False) -> str:
+        # THE KEYWORD AS THE DECK SPELLS IT, for the sentence a person reads;
+        # fdf's own key is what is compared.
+        for text in (ran, now):
+            for line in text.splitlines():
+                words = line.split("#", 1)[0].split()
+                if block and len(words) > 1 and words[0].lower() == \
+                        "%block" and fdf_key(words[1]) == key:
+                    return words[1]
+                if not block and words and fdf_key(words[0]) == key:
+                    return words[0]
+        return key
+
+    def same(a, b, tol=0.0) -> bool:
+        if len(a) != len(b):
+            return False
+        for x, y in zip(a, b):
+            try:
+                if abs(float(x) - float(y)) > tol:
+                    return False
+            except ValueError:
+                if x.lower() != y.lower():
+                    return False
+        return True
+
+    for key in sorted(set(ran_keys) | set(now_keys)):
+        a, b = ran_keys.get(key), now_keys.get(key)
+        if a is not None and b is not None:
+            if not same(a, b):
+                return (f"{spelled(key)}: the run had {' '.join(a)}, it "
+                        f"renders {' '.join(b)} now")
+            continue
+        stated = a if a is not None else b
+        if key in defaults and same(stated, defaults[key]):
+            continue                 # the engine's own default, stated
+        return (f"{spelled(key)} {' '.join(stated)}: "
+                + ("the run stated it and the deck now leaves it out"
+                   if a is not None else
+                   "the deck states it now and the run left it out"))
+    for key in sorted(set(ran_blocks) | set(now_blocks)):
+        a, b = ran_blocks.get(key), now_blocks.get(key)
+        if a is None or b is None:
+            return (f"block {spelled(key, block=True)}: "
+                    + ("the run stated it and the deck now does not"
+                       if a is not None else
+                       "the deck states it now and the run did not"))
+        tol = SAME_PLACE_ANG if key in _GEOMETRY_BLOCKS else 0.0
+        if len(a) != len(b):
+            return (f"block {spelled(key, block=True)}: the run had "
+                    f"{len(a)} rows, it renders {len(b)}")
+        for i, (ra, rb) in enumerate(zip(a, b), start=1):
+            if not same(ra, rb, tol):
+                return (f"block {spelled(key, block=True)}, row {i}: the run "
+                        f"had {' '.join(ra)}, it renders {' '.join(rb)} now")
+    return None
+
+
+def _engine_defaults() -> Dict[str, List[str]]:
+    """``{fdf keyword: [value, unit]}`` -- every SIESTA item whose catalogue
+    row states the engine's own default (``engine_default``), as a deck
+    states it: the value and the unit word fdf reads beside it."""
+    from .parse.fdf import fdf_key
+    from .siesta.layout import unit_word
+    from .template import catalogue
+    out: Dict[str, List[str]] = {}
+    for it in catalogue().items:
+        if it.engine_default is None or not it.anchor or (
+                it.engines and "siesta" not in it.engines):
+            continue
+        word = unit_word(it.name)
+        out[fdf_key(it.anchor)] = [str(it.engine_default)] + (
+            [word] if word else [])
+    return out
 
 
 # --------------------------------------------------------------------- #

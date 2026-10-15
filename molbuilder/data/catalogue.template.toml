@@ -273,6 +273,7 @@ manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "float"
 value = 0.001
 default = 0.001
+engine_default = 0.001
 unit = "eV"
 range = [1e-06, 0.1]
 tightens = "down"

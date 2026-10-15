@@ -55,8 +55,8 @@ CITATION_KINDS = ("run", "pair")
 
 #: The composition record's schema (`execution/job-contracts.md` § 6.1).
 #: ``@2``: the junction's sidecar carries its order record, and no file of it
-#: lies beside (`model/overview.md` § 2.2a, I7) -- an ``@1`` record, composed
-#: before 2.10.0, is read as none, and prep composes the junction again.
+#: lies beside (`model/overview.md` § 2.2a, I7).  What a record holds is
+#: asked of the files themselves, never of this name (:func:`order_unstated`).
 PROVENANCE_SCHEMA = "molbuilder/slot-provenance@2"
 
 
@@ -908,27 +908,88 @@ def read_provenance(base_dir) -> Optional[Dict]:
     return read_json(path) if path.is_file() else None
 
 
-def order_unstated(base_dir, *, provenance=None) -> Optional[str]:
-    """WHY THIS CALCULATION'S COMPOSED JUNCTION STATES NO ORDER though its
-    atoms are TranSIESTA's -- its composition record written before 2.10.0
-    recorded it, known by the record's own schema (`model/overview.md`
-    § 2.2a, I9) -- in one sentence with its way on, or ``None``.  THE ONE
-    CHECK, asked by every door that names the junction's atoms in your
-    order: the record's read for prep and the gather
-    (:func:`load_compose_record`), the data file (`datafile.write_data_file`)
-    and a selection's PDOS (`record.selection_pdos`) -- each says it as it
-    is -- and the record, which carries it for the report to say.
-    ``provenance`` is the record already read, when the caller has it."""
+def order_unstated(base_dir) -> Optional[str]:
+    """WHY THIS CALCULATION'S COMPOSED JUNCTION STATES NO ORDER -- its
+    sidecar written without the field (`atom_order`), known by what the file
+    states and never by the molbuilder that wrote it (the user, 2026-10-15:
+    "feature/format detection") -- in one sentence with its way on, or
+    ``None``: no junction composed yet, or one that states its order (null
+    for one the sort left as it was).  THE ONE CHECK, asked by every door
+    that names the junction's atoms in your order: the record's read for
+    prep and the gather, which then checks the junction against its
+    composition (:func:`load_compose_record`); the data file
+    (`datafile.write_data_file`) and a selection's PDOS
+    (`record.selection_pdos`), each saying it as it is; and the record, which
+    carries it for the report to say."""
     from ..identity import LAUNCHED_WAY_BACK
-    if provenance is None:
-        provenance = read_provenance(base_dir)
-    if provenance is None or provenance.get("schema") == PROVENANCE_SCHEMA:
+    from ..sidecars.molstruct import load as load_sidecar, sidecar_path_for
+    side = sidecar_path_for(Path(base_dir) / JUNCTION_GEOMETRY)
+    if not side.is_file():
         return None
-    return (f"the composition record ({PROVENANCE_FILE}, "
-            f"{provenance.get('schema')!r}) was written before 2.10.0 "
-            f"recorded the order the junction's atoms are in -- they are "
-            f"TranSIESTA's, and nothing states the way back to yours; to have "
-            f"it recorded, go back to {LAUNCHED_WAY_BACK} and prepare it again")
+    stated: set = set()
+    load_sidecar(side, stated_out=stated)
+    if "atom_order" in stated:
+        return None
+    return (f"the composed junction's {side.name} states no order record -- "
+            f"it was written before the field -- so its atoms stand in "
+            f"TranSIESTA's order with nothing stating the way back to yours; "
+            f"to have it recorded, prepare a group of this calculation not "
+            f"yet launched, which checks the junction against its citation, "
+            f"or go back to {LAUNCHED_WAY_BACK} and prepare it again")
+
+
+#: HOW FAR an atom or a cell vector of a junction composed again may stand
+#: from the recorded one and still be it (`engines/transport.md` § 1.1,
+#: *The first prep*): the tolerance one geometry is compared by
+#: (`engines/vibration.md` § 6.10) -- far below any physics, above the
+#: rounding of a record's text.
+SAME_PLACE_ANG = 1e-6
+
+
+def junction_difference(recorded: Structure,
+                        composed: Structure) -> Optional[str]:
+    """``None`` when ``composed`` is the junction ``recorded`` holds, both
+    in TranSIESTA's order -- the same number of atoms and frames; atom *i*
+    the same element at the same place within :data:`SAME_PLACE_ANG` in
+    every frame; the same cell vectors within it and the same kind on each
+    axis; every label the same set of atoms -- else the first difference,
+    in words, an atom named in your order (`Structure.atoms_named`)."""
+    if recorded.n_atoms != composed.n_atoms:
+        return (f"it holds {composed.n_atoms} atoms, the record "
+                f"{recorded.n_atoms}")
+    if recorded.n_frames != composed.n_frames:
+        return (f"it holds {composed.n_frames} frame(s), the record "
+                f"{recorded.n_frames}")
+    for i, (a, b) in enumerate(zip(recorded.elements, composed.elements)):
+        if a != b:
+            return (f"{composed.atoms_named([i])} is {b} where the record "
+                    f"holds {a}")
+
+    def frames_of(s):
+        return np.asarray(s.frames if s.frames is not None
+                          else [s.positions], dtype=float)
+    apart = np.linalg.norm(frames_of(recorded) - frames_of(composed), axis=2)
+    if apart.size and float(apart.max()) > SAME_PLACE_ANG:
+        f, i = np.unravel_index(int(np.argmax(apart)), apart.shape)
+        return (f"{composed.atoms_named([int(i)])} stands "
+                f"{float(apart[f, i]):.2e} Å from its recorded place"
+                + (f" in frame {int(f)}" if recorded.n_frames > 1 else ""))
+    cells = [None if s.cell is None else np.asarray(s.cell, dtype=float)
+             for s in (recorded, composed)]
+    if (cells[0] is None) != (cells[1] is None) or (
+            cells[0] is not None
+            and float(np.abs(cells[0] - cells[1]).max()) > SAME_PLACE_ANG):
+        return "its cell is not the recorded one"
+    if tuple(recorded.axis_kind or ()) != tuple(composed.axis_kind or ()):
+        return (f"its axes are {tuple(composed.axis_kind)}, the record's "
+                f"{tuple(recorded.axis_kind)}")
+    labels_r = {k: sorted(v) for k, v in (recorded.regions or {}).items()}
+    labels_c = {k: sorted(v) for k, v in (composed.regions or {}).items()}
+    if labels_r != labels_c:
+        differ = sorted(k for k in set(labels_r) | set(labels_c)
+                        if labels_r.get(k) != labels_c.get(k))
+        return f"its label {differ[0]!r} holds other atoms than the record's"
+    return None
 
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
@@ -982,9 +1043,6 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     if provenance is None:
         return _no(f"there is no {PROVENANCE_FILE} beside it, so nothing "
                    f"here has been composed yet")
-    said = order_unstated(base_dir, provenance=provenance)
-    if said:
-        return _no(said)
     if provenance.get("citation") != citation:
         return _no(f"the record beside it was composed from "
                    f"{provenance.get('citation')!r}, and this task now "
@@ -1013,6 +1071,24 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # sidecar (`model/overview.md` § 2.2a, I7) -- none for an order the sort
     # left as it was.
     dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
+    # ONE WHOSE SIDECAR STATES NO ORDER -- written before the field -- is
+    # checked against its composition, in memory (`engines/transport.md`
+    # § 1.1, *The first prep*): the same junction is kept as it is and given
+    # the composition's order record, its provenance at this schema; another
+    # is no record.  A launched group's runs ran on it, so it is never
+    # changed here.
+    unstated = order_unstated(base_dir)
+    if unstated:
+        if tree_root is None:
+            return _no(unstated)
+        composed = compose_junction(citation, tree_root=tree_root,
+                                    swap_electrodes=swap_electrodes)
+        differs = junction_difference(dev, composed.junction)
+        if differs:
+            return _no(f"{unstated}; composed again from its citation, it is "
+                       f"not the junction recorded -- {differs}")
+        dev = dev.replace(atom_order=composed.junction.atom_order)
+        provenance = {**provenance, "schema": PROVENANCE_SCHEMA}
     ion_dir = None
     if tree_root is not None:
         try:

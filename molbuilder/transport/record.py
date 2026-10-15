@@ -899,7 +899,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # WHEN ITS ORDER IS NOT RECORDED -- a junction composed before 2.10.0
         # (I9) -- the sentence the report says beside the drawing, which then
         # lists the atoms as TranSIESTA does; ``None`` otherwise.
-        "order_unstated": order_unstated(base, provenance=provenance),
+        "order_unstated": order_unstated(base),
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for

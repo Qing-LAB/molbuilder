@@ -159,15 +159,13 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # WHERE THE FILE IS: the run -- or, for an upstream that runs per
         # point, its point at this one.
         where = newest / point.rel if up_points else newest
-        # THE SAME CALCULATION, not the same bytes.  A deck that renders
-        # through the framework carries a generated-at timestamp and the
-        # generator's git sha, and neither says anything about what the
-        # engine computes.  `same_calculation` masks exactly those fields and
-        # keeps every other byte, the region partition included
-        # (`script_emit`).
-        # THE DECK THE UPSTREAM RUNG RENDERS NOW (plan § 5w K11, T-F30),
-        # never the stage folder's last render, which a changed template
-        # value or a re-pointed junction leaves as it was.
+        # THE SAME ENGINE INPUT, not the same bytes (`engines/transport.md`
+        # § 6.1): what SIESTA reads of the deck that ran against the deck
+        # the upstream rung renders NOW (plan § 5w K11, T-F30) -- never the
+        # stage folder's last render, which a changed template value or a
+        # re-pointed junction leaves as it was -- comments and molbuilder's
+        # records aside, an explicit engine default the same as none; never
+        # which molbuilder wrote it (`script_emit.engine_input_difference`).
         if composed is None:
             composed = composed_junction(base, task)
         now = rung_deck_now(base, task, upstream, composed,
@@ -181,29 +179,12 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         _run = run_of(where, stage=token)
         ran = _run.deck if _run is not None else None
         ran_text = ran.read_text() if ran is not None else None
-        if not (ran_text is not None
-                and _sc.same_calculation(ran_text, now)):
-            # WHICH MOLBUILDER WROTE IT, said by version when it was not this
-            # one (`process/conventions.md` § 2, *Versioning*): a deck
-            # written by another version differs because molbuilder writes
-            # it differently, and the changelog says how -- not because the
-            # description changed.
-            from .. import __version__ as _this
-            then = _sc.written_by(ran_text) if ran_text is not None else None
-            if ran_text is not None and then != _this:
-                raise PrepError(
-                    f"{upstream}'s newest run, {where.relative_to(base)}, was "
-                    f"prepared by {_sc.molbuilder_words(then)}"
-                    + f", and this is molbuilder {_this}: the deck it would "
-                    f"write for {upstream} now differs from the one that "
-                    f"ran, so its {filename} cannot be taken as part of this "
-                    f"calculation (what changed between the versions: "
-                    f"docs/process/changelog.md).  To run it with this "
-                    f"molbuilder, {redo}")
+        differs = (_sc.engine_input_difference(ran_text, now)
+                   if ran_text is not None else "it holds no deck")
+        if differs:
             raise PrepError(
                 f"{upstream}'s newest run, {where.relative_to(base)}, did "
-                f"not run the deck {upstream} renders now -- its template, "
-                f"its junction or its run card changed since it ran, so its "
+                f"not run what {upstream} renders now -- {differs} -- so its "
                 f"{filename} answers a different calculation.  To run it as "
                 f"it is described now, {redo}")
         # ...AND HOLDS THE FILE (`engines/transport.md` § 6.1).
