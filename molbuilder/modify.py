@@ -1072,7 +1072,7 @@ def append_structure(
     addition: Structure,
     *,
     center: bool = True,
-) -> "tuple[Structure, list]":
+) -> "tuple[Structure, List[str]]":
     """Return ``struct`` with ``addition``'s atoms added, and what to say about it.
 
     THE OPEN STRUCTURE IS THE ONE BEING BUILT IN.  A generator's result adds
@@ -1088,11 +1088,9 @@ def append_structure(
         anchorless offset -- so a fragment arrives somewhere stated rather than
         wherever its file happened to put it.
 
-    Returns ``(structure, notes)``.  The notes are what the merge says to the
-    user, each a notice (``issues.Issue``, info) -- what it decided,
-    :data:`MERGE_NOTE`, and an addition put back in your order, the read
-    notice every door that restores says (``structure.restored``) -- not
-    diagnostics: an empty list means there was nothing to decide.
+    Returns ``(structure, notes)``.  The notes are sentences for the user about
+    what the merge decided, not diagnostics: an empty list means there was
+    nothing to decide.
 
     What it does about the three collisions
     ---------------------------------------
@@ -1133,12 +1131,7 @@ def append_structure(
     entry of its `info` (a saved pair's calculation, its relaxation) is named
     as not carried, and each of its `customized` rows.
     """
-    from .issues import Issue
-    from .workingcopy_structure import RESTORED, read_notice
-    notes: list = []
-
-    def decided(sentence: str) -> None:
-        notes.append(Issue("info", sentence, MERGE_NOTE))
+    notes: List[str] = []
     if addition.n_atoms == 0:
         return struct.copy(), notes
 
@@ -1147,7 +1140,7 @@ def append_structure(
     # structures in the person's order (`Structure.concat`) -- and said.
     incoming, said = addition.in_your_order("the added structure")
     if said:
-        notes.append(read_notice(RESTORED, said))
+        notes.append(said)
     if center and incoming.n_atoms:
         incoming = incoming.translated(
             -np.asarray(incoming.positions, dtype=float).mean(axis=0))
@@ -1157,7 +1150,7 @@ def append_structure(
         # dropped origin is otherwise invisible (plan § 5q D9).
         if incoming.engine_offset is not None:
             incoming = incoming.replace(engine_offset=None)
-            decided(
+            notes.append(
                 "the incoming structure's stated origin was dropped: centring "
                 "it moved its atoms, so the box is centred on them "
                 "(Automatic)")
@@ -1174,7 +1167,7 @@ def append_structure(
         fresh = _unique_label(label, taken)
         if fresh != label:
             renamed[label] = fresh
-            decided(
+            notes.append(
                 f"the incoming {label!r} was added as {fresh!r} -- this "
                 f"structure already had one")
         taken.add(fresh)
@@ -1184,11 +1177,11 @@ def append_structure(
                             for k, v in incoming.regions.items()}
 
     if addition.cell is not None and struct.cell is not None:
-        decided(
+        notes.append(
             "the added structure's own cell was not adopted -- this "
             "structure's cell is unchanged")
     if addition.info:
-        decided(
+        notes.append(
             "the added structure's record was not carried ("
             + ", ".join(sorted(addition.info))
             + ") -- this structure's own is kept; to open the file with its "
@@ -1199,7 +1192,7 @@ def append_structure(
                           | {row["name"] for row in
                              addition.customized_rows(frame=0)})
     if dropped_rows:
-        decided(
+        notes.append(
             "the added structure's named values were not carried ("
             + ", ".join(dropped_rows) + ") -- this structure's own are kept")
 
@@ -1211,13 +1204,7 @@ def append_structure(
     return out, notes
 
 
-#: The name every note of what a merge decided is said under
-#: (:func:`append_structure`).
-MERGE_NOTE = "append.merge"
-
-
 __all__ = [
-    "MERGE_NOTE",
     "append_structure",
     "delete_atoms",
     "add_atom",

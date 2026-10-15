@@ -457,7 +457,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         # append centred them, so it does not ride in with the cell: the box
         # centres on the joined atoms, and the append says so (plan § 5q D9).
         assert out.engine_offset is None, out.engine_offset
-        assert any("stated origin was dropped" in n.message for n in notes), notes
+        assert any("stated origin was dropped" in n for n in notes), notes
 
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --

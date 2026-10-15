@@ -336,7 +336,7 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
 #
 # The run's deck is written in the engine's held-first order: the held
 # carbon, then the oxygens as listed (`engines/vibration.md` § 5.2).  Every
-# door that shows, writes or builds from the run is asked of three runs:
+# door that shows, writes or builds from the run is asked of two runs:
 #
 # * the run itself -- the silent failure: a run in its engine's order shown,
 #   saved or converted as if it were in yours, the carbon taken for the
@@ -345,11 +345,7 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
 #   ATOM-METADATA block at schema 13 with no order record (I9) -- the silent
 #   failure: a run of a kind that reorders, made before 2.10.0, shown or
 #   built from as if its atoms were in your order.  A door that builds
-#   refuses it by name, a door that shows it says so -- once;
-# * a copy, its decks' order record naming one atom twice -- the silent
-#   failure: read as a deck with no order, the run shown in your order though
-#   it is not.  Every surface refuses it, naming the deck and the way out
-#   (`execution/job-contracts.md` § 3.1).
+#   refuses it by name, a door that shows it says so -- once.
 
 #: The viewer's mark of a structure in this order (`web/molview.md` § 6.2).
 _SAID = "in the engine's order (held atoms first)"
@@ -366,14 +362,6 @@ def _says_unstated(got, row) -> None:
     from support.real_runs import PREPARED_BY_2_9_6
     assert all(part in got.text for part in PREPARED_BY_2_9_6), got.text
     assert got.text.count(PREPARED_BY_2_9_6[1]) == 1, got.text
-
-
-def _says_unreadable(got, row) -> None:
-    """A block that cannot be read, refused (`job-contracts.md` § 3.1): the
-    deck named, the order record its cause, the way out."""
-    deck = _deck(row["calc"]).name
-    assert deck in got.text and "order record" in got.text, got.text
-    assert "checkpoint restore" in got.text, got.text
 
 
 def _says_restored(got, row) -> None:
@@ -399,7 +387,7 @@ def _says_cite_the_run(got, row) -> None:
         got.text)
 
 
-_SAYS = {"unstated": _says_unstated, "unreadable": _says_unreadable,
+_SAYS = {"unstated": _says_unstated,
          "restored": _says_restored, "engine order": _says_engine_order,
          "cite the run": _says_cite_the_run}
 
@@ -424,8 +412,8 @@ def _in_your_order(struct) -> None:
 
 _STRUCTURES = {"engine": _in_the_engines_order, "yours": _in_your_order}
 
-#: Each row: the run it asks (``calc``, a fixture -- the run, or a copy of
-#: it), the door (:func:`_ask`) and what the door is given (``file``, a file
+#: Each row: the run it asks (``calc``, a fixture -- the run, or its copy
+#: from before 2.10.0), the door (:func:`_ask`) and what the door is given (``file``, a file
 #: of the run a person names; ``from_run``; ``restore``, an editor's open),
 #: and what it answers -- ``ok``, and where stated: ``says``, the contract's
 #: check of what it said (:data:`_SAYS`); ``notices``, the route's notices
@@ -490,19 +478,6 @@ _ROWS = [
          ok=False, says="unstated"),
     dict(name="a transport calculation citing its relaxation is refused",
          calc="before_the_rule", door="cite", ok=False, says="unstated"),
-    # An order record that cannot be read (`job-contracts.md` § 3.1).
-    dict(name="the Results tab's load refuses a broken order record with "
-              "its sentence", calc="broken_order", door="watch_load",
-         ok=False, says="unreadable"),
-    dict(name="xv2xyz --from-run refuses it", calc="broken_order",
-         door="xv2xyz", file="CO2.XV", from_run=True, ok=False,
-         says="unreadable", wrote=False),
-    dict(name="molbuilder validate refuses SIESTA's own CO2.xyz with it",
-         calc="broken_order", door="validate", file="CO2.xyz", ok=False,
-         says="unreadable"),
-    dict(name="molbuilder modify refuses it too", calc="broken_order",
-         door="modify", file="CO2.xyz", ok=False, says="unreadable",
-         wrote=False),
 ]
 
 
@@ -618,38 +593,19 @@ def before_the_rule_prepped(relaxed, tmp_path_factory):
                             tmp_path_factory)
 
 
-@pytest.fixture(scope="module")
-def broken_order(relaxed):
-    """A copy of the run's calculation (`support/real_runs.copy_of`), its
-    `relax` decks' order record naming one atom twice, changed through the
-    block's reader (`support/real_runs.with_atom_metadata`)."""
-    from support.real_runs import copy_of, relax_decks, with_atom_metadata
-
-    def name_one_atom_twice(block):
-        assert block["atom_order"] == CO2_HELD_FIRST, block
-        block["atom_order"] = dict(CO2_HELD_FIRST,
-                                   sorted_to_original=[2, 0, 0])
-
-    def break_it(copy):
-        for deck in relax_decks(copy):
-            with_atom_metadata(deck, name_one_atom_twice)
-    return copy_of(relaxed, "broken-order", break_it)
-
-
 @pytest.mark.parametrize("row", _ROWS, ids=[r["name"] for r in _ROWS])
 def test_every_door_asked_of_the_run_says_its_order(
-        row, relaxed, before_the_rule, before_the_rule_prepped, broken_order,
-        web_client, tmp_path, monkeypatch):
+        row, relaxed, before_the_rule, before_the_rule_prepped, web_client,
+        tmp_path, monkeypatch):
     # THE RUNS ARE THE TEST'S ARGUMENTS, made before its own fixtures: a run
     # made on the road needs this machine's engine, which a test's isolation
     # hides from anything it calls.
     calc = {"relaxed": relaxed, "before_the_rule": before_the_rule,
-            "before_the_rule_prepped": before_the_rule_prepped,
-            "broken_order": broken_order}[row["calc"]]
+            "before_the_rule_prepped": before_the_rule_prepped}[row["calc"]]
     got = _ask(row, calc, web_client, tmp_path, monkeypatch)
     assert got.ok is row["ok"], (row["name"], got)
     if "says" in row:
-        _SAYS[row["says"]](got, dict(row, calc=calc))
+        _SAYS[row["says"]](got, row)
     if "notices" in row:
         assert list(got.notices) == row["notices"], got
     if "structure" in row:
@@ -658,51 +614,3 @@ def test_every_door_asked_of_the_run_says_its_order(
         assert got.mark == (_SAID if row["marked"] else None), got.mark
     if "wrote" in row:
         assert got.wrote is row["wrote"], got
-
-
-# --------------------------------------------------------------------- #
-#  The force-constant stage builds on the relaxation (plan V1.41)       #
-# --------------------------------------------------------------------- #
-#
-# `engines/vibration.md` § 2.3a: within one ladder the held set may grow.
-# The same calculation, its structure's held set grown after `relax` ran --
-# the carbon and the first oxygen held, where `relax` held the carbon alone
-# -- and `freq` prepared: its deck is written in ITS OWN held-first order
-# (O C O, the order record [0, 2, 1]), and its coordinates are `relax`'s
-# relaxed ones, atom for atom, through both decks' order records.  The
-# silent failure: `relax`'s coordinates copied row by row into another
-# order, each atom given another atom's place.
-
-#: `freq`'s order record: the rule applied to the grown held set
-#: (`support/real_runs.HELD_GROWN`, the first oxygen and the carbon) -- those
-#: two first in their own order, then the free oxygen: O C O.
-_FREQ_ORDER = {"key": "held-first", "sorted_to_original": [0, 2, 1],
-               "original_to_sorted": [0, 2, 1]}
-
-
-@pytest.fixture(scope="module")
-def held_grown(relaxed, tmp_path_factory):
-    """The calculation, its held set grown and its `freq` stage prepared on
-    the road (`support/real_runs.freq_prepared_on`, `grow_the_held_set`)."""
-    from support.real_runs import freq_prepared_on, grow_the_held_set
-    calc = freq_prepared_on(relaxed, "held-grown", grow_the_held_set,
-                            tmp_path_factory)
-    assert calc.said["prep freq"].exit_code == 0, calc.said["prep freq"].output
-    return calc
-
-
-def test_the_force_constant_deck_takes_the_relaxed_geometry_in_its_own_order(
-        relaxed, held_grown):
-    from molbuilder.runs import declared, run_of, view_of
-    freq = _as_its_deck_states(held_grown.attempt("freq"))
-    assert freq.atom_order.to_dict() == _FREQ_ORDER
-    assert freq.elements == ["O", "C", "O"]
-    relax = run_of(_run(relaxed))
-    assert declared(relax).atom_order.to_dict() == CO2_HELD_FIRST
-    mine = freq.restored()
-    # WHERE THE RELAXATION ENDED, read off its output's text (the record's
-    # oracle) and put in your order through `relax`'s own order record.
-    theirs = view_of(relax).onto(_final_geometry(relaxed)).restored()
-    assert mine.elements == theirs.elements == CO2["elements"]
-    assert np.allclose(mine.positions, theirs.positions, atol=1e-5), (
-        mine.positions, theirs.positions)

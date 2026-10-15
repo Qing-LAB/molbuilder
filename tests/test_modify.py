@@ -328,7 +328,7 @@ def test_append_numbers_a_label_the_open_structure_already_carries():
     add = _frag(["C"], [3.0], {"benzene#": [0]})
     out, notes = append_structure(base, add)
     assert out.regions == {"benzene#": [0], "benzene#2": [1]}
-    assert any("benzene#2" in n.message for n in notes), notes
+    assert any("benzene#2" in n for n in notes), notes
     # And again: the next one is 3, not a second 2.
     out2, _ = append_structure(out, add)
     assert sorted(out2.regions) == ["benzene#", "benzene#2", "benzene#3"]
@@ -371,9 +371,9 @@ def test_append_keeps_the_open_structures_cell_and_record_and_says_so():
     out, notes = append_structure(base, add)
     assert np.allclose(out.cell, np.diag([10.0, 10.0, 10.0]))
     assert np.allclose(out.engine_offset, [1.0, 1.0, 1.0]), out.engine_offset
-    assert any("not adopted" in n.message for n in notes), notes
+    assert any("not adopted" in n for n in notes), notes
     assert "calculation" not in out.info and "relaxation" not in out.info
-    assert any("record was not carried (calculation, relaxation)" in n.message
+    assert any("record was not carried (calculation, relaxation)" in n
                for n in notes), notes
 
 

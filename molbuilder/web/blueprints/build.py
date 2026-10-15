@@ -1190,7 +1190,10 @@ def api_task_setup_handover():
         # disagree with it (`molview.md` § 9.3a).
         "structure": {"source":  geometry_name,
                       "formula": formula,
-                      "atoms":   len(getattr(struct, "elements", []) or [])},
+                      "atoms":   len(getattr(struct, "elements", []) or []),
+                      # THE PAIR'S FINGERPRINT, which the description keeps
+                      # and every prep compares (`engines/stages.md` § 6.3).
+                      "fingerprint": StructureCodec.fingerprint(made)},
         # No `shape`, no `stages` -- Task setup asks.  Stated rather than
         # omitted so a reader of the file knows it is waiting on them.
         "awaiting":  ["shape", "stages"],

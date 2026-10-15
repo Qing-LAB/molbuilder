@@ -158,7 +158,7 @@ def bias_token(v: float) -> str:
     return f"v{v:g}"
 
 _RUN_KEYS = ("name", "id", "created")
-_STRUCTURE_KEYS = ("source", "formula", "atoms")
+_STRUCTURE_KEYS = ("source", "formula", "atoms", "fingerprint")
 
 
 # --------------------------------------------------------------------- #
@@ -294,12 +294,17 @@ class StructureRef:
     """§ 6.3 — a reference plus a witness, never a copy.
 
     ``source`` points into the project tree; ``formula`` and ``atoms`` record
-    what was there when the description was written, so a description opened
-    against a structure that has since changed can *say so* instead of
-    silently building a different calculation under the same id."""
+    what was there when the description was written, and ``fingerprint`` the
+    whole pair (`workingcopy_structure.StructureCodec.fingerprint`), so a
+    description opened against a structure that has since changed -- an atom,
+    a label, a held atom, the box -- can *say so* instead of silently
+    building a different calculation under the same id.  A description
+    written before the fingerprint was recorded states none, and is checked
+    by ``formula`` and ``atoms`` alone."""
     source: str
     formula: str = ""
     atoms: int = 0
+    fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -865,7 +870,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         structure = StructureRef(
             source=str(_require(struct_obj, "source", where="structure")),
             formula=str(struct_obj.get("formula", "")),
-            atoms=int(struct_obj.get("atoms", 0)))
+            atoms=int(struct_obj.get("atoms", 0)),
+            fingerprint=str(struct_obj.get("fingerprint", "")))
 
     # THE COMPOSITE'S KEYS (engines/transport.md § 2a.14).  Shape here;
     # the pairing rules (transport-only, junction required, bias starts
@@ -1357,7 +1363,9 @@ def _task_to_dict(task: Task) -> dict:
     if task.structure is not None:
         out["structure"] = {"source": task.structure.source,
                             "formula": task.structure.formula,
-                            "atoms": task.structure.atoms}
+                            "atoms": task.structure.atoms,
+                            **({"fingerprint": task.structure.fingerprint}
+                               if task.structure.fingerprint else {})}
     # Absent together, never empty -- an empty list would be a second way to
     # spell "one stage" (§ 6.5).
     # § 6.8: omitted when empty, so "no benchmark planned" has ONE spelling

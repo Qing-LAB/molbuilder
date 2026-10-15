@@ -2541,11 +2541,9 @@ with itself there, and a refusal names atoms, through the junction's own
 answer, `Structure.your_indices` — no map by hand, and no translation into
 the engine's order but the sort's (I3). The composer sorts by the key the
 transport calculation's decks are written by, the one table
-(`transport.sort.deck_sort_key`). A cited pair is in the person's order (I1);
-a pair that is an engine's record — a composed junction — is read back in
-your order where the citation reads it (`_classify_pair`, the codec's read
-`in_your_order`), so every reader of the citation starts from your order. One saved before this rule from a reordered run's view
-cannot be told apart (I9).
+(`transport.sort.deck_sort_key`). A cited pair is in the person's order, as
+every pair molbuilder writes for a person is (I1); one saved before this rule
+from a reordered run's view cannot be told apart (I9).
 
 **One reader takes both kinds' settings** (`citation_defaults.citation_answers`):
 a cited run's deck through `contract_of` when the transport is described, a

@@ -786,9 +786,10 @@ each a notice by its name and level — one table, `READ_NOTICES`, made by
 `model/overview.md` § 2.2a, I9) and `structure.restored` (info, I8). The two
 warned states are refusals for a door that builds from the file; a door that
 only shows it names them in `opened` and opens it, said. `in_your_order` is the
-read of an editor, a calculation's structure or a citation: a structure in an
-engine's order is put back in yours and said, and a run whose order nothing
-states is refused — asking to open it as well is refused too.
+read of an editor or of `jobset init`: a structure in an engine's order is put
+back in yours and said, and a run whose order nothing states is refused —
+asking to open it as well is refused too. A calculation's own structure needs
+no such read: molbuilder writes it in your order (I1).
 
 **A lone file says what was read** *(user, 2026-10-09: "If the XYZ file doesn't
 come with a JSON file, then we would notify the user that we're dumping the

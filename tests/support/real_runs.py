@@ -32,8 +32,8 @@ Each is the session fixture of its name in `tests/conftest.py`:
   (`support.road.CO2`; plan T-CO2).
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`): its
-decks as an older molbuilder wrote them, a damaged order record, its held set
-grown and its next stage prepared on the road.
+decks as an older molbuilder wrote them, and its next stage prepared on the
+road.
 """
 from __future__ import annotations
 
@@ -380,23 +380,3 @@ def freq_prepared_on(run: RealRun, name: str, alter,
         _typed_on_the_road(copy, tmp_path_factory, "prep freq", "prep",
                            "task", "--group", "2", "--target", "this")
     return copy_of(run, name, alter_and_prepare)
-
-
-#: THE HELD SET GROWN after `relax` ran (`engines/vibration.md` § 2.3a): the
-#: carbon and the first oxygen, where `relax` held the carbon alone.
-HELD_GROWN = [0, 2]
-
-
-def grow_the_held_set(copy: RealRun) -> None:
-    """``copy``'s structure with its held set grown (:data:`HELD_GROWN`),
-    as a person would on the Molbuilder tab -- the structure the description
-    names (`task.structure.source`), through the codec."""
-    from molbuilder.runfiles import TASK_FILE
-    from molbuilder.task import read_task
-    from molbuilder.workingcopy_structure import StructureCodec
-    task = read_task(copy.bundle / TASK_FILE)
-    source = copy.bundle / Path(task.structure.source).name
-    mine = StructureCodec().load(source)
-    StructureCodec().write(
-        mine.replace(regions={**mine.regions,
-                              "frozen_atoms": list(HELD_GROWN)}), source)

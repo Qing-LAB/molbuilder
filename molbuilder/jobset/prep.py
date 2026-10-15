@@ -461,27 +461,18 @@ def _structure_for(task, base: Path, pset):
     # applies the .molstruct.json and compares its pin with the file
     # (`structure-molstruct.md` § 3).  The suffix-corrected candidate is the
     # codec's own naming rule (a .pdb source travels as <stem>.xyz).
-    from ..runs import OrderUnstated
     for candidate in (base / src.name,
                       (base / src.name).with_suffix(codec.GEOMETRY_SUFFIX),
                       src):
         if candidate.is_file():
             try:
-                # IN YOUR ORDER (`model/overview.md` § 2.2a, I1, I3): one in an
-                # engine's order crosses back, and a run whose order nothing
-                # states is refused by the read (I9).
-                struct = codec.load(candidate, in_your_order=True)
+                struct = codec.load(candidate)
             except GeometryChangedError as exc:
                 # THE PIN (`structure-molstruct.md` § 3): the atoms or the
                 # cell moved after the pair was written -- a deck rendered
                 # now would put the old labels on them.
                 raise PrepError(f"the structure has changed since this "
                                 f"calculation was described: {exc}") from None
-            except OrderUnstated as exc:
-                # THE RECORDED SOURCE ITSELF, read where its copy beside the
-                # calculation is absent, when it is an engine's own file of a
-                # run whose order nothing states (I9).
-                raise PrepError(str(exc)) from None
             break
     else:
         raise PrepError(
@@ -489,6 +480,19 @@ def _structure_for(task, base: Path, pset):
             f"{task.structure.source!r}. `task.json` records a REFERENCE to it "
             f"(engines/stages.md § 6.3), so `prep` needs the file to be either "
             f"beside the calculation or still at that path.")
+    if task.structure.fingerprint and codec.fingerprint_on_disk(
+            candidate) != task.structure.fingerprint:
+        # THE WHOLE PAIR IS THE ONE IT WAS DESCRIBED WITH (`engines/stages.md`
+        # § 6.3): every stage of a calculation is of one structure, and an
+        # edit after its description -- a label, a held atom, a coordinate,
+        # the box -- is refused, never worked around.
+        raise PrepError(
+            f"the structure has changed since this calculation was "
+            f"described: {candidate.name} is not the pair its description "
+            f"records (task.json's structure fingerprint) -- an atom, a "
+            f"label, a held atom or the box was edited after it.  Every "
+            f"stage of a calculation is of the one structure it was "
+            f"described with: describe it again to build on the edit.")
     if struct.formula != task.structure.formula or \
             struct.n_atoms != task.structure.atoms:
         raise PrepError(

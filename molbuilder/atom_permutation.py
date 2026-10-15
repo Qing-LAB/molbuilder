@@ -2,7 +2,7 @@
 
 MODULE  atom_permutation (L1, the job as described; stdlib + numpy only)
 ROLE    the order record -- the class every reader crosses with, its one dict
-        reader, the sort keys' names, ``same_order``; and
+        reader, the sort keys' names; and
         ``atom-permutation.json``'s schema and reader, until the file retires
         (`model/overview.md` § 2.2a, plan § 5ab R5)
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
@@ -203,17 +203,6 @@ class Permutation:
             [orig[k] for k in order]
 
 
-def same_order(a: "Optional[Permutation]", b: "Optional[Permutation]") -> bool:
-    """Whether two decks' atoms stand in the same order -- what decides that a
-    restart file one wrote may be read by the other (`model/overview.md`
-    § 2.2a, I6).  ``None`` is the person's own order, which the identity is
-    too: an order is compared by where each atom sits, not by its key."""
-    def where(p):
-        return None if p is None or p.is_identity else tuple(
-            p.sorted_to_original)
-    return where(a) == where(b)
-
-
 def read_permutation(directory) -> Permutation:
     """The permutation recorded in ``directory``, or a refusal naming the
     file: a sorted run with no record is a run whose numbers cannot be
@@ -243,4 +232,4 @@ def read_permutation(directory) -> Permutation:
 __all__ = ["PERMUTATION_SCHEMA", "Permutation", "PermutationError",
            "SORT_HELD_FIRST", "SORT_KEY_NAMES", "SORT_KEY_WORDS",
            "SORT_TRANSPORT",
-           "read_permutation", "same_order"]
+           "read_permutation"]

@@ -436,6 +436,32 @@ class StructureCodec:
                 (molstruct.sidecar_path_for(target),
                  molstruct.dumps(made.sidecar).encode("utf-8"))]
 
+    @staticmethod
+    def fingerprint(files: Sequence[Tuple[Path, bytes]]) -> str:
+        """THE PAIR'S FINGERPRINT: a SHA-256 over its two files' bytes, in
+        order -- :meth:`files`' answer, or the pair as it lies on disk --
+        their stamps masked (`deck_record.without_stamps`, the sidecar's
+        ``created_at``).  Every atom, coordinate, label, channel, named value
+        and the box are in it, so any edit to the structure changes it.  The
+        description records it of the structure a calculation is OF
+        (:meth:`source_files`), and every prep compares it
+        (`engines/stages.md` § 6.3)."""
+        import hashlib
+
+        from .deck_record import without_stamps
+        digest = hashlib.sha256()
+        for _path, data in files:
+            digest.update(without_stamps(data))
+        return digest.hexdigest()
+
+    @classmethod
+    def fingerprint_on_disk(cls, path) -> str:
+        """:meth:`fingerprint` of the pair at ``path`` -- its geometry file
+        and the ``.molstruct.json`` beside it, as they lie on disk."""
+        geometry = Path(path)
+        return cls.fingerprint([(p, p.read_bytes()) for p in (
+            geometry, molstruct.sidecar_path_for(geometry))])
+
     def source_files(self, struct: Structure,
                      label: str) -> List[Tuple[Path, bytes]]:
         """The structure a calculation is OF, as named bytes:

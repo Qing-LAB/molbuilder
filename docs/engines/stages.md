@@ -1106,10 +1106,18 @@ Coordinates are what runs *produce*; a description that embedded them in
 `task.json` would be a second copy drifting from the file the moment either
 moved. So `source` records the reference, and `formula` and `atoms` travel
 beside it as evidence of what was there when the description was written —
-which is what the id was built from (`execution/run-identity.md § 2`). A
-description opened against a structure that has since changed can therefore
-*say so*, rather than silently building a different calculation under the
-same id (`run-identity.md § 5`).
+which is what the id was built from (`execution/run-identity.md § 2`) — with
+`fingerprint`, the pair's own (`StructureCodec.fingerprint`: its two files'
+bytes, their stamps masked), so every atom, coordinate, label, held atom and
+the box are pinned. A description opened against a structure that has since
+changed can therefore *say so*, rather than silently building a different
+calculation under the same id (`run-identity.md § 5`): **every prep compares
+the fingerprint and refuses an edit**, naming it — every stage of a
+calculation is of the one structure it was described with, and describing
+again is the way to build on an edit *(user, 2026-10-14: a person who edits
+a calculation's structure between its stages breaks the agreement)*. A
+description written before the fingerprint was recorded states none, and is
+checked by `formula` and `atoms` alone.
 
 **The structure FILE is copied into the calculation at `describe`, exactly
 like the pseudopotentials** *(M9, 2026-08-12 — this section's title said

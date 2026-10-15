@@ -130,9 +130,8 @@ def _brace_delta(line: str) -> int:
 
 class DeckRecordUnreadable(ValueError):
     """A deck carries the molbuilder block it names, and the block cannot be
-    read: its fences are not a BEGIN/END pair, it holds no JSON object, its
-    JSON does not parse, or -- the ATOM-METADATA block -- its order record is
-    not one (:func:`order_record_of`).  The block is a record molbuilder writes and
+    read: its fences are not a BEGIN/END pair, it holds no JSON object, or
+    its JSON does not parse.  The block is a record molbuilder writes and
     nobody edits (`execution/job-contracts.md` § 3.1), so this is refused,
     never read as a deck that records nothing."""
 
@@ -238,28 +237,18 @@ def order_record_of(block: Optional[Dict[str, Any]]):
     ATOM-METADATA payload's ``atom_order``, read by the order record's one
     reader (``atom_permutation.Permutation.from_dict``) over the block's own
     atom count -- ``None`` for a deck in your order, or one that carries no
-    block.  A record that cannot be read is the block refused
-    (:class:`DeckRecordUnreadable`); the caller names the deck.  Asked by the
-    run door (``runs.declared``); it imports both ways because the finish
-    beside a job is to read its deck's record through it (plan § 5ab R5)."""
+    block.  Asked by the run door (``runs.declared``); it imports both ways
+    because the finish beside a job is to read its deck's record through it
+    (plan § 5ab R5)."""
     record = (block or {}).get("atom_order")
     if record is None:
         return None
     try:                                    # inside molbuilder
-        from .atom_permutation import Permutation, PermutationError
+        from .atom_permutation import Permutation
     except ImportError:                     # beside a job
-        from atom_permutation import Permutation, PermutationError  # type: ignore
-    # A RECORD THE DECK CARRIES AND THAT CANNOT BE READ is its block refused,
-    # naming the way out, as every unreadable block is (`job-contracts.md`
-    # § 3.1) -- on every surface that reads it.
-    try:
-        return Permutation.from_dict(
-            record, source="atom_order",
-            n_atoms=(block or {}).get("n_atoms_total"))
-    except PermutationError as exc:
-        raise _unreadable(BLOCK_ATOM_METADATA,
-                          f"holds an order record that cannot be read "
-                          f"({exc})") from exc
+        from atom_permutation import Permutation  # type: ignore
+    return Permutation.from_dict(record, source="atom_order",
+                                 n_atoms=(block or {}).get("n_atoms_total"))
 
 
 __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",

@@ -2005,22 +2005,17 @@ starts from**:
 | another source | yours to choose — any attempt by `--from`, none by `--cold`, at the launch | the frequency stage: a `relax` run you name with `--from` **at its prep**, taken as said — no other run, and no `--cold` at its first launch, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. The kind's first rung — a vibration's `relax` — builds on the structure: `--from` naming a run of another stage is refused. A transport rung: none — what it takes is its kind's, gathered from the rungs upstream at its first launch; launched again, `--gather` takes them anew, and `--cold` starts it with none of its own files, keeping what it gathered; `--from` is refused, and `--cold` at its first launch |
 
 **What crosses between stages, when a deck is a reordered copy**
-*([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3–R4; the
-geometry built 2026-10-14 with R3, through `runs.steps_of`; the restart files
-decided, not built — R4)*. A stage that takes another's **geometry** — a SIESTA
-force-constant stage taking `relax`'s — reads it through the run door and
-restores it to the person's order through that run's own order record; **only
-the coordinates and the cell come from it**: the labels and the held set are
-this prep's, the calculation's structure as it stands, and this prep sorts
-that structure, with the restored coordinates, as every prep does (I3–I5) —
-never row by row from one deck's order into another's. A **restart file** —
-the stage before's density, geometry or history, continued or gathered — is
-read only by a deck whose order record is the same as its writer's, or both
-none (I6): **prep decides it**, writing a deck that differs not to read it,
-so the file is not carried — or, in the flat layout, where it lies in the
-folder, not read; the hand-over's record is written all the same, with the
-files left out, and prep and the launch say so. A lead's Hamiltonian
-describes the lead's own cell and crosses as today.
+*([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3; built
+2026-10-14)*. A stage that takes another's **geometry** — a SIESTA
+force-constant stage taking `relax`'s — reads it through the run door
+(`runs.steps_of`) and restores it to the person's order through that run's
+own order record; its coordinates and cell are taken onto the calculation's
+structure, which this prep sorts as every prep does (I3–I5) — never row by
+row from one deck's order into another's. A **restart file** — the stage
+before's density, geometry or history, continued or gathered — crosses as it
+always has: every deck of one calculation is written from its one structure,
+pinned by its description's fingerprint ([`engines/stages.md`](?doc=engines/stages.md)
+§ 6.3), so writer and reader list the atoms in one order (I6).
 
 **What *finished* means, and how a choice is recorded** *(user: "yes, … but
 user can force a structure still")*. The rule is *The task*'s — by default the

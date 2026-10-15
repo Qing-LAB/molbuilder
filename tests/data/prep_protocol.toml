@@ -58,6 +58,11 @@ name = "a structure whose atom moved after it was described is refused at prep, 
 source_edited = { atom = 1, line = "H 5.000000 5.000000 5.900000" }
 refused = ["the structure has changed since this calculation was described", "atoms or cell are not the ones its .molstruct.json was saved with"]
 
+[[case]]
+name = "a structure whose held atoms changed after it was described is refused at prep -- every stage of a calculation is of the one structure it was described with"
+held_edited = [1]
+refused = ["the structure has changed since this calculation was described", "structure fingerprint"]
+
 # ===================================================================== #
 #  A GROUP PREPARED AND NEVER LAUNCHED IS PREPARED AGAIN               #
 # ===================================================================== #

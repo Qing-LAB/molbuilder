@@ -290,12 +290,8 @@ def _classify_pair(path: Path) -> CitedPair:
             f"{path} carries no info.calculation -- it has no .molstruct.json "
             f"beside it -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
-    # A CITATION IS IN YOUR ORDER (`model/overview.md` § 2.2a, I1, I3): a pair
-    # that is an engine's record -- a composed junction -- is read back in
-    # yours, so every reader of the citation, and the composer's sort (I4),
-    # starts from your order.
     try:
-        struct = StructureCodec().load(path, frames=True, in_your_order=True)
+        struct = StructureCodec().load(path, frames=True)
     except (ValueError, OSError) as exc:
         raise ComposeError(f"{path} does not read as a structure pair "
                            f"({exc}).  {CITATION_CONDITION}.") from exc

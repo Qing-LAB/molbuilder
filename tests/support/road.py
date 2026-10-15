@@ -292,7 +292,8 @@ def calls_made(calls: Path):
 # anew, one number a stage, through the same Save; `source_edited` --
 # `{atom, line}`: the calculation's structure file edited by hand after it was
 # described, its `atom`-th atom line replaced by `line`, its sidecar
-# untouched; `own_warm_files` -- the calculation's own restart-file
+# untouched; `held_edited` -- its held atoms set anew after it was
+# described, written back through the codec; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` / `resumes`
 # (`_road_own_warm_files`),
@@ -471,6 +472,19 @@ def _road_source_edited(edit, bundle) -> None:
     lines = src.read_text().split("\n")
     lines[2 + edit["atom"]] = edit["line"]
     src.write_text("\n".join(lines))
+
+
+def _road_held_edited(held, bundle) -> None:
+    """The calculation's structure, its held atoms set anew (``held``) after
+    it was described, written back through the codec -- its coordinates and
+    its pin unchanged."""
+    from molbuilder.task import read_task
+    from molbuilder.workingcopy_structure import StructureCodec
+    src = bundle / Path(read_task(bundle / "task.json").structure.source).name
+    mine = StructureCodec().load(src)
+    StructureCodec().write(
+        mine.replace(regions={**mine.regions, "frozen_atoms": list(held)}),
+        src)
 
 
 def _road_regrouped(groups, bundle) -> None:
@@ -925,6 +939,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         _road_ladder_edited(case, bundle)
     if "source_edited" in case:
         _road_source_edited(case["source_edited"], bundle)
+    if "held_edited" in case:
+        _road_held_edited(case["held_edited"], bundle)
     if "regrouped" in case:
         _road_regrouped(case["regrouped"], bundle)
     kind = "bench" if "bench" in case else "task"

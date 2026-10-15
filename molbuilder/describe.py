@@ -282,7 +282,8 @@ def write_description(desc: Description, dest, *,
             desc.task.label)
         desc = _dc.replace(desc, task=_dc.replace(
             desc.task, structure=_dc.replace(
-                desc.task.structure, source=pair[0][0].name)))
+                desc.task.structure, source=pair[0][0].name,
+                fingerprint=StructureCodec.fingerprint(pair))))
 
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
                                     dir=out_dir.parent))

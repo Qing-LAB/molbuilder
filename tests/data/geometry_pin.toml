@@ -131,41 +131,6 @@ body = { restore = true }
 said = { where = "structure.restored", severity = "info", words = ["co.xyz", "held atoms first"] }
 
 [[case]]
-name = "an order record missing a direction is refused"
-pair = "remapped"
-sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1] } }
-door = "load"
-unreadable = ["atom_order", "both directions"]
-
-[[case]]
-name = "an order record whose two directions are not inverse is refused"
-pair = "remapped"
-sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [2, 0, 1] } }
-door = "load"
-unreadable = ["atom_order", "inverse bijections"]
-
-[[case]]
-name = "an order record naming an atom outside the structure is refused -- a negative index read from the end would undo the other list by accident"
-pair = "remapped"
-sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [-2, 2, 0] } }
-door = "load"
-unreadable = ["atom_order", "inverse bijections"]
-
-[[case]]
-name = "an order record over another number of atoms is refused"
-pair = "remapped"
-sidecar = { atom_order = { key = "held-first", sorted_to_original = [1, 0], original_to_sorted = [1, 0] } }
-door = "load"
-unreadable = ["atom_order", "over 2 atoms"]
-
-[[case]]
-name = "an order record whose atom index is not a whole number is refused, not rounded"
-pair = "remapped"
-sidecar = { atom_order = { key = "held-first", sorted_to_original = [2.9, 0, 1], original_to_sorted = [1, 2, 0] } }
-door = "load"
-unreadable = ["atom_order", "whole atom indices"]
-
-[[case]]
 name = "a viewer's save of a structure in an engine's order writes your order, and says so"
 pair = "remapped"
 door = "route_save"

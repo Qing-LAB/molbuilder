@@ -1167,8 +1167,7 @@ block's order record too, `deck_record.order_record_of`,
 
 **A block the deck does not carry records nothing; one it carries and that
 cannot be read is refused.** Its fences not a BEGIN/END pair, no JSON object
-between them, JSON that does not parse, or — the ATOM-METADATA block — an
-order record that is not one over the block's atoms (2026-10-14): the one reader raises
+between them, or JSON that does not parse: the one reader raises
 `deck_record.DeckRecordUnreadable`, which the run door (`runs.declared`)
 names the deck in, and every surface says — a route as a 400 with the
 sentence, the CLI and prep as their error, a job's finish as its own. The
@@ -1828,7 +1827,7 @@ one wants a list:
 
 | Question | Answered by | Why |
 |---|---|---|
-| *Which flags do we write, and what does `prep` carry between stages?* | **the short list below** | These are documented restart files whose names are fixed by the engine. They are a **hint**, and a hint is allowed to be a small stable set. *(Decided 2026-10-14, not built — `model/overview.md` § 2.2a, I6: a restart file — one holding the state of the receiving run's own atoms, continued or gathered (the seed's density into the device) — is read only by a deck whose order record is the same as its writer's, or both none. **Prep decides it**, holding both decks: a deck whose order differs is written not to read it (`DM.UseSaveDM .false.` and its kin), the file is not carried (in the flat layout, where it lies in the folder, not read), the hand-over's record is written all the same with the files left out, and prep and the launch say so. The catalogue states it with its own key, `requires_same = "atom_order"`, answered by `same_order` — no new key. A lead's `.TSHS` describes the lead's own cell and is not a restart file of the device — plan § 5ab R4)* |
+| *Which flags do we write, and what does `prep` carry between stages?* | **the short list below** | These are documented restart files whose names are fixed by the engine. They are a **hint**, and a hint is allowed to be a small stable set. *(A restart file is in its reader's order by construction — every deck of one calculation is written from its one structure, which its description's fingerprint pins: `model/overview.md` § 2.2a, I6.)* |
 | *Has anything run here? Is there state to continue from?* | **by name** — anything matching the run's id that molbuilder did not write | We know exactly what we wrote. Everything else under that name came from the engine, whatever version it was, whatever options were on |
 | *Is this directory clean after `--cold`?* | **by name** (§ 4.1) | Completeness matters here and only a name sweep can provide it |
 
