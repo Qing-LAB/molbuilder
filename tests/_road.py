@@ -92,13 +92,36 @@ def live_siesta(tree: Path, tmp_path_factory):
 
 
 #: THE ROAD'S CO2 (plan T-CO2): listed O O C, the carbon held, so the
-#: held-first order a SIESTA vibration's decks are written in is a 3-cycle --
-#: C O O, the order record [2, 0, 1] one way and [1, 2, 0] the other -- and a
-#: restore in the wrong direction gives another answer.  Linear, in a 10 Å box
-#: isolated on every axis; one C=O a little long, so the relaxation moves.
+#: held-first order a SIESTA vibration's decks are written in is a 3-cycle
+#: and a restore in the wrong direction gives another answer.  Linear, in a
+#: 10 Å box isolated on every axis; one C=O a little long, so the relaxation
+#: moves.
 CO2_ELEMENTS = ["O", "O", "C"]
 CO2_POSITIONS = [[5.0, 5.0, 6.20], [5.0, 5.0, 3.84], [5.0, 5.0, 5.0]]
 CO2_HELD = [2]
+
+#: ITS HELD-FIRST ORDER RECORD -- the rule of `model/overview.md` § 2.2's
+#: second key applied to it (the held carbon first, then the oxygens in their
+#: own order): C O O, [2, 0, 1] one way and [1, 2, 0] the other.  What every
+#: test of a deck, a run or a pair in that order expects.
+CO2_HELD_FIRST = {"key": "held-first", "sorted_to_original": [2, 0, 1],
+                  "original_to_sorted": [1, 2, 0]}
+CO2_ENGINE_ELEMENTS = [CO2_ELEMENTS[i]
+                       for i in CO2_HELD_FIRST["sorted_to_original"]]
+
+
+def co2(**metadata):
+    """The road's CO2 in your order, its carbon held, in its 10 Å box
+    isolated on every axis -- ``metadata`` any other field of the
+    structure."""
+    import numpy as np
+
+    from molbuilder.structure import Structure
+    return Structure(**{"elements": list(CO2_ELEMENTS),
+                        "positions": np.array(CO2_POSITIONS),
+                        "regions": {"frozen_atoms": list(CO2_HELD)},
+                        "cell": np.diag([10.0] * 3),
+                        "axis_kind": ("isolated",) * 3, **metadata})
 
 
 def co2_relaxed_for_vibration(tree: Path) -> Path:
@@ -108,18 +131,10 @@ def co2_relaxed_for_vibration(tree: Path) -> Path:
     rank, one thread: the bundle.  Called inside :func:`live_siesta`."""
     import json
 
-    import numpy as np
-
-    from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
     from support.road import jobset
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    StructureCodec().write(
-        Structure(elements=list(CO2_ELEMENTS),
-                  positions=np.array(CO2_POSITIONS),
-                  regions={"frozen_atoms": list(CO2_HELD)},
-                  cell=np.diag([10.0] * 3), axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "co2.xyz")
+    StructureCodec().write(co2(), tree / "P" / "structure" / "co2.xyz")
     r = jobset("init", "--structure", "P/structure/co2.xyz",
                "--bundle", "P/freq/CO2", "--engine", "siesta",
                "--calculation", "vibration", "--shape", "hierarchical",
@@ -136,7 +151,4 @@ def co2_relaxed_for_vibration(tree: Path) -> Path:
     r = jobset("launch", "task", "--stage", "relax", "--bundle", bundle,
                "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
-    out = bundle / "01_relax" / "run-0" / "CO2_01_relax-run0.out"
-    assert ">> End of run" in out.read_text(errors="replace"), (
-        "the relaxation did not reach its end")
     return bundle

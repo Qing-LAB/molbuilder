@@ -103,6 +103,28 @@ def geometry_changed_said(name: str) -> str:
             f"that writes the pair anew.")
 
 
+#: WHAT A READ SAYS TO A PERSON, each by its name and at its level -- the
+#: notices a read gives in ``said_out`` (:meth:`StructureCodec.load`), and
+#: every door that says one of them asks :func:`read_notice`: a lone file,
+#: atoms and coordinates only (``model/structure.md`` § 2.3); a pair whose
+#: geometry changed (``structure-molstruct.md`` § 3); a run whose order
+#: nothing states (``model/overview.md`` § 2.2a, I9); a structure put back
+#: in your order (I1, I8).
+LONE_FILE = "structure.lone_file"
+GEOMETRY_CHANGED = "structure.geometry_changed"
+ORDER_UNSTATED = "structure.order_unstated"
+RESTORED = "structure.restored"
+READ_NOTICES = {LONE_FILE: "info", GEOMETRY_CHANGED: "warn",
+                ORDER_UNSTATED: "warn", RESTORED: "info"}
+
+
+def read_notice(where: str, message: str):
+    """The notice ``where`` (one of :data:`READ_NOTICES`) saying
+    ``message``, at its level -- an ``issues.Issue``."""
+    from .issues import Issue
+    return Issue(READ_NOTICES[where], message, where)
+
+
 class StructureCodec:
     """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
 
@@ -124,8 +146,8 @@ class StructureCodec:
              frames: bool = False,
              retired_out: "dict | None" = None,
              said_out: "list | None" = None,
-             changed_out: "list | None" = None,
-             unstated_out: "list | None" = None) -> Structure:
+             opened: "tuple | frozenset" = (),
+             in_your_order: bool = False) -> Structure:
         """Read the pair back into a Structure.
 
         WHICH FRAME (``model/structure.md`` § 2.3, *Which frame*): the pair is
@@ -139,24 +161,29 @@ class StructureCodec:
         says so (plan § 5q D14).
 
         ``said_out``: a caller that passes a list gets what the read says to a
-        person about this file -- a LONE ``.xyz`` (no sidecar, not an engine's
+        person about this file, each a notice at its level
+        (:func:`read_notice`) -- a LONE ``.xyz`` (no sidecar, not an engine's
         own file in one of our runs) is atoms and coordinates only, and its
         comment line is quoted, never read as metadata (``model/structure.md``
-        § 2.3).  Every door that opens a file for a person says it.
+        § 2.3), :data:`LONE_FILE`.  Every door that opens a file for a person
+        says it.
 
-        AN ENGINE'S OWN FILE OF A RUN WHOSE ORDER NOTHING STATES -- its deck
-        written before the order was recorded, for a kind that reorders
-        (``model/overview.md`` § 2.2a, I9) -- is refused,
-        :class:`runs.OrderUnstated`, as a changed geometry is: a door that
-        only shows the structure passes ``unstated_out``, a list, and gets
-        the file with the sentence appended to it.
+        TWO STATES ARE REFUSED, and a door that only shows the structure
+        names them in ``opened`` to open it instead, said in ``said_out``:
+        THE PIN COMPARED (``structure-molstruct.md`` § 3) -- a sidecar whose
+        geometry hash is not the file's, its atoms or cell changed after the
+        pair was written, :class:`molstruct.GeometryChangedError`,
+        :data:`GEOMETRY_CHANGED` (a sidecar written before v13 states no
+        hash, and its pair opens unchecked); and AN ENGINE'S OWN FILE OF A
+        RUN WHOSE ORDER NOTHING STATES -- its deck written before the order
+        was recorded, for a kind that reorders (``model/overview.md`` § 2.2a,
+        I9) -- :class:`runs.OrderUnstated`, :data:`ORDER_UNSTATED`.
 
-        THE PIN IS COMPARED (``structure-molstruct.md`` § 3): a sidecar whose
-        geometry hash is not the file's -- its atoms or cell changed after the
-        pair was written -- is refused, :class:`molstruct.GeometryChangedError`;
-        a door that only shows the structure passes ``changed_out``, a list,
-        and gets the pair, the sentence appended to it.  A sidecar written
-        before v13 states no hash, and its pair opens unchecked.
+        ``in_your_order``: the read of an editor, a calculation's structure
+        or a citation (I1, I3, I8) -- a structure in an engine's order is
+        put back in yours (``Structure.in_your_order``), said
+        (:data:`RESTORED`); one whose order nothing states cannot be, and is
+        refused whatever ``opened`` says.
         """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
@@ -184,16 +211,20 @@ class StructureCodec:
             struct = Structure.from_pdb(text)
         else:
             struct = Structure.from_xyz(text)
+        if opened and said_out is None:
+            raise ValueError("a read that opens what it would refuse says "
+                             "so: pass said_out")
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             payload = molstruct.load(sidecar_path, retired_out=retired_out)
             pinned = payload.get("geometry_hash")
             if pinned is not None and pinned != molstruct.geometry_hash(
                     text, fmt, payload["cell"], payload["axis_kind"]):
-                if changed_out is None:
+                if GEOMETRY_CHANGED not in opened:
                     raise molstruct.GeometryChangedError(
                         geometry_changed_said(src.name))
-                changed_out.append(geometry_changed_said(src.name))
+                said_out.append(read_notice(GEOMETRY_CHANGED,
+                                            geometry_changed_said(src.name)))
             molstruct.apply_to_structure(struct, payload)
         elif self._engine_own(src):
             # AN ENGINE'S OWN STRUCTURE FILE -- SIESTA's `<label>.xyz` in a run
@@ -210,16 +241,23 @@ class StructureCodec:
             from .runs import OrderUnstated, run_of, view_of
             view = view_of(run_of(src), n_atoms=struct.n_atoms)
             if view.order_unstated:
-                if unstated_out is None:
+                if in_your_order or ORDER_UNSTATED not in opened:
                     raise OrderUnstated(view.order_unstated)
-                unstated_out.append(view.order_unstated)
+                said_out.append(read_notice(ORDER_UNSTATED,
+                                            view.order_unstated))
             struct = view.onto(struct)
         elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read
             # says so, quoting the comment line it did not read as metadata
             # (`model/structure.md` § 2.3).
-            said_out.append(lone_xyz_said(src.name, text))
+            said_out.append(read_notice(LONE_FILE,
+                                        lone_xyz_said(src.name, text)))
+        if in_your_order:
+            # IN YOUR ORDER, said (`model/overview.md` § 2.2a, I1, I8).
+            struct, said = struct.in_your_order(src.name)
+            if said is not None and said_out is not None:
+                said_out.append(read_notice(RESTORED, said))
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what
@@ -500,17 +538,17 @@ class StructureCodec:
              frames: bool = False,
              retired_out: "dict | None" = None,
              said_out: "list | None" = None,
-             changed_out: "list | None" = None,
-             unstated_out: "list | None" = None) -> Structure:
+             opened: "tuple | frozenset" = (),
+             in_your_order: bool = False) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error -- except an engine's own file where its
         run is recorded, which reads with that run's frame; see `load`).
         ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
         ``retired_out`` collects the retired keys it carried, ``said_out``
-        what it says about a lone file, ``changed_out`` a changed geometry,
-        ``unstated_out`` a run whose order nothing states,
-        opened rather than refused (see `load`)."""
+        what the read says, ``opened`` what a viewer opens rather than
+        refuses, ``in_your_order`` the read of an editor or a builder (see
+        `load`)."""
         return self.load(source_path, frame=frame, frames=frames,
                          retired_out=retired_out, said_out=said_out,
-                         changed_out=changed_out, unstated_out=unstated_out)
+                         opened=opened, in_your_order=in_your_order)

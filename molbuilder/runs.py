@@ -342,50 +342,22 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
 #: in the engine's order.
 ORDER_RECORDED_SINCE = "2.10.0"
 
-#: The notice a door that shows such a run says it in; a door that builds
-#: from it refuses with the same sentence (I9).
-ORDER_UNSTATED = "structure.order_unstated"
-
-
-def order_unstated_notice(sentence: str):
-    """THE NOTICE a door that shows a run whose order nothing states says
-    (I9): :attr:`Declared.order_unstated`'s ``sentence``, a warning under
-    :data:`ORDER_UNSTATED` -- one level and one name for every door, the
-    Results tab's load and the Molbuilder tab's."""
-    from molbuilder.issues import Issue
-    return Issue("warn", sentence, ORDER_UNSTATED)
-
 
 class OrderUnstated(ValueError):
     """A RUN WHOSE ORDER NOTHING STATES, refused by a door that builds from
     it (`model/overview.md` § 2.2a, I9): its deck was written before the
     order was recorded, for a kind that reorders.  The message is
     :attr:`Declared.order_unstated`'s sentence; a door that only shows the
-    run says that sentence instead (the codec's ``unstated_out``)."""
+    run says that sentence instead, a notice
+    (`workingcopy_structure.ORDER_UNSTATED`)."""
 
 
 def _reorders(run: "Run") -> bool:
-    """Whether ``run``'s kind writes its decks from a reordered copy (I9): a
-    SIESTA vibration's every stage (held atoms first, `engines/vibration.md`
-    § 5.2), and every transport rung but the electrode rungs, whose cells
-    are structures of their own (`engines/transport.md` § 4)."""
+    """Whether ``run``'s decks are written from a sorted copy (I9) -- the one
+    table's answer for its stage (`transport.sort.deck_sort_key`)."""
+    from molbuilder.transport.sort import deck_sort_key
     task = run.place.task
-    kind = str(getattr(task, "calculation", "") or "")
-    if kind == "vibration":
-        return str(task.engine) == "siesta"
-    if kind == "transport":
-        from molbuilder.transport.deck import SHAPE_OF_RUNG, rung_of
-        return SHAPE_OF_RUNG.get(rung_of(run.stage)) != "electrode"
-    return False
-
-
-def _before(version: Optional[str], since: str) -> bool:
-    """Whether ``version`` (three numbers, or ``None`` for a file written
-    before 2.0.0, which named no version) is older than ``since``."""
-    if version is None:
-        return True
-    return (tuple(int(n) for n in version.split("."))
-            < tuple(int(n) for n in since.split(".")))
+    return deck_sort_key(task.engine, task.calculation, run.stage) is not None
 
 
 @dataclass(frozen=True)
@@ -483,8 +455,9 @@ def declared(run: Run) -> Declared:
     # kind that reorders -- never by a file found beside it.
     if order is None and _reorders(run):
         from molbuilder.script_emit import molbuilder_words, written_by
+        from molbuilder.template import version_key
         version = written_by(text)
-        if _before(version, ORDER_RECORDED_SINCE):
+        if version_key(version) < version_key(ORDER_RECORDED_SINCE):
             by = molbuilder_words(version)
             said = Declared(
                 deck=deck, atom_metadata=said.atom_metadata,
@@ -575,12 +548,11 @@ class RunStepsError(ValueError):
 @dataclass(frozen=True)
 class RunSteps:
     """A run's geometry, IN YOUR ORDER (:func:`steps_of`): the ``first`` and
-    ``last`` geometry steps of its ``output`` -- where it started and where
-    it ended -- each with what the run says about it, restored through the
-    run's own order record; the ``lattice`` its last step had; and the
-    output's parse, ``traj``, for a reader that asks it more."""
-    output: Path
-    traj: Any
+    ``last`` geometry steps of its output -- where it started and where it
+    ended -- each with what the run says about it (its labels, its box, its
+    ``info``: the deck's ``calculation``, the output's ``relaxation``),
+    restored through the run's own order record; and the ``lattice`` its
+    last step had."""
     first: Any
     last: Any
     lattice: Optional[List[List[float]]]
@@ -593,10 +565,12 @@ def steps_of(run: Run, output) -> RunSteps:
     through the run's view (:func:`view_of` -- its deck's labels, order
     record and box, the output's own lattice); each crossed back to your
     order (``Structure.restored``).  Asked by the force-constant prep
-    (`relax`'s geometry) and the transport citation (the relaxed junction
-    and where it started).  Raises :class:`RunStepsError` for an output with
-    no geometry to give, :class:`OrderUnstated` for a run whose order
-    nothing states."""
+    (`relax`'s geometry and its relaxation record) and the transport
+    citation (the relaxed junction and where it started).  Raises
+    :class:`RunStepsError` for an output with no geometry to give,
+    :class:`OrderUnstated` for a run whose order nothing states, and
+    `deck_record.DeckRecordUnreadable` for a deck block that cannot be read
+    (:func:`declared`)."""
     from molbuilder.parse import detect
     from molbuilder.parse.errors import ParseError
     output = Path(output)
@@ -618,7 +592,7 @@ def steps_of(run: Run, output) -> RunSteps:
     if view.order_unstated:
         raise OrderUnstated(view.order_unstated)
     return RunSteps(
-        output=output, traj=traj, lattice=lattice,
+        lattice=lattice,
         first=view.structure(first.structure.elements,
                              first.structure.positions).restored(),
         last=view.structure(last.structure.elements,
@@ -872,7 +846,7 @@ def folder_answer(directory) -> Dict[str, Any]:
 
 
 __all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
-           "declared", "ORDER_RECORDED_SINCE", "ORDER_UNSTATED",
-           "OrderUnstated", "order_unstated_notice", "RunView", "view_of",
+           "declared", "ORDER_RECORDED_SINCE", "OrderUnstated", "RunView",
+           "view_of",
            "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
            "openable", "folder_answer"]

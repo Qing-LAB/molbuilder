@@ -147,7 +147,9 @@ class SortResult:
     """A sorted copy and what the sort said.  The copy carries its own order
     record (``structure.atom_order``, `model/overview.md` § 2.2a) -- none
     when the sort moved nothing -- and the two directions below are VIEWS of
-    it, never a second copy."""
+    it, never a second copy.  ``key`` names the sort even when it moved
+    nothing, which ``atom-permutation.json`` states until it retires (plan
+    § 5ab R5) -- with the file, the views and ``key`` go."""
     structure: Structure
     #: what the sort observed but did not refuse — today the one
     #: convention note.  Carried, never raised: the caller decides
@@ -344,15 +346,43 @@ def categorical_sort(struct: Structure) -> SortResult:
 
 
 #: THE KEYS, by name -- what a calculation needs done to the atom order.
-#: A kind asks ``sort_by(struct, "transport")`` or ``sort_by(struct,
-#: "held-first")``; the name travels into the order record so the return
-#: leg knows which order it is undoing.  The names are the order record's
+#: A kind asks ``sort_by(struct, deck_sort_key(...))``, the key its decks
+#: are written by (:data:`SORTED_COPY`); the name travels into the order
+#: record so the return leg knows which order it is undoing.  The names are the order record's
 #: (``atom_permutation.SORT_KEY_NAMES``); a new need is a new name there and
 #: an entry here, over the same ``apply_order``, never a second machine.
 SORT_KEYS = {
     SORT_TRANSPORT:  lambda s: categorical_sort(s),
     SORT_HELD_FIRST: lambda s: free_contiguous_sort(s),
 }
+
+
+#: WHICH DECKS ARE WRITTEN FROM A SORTED COPY, AND BY WHICH KEY, keyed by
+#: ``(engine, kind)`` (`model/overview.md` § 2.2a): a SIESTA vibration's
+#: every stage, held atoms first (`engines/vibration.md` § 5.2), and a
+#: transport calculation's junction rungs, TranSIESTA's electrode blocks
+#: (`engines/transport.md` § 4).  Every other calculation's decks are in
+#: your order.  THE ONE TABLE (:func:`deck_sort_key`): prep and the composer
+#: sort by it, and the run door reads from it which runs' decks may be in
+#: an engine's order (I9).
+SORTED_COPY = {("siesta", "vibration"): SORT_HELD_FIRST,
+               ("siesta", "transport"): SORT_TRANSPORT}
+
+
+def deck_sort_key(engine: str, kind: str,
+                  stage: Optional[str] = None) -> Optional[str]:
+    """The key a deck of ``stage`` (its name or its token) of an
+    ``(engine, kind)`` calculation is written from a sorted copy by
+    (:data:`SORTED_COPY`) -- or ``None``, a deck in your order: every
+    calculation the table does not name, and a transport lead rung, whose
+    cell is a structure of its own (`transport.deck.SHAPE_OF_RUNG`;
+    `model/overview.md` § 2.2a, *a structure derived from yours*)."""
+    key = SORTED_COPY.get((str(engine), str(kind)))
+    if key is not None and stage is not None and str(kind) == "transport":
+        from .deck import SHAPE_OF_RUNG, rung_of
+        if SHAPE_OF_RUNG.get(rung_of(stage)) == "electrode":
+            return None
+    return key
 
 
 def sort_by(struct: Structure, key: str) -> SortResult:

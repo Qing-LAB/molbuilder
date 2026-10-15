@@ -621,16 +621,13 @@ def init_cmd(structure, bundle: str, shape: str,
         # frozen atoms and cell -- frame 0 of a frame set, and said
         # (`model/structure.md` § 2.3, *Which frame*).
         said: list = []
-        whole = StructureCodec().load(structure, frames=True, said_out=said)
-        # (A CALCULATION IS BUILT ONLY IN YOUR ORDER, I1: a file of a run whose
-        # order nothing states is refused by the read itself, I9.)
-        for line in said:              # what the read says (structure.md § 2.3)
-            click.echo(line)
         # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md`
-        # § 2.2a, I1): a file in an engine's order is restored, and said.
-        whole, restored = whole.in_your_order(Path(structure).name)
-        if restored:
-            click.echo(restored)
+        # § 2.2a, I1): a file in an engine's order is read restored, said,
+        # and one of a run whose order nothing states is refused (I9).
+        whole = StructureCodec().load(structure, frames=True, said_out=said,
+                                      in_your_order=True)
+        for notice in said:            # what the read says (structure.md § 2.3)
+            click.echo(notice.message)
         if whole.n_frames > 1:
             from ..structure import frame_words
             click.echo(f"{Path(structure).name} holds {whole.n_frames} "

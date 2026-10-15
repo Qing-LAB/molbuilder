@@ -55,9 +55,10 @@ Keys of a ``[[case]]``:
     what a ``route_load`` row adds to ``{path}`` -- ``restore``, an editor's
     open.
 ``said``
-    ``{where, severity, words}``: the route's answer carries this notice; a
-    ``route_load`` row without it carries none of its kinds (a changed
-    geometry, a restore).
+    ``{where, severity, words}``: the route's answer carries this notice,
+    its message holding each of ``words`` -- what the contract says it
+    names; a ``route_load`` row without it carries none of its kinds (a
+    changed geometry, a restore).
 """
 from __future__ import annotations
 
@@ -71,7 +72,8 @@ import pytest
 
 from molbuilder.sidecars import molstruct
 from molbuilder.structure import Structure
-from molbuilder.workingcopy_structure import StructureCodec
+from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED, RESTORED,
+                                              StructureCodec)
 
 _TABLE = tomllib.loads(
     (Path(__file__).parent / "data" / "geometry_pin.toml").read_text())
@@ -79,7 +81,7 @@ _PAIR = _TABLE["pair"]
 _REMAPPED = _TABLE["remapped"]
 _CASES = _TABLE["case"]
 #: The notices a ``route_load`` row reads: a changed geometry, a restore.
-_SAID = ("structure.geometry_changed", "structure.restored")
+_SAID = (GEOMETRY_CHANGED, RESTORED)
 
 
 def _the_pair(plain: bool) -> Structure:
@@ -121,15 +123,14 @@ def _said(case, answer) -> None:
     assert [(n["where"], n["severity"]) for n in notices] == (
         [(want["where"], want["severity"])] if want else []), notices
     if want:
-        assert want["words"] in notices[0]["message"], notices
+        assert all(w in notices[0]["message"] for w in want["words"]), notices
 
 
-def _written_by_the_route(case, built: Structure, path: Path) -> None:
+def _written_by_the_route(case, built: Structure, path: Path,
+                          client) -> None:
     """``built`` sent as the browser sends it -- its envelope -- to the save
     route (written at ``path``) or the export route (its files put at
     ``path``'s stem), the answer's notices read, and the pair read back."""
-    from molbuilder.web.app import create_app
-    client = create_app(config={}).test_client()
     if case["door"] == "route_save":
         answer = client.post("/api/structure/save", json={
             "structure": built.to_dict(), "path": str(path)})
@@ -169,7 +170,8 @@ def _edited(case, path: Path) -> None:
 
 
 @pytest.mark.parametrize("case", _CASES, ids=[c["name"] for c in _CASES])
-def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
+def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
+                                       web_client):
     remapped = case.get("pair") == "remapped"
     if remapped:
         from molbuilder.transport.sort import sort_by
@@ -189,7 +191,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
             StructureCodec().write(built, path)
         return
     if case["door"] in ("route_save", "route_export"):
-        _written_by_the_route(case, built, path)
+        _written_by_the_route(case, built, path, web_client)
         return
     StructureCodec().write(built, path, engine_record=remapped)
     if case.get("sidecar_written"):
@@ -198,8 +200,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch):
     _edited(case, path)
 
     if case["door"] == "route_load":
-        from molbuilder.web.app import create_app
-        answer = create_app(config={}).test_client().post(
+        answer = web_client.post(
             "/api/build/load", json={"path": str(path), **case.get("body", {})})
         assert answer.status_code == 200, answer.get_json()
         _said(case, answer.get_json())

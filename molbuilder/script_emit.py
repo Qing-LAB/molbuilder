@@ -680,6 +680,7 @@ __all__ = [
     "emit_header", "emit_provenance", "emit_bench_marks",
     "write_validation_report", "VALIDATION_SUFFIX",
     "emit_atom_metadata", "emit_user_custom_placeholder",
+    "atom_metadata_has_something",
     # In-body application
     "apply_atom_metadata",
     # An item nobody set, said where its line would be
@@ -691,7 +692,7 @@ __all__ = [
     "read_bench_marks_block",
     # Git / time
     "molbuilder_git_sha", "generator_version", "written_by",
-    "generated_at_now",
+    "molbuilder_words", "generated_at_now",
 ]
 
 
@@ -1867,7 +1868,9 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
 
 
 def read_atom_metadata_block(text: str) -> Optional[Dict[str, Any]]:
-    """The ATOM-METADATA block's payload; ``None`` when absent or broken."""
+    """The ATOM-METADATA block's payload; ``None`` when the deck carries
+    none.  A block that cannot be read is refused,
+    `deck_record.DeckRecordUnreadable` (:func:`read_json_block`)."""
     return read_json_block(text, BLOCK_ATOM_METADATA)
 
 

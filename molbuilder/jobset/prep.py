@@ -316,14 +316,14 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
     run the stage builds on, ``builds_on``, the `Continuation` prep decided
     at its checkpoint 4a (`relax`'s newest attempt that is one to build on,
     or the `relax` run named with ``--from``, `engines/vibration.md` § 5.2a's
-    table), through the run door (its output parsed by the registry, its
-    view, `runs.view_of`) and restored to your order through `relax`'s own
-    order record: only the coordinates and the cell are taken, the labels
-    and the held set staying this calculation's (`model/overview.md`
-    § 2.2a, I3-I5) -- with that run's
-    relaxation record (`parse.contract.relaxation_of_output`), of the same
-    output and the same parse, which the deck's `vibration` block carries to
-    the finish (§ 5.3) so nothing re-picks the attempt later -- and the
+    table), through the run door's one read of a run's geometry
+    (`runs.steps_of`: its output parsed by the registry, its view, restored
+    to your order through `relax`'s own order record): only the coordinates
+    and the cell are taken, the labels and the held set staying this
+    calculation's (`model/overview.md` § 2.2a, I3-I5) -- with that run's
+    relaxation record, which the same read answers (the output's
+    ``info.relaxation``) and the deck's `vibration` block carries to the
+    finish (§ 5.3) so nothing re-picks the attempt later -- and the
     structure leaves the input's own relaxation record behind, since it is
     about other coordinates (§ 5.2a).  The
     cell travels because the deck otherwise re-derives one around the new
@@ -428,15 +428,16 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
     # AND THE INPUT'S RELAXATION RECORD STAYS BEHIND (§ 5.2a): it is about
     # the input's coordinates, not these; this stage's own record rides the
     # `vibration` block.  The calculation record stays -- every stage reads
-    # the one electronic state from it.
-    from ..parse.contract import relaxation_of_output
+    # the one electronic state from it.  The relaxation record is the one
+    # the run door read with the geometry: `relax`'s output's, in the
+    # structure's ``info`` (`runs.steps_of`, `parse.dirs.run_info`).
     return (struct.replace(positions=np.asarray(relaxed.positions,
                                                 dtype=float),
                            engine_offset=np.zeros(3), offset_by="engine",
                            info={k: v for k, v in (struct.info or {}).items()
                                  if k != "relaxation"}),
             (np.asarray(cell, dtype=float) if cell is not None else None),
-            relaxation_of_output(out, steps.traj, engine=str(task.engine)))
+            (relaxed.info or {}).get("relaxation"))
 
 
 def _structure_for(task, base: Path, pset):
@@ -466,7 +467,10 @@ def _structure_for(task, base: Path, pset):
                       src):
         if candidate.is_file():
             try:
-                struct = codec.load(candidate)
+                # IN YOUR ORDER (`model/overview.md` § 2.2a, I1, I3): one in an
+                # engine's order crosses back, and a run whose order nothing
+                # states is refused by the read (I9).
+                struct = codec.load(candidate, in_your_order=True)
             except GeometryChangedError as exc:
                 # THE PIN (`structure-molstruct.md` § 3): the atoms or the
                 # cell moved after the pair was written -- a deck rendered
@@ -474,11 +478,7 @@ def _structure_for(task, base: Path, pset):
                 raise PrepError(f"the structure has changed since this "
                                 f"calculation was described: {exc}") from None
             except OrderUnstated as exc:
-                # A CALCULATION IS OF YOUR ORDER (I1): a run whose order
-                # nothing states is refused by the read (I9).
                 raise PrepError(str(exc)) from None
-            # ...AND ONE IN AN ENGINE'S ORDER CROSSES BACK (I3).
-            struct = struct.restored()
             break
     else:
         raise PrepError(
@@ -603,7 +603,7 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
             f"result.  A displacement sweep needs the hierarchical layout "
             f"(engines/vibration.md 5.9): describe it with --shape "
             f"hierarchical, or keep one force-constant stage here.")
-    from ..transport.sort import sort_by, write_permutation
+    from ..transport.sort import deck_sort_key, sort_by, write_permutation
     # THE GEOMETRY FIRST, IN YOUR ORDER (`model/overview.md` § 2.2a, I3-I5;
     # plan V1.41): a force-constant stage's coordinates and cell are the
     # relaxation's, restored through `relax`'s own order record; the labels
@@ -613,12 +613,14 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     struct, cell, relaxed_by = _vibration_stage_geometry(
         base, task, pset, _structure_for(task, base, pset),
         builds_on=continuation, log=log, template_text=template_text)
-    _sorted = sort_by(struct, "held-first")
+    _sorted = sort_by(struct, deck_sort_key(task.engine, task.calculation,
+                                            pset.stage))
     _perm_path = write_permutation(base, _sorted, plan=plan)
     struct = _sorted.structure
     log.step("the atom order the engine needs")
     log.produced(_perm_path.name,
-                 f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
+                 f"key {_sorted.key}, {struct.n_atoms} atoms -> "
+                 f"{_perm_path.name}")
     render_kind = _rung_kind(task, pset.stage)
     finishes = render_kind == "vibration"
     # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w K4,

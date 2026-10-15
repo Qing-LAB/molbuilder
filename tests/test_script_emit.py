@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from _road import CO2_HELD_FIRST
 from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
 
@@ -135,7 +136,9 @@ def test_emit_bench_marks_carries_version_tag():
 
 def _atoms(n: int, **metadata):
     """``n`` hydrogens on a line, with ``metadata`` -- the structure a deck
-    is written from."""
+    is written from, or one a block is read onto: a REAL Structure, whose
+    label store and its reserved label's accessor are the ones the reader
+    fills (§ 13.1)."""
     from molbuilder.structure import Structure
     return Structure(elements=["H"] * n,
                      positions=[[float(i), 0.0, 0.0] for i in range(n)],
@@ -164,7 +167,9 @@ def test_emit_atom_metadata_with_regions_only():
 
 
 def _atom_metadata_payload(block: str) -> dict:
-    """Reverse the comment-prefix-per-line and reparse the JSON body."""
+    """THE EMITTER'S INDEPENDENT ORACLE: the block's JSON body, read back
+    here by reversing the comment prefix -- not by the block's reader
+    (`read_atom_metadata_block`), which the tests below ask separately."""
     body_lines = []
     in_json = False
     for raw in block.splitlines():
@@ -228,16 +233,12 @@ def test_emit_atom_metadata_honors_created_by_and_created_at():
 
 
 #: THE BLOCK CARRIES EVERY METADATA FIELD BUT THE BOX, and its one reader
-#: and the run door read every field back (`job-contracts.md` § 3.4;
-#: `model/overview.md` § 2.2a, I5).  Each row: the structure a deck is
-#: written from, and what the block says.  CO2 listed O O C, the carbon held,
-#: sorted held-first -- C O O, the order record [2, 0, 1] one way and
-#: [1, 2, 0] the other, so the two directions differ.
-_CO2 = dict(elements=["O", "O", "C"],
-            positions=[[1.16, 0.0, 0.0], [-1.16, 0.0, 0.0], [0.0, 0.0, 0.0]])
+#: reads every field back (`job-contracts.md` § 3.4; `model/overview.md`
+#: § 2.2a, I5).  Each row: the structure a deck is written from -- the
+#: road's CO2 -- and what the block says.  Sorted held-first, its order
+#: record is a 3-cycle (`_road.CO2_HELD_FIRST`), so the two directions differ.
 _BLOCK_ROWS = [
-    dict(name="named values alone -- dropped by the run door until "
-              "2026-10-14, which asked only for labels",
+    dict(name="named values alone -- the block has something to say",
          rows=[{"name": "temperature", "value": 300, "unit": "K"}],
          says={"customized": {"rows": [{"name": "temperature", "value": 300,
                                         "unit": "K"}], "frames": [[]]},
@@ -245,48 +246,42 @@ _BLOCK_ROWS = [
     dict(name="a structure in an engine's order states its order record",
          sorted=True,
          says={"regions": {"frozen_atoms": [0]},
-               "atom_order": {"key": "held-first",
-                              "sorted_to_original": [2, 0, 1],
-                              "original_to_sorted": [1, 2, 0]}}),
+               "atom_order": CO2_HELD_FIRST}),
 ]
 
 
 @pytest.mark.parametrize("row", _BLOCK_ROWS,
                          ids=[r["name"] for r in _BLOCK_ROWS])
-def test_the_block_carries_every_field_but_the_box(row, tmp_path):
+def test_the_block_carries_every_field_but_the_box(row):
     """Written from the structure, read back by the block's one reader onto
-    the atoms as the deck lists them, and asked of the run door: every field
-    the block carries comes back, and the box is the ENGINE-OFFSET block's,
-    never this one's."""
-    from molbuilder.runs import Declared
+    the atoms as the deck lists them: every field the block carries comes
+    back -- the order record through its own reader
+    (`deck_record.order_record_of`) -- and the box is the ENGINE-OFFSET
+    block's, never this one's."""
+    from _road import CO2_ELEMENTS, CO2_HELD, co2
+    from molbuilder.deck_record import order_record_of
     from molbuilder.structure import BOX_FIELDS, Structure
-    from molbuilder.transport.sort import sort_by
-    struct = Structure(**_CO2, regions={"frozen_atoms": [2]},
-                       cell=[[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]])
-    if row.get("rows"):
-        struct = Structure(**_CO2)
-        for r in row["rows"]:
-            struct.set_customized(r["name"], r["value"], unit=r.get("unit"))
+    from molbuilder.transport.sort import SORT_HELD_FIRST, sort_by
+    struct = co2()
+    for r in row.get("rows", ()):
+        struct.set_customized(r["name"], r["value"], unit=r.get("unit"))
     if row.get("sorted"):
-        struct = sort_by(struct, "held-first").structure
-    payload = _atom_metadata_payload(sc.emit_atom_metadata(struct))
+        struct = sort_by(struct, SORT_HELD_FIRST).structure
+    block = sc.emit_atom_metadata(struct)
+    payload = _atom_metadata_payload(block)
     for key, want in row["says"].items():
         assert payload[key] == want, (key, payload[key])
     assert not set(BOX_FIELDS) & set(payload), payload
 
-    deck = tmp_path / "x.fdf"
-    deck.write_text(sc.emit_atom_metadata(struct) + "\n")
-    declared = Declared(deck=deck, atom_metadata=sc.read_atom_metadata_block(
-        deck.read_text()))
-    assert declared.atom_metadata_for(struct.n_atoms) is not None
-    assert declared.atom_order == struct.atom_order
+    read = sc.read_atom_metadata_block(block)
+    assert order_record_of(read) == struct.atom_order
     back = Structure(elements=struct.elements, positions=struct.positions)
-    assert sc.apply_atom_metadata(back, payload) is True
+    assert sc.apply_atom_metadata(back, read) is True
     assert back.metadata_to_dict()["atom_order"] == payload["atom_order"]
     assert back.customized == struct.customized
     if row.get("sorted"):
         mine = back.restored()
-        assert (mine.elements, mine.frozen_atoms) == (["O", "O", "C"], [2])
+        assert (mine.elements, mine.frozen_atoms) == (CO2_ELEMENTS, CO2_HELD)
 
 
 # --------------------------------------------------------------------- #
@@ -443,17 +438,8 @@ def test_a_block_present_and_unreadable_is_refused_not_read_as_none(text,
     assert "molbuilder checkpoint restore" in str(exc.value)
 
 
-def _blank_struct(n=20):
-    """A REAL Structure, not a duck-type: the reserved label's accessor is what
-    makes `struct.frozen_atoms` mean anything, and a stand-in that reimplements
-    it as a plain attribute would pass while the real thing broke (§ 13.1)."""
-    from molbuilder.structure import Structure
-    return Structure(elements=["C"] * n, positions=[[float(i), 0., 0.]
-                                                    for i in range(n)])
-
-
 def test_apply_atom_metadata_populates_the_label_store():
-    struct = _blank_struct()
+    struct = _atoms(20)
     emitted = sc.emit_atom_metadata(
         _atoms(20, regions={"R-electrode": [10, 11, 12],
                             "frozen_atoms": [10, 12]}))
@@ -465,7 +451,7 @@ def test_apply_atom_metadata_populates_the_label_store():
 
 
 def test_apply_atom_metadata_returns_false_when_no_block():
-    struct = _blank_struct()
+    struct = _atoms(20)
     assert sc.read_atom_metadata_block("SystemLabel siesta\n") is None
     assert struct.regions == {}
     assert struct.frozen_atoms == []
@@ -473,7 +459,7 @@ def test_apply_atom_metadata_returns_false_when_no_block():
 
 def test_apply_atom_metadata_normalises_indices():
     """Dedup + sort per region; coerce to int."""
-    struct = _blank_struct()
+    struct = _atoms(20)
     # The count is DERIVED from the structure: this test is about index
     # normalisation, and a hand-typed count that happens to disagree would
     # trip the pairing guard instead of exercising it.

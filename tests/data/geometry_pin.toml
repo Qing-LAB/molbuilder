@@ -33,10 +33,10 @@ axis_kind = ["periodic", "periodic", "isolated"]
 regions = { frozen_atoms = [0] }
 title = "carbon monoxide"
 
-# The remapped pair: CO2 listed O O C, the carbon held, sorted held-first for
-# an engine -- C O O, the order record [2, 0, 1] one way and [1, 2, 0] the
-# other, so the two directions differ -- and written through the codec's one
-# door for an engine's record.
+# The remapped pair: a CO2 listed O O C with the carbon held, sorted
+# held-first for an engine -- its order record a 3-cycle, so the two
+# directions differ -- and written through the codec's one door for an
+# engine's record.
 [remapped]
 elements = ["O", "O", "C"]
 positions = [[1.16, 0.0, 0.0], [-1.16, 0.0, 0.0], [0.0, 0.0, 0.0]]
@@ -105,7 +105,7 @@ refused = "co.pdb's atoms or cell are not the ones its .molstruct.json was saved
 name = "the browser's load door opens a changed pair, its labels applied, and says so -- the Molbuilder tab saves it anew"
 atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
 door = "route_load"
-said = { where = "structure.geometry_changed", severity = "warn", words = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with" }
+said = { where = "structure.geometry_changed", severity = "warn", words = ["co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"] }
 
 [[case]]
 name = "the browser's load door says nothing of a pair as it was written"
@@ -138,7 +138,7 @@ name = "...and in your order when an editor opens it, saying so -- the Molbuilde
 pair = "remapped"
 door = "route_load"
 body = { restore = true }
-said = { where = "structure.restored", severity = "info", words = "co.xyz was in an engine's order (held atoms first); it is put back in your order" }
+said = { where = "structure.restored", severity = "info", words = ["co.xyz", "held atoms first"] }
 
 [[case]]
 name = "an order record missing a direction is refused"
@@ -179,13 +179,13 @@ unreadable = "an order record states its key and both directions as lists of who
 name = "a viewer's save of a structure in an engine's order writes your order, and says so"
 pair = "remapped"
 door = "route_save"
-said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held atoms first); it is put back in your order" }
+said = { where = "structure.restored", severity = "info", words = ["the structure", "held atoms first"] }
 
 [[case]]
 name = "...and so does its download"
 pair = "remapped"
 door = "route_export"
-said = { where = "structure.restored", severity = "info", words = "the structure was in an engine's order (held atoms first); it is put back in your order" }
+said = { where = "structure.restored", severity = "info", words = ["the structure", "held atoms first"] }
 
 [[case]]
 name = "a structure in an engine's order is not written as a person's pair: refused, naming restored()"

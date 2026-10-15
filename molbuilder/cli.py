@@ -375,7 +375,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
     from .validation import validate, validate_geometry
 
     with _resolve_input_path(input_path) as resolved:
-        struct, _cell = _struct_for_validate(resolved)
+        struct, _cell, _said = _struct_for_validate(resolved)
 
     if engine == "siesta":
         from .config.siesta import SiestaConfig
@@ -445,36 +445,37 @@ def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
         raise click.ClickException("not agreed -- nothing written")
 
 
-def _struct_for_validate(path, *, one_frame_only: bool = False):
-    """Read either XYZ or PDB through the codec; return (Structure, optional
-    cell array).
+def _struct_for_validate(path, *, editing: bool = False):
+    """Read either XYZ or PDB through the codec; return ``(Structure,
+    optional cell array, what the read said)`` -- its notices
+    (`workingcopy_structure.READ_NOTICES`), each printed on stderr.
 
     FRAME 0 OF A FRAME SET, SAID (``model/structure.md`` § 2.3, *Which
     frame*): the CLI's commands work on one structure, and a door that prints
     says when it took one frame of several -- a line, never a refusal.
-    ``one_frame_only`` is the editing command's: a file of several frames is
+    ``editing`` is the editing command's read: a file of several frames is
     REFUSED (§ 2.3: an edit acts on one structure, and the command line has
-    no one to ask which), and so is a file of a run whose order nothing
-    states (`model/overview.md` § 2.2a, I9: an editor holds only your order).
-    A deck block of its run that cannot be read is refused, naming it.
+    no one to ask which), and the file is read IN YOUR ORDER
+    (`model/overview.md` § 2.2a, I8) -- one in an engine's order put back,
+    said, one of a run whose order nothing states refused (I9), which a
+    reading command opens, said.  A deck block of its run that cannot be
+    read is refused, naming it.
     """
     import numpy as np
     from .deck_record import DeckRecordUnreadable
     from .runs import OrderUnstated
-    from .workingcopy_structure import StructureCodec
+    from .workingcopy_structure import ORDER_UNSTATED, StructureCodec
     said: list = []
-    # AN EDIT IS ONLY IN YOUR ORDER (I8, I9): the editing command is refused
-    # a file of a run whose order nothing states; a reading command says so.
-    unstated: list = []
     try:
         whole = StructureCodec().load(
             path, frames=True, said_out=said,
-            unstated_out=None if one_frame_only else unstated)
+            opened=() if editing else (ORDER_UNSTATED,),
+            in_your_order=editing)
     except (DeckRecordUnreadable, OrderUnstated) as exc:
         raise click.ClickException(str(exc)) from exc
-    for line in said + unstated:       # what the read says (structure.md § 2.3)
-        click.echo(line, err=True)
-    if whole.n_frames > 1 and one_frame_only:
+    for notice in said:                # what the read says (structure.md § 2.3)
+        click.echo(notice.message, err=True)
+    if whole.n_frames > 1 and editing:
         raise click.ClickException(
             f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "
             f"modify edits one structure, and a frame set is not edited "
@@ -487,7 +488,7 @@ def _struct_for_validate(path, *, one_frame_only: bool = False):
                    f"{frame_words(0, whole.n_frames)} was taken", err=True)
     struct = StructureCodec.frame_choice(whole)
     return struct, (np.asarray(struct.cell, dtype=float)
-                    if struct.cell is not None else None)
+                    if struct.cell is not None else None), said
 
 
 # --------------------------------------------------------------------- #
@@ -936,14 +937,12 @@ def cmd_modify(input_path, output_path,
                 )
 
     with _resolve_input_path(input_path) as resolved:
-        struct, _cell = _struct_for_validate(resolved, one_frame_only=True)
+        struct, _cell, said = _struct_for_validate(resolved, editing=True)
     n_in = struct.n_atoms
-    # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): a file
-    # in an engine's order is opened restored, and said.
-    struct, restored = struct.in_your_order(
-        "the input" if str(input_path) == "-" else Path(input_path).name)
-    if restored:
-        click.echo(restored, err=True)
+    # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): the
+    # read opened a file in an engine's order restored, and said so.
+    from .workingcopy_structure import RESTORED
+    restored = any(s.where == RESTORED for s in said)
 
     # THE ATOM INDICES TYPED, read once and agreed before anything acts.
     typed: list = []
@@ -959,7 +958,7 @@ def cmd_modify(input_path, output_path,
     if typed:
         _agree_to_atom_indices(struct, typed, auto_yes=auto_yes,
                                check_range=not op_types["--electrode"],
-                               restored=restored is not None)
+                               restored=restored)
 
     try:
         if op_types["--delete"]:

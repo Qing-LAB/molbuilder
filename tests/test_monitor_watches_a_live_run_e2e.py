@@ -46,7 +46,7 @@ _OUT = f"{_STEM}-run0.out"
 @pytest.fixture(scope="module")
 def run(real_relaxed_for_vibration):
     """The relaxation's run folder, made on the road."""
-    return real_relaxed_for_vibration / "01_relax" / "run-0"
+    return real_relaxed_for_vibration.attempt("relax")
 
 
 @pytest.fixture(autouse=True)

@@ -2535,13 +2535,16 @@ compares the two), restored to the person's order through the run's own
 order record by the run door's one read of a run's geometry,
 `runs.steps_of`, which `_run_geometry` asks — and the composer sorts it for
 TranSIESTA from there (I3, I4); a run whose deck was written before the order
-was recorded is refused by name (I9). The starting geometry goes into the
-sorted device's order through the device's own order record
-(`Permutation.original_of`), and a refusal names atoms back through the same
-record — no map by hand. A cited pair is in the person's order (I1); a pair
-that is an engine's record — a composed junction — is restored where the
-citation reads it (`_classify_pair`), so every reader of the citation starts
-from your order. One saved before this rule from a reordered run's view
+was recorded is refused by name (I9). The starting geometry stays in your
+order: the leads' *unmoved* gate compares each atom of the sorted junction
+with itself there, and a refusal names atoms, through the junction's own
+answer, `Structure.your_indices` — no map by hand, and no translation into
+the engine's order but the sort's (I3). The composer sorts by the key the
+transport calculation's decks are written by, the one table
+(`transport.sort.deck_sort_key`). A cited pair is in the person's order (I1);
+a pair that is an engine's record — a composed junction — is read back in
+your order where the citation reads it (`_classify_pair`, the codec's read
+`in_your_order`), so every reader of the citation starts from your order. One saved before this rule from a reordered run's view
 cannot be told apart (I9).
 
 **One reader takes both kinds' settings** (`citation_defaults.citation_answers`):

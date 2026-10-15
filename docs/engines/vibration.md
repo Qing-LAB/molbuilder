@@ -1360,10 +1360,10 @@ states:
 # === molbuilder vibration END ===
 ```
 
-`relaxation` is the relaxation record (`parse/contract.relaxation_of_output`,
-in `relaxation_of`'s shape) of the `relax` stage's output the coordinates
-were read from — the one read `prep` makes of
-that run (§ 5.2a), so the finish never re-picks an attempt — and `null` when
+`relaxation` is the relaxation record (`parse/contract.relaxation_of`) of
+the `relax` stage's output the coordinates were read from — read with them,
+in the one read `prep` makes of that run (`runs.steps_of`, the output's
+`info.relaxation`; § 5.2a), so the finish never re-picks an attempt — and `null` when
 the ladder holds no `relax` stage; `relaxation_stage` names the stage that
 record is of, the one `prep` read it from — by the kind's name for it,
 `relax`, which every verb resolves in any case ([`stages.md`](?doc=engines/stages.md)
@@ -1473,7 +1473,7 @@ is guessed at on the node:
 |---|---|---|
 | `SystemLabel`; the species (atomic number per label); the atoms in the deck's order (held first, § 5.2); the lattice; `FC.First` / `FC.Last` — the atoms the run nudged, read through the one door for engine numbering (`engine_atom_index`); the held atoms are the rest, which in the held-first copy is exactly the set `Geometry.Constraints` names (I6), and a range that is not the trailing run is refused | the deck | the fdf reader, `parse/fdf.py` |
 | the axis kinds — which whole-body turns survive (R3) | the deck's `engine-offset` block | the block's one reader, `deck_record.extract_engine_offset` — the grammar of every molbuilder block and its one JSON reader, below `script_emit`, which writes them |
-| the stationarity criterion (`relax_force_tol`, resolved for the stage), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of_output`), read by `prep` from the output its coordinates came from, and that stage's name — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
+| the stationarity criterion (`relax_force_tol`, resolved for the stage), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of`), read by `prep` with the coordinates, from the output they came from (`runs.steps_of`), and that stage's name — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
 | the force constants | `<label>.FC` | `parse/engines/siesta_fc.py` |
 | the reference geometry and its forces (FC step 0); SIESTA's version | the run's output | SIESTA's one reading pass, `siesta_reader` |
 | the order back to the input's | `atom-permutation.json`, in the attempt as part of the calculation's shared package | `atom_permutation.read_permutation` *(Decided 2026-10-14, not built: the deck's own ATOM-METADATA block, its `atom_order`, through `deck_record` — the file retires; `model/overview.md` § 2.2a, plan § 5ab R5)* |

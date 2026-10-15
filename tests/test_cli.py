@@ -412,19 +412,18 @@ def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
 
 
 #: The rows of the agreement: the file, the atom index typed, what is said,
-#: and the atoms left.  An engine's record -- CO2 listed O O C, the carbon
-#: held, written in the engine's order C O O with its order record -- is
-#: opened in your order, so index 0 is your first oxygen, not the carbon.
+#: and the atoms left.  An engine's record -- the road's CO2, written in the
+#: engine's held-first order with its order record -- is opened in your
+#: order, said naming the file and the order in its words (§ 2.2a, I8), so
+#: index 0 is your first oxygen, not the carbon.
 _AGREEMENT_ROWS = [
     dict(name="a file in your order", remapped=False, delete="1",
          said=("count from 0", "atom index 1 (C)", "--yes"),
          left=["S", "C", "S"]),
     dict(name="an engine's record, opened in your order: the indices count "
               "in yours", remapped=True, delete="0",
-         said=("in.xyz was in an engine's order (held atoms first); it is put "
-               "back in your order", "count from 0",
-               "They count in your order, not the file's", "atom index 0 (O)",
-               "--yes"),
+         said=("in.xyz", "held atoms first", "count from 0",
+               "count in your order", "atom index 0 (O)", "--yes"),
          left=["O", "C"]),
 ]
 
@@ -444,13 +443,9 @@ def test_modify_asks_to_agree_that_atom_indices_count_from_0(row, tmp_path):
     from molbuilder.workingcopy_structure import StructureCodec
     inp, outp = tmp_path / "in.xyz", tmp_path / "out.xyz"
     if row["remapped"]:
-        from molbuilder.structure import Structure
-        from molbuilder.transport.sort import sort_by
-        co2 = Structure(elements=["O", "O", "C"],
-                        positions=np.array([[1.16, 0, 0], [-1.16, 0, 0],
-                                            [0, 0, 0]]),
-                        regions={"frozen_atoms": [2]})
-        StructureCodec().write(sort_by(co2, "held-first").structure, inp,
+        from _road import co2
+        from molbuilder.transport.sort import SORT_HELD_FIRST, sort_by
+        StructureCodec().write(sort_by(co2(), SORT_HELD_FIRST).structure, inp,
                                engine_record=True)
     else:
         inp.write_text(_bdt_stub_xyz())                 # S C C S

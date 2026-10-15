@@ -1079,15 +1079,15 @@ def in_your_order(struct: Structure, what: str):
     naming the order in its words (``Structure.in_your_order``); one in
     your order comes
     back as it is, nothing said.
-    Every web door that crosses back asks it: the load route for an editor,
-    the save, the export, the hand-over.  ``what`` names the structure in the
-    sentence -- the file, or "the structure"."""
+    Every web door that crosses back with a structure the browser sent asks
+    it: the save, the export, the hand-over (a file is read in your order by
+    the codec itself, ``in_your_order``).  ``what`` names the structure in
+    the sentence."""
     struct, said = struct.in_your_order(what)
     if said is None:
         return struct, []
-    from molbuilder.issues import Issue
-    return struct, notices_for_report([Issue("info", said,
-                                             "structure.restored")])
+    from molbuilder.workingcopy_structure import RESTORED, read_notice
+    return struct, notices_for_report([read_notice(RESTORED, said)])
 
 
 def checked_periodicity(struct):
@@ -1134,4 +1134,5 @@ __all__ = [
     "config_from_params",
     "PeriodicityRefused",
     "checked_periodicity",
+    "in_your_order",
 ]

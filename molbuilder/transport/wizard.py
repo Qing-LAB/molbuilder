@@ -193,17 +193,13 @@ def _atoms_named(device: Structure, idxs, limit: int = 6) -> str:
     in the identity the person can act on.
 
     `engine_atom_index`: the canonical atom identity is the index in the
-    person's own order, which is what the Modify tab shows.  A device in
-    TranSIESTA's order carries its order record (`model/overview.md`
-    § 2.2a), and the atoms are named back through it (``original_of``);
-    one in the person's order is named as it stands.
+    person's own order, which is what the Modify tab shows -- the device's
+    own answer, ``Structure.your_indices`` (`model/overview.md` § 2.2a).
     """
-    els = getattr(device, "elements", ()) or ()
-    order = device.atom_order
-    shown = (order.original_of(idxs) if order is not None
-             else [int(i) for i in idxs])
-    return atom_words(shown, {s: els[i] for s, i in zip(shown, idxs)
-                              if i < len(els)}, limit=limit)
+    els = device.elements
+    shown = device.your_indices(idxs)
+    return atom_words(shown, {s: els[i] for s, i in zip(shown, idxs)},
+                      limit=limit)
 
 
 def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
@@ -303,7 +299,10 @@ def _refuse_unless_frozen_bulk(
         raise ValueError(
             f"cannot check {label!r} against the geometry the relaxation "
             f"started from: {len(prior)} atoms there, {len(now)} here")
-    moved = [(i, float(np.linalg.norm(now[i] - prior[i]))) for i in idxs]
+    # THE START IS IN YOUR ORDER: each atom here is compared with itself
+    # there, named through the device's own answer (`your_indices`).
+    moved = [(i, float(np.linalg.norm(now[i] - prior[j])))
+             for i, j in zip(idxs, device.your_indices(idxs))]
     moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
     if moved:
         shown = "; ".join(
@@ -343,9 +342,10 @@ def extract_electrode_model(
        ``frozen_atoms`` (``engines/transport.md`` § 4: the lead atoms
        are frozen bulk by construction).
     2. **Actually unmoved**, when *prior_positions* is given -- the
-       geometry the relaxation started from, in this structure's index
-       order.  Form B has none and passes on 1 alone, which is why 1
-       exists separately.
+       geometry the relaxation started from, in your order
+       (`model/overview.md` § 2.2a, I1), each atom of this structure
+       compared with itself there (``Structure.your_indices``).  Form B
+       has none and passes on 1 alone, which is why 1 exists separately.
     3. **Evenly spaced** -- :func:`cell.bulk_z_period`, which refuses a
        block whose layers do not share one spacing.
 
@@ -353,7 +353,7 @@ def extract_electrode_model(
     1 and 2 before 3 because the spacings of a block that moved describe
     nothing.  Raises ``ValueError``; `compose` turns it into a
     ``ComposeError`` verbatim.  A refusal names atoms in the person's order
-    (:func:`_atoms_named`, through the device's own order record).
+    (:func:`_atoms_named`, the device's own answer).
     """
     electrodes = {lab: (name, idxs)
                   for lab, name, idxs in _find_electrode_regions(device)}

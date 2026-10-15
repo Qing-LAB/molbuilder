@@ -184,11 +184,12 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
 
 
 def _frame0_structure(
-    data: "Optional[Dict[str, Any]]", meta: "Dict[str, Any]"
+    data: "Optional[Dict[str, Any]]", view
 ) -> "Optional[Dict[str, Any]]":
-    """Frame 0 as a STRUCTURE ENVELOPE, with the run's metadata already on it
-    -- ``meta``, the block the same load answers with (:func:`_run_metadata`),
-    so the directory is read once per load, not once per consumer.
+    """Frame 0 as a STRUCTURE ENVELOPE, with what the run says about it --
+    ``view``, the run's view the same load answers with (:func:`_load_view`,
+    :func:`_run_metadata`), so the directory is read once per load, not once
+    per consumer.
 
     `web-api.md` § 1: *"the browser sends what it holds; it never sends a
     document it wrote"*. The pieces are all here --
@@ -206,23 +207,27 @@ def _frame0_structure(
     frames = (data or {}).get("frames")
     if not frames:
         return None
-    import json as _json
-    from molbuilder.runs import RunView
-    meta_json = meta.get("atom_metadata")
-    view = RunView(atom_metadata=(_json.loads(meta_json)
-                                  if meta_json else None),
-                   periodicity=meta.get("periodicity"),
-                   info=meta.get("info"))
     first = frames[0]
     return view.structure([a[0] for a in first],
                           [a[1:4] for a in first]).to_dict()
 
 
-def _run_metadata(
-    data: Optional[Dict[str, Any]], *,
-    output: Optional[str] = None, traj: Any = None,
-) -> Dict[str, Any]:
-    """The metadata block EVERY ``/api/watch/load`` answer carries.
+def _load_view(data: Optional[Dict[str, Any]], *,
+               output: Optional[str] = None, traj: Any = None):
+    """THE VIEW OF THE RUN the opened file belongs to (`runs.view_of`): its
+    labels and box from its own deck, its record from `run_info` -- the one
+    view every door that builds a structure from a run asks, built once per
+    load.  No run of ours, as for an upload: the output's own lattice and
+    record alone."""
+    frames = (data or {}).get("frames")
+    return view_of(run_of(output) if output else None, output=output,
+                   traj=traj, n_atoms=len(frames[0]) if frames else None,
+                   lattice=(data or {}).get("lattice"))
+
+
+def _run_metadata(view) -> Dict[str, Any]:
+    """The metadata block EVERY ``/api/watch/load`` answer carries -- the
+    load's one run view (:func:`_load_view`), serialised.
 
     One composer for every builder of a load answer: a builder spreads
     it, and the upload branch (which has no run directory) answers
@@ -243,23 +248,15 @@ def _run_metadata(
     structure it ran on?* -- and a new metadata category joins them as a
     KEY inside ``info`` (``parse.dirs.run_info``), not as a fourth field.
     """
-    # THE VIEW OF THE RUN the opened file belongs to (`runs.view_of`): its
-    # labels and box from its own deck, its record from `run_info` -- the
-    # one view every door that builds a structure from a run asks.  No run
-    # of ours, as for an upload: the output's own lattice and record alone.
-    frames = (data or {}).get("frames")
-    view = view_of(run_of(output) if output else None, output=output,
-                   traj=traj, n_atoms=len(frames[0]) if frames else None,
-                   lattice=(data or {}).get("lattice"))
     import json as _json
     from molbuilder.periodicity_gate import notices_for_report
-    from molbuilder.runs import order_unstated_notice
+    from molbuilder.workingcopy_structure import ORDER_UNSTATED, read_notice
     return {
         # WHAT THE LOAD SAYS OF THE RUN: a deck written before the order was
         # recorded, said (`model/overview.md` § 2.2a, I9); none for an
         # upload, which has no run.
         "notices":       notices_for_report(
-            [order_unstated_notice(view.order_unstated)]
+            [read_notice(ORDER_UNSTATED, view.order_unstated)]
             if view.order_unstated else []),
         # Per-atom metadata (region labels / frozen tags / annotation
         # channels) the Build tab embedded in the run's input script, as a
@@ -479,11 +476,12 @@ def api_load():
     # the relaxation record is of the file on screen.  The parse rides only when it is of that file -- a load racing this
     # one can swap the state between the parse and here.
     _parsed = state.get("parsed")
-    meta = _run_metadata(state["data"], output=path,
-                         traj=(_parsed[1] if _parsed and _parsed[0] == path
-                               else None))
+    view = _load_view(state["data"], output=path,
+                      traj=(_parsed[1] if _parsed and _parsed[0] == path
+                            else None))
+    meta = _run_metadata(view)
     try:
-        frame0 = _frame0_structure(state["data"], meta)
+        frame0 = _frame0_structure(state["data"], view)
     except ValueError as exc:
         return jsonify({"ok": False,
                         "error": f"{path}: the run's structure could not be "
@@ -577,7 +575,8 @@ def _api_load_multipart(uploaded_file):
     state, err = _refresh_if_changed()
     if err:
         return jsonify({"ok": False, "error": err}), 500
-    meta = _run_metadata(state["data"])
+    view = _load_view(state["data"])
+    meta = _run_metadata(view)
     return jsonify({
         "ok":               True,
         "path":             tmp_path,
@@ -595,7 +594,7 @@ def _api_load_multipart(uploaded_file):
         "run":              None,
         # Frame 0 as an envelope, same as the path branch -- an upload has no
         # run directory, so it carries the geometry and nothing more.
-        "structure":        _frame0_structure(state["data"], meta),
+        "structure":        _frame0_structure(state["data"], view),
         # An upload is one file with no run directory behind it, so it
         # has nothing to say about itself -- and it SAYS so, in the same
         # fields the path builder answers.  One route, one response

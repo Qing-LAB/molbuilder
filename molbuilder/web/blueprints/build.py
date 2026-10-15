@@ -628,9 +628,9 @@ def api_build_load():
 
     A path load answers the file AS IT IS -- a pair in an engine's order
     with its order record -- unless ``restore: true``, which an editor's open
-    asks: then in your order, through ``Structure.restored()``, said in a
-    ``structure.restored`` notice naming the order in its words (``model/overview.md``
-    § 2.2a, I8).
+    asks: then in your order, the codec's ``in_your_order`` read, said in a
+    ``structure.restored`` notice naming the order in its words
+    (``model/overview.md`` § 2.2a, I8).
     """
     # FILE-ONLY load through the ONE authority (``model/structure.md`` § 2.4): a project
     # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via
@@ -651,28 +651,25 @@ def api_build_load():
         if not _resolved.exists():
             return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
         retired: Dict[str, Any] = {}
-        lone: list = []
+        read_said: list = []
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
-        # Molbuilder tab fixes it through (`structure-molstruct.md` § 3).
-        changed: list = []
+        # Molbuilder tab fixes it through (`structure-molstruct.md` § 3) --
+        # and so does a run whose order nothing states, for a viewer (I9).
         # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8):
-        # its open asks for the file restored, and a run whose order nothing
-        # states is refused it (I9); a viewer is answered the file as it is,
-        # its order record attached -- or said to have none.
-        restore = _pbody.get("restore") is True
-        unstated: list = []
+        # its open asks for the file restored, said, and a run whose order
+        # nothing states is refused it; a viewer is answered the file as it
+        # is, its order record attached.
+        from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
+                                                      ORDER_UNSTATED)
         try:
             whole = StructureCodec().read(
-                _resolved, frames=True, retired_out=retired, said_out=lone,
-                changed_out=changed,
-                unstated_out=None if restore else unstated)
+                _resolved, frames=True, retired_out=retired,
+                said_out=read_said,
+                opened=(GEOMETRY_CHANGED, ORDER_UNSTATED),
+                in_your_order=_pbody.get("restore") is True)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
-        restored: list = []
-        if restore:
-            from ._shared import in_your_order
-            whole, restored = in_your_order(whole, _resolved.name)
         try:
             struct = _chosen_frame(whole, _pbody)
         except (TypeError, ValueError) as exc:
@@ -684,14 +681,10 @@ def api_build_load():
         # the Cell page (plan § 5q D14).
         from molbuilder.issues import Issue
         from molbuilder.periodicity_gate import notices_for_report
-        # A LONE FILE IS ATOMS AND COORDINATES, said with its comment line
-        # quoted (`model/structure.md` § 2.3).
-        from molbuilder.runs import order_unstated_notice
-        said = notices_for_report(
-            [Issue("info", s, "structure.lone_file") for s in lone]
-            + [Issue("warn", s, "structure.geometry_changed")
-               for s in changed]
-            + [order_unstated_notice(s) for s in unstated]) + restored
+        # WHAT THE READ SAID, each notice at its level (`workingcopy_structure
+        # .READ_NOTICES`): a lone file, a changed geometry, a run whose order
+        # nothing states, a structure put back in your order.
+        said = notices_for_report(read_said)
         if retired.get("cell_origin") is not None:
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
             said += notices_for_report([Issue(
@@ -779,12 +772,12 @@ def api_build_load():
     # § 2.3).
     said: list = []
     if fmt == "xyz":
-        from molbuilder.issues import Issue
         from molbuilder.periodicity_gate import notices_for_report
-        from molbuilder.workingcopy_structure import lone_xyz_said
-        said = notices_for_report([Issue(
-            "info", lone_xyz_said(filename or "The pasted text", text),
-            "structure.lone_file")])
+        from molbuilder.workingcopy_structure import (LONE_FILE,
+                                                      lone_xyz_said,
+                                                      read_notice)
+        said = notices_for_report([read_notice(
+            LONE_FILE, lone_xyz_said(filename or "The pasted text", text))])
 
     # Route through the canonical ``ok_structure_response`` helper.
     # Per-atom payload, legacy aliases, validate-pass issues, and the

@@ -7,8 +7,10 @@ ROLE    the order record -- the class every reader crosses with, its one dict
         (`model/overview.md` § 2.2a, plan § 5ab R5)
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
         (the keys, and the record it sorts by), transport/compose.py (the
-        composite's record), spectra/vibrational_analysis.py and
-        spectra/siesta_vibration.py (read it back, beside the job)
+        composite's record), deck_record.py (a deck's record, read by
+        ``order_record_of``), jobset/transport_rung.py (its refusal),
+        spectra/vibrational_analysis.py and spectra/siesta_vibration.py
+        (read it back, beside the job)
 TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
         (`runwrap.VIBRATION_COMPANIONS`), and in ``mb_pyscf.pyz``
         (`runwrap.PYSCF_COMPANIONS`) as the type ``structure.py`` holds

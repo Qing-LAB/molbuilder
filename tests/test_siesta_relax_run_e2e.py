@@ -27,7 +27,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import CO2_ELEMENTS, CO2_HELD, conda_hook, env_available
+from _road import (CO2_ELEMENTS, CO2_ENGINE_ELEMENTS, CO2_HELD,
+                   CO2_HELD_FIRST, conda_hook, env_available)
 
 pytestmark = [
     pytest.mark.engine,
@@ -36,55 +37,59 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-_BOX = 10.0
-
-
 @pytest.fixture(scope="module")
 def relaxed(real_relaxed_for_vibration):
-    """The calculation, its `relax` stage run: the bundle."""
+    """The calculation, its `relax` stage run (`support/real_runs.RealRun`)."""
     return real_relaxed_for_vibration
 
 
-def _run(bundle: Path) -> Path:
-    return bundle / "01_relax" / "run-0"
+def _run(calc) -> Path:
+    """The `relax` stage's run -- its folder, the handle the run door
+    takes."""
+    return calc.attempt("relax")
 
 
-def _out(bundle: Path) -> Path:
-    return _run(bundle) / "CO2_01_relax-run0.out"
+def _deck(calc) -> Path:
+    """The deck the run read (`runs.Run.deck`)."""
+    from molbuilder.runs import run_of
+    return run_of(_run(calc)).deck
 
 
-def _deck(bundle: Path) -> Path:
-    return _run(bundle) / "CO2_01_relax.fdf"
+def _out(calc) -> Path:
+    """The run's output the Results tab opens (`runs.openable`)."""
+    from molbuilder.runs import openable
+    return Path(openable(_run(calc))[0])
 
 
-def _tolerance(bundle: Path) -> float:
-    """The force tolerance the deck states -- what SIESTA was told."""
-    for ln in _deck(bundle).read_text().splitlines():
-        words = ln.split()
-        if words and words[0] == "MD.MaxForceTol":
-            return float(words[1])
-    raise AssertionError("the relax deck states no MD.MaxForceTol")
+def _tolerance(calc) -> float:
+    """The force tolerance the deck states -- what SIESTA was told, read by
+    fdf's own rule (`parse.fdf.read_fdf`)."""
+    from molbuilder.parse.fdf import fdf_key, read_fdf
+    told = read_fdf(_deck(calc).read_text())[0][fdf_key("MD.MaxForceTol")]
+    return float(told[0])
 
 
-def _deck_geometry(deck: Path, atom_order=None):
-    """The structure as ``deck`` hands it to SIESTA -- the atoms in the
-    order the engine was given them, through the readers of a deck's
-    species and coordinates (`parse.fdf.deck_atoms`,
-    ``parse_fdf_params(...).coords_ang``); with ``atom_order``, the order
-    record that order is."""
+def _as_its_deck_states(attempt: Path):
+    """The structure a run's deck hands its engine, in the engine's order,
+    with what the run declared about it (`runs.view_of`: its labels, its
+    order record) -- the species and coordinates through the deck's own
+    readers (`parse.fdf.deck_atoms`, ``parse_fdf_params(...).coords_ang``)."""
     from molbuilder.parse.fdf import deck_atoms, parse_fdf_params
-    from molbuilder.structure import Structure
-    text = deck.read_text()
-    return Structure(elements=list(deck_atoms(text).labels),
-                     positions=np.array(parse_fdf_params(text).coords_ang),
-                     atom_order=atom_order)
+    from molbuilder.runs import run_of, view_of
+    ran = run_of(attempt)
+    text = ran.deck.read_text()
+    return view_of(ran).structure(deck_atoms(text).labels,
+                                  parse_fdf_params(text).coords_ang)
 
 
-def _final_geometry(bundle: Path):
-    """The coordinates the output printed last, under ``outcoor: Relaxed
-    atomic coordinates (Ang)`` -- the geometry the record is about."""
+def _final_geometry(calc):
+    """THE RECORD'S INDEPENDENT ORACLE: the coordinates the output printed
+    last, under ``outcoor: Relaxed atomic coordinates (Ang)``, read off the
+    text here rather than through the parser the record is built on
+    (`parse.contract.relaxation_of`) -- the geometry the record is about, in
+    the engine's order."""
     from molbuilder.structure import Structure
-    lines = _out(bundle).read_text(errors="replace").splitlines()
+    lines = _out(calc).read_text(errors="replace").splitlines()
     at = max(i for i, ln in enumerate(lines)
              if "outcoor: Relaxed atomic coordinates" in ln)
     pos = []
@@ -93,13 +98,14 @@ def _final_geometry(bundle: Path):
         if len(words) < 3:
             break
         pos.append([float(w) for w in words[:3]])
-    return Structure(elements=_deck_geometry(_deck(bundle)).elements,
+    return Structure(elements=list(CO2_ENGINE_ELEMENTS),
                      positions=np.array(pos))
 
 
-def _moves(bundle: Path) -> int:
-    """How many geometry moves the output began."""
-    text = _out(bundle).read_text(errors="replace")
+def _moves(calc) -> int:
+    """THE RECORD'S INDEPENDENT ORACLE of its step count: how many geometry
+    moves the output began, counted off its text."""
+    text = _out(calc).read_text(errors="replace")
     return len(re.findall(r"^\s*Begin \w+ opt\. move", text, re.M))
 
 
@@ -120,8 +126,9 @@ def test_a_finished_relaxation_answers_its_record(relaxed):
     tol = _tolerance(relaxed)
     assert rec["force_tolerance_ev_ang"] == pytest.approx(tol)
     assert rec["n_steps"] == _moves(relaxed)
-    held = _deck_geometry(_deck(relaxed)).geometry_lines()[0]
-    assert rec["held_atom_keys"] == [held]
+    deck = _as_its_deck_states(_run(relaxed))
+    lines = deck.geometry_lines()
+    assert rec["held_atom_keys"] == [lines[i] for i in deck.frozen_atoms]
     assert rec["converged"] is True and rec["run_state"] == "ended"
     assert rec["max_force_free_ev_ang"] <= tol
     assert rec["max_force_ev_ang"] >= rec["max_force_free_ev_ang"]
@@ -137,14 +144,8 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, monkeypatch):
     inspector's door, of the file the Results tab opens in the structure's
     folder (`runs.openable`): one record, and the level of theory its own
     deck states (`model/parse.md` § 5b)."""
-    from molbuilder import diagnostics
     from molbuilder.parse.contract import contract_of
-    from molbuilder.web.app import create_app
-    root = next(p for p in relaxed.parents if p.name == "projects")
-    monkeypatch.setattr(type(diagnostics.get_capabilities()),
-                        "file_picker_roots",
-                        lambda self: ((root.resolve(), "projects"),))
-    client = create_app(config={}).test_client()
+    client = _client(relaxed, monkeypatch)
     run = _run(relaxed)
     loaded = client.post("/api/watch/load",
                          json={"path": str(run)}).get_json()
@@ -167,16 +168,16 @@ def test_the_force_constants_build_on_the_relaxation(relaxed):
     from molbuilder.jobset.continuation import (continuation_answer,
                                                 continue_from_choices)
     from molbuilder.task import read_task
-    task = read_task(relaxed / "task.json")
-    got, refused = continuation_answer(relaxed, task, "freq")
+    task = read_task(relaxed.bundle / "task.json")
+    got, refused = continuation_answer(relaxed.bundle, task, "freq")
     assert refused is None, refused
     assert (got.stage, got.source, got.by_default, got.linked) == (
         "relax", "01_relax/run-0", True, True), got
     assert "(the relaxation it builds on; concluded rc=0" in got.line()
-    named, refused = continuation_answer(relaxed, task, "freq",
+    named, refused = continuation_answer(relaxed.bundle, task, "freq",
                                          from_attempt="01_relax/run-0")
     assert refused is None and not named.by_default and named.linked, named
-    offered = continue_from_choices(relaxed, task, "freq")
+    offered = continue_from_choices(relaxed.bundle, task, "freq")
     assert offered["from_stage"] == "relax" and offered["cold"] is False
     assert [r["source"] for r in offered["runs"]] == ["01_relax/run-0"]
 
@@ -186,23 +187,16 @@ def test_the_force_constants_build_on_the_relaxation(relaxed):
 # --------------------------------------------------------------------- #
 
 def _carrying_the_record(relaxed, *, shift_z: float = 0.0):
-    """The geometry the relaxation left, held atom first as the run had it
-    (an oxygen moved by ``shift_z``), with the record the run directory
-    answers for itself -- the pair the Results tab exports, through the
-    composer it uses."""
-    from molbuilder.parse.dirs.run_info import run_info
-    from molbuilder.runs import declared, openable, run_of
-    from molbuilder.structure import Structure
-    run = _run(relaxed)
-    final = _final_geometry(relaxed)
-    pos = final.positions.copy()
+    """The geometry the relaxation left, in your order, with what the run
+    says about it -- its labels, its box, its record -- through the run
+    door's one read (`runs.steps_of`): what the Results tab's export writes
+    (`model/overview.md` § 2.2a, I1); its second oxygen moved by
+    ``shift_z``."""
+    from molbuilder.runs import run_of, steps_of
+    s = steps_of(run_of(_run(relaxed)), _out(relaxed)).last
+    pos = np.asarray(s.positions, dtype=float).copy()
     pos[1, 2] += shift_z
-    s = Structure(elements=final.elements, positions=pos,
-                  regions={"frozen_atoms": [0]},
-                  cell=np.diag([_BOX] * 3), axis_kind=("isolated",) * 3)
-    s.apply_info_dict(run_info(deck=declared(run_of(run)).deck,
-                               output=openable(run)[0]))
-    return s
+    return s.replace(positions=pos)
 
 
 def _record_findings(struct, cfg):
@@ -341,14 +335,15 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
 # converted as if it were in yours -- the carbon taken for the first oxygen --
 # with nothing to say so.
 
-#: The decks' order record: the road's CO2 (O O C, the carbon held), held
-#: atoms first -- a 3-cycle, so the two directions differ.
-_ORDER = {"key": "held-first", "sorted_to_original": [2, 0, 1],
-          "original_to_sorted": [1, 2, 0]}
-_ENGINE_ELEMENTS = ["C", "O", "O"]
+#: The viewer's mark of a structure in this order (`web/molview.md` § 6.2).
 _SAID = "in the engine's order (held atoms first)"
-_RESTORED = ("was in an engine's order (held atoms first); it is put back "
-             "in your order")
+
+
+def _says_it_was_restored(message: str, name: str) -> None:
+    """What a door that put the structure back in your order says of it
+    (`model/overview.md` § 2.2a, I8): the file, and the order it was in, in
+    its words."""
+    assert name in message and "held atoms first" in message, message
 
 _ORDER_ROWS = [
     dict(name="the deck is written in the engine's order and states it; "
@@ -375,10 +370,9 @@ def _client(relaxed, monkeypatch):
     """The app, its file picker rooted at the run's projects tree."""
     from molbuilder import diagnostics
     from molbuilder.web.app import create_app
-    root = next(p for p in relaxed.parents if p.name == "projects")
     monkeypatch.setattr(type(diagnostics.get_capabilities()),
                         "file_picker_roots",
-                        lambda self: ((root.resolve(), "projects"),))
+                        lambda self: ((relaxed.tree.resolve(), "projects"),))
     return create_app(config={}).test_client()
 
 
@@ -397,15 +391,16 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
     run = _run(relaxed)
     if row["door"] == "deck":
         from molbuilder.runs import declared, run_of
-        assert _deck_geometry(_deck(relaxed)).elements == _ENGINE_ELEMENTS
-        assert declared(run_of(run)).atom_order.to_dict() == _ORDER
+        assert _as_its_deck_states(run).elements == CO2_ENGINE_ELEMENTS
+        assert declared(run_of(run)).atom_order.to_dict() == CO2_HELD_FIRST
         return
     if row["door"] == "cite":
         from molbuilder.transport.compose import ComposeError, resolve_citation
-        root = next(p for p in relaxed.parents if p.name == "projects")
-        with pytest.raises(ComposeError, match="it has no .molstruct.json "
-                                               "beside it"):
-            resolve_citation(str((run / "CO2.xyz").relative_to(root)), root)
+        with pytest.raises(ComposeError) as refused:
+            resolve_citation(str((run / "CO2.xyz").relative_to(relaxed.tree)),
+                             relaxed.tree)
+        assert "it has no .molstruct.json beside it" in str(refused.value)
+        assert "cite that run" in str(refused.value)
         return
     if row["door"] == "watch_parse":
         from click.testing import CliRunner
@@ -430,7 +425,7 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
             assert not out.exists()
             return
         assert said.exit_code == 0, said.output
-        assert f"CO2.XV {_RESTORED}" in said.output, said.output
+        _says_it_was_restored(said.output, "CO2.XV")
         _in_your_order(StructureCodec().load(out))
         return
     client = _client(relaxed, monkeypatch)
@@ -439,8 +434,8 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
                              json={"path": str(run)}).get_json()
         assert loaded["ok"] is True, loaded
         env = loaded["structure"]
-        assert env["metadata"]["atom_order"] == _ORDER
-        assert env["elements"] == _ENGINE_ELEMENTS
+        assert env["metadata"]["atom_order"] == CO2_HELD_FIRST
+        assert env["elements"] == CO2_ENGINE_ELEMENTS
         assert env["metadata"]["regions"]["frozen_atoms"] == [0]
         # ...and installed in the viewer, as its frame 0 is: marked.
         shown = client.post("/api/build/load",
@@ -451,15 +446,16 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
         "path": str(run / "CO2.xyz"), **row.get("body", {})}).get_json()
     assert answer["ok"] is True, answer
     got = Structure.from_dict(answer["structure"])
-    restored = [n["message"] for n in answer.get("notices", [])
+    restored = [n for n in answer.get("notices", [])
                 if n["where"] == "structure.restored"]
     if row.get("body", {}).get("restore"):
         _in_your_order(got)
-        assert restored == [f"CO2.xyz {_RESTORED}"], answer.get("notices")
+        assert [n["severity"] for n in restored] == ["info"], restored
+        _says_it_was_restored(restored[0]["message"], "CO2.xyz")
         assert answer["atom_order_said"] is None
         return
-    assert got.atom_order.to_dict() == _ORDER and restored == []
-    assert (got.elements, got.frozen_atoms) == (_ENGINE_ELEMENTS, [0])
+    assert got.atom_order.to_dict() == CO2_HELD_FIRST and restored == []
+    assert (got.elements, got.frozen_atoms) == (CO2_ENGINE_ELEMENTS, [0])
     assert answer["atom_order_said"] == _SAID
 
 
@@ -468,14 +464,20 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
 # --------------------------------------------------------------------- #
 #
 # The same run, its deck as molbuilder 2.9.6 wrote it -- that version's
-# stamp, and no order record in its ATOM-METADATA block -- as the pin table
-# rewrites a sidecar as an older molbuilder wrote it.  The silent failure: a
-# run of a kind that reorders, made before 2.10.0, shown or converted as if
-# its atoms were in your order.  Every door that builds refuses it by name;
-# every door that shows it says so.
+# stamp, and its ATOM-METADATA block at schema 13 with no order record -- as
+# the pin table rewrites a sidecar as an older molbuilder wrote it.  The
+# silent failure: a run of a kind that reorders, made before 2.10.0, shown or
+# converted as if its atoms were in your order.  Every door that builds
+# refuses it by name; every door that shows it says so -- once.
 
-_UNSTATED = ("was prepared by molbuilder 2.9.6, before 2.10.0 recorded the "
-             "order a deck's atoms are in")
+
+def _says_unstated(text: str) -> None:
+    """The run door's one sentence of such a run, said once: who prepared
+    it, the release that began recording the order, and the way out
+    (`support/real_runs.PREPARED_BY_2_9_6`)."""
+    from support.real_runs import PREPARED_BY_2_9_6
+    assert all(part in text for part in PREPARED_BY_2_9_6), text
+    assert text.count(PREPARED_BY_2_9_6[1]) == 1, text
 
 _PRE_RULE_ROWS = [
     dict(name="xv2xyz --from-run refuses it by name", door="xv2xyz",
@@ -509,12 +511,12 @@ def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
         from click.testing import CliRunner
         from molbuilder import cli
         out = tmp_path / "co2.xyz"
-        root = next(p for p in before_the_rule.parents if p.name == "projects")
-        again = root / "P" / "init-refused"
+        again = before_the_rule.tree / "P" / "init-refused"
         if row["door"] == "init":
             from conftest import _point_the_one_door_at
             from support.road import jobset
-            _point_the_one_door_at(root.parent, monkeypatch.setenv)
+            _point_the_one_door_at(before_the_rule.tree.parent,
+                                   monkeypatch.setenv)
             said = jobset("init", "--structure", str(run / "CO2.xyz"),
                           "--bundle", str(again), "--shape", "hierarchical",
                           "--engine", "siesta", "--calculation", "optimization",
@@ -523,7 +525,7 @@ def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
             said = CliRunner().invoke(cli.cli, [
                 "modify", str(run / "CO2.xyz"), str(out), "--rotate", "z:90"])
         assert said.exit_code != 0, said.output
-        assert _UNSTATED in said.output, said.output
+        _says_unstated(said.output)
         assert not (again / "task.json").exists() if row["door"] == "init" \
             else not out.exists()
         return
@@ -538,10 +540,11 @@ def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
         said = CliRunner().invoke(cli.cli, words)
         if row["door"] == "watch_parse":
             assert said.exit_code == 0, said.output
-            assert _UNSTATED in said.stderr, said.stderr
+            _says_unstated(said.stderr)
             return
         assert said.exit_code != 0, said.output
-        assert _UNSTATED in said.output and not out.exists(), said.output
+        _says_unstated(said.output)
+        assert not out.exists(), said.output
         return
     client = _client(before_the_rule, monkeypatch)
     answer = (client.post("/api/watch/load", json={"path": str(run)})
@@ -550,13 +553,14 @@ def test_a_deck_from_before_the_rule_is_refused_or_said(row, before_the_rule,
                   "path": str(run / "CO2.xyz"),
                   **row.get("body", {})})).get_json()
     if row.get("body", {}).get("restore"):
-        assert answer["ok"] is False and _UNSTATED in answer["error"], answer
+        assert answer["ok"] is False, answer
+        _says_unstated(answer["error"])
         return
     assert answer["ok"] is True, answer
-    said = [(n["severity"], _UNSTATED in n["message"])
-            for n in answer.get("notices", [])
+    said = [n for n in answer.get("notices", [])
             if n["where"] == "structure.order_unstated"]
-    assert said == [("warn", True)], answer.get("notices")
+    assert [n["severity"] for n in said] == ["warn"], answer.get("notices")
+    _says_unstated(said[0]["message"])
 
 
 # --------------------------------------------------------------------- #
@@ -582,14 +586,16 @@ _BROKEN_ROWS = [
 def broken_order(relaxed):
     """A copy of the run's calculation (`support/real_runs.copy_of`), its
     `relax` decks' order record naming one atom twice."""
-    from support.real_runs import copy_of, relax_decks
+    from support.real_runs import copy_of, relax_decks, with_atom_metadata
+
+    def name_one_atom_twice(block):
+        assert block["atom_order"] == CO2_HELD_FIRST, block
+        block["atom_order"] = dict(CO2_HELD_FIRST,
+                                   sorted_to_original=[2, 0, 0])
 
     def break_it(copy):
         for deck in relax_decks(copy):
-            text = deck.read_text()
-            assert '"sorted_to_original":[2,0,1]' in text, deck
-            deck.write_text(text.replace('"sorted_to_original":[2,0,1]',
-                                         '"sorted_to_original":[2,0,0]'))
+            with_atom_metadata(deck, name_one_atom_twice)
     return copy_of(relaxed, "broken-order", break_it)
 
 
@@ -599,6 +605,10 @@ def test_an_order_record_that_cannot_be_read_is_refused(row, broken_order,
                                                        monkeypatch, tmp_path):
     run = _run(broken_order)
     words = "holds an order record that cannot be read"
+
+    def names_the_deck_and_the_way_out(text):
+        assert words in text and _deck(broken_order).name in text, text
+        assert "checkpoint restore" in text, text
     if row["door"] in ("xv2xyz", "validate", "modify"):
         from click.testing import CliRunner
         from molbuilder import cli
@@ -609,15 +619,15 @@ def test_an_order_record_that_cannot_be_read_is_refused(row, broken_order,
             "modify": ["modify", str(run / "CO2.xyz"),
                        str(tmp_path / "co2.xyz"), "--rotate", "z:90"],
         }[row["door"]])
-        assert said.exit_code != 0 and words in said.output, said.output
-        assert "checkpoint restore" in said.output
+        assert said.exit_code != 0, said.output
+        names_the_deck_and_the_way_out(said.output)
         assert said.exception is None or isinstance(said.exception,
                                                     SystemExit), said.exception
         return
     answer = _client(broken_order, monkeypatch).post(
         "/api/watch/load", json={"path": str(run)})
     assert answer.status_code == 400, answer.get_data(as_text=True)[:300]
-    assert words in answer.get_json()["error"], answer.get_json()
+    names_the_deck_and_the_way_out(answer.get_json()["error"])
 
 
 # --------------------------------------------------------------------- #
@@ -633,61 +643,33 @@ def test_an_order_record_that_cannot_be_read_is_refused(row, broken_order,
 # silent failure: `relax`'s coordinates copied row by row into another
 # order, each atom given another atom's place.
 
-_HELD_GROWN = [2, 0]
+#: `freq`'s order record: the rule applied to the grown held set
+#: (`support/real_runs.HELD_GROWN`, the first oxygen and the carbon) -- those
+#: two first in their own order, then the free oxygen: O C O.
 _FREQ_ORDER = {"key": "held-first", "sorted_to_original": [0, 2, 1],
                "original_to_sorted": [0, 2, 1]}
 
 
 @pytest.fixture(scope="module")
 def held_grown(relaxed, tmp_path_factory):
-    """A copy of the calculation (`support/real_runs.copy_of`), its
-    structure's held set grown (`_HELD_GROWN`) as a person would on the
-    Molbuilder tab, and its `freq` stage prepared on the road."""
-    from _pytest.monkeypatch import MonkeyPatch
-    from _road import live_siesta
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.workingcopy_structure import StructureCodec
-    from support.real_runs import copy_of
-    from support.road import jobset
-
-    def grow_and_prepare(copy):
-        source = copy / "CO2.source.xyz"
-        mine = StructureCodec().load(source)
-        StructureCodec().write(
-            mine.replace(regions={**mine.regions,
-                                  "frozen_atoms": list(_HELD_GROWN)}),
-            source)
-        root = next(p for p in copy.parents if p.name == "projects")
-        mp = MonkeyPatch()
-        try:
-            mp.setenv(PROJECTS_ROOT_ENV, str(root))
-            with live_siesta(root, tmp_path_factory):
-                said = jobset("prep", "task", "--group", "2", "--bundle",
-                              copy, "--target", "this")
-                assert said.exit_code == 0, said.output
-        finally:
-            mp.undo()
-    return copy_of(relaxed, "held-grown", grow_and_prepare)
+    """The calculation, its held set grown and its `freq` stage prepared on
+    the road (`support/real_runs.held_grown`)."""
+    from support.real_runs import held_grown as grown
+    return grown(relaxed, tmp_path_factory)
 
 
 def test_the_force_constant_deck_takes_the_relaxed_geometry_in_its_own_order(
         relaxed, held_grown):
-    from molbuilder.deck_record import order_record_of
-    from molbuilder.script_emit import read_atom_metadata_block
-    from molbuilder.structure import Structure
-    deck = next(held_grown.glob("*_freq/**/CO2_*_freq.fdf"))
-    order = order_record_of(read_atom_metadata_block(deck.read_text()))
-    assert order.to_dict() == _FREQ_ORDER
-    freq = _deck_geometry(deck, atom_order=order)
+    from molbuilder.runs import declared, run_of, view_of
+    freq = _as_its_deck_states(held_grown.attempt("freq"))
+    assert freq.atom_order.to_dict() == _FREQ_ORDER
     assert freq.elements == ["O", "C", "O"]
-    relax_order = order_record_of(read_atom_metadata_block(
-        _deck(relaxed).read_text()))
-    assert relax_order.to_dict() == _ORDER and relax_order != order
+    relax = run_of(_run(relaxed))
+    assert declared(relax).atom_order.to_dict() == CO2_HELD_FIRST
     mine = freq.restored()
-    theirs = Structure(elements=_ENGINE_ELEMENTS,
-                       positions=_final_geometry(relaxed).positions,
-                       atom_order=relax_order).restored()
+    # WHERE THE RELAXATION ENDED, read off its output's text (the record's
+    # oracle) and put in your order through `relax`'s own order record.
+    theirs = view_of(relax).onto(_final_geometry(relaxed)).restored()
     assert mine.elements == theirs.elements == CO2_ELEMENTS
     assert np.allclose(mine.positions, theirs.positions, atol=1e-5), (
         mine.positions, theirs.positions)
-

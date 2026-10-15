@@ -90,17 +90,18 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 def live_output(real_relaxed_for_vibration):
     """A real run's output -- the trajectory inspector's primary file type
     -- made on the road with the real SIESTA, once in this pass
-    (`support/real_runs.py`): a CO2 relaxation, its moves the frames."""
-    return (real_relaxed_for_vibration / "01_relax" / "run-0"
-            / "CO2_01_relax-run0.out")
+    (`support/real_runs.py`): a CO2 relaxation, its moves the frames -- the
+    output the Results tab opens in its folder (`runs.openable`)."""
+    from molbuilder.runs import openable
+    return openable(real_relaxed_for_vibration.attempt("relax"))[0]
 
 
 @pytest.fixture
-def project_with_trajectory(live_output, monkeypatch):
+def project_with_trajectory(real_relaxed_for_vibration, live_output,
+                            monkeypatch):
     """The run's output, its projects tree the only picker root: the
     absolute path string."""
-    root = next(p for p in live_output.parents if p.name == "projects")
-    _register_tmp_as_picker_root(root, monkeypatch)
+    _register_tmp_as_picker_root(real_relaxed_for_vibration.tree, monkeypatch)
     return str(live_output)
 
 
@@ -239,11 +240,11 @@ def prepared_before_the_rule(real_relaxed_for_vibration, monkeypatch):
     """The same run, its decks as 2.9.6 wrote them
     (`support/real_runs.as_prepared_by_2_9_6`): its output's path, its
     projects tree the only picker root."""
+    from molbuilder.runs import openable
     from support.real_runs import as_prepared_by_2_9_6
     copy = as_prepared_by_2_9_6(real_relaxed_for_vibration)
-    root = next(p for p in copy.parents if p.name == "projects")
-    _register_tmp_as_picker_root(root, monkeypatch)
-    return str(copy / "01_relax" / "run-0" / "CO2_01_relax-run0.out")
+    _register_tmp_as_picker_root(copy.tree, monkeypatch)
+    return str(openable(copy.attempt("relax"))[0])
 
 
 class TestTheTabSaysTheOrderIsNotRecorded:
@@ -251,18 +252,17 @@ class TestTheTabSaysTheOrderIsNotRecorded:
     prepared before 2.10.0, states no order -- the Results tab's load says
     so on the tab's status line (`web/web-api.md`, /api/watch/load), and a
     poll that finds nothing new keeps saying it.  The silent failure: the
-    run shown as if its atoms were in your order.  Until 2026-10-14 the
-    load's warning never reached the line -- the load's hand-off dropped
-    it -- and before that a poll wiped it."""
-
-    _SAID = "was prepared by molbuilder 2.9.6, before 2.10.0 recorded"
+    run shown as if its atoms were in your order -- the load's warning lost
+    on its way to the line, or wiped by a quiet poll."""
 
     def test_the_load_says_it_and_a_quiet_poll_keeps_it(
             self, page, flask_server, prepared_before_the_rule):
+        from support.real_runs import PREPARED_BY_2_9_6
         _open_results_and_select(page, flask_server, prepared_before_the_rule)
         line = ("() => (document.querySelector('#trajectory-status') || {})"
                 ".textContent || ''")
-        page.wait_for_function(f"() => ({line})().includes({self._SAID!r})",
+        said = PREPARED_BY_2_9_6[1]
+        page.wait_for_function(f"() => ({line})().includes({said!r})",
                                timeout=15000)
         with page.expect_request(lambda r: "/api/watch/data" in r.url,
                                  timeout=10000):
@@ -270,5 +270,6 @@ class TestTheTabSaysTheOrderIsNotRecorded:
                           "'visibilitychange'))")
         page.wait_for_function(f"() => ({line})().includes('Up to date')",
                                timeout=10000)
-        assert self._SAID in page.evaluate(line)
+        shown = page.evaluate(line)
+        assert all(part in shown for part in PREPARED_BY_2_9_6), shown
 

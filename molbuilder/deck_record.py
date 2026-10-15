@@ -6,8 +6,9 @@ ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
         :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
         block's JSON payload (:func:`read_json_block`), with the readers of
-        what a job reads beside itself: ENGINE-OFFSET, VIBRATION, and the
-        ATOM-METADATA block's order record (:func:`order_record_of`)
+        what a job reads beside itself -- ENGINE-OFFSET, VIBRATION -- and
+        the reader of the ATOM-METADATA block's order record
+        (:func:`order_record_of`), the run door's
 USED-BY script_emit (writes every block and reads the rest through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
         the job), runs.declared, transport/compose, runwrap and
@@ -239,7 +240,8 @@ def order_record_of(block: Optional[Dict[str, Any]]):
     atom count -- ``None`` for a deck in your order, or one that carries no
     block.  A record that cannot be read is the block refused
     (:class:`DeckRecordUnreadable`); the caller names the deck.  Asked by the
-    run door (``runs.declared``) and by the finish beside a job."""
+    run door (``runs.declared``); it imports both ways because the finish
+    beside a job is to read its deck's record through it (plan § 5ab R5)."""
     record = (block or {}).get("atom_order")
     if record is None:
         return None

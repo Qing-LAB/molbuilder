@@ -1908,11 +1908,11 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
     round-trip replaced every real residue name with the server's
     re-synthesized placeholder.  A metadata key the module does not shape --
     the order record of a structure in an engine's order (`model/overview.md`
-    § 2.2a) -- goes back as it came: the two doors listed the keys by hand
-    until 2026-10-14, and an unlisted one was dropped on every save."""
+    § 2.2a) -- goes back as it came; a key the doors listed by hand would
+    be dropped on every save."""
+    from _road import CO2_HELD_FIRST
     jobs_url = (MODULE_DIR / "model-jobs.js").resolve().as_uri()
-    order = {"key": "held-first", "sorted_to_original": [2, 0, 1],
-             "original_to_sorted": [1, 2, 0]}
+    order = CO2_HELD_FIRST
     payload = {
         "title": "hemeC junction",
         "atoms": [

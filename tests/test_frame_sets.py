@@ -241,16 +241,20 @@ def test_frame_set(case, tmp_path, monkeypatch):
         (tree / "P").mkdir()
         lone = tree / "P" / "lone.xyz"
         lone.write_text(case["document"])
-        said: list = []
-        _check(expect, StructureCodec().load(lone, said_out=said), built,
-               said=said)
+        from molbuilder.workingcopy_structure import LONE_FILE
+        read_said: list = []
+        got = StructureCodec().load(lone, said_out=read_said)
+        assert [(s.where, s.severity) for s in read_said] == [
+            (LONE_FILE, "info")], read_said
+        said = [s.message for s in read_said]
+        _check(expect, got, built, said=said)
         client = create_app(config={}).test_client()
         for body in ({"path": str(lone)},
                      {"text": case["document"], "filename": lone.name}):
             answer = client.post("/api/build/load", json=body).get_json()
             assert answer["ok"], answer
             notices = [n["message"] for n in answer.get("notices", [])
-                       if n["where"] == "structure.lone_file"]
+                       if n["where"] == LONE_FILE]
             assert notices == said, (body, notices)
             _check(expect, Structure.from_dict(answer["structure"]), built,
                    said=notices)

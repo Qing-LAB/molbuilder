@@ -31,7 +31,7 @@ from ..runfiles import PERMUTATION_FILE
 from ..cell import entering
 from ..structure import Structure, atom_words
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
-                   SortResult, sort_by, write_permutation)
+                   SortResult, deck_sort_key, sort_by, write_permutation)
 from .wizard import ElectrodeModel, extract_electrode_model
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -289,16 +289,15 @@ def _classify_pair(path: Path) -> CitedPair:
             f"{path} carries no info.calculation -- it has no .molstruct.json "
             f"beside it -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
+    # A CITATION IS IN YOUR ORDER (`model/overview.md` § 2.2a, I1, I3): a pair
+    # that is an engine's record -- a composed junction -- is read back in
+    # yours, so every reader of the citation, and the composer's sort (I4),
+    # starts from your order.
     try:
-        struct = StructureCodec().load(path, frames=True)
+        struct = StructureCodec().load(path, frames=True, in_your_order=True)
     except (ValueError, OSError) as exc:
         raise ComposeError(f"{path} does not read as a structure pair "
                            f"({exc}).  {CITATION_CONDITION}.") from exc
-    # A CITATION IS IN YOUR ORDER (`model/overview.md` § 2.2a, I1, I3): a pair
-    # that is an engine's record -- a composed junction -- crosses back here,
-    # so every reader of the citation, and the composer's sort (I4), starts
-    # from your order.
-    struct = struct.restored()
     calc = (struct.info or {}).get("calculation")
     if not isinstance(calc, dict) or not isinstance(calc.get("contract"),
                                                     dict):
@@ -526,13 +525,13 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     measured.
 
     *prior_positions* is the geometry the cited relaxation STARTED from,
-    already permuted into *dev*'s order, or ``None`` when there is none to
-    compare against — the recompose-from-record path, where the comparison
-    was made when the record was written.
+    in your order, or ``None`` when there is none to compare against — the
+    recompose-from-record path, where the comparison was made when the
+    record was written.
 
-    A refusal names atoms in the person's own order, read back through the
-    device's order record (`wizard._atoms_named`), never by their place in
-    TranSIESTA's deck order (`engine_atom_index`).
+    A refusal names atoms in the person's own order, the device's own
+    answer (`Structure.your_indices`), never by their place in TranSIESTA's
+    deck order (`engine_atom_index`).
     """
     from ..parse.ion import max_orbital_rc_ang
     # BOTH BLOCKS, THEN RAISE, so a junction with two broken blocks is
@@ -728,22 +727,19 @@ def compose_junction(citation: str, *, tree_root,
     relaxed = entering(relaxed)
     _refuse_outside(relaxed)
 
-    sorted_res = sort_by(relaxed, "transport")
+    # THE JUNCTION'S SORTED COPY, by the key its decks are written by (the
+    # one table, `sort.deck_sort_key`).
+    sorted_res = sort_by(relaxed, deck_sort_key("siesta", "transport"))
     dev = sorted_res.structure
 
     # The electrode models, extracted from the SORTED blocks -- and the
     # § 3 lead gates, which is the same step: a block that is not frozen
-    # bulk does not become a model (`wizard.extract_electrode_model`).
-    #
-    # The starting geometry, in the person's order, goes into the SORTED
-    # device's order through the device's own order record -- position j
-    # holds the person's atom `original_of(j)` -- so the gate compares atom
-    # i against atom i; a refusal names atoms back through the same record.
-    order = dev.atom_order
-    prior = (None if start is None else start if order is None
-             else start[order.original_of(range(dev.n_atoms))])
+    # bulk does not become a model (`wizard.extract_electrode_model`).  The
+    # starting geometry stays in your order: the gate compares each atom of
+    # the sorted device with itself there, through the device's own answer
+    # (`Structure.your_indices`).
     elec_l, elec_r = _extract_and_gate_electrodes(
-        dev, prior_positions=prior, ion_dir=ion_dir)
+        dev, prior_positions=start, ion_dir=ion_dir)
 
     provenance = {
         "schema": "molbuilder/slot-provenance@1",

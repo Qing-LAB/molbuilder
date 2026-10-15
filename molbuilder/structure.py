@@ -1669,6 +1669,18 @@ class Structure:
             return self, None
         return self.restored(), restored_said(what, self.atom_order)
 
+    def your_indices(self, indices) -> List[int]:
+        """The atoms named by their index in this structure, as indices in
+        the person's order (``model/overview.md`` § 2.2a): through the
+        order record (``original_of``) in an engine's order, as they stand
+        in yours, whose order is never recorded (I2).  THE ONE WAY an atom
+        of a structure that may be remapped is named in your order -- a
+        refusal naming atoms, a geometry held in your order compared atom
+        for atom."""
+        if self.atom_order is None:
+            return [int(i) for i in indices]
+        return self.atom_order.original_of(indices)
+
     def _reordered(self, order: Sequence[int], **also) -> "Structure":
         """The reorder :meth:`take` and :meth:`restored` share."""
         n = self.n_atoms

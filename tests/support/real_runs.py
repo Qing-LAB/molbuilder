@@ -30,6 +30,10 @@ Each is the session fixture of its name in `tests/conftest.py`:
   vibration kind's `relax` stage of the road's CO2, listed O O C with the
   carbon held, so its decks are in the engine's held-first order
   (`_road.co2_relaxed_for_vibration`; plan T-CO2).
+
+A run with one thing changed is a copy of it beside it (:func:`copy_of`): its
+decks as an older molbuilder wrote them, a damaged order record, its held set
+grown and its next stage prepared on the road.
 """
 from __future__ import annotations
 
@@ -65,6 +69,18 @@ class RealRun:
     files_before: Dict[str, tuple] = field(default_factory=dict)
     files_after: Dict[str, tuple] = field(default_factory=dict)
 
+    def attempt(self, stage: str, n: int = 0) -> Path:
+        """Attempt ``n`` of ``stage`` -- its folder, by molbuilder's own
+        doors (`jobset.materialize.stage_home`, `paths.attempt_dir`): the
+        handle every reader of the run takes, asking the run door for the
+        rest (`runs.run_of`)."""
+        from molbuilder.jobset.materialize import stage_home
+        from molbuilder.paths import attempt_dir
+        from molbuilder.runfiles import TASK_FILE
+        from molbuilder.task import read_task
+        task = read_task(self.bundle / TASK_FILE)
+        return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
+
 
 def _engine_here() -> bool:
     from _road import conda_hook, env_available
@@ -76,6 +92,16 @@ def _on_the_road(tmp_path_factory, name: str):
     """A projects tree of its own, the one door pointed at it, and the real
     SIESTA on the road -- while the runs are made; the process environment
     as it was, after."""
+    with _road_at(tmp_path_factory.mktemp(name), tmp_path_factory) as tree:
+        yield tree
+
+
+@contextmanager
+def _road_at(where: Path, tmp_path_factory):
+    """The projects tree under ``where`` -- a new one, or the one a run was
+    made in, for a command typed on a copy of it -- the one door pointed at
+    it, and the real SIESTA on the road; the process environment as it was,
+    after."""
     from _pytest.monkeypatch import MonkeyPatch
 
     from _road import live_siesta
@@ -84,7 +110,7 @@ def _on_the_road(tmp_path_factory, name: str):
         pytest.skip("needs the molbuilder-siesta env + a detectable conda hook")
     mp = MonkeyPatch()
     try:
-        tree = _point_the_one_door_at(tmp_path_factory.mktemp(name), mp.setenv)
+        tree = _point_the_one_door_at(where, mp.setenv)
         with live_siesta(tree, tmp_path_factory):
             yield tree
     finally:
@@ -216,46 +242,117 @@ def bench(tmp_path_factory) -> RealRun:
     return run
 
 
-def relaxed_for_vibration(tmp_path_factory):
-    """The vibration kind's `relax` stage of the road's CO2, run: the
-    bundle."""
+def relaxed_for_vibration(tmp_path_factory) -> RealRun:
+    """The vibration kind's `relax` stage of the road's CO2, run."""
     from _road import co2_relaxed_for_vibration
+    from molbuilder.runs import run_answer
     with _on_the_road(tmp_path_factory, "vibration") as tree:
-        bundle = co2_relaxed_for_vibration(tree)
-    return bundle
+        run = RealRun(tree=tree, bundle=co2_relaxed_for_vibration(tree))
+    # IT REACHED ITS END, by the one status door: every reader of the run
+    # reads a relaxation that finished.
+    said = run_answer(run.attempt("relax"))
+    assert (said["state"], said["detail"]) == ("finished", "job_completed"), said
+    return run
 
 
-def copy_of(bundle: Path, name: str, alter) -> Path:
+#: The copies whose change succeeded, this session (:func:`copy_of`).
+_MADE: set = set()
+
+
+def copy_of(run: RealRun, name: str, alter) -> RealRun:
     """THE SHARED RUN WITH ONE THING CHANGED: a copy of the calculation
-    ``bundle`` beside it, ``<bundle>-<name>``, altered once by
-    ``alter(copy)`` -- made once a session, the run's own files left as
-    they are.  Every test that reads the run with one change asks it."""
-    copy = bundle.parent / f"{bundle.name}-{name}"
-    if not copy.exists():
-        shutil.copytree(bundle, copy)
+    beside it, ``<bundle>-<name>``, altered once by ``alter(copy)`` -- made
+    once a session, the run's own files left as they are.  A copy counts as
+    made once its change succeeded; one a failed change left behind is made
+    again.  Every test that reads the run with one change asks it."""
+    copy = RealRun(tree=run.tree,
+                   bundle=run.bundle.parent / f"{run.bundle.name}-{name}")
+    if copy.bundle not in _MADE:
+        shutil.rmtree(copy.bundle, ignore_errors=True)
+        shutil.copytree(run.bundle, copy.bundle)
         alter(copy)
+        _MADE.add(copy.bundle)
     return copy
 
 
-def relax_decks(copy: Path):
-    """Every deck of the `relax` stage of a copy (:func:`copy_of`)."""
-    return sorted(copy.rglob("*_01_relax.fdf"))
+def relax_decks(run: RealRun):
+    """The decks of the `relax` stage's run -- the one it read and the
+    stage's own copy (`runs.Run.deck`, `stage_deck`)."""
+    from molbuilder.runs import run_of
+    ran = run_of(run.attempt("relax"))
+    return sorted({ran.deck, ran.stage_deck})
 
 
-def as_prepared_by_2_9_6(bundle: Path) -> Path:
-    """A copy of the calculation ``bundle`` (:func:`copy_of`), every deck of
-    its `relax` stage as molbuilder 2.9.6 wrote it -- that version's stamp,
-    and no order record in its ATOM-METADATA block (`model/overview.md`
-    § 2.2a, I9), as the pin table rewrites a sidecar as an older molbuilder
-    wrote it."""
+def with_atom_metadata(deck: Path, change) -> None:
+    """``deck``'s ATOM-METADATA block read by its reader
+    (`script_emit.read_atom_metadata_block`), ``change(payload)`` applied,
+    and written back between the block's own fences (`deck_record`) -- as
+    an older molbuilder stated it, or as a damaged deck does, the way the pin
+    table rewrites a sidecar."""
+    from molbuilder.deck_record import (BLOCK_ATOM_METADATA, begin_marker,
+                                        end_marker)
+    from molbuilder.script_emit import read_atom_metadata_block
+    text = deck.read_text()
+    payload = read_atom_metadata_block(text)
+    change(payload)
+    head, rest = text.split(begin_marker(BLOCK_ATOM_METADATA), 1)
+    _old, tail = rest.split(end_marker(BLOCK_ATOM_METADATA), 1)
+    deck.write_text(head + "\n".join([
+        begin_marker(BLOCK_ATOM_METADATA),
+        f"# format: molstruct-json/v{payload['schema_version']}",
+        f"# {json.dumps(payload)}",
+        end_marker(BLOCK_ATOM_METADATA)]) + tail)
+
+
+#: WHAT A DECK FROM BEFORE 2.10.0 IS SAID TO BE (`model/overview.md` § 2.2a,
+#: I9) -- the version :func:`as_prepared_by_2_9_6` stamps, the release the
+#: contract names, and its way out.
+PREPARED_BY_2_9_6 = ("prepared by molbuilder 2.9.6",
+                     "before 2.10.0 recorded the order a deck's atoms are in",
+                     "prepare the stage again")
+
+
+def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
+    """A copy of the calculation (:func:`copy_of`), every deck of its `relax`
+    stage as molbuilder 2.9.6 wrote it -- that version's stamp, and its
+    ATOM-METADATA block at schema 13, with no order record
+    (`model/overview.md` § 2.2a, I9), as the pin table rewrites a sidecar as
+    an older molbuilder wrote it."""
     import re
 
     def as_2_9_6_wrote_it(copy):
         for deck in relax_decks(copy):
-            lines = deck.read_text().splitlines(keepends=True)
-            kept = [re.sub(r"(generator-version\s+)\S+", r"\g<1>2.9.6", ln)
-                    for ln in lines if '"atom_order":' not in ln]
-            assert len(kept) == len(lines) - 1, deck
-            deck.write_text("".join(kept))
-    return copy_of(bundle, "before-2.10.0", as_2_9_6_wrote_it)
+            with_atom_metadata(deck, lambda block: (
+                block.pop("atom_order"), block.update(schema_version=13)))
+            deck.write_text(re.sub(r"(?m)^(#[ \t]*generator-version[ \t]+)\S+",
+                                   r"\g<1>2.9.6", deck.read_text()))
+    return copy_of(run, "before-2.10.0", as_2_9_6_wrote_it)
+
+
+#: THE HELD SET GROWN after `relax` ran (`engines/vibration.md` § 2.3a): the
+#: carbon and the first oxygen, where `relax` held the carbon alone.
+HELD_GROWN = [0, 2]
+
+
+def held_grown(run: RealRun, tmp_path_factory) -> RealRun:
+    """A copy of the calculation (:func:`copy_of`), its structure's held set
+    grown (:data:`HELD_GROWN`) as a person would on the Molbuilder tab, and
+    its `freq` stage prepared on the road -- the force-constant prep built
+    from a relaxation that held other atoms (plan V1.41)."""
+    from molbuilder.runfiles import TASK_FILE
+    from molbuilder.task import read_task
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    def grow_and_prepare(copy):
+        task = read_task(copy.bundle / TASK_FILE)
+        source = copy.bundle / Path(task.structure.source).name
+        mine = StructureCodec().load(source)
+        StructureCodec().write(
+            mine.replace(regions={**mine.regions,
+                                  "frozen_atoms": list(HELD_GROWN)}),
+            source)
+        with _road_at(copy.tree.parent, tmp_path_factory):
+            _taken(copy, "prep freq", "prep", "task", "--group", "2",
+                   "--target", "this")
+    return copy_of(run, "held-grown", grow_and_prepare)
 
