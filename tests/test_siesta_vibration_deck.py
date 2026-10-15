@@ -19,7 +19,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.script_emit import render_deck
 from molbuilder.siesta.input import spec_for
 from molbuilder.structure import Structure
-from molbuilder.transport.sort import sort_by
+from molbuilder.transport.sort import SORT_HELD_FIRST, sort_by
 from molbuilder.runfiles import RunNames
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -52,7 +52,7 @@ def test_the_force_constant_deck_nudges_the_free_range_only(in_tree_psml):
     the deck names the free atoms as the trailing range, and nothing in the
     deck relaxes."""
     s = _three_h(held=[1])
-    sorted_s = sort_by(s, "held-first").structure
+    sorted_s = sort_by(s, SORT_HELD_FIRST).structure
     cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml,
                        already_relaxed=True)
     text = render_deck(spec_for(sorted_s, cfg, calculation="vibration",

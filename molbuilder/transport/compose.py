@@ -5,8 +5,9 @@ the machine where prep runs (strict composition, ruling Q2 — a missing
 or unconcluded relaxation is a refusal naming what to run first, never a
 trigger to run it); read the junction it holds — a cited run's folder
 through the run door, as the Results tab reads a run (`runs.run_of`,
-`runs.openable`, the parse registry, `runs.view_of`), or a cited pair
-through the codec; run the categorical sort (P2); apply the lead gate;
+`runs.openable`, and the one read of a run's geometry, `runs.steps_of`, in
+your order), or a cited pair through the codec, in your order; sort it for
+TranSIESTA (`sort.sort_by`, P2); apply the lead gate;
 extract the two electrode models from the sorted blocks (the wizard's
 move, § 3); and record the provenance — the citation, its kind, and the
 content hashes of the files it was composed from, a cited run's **own
@@ -29,7 +30,7 @@ import numpy as np
 from ..atom_permutation import read_permutation
 from ..runfiles import PERMUTATION_FILE
 from ..cell import entering
-from ..structure import Structure, atom_words
+from ..structure import Structure
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
                    SortResult, deck_sort_key, sort_by, write_permutation)
 from .wizard import ElectrodeModel, extract_electrode_model
@@ -351,7 +352,7 @@ def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
         moved = [(i, float(d)) for i, d in zip(leads, dist)
                  if d > FROZEN_TOL_ANG]
         if moved:
-            shown = ", ".join(f"{atom_words(i, struct.elements)} "
+            shown = ", ".join(f"{struct.atoms_named([i])} "
                               f"by {d:.4f} A"
                               for i, d in moved[:3])
             more = f" and {len(moved) - 3} more" if len(moved) > 3 else ""
@@ -457,13 +458,14 @@ def _run_geometry(cited: CitedRun, kinds):
     """``(structure, start, output)`` -- what a cited run left, read through
     the run door as the Results tab reads a run (`execution/architecture.md`
     § 3.2; `model/parse.md` § 5.3, § 5b): the file that holds its result
-    (`runs.openable`), parsed by the registry; its LAST geometry step, the
-    relaxed junction, in the run's box, with what its deck declared -- the
-    labels, the held atoms -- and what the run says about itself
-    (`runs.view_of`); and its FIRST step's coordinates, where the
-    relaxation started, for the lead gate's *frozen means unmoved*.  The
-    axis kinds are ``kinds`` (:func:`junction_axis_kind`: z transport),
-    stated at construction so ``__post_init__`` validates the box."""
+    (`runs.openable`), and the run door's one read of its geometry
+    (`runs.steps_of`, IN YOUR ORDER): its LAST geometry step, the relaxed
+    junction, in the run's box, with what its deck declared -- the labels,
+    the held atoms -- and what the run says about itself; and its FIRST
+    step's coordinates, in your order too, where the relaxation started, for
+    the lead gate's *frozen means unmoved*.  The axis kinds are ``kinds``
+    (:func:`junction_axis_kind`: z transport), stated at construction so
+    ``__post_init__`` validates the box."""
     from ..runs import OrderUnstated, RunStepsError, openable, steps_of
     output, _trail = openable(cited.path)
     if output is None:
@@ -660,7 +662,7 @@ def _refuse_outside(struct: Structure) -> None:
     outside = sorted(outside)
     if not outside:
         return
-    where = atom_words(outside, struct.elements, limit=8)
+    where = struct.atoms_named(outside, limit=8)
     if struct.engine_offset is None:
         # CENTRED AND STILL OUTSIDE: the atoms span more than the cell along
         # z, so the leads' end layers meet through the image -- I12's

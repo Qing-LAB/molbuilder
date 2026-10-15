@@ -40,7 +40,7 @@ import numpy as np
 from ..atom_permutation import (PERMUTATION_SCHEMA, Permutation,
                                 SORT_HELD_FIRST, SORT_TRANSPORT)
 from ..runfiles import PERMUTATION_FILE
-from ..structure import REMAPPED_NOT_EDITED, Structure, atom_words
+from ..structure import REMAPPED_NOT_EDITED, Structure
 
 # --------------------------------------------------------------------- #
 #  The region-label vocabulary -- `model/structure-annotations.md` § 5   #
@@ -220,7 +220,7 @@ def _partition_of(struct: Structure) -> List[str]:
 
     unlabeled = [i for i in range(n) if not membership[i]]
     if unlabeled:
-        shown = atom_words(unlabeled, struct.elements, limit=8)
+        shown = struct.atoms_named(unlabeled, limit=8)
         raise SortError(
             f"{len(unlabeled)} atom(s) carry no partition label: {shown}.  "
             f"Every atom must be exactly one of "
@@ -232,7 +232,7 @@ def _partition_of(struct: Structure) -> List[str]:
     doubled = [i for i in range(n) if len(membership[i]) > 1]
     if doubled:
         shown = "; ".join(
-            f"{atom_words(i, struct.elements)}: {' + '.join(membership[i])}"
+            f"{struct.atoms_named([i])}: {' + '.join(membership[i])}"
             for i in doubled[:8])
         more = f" and {len(doubled) - 8} more" if len(doubled) > 8 else ""
         raise SortError(
@@ -243,8 +243,9 @@ def _partition_of(struct: Structure) -> List[str]:
     return [membership[i][0] for i in range(n)]
 
 
-def categorical_sort(struct: Structure) -> SortResult:
-    """The canonical transport order, from labels — § 4.1a.
+def _transport_order(struct: Structure) -> Tuple[List[int], Tuple[str, ...]]:
+    """The first key's order -- the canonical transport order, from labels,
+    § 4.1a -- and what it says: ``(order, notes)``, for :func:`sort_by`.
 
     * electrode blocks: the LOWER one first (geometry, not the label —
       it is the block that extends to ``-A3``), then layer-major along
@@ -328,7 +329,7 @@ def categorical_sort(struct: Structure) -> SortResult:
     buf_lo, buf_hi = _layer_major(buf_lo), _layer_major(buf_hi)
     if misplaced:
         shown = "; ".join(
-            f"{atom_words(i, struct.elements)} at z={z[i]:.3f} A"
+            f"{struct.atoms_named([i])} at z={z[i]:.3f} A"
             for i in misplaced[:6])
         more = f" and {len(misplaced) - 6} more" if len(misplaced) > 6 else ""
         raise SortError(
@@ -342,18 +343,20 @@ def categorical_sort(struct: Structure) -> SortResult:
 
     order = (buf_lo + _layer_major(lo) + by[REGION_BRIDGE]
              + _layer_major(hi) + buf_hi)
-    return apply_order(struct, order, notes, key=SORT_TRANSPORT)
+    return order, tuple(notes)
 
 
 #: THE KEYS, by name -- what a calculation needs done to the atom order.
 #: A kind asks ``sort_by(struct, deck_sort_key(...))``, the key its decks
 #: are written by (:data:`SORTED_COPY`); the name travels into the order
-#: record so the return leg knows which order it is undoing.  The names are the order record's
-#: (``atom_permutation.SORT_KEY_NAMES``); a new need is a new name there and
-#: an entry here, over the same ``apply_order``, never a second machine.
+#: record so the return leg knows which order it is undoing.  The names are
+#: the order record's (``atom_permutation.SORT_KEY_NAMES``); each maps to the
+#: function that works its order out, and :func:`sort_by` hands that order to
+#: the one machinery, ``apply_order``, with the key -- a new need is a new
+#: name there and an entry here, never a second machine.
 SORT_KEYS = {
-    SORT_TRANSPORT:  lambda s: categorical_sort(s),
-    SORT_HELD_FIRST: lambda s: free_contiguous_sort(s),
+    SORT_TRANSPORT:  lambda s: _transport_order(s),
+    SORT_HELD_FIRST: lambda s: _held_first_order(s),
 }
 
 
@@ -397,12 +400,15 @@ def sort_by(struct: Structure, key: str) -> SortResult:
                         f"{', '.join(sorted(SORT_KEYS))}") from None
     if struct.atom_order is not None:
         raise SortError(REMAPPED_NOT_EDITED)
-    return fn(struct)
+    order, notes = fn(struct)
+    return apply_order(struct, order, notes, key=key)
 
 
-def free_contiguous_sort(struct: Structure) -> SortResult:
-    """The second key: held atoms first, free atoms last, each in the
-    input's own relative order -- `model/overview.md` § 2.2.
+def _held_first_order(struct: Structure
+                      ) -> Tuple[List[int], Tuple[str, ...]]:
+    """The second key's order: held atoms first, free atoms last, each in the
+    input's own relative order -- `model/overview.md` § 2.2 -- and nothing to
+    say: ``(order, ())``, for :func:`sort_by`.
 
     SIESTA's force-constant run nudges atoms *A through B* (`FC.First` /
     `FC.Last`) and cannot take a scattered free set; molbuilder's held set
@@ -417,7 +423,7 @@ def free_contiguous_sort(struct: Structure) -> SortResult:
     held = sorted(int(i) for i in (struct.frozen_atoms or []))
     held_set = set(held)
     free = [i for i in range(n) if i not in held_set]
-    return apply_order(struct, held + free, (), key=SORT_HELD_FIRST)
+    return held + free, ()
 
 
 def apply_order(struct: Structure, order: List[int],

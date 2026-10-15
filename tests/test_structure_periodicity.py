@@ -169,7 +169,7 @@ class TestElectrodeCaptureCell:
         # stated against the old -- the rule places the atoms, and the
         # hand-off accepts them.
         assert out.engine_offset is None, "the new box kept an origin set for the old one"
-        cellmod.require_placed(cellmod.to_engine(out), out.axis_kind)
+        cellmod.require_placed(cellmod.to_engine(out), out)
 
     @staticmethod
     def _seam(out):

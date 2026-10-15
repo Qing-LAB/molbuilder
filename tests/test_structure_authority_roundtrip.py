@@ -375,12 +375,12 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         assert "structure_modified" not in s.info["calculation"]
 
     def test_a_reorder_is_not_an_edit(self):
-        """`categorical_sort` derives through the same door but changes
+        """The transport sort (`sort_by`) derives through the same door but changes
         no geometry, so marking there would warn about every composed
         junction."""
         import numpy as np
         from molbuilder.structure import Structure
-        from molbuilder.transport.sort import categorical_sort
+        from molbuilder.transport.sort import SORT_TRANSPORT, sort_by
         s = Structure(
             elements=["Au", "S", "S", "Au"],
             positions=np.array([[0., 0, 0], [0, 0, 2.], [0, 0, 4.], [0, 0, 6.]]),
@@ -388,7 +388,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             regions={"L-electrode": [0], "bridge": [1, 2], "R-electrode": [3]},
             info={"calculation": {"engine": "siesta",
                                   "contract": {"mesh_cutoff": 300}}})
-        out = categorical_sort(s).structure
+        out = sort_by(s, SORT_TRANSPORT).structure
         assert "structure_modified" not in out.info["calculation"]
         assert out.info["calculation"]["contract"]
 
@@ -457,7 +457,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         # append centred them, so it does not ride in with the cell: the box
         # centres on the joined atoms, and the append says so (plan § 5q D9).
         assert out.engine_offset is None, out.engine_offset
-        assert any("stated origin was dropped" in n for n in notes), notes
+        assert any("stated origin was dropped" in n.message for n in notes), notes
 
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --

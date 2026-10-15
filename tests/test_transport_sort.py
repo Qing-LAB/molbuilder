@@ -24,7 +24,7 @@ from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.structure import AtomChannel, Structure
 from molbuilder.atom_permutation import PERMUTATION_SCHEMA
-from molbuilder.transport.sort import SortError, categorical_sort
+from molbuilder.transport.sort import SORT_TRANSPORT, SortError, sort_by
 
 
 def _junction(shuffle=True, extra=()):
@@ -61,7 +61,7 @@ class TestCanonicalOrder:
 
     def test_shuffled_input_comes_out_L_bridge_R(self):
         struct, rows = _junction(shuffle=True)
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         got = out.structure
         # blocks in canonical positions; electrodes layer-major by z
         assert got.regions[REGION_LEFT_ELECTRODE] == [0, 1]
@@ -81,7 +81,7 @@ class TestCanonicalOrder:
         # scramble the bridge's z so a z-sort WOULD reorder it
         struct.positions[3, 2] = 6.5      # C above the next C
         struct.positions[4, 2] = 5.5
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         assert out.structure.elements[2:6] == ["S", "C", "C", "S"], (
             "the bridge must keep input order -- it is the user's map")
 
@@ -89,7 +89,7 @@ class TestCanonicalOrder:
         struct, _ = _junction(shuffle=False,
                               extra=[("He", -2.0, REGION_BUFFER),
                                      ("He", 13.0, REGION_BUFFER)])
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         assert out.structure.elements[0] == "He" and \
             out.structure.elements[-1] == "He"
         assert out.structure.positions[0, 2] == -2.0
@@ -110,7 +110,7 @@ class TestCanonicalOrder:
             extra=[("He", 13.0, REGION_BUFFER),
                    ("He", 40.0, REGION_BUFFER),
                    ("He", 80.0, REGION_BUFFER)])   # midpoint = 40.0
-        out = categorical_sort(struct)             # no refusal
+        out = sort_by(struct, SORT_TRANSPORT)             # no refusal
         assert list(out.structure.positions[-3:, 2]) == [13.0, 40.0, 80.0], (
             "every one of these sits above the upper electrode, so all "
             "three belong at the high end")
@@ -121,7 +121,7 @@ class TestCanonicalOrder:
         struct, _ = _junction(shuffle=False)
         # swap the two L-electrode layers in INPUT order; z must win
         struct.positions[0, 2], struct.positions[1, 2] = 2.0, 0.0
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         assert list(out.structure.positions[:2, 2]) == [0.0, 2.0], (
             "electrode blocks sort by transport coordinate -- the "
             "extracted cell inherits this order, so it must be "
@@ -132,7 +132,7 @@ class TestBookkeepingCrossesTheSort:
 
     def test_permutation_is_a_recorded_bijection(self):
         struct, rows = _junction(shuffle=True)
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         n = len(rows)
         assert sorted(out.sorted_to_original) == list(range(n))
         for old in range(n):
@@ -145,7 +145,7 @@ class TestBookkeepingCrossesTheSort:
         """The user's 'nothing missed': same multiset of
         (element, position), each exactly once."""
         struct, _ = _junction(shuffle=True)
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         before = sorted((e, tuple(p)) for e, p in
                         zip(struct.elements, struct.positions))
         after = sorted((e, tuple(p)) for e, p in
@@ -162,7 +162,7 @@ class TestBookkeepingCrossesTheSort:
         struct.annotations = {"charge": AtomChannel("value",
                                                     {c_in: -0.3}, None, None)}
         struct.atom_names = [f"n{i}" for i in range(len(rows))]
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         got = out.structure
         # frozen == the four electrode positions in the sorted frame
         assert got.frozen_atoms == [0, 1, 6, 7]
@@ -179,7 +179,7 @@ class TestBookkeepingCrossesTheSort:
         struct.title = "shuffled junction"
         struct.cell = np.eye(3) * 20.0
         struct.vacuum = (5.0, 5.0, 0.0)
-        out = categorical_sort(struct)
+        out = sort_by(struct, SORT_TRANSPORT)
         assert out.structure.title == "shuffled junction"
         assert np.allclose(out.structure.cell, struct.cell)
         assert out.structure.vacuum == (5.0, 5.0, 0.0)
@@ -190,7 +190,7 @@ class TestRefusalsNameAtoms:
     def test_an_unlabeled_atom_is_refused_by_index_and_element(self):
         struct, _ = _junction(shuffle=False, extra=[("H", 8.0, None)])
         with pytest.raises(SortError) as e:
-            categorical_sort(struct)
+            sort_by(struct, SORT_TRANSPORT)
         assert "atom index 8 (H)" in str(e.value)
         assert "no partition label" in str(e.value)
 
@@ -198,7 +198,7 @@ class TestRefusalsNameAtoms:
         struct, _ = _junction(shuffle=False)
         struct.regions[REGION_BRIDGE] = struct.regions[REGION_BRIDGE] + [0]
         with pytest.raises(SortError) as e:
-            categorical_sort(struct)
+            sort_by(struct, SORT_TRANSPORT)
         msg = str(e.value)
         assert "atom index 0 (Au)" in msg
         assert REGION_LEFT_ELECTRODE in msg and REGION_BRIDGE in msg
@@ -210,14 +210,14 @@ class TestRefusalsNameAtoms:
         struct, _ = _junction(shuffle=False,
                               extra=[("He", 5.0, REGION_BUFFER)])
         with pytest.raises(SortError) as e:
-            categorical_sort(struct)
+            sort_by(struct, SORT_TRANSPORT)
         msg = str(e.value)
         assert "atom index 8 (He)" in msg and "OUTSIDE" in msg
 
     def test_interface_rides_on_top_without_tripping_the_partition(self):
         struct, _ = _junction(shuffle=False)
         struct.regions["interface"] = [2, 5]        # the two S anchors
-        out = categorical_sort(struct)              # must NOT refuse
+        out = sort_by(struct, SORT_TRANSPORT)              # must NOT refuse
         assert out.structure.regions["interface"] == [2, 5]
 
     def test_a_missing_block_is_refused_by_name(self):
@@ -225,7 +225,7 @@ class TestRefusalsNameAtoms:
         del struct.regions[REGION_RIGHT_ELECTRODE]
         struct.regions[REGION_BRIDGE] += [6, 7]     # relabel to keep all
         with pytest.raises(SortError) as e:
-            categorical_sort(struct)
+            sort_by(struct, SORT_TRANSPORT)
         assert REGION_RIGHT_ELECTRODE in str(e.value)
 
     def test_swapped_names_sort_by_geometry_and_carry_a_note(self):
@@ -241,7 +241,7 @@ class TestRefusalsNameAtoms:
             struct.regions[REGION_RIGHT_ELECTRODE]
         struct.regions[REGION_RIGHT_ELECTRODE] = low
 
-        res = categorical_sort(struct)          # no refusal
+        res = sort_by(struct, SORT_TRANSPORT)   # no refusal
         # The block that was lowest in z still leads the atom list --
         # now wearing the R-electrode name.
         n_low = len(low)

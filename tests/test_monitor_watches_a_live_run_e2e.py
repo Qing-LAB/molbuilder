@@ -30,7 +30,6 @@ import pytest
 from _road import conda_hook, env_available
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
-from molbuilder.runfiles import RunNames
 
 pytestmark = [
     pytest.mark.engine,
@@ -39,14 +38,17 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-_STEM = "CO2_01_relax"
-_OUT = f"{_STEM}-run0.out"
-
-
 @pytest.fixture(scope="module")
 def run(real_relaxed_for_vibration):
     """The relaxation's run folder, made on the road."""
     return real_relaxed_for_vibration.attempt("relax")
+
+
+def _ran(run: Path):
+    """The run, by the run door (`runs.run_of`): its label, its stage, its
+    files' names and its output -- every name this test uses."""
+    from molbuilder.runs import run_of
+    return run_of(run)
 
 
 @pytest.fixture(autouse=True)
@@ -75,7 +77,7 @@ class _Output:
     geometry moves SIESTA began (``Begin <kind> opt. move = N``)."""
 
     def __init__(self, run: Path):
-        self.lines = (run / _OUT).read_text(
+        self.lines = _ran(run).stdout.read_text(
             errors="replace").splitlines(keepends=True)
         self.rows = [i for i, ln in enumerate(self.lines)
                      if ln.lstrip().startswith("scf:")]
@@ -121,11 +123,12 @@ def _replay(run: Path, tmp_path: Path, upto: int):
     ``grow(to)`` that writes on, as SIESTA would.  What the monitor itself
     writes -- its log and its samples -- and the timing tee, which grows with
     the output, are left for the replay to write."""
-    there = tmp_path / "run-0"
+    ran = _ran(run)
+    there = tmp_path / run.name
     shutil.copytree(run, there, ignore=shutil.ignore_patterns(
-        _OUT, "*.monitor.log", "*.util.csv", "*.scf-timing.log"))
+        ran.stdout.name, "*.monitor.log", "*.util.csv", "*.scf-timing.log"))
     lines = _Output(run).lines
-    out = there / _OUT
+    out = there / ran.stdout.name
     out.write_text("".join(lines[:upto]))
     at = {"n": upto}
 
@@ -133,14 +136,13 @@ def _replay(run: Path, tmp_path: Path, upto: int):
         with out.open("a") as fh:
             fh.write("".join(lines[at["n"]:to]))
         at["n"] = to
-    return there, monitor.WatchedRun(
-        names=RunNames.of("CO2", "01_relax", "hierarchical"), run=0,
-        directory=there), grow
+    return there, monitor.WatchedRun(names=ran.names, run=ran.run,
+                                     directory=there), grow
 
 
-def _statuses(there: Path):
-    return [ln for ln in (there / f"{_STEM}-run0.monitor.log")
-            .read_text().splitlines() if "[STATUS]" in ln]
+def _statuses(watched):
+    return [ln for ln in watched.path(".monitor.log").read_text().splitlines()
+            if "[STATUS]" in ln]
 
 
 def _whole(run: Path) -> int:
@@ -177,16 +179,16 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(run, tmp_path):
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
-    rs = run_status(there, _STEM)
+    rs = run_status(there, _ran(run).basename)
     assert (final.state, final.detail) == (rs.state, rs.detail) == (
         "finished", "job_completed")
     assert final.converged == {"periodic": True}
     assert final.exit and final.exit.startswith("rc=0")
-    closing = _statuses(there)[-1]
+    closing = _statuses(watched)[-1]
     assert "finished (job_completed)" in closing
     assert "converged: periodic yes" in closing
     assert final.relaxed is True and "geometry relaxed" in closing, closing
-    assert "job ended" in (there / f"{_STEM}-run0.monitor.log").read_text()
+    assert "job ended" in watched.path(".monitor.log").read_text()
 
 
 # --------------------------------------------------------------------- #
@@ -209,7 +211,7 @@ def test_each_advance_is_a_status_line_stating_where_the_run_is(run,
     monitor.run_monitor(watched, interval=1, watch_pid=0,
                         sleep=lambda _: grow(next(chunks)), max_ticks=3,
                         clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0]))
-    lines = _statuses(there)
+    lines = _statuses(watched)
     assert len(lines) == 3, lines
     assert f"periodic SCF iteration {k}" in lines[0], lines[0]
     dm = o.criterion("DM")
@@ -236,7 +238,7 @@ def test_a_run_that_does_not_advance_writes_and_sends_nothing(run, tmp_path):
                         sleep=lambda s: None, max_ticks=4,
                         clock=_fake_clock([0.0, 0.0, 0.0, 1200.0, 2400.0,
                                            3600.0, 4800.0]))
-    text = (there / f"{_STEM}-run0.monitor.log").read_text()
+    text = watched.path(".monitor.log").read_text()
     assert "[STATUS]" not in text, text
     assert [e for e in seen if e not in ("start", "finish")] == [], seen
 
@@ -267,10 +269,10 @@ def test_util_sampling_is_change_gated_and_summarised(run, tmp_path):
                         sleep=lambda s: None, max_ticks=4, util=True,
                         util_keepalive_s=1e9, sampler=_sampler,
                         clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0, 4.0]))
-    rows = (there / f"{_STEM}-run0.util.csv").read_text().splitlines()
+    rows = watched.path(".util.csv").read_text().splitlines()
     assert rows[0].startswith("epoch,iso,cpu_pct,mem_gb,gpu0_sm")
     assert len(rows) >= 2
-    log = (there / f"{_STEM}-run0.monitor.log").read_text()
+    log = watched.path(".monitor.log").read_text()
     assert "[UTIL-SUMMARY]" in log and "gpu0 sm mean=" in log
 
 
@@ -452,6 +454,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
     from molbuilder.parse.dirs import run_status
     from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
     there, _watched, _grow = _replay(run, tmp_path, _whole(run))
+    ran = _ran(run)
     (there / MONITOR_BUNDLE).write_bytes(monitor_bundle())
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     control = subprocess.run([sys.executable, "-c", "import molbuilder"],
@@ -472,8 +475,8 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         "                      ('grammar', P._G), ('rules', P.compile_rules),\n"
         "                      ('names', M._rf))}\n"
         "where['from'] = os.path.basename(os.path.dirname(M.__file__))\n"
-        f"w = M.WatchedRun(names=M._rf.RunNames.of('CO2', '01_relax', "
-        f"'hierarchical'), run=0)\n"
+        f"w = M.WatchedRun(names=M._rf.RunNames.of({ran.label!r}, "
+        f"{ran.stage!r}, {ran.place.task.shape!r}), run={ran.run})\n"
         "st = w.conclude(w.read(0.0, 1.0))\n"
         "print(json.dumps({'where': where, 'state': st.state,\n"
         "                  'detail': st.detail, 'converged': st.converged,\n"
@@ -488,7 +491,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
                             "rules": "_section_rules",
                             "names": "runfiles",
                             "from": MONITOR_BUNDLE}, got["where"]
-    here = run_status(run, _STEM)
+    here = run_status(run, ran.basename)
     assert (got["state"], got["detail"]) == (here.state, here.detail), got
     speaker = here.endings[here.active_source]
     assert got["converged"] == dict(speaker.phases.items()), got

@@ -34,6 +34,7 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, live_siesta, set_template_value
+from support.road import H2, road_structure
 
 pytestmark = [
     pytest.mark.engine,
@@ -42,21 +43,19 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-#: The structure, as this module writes it: H2 in a 10 Å box, isolated on
-#: every axis, the first atom held.
-_BOX = 10.0
-_H2 = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]
+#: The structure this module writes: the road's H2 (`support.road.H2`), in a
+#: 10 Å box isolated on every axis, its first atom held -- its box's edge and
+#: its atoms.
+_BOX = H2["cell"][0]
+_H2 = H2["positions"]
 
 
 def _write_h2(tree: Path, name: str) -> None:
-    from molbuilder.structure import Structure
+    """The road's H2, written as the codec writes a pair
+    (`support.road.road_structure`)."""
     from molbuilder.workingcopy_structure import StructureCodec
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    StructureCodec().write(
-        Structure(elements=["H", "H"], positions=np.array(_H2),
-                  regions={"frozen_atoms": [0]},
-                  cell=np.diag([_BOX] * 3), axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / name)
+    StructureCodec().write(road_structure(H2), tree / "P" / "structure" / name)
 
 
 def _one_rank(bundle: Path, **card) -> None:

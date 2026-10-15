@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -29,11 +28,20 @@ pytestmark = [
 
 @pytest.fixture(scope="module")
 def finished(real_h2_layered):
-    """The attempt directory of a finished H2 relaxation, made on the road."""
-    attempt = real_h2_layered.bundle / "01_coarse" / "run-0"
-    assert ">> End of run" in (attempt / "H2_01_coarse-run0.out").read_text(
-        errors="replace"), "the run did not reach its end"
+    """The attempt directory of a finished H2 relaxation, made on the road
+    (`support/real_runs.RealRun.attempt`) -- finished, by the one status
+    door."""
+    from molbuilder.runs import run_answer
+    attempt = real_h2_layered.attempt("coarse")
+    said = run_answer(attempt)
+    assert (said["state"], said["detail"]) == ("finished", "job_completed"), said
     return attempt
+
+
+@pytest.fixture(scope="module")
+def tree(real_h2_layered):
+    """The projects tree the run was made in."""
+    return real_h2_layered.tree
 
 
 @pytest.fixture(scope="module")
@@ -43,14 +51,14 @@ def flask_server():
         yield base_url
 
 
-def _open(page, flask_server, folder, monkeypatch):
+def _open(page, flask_server, folder, tree, monkeypatch):
     """The Results tab bound to ``folder``, its output shown, in a fresh
-    page -- the folder set the way a returning tab finds it."""
+    page -- the folder set the way a returning tab finds it, the run's
+    projects ``tree`` the picker's root."""
     from molbuilder import diagnostics
-    root = next(p for p in Path(folder).parents if p.name == "projects")
     monkeypatch.setattr(type(diagnostics.get_capabilities()),
                         "file_picker_roots",
-                        lambda self: ((root.resolve(), "road"),))
+                        lambda self: ((tree.resolve(), "road"),))
     page.add_init_script(
         "try { sessionStorage.setItem('molbuilder.current_dir', "
         f"{json.dumps(str(folder))}); }} catch (_) {{}}")
@@ -71,7 +79,7 @@ def _the_runs_own_times(attempt):
 
 
 def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
-        finished, page, flask_server, monkeypatch):
+        finished, tree, page, flask_server, monkeypatch):
     """The SCF line's rate is the number the run record states -- the
     SCF-timing log, through one reader -- and the badge dates the run by its
     output's end.
@@ -79,7 +87,7 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
     MUTATION THIS MUST FAIL AGAINST: the viewer computing its own rate.
     """
     time, ended = _the_runs_own_times(finished)
-    _open(page, flask_server, finished, monkeypatch)
+    _open(page, flask_server, finished, tree, monkeypatch)
     scf = page.locator("#scf-status").inner_text()
     rate = re.search(r"([0-9.]+) s/iter", scf)
     assert rate, scf
@@ -90,7 +98,7 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
 
 
 def test_the_scf_plot_draws_both_tests_siesta_requires(
-        finished, page, flask_server, monkeypatch):
+        finished, tree, page, flask_server, monkeypatch):
     """A SIESTA SCF is converged when dDmax is under `DM.Tolerance` AND dHmax
     under `SCF.H.Tolerance` (`web/trajectory.md` § 3.0): the residuals plot
     draws both, each against the tolerance the run's own deck states, and
@@ -99,10 +107,11 @@ def test_the_scf_plot_draws_both_tests_siesta_requires(
     MUTATION THIS MUST FAIL AGAINST: the plot drawing one residual standing
     for the rest -- dHmax alone, as it did until 2.9.5."""
     from molbuilder.parse.fdf import parse_fdf_params
-    deck = parse_fdf_params(
-        (finished / "H2_01_coarse.fdf").read_text(), source="the deck")
+    from molbuilder.runs import run_of
+    deck = parse_fdf_params(run_of(finished).deck.read_text(),
+                            source="the deck")
     assert deck.dm_tolerance and deck.h_tolerance_ev, deck
-    _open(page, flask_server, finished, monkeypatch)
+    _open(page, flask_server, finished, tree, monkeypatch)
     drawn = page.evaluate(
         "() => { const el = document.getElementById('scf-gnorm-plot');"
         " return { names: (el.data || []).map(t => t.name),"

@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from _road import CO2_HELD_FIRST
 from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
+from support.road import CO2, CO2_HELD_FIRST
 
 
 # --------------------------------------------------------------------- #
@@ -236,9 +236,18 @@ def test_emit_atom_metadata_honors_created_by_and_created_at():
 #: reads every field back (`job-contracts.md` § 3.4; `model/overview.md`
 #: § 2.2a, I5).  Each row: the structure a deck is written from -- the
 #: road's CO2 -- and what the block says.  Sorted held-first, its order
-#: record is a 3-cycle (`_road.CO2_HELD_FIRST`), so the two directions differ.
+#: record is a 3-cycle (`support.road.CO2_HELD_FIRST`), so the two directions
+#: differ.
 _BLOCK_ROWS = [
-    dict(name="named values alone -- the block has something to say",
+    dict(name="labels and the held atoms, in the one label store",
+         regions={"bridge": [0, 1]},
+         says={"regions": {"bridge": [0, 1], "frozen_atoms": [2]},
+               "atom_order": None}),
+    dict(name="a channel, its atoms by index",
+         channels={"charge": ("value", {0: -1.0, 2: 0.5})},
+         says={"annotations": {"charge": {"kind": "value",
+                                          "data": {"0": -1.0, "2": 0.5}}}}),
+    dict(name="named values -- the block has something to say",
          rows=[{"name": "temperature", "value": 300, "unit": "K"}],
          says={"customized": {"rows": [{"name": "temperature", "value": 300,
                                         "unit": "K"}], "frames": [[]]},
@@ -258,15 +267,17 @@ def test_the_block_carries_every_field_but_the_box(row):
     back -- the order record through its own reader
     (`deck_record.order_record_of`) -- and the box is the ENGINE-OFFSET
     block's, never this one's."""
-    from _road import CO2_ELEMENTS, CO2_HELD, co2
     from molbuilder.deck_record import order_record_of
-    from molbuilder.structure import BOX_FIELDS, Structure
-    from molbuilder.transport.sort import SORT_HELD_FIRST, sort_by
-    struct = co2()
+    from molbuilder.structure import (ATOM_METADATA_FIELDS, BOX_FIELDS,
+                                      AtomChannel, Structure)
+    from support.road import co2_in_engine_order, road_structure
+    struct = (co2_in_engine_order() if row.get("sorted")
+              else road_structure(dict(CO2, regions={
+                  **CO2["regions"], **row.get("regions", {})})))
     for r in row.get("rows", ()):
         struct.set_customized(r["name"], r["value"], unit=r.get("unit"))
-    if row.get("sorted"):
-        struct = sort_by(struct, SORT_HELD_FIRST).structure
+    for name, (kind, data) in row.get("channels", {}).items():
+        struct.set_channel(name, AtomChannel(kind, data))
     block = sc.emit_atom_metadata(struct)
     payload = _atom_metadata_payload(block)
     for key, want in row["says"].items():
@@ -277,11 +288,13 @@ def test_the_block_carries_every_field_but_the_box(row):
     assert order_record_of(read) == struct.atom_order
     back = Structure(elements=struct.elements, positions=struct.positions)
     assert sc.apply_atom_metadata(back, read) is True
-    assert back.metadata_to_dict()["atom_order"] == payload["atom_order"]
-    assert back.customized == struct.customized
+    sent, got = struct.metadata_to_dict(), back.metadata_to_dict()
+    assert {f: got[f] for f in ATOM_METADATA_FIELDS} == {
+        f: sent[f] for f in ATOM_METADATA_FIELDS}
     if row.get("sorted"):
         mine = back.restored()
-        assert (mine.elements, mine.frozen_atoms) == (CO2_ELEMENTS, CO2_HELD)
+        assert (mine.elements, mine.frozen_atoms) == (
+            CO2["elements"], CO2["regions"]["frozen_atoms"])
 
 
 # --------------------------------------------------------------------- #

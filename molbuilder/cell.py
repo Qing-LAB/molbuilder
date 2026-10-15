@@ -113,8 +113,9 @@ class ResolvedCell:
     #: an image the engine wraps -- and warned (§ 6.0, check 1).
     beyond_periodic_axes: Tuple[int, ...] = ()
     #: NON-periodic axes with atoms outside the box, each with those atoms
-    #: (0-based) -- what ``contains_atoms`` is False about, named so the Cell
-    #: page can say which (plan § 5q D12).
+    #: (0-based, in your order -- ``Structure.your_indices``) -- what
+    #: ``contains_atoms`` is False about, named so a person can say which
+    #: (plan § 5q D12; `model/overview.md` § 2.2a).
     outside_atoms: Tuple[Tuple[int, Tuple[int, ...]], ...] = ()
 
     @property
@@ -202,7 +203,7 @@ def resolve(struct: Structure, *,
         clearances=_clearances(frac, box),
         beyond_periodic_axes=tuple(i for i in sorted(outside)
                                    if kinds[i] == "periodic"),
-        outside_atoms=tuple((i, tuple(atoms))
+        outside_atoms=tuple((i, tuple(struct.your_indices(atoms)))
                             for i, atoms in sorted(outside.items())
                             if kinds[i] != "periodic"),
         **common,
@@ -263,7 +264,7 @@ def _outside(frac: Optional[np.ndarray],
 
 def _name_outside(bad, kinds: Sequence[str]) -> str:
     """``{axis: atoms}`` in words -- "a (isolated): atom index 2; c
-    (transport): atom indices 0, 1", each atom by its index
+    (transport): atom indices 0, 1", each atom by its index in your order
     (`structure.atom_words`) -- the one wording both the Cell page and the
     deck use."""
     return "; ".join(
@@ -568,7 +569,7 @@ def atoms_outside(frame: "EngineFrame") -> Dict[int, List[int]]:
                     frame.cell)
 
 
-def require_placed(frame: "EngineFrame", axis_kind) -> None:
+def require_placed(frame: "EngineFrame", struct: Structure) -> None:
     """At the hand-off the cell origin is (0,0,0) and every atom is inside
     the cell -- the correction applied (user, 2026-09-25: *"the siesta receives
     a cell origin at 0,0,0 always as it expects with all coordinates
@@ -586,6 +587,9 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
       because one id carries one severity (plan § 5q D11).  Along a periodic
       vector an atom past a face is an image the engine wraps, and is warned
       about, not refused (§ 6.0, check 1).
+
+    ``struct`` is the structure the frame placed: its axis kinds, and its
+    order, through which the refusal names the atoms in yours.
     """
     if not frame.stated:
         left = _centring(frame.cell, frame.positions)
@@ -596,8 +600,11 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
                 + " Å: they were not placed by cell.to_engine "
                 "(model/structure-periodicity.md § 6.0), so the engine would "
                 "see them where nobody put them")
-    kinds = tuple(axis_kind or ("isolated",) * 3)
-    bad = {i: atoms for i, atoms in atoms_outside(frame).items()
+    kinds = tuple(struct.axis_kind)
+    # THE ATOMS NAMED IN YOUR ORDER: the frame is the deck's copy, in the
+    # engine's order when it is a sorted one (`Structure.your_indices`).
+    bad = {i: struct.your_indices(atoms)
+           for i, atoms in atoms_outside(frame).items()
            if kinds[i] != "periodic"}
     if bad:
         raise ValidationError([Issue(

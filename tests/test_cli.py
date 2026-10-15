@@ -443,10 +443,8 @@ def test_modify_asks_to_agree_that_atom_indices_count_from_0(row, tmp_path):
     from molbuilder.workingcopy_structure import StructureCodec
     inp, outp = tmp_path / "in.xyz", tmp_path / "out.xyz"
     if row["remapped"]:
-        from _road import co2
-        from molbuilder.transport.sort import SORT_HELD_FIRST, sort_by
-        StructureCodec().write(sort_by(co2(), SORT_HELD_FIRST).structure, inp,
-                               engine_record=True)
+        from support.road import co2_in_engine_order
+        StructureCodec().write(co2_in_engine_order(), inp, engine_record=True)
     else:
         inp.write_text(_bdt_stub_xyz())                 # S C C S
     refused = CliRunner().invoke(cli.cli, ["modify", str(inp), str(outp),

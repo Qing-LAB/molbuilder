@@ -114,7 +114,8 @@ only for the atom list as it stands — so an edit that adds or removes atoms
 refuses a remapped structure (`model/structure.md` § 2.2). It is a metadata
 field like the others, spread in and read through the scratch structure, which
 refuses an order record that is not two inverse bijections over
-`n_atoms_total` atoms, or names no key. **Present means remapped** (I2): a
+`n_atoms_total` atoms, lists anything but whole atom indices, or names no
+key. **Present means remapped** (I2): a
 sidecar carries one only for an engine's own record — the transport
 composer's junction, written through the codec's one door for it — since the
 codec refuses to write a remapped structure for a person (I1).

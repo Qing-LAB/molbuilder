@@ -653,7 +653,7 @@ def test_a_run_that_relaxed_no_geometry_is_not_cited(junction):
     a displacement -- is refused by name.  The silent failure: a geometry
     nothing relaxed composed as the junction."""
     from molbuilder.transport.compose import ComposeError, classify_citation
-    seed = next(junction.bundle.glob("*_seed/run-0"))
+    seed = junction.attempt("seed")
     with pytest.raises(ComposeError, match="relaxed no geometry"):
         classify_citation(seed)
 
@@ -822,12 +822,14 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
         "pair", _N_FRAMES)
 
 
-@pytest.mark.parametrize("change, severity, words", [
-    ("hold", "info", "holds 21: every atom it held, and 1 more"),
-    ("free", "warn", "leaves atom index 8 (H) of them free"),
-], ids=["holds-more-for-the-spectrum", "frees-an-atom-the-relaxation-held"])
+@pytest.mark.parametrize("change, severity, words, as_the_deck", [
+    ("hold", "info", "holds 21: every atom it held, and 1 more", False),
+    ("free", "warn", "leaves atom index 8 (H) of them free", False),
+    ("free", "warn", "leaves atom index 8 (H) of them free", True),
+], ids=["holds-more-for-the-spectrum", "frees-an-atom-the-relaxation-held",
+        "names-it-in-your-order-on-the-decks-sorted-copy"])
 def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
-        junction, change, severity, words):
+        junction, change, severity, words, as_the_deck):
     """`engines/vibration.md` § 2.3a, on the road it was written for: the
     junction relaxed with every atom held but the middle two, saved as a
     pair whose `info.relaxation` record names the atoms the relaxation held
@@ -835,7 +837,10 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
     middle atom more for the spectrum is the partial Hessian over fewer
     atoms, every one balanced: information.  Freeing the left electrode's
     atom next to the bridge, which the relaxation held, is a warning naming
-    it: its force was never balanced."""
+    it: its force was never balanced -- named in your order also when the
+    check is asked of the deck's held-first copy, as prep asks it
+    (`model/overview.md` § 2.2a, I3: the sorted order never reaches a
+    person)."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.validation import validate
     from molbuilder.workingcopy_structure import StructureCodec
@@ -844,6 +849,10 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
     assert len(held) == 20 and 8 in held, sorted(held)
     s.frozen_atoms = sorted(held | {_LEAD + _WIRE // 2 - 1} if change == "hold"
                             else held - {_LEAD - 1})
+    if as_the_deck:
+        from molbuilder.transport.sort import deck_sort_key, sort_by
+        s = sort_by(s, deck_sort_key("siesta", "vibration")).structure
+        assert s.atom_order is not None
     cfg = SiestaConfig(system_label="J", psml_lib="pseudopotential",
                        already_relaxed=True, **RELAXED_WITH)
     found = [i for i in validate(s, cfg, calculation="vibration")

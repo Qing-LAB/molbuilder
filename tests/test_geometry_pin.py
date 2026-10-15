@@ -46,10 +46,12 @@ Keys of a ``[[case]]``:
     for the ``remapped`` pair, carrying ``order``.
 ``unreadable``
     the door raises ``ValueError`` -- an unreadable sidecar's
-    ``MolstructJsonError`` among them -- with this text in its message.
+    ``MolstructJsonError`` among them -- its message holding each of these
+    words, what the contract says of the refusal.
 ``order``
-    the order record the opened ``remapped`` pair carries, ``{key,
-    sorted_to_original, original_to_sorted}``; restored, it is the pair as
+    ``true``: the opened ``remapped`` pair -- the road's CO2 in its engine's
+    order (`support.road.co2_in_engine_order`) -- carries the road's order
+    record (`support.road.CO2_HELD_FIRST`); restored, it is the pair as
     built.  A ``remapped`` row without it opens as built, in your order.
 ``body``
     what a ``route_load`` row adds to ``{path}`` -- ``restore``, an editor's
@@ -63,7 +65,6 @@ Keys of a ``[[case]]``:
 from __future__ import annotations
 
 import json
-import re
 import tomllib
 from pathlib import Path
 
@@ -74,11 +75,12 @@ from molbuilder.sidecars import molstruct
 from molbuilder.structure import Structure
 from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED, RESTORED,
                                               StructureCodec)
+from support.road import (CO2, CO2_HELD_FIRST, co2_in_engine_order,
+                          road_structure)
 
 _TABLE = tomllib.loads(
     (Path(__file__).parent / "data" / "geometry_pin.toml").read_text())
 _PAIR = _TABLE["pair"]
-_REMAPPED = _TABLE["remapped"]
 _CASES = _TABLE["case"]
 #: The notices a ``route_load`` row reads: a changed geometry, a restore.
 _SAID = (GEOMETRY_CHANGED, RESTORED)
@@ -96,23 +98,22 @@ def _the_pair(plain: bool) -> Structure:
                      regions=dict(_PAIR["regions"]))
 
 
-def _the_remapped() -> Structure:
-    """The table's ``[remapped]`` pair as built, in your order."""
-    return Structure(elements=list(_REMAPPED["elements"]),
-                     positions=np.asarray(_REMAPPED["positions"], dtype=float),
-                     regions=dict(_REMAPPED["regions"]))
-
-
 def _opened_as_built(case, got: Structure) -> None:
-    """The ``[remapped]`` pair, opened: carrying the row's ``order`` and,
-    restored, the pair as built -- or, a row without one, as built already."""
-    if "order" in case:
-        assert got.atom_order.to_dict() == case["order"], got.atom_order
+    """The remapped pair, opened: carrying the road's order record and,
+    restored, the road's CO2 as built -- or, a row without ``order``, as
+    built already."""
+    if case.get("order"):
+        assert got.atom_order.to_dict() == CO2_HELD_FIRST, got.atom_order
         got = got.restored()
-    want = _the_remapped()
+    want = road_structure(CO2)
     assert (got.elements, got.regions, got.atom_order) == (
         want.elements, want.regions, None), got
     assert np.allclose(got.positions, want.positions)
+
+
+def _says_unreadable(case, refusal) -> None:
+    """The refusal holds each of the row's ``unreadable`` words."""
+    assert all(w in str(refusal) for w in case["unreadable"]), str(refusal)
 
 
 def _said(case, answer) -> None:
@@ -174,8 +175,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
                                        web_client):
     remapped = case.get("pair") == "remapped"
     if remapped:
-        from molbuilder.transport.sort import sort_by
-        built = sort_by(_the_remapped(), _REMAPPED["key"]).structure
+        built = co2_in_engine_order()
     else:
         built = _the_pair(case.get("plain", False))
     name = "co." + case.get("format", "xyz")
@@ -187,8 +187,9 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
     else:
         path = tmp_path / name
     if case["door"] == "write":
-        with pytest.raises(ValueError, match=re.escape(case["unreadable"])):
+        with pytest.raises(ValueError) as refused:
             StructureCodec().write(built, path)
+        _says_unreadable(case, refused.value)
         return
     if case["door"] in ("route_save", "route_export"):
         _written_by_the_route(case, built, path, web_client)
@@ -215,8 +216,9 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
             StructureCodec().load(path)
         return
     if "unreadable" in case:
-        with pytest.raises(ValueError, match=re.escape(case["unreadable"])):
+        with pytest.raises(ValueError) as refused:
             StructureCodec().load(path)
+        _says_unreadable(case, refused.value)
         return
     got = StructureCodec().load(path)
     if remapped:

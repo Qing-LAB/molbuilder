@@ -29,7 +29,7 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`relaxed_for_vibration` (``real_relaxed_for_vibration``) -- the
   vibration kind's `relax` stage of the road's CO2, listed O O C with the
   carbon held, so its decks are in the engine's held-first order
-  (`_road.co2_relaxed_for_vibration`; plan T-CO2).
+  (`support.road.CO2`; plan T-CO2).
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`): its
 decks as an older molbuilder wrote them, a damaged order record, its held set
@@ -46,7 +46,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
-import numpy as np
 import pytest
 
 
@@ -133,31 +132,25 @@ def _taken(run: RealRun, step: str, *words) -> Said:
     return said
 
 
-def _write_h2(tree: Path) -> str:
-    """The road's H2, its first atom held, in a 10 Å box isolated on every
-    axis: the path `init` takes."""
-    from molbuilder.structure import Structure
+def _described(tree: Path, where: str, *, structure: dict, name: str,
+               calculation: str, stage_strategy: str = "",
+               **blocks) -> Path:
+    """`jobset init` of the road's ``structure`` (`support.road`, written
+    where `init` takes it), SIESTA, layered folders, the ``calculation``'s
+    own ladder or ``stage_strategy``; then the description's run card and
+    benchmark as given -- each block stated, or left out.  THE ONE MAKER of
+    a calculation on the road with the engine."""
     from molbuilder.workingcopy_structure import StructureCodec
+    from support.road import jobset, road_structure
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
-    StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  regions={"frozen_atoms": [0]},
-                  cell=np.diag([10.0] * 3), axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "h2.xyz")
-    return "P/structure/h2.xyz"
-
-
-def _described(tree: Path, where: str, **blocks) -> Path:
-    """`jobset init` of the H2, SIESTA, layered folders, the `publishable`
-    ladder; then the description's run card and benchmark as given -- each
-    block stated, or left out."""
-    from support.road import jobset
-    r = jobset("init", "--structure", _write_h2(tree), "--bundle", where,
-               "--engine", "siesta", "--calculation", "optimization",
-               "--shape", "hierarchical", "--name", "H2",
+    source = f"P/structure/{name.lower()}.xyz"
+    StructureCodec().write(road_structure(structure), tree / source)
+    r = jobset("init", "--structure", source, "--bundle", where,
+               "--engine", "siesta", "--calculation", calculation,
+               "--shape", "hierarchical", "--name", name,
                "--psml-lib", "pseudopotential",
-               "--stage-strategy", "publishable")
+               *(("--stage-strategy", stage_strategy) if stage_strategy
+                 else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / where
     task = json.loads((bundle / "task.json").read_text())
@@ -199,11 +192,20 @@ def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path) -> None:
         run.said[step] = Said(done.returncode, done.stdout + done.stderr)
 
 
+def _h2_optimization(tree: Path, where: str, **blocks) -> Path:
+    """The road's H2, a SIESTA optimization on the `publishable` ladder
+    (:func:`_described`)."""
+    from support.road import H2
+    return _described(tree, where, structure=H2, name="H2",
+                      calculation="optimization",
+                      stage_strategy="publishable", **blocks)
+
+
 def layered(tmp_path_factory) -> RealRun:
     """Run A of plan § 5y -- see the module's note."""
     with _on_the_road(tmp_path_factory, "layered") as tree:
-        bundle = _described(tree, "P/opt/H2",
-                            execution={"mpi_np": 1, "omp_threads": 1})
+        bundle = _h2_optimization(tree, "P/opt/H2",
+                                  execution={"mpi_np": 1, "omp_threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
         _taken(run, "prep coarse", "prep", "task", "--group", "1",
                "--target", "this")
@@ -230,8 +232,9 @@ def layered(tmp_path_factory) -> RealRun:
 def bench(tmp_path_factory) -> RealRun:
     """The benchmark of plan § 5y -- see the module's note."""
     with _on_the_road(tmp_path_factory, "bench") as tree:
-        bundle = _described(tree, "P/opt/H2bench", execution=None,
-                            bench={"mpi_np": [1, 2], "omp_threads": [1]})
+        bundle = _h2_optimization(tree, "P/opt/H2bench", execution=None,
+                                  bench={"mpi_np": [1, 2],
+                                         "omp_threads": [1]})
         run = RealRun(tree=tree, bundle=bundle)
         _taken(run, "prep bench", "prep", "bench", "coarse",
                "--target", "this")
@@ -243,11 +246,20 @@ def bench(tmp_path_factory) -> RealRun:
 
 
 def relaxed_for_vibration(tmp_path_factory) -> RealRun:
-    """The vibration kind's `relax` stage of the road's CO2, run."""
-    from _road import co2_relaxed_for_vibration
+    """The vibration kind's `relax` stage of the road's CO2, run: the kind's
+    own ladder (`relax` then `freq`), one rank, one thread, `relax` prepared
+    and launched."""
     from molbuilder.runs import run_answer
+    from support.road import CO2
     with _on_the_road(tmp_path_factory, "vibration") as tree:
-        run = RealRun(tree=tree, bundle=co2_relaxed_for_vibration(tree))
+        run = RealRun(tree=tree, bundle=_described(
+            tree, "P/freq/CO2", structure=CO2, name="CO2",
+            calculation="vibration",
+            execution={"mpi_np": 1, "omp_threads": 1}))
+        _taken(run, "prep relax", "prep", "task", "--group", "1",
+               "--target", "this")
+        _taken(run, "launch relax", "launch", "task", "--stage", "relax",
+               "--mode", "direct", "--yes")
     # IT REACHED ITS END, by the one status door: every reader of the run
     # reads a relaxation that finished.
     said = run_answer(run.attempt("relax"))
@@ -256,23 +268,33 @@ def relaxed_for_vibration(tmp_path_factory) -> RealRun:
 
 
 #: The copies whose change succeeded, this session (:func:`copy_of`).
-_MADE: set = set()
+_MADE: Dict[Path, RealRun] = {}
 
 
 def copy_of(run: RealRun, name: str, alter) -> RealRun:
     """THE SHARED RUN WITH ONE THING CHANGED: a copy of the calculation
     beside it, ``<bundle>-<name>``, altered once by ``alter(copy)`` -- made
-    once a session, the run's own files left as they are.  A copy counts as
+    once a session, the run's own files left as they are, and the same copy,
+    with what was typed on it, every time it is asked for.  A copy counts as
     made once its change succeeded; one a failed change left behind is made
-    again.  Every test that reads the run with one change asks it."""
-    copy = RealRun(tree=run.tree,
-                   bundle=run.bundle.parent / f"{run.bundle.name}-{name}")
-    if copy.bundle not in _MADE:
-        shutil.rmtree(copy.bundle, ignore_errors=True)
-        shutil.copytree(run.bundle, copy.bundle)
+    again."""
+    bundle = run.bundle.parent / f"{run.bundle.name}-{name}"
+    if bundle not in _MADE:
+        copy = RealRun(tree=run.tree, bundle=bundle)
+        shutil.rmtree(bundle, ignore_errors=True)
+        shutil.copytree(run.bundle, bundle)
         alter(copy)
-        _MADE.add(copy.bundle)
-    return copy
+        _MADE[bundle] = copy
+    return _MADE[bundle]
+
+
+def _typed_on_the_road(run: RealRun, tmp_path_factory, step: str,
+                       *words) -> Said:
+    """One more command typed on ``run`` -- a copy (:func:`copy_of`) -- on
+    the road with the real SIESTA, in the tree it was made in
+    (:func:`_road_at`), written down under ``step``."""
+    with _road_at(run.tree.parent, tmp_path_factory):
+        return _typed(run, step, *words)
 
 
 def relax_decks(run: RealRun):
@@ -283,50 +305,81 @@ def relax_decks(run: RealRun):
     return sorted({ran.deck, ran.stage_deck})
 
 
+def _fenced(deck: Path, name: str, change) -> None:
+    """``deck`` with its molbuilder block ``name`` replaced by
+    ``change(block)`` -- the block's text between its own fences
+    (`deck_record.begin_marker`, `end_marker`), fences included."""
+    from molbuilder.deck_record import begin_marker, end_marker
+    text = deck.read_text()
+    head, rest = text.split(begin_marker(name), 1)
+    block, tail = rest.split(end_marker(name), 1)
+    deck.write_text(head + change(begin_marker(name) + block
+                                  + end_marker(name)) + tail)
+
+
 def with_atom_metadata(deck: Path, change) -> None:
     """``deck``'s ATOM-METADATA block read by its reader
     (`script_emit.read_atom_metadata_block`), ``change(payload)`` applied,
-    and written back between the block's own fences (`deck_record`) -- as
-    an older molbuilder stated it, or as a damaged deck does, the way the pin
-    table rewrites a sidecar."""
-    from molbuilder.deck_record import (BLOCK_ATOM_METADATA, begin_marker,
-                                        end_marker)
-    from molbuilder.script_emit import read_atom_metadata_block
-    text = deck.read_text()
-    payload = read_atom_metadata_block(text)
+    and written back through the block's own framing
+    (`script_emit.atom_metadata_block`) -- as an older molbuilder stated it,
+    or as a damaged deck does, the way the pin table rewrites a sidecar."""
+    from molbuilder.deck_record import BLOCK_ATOM_METADATA
+    from molbuilder.script_emit import (atom_metadata_block,
+                                        read_atom_metadata_block)
+    payload = read_atom_metadata_block(deck.read_text())
     change(payload)
-    head, rest = text.split(begin_marker(BLOCK_ATOM_METADATA), 1)
-    _old, tail = rest.split(end_marker(BLOCK_ATOM_METADATA), 1)
-    deck.write_text(head + "\n".join([
-        begin_marker(BLOCK_ATOM_METADATA),
-        f"# format: molstruct-json/v{payload['schema_version']}",
-        f"# {json.dumps(payload)}",
-        end_marker(BLOCK_ATOM_METADATA)]) + tail)
+    _fenced(deck, BLOCK_ATOM_METADATA, lambda _old: atom_metadata_block(
+        payload))
+
+
+def with_generator_version(deck: Path, version: str) -> None:
+    """``deck``'s PROVENANCE block naming ``version`` as the molbuilder that
+    wrote it -- its one ``generator-version`` line, within the block's
+    fences -- read back by its reader (`script_emit.written_by`)."""
+    import re
+
+    from molbuilder.deck_record import BLOCK_PROVENANCE
+    from molbuilder.script_emit import written_by
+    _fenced(deck, BLOCK_PROVENANCE, lambda block: re.sub(
+        r"(?m)^(#[ \t]*generator-version[ \t]+)\S+", rf"\g<1>{version}",
+        block, count=1))
+    assert written_by(deck.read_text()) == version, deck
 
 
 #: WHAT A DECK FROM BEFORE 2.10.0 IS SAID TO BE (`model/overview.md` § 2.2a,
-#: I9) -- the version :func:`as_prepared_by_2_9_6` stamps, the release the
+#: I9) -- the version :func:`as_2_9_6_wrote_it` stamps, the release the
 #: contract names, and its way out.
 PREPARED_BY_2_9_6 = ("prepared by molbuilder 2.9.6",
                      "before 2.10.0 recorded the order a deck's atoms are in",
                      "prepare the stage again")
 
 
-def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
-    """A copy of the calculation (:func:`copy_of`), every deck of its `relax`
-    stage as molbuilder 2.9.6 wrote it -- that version's stamp, and its
-    ATOM-METADATA block at schema 13, with no order record
-    (`model/overview.md` § 2.2a, I9), as the pin table rewrites a sidecar as
-    an older molbuilder wrote it."""
-    import re
+def as_2_9_6_wrote_it(copy: RealRun) -> None:
+    """Every deck of ``copy``'s `relax` stage as molbuilder 2.9.6 wrote it --
+    that version's stamp, and its ATOM-METADATA block at schema 13, with no
+    order record (`model/overview.md` § 2.2a, I9)."""
+    for deck in relax_decks(copy):
+        with_atom_metadata(deck, lambda block: (
+            block.pop("atom_order"), block.update(schema_version=13)))
+        with_generator_version(deck, "2.9.6")
 
-    def as_2_9_6_wrote_it(copy):
-        for deck in relax_decks(copy):
-            with_atom_metadata(deck, lambda block: (
-                block.pop("atom_order"), block.update(schema_version=13)))
-            deck.write_text(re.sub(r"(?m)^(#[ \t]*generator-version[ \t]+)\S+",
-                                   r"\g<1>2.9.6", deck.read_text()))
+
+def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
+    """A copy of the calculation (:func:`copy_of`) as molbuilder 2.9.6 wrote
+    its `relax` decks (:func:`as_2_9_6_wrote_it`)."""
     return copy_of(run, "before-2.10.0", as_2_9_6_wrote_it)
+
+
+def freq_prepared_on(run: RealRun, name: str, alter,
+                     tmp_path_factory) -> RealRun:
+    """A copy of the calculation (:func:`copy_of`), altered by
+    ``alter(copy)``, and its `freq` stage prepared on the road -- what prep
+    answered written down, ``said["prep freq"]``, refused or not."""
+    def alter_and_prepare(copy):
+        alter(copy)
+        _typed_on_the_road(copy, tmp_path_factory, "prep freq", "prep",
+                           "task", "--group", "2", "--target", "this")
+    return copy_of(run, name, alter_and_prepare)
 
 
 #: THE HELD SET GROWN after `relax` ran (`engines/vibration.md` § 2.3a): the
@@ -334,25 +387,16 @@ def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
 HELD_GROWN = [0, 2]
 
 
-def held_grown(run: RealRun, tmp_path_factory) -> RealRun:
-    """A copy of the calculation (:func:`copy_of`), its structure's held set
-    grown (:data:`HELD_GROWN`) as a person would on the Molbuilder tab, and
-    its `freq` stage prepared on the road -- the force-constant prep built
-    from a relaxation that held other atoms (plan V1.41)."""
+def grow_the_held_set(copy: RealRun) -> None:
+    """``copy``'s structure with its held set grown (:data:`HELD_GROWN`),
+    as a person would on the Molbuilder tab -- the structure the description
+    names (`task.structure.source`), through the codec."""
     from molbuilder.runfiles import TASK_FILE
     from molbuilder.task import read_task
     from molbuilder.workingcopy_structure import StructureCodec
-
-    def grow_and_prepare(copy):
-        task = read_task(copy.bundle / TASK_FILE)
-        source = copy.bundle / Path(task.structure.source).name
-        mine = StructureCodec().load(source)
-        StructureCodec().write(
-            mine.replace(regions={**mine.regions,
-                                  "frozen_atoms": list(HELD_GROWN)}),
-            source)
-        with _road_at(copy.tree.parent, tmp_path_factory):
-            _taken(copy, "prep freq", "prep", "task", "--group", "2",
-                   "--target", "this")
-    return copy_of(run, "held-grown", grow_and_prepare)
-
+    task = read_task(copy.bundle / TASK_FILE)
+    source = copy.bundle / Path(task.structure.source).name
+    mine = StructureCodec().load(source)
+    StructureCodec().write(
+        mine.replace(regions={**mine.regions,
+                              "frozen_atoms": list(HELD_GROWN)}), source)

@@ -490,18 +490,13 @@ def api_structure_save():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # A PAIR IS WRITTEN IN YOUR ORDER (`model/overview.md` § 2.2a, I1): a
-    # structure a viewer held in an engine's order is restored, and said.
-    from ._shared import in_your_order
-    struct, restored = in_your_order(struct, "the structure")
-    # THE SAME GATE THE EXPORT DOOR RUNS: a save and a download cannot
-    # produce different bytes -- and they must not disagree about a refusal
-    # either.  Runs BEFORE the overwrite gate, so nobody is asked to confirm
-    # an overwrite for a save that will be refused; the verdicts ride the
-    # response as `notices`, exactly as they do on export.
-    from ._shared import checked_periodicity
-    struct, notices = checked_periodicity(struct)
-    notices = restored + notices
+    # WRITTEN AS THE EXPORT WRITES IT (`_shared.for_writing`): in your order,
+    # its box judged -- a save and a download cannot produce different bytes,
+    # nor disagree about a refusal.  Runs BEFORE the overwrite gate, so
+    # nobody is asked to confirm an overwrite for a save that will be
+    # refused; the verdicts ride the response as `notices`.
+    from ._shared import for_writing
+    struct, notices = for_writing(struct)
     try:
         resolved = _resolve_within_roots(path)   # save-as target need not exist yet
     except _PickerError as exc:
@@ -562,15 +557,11 @@ def api_structure_export():
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # IN YOUR ORDER, as the save writes it (`model/overview.md` § 2.2a, I1).
-    from ._shared import in_your_order
-    struct, restored = in_your_order(struct, "the structure")
-    # The same gate every other structure door runs, so what leaves here is
-    # judged by the same rules a save is judged by -- and a cell it refuses
-    # leaves as a 400 carrying the gate's sentence, not as a 500.
-    from ._shared import checked_periodicity
-    struct, notices = checked_periodicity(struct)
-    notices = restored + notices
+    # WRITTEN AS THE SAVE WRITES IT (`_shared.for_writing`): in your order,
+    # its box judged -- a cell it refuses leaves as a 400 carrying the gate's
+    # sentence, not as a 500.
+    from ._shared import for_writing
+    struct, notices = for_writing(struct)
     # THE STEM, reduced to its last component.  This never reaches the
     # filesystem -- ``files()`` builds names in memory -- but it does reach the
     # browser as a download name, so a path-shaped one is flattened rather than
@@ -661,12 +652,14 @@ def api_build_load():
         # is, its order record attached.
         from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
                                                       ORDER_UNSTATED)
+        restore = _pbody.get("restore") is True
         try:
             whole = StructureCodec().read(
                 _resolved, frames=True, retired_out=retired,
                 said_out=read_said,
-                opened=(GEOMETRY_CHANGED, ORDER_UNSTATED),
-                in_your_order=_pbody.get("restore") is True)
+                opened=((GEOMETRY_CHANGED,) if restore
+                        else (GEOMETRY_CHANGED, ORDER_UNSTATED)),
+                in_your_order=restore)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
@@ -1136,19 +1129,17 @@ def api_task_setup_handover():
     # one home (`model/structure.md` § 2.4).  A caller appending `.xyz` here
     # would be answering a question that already has an answer.
     from molbuilder.workingcopy_structure import StructureCodec
-    from ._shared import checked_periodicity, in_your_order
-    # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md` § 2.2a,
-    # I1): one a viewer held in an engine's order is restored, and said.
-    struct, restored = in_your_order(struct, "the structure")
-    # THE BOX IS JUDGED AS PREP WILL PLACE IT (`cell.entering`,
-    # structure-periodicity.md § 6.0): an engine's origin is not carried into
-    # the calculation, so a flush face it left is not this calculation's.
-    # The pair is written as given, its origin's record with it.
+    from ._shared import for_writing
+    # A CALCULATION'S STRUCTURE IS WRITTEN AS A SAVE WRITES IT
+    # (`_shared.for_writing`): in your order, its box judged -- AS PREP WILL
+    # PLACE IT (`cell.entering`, structure-periodicity.md § 6.0): an
+    # engine's origin is not carried into the calculation, so a flush face
+    # it left is not this calculation's.  The pair is written as given, its
+    # origin's record with it.
     from molbuilder.cell import entering, keeps_engine_frame
-    _entered, struct_notices = checked_periodicity(entering(
-        struct, keep_engine_frame=keeps_engine_frame(
+    struct, struct_notices = for_writing(struct, judged_as=lambda s: entering(
+        s, keep_engine_frame=keeps_engine_frame(
             calculation, getattr(cfg, "already_relaxed", False))))
-    struct_notices = restored + struct_notices
     try:
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated

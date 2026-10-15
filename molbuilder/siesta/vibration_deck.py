@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import List
 
 from .. import script_emit as _sc
+from ..atom_permutation import SORT_HELD_FIRST
 from ..engine_atom_index import siesta_atom_index
 from ..structure import Structure
 
@@ -54,9 +55,9 @@ def fc_facts(struct: Structure, cfg) -> dict:
         raise ValueError(
             "the free atoms are not one trailing run of atom numbers, so "
             "no FC.First/FC.Last can name them.  The vibration deck is "
-            "rendered from a copy sorted with the 'held-first' key and the "
-            "permutation is recorded beside the calculation "
-            "(model/overview.md 2.2) -- `prep` does this; a deck rendered "
+            f"rendered from a copy sorted with the {SORT_HELD_FIRST!r} key, "
+            "which records its order (model/overview.md 2.2a) -- `prep` "
+            "does this; a deck rendered "
             "from the input order is a deck rendered from the wrong "
             "structure.")
     return {
@@ -91,9 +92,9 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
             f"# {cfg.system_label}.spectra.json (engines/vibration.md 5.5).",
             f"# The range is the {f['n_free']} FREE atom(s); the {f['n_held']} held",
             "# atom(s) come first in this deck's numbering because the structure",
-            "# was sorted with the 'held-first' key -- the permutation back to the",
-            "# input order is atom-permutation.json beside this calculation",
-            "# (model/overview.md 2.2).  Fixed by the kind, not a preference.",
+            f"# was sorted with the {SORT_HELD_FIRST!r} key -- the order record",
+            "# back to the input order is this deck's ATOM-METADATA block",
+            "# (model/overview.md 2.2a).  Fixed by the kind, not a preference.",
         ]
     out += [
         "MD.TypeOfRun      FC",

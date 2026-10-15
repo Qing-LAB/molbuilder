@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, List, Mapping, Optional, Tuple
 
 from ..issues import Issue
-from ..structure import Structure, atom_words
+from ..structure import Structure
 
 
 def _check_frozen_atoms_consumed(struct: Structure, *,
@@ -98,7 +98,7 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     loose = sorted(lead_idx - frozen)
     if not loose:
         return []
-    shown = atom_words(loose, getattr(struct, "elements", ()), limit=6)
+    shown = struct.atoms_named(loose, limit=6)
     return [Issue(
         "warn",
         (f"{len(loose)} atom(s) carry an electrode label but are NOT frozen: "
@@ -252,7 +252,7 @@ def _held_set_finding(struct: Structure, held: Tuple[int, int, List[int]],
         return Issue(
             severity=severity, where="config.already_relaxed",
             message=(f"{who} held {then} atom(s); {here} leaves "
-                     f"{atom_words(freed, struct.elements, limit=6)} of them "
+                     f"{struct.atoms_named(freed, limit=6)} of them "
                      f"free.  Their forces were never balanced, so the "
                      f"geometry is not stationary for them." + tail))
     return Issue(

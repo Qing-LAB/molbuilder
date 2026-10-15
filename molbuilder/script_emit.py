@@ -468,8 +468,17 @@ def emit_atom_metadata(struct: Any,
     payload["created_by"] = created_by
     if created_at:
         payload["created_at"] = created_at
+    return atom_metadata_block(payload)
+
+
+def atom_metadata_block(payload: Dict[str, Any]) -> str:
+    """THE ATOM-METADATA BLOCK'S FRAMING, of a payload as its one reader
+    reads it back (:func:`read_atom_metadata_block`): the fences, the format
+    line naming the payload's own ``schema_version``, and the JSON one
+    top-level key a line.  :func:`emit_atom_metadata` writes every deck's
+    through it."""
     out: List[str] = [begin_marker(BLOCK_ATOM_METADATA)]
-    out.append(f"# format: molstruct-json/v{_SCHEMA_VERSION}")
+    out.append(f"# format: molstruct-json/v{payload['schema_version']}")
     out.extend(f"# {line}" for line in _compact_json_lines(payload))
     out.append(end_marker(BLOCK_ATOM_METADATA))
     return "\n".join(out)
@@ -680,7 +689,7 @@ __all__ = [
     "emit_header", "emit_provenance", "emit_bench_marks",
     "write_validation_report", "VALIDATION_SUFFIX",
     "emit_atom_metadata", "emit_user_custom_placeholder",
-    "atom_metadata_has_something",
+    "atom_metadata_block", "atom_metadata_has_something",
     # In-body application
     "apply_atom_metadata",
     # An item nobody set, said where its line would be
@@ -1441,7 +1450,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
             f"(model/structure-periodicity.md § 6.0)")
     from .cell import require_placed as _require_placed
     _kinds = tuple(getattr(struct, "axis_kind", None) or ("isolated",) * 3)
-    _require_placed(spec.engine_frame, _kinds)
+    _require_placed(spec.engine_frame, struct)
     # An atom past a PERIODIC face is not refused -- the engine wraps it as an
     # image -- and `cell.check` has already said so in step 3.3, which is where
     # a box is judged: once, not here again.

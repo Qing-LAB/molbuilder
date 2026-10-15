@@ -20,7 +20,7 @@ read back with it, through `runfiles`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -398,6 +398,16 @@ class Declared:
         from molbuilder.deck_record import order_record_of
         return order_record_of(self.atom_metadata)
 
+    def require_order(self) -> "Declared":
+        """This record, refused when nothing states the order its run's atoms
+        are in (I9, :attr:`order_unstated`): :class:`OrderUnstated`, the
+        sentence every door says.  THE ONE REFUSAL of every door that builds
+        from the run (:meth:`RunView.in_your_order`) or would write its file
+        as it stands (a bare ``xv2xyz``)."""
+        if self.order_unstated:
+            raise OrderUnstated(self.order_unstated)
+        return self
+
     def frame(self, lattice=None) -> Optional[Dict[str, Any]]:
         """The box the engine had, for coordinates that came from it
         (`model/structure-periodicity.md` § 6.0): the ``cell`` -- the
@@ -484,9 +494,28 @@ class RunView:
     atom_metadata: Optional[Dict[str, Any]] = None
     periodicity: Optional[Dict[str, Any]] = None
     info: Optional[Dict[str, Any]] = None
-    #: A deck written before the order was recorded: what every door says
-    #: of it (:attr:`Declared.order_unstated`, I9).
-    order_unstated: Optional[str] = None
+    #: What the run's deck declared (:func:`declared`), read once for the
+    #: view -- its records whole, its order record, and that nothing states
+    #: it (I9).
+    declared: "Declared" = field(default_factory=lambda: Declared())
+
+    @property
+    def order_unstated(self) -> Optional[str]:
+        """A deck written before the order was recorded: what every door
+        says of it (:attr:`Declared.order_unstated`, I9)."""
+        return self.declared.order_unstated
+
+    def in_your_order(self, struct, what: str):
+        """``(structure, said)``: ``struct`` -- the run's atoms as a file of
+        the run states them, in its engine's order -- with what the run says
+        about it (:meth:`onto`), put back in your order, and the sentence a
+        door says of it (``Structure.in_your_order``, naming ``what``).  THE
+        ONE WAY a door that builds from a run's file crosses back: the run
+        door's geometry (:func:`steps_of`), the codec's read of an editor or
+        a builder, ``xv2xyz --from-run``.  A run whose order nothing states
+        is refused (:meth:`Declared.require_order`, I9)."""
+        self.declared.require_order()
+        return self.onto(struct).in_your_order(what)
 
     def structure(self, elements, positions):
         """One geometry step of the run as a ``Structure``, with what the
@@ -536,7 +565,7 @@ def view_of(run: Optional[Run], *, output=None, traj: Any = None,
     return RunView(atom_metadata=said.atom_metadata_for(n_atoms),
                    periodicity=said.frame(lattice),
                    info=run_info(deck=said.deck, output=output, traj=traj),
-                   order_unstated=said.order_unstated)
+                   declared=said)
 
 
 class RunStepsError(ValueError):
@@ -589,14 +618,10 @@ def steps_of(run: Run, output) -> RunSteps:
                else [[float(v) for v in row] for row in lattice])
     view = view_of(run, output=output, traj=traj,
                    n_atoms=len(last.structure.elements), lattice=lattice)
-    if view.order_unstated:
-        raise OrderUnstated(view.order_unstated)
     return RunSteps(
         lattice=lattice,
-        first=view.structure(first.structure.elements,
-                             first.structure.positions).restored(),
-        last=view.structure(last.structure.elements,
-                            last.structure.positions).restored())
+        first=view.in_your_order(first.structure, output.name)[0],
+        last=view.in_your_order(last.structure, output.name)[0])
 
 
 def about(path) -> Dict[str, Any]:

@@ -1903,14 +1903,14 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
     identity columns and per-atom channels included.  Both translations run
     REAL: the payload a server sends goes through ``structureFromServer``
     (the per-atom fold) and back out through ``structureForServer`` (the
-    envelope unfold).  Until 2026-08-20 the fold read five fields and the
-    unfold rebuilt four, so channels died at adoption and the first edit
-    round-trip replaced every real residue name with the server's
+    envelope unfold).  The silent failure: a fold that reads fewer fields
+    than the unfold rebuilds, so channels die at adoption and the first edit
+    round-trip replaces every real residue name with the server's
     re-synthesized placeholder.  A metadata key the module does not shape --
     the order record of a structure in an engine's order (`model/overview.md`
     § 2.2a) -- goes back as it came; a key the doors listed by hand would
     be dropped on every save."""
-    from _road import CO2_HELD_FIRST
+    from support.road import CO2_HELD_FIRST
     jobs_url = (MODULE_DIR / "model-jobs.js").resolve().as_uri()
     order = CO2_HELD_FIRST
     payload = {

@@ -478,6 +478,9 @@ def _structure_for(task, base: Path, pset):
                 raise PrepError(f"the structure has changed since this "
                                 f"calculation was described: {exc}") from None
             except OrderUnstated as exc:
+                # THE RECORDED SOURCE ITSELF, read where its copy beside the
+                # calculation is absent, when it is an engine's own file of a
+                # run whose order nothing states (I9).
                 raise PrepError(str(exc)) from None
             break
     else:

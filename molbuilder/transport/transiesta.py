@@ -444,7 +444,7 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
     """
     # TWO LEADS, ALWAYS: no other label is one (`sort.ELECTRODE_LABELS`),
     # and the sort refuses a junction missing either before any deck is
-    # rendered (`sort.categorical_sort`).
+    # rendered (`sort.sort_by`, the transport key).
     electrodes = _find_electrode_regions(struct)
     semi_inf = {0: "-A3", len(electrodes) - 1: "+A3"}
     # The chempot binds by the region's own NAME: L-electrode -> Left

@@ -1071,23 +1071,26 @@ class PeriodicityRefused(Exception):
     """
 
 
-def in_your_order(struct: Structure, what: str):
-    """``(struct, notices)``: the structure in your order, and what to say of
-    it (``model/overview.md`` § 2.2a, I1, I8).  One in an engine's order --
-    it carries its order record -- is restored through
-    ``Structure.restored()`` and said in a ``structure.restored`` notice
-    naming the order in its words (``Structure.in_your_order``); one in
-    your order comes
-    back as it is, nothing said.
-    Every web door that crosses back with a structure the browser sent asks
-    it: the save, the export, the hand-over (a file is read in your order by
-    the codec itself, ``in_your_order``).  ``what`` names the structure in
-    the sentence."""
-    struct, said = struct.in_your_order(what)
-    if said is None:
-        return struct, []
-    from molbuilder.workingcopy_structure import RESTORED, read_notice
-    return struct, notices_for_report([read_notice(RESTORED, said)])
+def for_writing(struct: Structure, *, judged_as=None):
+    """``(struct, notices)``: a structure the browser sent, as a web door
+    writes it for a person -- IN YOUR ORDER (``model/overview.md`` § 2.2a,
+    I1): one in an engine's order is put back (``Structure.in_your_order``)
+    and said in a ``structure.restored`` notice naming the order in its
+    words -- and ITS BOX JUDGED (:func:`checked_periodicity`), a refusal the
+    door's 400, the verdicts said after the restore.  THE ONE SEQUENCE the
+    save, the export and the hand-over run, so a save, a download and a
+    calculation's structure cannot disagree about what is written or
+    refused.  ``judged_as`` -- the hand-over's -- is what the gate judges in
+    the structure's place: the box as prep will place it (`cell.entering`);
+    what is written stays as given."""
+    struct, said = struct.in_your_order("the structure")
+    restored = []
+    if said is not None:
+        from molbuilder.workingcopy_structure import RESTORED, read_notice
+        restored = notices_for_report([read_notice(RESTORED, said)])
+    _judged, notices = checked_periodicity(
+        judged_as(struct) if judged_as is not None else struct)
+    return struct, restored + notices
 
 
 def checked_periodicity(struct):
@@ -1134,5 +1137,5 @@ __all__ = [
     "config_from_params",
     "PeriodicityRefused",
     "checked_periodicity",
-    "in_your_order",
+    "for_writing",
 ]

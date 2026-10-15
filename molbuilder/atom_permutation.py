@@ -78,8 +78,9 @@ def _two_lists(o2s, s2o, source: str) -> Tuple[Tuple[int, ...], Tuple[int, ...]]
     if sorted(s2o) != every or sorted(o2s) != every or any(
             s2o[o2s[i]] != i for i in range(n)):
         raise PermutationError(
-            f"{source}: the order record's two lists must each name every "
-            f"one of the {n} atoms once, and each undo the other")
+            f"{source}: the order record's two lists must be inverse "
+            f"bijections over its {n} atoms -- each naming every atom once, "
+            f"each undoing the other")
     return o2s, s2o
 
 

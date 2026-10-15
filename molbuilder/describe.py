@@ -277,11 +277,8 @@ def write_description(desc: Description, dest, *,
     pair: List[Tuple[Path, bytes]] = []
     if src is not None and src.is_file():
         codec = StructureCodec()
-        # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md`
-        # § 2.2a, I1): read so when none was handed in.
         pair = codec.source_files(
-            struct if struct is not None
-            else codec.load(src, in_your_order=True),
+            struct if struct is not None else codec.load(src),
             desc.task.label)
         desc = _dc.replace(desc, task=_dc.replace(
             desc.task, structure=_dc.replace(

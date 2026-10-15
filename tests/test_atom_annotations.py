@@ -120,41 +120,6 @@ def test_passthrough_op_carries_annotations_verbatim():
     assert out.get_channel("charge").data == {0: -1.0}
 
 
-# ---- ATOM-METADATA comment-block persistence (§3, script_emit) ------ #
-
-def test_atom_metadata_block_roundtrips_annotations():
-    from molbuilder import script_emit as sc
-    s = _struct(5)
-    s.regions = {"bridge": [1]}
-    s.frozen_atoms = [4]
-    s.set_channel("charge", AtomChannel("value", {0: -1.0, 2: 0.5}))
-    block = sc.emit_atom_metadata(s)
-    # THE CURRENT schema, read from the one place that defines it: a version
-    # bump is not a regression, and a test that hard-codes a version number
-    # reports one every time.  What this test is actually about is the ROUND
-    # TRIP below.
-    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
-    assert f"molstruct-json/v{SCHEMA_VERSION}" in block
-    assert '"annotations"' in block
-    back = _struct(5)
-    assert sc.apply_atom_metadata(back, sc.read_atom_metadata_block(block)) is True
-    assert back.regions == {"bridge": [1], FROZEN_LABEL: [4]}
-    assert back.frozen_atoms == [4]
-    assert back.get_channel("charge").data == {0: -1.0, 2: 0.5}   # int keys
-
-
-def test_atom_metadata_block_annotations_only():
-    """Block emits even when ONLY annotations are present (no regions/frozen)."""
-    from molbuilder import script_emit as sc
-    s = _struct(3)
-    s.set_channel("tail", AtomChannel("tag", [2]))
-    block = sc.emit_atom_metadata(s)
-    assert block is not None
-    back = _struct(3)
-    assert sc.apply_atom_metadata(back, sc.read_atom_metadata_block(block)) is True
-    assert back.get_channel("tail").data == [2]
-
-
 def test_concat_carries_and_reindexes_annotations():
     """Structure.concat must carry + re-index annotation channels (§2.1),
     not just regions/frozen (regression for the concat data-loss bug)."""

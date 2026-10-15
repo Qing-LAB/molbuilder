@@ -2526,8 +2526,8 @@ built 2026-10-09, plan § 5z Q17-c)*.
 **A cited run in an engine's order, and a run that is not a relaxation**
 *(built 2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
 plan § 5ab R3)*. **A run whose verdict is not a geometry relaxation is
-refused**, as the condition above says, through the verdict `_classify_run`
-reads (`run_state_of`): a vibration's force-constant stage, whose last
+refused**, as the condition above says — by name, as a run that *relaxed no
+geometry* — through the verdict `_classify_run` reads (`run_state_of`): a vibration's force-constant stage, whose last
 geometry is a displacement, and a transport rung, whose output reports a
 self-consistent field alone. **A cited run's geometry crosses back first** —
 its relaxed structure and its starting geometry (the leads' *unmoved* gate
@@ -3696,11 +3696,11 @@ expansion in the shipped 2-terminal scope.)
 > out-of-order structure produces silently wrong physics with no run-time error.
 >
 > **It is held by CONSTRUCTION, and that is the whole answer.**
-> `sort.categorical_sort` orders the atoms `[lower][bridge][upper]` before any
+> `sort.sort_by(…, "transport")` orders the atoms `[lower][bridge][upper]` before any
 > deck is rendered, and the extracted lead inherits exactly that order — which
 > is what makes the device-block ↔ electrode-calculation correspondence hold.
 > `sort._partition_of` refuses an unlabeled or double-labeled atom, and
-> `categorical_sort` refuses a missing region or two electrode blocks that
+> the transport sort refuses a missing region or two electrode blocks that
 > interleave along z.
 >
 > *(This said the ordering was ALSO gated by `TransiestaEngine.preflight`,
@@ -4498,7 +4498,7 @@ flowchart TB
     LOAD["<b>2 · labeled_citation_structure</b><br/>a run: its last step, by runs.view_of<br/>a pair: its own frames, cell and labels<br/>axis_kind: z STATED, x/y as the citation recorded"]
     GATE["<b>3 · _unusable_cell</b><br/>refuses: no cell · not 3 finite vectors · no volume"]
     OVER["<b>4 · the start</b><br/>a run's first step, for the lead gate"]
-    SORT["<b>5 · categorical_sort</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
+    SORT["<b>5 · sort_by, the transport key</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
     REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json (every frame)<br/>+ a run's cited.fdf + provenance + permutation"]
     EX["<b>7 · extract_electrode_model → as_structure</b><br/>a SUBSET: the lead<br/>device's lat_a/lat_b verbatim + derived z-period"]
     EM["<b>8 · _emit_geometry</b><br/>cell verbatim · atoms shifted by −origin<br/>species re-derived"]

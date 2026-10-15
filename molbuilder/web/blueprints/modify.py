@@ -395,25 +395,18 @@ def api_modify_append():
         addition = _struct_from_body(body, "addition")
     except ValueError as exc:
         return _err(str(exc), 400)
-    # THE ADDITION IN YOUR ORDER, said in the notice every web door that
-    # restores says (`_shared.in_your_order`; `model/overview.md` § 2.2a).
-    from ._shared import in_your_order
-    addition, restored = in_your_order(addition, "the added structure")
     try:
         new_struct, notes = _append_structure(struct, addition)
     except (ValueError, IndexError) as exc:
         return _err(f"append failed: {exc}", 400)
-    # The merge's own decisions, as receipts.  `info` rather than `warn`: the
-    # rules are stated up front and nothing here went wrong -- but a renamed
-    # label or a dropped cell is invisible in the result, which is exactly what
-    # a receipt is for.
-    # THROUGH THE ONE DOOR (`periodicity_gate._notice`), like every other
-    # notice: `level` is validated by `issues.Issue` on the way and `about` is
-    # derived from `where`.
-    from ...periodicity_gate import _notice
-    return _ok_response(new_struct, extra={"notices": restored + [
-        _notice("info", m, "append.merge") for m in notes
-    ]})
+    # The merge's own notices, as receipts (`modify.append_structure`): what
+    # it decided, and an addition put back in your order.  `info` rather than
+    # `warn`: the rules are stated up front and nothing here went wrong -- but
+    # a renamed label or a dropped cell is invisible in the result, which is
+    # exactly what a receipt is for.
+    from ...periodicity_gate import notices_for_report
+    return _ok_response(new_struct,
+                        extra={"notices": notices_for_report(notes)})
 
 
 # --------------------------------------------------------------------- #

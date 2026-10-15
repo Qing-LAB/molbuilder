@@ -225,7 +225,12 @@ the browser. **Two calls cross with it**: `transport.sort.sort_by` sets it
 moves every per-atom field and every frame's atoms back to your order through
 it and clears it — `info` (its relaxation record's fingerprint sorts its
 lines, so it survives) and the `customized` rows untouched; a structure in
-your order comes back unchanged. `runs.view_of` attaches it from a run's
+your order comes back unchanged. `Structure.in_your_order(what)` is that
+restore with the sentence a door says of it (*… held atoms first …*), and
+**an atom of a structure that may be remapped is named in your order** —
+`Structure.your_indices` for its index, `Structure.atoms_named` for the words
+every message names atoms in (`atom_words`, with each element): a deck's
+sorted copy names the atom the person knows. `runs.view_of` attaches it from a run's
 deck; the codec carries it, and refuses to write it except for an engine's
 record (§ 2.4). **Refused by name**, naming `restored()`: `take` on a
 remapped structure, an edit that adds or removes atoms on one — one sentence,
@@ -769,11 +774,21 @@ one spanning multiple segments is disambiguated by appending the segment index
 truncate to first char), or crashing on a TER between ATOM blocks.
 
 **The one reading door.** `StructureCodec().load(path, *, frame=None,
-frames=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on the
-extension (`.xyz` / `.pdb`, anything else refused by name) and applies the
+frames=False, retired_out=None, said_out=None, opened=(),
+in_your_order=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
+the extension (`.xyz` / `.pdb`, anything else refused by name) and applies the
 `.molstruct.json` beside it through `apply_to_structure`. **The pair is the
 file**: a reader that takes the geometry alone hands back a structure smaller
-than what is on disk.
+than what is on disk. **What the read says** to a person goes in `said_out`,
+each a notice by its name and level — one table, `READ_NOTICES`, made by
+`read_notice`: `structure.lone_file` (info, below), `structure.geometry_changed`
+(warn, `structure-molstruct.md` § 3), `structure.order_unstated` (warn,
+`model/overview.md` § 2.2a, I9) and `structure.restored` (info, I8). The two
+warned states are refusals for a door that builds from the file; a door that
+only shows it names them in `opened` and opens it, said. `in_your_order` is the
+read of an editor, a calculation's structure or a citation: a structure in an
+engine's order is put back in yours and said, and a run whose order nothing
+states is refused — asking to open it as well is refused too.
 
 **A lone file says what was read** *(user, 2026-10-09: "If the XYZ file doesn't
 come with a JSON file, then we would notify the user that we're dumping the

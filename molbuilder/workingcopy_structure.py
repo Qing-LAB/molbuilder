@@ -181,9 +181,11 @@ class StructureCodec:
 
         ``in_your_order``: the read of an editor, a calculation's structure
         or a citation (I1, I3, I8) -- a structure in an engine's order is
-        put back in yours (``Structure.in_your_order``), said
-        (:data:`RESTORED`); one whose order nothing states cannot be, and is
-        refused whatever ``opened`` says.
+        put back in yours (``Structure.in_your_order``; an engine's own file
+        through its run's view, ``runs.RunView.in_your_order``), said
+        (:data:`RESTORED`) to a caller that passes ``said_out``; one whose
+        order nothing states cannot be, and is refused -- and asking to
+        open it as well is refused, the two contradicting each other.
         """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
@@ -214,6 +216,11 @@ class StructureCodec:
         if opened and said_out is None:
             raise ValueError("a read that opens what it would refuse says "
                              "so: pass said_out")
+        if in_your_order and ORDER_UNSTATED in opened:
+            raise ValueError("a read in your order cannot open a run whose "
+                             "order nothing states: nothing can put it in "
+                             "yours (I9)")
+        restored_said = None
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             payload = molstruct.load(sidecar_path, retired_out=retired_out)
@@ -238,14 +245,19 @@ class StructureCodec:
             # labels of its deck, and the order record of a reordered run --
             # the file is in its engine's order (`model/overview.md` § 2.2a,
             # I5); what the run says about itself.
-            from .runs import OrderUnstated, run_of, view_of
+            from .runs import run_of, view_of
             view = view_of(run_of(src), n_atoms=struct.n_atoms)
-            if view.order_unstated:
-                if in_your_order or ORDER_UNSTATED not in opened:
-                    raise OrderUnstated(view.order_unstated)
-                said_out.append(read_notice(ORDER_UNSTATED,
-                                            view.order_unstated))
-            struct = view.onto(struct)
+            if in_your_order:
+                # AN EDITOR'S OR A BUILDER'S READ crosses back through the
+                # run's view, refused when nothing states its order (I9).
+                struct, restored_said = view.in_your_order(struct, src.name)
+            else:
+                if view.order_unstated:
+                    if ORDER_UNSTATED not in opened:
+                        view.declared.require_order()
+                    said_out.append(read_notice(ORDER_UNSTATED,
+                                                view.order_unstated))
+                struct = view.onto(struct)
         elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read
@@ -253,11 +265,15 @@ class StructureCodec:
             # (`model/structure.md` § 2.3).
             said_out.append(read_notice(LONE_FILE,
                                         lone_xyz_said(src.name, text)))
-        if in_your_order:
-            # IN YOUR ORDER, said (`model/overview.md` § 2.2a, I1, I8).
-            struct, said = struct.in_your_order(src.name)
-            if said is not None and said_out is not None:
-                said_out.append(read_notice(RESTORED, said))
+        if in_your_order and restored_said is None:
+            # A PAIR IN AN ENGINE'S ORDER -- an engine's record -- crosses
+            # back too (`model/overview.md` § 2.2a, I1, I8).
+            struct, restored_said = struct.in_your_order(src.name)
+        if restored_said is not None and said_out is not None:
+            # SAID to a door that tells a person what it read; a builder
+            # reading a structure that is in your order by design (I1)
+            # passes no list, and its restore is a guard.
+            said_out.append(read_notice(RESTORED, restored_said))
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what

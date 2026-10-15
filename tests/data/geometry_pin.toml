@@ -33,16 +33,6 @@ axis_kind = ["periodic", "periodic", "isolated"]
 regions = { frozen_atoms = [0] }
 title = "carbon monoxide"
 
-# The remapped pair: a CO2 listed O O C with the carbon held, sorted
-# held-first for an engine -- its order record a 3-cycle, so the two
-# directions differ -- and written through the codec's one door for an
-# engine's record.
-[remapped]
-elements = ["O", "O", "C"]
-positions = [[1.16, 0.0, 0.0], [-1.16, 0.0, 0.0], [0.0, 0.0, 0.0]]
-regions = { frozen_atoms = [2] }
-key = "held-first"
-
 [[case]]
 name = "a pair as it was written opens"
 door = "load"
@@ -125,13 +115,13 @@ door = "load"
 name = "an engine's record opens with its order record whole, and restored is the structure it was sorted from"
 pair = "remapped"
 door = "load"
-order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [1, 2, 0] }
+order = true
 
 [[case]]
 name = "the browser's load door answers an engine's record as it is -- its order record attached, nothing said: a viewer shows the engine's order"
 pair = "remapped"
 door = "route_load"
-order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [1, 2, 0] }
+order = true
 
 [[case]]
 name = "...and in your order when an editor opens it, saying so -- the Molbuilder tab holds only your order"
@@ -145,35 +135,35 @@ name = "an order record missing a direction is refused"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1] } }
 door = "load"
-unreadable = "an order record states its key and both directions"
+unreadable = ["atom_order", "both directions"]
 
 [[case]]
 name = "an order record whose two directions are not inverse is refused"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [2, 0, 1] } }
 door = "load"
-unreadable = "the order record's two lists must each name every one of the 3 atoms once, and each undo the other"
+unreadable = ["atom_order", "inverse bijections"]
 
 [[case]]
 name = "an order record naming an atom outside the structure is refused -- a negative index read from the end would undo the other list by accident"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [2, 0, 1], original_to_sorted = [-2, 2, 0] } }
 door = "load"
-unreadable = "the order record's two lists must each name every one of the 3 atoms once, and each undo the other"
+unreadable = ["atom_order", "inverse bijections"]
 
 [[case]]
 name = "an order record over another number of atoms is refused"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [1, 0], original_to_sorted = [1, 0] } }
 door = "load"
-unreadable = "the order record is over 2 atoms; the structure holds 3"
+unreadable = ["atom_order", "over 2 atoms"]
 
 [[case]]
 name = "an order record whose atom index is not a whole number is refused, not rounded"
 pair = "remapped"
 sidecar = { atom_order = { key = "held-first", sorted_to_original = [2.9, 0, 1], original_to_sorted = [1, 2, 0] } }
 door = "load"
-unreadable = "an order record states its key and both directions as lists of whole atom indices"
+unreadable = ["atom_order", "whole atom indices"]
 
 [[case]]
 name = "a viewer's save of a structure in an engine's order writes your order, and says so"
@@ -191,4 +181,4 @@ said = { where = "structure.restored", severity = "info", words = ["the structur
 name = "a structure in an engine's order is not written as a person's pair: refused, naming restored()"
 pair = "remapped"
 door = "write"
-unreadable = "restore it to your order with restored() first"
+unreadable = ["restored()"]

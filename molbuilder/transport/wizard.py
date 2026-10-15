@@ -58,7 +58,7 @@ import numpy as np
 
 from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
                     detect_layers)
-from ..structure import Structure, atom_words
+from ..structure import Structure
 from .sort import ELECTRODE_LABELS
 from .transiesta import (
     _compute_cell_from_extents,
@@ -188,20 +188,6 @@ class ElectrodeModel:
 FROZEN_TOL_ANG = 1e-3
 
 
-def _atoms_named(device: Structure, idxs, limit: int = 6) -> str:
-    """``atom indices 3 (Au), 4 (Au) and 12 more`` (`structure.atom_words`),
-    in the identity the person can act on.
-
-    `engine_atom_index`: the canonical atom identity is the index in the
-    person's own order, which is what the Modify tab shows -- the device's
-    own answer, ``Structure.your_indices`` (`model/overview.md` § 2.2a).
-    """
-    els = device.elements
-    shown = device.your_indices(idxs)
-    return atom_words(shown, {s: els[i] for s, i in zip(shown, idxs)},
-                      limit=limit)
-
-
 def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
     """What this lead's periodic boundary does to the crystal, measured.
 
@@ -282,7 +268,7 @@ def _refuse_unless_frozen_bulk(
     if loose:
         raise ValueError(
             f"{len(loose)} atom(s) in {label!r} are NOT FROZEN: "
-            f"{_atoms_named(device, loose)}.  A lead is the "
+            f"{device.atoms_named(loose, limit=6)}.  A lead is the "
             f"pristine bulk "
             f"the self-energy attaches to, so every atom carrying an "
             f"electrode label must be held still — freeze them (the Modify "
@@ -306,7 +292,7 @@ def _refuse_unless_frozen_bulk(
     moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
     if moved:
         shown = "; ".join(
-            f"{_atoms_named(device, [i])} moved {d:.4f} A"
+            f"{device.atoms_named([i])} moved {d:.4f} A"
             for i, d in moved[:6])
         more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
         raise ValueError(
@@ -353,7 +339,7 @@ def extract_electrode_model(
     1 and 2 before 3 because the spacings of a block that moved describe
     nothing.  Raises ``ValueError``; `compose` turns it into a
     ``ComposeError`` verbatim.  A refusal names atoms in the person's order
-    (:func:`_atoms_named`, the device's own answer).
+    (``Structure.atoms_named``).
     """
     electrodes = {lab: (name, idxs)
                   for lab, name, idxs in _find_electrode_regions(device)}

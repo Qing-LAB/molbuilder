@@ -73,6 +73,49 @@ H2 = {"elements": ["H", "H"],
       "regions": {"frozen_atoms": [0]},
       "cell": [10.0, 10.0, 10.0]}
 
+#: THE ROAD'S CO2 (plan T-CO2): listed O O C, the carbon held, so the
+#: held-first order a SIESTA vibration's decks are written in is a 3-cycle
+#: and a restore in the wrong direction gives another answer.  Linear, in a
+#: 10 Å box; one C=O a little long, so a relaxation moves.
+CO2 = {"elements": ["O", "O", "C"],
+       "positions": [[5.0, 5.0, 6.20], [5.0, 5.0, 3.84], [5.0, 5.0, 5.0]],
+       "regions": {"frozen_atoms": [2]},
+       "cell": [10.0, 10.0, 10.0]}
+
+#: ITS HELD-FIRST ORDER RECORD -- the rule of `model/overview.md` § 2.2's
+#: second key applied to it (the held carbon first, then the oxygens in their
+#: own order): C O O, [2, 0, 1] one way and [1, 2, 0] the other.  What every
+#: test of a deck, a run or a pair in that order expects.
+CO2_HELD_FIRST = {"key": "held-first", "sorted_to_original": [2, 0, 1],
+                  "original_to_sorted": [1, 2, 0]}
+CO2_ENGINE_ELEMENTS = [CO2["elements"][i]
+                       for i in CO2_HELD_FIRST["sorted_to_original"]]
+
+
+def road_structure(s: dict):
+    """A road structure -- :data:`H2`, :data:`CO2`, a row's -- as a
+    ``Structure``: its ``elements``, ``positions`` (Å), ``regions``
+    (``frozen_atoms`` among them), its box's three edges or three vectors,
+    ``cell`` (Å), and each axis's ``axis_kind`` (isolated unless given).
+    THE ONE BUILDER of the road's structures."""
+    from molbuilder.structure import Structure
+    return Structure(
+        elements=list(s["elements"]),
+        positions=np.array(s["positions"], dtype=float),
+        regions={k: list(v) for k, v in s.get("regions", {}).items()},
+        cell=(np.asarray(s["cell"], dtype=float) if np.ndim(s["cell"]) == 2
+              else np.diag([float(a) for a in s["cell"]])),
+        axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3)))
+
+
+def co2_in_engine_order():
+    """The road's CO2 as a SIESTA vibration's decks hold it: sorted by its
+    decks' key (`transport.sort.sort_by`, `deck_sort_key`), its order record
+    on it."""
+    from molbuilder.transport.sort import deck_sort_key, sort_by
+    return sort_by(road_structure(CO2),
+                   deck_sort_key("siesta", "vibration")).structure
+
 
 def describe_calculation(tmp_path, monkeypatch, *,
                          shape: str = "hierarchical", name: str = "H2",
@@ -95,24 +138,13 @@ def describe_calculation(tmp_path, monkeypatch, *,
     § 5.2).  A test about that refusal takes the card away."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "pseudopotential").mkdir()
     s = structure or H2
     write_pseudos(tree / "pseudopotential", sorted(set(s["elements"])))
-    StructureCodec().write(
-        Structure(elements=list(s["elements"]),
-                  positions=np.array(s["positions"], dtype=float),
-                  regions={k: list(v)
-                           for k, v in s.get("regions", {}).items()},
-                  # the box's three edges, or its three vectors whole
-                  cell=(np.asarray(s["cell"], dtype=float)
-                        if np.ndim(s["cell"]) == 2
-                        else np.diag([float(a) for a in s["cell"]])),
-                  axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3))),
-        tree / STRUCTURE)
+    StructureCodec().write(road_structure(s), tree / STRUCTURE)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
     siesta = engine == "siesta"

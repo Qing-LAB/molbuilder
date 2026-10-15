@@ -1675,11 +1675,22 @@ class Structure:
         order record (``original_of``) in an engine's order, as they stand
         in yours, whose order is never recorded (I2).  THE ONE WAY an atom
         of a structure that may be remapped is named in your order -- a
-        refusal naming atoms, a geometry held in your order compared atom
-        for atom."""
+        refusal naming atoms (:meth:`atoms_named`), a geometry held in your
+        order compared atom for atom."""
         if self.atom_order is None:
             return [int(i) for i in indices]
         return self.atom_order.original_of(indices)
+
+    def atoms_named(self, indices, *, limit: Optional[int] = None) -> str:
+        """The atoms named by their index here, as every message names them
+        (:func:`atom_words`) -- in the person's order, each with its element
+        (:meth:`your_indices`), so a deck's sorted copy names the atom the
+        person knows: ``atom indices 0 (O), 2 (C)``."""
+        idx = [int(i) for i in indices]
+        yours = self.your_indices(idx)
+        return atom_words(yours, {y: self.elements[i]
+                                  for y, i in zip(yours, idx)
+                                  if 0 <= i < self.n_atoms}, limit=limit)
 
     def _reordered(self, order: Sequence[int], **also) -> "Structure":
         """The reorder :meth:`take` and :meth:`restored` share."""
@@ -2409,7 +2420,7 @@ class Structure:
           for something that is no longer there.
 
         Called at the places that ARE edits, not inside `replace()`:
-        `transport.sort.categorical_sort` reorders atoms through the same
+        `transport.sort.sort_by` reorders atoms through the same
         door and is not an edit, so marking there would warn about every
         composed junction.
         """

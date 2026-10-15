@@ -618,7 +618,7 @@ def test_the_cell_page_and_the_deck_give_one_containment_answer(miss, outside):
     assigned = s.replace(engine_offset=off)
     found = _by_id(assigned, "cell.atoms_outside")
     try:
-        cellmod.require_placed(cellmod.to_engine(assigned), assigned.axis_kind)
+        cellmod.require_placed(cellmod.to_engine(assigned), assigned)
         refused = None
     except ValueError as exc:
         refused = str(exc)

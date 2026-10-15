@@ -435,7 +435,7 @@ def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
         "numbers the same atoms from 1, so atom index 0 is #1 there.\n"
         + ("  They count in your order, not the file's.\n" if restored else "")
         + f"  This call names "
-        f"{atom_words(sorted({int(i) for i in indices}), struct.elements)}.",
+        f"{struct.atoms_named(sorted({int(i) for i in indices}))}.",
         auto_yes=auto_yes, question="act on these atoms?", err=True)
     if not said.asked:
         raise click.ClickException(
@@ -1098,10 +1098,7 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
 
     note = "defaults (a bare .XV states only the geometry and the lattice)"
     if from_run:
-        struct, note = _apply_run_metadata(struct, xv_path)
-        # A PAIR IS WRITTEN IN YOUR ORDER (`model/overview.md` § 2.2a, I1):
-        # a reordered run's geometry is restored, and said.
-        struct, restored = struct.in_your_order(xv_path.name)
+        struct, note, restored = _apply_run_metadata(struct, xv_path)
         if restored:
             click.echo(restored)
     else:
@@ -1119,8 +1116,9 @@ def _its_run(path):
     (`runs.run_of`) and what it declared (`runs.declared`: its labels, its
     order record, that its deck predates the record) -- or ``None`` for a
     file no run of ours holds.  A deck block that cannot be read is refused,
-    naming the deck.  THE ONE LOOKUP every CLI door that reads a run's file
-    asks."""
+    naming the deck.  THE ONE LOOKUP every CLI door asks that reads a run's
+    file as it stands -- the bare readers, a bare ``xv2xyz``; one that
+    builds from the run asks its view (``--from-run``)."""
     from .deck_record import DeckRecordUnreadable
     from .runs import declared, run_of
     run = run_of(Path(path))
@@ -1161,11 +1159,16 @@ def _refuse_a_reordered_run(xv_path: Path) -> None:
     are in its engine's order, which only the run's deck states, and a pair
     written from them alone would be in that order, with nothing to say so.
     So is one whose run's deck predates the record (I9)."""
+    from .runs import OrderUnstated
     found = _its_run(xv_path)
-    said = found[1] if found is not None else None
-    if said is not None and said.order_unstated:
-        raise click.ClickException(said.order_unstated)
-    order = said.atom_order if said is not None else None
+    if found is None:
+        return
+    said = found[1]
+    try:
+        said.require_order()
+    except OrderUnstated as exc:
+        raise click.ClickException(str(exc)) from exc
+    order = said.atom_order
     if order is not None:
         raise click.ClickException(
             f"{xv_path.name} is {order.said}, as its run's deck states.  "
@@ -1174,9 +1177,12 @@ def _refuse_a_reordered_run(xv_path: Path) -> None:
 
 
 def _apply_run_metadata(struct, xv_path: Path):
-    """``--from-run``: ``(struct, note)`` -- ``struct`` with what the run that
-    wrote ``xv_path`` declared about its atoms and what it says about itself,
-    and one line saying where it came from.
+    """``--from-run``: ``(struct, note, said)`` -- ``struct`` with what the run
+    that wrote ``xv_path`` declared about its atoms and what it says about
+    itself, put back in your order (`RunView.in_your_order`; a pair is
+    written in your order, `model/overview.md` § 2.2a, I1), one line saying
+    where it came from, and the sentence of the restore (``None`` for a run
+    in your order).
 
     THE RUN'S VIEW, THE ONE EVERY DOOR THAT BUILDS A STRUCTURE FROM A RUN
     ASKS (`runs.view_of`, `model/parse.md` § 5.3, § 5b; plan B12, D19): the
@@ -1194,29 +1200,33 @@ def _apply_run_metadata(struct, xv_path: Path):
     A ``.XV`` no run of ours holds is refused: the flag says a run is there,
     and nothing declares this file's atoms.
     """
-    from .runs import view_of
+    from .deck_record import DeckRecordUnreadable
+    from .runs import OrderUnstated, run_of, view_of
 
-    found = _its_run(xv_path)
-    if found is None:
+    run = run_of(xv_path)
+    if run is None:
         raise click.ClickException(
             f"--from-run: no run of ours holds {xv_path} -- nothing marks its "
             f"folder as part of a calculation (calcdir.json, or task.json "
             f"above it; project-layout.md § 1.4a), so nothing declares its "
             f"atoms.  Without --from-run the .XV converts on its own.")
-    run, said = found
-    # A DECK WRITTEN BEFORE THE ORDER WAS RECORDED (I9): the pair would be
-    # in an order nothing states.
-    if said.order_unstated:
-        raise click.ClickException(f"--from-run: {said.order_unstated}")
+    try:
+        view = view_of(run, output=run.stdout, n_atoms=struct.n_atoms,
+                       lattice=[[float(v) for v in row]
+                                for row in struct.cell])
+    except DeckRecordUnreadable as exc:
+        raise click.ClickException(f"--from-run: {exc}") from exc
+    said = view.declared
     stated = (said.atom_metadata or {}).get("n_atoms_total")
     if said.atom_metadata_for() is not None and stated != struct.n_atoms:
         raise click.ClickException(
             f"--from-run: {said.deck.name} declares labels for {stated} "
             f"atoms, and {xv_path.name} holds {struct.n_atoms} -- they are "
             f"not one run's.")
-    view = view_of(run, output=run.stdout, n_atoms=struct.n_atoms,
-                   lattice=[[float(v) for v in row] for row in struct.cell])
-    struct = view.structure(struct.elements, struct.positions)
+    try:
+        struct, restored = view.in_your_order(struct, xv_path.name)
+    except OrderUnstated as exc:
+        raise click.ClickException(f"--from-run: {exc}") from exc
     told = sorted(view.info or {})
     if view.atom_metadata or (said.engine_offset or {}).get("axis_kind") \
             or told:
@@ -1224,11 +1234,12 @@ def _apply_run_metadata(struct, xv_path: Path):
                         f"{','.join(struct.axis_kind)}, "
                         f"{len(struct.frozen_atoms)} held, "
                         f"{len(struct.regions)} label(s) in the region store"
-                        + (f"; info: {', '.join(told)}" if told else ""))
+                        + (f"; info: {', '.join(told)}" if told else "")), \
+            restored
     where = (f"its deck {said.deck.name}" if said.deck is not None
              else "no deck of its run here")
     return struct, (f"the run declares nothing about its atoms ({where}); "
-                    f"defaults (axes {','.join(struct.axis_kind)})")
+                    f"defaults (axes {','.join(struct.axis_kind)})"), restored
 
 
 @cli.command("monitor",

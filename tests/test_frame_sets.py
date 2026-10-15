@@ -16,7 +16,7 @@ Keys of a ``[[case]]``:
     ``exportFile`` of every frame posted to ``/api/structure/export`` and the
     files read back with ``load(frames=True)``;
     ``take`` -- ``Structure.take(order)``;
-    ``sorted_restored`` -- ``transport.sort.sort_by(set, "held-first")``,
+    ``sorted_restored`` -- ``transport.sort.sort_by(set, SORT_HELD_FIRST)``,
     the set in an engine's order, then its ``restored()``;
     ``edit`` -- the edit named by ``edit`` (``_EDITS``);
     ``read_document`` -- ``Structure.from_xyz(document)``;
@@ -223,9 +223,9 @@ def test_frame_set(case, tmp_path, monkeypatch):
         written = None
         act = lambda: built.take(case["order"])  # noqa: E731
     elif door == "sorted_restored":
-        from molbuilder.transport.sort import sort_by
+        from molbuilder.transport.sort import SORT_HELD_FIRST, sort_by
         written = None
-        in_engine_order = sort_by(built, "held-first").structure
+        in_engine_order = sort_by(built, SORT_HELD_FIRST).structure
         assert in_engine_order.atom_order is not None, "the sort moved nothing"
         act = in_engine_order.restored
     elif door == "edit":
