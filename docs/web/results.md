@@ -392,7 +392,7 @@ displacement sweep, once `summarize` has compared its force-constant stages
 (§ 5.9 there).
 `GET /api/results/dir` answers
 such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
-state, detail, dir, attempt, …}], offer}` —
+state, detail, dir, attempt, …}], offer, steps}` —
 `JobSetStatus.to_dict`, the one wire form of `jobset_status`, the ladder door the
 CLI's `status` verb reads — consumed, never copied: every stage of the
 description with its group's number (`group`), the ones not prepared yet
@@ -410,10 +410,19 @@ state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), whether its run
 converged (`SCF yes` / `NO`, `geometry yes` / `NO` for a relaxation, `—` before
 its output says or for a run that converges nothing, TBtrans's) beside it, then
-the detail, and the rung to resume from named in the title. A person
-who opens a five-rung transport calculation therefore sees which of the five is
-outstanding — `engines/transport.md` § 2a.12's third
-requirement — instead of *pick a file*. A rung's files are read by opening the
+the detail; the title says how many rungs, and *every rung finished* once they
+have; the rung to resume from is the highlighted row. **Under the rows, the
+next step** — the ladder answer's `steps`, [`execution/job-system.md`](?doc=execution/job-system.md),
+*The task*, *The next step*: the next group's words and the line that moves it,
+as the terminal prints it, and each later group's words. It is a hint, read
+only — the page launches nothing — and it **says when it was read**, *read at
+14:05 — Refresh to read again*: the panel reads the ladder again when the page
+is shown or refocused, or the folder refreshed, never on a timer, so a run
+that ends while you watch is not shown ended until then *(the user,
+2026-10-15)*.
+A person who opens a five-rung transport calculation therefore sees which of
+the five is outstanding — `engines/transport.md` § 2a.12's third requirement
+— and what to type to go on, instead of *pick a file*. A rung's files are read by opening the
 rung's directory; the product, when present — a transport root's `task.json`
 from `init` on — is what `openable` picks at the root.
 

@@ -327,6 +327,78 @@ sweeps the bias) is one run: *finished* once every point's run finished,
 converged or not — the *converged* column says *SCF NO* when one did not — and
 its row counts the points done.
 
+#### The next step — every group, where it stands, and the line that moves it
+
+*(The user, 2026-10-15: "improve the message of launch so it is clear to the
+user what to do for each grouped launch" — "the current design is clear about
+the first step, but unclear about the follow up"; then: "maybe this
+information is best presented in the result tab where the whole task was
+viewed … and give user some hint if user want to continue what's the command
+to launch"; Task setup is setup, and shows no state.)*
+
+**One answer for the whole task, from the ladder door** (`runstatus
+.jobset_status`, its `steps`): every group of the description, in its order,
+with its stages, a few words for where it stands, and the line that moves it
+— or what it waits for, when no line can. The words are read off its members'
+rows, the same rows `status` prints, so the two cannot disagree; every line is
+composed by `commands`. Its wire form, in the ladder answer the Results tab
+reads, is `steps: [{group, stages, state, words, lines, next}]` — the group's
+number and stages, its state, its words, its lines (none when it waits), and
+whether it is the next step. A group's row is the first of these that applies,
+read top to bottom:
+
+| the group's members | the group | the line |
+|---|---|---|
+| one not prepared, and the group preparable (`ready.prep_offer`) | **not prepared** | `prep task --group N` |
+| one not prepared, and the group not preparable | **waits before it can be prepared**, and what for — a force-constant stage's `relax` | — |
+| prepared in a job whose members changed | **prepared, its members changed** | `prep task --group N` |
+| prepared, never launched, what each takes there | **ready to launch** | `launch task --group N`, a line for each mode the machine takes |
+| prepared, never launched, a member waiting | **waits for** the run it takes — that run's stage and group, and where it stands | — |
+| a run queued or running | **running** (or *queued*) | `status` |
+| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, warm, or `--cold` — or its way back (§ 5.4, *A stage launched again*); for a record that does not read, its reader's words |
+| every member's newest run finished | **finished** | — |
+
+**The next step is the first group not finished**, marked *next*; the groups
+after it each say what they wait for. With every group finished, the answer
+says so — and, for a calculation whose result gathers its stages, names
+`summarize task`: one rule, asked by the step and by the verb alike
+(`summarize.task_summary`: a transport calculation; a SIESTA vibration with
+two or more force-constant stages). A benchmark's sweep keeps its own next
+step, its own verbs (§ 7).
+
+**Shown where the next step is asked, and nowhere else:**
+
+- **`status`** ends with it, after the stages' table — in place of the stage
+  to resume from; `status <stage>` is unchanged;
+- **`launch task`** ends with it, read after what it sent — the group just
+  sent *running*, or *finished* for a run here that has ended;
+- **the Results tab's ladder card** draws it under the rows, read only — the
+  next step's words and line, the later groups' words; the page launches
+  nothing ([`web/results.md`](?doc=web/results.md) § 2.4);
+- **`prep task`** keeps its own closing on both doors — the launch with
+  nothing named, which sends the group that can go (§ 5.3, *One prep, two
+  doors*): Task setup is where a task is set up, and shows no state.
+
+For `AuBDTAu/transport/lowbias_local`, its device just sent:
+
+```text
+each group, and what is next:
+  group 1  seed, electrode_L, electrode_R   finished
+  group 2  device                           running -- next: let it finish
+           molbuilder jobset status --bundle AuBDTAu/transport/lowbias_local
+  group 3  transmission                     waits for group 2 (device, running)
+```
+
+and once the device has finished:
+
+```text
+each group, and what is next:
+  group 1  seed, electrode_L, electrode_R   finished
+  group 2  device                           finished
+  group 3  transmission                     ready to launch -- next:
+           molbuilder jobset launch task --group 3 --bundle AuBDTAu/transport/lowbias_local
+```
+
 #### `prep task`
 
 One entry, which the terminal and Task setup's Prep both call (§ 5.3, *One
@@ -470,6 +542,7 @@ flowchart TD
     WR --> SEND["sbatch, or the process here — one job"]
     SEND -- refused --> R25["R-L25 · R-L35 — each run stays opened, not launched"]
     SEND -- went --> REC["each member's run.json — launched"]
+    REC --> NX["the next step: every group, where it stands,<br/>the line that moves it — runstatus.jobset_status"]
 ```
 
 #### Every refusal, and its way on
@@ -1360,7 +1433,7 @@ nothing else, and scheduler contact happens only at `launch`.
 | target | `prep` | the groups picked: resolve this machine, render each stage's deck and wrapper, open its first run with its own files |
 | target | `launch` | send **one** job — a group, or one stage again — `--mode direct` or `--mode submit` |
 | target | `summarize` | summarize results that exist: a benchmark's trials into a verdict; a transport calculation's bias points into its I–V record; a SIESTA vibration's force-constant stages into its displacement sweep (`engines/vibration.md` § 5.9). Never a run's own result — every run writes that itself (§ 5.5 there) |
-| target | `status` | every stage of the description, where it stands, and the one to resume from; with a stage, that stage in full |
+| target | `status` | every stage of the description, where it stands, and the next step, every group's line (*The task*); with a stage, that stage in full |
 
 ```mermaid
 flowchart LR
@@ -1923,16 +1996,12 @@ answers them — **ready to launch**, with what its launch would take, or
 description after its prep is not listed; its folder is kept, untouched, and a
 launched one its row ([`project-layout.md`](?doc=execution/project-layout.md)
 § 4.2). The table
-ends with the stage to resume from. When nothing has prepared it, the next step
-is the `prep task` line for the groups it would offer pre-selected; a prepared
-one is told what its state calls for: not launched — launch its group, or what
-it waits for, whole, its commands included (§ 5.4); a launch record that does
-not read — its own words; queued or running — let it finish; stopped or failed — launch it again, warm or `--cold`, or change it
-first by going back to the state saved before its group's first launch (§ 5.4,
-*A stage launched again*). `status
+ends with **the next step** — every group, where it stands and the line that
+moves it (*The task*, *The next step*). `status
 <stage>` asks the same door for the stage it names. The Results tab's ladder is
 this same answer ([`web/results.md`](?doc=web/results.md) § 2.4) — its wire form,
-`JobSetStatus.to_dict`, the groups `prep task` would offer (`offer`) included. A job set with no
+`JobSetStatus.to_dict`, the groups `prep task` would offer (`offer`) and the
+next step (`steps`) included. A job set with no
 description beside it — a hand-built one, a benchmark's sweep — lists its own
 jobs; a benchmark's sweep is read against the calculation it measures, from
 its bench folder too, and its next step is its own verbs for that stage —
@@ -1987,11 +2056,10 @@ reads *nothing -- it started from the structure*, from the launch record's
     see what will happen (§ 6.0).
 - **`status`** reads the run directory (asking `run_status`,
   [`running-a-job.md § 4.2`](?doc=execution/running-a-job.md)) and reports each
-  stage of the description — its state, its restart files — and the first
-  incomplete stage, then stops.
-  It prints the next step, by the stage's state, but **never auto-resumes**
-  (design decision #5): you launch the incomplete stage again yourself, and it
-  continues from its own latest run.
+  stage of the description — its state, its restart files — and the next
+  step, every group's line (*The task*), then stops. It **never
+  auto-resumes** (design decision #5): you launch the next group, or a stage
+  again, yourself, and it continues from its own latest run.
 
 ### 5.4 How a ladder advances
 
