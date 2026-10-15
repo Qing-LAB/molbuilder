@@ -113,6 +113,34 @@ def stages_share_a_directory(task) -> bool:
     return len(dirs) < len(names)
 
 
+def why_no_sweep(task) -> Optional[str]:
+    """Why ``task`` -- a vibration's description -- has no displacement
+    sweep to compare, in the sentence `summarize task` refuses with, or
+    ``None`` when it has one (`engines/vibration.md` § 5.9): a PySCF
+    vibration (its Hessian is analytic), fewer than two force-constant
+    stages, or stages sharing one directory.  THE ONE RULE, asked by the
+    sweep (:func:`collect_sweep`) and by what names the task's summary
+    (`jobset.summarize.task_summary`)."""
+    from ..pyscf.stages import force_constant_stages
+    if str(task.engine) != "siesta":
+        return (f"a {task.engine} vibration's second derivatives are "
+                f"analytic: there is no displacement to sweep "
+                f"(engines/vibration.md 5.9)")
+    names = force_constant_stages(task)
+    if len(names) < 2:
+        return (f"this vibration has {len(names)} force-constant stage(s) "
+                f"({', '.join(names) or 'none'}): a sweep compares two or "
+                f"more.  Describe another stage with its own fc_displacement "
+                f"(or mesh_cutoff), prep and launch it, then summarize again "
+                f"(engines/vibration.md 5.9)")
+    if stages_share_a_directory(task):
+        return ("the force-constant stages share one directory (the flat "
+                "layout), so each overwrote the last one's <label>.FC and "
+                "spectrum: a sweep needs the hierarchical layout "
+                "(engines/vibration.md 5.9)")
+    return None
+
+
 def collect_sweep(base_dir, task, *,
                   tolerance_cm1: Optional[float] = None) -> Dict[str, Any]:
     """The sweep record of the calculation at ``base_dir`` (`task` its
@@ -140,24 +168,10 @@ def collect_sweep(base_dir, task, *,
     from ..template import catalogue, one
 
     base = Path(base_dir)
-    if str(task.engine) != "siesta":
-        raise SweepError(
-            f"a {task.engine} vibration's second derivatives are analytic: "
-            f"there is no displacement to sweep (engines/vibration.md 5.9)")
+    why = why_no_sweep(task)
+    if why:
+        raise SweepError(why)
     names = force_constant_stages(task)
-    if len(names) < 2:
-        raise SweepError(
-            f"this vibration has {len(names)} force-constant stage(s) "
-            f"({', '.join(names) or 'none'}): a sweep compares two or more.  "
-            f"Describe another stage with its own fc_displacement (or "
-            f"mesh_cutoff), prep and launch it, then summarize again "
-            f"(engines/vibration.md 5.9)")
-    if stages_share_a_directory(task):
-        raise SweepError(
-            "the force-constant stages share one directory (the flat "
-            "layout), so each overwrote the last one's <label>.FC and "
-            "spectrum: a sweep needs the hierarchical layout "
-            "(engines/vibration.md 5.9)")
     by_name = {s.name: s for s in task.stages}
 
     def rel(p: Path) -> str:
@@ -494,5 +508,6 @@ def sweep_table_text(record: Dict[str, Any]) -> str:
 
 
 __all__ = ["SWEEP_SCHEMA", "SweepError", "sweep_path", "match_modes",
-           "stages_share_a_directory", "collect_sweep", "write_sweep",
+           "stages_share_a_directory", "why_no_sweep", "collect_sweep",
+           "write_sweep",
            "sweep_table_text"]

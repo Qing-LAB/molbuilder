@@ -160,6 +160,26 @@ class StageStatus:
 
 
 @dataclass(frozen=True)
+class GroupStep:
+    """One group's place in the task's next step (`job-system.md`, *The
+    task*, *The next step*): its number and stages, its state, a few words
+    for where it stands, and the lines that move it -- none when it waits --
+    and whether it is the next step."""
+    group: int
+    stages: List[str]
+    state: str
+    words: str
+    lines: List[str] = field(default_factory=list)
+    next: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Its wire form, in the ladder answer (`web/results.md` § 2.4)."""
+        return {"group": self.group, "stages": list(self.stages),
+                "state": self.state, "words": self.words,
+                "lines": list(self.lines), "next": self.next}
+
+
+@dataclass(frozen=True)
 class JobSetStatus:
     """The whole job-set's status + the resume pointer."""
     name:            str
@@ -178,6 +198,9 @@ class JobSetStatus:
     #: its rows are trials, and its next step is its own verbs.  ``None``
     #: for a ladder.  Not part of the wire form.
     bench_of: Optional[str] = None
+    #: THE NEXT STEP, every group's (:func:`_steps`) -- ``[]`` for a job set
+    #: with no description beside it.
+    steps: List[GroupStep] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
@@ -188,6 +211,7 @@ class JobSetStatus:
             "complete": self.complete,
             "stages": [s.to_dict() for s in self.stages],
             "offer": self.offer,
+            "steps": [g.to_dict() for g in self.steps],
         }
 
 
@@ -583,6 +607,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
                                           takes=list(r.takes), why=r.why)
             stages.append(row)
         offer = state.prep_offer
+        steps = _steps(base, task, state.groups, stages)
     else:
         stages = [_job_status(base, jobset, job, None, **kw)
                   for job in jobset.jobs]
@@ -604,7 +629,103 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         base=str(base),
         bench_of=bench_of,
         offer=(offer if task is not None else []),
+        steps=(steps if task is not None else []),
     )
+
+
+#: A RUN'S STATES that leave its group needing a launch again
+#: (`running-a-job.md` § 4.2) -- and the ones still on their way.
+_ENDED_BADLY = ("failed", "stopped", "unreadable")
+_ON_ITS_WAY = ("queued", "running")
+
+
+def _steps(base, task, groups, rows: List[StageStatus]) -> List[GroupStep]:
+    """THE NEXT STEP (`job-system.md`, *The task*, *The next step*): every
+    group of ``task``, in its order, its state read off its members' rows
+    (``rows``, the run doors' answers) and the ready door's group
+    (``groups``, `ready.GroupAnswer`), the first row of the contract's table
+    that applies; every line composed by `commands`.  The first group not
+    finished is the next step; with every group finished, the last names
+    `summarize task` where the task's result gathers its stages
+    (`summarize.task_summary`)."""
+    from ..identity import LAUNCHED_WAY_BACK
+    from .commands import reason_of
+    from .summarize import task_summary
+    by = {s.name: s for s in rows}
+    out: List[GroupStep] = []
+    for g in groups:
+        members = [by[m] for m in g.members]
+        n = g.number
+        if not all(r.prepared for r in members):
+            step = (("not prepared", "not prepared",
+                     prep_group_lines([n], base=base)) if g.preparable else
+                    ("waits", "waits before it can be prepared: "
+                     + reason_of(g.why or ""), []))
+        elif g.changed:
+            step = ("changed", "prepared, its members changed",
+                    prep_group_lines([n], base=base))
+        elif not g.launched:
+            step = (("ready", "ready to launch",
+                     launch_lines("task", base=base, groups=[n]))
+                    if g.launchable else
+                    ("waiting", "waits for: " + reason_of(g.why or ""), []))
+        else:
+            live = next((r for r in members if r.state in _ON_ITS_WAY), None)
+            bad = next((r for r in members if r.state in _ENDED_BADLY), None)
+            opened = next((r for r in members if r.state == "pending"), None)
+            if live is not None:
+                step = (live.state, f"{live.state}, let it finish",
+                        [command("status", base=base)])
+            elif bad is not None and bad.state == "unreadable":
+                step = (bad.state, f"{bad.name}: " + reason_of(bad.detail),
+                        [])
+            elif bad is not None:
+                # LAUNCHED AGAIN, it continues from its own latest run or
+                # starts over -- its job's one fact (`Job.relaunch_continues`).
+                again = ("it continues from its own latest run, or `--cold` "
+                         "starts it over" if bad.relaunch_continues else
+                         "it starts over, nothing handed on from a run of "
+                         "its own")
+                step = (bad.state,
+                        f"{bad.state}: {bad.name} -- launch it again -- "
+                        f"{again}; to change it first, go back to "
+                        f"{LAUNCHED_WAY_BACK}",
+                        launch_lines("task", bad.name, base=base))
+            elif opened is not None:
+                step = ("pending", f"{opened.name}: {opened.detail}",
+                        launch_pending(opened.name, n, opened.attempt,
+                                       base=base))
+            else:
+                step = (_DONE, _DONE, [])
+        out.append(GroupStep(group=n, stages=list(g.members), state=step[0],
+                             words=step[1], lines=list(step[2])))
+    first = next((i for i, s in enumerate(out) if s.state != _DONE), None)
+    if first is not None:
+        out[first] = dataclasses.replace(out[first], next=True)
+    elif out and task_summary(task) is not None:
+        out[-1] = dataclasses.replace(
+            out[-1], next=True,
+            words="finished -- every group has; read what they gathered",
+            lines=[command("summarize", "task", base=base)])
+    return out
+
+
+def render_steps(status: JobSetStatus) -> str:
+    """The next step as the terminal prints it -- after `status`'s table and
+    at the end of `launch task` (`job-system.md`, *The task*, *The next
+    step*): each group, its stages, its words, and under the next one its
+    lines."""
+    if not status.steps:
+        return ""
+    width = max(len(", ".join(g.stages)) for g in status.steps)
+    out = ["each group, and what is next:"]
+    for g in status.steps:
+        out.append(f"  group {g.group}  {', '.join(g.stages):<{width}}  "
+                   f"{g.words}" + (" -- next:" if g.next and g.lines else
+                                   " -- next" if g.next else ""))
+        if g.next:
+            out += [f"           {ln}" for ln in g.lines]
+    return "\n".join(out)
 
 
 def render_status(status: JobSetStatus) -> str:
@@ -639,30 +760,13 @@ def render_status(status: JobSetStatus) -> str:
     if status.bench_of is not None:
         lines.append(_sweep_next(status))
         return "\n".join(lines)
-    if status.complete:
+    if status.steps:
+        lines.append(render_steps(status))
+    elif status.complete:
         lines.append("All stages finished. Nothing to resume.")
     else:
         first = next((s for s in status.stages
                       if s.name == status.first_incomplete), None)
-        if first is not None and not first.prepared:
-            # NOTHING TO RE-SUBMIT: the stage has no folder yet, so the next
-            # step is to prepare -- the groups `prep task` offers, each
-            # stage's line saying what its first launch takes
-            # (`job-system.md`, *The task*).
-            if status.offer:
-                lines.append(
-                    f"First incomplete stage: {first.name}, not prepared "
-                    f"yet.  To prepare:\n"
-                    + block(prep_group_lines(status.offer, base=status.base))
-                    + "".join(f"\n      # {s.name}: {s.detail}"
-                              for s in status.stages
-                              if s.group in status.offer
-                              and not s.prepared))
-                return "\n".join(lines)
-            lines.append(
-                f"First incomplete stage: {first.name}, waiting:\n"
-                + textwrap.indent(first.why or first.detail, "    "))
-            return "\n".join(lines)
         lines.append(next_step(first, status.first_incomplete,
                                base=status.base))
     return "\n".join(lines)

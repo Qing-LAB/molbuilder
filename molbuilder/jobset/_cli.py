@@ -1518,13 +1518,17 @@ def summarize_cmd(kind: str, words, bundle: str,
                 _tt = _rt_sum(_P(bundle) / _TASKF)
             except (OSError, ValueError) as exc:
                 raise click.ClickException(f"{_TASKF}: {exc}") from None
+        # WHICH SUMMARY, by the one rule the task's next step asks too
+        # (`summarize.task_summary`).
+        from .summarize import task_summary
+        _summary = task_summary(_tt) if _tt is not None else None
         _is_vibration = _tt is not None and _tt.calculation == "vibration"
         if tolerance_cm1 is not None and not _is_vibration:
             raise click.ClickException(
                 "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
                 "vibration's force-constant stages compared "
                 "(engines/vibration.md 5.9)")
-        if _tt is not None and _tt.calculation == "transport":
+        if _summary == "transport":
             from ..transport.record import (RecordError, collect_record,
                                             iv_table_text, write_record)
             try:
@@ -1548,7 +1552,11 @@ def summarize_cmd(kind: str, words, bundle: str,
                     out=str(out), data=str(data), points=len(rec["points"]),
                     pending=len(rec["pending"]), failed=len(rec["failed"]))
             return
-        if _is_vibration:
+        if _is_vibration and _summary is None:
+            # A VIBRATION WITH NO SWEEP TO COMPARE, said in the rule's words.
+            from ..spectra.displacement_sweep import why_no_sweep
+            raise click.ClickException(why_no_sweep(_tt))
+        if _summary == "displacement sweep":
             # A DISPLACEMENT SWEEP'S SUMMARY (engines/vibration.md § 5.9): the
             # force-constant stages' results, which their jobs wrote, read
             # where they are and compared -- nothing derived that a run did
@@ -2204,16 +2212,17 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                 click.echo(f"      {_l}")
         click.echo("  Re-run this launch after fixing the ask; the groups "
                    "already queued are skipped.")
-    if not dry_run:
+    if not dry_run and kind == "bench":
         # ONE COMMAND A LINE, the sentence above it (`commands`).
         click.echo("next -- read the measurements once they have run:\n    "
-                   + command("summarize", "bench", stage, base=base)
-                   if kind == "bench" else
-                   "next -- follow it while it runs, and look before the "
-                   "next stage:\n    " + command("status", base=base)
-                   if plan.background else
-                   "next -- look before the next stage:\n    "
-                   + command("status", base=base))
+                   + command("summarize", "bench", stage, base=base))
+    elif not dry_run:
+        # THE NEXT STEP, read after what was sent (`job-system.md`, *The
+        # task*, *The next step*): every group, and the line that moves it.
+        from .model import FILENAME as _PLAN, JobSet as _JobSet
+        from .runstatus import jobset_status, render_steps
+        click.echo(render_steps(jobset_status(
+            _JobSet.load(base / _PLAN), base)))
     # A RUN HERE THAT DID NOT FINISH ENDS THE LAUNCH WITH 1 (`job-system.md`,
     # *A run here, waited on*): how it ended is on its line above, in the
     # status door's words, so a script trusting the exit status is told.

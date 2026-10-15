@@ -355,13 +355,14 @@ read top to bottom:
 | prepared, never launched, what each takes there | **ready to launch** | `launch task --group N`, a line for each mode the machine takes |
 | prepared, never launched, a member waiting | **waits for** the run it takes — that run's stage and group, and where it stands | — |
 | a run queued or running | **running** (or *queued*) | `status` |
-| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, warm, or `--cold` — or its way back (§ 5.4, *A stage launched again*); for a record that does not read, its reader's words |
+| a run failed or stopped, or a launch record that does not read | **failed** (*stopped*, *unreadable*), naming the stage | its launch again — `launch task --stage S`, which continues from its own latest run or starts over as its job says (`relaunch_continues`), `--cold` starting it over — or its way back (§ 5.4, *A stage launched again*); for a record that does not read, its reader's words |
 | every member's newest run finished | **finished** | — |
 
-**The next step is the first group not finished**, marked *next*; the groups
-after it each say what they wait for. With every group finished, the answer
-says so — and, for a calculation whose result gathers its stages, names
-`summarize task`: one rule, asked by the step and by the verb alike
+**The next step is the first group not finished**, marked *next*, its lines
+under it; the groups after it each say where they stand — a waiting one, the
+ready door's own reason. With every group finished, the last group says so —
+and, for a calculation whose result gathers its stages, is the next step,
+naming `summarize task`: one rule, asked by the step and by the verb alike
 (`summarize.task_summary`: a transport calculation; a SIESTA vibration with
 two or more force-constant stages). A benchmark's sweep keeps its own next
 step, its own verbs (§ 7).
@@ -383,21 +384,25 @@ For `AuBDTAu/transport/lowbias_local`, its device just sent:
 
 ```text
 each group, and what is next:
-  group 1  seed, electrode_L, electrode_R   finished
-  group 2  device                           running -- next: let it finish
+  group 1  seed, electrode_L, electrode_R  finished
+  group 2  device                          running, let it finish -- next:
            molbuilder jobset status --bundle AuBDTAu/transport/lowbias_local
-  group 3  transmission                     waits for group 2 (device, running)
+  group 3  transmission                    waits for: the transmission stage consumes lowbias_local.TS.HSX from device's newest run, 04_device/run-0, which is running.  Let it finish
 ```
 
 and once the device has finished:
 
 ```text
 each group, and what is next:
-  group 1  seed, electrode_L, electrode_R   finished
-  group 2  device                           finished
-  group 3  transmission                     ready to launch -- next:
+  group 1  seed, electrode_L, electrode_R  finished
+  group 2  device                          finished
+  group 3  transmission                    ready to launch -- next:
            molbuilder jobset launch task --group 3 --bundle AuBDTAu/transport/lowbias_local
 ```
+
+and once the transmission has finished, the last group names the summary:
+*finished -- every group has; read what they gathered -- next:* `molbuilder
+jobset summarize task --bundle AuBDTAu/transport/lowbias_local`.
 
 #### `prep task`
 

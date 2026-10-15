@@ -416,10 +416,10 @@ next step** — the ladder answer's `steps`, [`execution/job-system.md`](?doc=ex
 *The task*, *The next step*: the next group's words and the line that moves it,
 as the terminal prints it, and each later group's words. It is a hint, read
 only — the page launches nothing — and it **says when it was read**, *read at
-14:05 — Refresh to read again*: the panel reads the ladder again when the page
-is shown or refocused, or the folder refreshed, never on a timer, so a run
-that ends while you watch is not shown ended until then *(the user,
-2026-10-15)*.
+14:05; returning to this tab, or Reload from current project dir, reads it
+again*: the panel reads the ladder again when the tab is shown again or the
+folder reloaded, never on a timer, so a run that ends while you watch is not
+shown ended until then *(the user, 2026-10-15)*.
 A person who opens a five-rung transport calculation therefore sees which of
 the five is outstanding — `engines/transport.md` § 2a.12's third requirement
 — and what to type to go on, instead of *pick a file*. A rung's files are read by opening the

@@ -153,7 +153,10 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     which SIESTA states as fatal, and not the ``die`` lines after it -- and
     the launch that waited on it said the same, in the same words, and
     exited 1 (`job-system.md`, *A run here, waited on*): a script trusting
-    the exit status is told the run failed."""
+    the exit status is told the run failed -- and it ended with the next
+    step (*The task*, *The next step*), the stage that failed and its launch
+    again.  The silent failure: a launch that leaves you with no follow-up,
+    or one naming another group's line."""
     from molbuilder.parse.dirs import run_status
     from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
 
@@ -173,6 +176,9 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     line = next(ln for ln in said.output.splitlines()
                 if ln.strip().startswith("FAILED"))
     assert f"coarse: failed -- {st.detail}" in line, line
+    steps = said.output.split("each group, and what is next:\n", 1)[1]
+    assert "failed: coarse -- launch it again" in steps, steps
+    assert "launch task --stage coarse" in steps, steps
 
 
 @pytest.fixture(scope="module")
@@ -206,7 +212,7 @@ def test_status_says_what_launching_it_again_does(after_the_stop):
     its own latest run, for a relaxation -- and `status` says so."""
     r = after_the_stop["status"]
     assert r.exit_code == 0, r.output
-    for words in ("coarse, failed",
+    for words in ("failed: coarse",
                   "launch it again -- it continues from its own latest run"):
         assert words in r.output, (words, r.output)
 
@@ -398,6 +404,17 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     rebind(bundle)
     page.locator(".results-ladder").wait_for(state="visible", timeout=20000)
     assert panel.is_hidden()
+    # ...WITH THE NEXT STEP under its rows (`web/results.md` § 2.4): the
+    # ladder door's own answer, the next group's words and lines, and when it
+    # was read.
+    from molbuilder.jobset.model import FILENAME as _PLAN, JobSet
+    from molbuilder.jobset.runstatus import jobset_status
+    step = next(g for g in jobset_status(JobSet.load(bundle / _PLAN),
+                                         bundle).steps if g.next)
+    shown = page.locator(".results-ladder-steps-list li.is-next").inner_text()
+    assert step.words in shown and step.lines, (step, shown)
+    assert all(line in shown for line in step.lines), (step, shown)
+    assert "read at" in page.locator(".results-ladder-steps-head").inner_text()
 
     # A RUN PICKED OFF THE LADDER: the file card then holds THAT run's files
     # (`web/results.md` § 2.4) while the sidebar stays on the root -- so a

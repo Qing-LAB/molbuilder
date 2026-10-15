@@ -779,6 +779,24 @@ def swept_coordinates(points: List[BenchPoint]) -> List[str]:
     return varied
 
 
+def task_summary(task) -> Optional[str]:
+    """What `summarize task` writes for this description -- ``"transport"``,
+    a transport calculation's record and data file (`engines/transport.md`
+    § 2a.12); ``"displacement sweep"``, a SIESTA vibration's force-constant
+    stages compared (`engines/vibration.md` § 5.9, by
+    `spectra.displacement_sweep.why_no_sweep`) -- or ``None``: a calculation
+    whose stages each write their own result.  THE ONE RULE, asked by the
+    verb (`_cli.summarize_cmd`) and by the task's next step
+    (`runstatus.jobset_status`, `job-system.md`, *The task*)."""
+    if task.calculation == "transport":
+        return "transport"
+    if task.calculation == "vibration":
+        from ..spectra.displacement_sweep import why_no_sweep
+        if why_no_sweep(task) is None:
+            return "displacement sweep"
+    return None
+
+
 def utc_now_iso() -> str:
     """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` -- the summarize verb's stamp,
     and :func:`sweep_view`'s."""
@@ -791,5 +809,5 @@ __all__ = [
     "sweep_view", "swept_coordinates", "bundle_for_sweep_file",
     "bench_record",
     "summary_text", "utc_now_iso",
-    "recommendation_text",
+    "recommendation_text", "task_summary",
 ]

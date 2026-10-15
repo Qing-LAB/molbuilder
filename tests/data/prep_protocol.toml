@@ -105,7 +105,7 @@ record = { conda_envs = ["molbuilder-siesta"] }
 refused = ["env is not installed", "re-probe that machine"]
 made_lacks = ["01_coarse", "pseudos", "environment.json", "job-set.json",
               "STAGE-PLAN.md", "H2_01_coarse.siesta.hierarchical.pipeline.log"]
-status_says = ["First incomplete stage: coarse, not prepared yet"]
+status_says = ["group 1  coarse", "not prepared -- next:"]
 ledger_lacks = ["prepared"]
 saved = { shape = "flat" }
 reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }

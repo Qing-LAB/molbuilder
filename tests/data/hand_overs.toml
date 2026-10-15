@@ -35,5 +35,5 @@ calculation = "vibration"
 removed = ["relax"]
 stage = "freq"
 refused = ["is not stated to be relaxed", "Either add the `relax` stage before `freq`"]
-status_says = ["First incomplete stage: freq, waiting", "is not stated to be relaxed"]
+status_says = ["group 1  freq", "waits before it can be prepared", "is not stated to be relaxed"]
 

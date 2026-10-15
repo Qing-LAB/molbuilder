@@ -58,7 +58,8 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     template.write_text("this is not a template [\n")
     r = jobset("status", "--bundle", bundle)
     assert r.exit_code == 0 and r.exception is None, r.output
-    assert "First incomplete stage: coarse, waiting" in r.output, r.output
+    assert "group 1  coarse" in r.output, r.output
+    assert "waits before it can be prepared" in r.output, r.output
     assert "continues from cannot be read" in r.output, r.output
     template.write_text(kept)
 
@@ -79,3 +80,32 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     assert r.exit_code != 0, r.output
     assert "is a folder of the calculation at" in r.output, r.output
     assert "jobset init" not in r.output, r.output
+
+
+def test_status_ends_with_each_groups_next_step(tmp_path, monkeypatch):
+    """`job-system.md`, *The task*, *The next step*: `status` ends with every
+    group, where it stands and the line that moves it, the first group not
+    finished the next.  A described ladder: its first group not prepared,
+    its line `prep task --group 1`; prepared, ready to launch, its line the
+    launch of group 1 -- the groups after it not prepared, with no line.
+    The silent failure: a person told no next line after a prep, or the
+    line of a group whose turn has not come."""
+    from support.road import describe_calculation, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch)
+    r = jobset("status", "--bundle", bundle)
+    assert r.exit_code == 0, r.output
+    steps = r.output.split("each group, and what is next:\n", 1)[1]
+    first, *rest = steps.split("\n  group ")
+    assert "not prepared -- next:" in first, steps
+    assert "prep task --group 1 --bundle" in first, steps
+    assert rest and all("next" not in g and "jobset" not in g
+                        for g in rest), steps
+    assert jobset("prep", "task", "--group", "1", "--bundle", bundle,
+                  "--target", "this").exit_code == 0
+    r = jobset("status", "--bundle", bundle)
+    steps = r.output.split("each group, and what is next:\n", 1)[1]
+    first, *rest = steps.split("\n  group ")
+    assert "ready to launch -- next:" in first, steps
+    assert "launch task --group 1" in first, steps
+    assert rest and all("not prepared" in g and "jobset" not in g
+                        for g in rest), steps

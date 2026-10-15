@@ -257,6 +257,42 @@
      * named in the title.  The state chip is the one chip
      * (`lib/state-chip.js`) -- one vocabulary of words and tones
      * (`running-a-job.md` § 4.2). */
+    /* THE NEXT STEP under the ladder (results.md \u00a7 2.4; job-system.md,
+     * *The task*, *The next step*): each group's words, the next one's lines
+     * as the terminal prints them -- a hint, read only, saying when it was
+     * read, since the panel reads the ladder again only when the tab is
+     * shown again or the folder reloaded. */
+    function _renderSteps(host, steps) {
+        if (!steps.length) return;
+        const box = document.createElement("div");
+        box.className = "results-ladder-steps";
+        const head = document.createElement("p");
+        head.className = "results-ladder-steps-head";
+        head.textContent = "Each group, and what is next \u2014 read at "
+            + new Date().toLocaleTimeString([], { hour: "2-digit",
+                                                  minute: "2-digit" })
+            + "; returning to this tab, or Reload from current project dir, "
+            + "reads it again.";
+        box.appendChild(head);
+        const list = document.createElement("ul");
+        list.className = "results-ladder-steps-list";
+        steps.forEach((g) => {
+            const li = document.createElement("li");
+            if (g.next) li.className = "is-next";
+            li.textContent = "group " + g.group + " (" + g.stages.join(", ")
+                + ") \u2014 " + g.words + (g.next ? " \u2014 next" : "");
+            if (g.next && g.lines.length) {
+                const pre = document.createElement("pre");
+                pre.className = "results-ladder-steps-line";
+                pre.textContent = g.lines.join("\n");
+                li.appendChild(pre);
+            }
+            list.appendChild(li);
+        });
+        box.appendChild(list);
+        host.appendChild(box);
+    }
+
     function _renderLadder(ladder) {
         const host = $("results-ladder");
         if (!host) return;
@@ -268,10 +304,7 @@
         title.className = "results-ladder-title";
         title.textContent = "This calculation's ladder \u2014 " + stages.length
             + " rung" + (stages.length === 1 ? "" : "s")
-            + (ladder.complete ? ", every rung finished"
-               : (ladder.first_incomplete
-                  ? ", next to run: " + ladder.first_incomplete
-                  : ""));
+            + (ladder.complete ? ", every rung finished" : "");
         host.appendChild(title);
         const table = document.createElement("table");
         table.className = "results-ladder-table";
@@ -394,6 +427,7 @@
             });
         });
         host.appendChild(table);
+        _renderSteps(host, Array.isArray(ladder.steps) ? ladder.steps : []);
         host.appendChild(said);
         if (pickedRun) {
             const back = document.createElement("button");
