@@ -79,7 +79,8 @@ except ImportError:                         # beside a job, in a bundle
 SCHEMA_VERSION = 8   # 8: the SIESTA route's `engine_metadata` names its
 #                    force-constant range as SIESTA's numbering,
 #                    `fc_range_engine_1based` (model/overview.md § 2.2a); a
-#                    v4-v7 file reads as before, its range under the old name.
+#                    v4-v7 file reads as before, its range read under v8's
+#                    name (`from_dict`).
 READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8})
 
 
@@ -997,6 +998,11 @@ class SpectraResults:
                 f"do not)."
             )
         _refuse_unknown_keys(d, _RESULTS_KEYS, "SpectraResults")
+        # A v4-v7 FILE NAMES THE SIESTA ROUTE'S RANGE BY ITS OLD NAME; it is
+        # read under v8's, SIESTA's numbering said (engines/vibration.md 6.1).
+        meta = dict(d.get("engine_metadata", {}))
+        if int(sv) < 8 and "fc_range_1based" in meta:
+            meta["fc_range_engine_1based"] = meta.pop("fc_range_1based")
         eq = d["equilibrium"]
         _refuse_unknown_keys(eq, _EQUILIBRIUM_KEYS, "SpectraResults.equilibrium")
         # THE DERIVED VALUES A v7 FILE STATES ARE ITS INPUTS' (§ 6.6): each
@@ -1073,7 +1079,7 @@ class SpectraResults:
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
             phase_ir             = str(d.get("phase_ir",          "")),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
-            engine_metadata      = dict(d.get("engine_metadata", {})),
+            engine_metadata      = meta,
             runtime_info         = dict(d.get("runtime_info", {})),
         )
 

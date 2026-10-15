@@ -619,7 +619,8 @@ def api_build_load():
 
     A path load answers the file AS IT IS -- a pair in an engine's order
     with its order record -- unless ``restore: true``, which an editor's open
-    asks: then in your order, the codec's ``in_your_order`` read, said in a
+    asks, and the transport report, which names its selections in your
+    order: then in your order, the codec's ``in_your_order`` read, said in a
     ``structure.restored`` notice naming the order in its words
     (``model/overview.md`` § 2.2a, I8).
     """
@@ -648,8 +649,9 @@ def api_build_load():
         # and so does a run whose order nothing states, for a viewer (I9).
         # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8):
         # its open asks for the file restored, said, and a run whose order
-        # nothing states is refused it; a viewer is answered the file as it
-        # is, its order record attached.
+        # nothing states is refused it -- as the transport report's drawing
+        # does, its selections named in your order; any other viewer is
+        # answered the file as it is, its order record attached.
         from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
                                                       ORDER_UNSTATED)
         restore = _pbody.get("restore") is True

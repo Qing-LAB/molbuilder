@@ -86,9 +86,10 @@ export async function openMolecule(viewer, path, opts) {
        *
        * Enforcing is right here and nowhere else: swapping the structure
        * outright is not an EDIT of the one on screen, which is what read-only
-       * exists to prevent, and this door is only ever reached by an explicit
-       * gesture -- the Load button, or a double-click in the sidebar.  Work
-       * that would be lost is guarded above, by the confirm. */
+       * exists to prevent, and this door is reached only to show a file --
+       * the Load button, a double-click in the sidebar, a viewer opening the
+       * file it presents.  Work that would be lost is guarded above, by the
+       * confirm. */
       enforce: true,
     });
   } catch (e) {

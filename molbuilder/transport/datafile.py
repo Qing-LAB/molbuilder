@@ -407,8 +407,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     from .compose import order_unstated
     unstated = order_unstated(base)
     if unstated:
-        raise DataFileError(f"{unstated}: prepare the calculation again to "
-                            f"have it recorded")
+        raise DataFileError(unstated)
     junction = composed_junction(base)
     junction = junction.restored() if junction is not None else None
     frame_set = read_frame_set(junction) if junction is not None else None

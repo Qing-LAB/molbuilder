@@ -16,8 +16,8 @@ from the road it imitates.  The steps live here once.
 * :func:`describe_calculation` -- `jobset init` of a held H2 in a box, or
   the structure a row gives, SIESTA, the shipped `publishable` ladder
   (coarse, medium);
-* :func:`ladder_of_freq_alone`, :func:`stage_added` -- a description's
-  ladder edited as a person edits it;
+* :func:`ladder_edited` -- a description's ladder edited through Task
+  setup's Save, as the page edits it;
 * :func:`a_machine_with_queues` -- a machine record naming queues, and an
   `sbatch` on PATH that writes down every call -- where it was made and
   what it said -- and refuses it: the basic tests send nothing to a
@@ -167,31 +167,6 @@ def describe_calculation(tmp_path, monkeypatch, *,
                     else {"threads": 1})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     return bundle
-
-
-def ladder_of_freq_alone(bundle) -> None:
-    """The vibration ladder cut to its `freq` stage alone, as a person edits
-    the description: the one stage left is the ladder's first, so its group
-    is 1 (`engines/stages.md` § 2)."""
-    import json
-    path = Path(bundle) / "task.json"
-    task = json.loads(path.read_text())
-    task["stages"] = [dict(s, group=1) for s in task["stages"]
-                      if s["name"] == "freq"]
-    path.write_text(json.dumps(task, indent=2))
-
-
-def stage_added(bundle, stage: dict) -> None:
-    """``stage`` -- its ``name``, ``group`` and ``overrides`` -- added to the
-    description's ladder, the description varying what it overrides
-    (`engines/stages.md` § 6.2), as a person edits it."""
-    import json
-    path = Path(bundle) / "task.json"
-    task = json.loads(path.read_text())
-    task["varies"] = sorted(set(task.get("varies") or [])
-                            | set(stage["overrides"]))
-    task["stages"].append({"enabled": True, **stage})
-    path.write_text(json.dumps(task, indent=2))
 
 
 def a_machine_with_queues(tmp_path, monkeypatch, domains,
@@ -460,10 +435,12 @@ def _road_probe_layer(case, said, target, began) -> None:
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
 
 
-def _road_ladder_edited(case, bundle) -> None:
+def ladder_edited(case, bundle) -> None:
     """The stages a person removes (``removed``) or adds (``added`` --
-    ``{name, at}``, ``at`` the place, the end when absent) after the steps
-    before it, written through Task setup's Save as the page writes them."""
+    ``{name, at, overrides}``, ``at`` the place, the end when absent;
+    ``overrides`` what the stage sets of its own, which the description then
+    varies, `engines/stages.md` § 6.2), written through Task setup's Save as
+    the page writes them."""
     import json
     from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
@@ -476,7 +453,11 @@ def _road_ladder_edited(case, bundle) -> None:
         g = task["stages"][at - 1]["group"] + 1 if at else 1
         for st in task["stages"][at:]:
             st["group"] += 1
-        task["stages"].insert(at, {"name": new["name"], "group": g})
+        task["stages"].insert(at, {"name": new["name"], "group": g,
+                                   **({"overrides": new["overrides"]}
+                                      if new.get("overrides") else {})})
+        task["varies"] = sorted(set(task.get("varies") or [])
+                                | set(new.get("overrides") or {}))
     # THE NUMBERS AGAIN FROM 1, each stage keeping who it shares a job with.
     seen = []
     for st in task["stages"]:
@@ -963,7 +944,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                      *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "removed" in case or "added" in case:
-        _road_ladder_edited(case, bundle)
+        ladder_edited(case, bundle)
     if "source_edited" in case:
         _road_source_edited(case["source_edited"], bundle)
     if "held_edited" in case:

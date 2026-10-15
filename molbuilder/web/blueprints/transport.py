@@ -210,10 +210,7 @@ def api_transport_describe_attempt() -> Any:
     try:
         composed = compose_junction(citation, tree_root=root,
                                     swap_electrodes=swap)
-        rel_struct = (composed.relaxed
-                      if composed.relaxed is not None
-                      else composed.junction)
-        structure_wire = rel_struct.to_dict()
+        structure_wire = composed.relaxed.to_dict()
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
         # -- it biases the other end -- so the tab gets the observation

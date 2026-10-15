@@ -139,7 +139,7 @@ with the whole enriched molecule — atoms, cell, the region/frozen labels, the
   viewer that shows a file whole (the Spectrum tab's Inspect-structure card,
   read-only; the transport report's junction, which passes `restore: true` to
   draw it in your order, `model/overview.md` § 2.2a). It hands the path to `viewer.data.installMolecule({ path,
-  enforce: true })`, which asks for the whole file — a frame set with every
+  restore, enforce: true })`, which asks for the whole file — a frame set with every
   frame (`molview.md` § 9.4) — and MolView installs it, the 3D viewer painting
   it with its labels and cell. If the model already has unsaved edits it can
   pause and ask first (pass a `confirmDiscard` function) and returns `{

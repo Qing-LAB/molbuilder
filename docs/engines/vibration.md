@@ -1129,8 +1129,10 @@ decided** (2026-09-23), under the contract of
   input order through `Permutation.rows_to_input_order` and `original_of` —
   the only way any reader may: **the input order never reaches the engine and
   the sorted order never reaches a person.** A deck stating none is in the
-  input order (I2) — or was written before 2.10.0, and is refused by name
-  (I9).
+  input order (I2); a stage prepared before 2.10.0 and not yet launched is
+  refused at its launch, its deck planned again — prepared again, it states
+  its record — and one that ran then was finished by its own bundle
+  (`job-system.md` § 6.0, step 1).
 
 The deck writer checks the shape and refuses by name a copy whose free atoms
 are not one trailing run (`vibration_deck.fc_facts`): a deck rendered from the
@@ -1727,7 +1729,7 @@ root; it adds only what the comparison derives:
 
 | the record's key | what it holds | how |
 |---|---|---|
-| `stages[]` | per stage: its name; the paths of its attempt, its spectrum and its `.FC`; what it varies (its own overrides of the template); the displacement SIESTA used (`fc_displacement_ang`, from the stage's spectrum, which read it from the `.FC` header) and the atoms it nudged; its asymmetry diagnostic; its stationarity verdict with the largest free-atom force and the criterion; its mode and removed-motion counts; SIESTA's version | read from the stage's spectrum |
+| `stages[]` | per stage: its name; the paths of its attempt, its spectrum and its `.FC`; what it varies (its own overrides of the template); the displacement SIESTA used (`fc_displacement_ang`, from the stage's spectrum, which read it from the `.FC` header) and the atoms it nudged, `fc_range_engine_1based` — `FC.First … FC.Last` in SIESTA's numbering, the deck's held-first order (§ 6.2); its asymmetry diagnostic; its stationarity verdict with the largest free-atom force and the criterion; its mode and removed-motion counts; SIESTA's version | read from the stage's spectrum |
 | `modes[]` | per mode of the reference stage (the first with a result): its frequency at every stage, the matched mode's index there, the shapes' overlap, the change from the reference, the spread across stages, and a flag when a tolerance was given | modes matched **by shape**: the overlap of the mass-weighted eigenvectors over the free atoms, assigned one-to-one so the total overlap is largest (`scipy.optimize.linear_sum_assignment`) — ranks swap between displacements when two modes are near-degenerate, and matching by rank would compare different motions |
 | `force_constants[]` | per stage against the reference: the largest change of any force constant over the block both nudged, in eV/Å², and that change relative to the largest constant | `H(δ)` from each stage's raw `.FC`, through the one reader (`parse/engines/siesta_fc.py`) |
 | `tolerance_cm1` | the threshold a person gave (`summarize task --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
@@ -2010,7 +2012,7 @@ registered in [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 | 5 | 2026-08-20 | the optional `relaxation` and `thermo` blocks and `phase_relaxation` — additive, a v4 file reads whole |
 | 6 | 2026-09-23 | `removed_motions`, `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit`; the equilibrium block optional as a whole; `eigenvector_display` derived when a file carries only the canonical form — additive |
 | **7** | 2026-10-10 | `equilibrium.masses_amu` — every atom's mass, as the deck stated it and the analysis weighted by it (I3); the derived per-mode keys — the activity classes, the zero-point amplitude and displacement — **written by both engines** through one function and checked on read (§ 6.6), where until now the SIESTA finish wrote them and the PySCF deck did not. A v4–v6 file reads as before: no masses, its derived keys computed on read |
-| **8** | 2026-10-14 | the SIESTA route's `engine_metadata` names its force-constant range in SIESTA's numbering, `fc_range_engine_1based` — the deck's held-first order, an engine fact and not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a). A v4–v7 file reads as before, its range under its old name, which the displacement sweep does not read (§ 5.9) |
+| **8** | 2026-10-14 | the SIESTA route's `engine_metadata` names its force-constant range in SIESTA's numbering, `fc_range_engine_1based` — the deck's held-first order, an engine fact and not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a). A v4–v7 file reads as before, its range read under v8's name (`SpectraResults.from_dict`) |
 
 `READABLE_SCHEMA_VERSIONS = {4, 5, 6, 7, 8}`; an older or unknown version is
 refused by name.
@@ -2631,7 +2633,7 @@ only (V1.17); the δ-convergence comparison run with a mesh rung beside it
 | `tests/spectra/test_activity.py` · `test_motion_share.py` · `test_selection.py` · `test_methods.py` · `test_config.py` · `test_blueprint.py` | the derived classes; the element shares; the selector's three rules -- the one the script imports; the prose, its citations and the provenance rows of § 6.4; the defaults; the page and the load door (the old generator's `test_engine.py` / `test_script.py` died at P3) |
 | `tests/spectra/test_spectrumchart_*.py` · `tests/test_vibrationview_*_js.py` · `test_results_state_contract_spectra_js.py` · `test_spectra_phase_indicator_js.py` · `test_spectra_no_spectrum_sentence_js.py` · `test_task_setup_tab.py` · `test_spectrum_form_locks_e2e.py` | the chart's maths, seal and box — the mode positions among them, several modes with an imaginary one, and the switch to heights when strengths land; the animation's maths and mount; the viewer's state; the phase indicator; the sentence where no strength is drawn; the send flow, and `dispersion = "none"` reaching the deck as no correction; the form's locks, at load and on each change |
 | `tests/test_warmfiles.py` · `tests/validation/test_siesta.py` | the vibration warm-file section; the keyword table the deck is checked against |
-| fixtures: `tests/fixtures/psml/` -- an input, the H pseudopotential a live run needs; no run is saved (`process/testing.md` § 6, 2026-10-06) | |
+| fixtures: `tests/fixtures/psml/` -- an input, the H, C and O pseudopotentials a live run needs; no run is saved (`process/testing.md` § 6, 2026-10-06) | |
 
 ---
 
@@ -2736,9 +2738,10 @@ stretches fall by `√(μ_free/μ_held) = 0.984643` (measured 0.984673 and
 vibrations, which is why it is removed before the solve and never spotted
 after ([`science/normal-modes.md`](?doc=science/normal-modes.md) §§ 1, 4.1, 9).
 
-**H₂ on SIESTA — the road.** § 1.4 and § 5.5: the held atom last in the
-input, one mode, two motions removed, the free atom reported by its own
-number.
+**CO₂ on SIESTA — the road.** § 1.4 and § 5.5: listed O O C with the carbon
+held, the held-first deck a 3-cycle of the input, four modes — a degenerate
+bend pair in the (x, y) plane, two stretches along z — two motions removed,
+every atom reported by its own number in the input order.
 
 **CO₂ — mutual exclusion.** A centrosymmetric molecule's infrared-active
 modes are Raman-silent and vice versa. The run: 653.45 cm⁻¹ (×2) infrared

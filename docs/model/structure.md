@@ -1109,7 +1109,7 @@ task #75).
 
 | Door | Does | Server seam |
 |---|---|---|
-| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore?})` — `restore` asks for a file in an engine's order put back in yours ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.read` |
+| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in yours ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.read` |
 | *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + the `geometry_hash` of what it writes) |
 
 `openMolecule` is **only** for a project-file path. A generated structure

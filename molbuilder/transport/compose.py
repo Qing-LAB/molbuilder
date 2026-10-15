@@ -908,21 +908,27 @@ def read_provenance(base_dir) -> Optional[Dict]:
     return read_json(path) if path.is_file() else None
 
 
-def order_unstated(base_dir) -> Optional[str]:
+def order_unstated(base_dir, *, provenance=None) -> Optional[str]:
     """WHY THIS CALCULATION'S COMPOSED JUNCTION STATES NO ORDER though its
     atoms are TranSIESTA's -- its composition record written before 2.10.0
     recorded it, known by the record's own schema (`model/overview.md`
-    § 2.2a, I9) -- or ``None``.  THE ONE CHECK, asked by every door that
-    names the junction's atoms in your order: the record's read for prep and
-    the gather (:func:`load_compose_record`), the data file
-    (`datafile.write_data_file`) and a selection's PDOS
-    (`record.selection_pdos`)."""
-    provenance = read_provenance(base_dir)
+    § 2.2a, I9) -- in one sentence with its way on, or ``None``.  THE ONE
+    CHECK, asked by every door that names the junction's atoms in your
+    order: the record's read for prep and the gather
+    (:func:`load_compose_record`), the data file (`datafile.write_data_file`)
+    and a selection's PDOS (`record.selection_pdos`) -- each says it as it
+    is -- and the record, which carries it for the report to say.
+    ``provenance`` is the record already read, when the caller has it."""
+    from ..identity import LAUNCHED_WAY_BACK
+    if provenance is None:
+        provenance = read_provenance(base_dir)
     if provenance is None or provenance.get("schema") == PROVENANCE_SCHEMA:
         return None
     return (f"the composition record ({PROVENANCE_FILE}, "
             f"{provenance.get('schema')!r}) was written before 2.10.0 "
-            f"recorded the order the junction's atoms are in")
+            f"recorded the order the junction's atoms are in -- they are "
+            f"TranSIESTA's, and nothing states the way back to yours; to have "
+            f"it recorded, go back to {LAUNCHED_WAY_BACK} and prepare it again")
 
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
@@ -976,7 +982,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     if provenance is None:
         return _no(f"there is no {PROVENANCE_FILE} beside it, so nothing "
                    f"here has been composed yet")
-    said = order_unstated(base_dir)
+    said = order_unstated(base_dir, provenance=provenance)
     if said:
         return _no(said)
     if provenance.get("citation") != citation:

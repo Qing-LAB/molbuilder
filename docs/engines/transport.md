@@ -1444,7 +1444,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 
 | promise | why | checked how |
 |---|---|---|
-| the same atom count, in the **input order** — the script never sees the sorted copy; the sort runs per frame at prep, under one permutation for the whole group (`model/overview.md` § 2.2) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base *(Decided 2026-10-14, not built: each frame sorted by the one key from the input order, so every frame's deck states the same order record — `model/overview.md` § 2.2a, I5)* |
+| the same atom count, in the **input order** — the script never sees the sorted copy; prep sorts the whole set once, every frame with it, under one order record for the whole group, which every frame's deck states (`model/overview.md` § 2.2a, I5) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
 | the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
 | **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, within `wizard.FROZEN_TOL_ANG` (10⁻³ Å), at the citation door |
@@ -1872,8 +1872,10 @@ junction's through its order record and its `atoms` and `outside_device` back
 axis is in your order, the composed junction restored, and the record holds
 no atom's row — its DOS is per region. A calculation whose composition record
 was written before 2.10.0 (`slot-provenance@1`) records no order: its data
-file and a selection's PDOS are refused by name, one check
-(`transport.compose.order_unstated`; I9).
+file and a selection's PDOS are refused by name, and the report says it beside
+the drawing, which lists the atoms as TranSIESTA does (the record's
+`order_unstated`) — one check, one sentence (`transport.compose.order_unstated`;
+I9).
 
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the

@@ -19,8 +19,8 @@ THE RANGE IS THE FREE ATOMS, AND THEY ARE ONE RUN BECAUSE THE COPY WAS
 SORTED.  The person's held set is scattered; SIESTA cannot take a
 scattered range.  So `prep` renders this deck from a copy sorted with the
 ``held-first`` key (`transport/sort.py`, `model/overview.md` § 2.2):
-held atoms first, free atoms last, the permutation recorded beside the
-calculation.  This module only CHECKS that shape and names the range; it
+held atoms first, free atoms last, the copy's order record stated in the
+deck's ATOM-METADATA block.  This module only CHECKS that shape and names the range; it
 does not sort, because a deck writer that reorders atoms is a second place
 deciding an atom's number.
 """

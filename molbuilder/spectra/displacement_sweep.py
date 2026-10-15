@@ -330,9 +330,6 @@ def collect_sweep(base_dir, task, *,
                             from_engine_index(int(rng[1]), "siesta") + 1))
                  if len(rng) == 2 else [])
     H_ref, ref_why = None, "a force-constant file is missing"
-    if ref_fc_file is not None and not displaced:
-        ref_why = (f"{ref_name}'s result states no force-constant range "
-                   f"(fc_range_engine_1based)")
     if ref_fc_file is not None and displaced:
         try:
             H_ref = (hessian_from_fc(read_fc(ref_fc_file), displaced)

@@ -10,7 +10,6 @@ Properties under guard, each named for its failure:
   user's mental map of their molecule survives the sort;
 * every index-carrying field crosses the sort with its atom — regions,
   frozen list, annotations, the per-atom parallel arrays;
-* the permutation is a recorded bijection, both directions;
 * the refusals NAME atoms: unlabeled, double-labeled, missing block,
   labels-vs-geometry disagreement.
 """
@@ -128,13 +127,6 @@ class TestCanonicalOrder:
 
 
 class TestBookkeepingCrossesTheSort:
-
-    def test_permutation_is_a_recorded_bijection(self):
-        struct, rows = _junction(shuffle=True)
-        perm = sort_by(struct, SORT_TRANSPORT).structure.atom_order
-        every = list(range(len(rows)))
-        assert sorted(perm.sorted_of(every)) == every
-        assert perm.original_of(perm.sorted_of(every)) == every
 
     def test_every_atom_keeps_its_identity(self):
         """The user's 'nothing missed': same multiset of

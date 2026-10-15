@@ -10,7 +10,7 @@ ROLE    the grammar of every molbuilder block in a generated file -- the block
         record (:func:`order_record_of`), ENGINE-OFFSET, VIBRATION
 USED-BY script_emit (writes every block and reads the rest through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
-        the job), runs.declared, transport/compose, runwrap and
+        the job), runs.declared, runwrap and
         pyscf/input (the effective-parameters fence)
 TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
         (`runwrap.VIBRATION_COMPANIONS`)

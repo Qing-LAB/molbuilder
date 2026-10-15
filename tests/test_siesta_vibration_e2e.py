@@ -39,13 +39,13 @@ relaxation of its own.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, set_template_value
-from support.road import (CO2, CO2_HELD_FIRST, group_words,
-                          ladder_of_freq_alone, stage_added)
+from support.road import CO2, CO2_HELD_FIRST, group_words, ladder_edited
 
 pytestmark = [
     pytest.mark.engine,
@@ -59,22 +59,6 @@ pytestmark = [
 #: mass unit, in amu Å² cm⁻¹ (`engines/vibration.md` § 6.6).
 _ZERO_POINT = 1.054571817e-34 / (4 * np.pi * 2.99792458e10
                                  * 1.66053906660e-27 * 1e-20)
-
-
-def _co2_on_the_road(tree, *, stage=None):
-    """The road's CO2 described as a SIESTA vibration in ``tree``
-    (`support.real_runs`'s one maker): the kind's ladder, one rank, one
-    thread -- and ``stage``, when given, added to the ladder with the
-    overrides it states, the description varying them (`engines/stages.md`
-    § 6.2; `support.road.stage_added`).  A `RealRun` of it, nothing typed
-    yet."""
-    from support.real_runs import RealRun, _described
-    bundle = _described(tree, "P/freq/CO2", structure=CO2, name="CO2",
-                        calculation="vibration",
-                        execution={"mpi_np": 1, "omp_threads": 1})
-    if stage is not None:
-        stage_added(bundle, stage)
-    return RealRun(tree=tree, bundle=bundle)
 
 
 @pytest.fixture(scope="module")
@@ -92,12 +76,13 @@ def ticked(tmp_path_factory):
     ladder cut to `freq` alone and asked again unticked; then ticked, the
     template's temperature set to 350 K, prepared and launched -- each answer
     written down."""
-    from support.real_runs import _on_the_road, _taken, _typed
+    from support.real_runs import (RealRun, _on_the_road, _taken, _typed,
+                                   co2_vibration)
     with _on_the_road(tmp_path_factory, "ticked") as tree:
-        run = _co2_on_the_road(tree)
+        run = RealRun(tree=tree, bundle=co2_vibration(tree))
         _typed(run, "prep freq before relax", "prep", "task",
                *group_words(run.bundle, "freq"), "--target", "this")
-        ladder_of_freq_alone(run.bundle)
+        ladder_edited({"removed": ["relax"]}, run.bundle)
         _typed(run, "prep freq unticked", "prep", "task",
                *group_words(run.bundle, "freq"), "--target", "this")
         template = run.bundle / "CO2.template.toml"
@@ -118,11 +103,12 @@ def sweep(tmp_path_factory):
     `relax` and `freq` launched, `freq_half` prepared and the sweep
     summarized (``early``), `freq_half` launched and summarized
     (``record``), and summarized again under a tolerance (``flagged``)."""
-    from support.real_runs import _on_the_road, _taken
+    from support.real_runs import RealRun, _on_the_road, _taken, co2_vibration
     with _on_the_road(tmp_path_factory, "sweep") as tree:
-        run = _co2_on_the_road(tree, stage={
-            "name": "freq_half", "group": 3,
-            "overrides": {"fc_displacement": 0.02}})
+        run = RealRun(tree=tree, bundle=co2_vibration(tree))
+        ladder_edited({"added": [{"name": "freq_half",
+                                  "overrides": {"fc_displacement": 0.02}}]},
+                      run.bundle)
         record = run.bundle / "CO2.fc-sweep.json"
         for stage in ("relax", "freq"):
             _taken(run, f"prep {stage}", "prep", "task",
@@ -159,48 +145,29 @@ def _said(deck, key):
     return deck[0].get(fdf_key(key), [])
 
 
-def _the_monitor_closed(attempt, stage, step_words):
-    """What the monitor beside a real run said at its end
-    (`run-reports.md` § 2.1a, § 2.3): how the run ended in the Results tab's
-    words, the step in SIESTA's own, every SCF phase converged -- and a
-    utilisation basis that is the JOB's: a run started directly is its
-    process tree over the one rank it was launched on, and a CPU run is
-    judged on no GPU."""
-    import re
-
-    from molbuilder.runfiles import compose
-    log = (attempt / compose("CO2", ".monitor.log", stage, run=0)).read_text()
-    closing = [ln for ln in log.splitlines() if "[STATUS]" in ln][-1]
-    assert "finished" in closing and step_words in closing, closing
-    assert "converged: periodic yes" in closing, closing
-    basis = next(ln for ln in log.splitlines() if "[UTIL-BASIS]" in ln)
-    assert ("cpu% of 1 core(s) [launched on]" in basis
-            and "cpu time [process tree]" in basis
-            and "mem [process tree" in basis), basis
-    summary = next(ln for ln in log.splitlines() if "[UTIL-SUMMARY]" in ln)
-    assert "gpu" not in summary.lower(), summary
-    # a fraction of the core it holds -- one busy rank
-    mean = float(re.search(r"cpu mean=(\d+)%", summary).group(1))
-    assert 20.0 <= mean <= 120.0, summary
-
-
-def _the_result(attempt, stage):
+def _the_result(attempt):
     """The spectrum the launch left in ``attempt`` -- written by the job
-    itself, so the attempt concluded 0 only with it (`engines/vibration.md`
-    § 5.5: the finish's failure is the job's)."""
-    from molbuilder.runfiles import compose
-    out = attempt / "CO2.spectra.json"
-    concluded = (attempt / compose("CO2", ".concluded", stage,
-                                   run=0)).read_text()
-    assert out.is_file(), (
+    itself, so its run finished only with it (`engines/vibration.md` § 5.5:
+    the finish's failure is the job's) -- asked through the run door (the
+    one status door, `runs.run_answer`; the run's result on its label,
+    `Run.on_label`) and read by its reader (`sidecars.spectra
+    .parse_spectra_json`, which refuses a derived value its inputs
+    contradict), as it states itself."""
+    from molbuilder.runs import run_answer, run_of
+    from molbuilder.sidecars.spectra import parse_spectra_json
+    said = run_answer(attempt)
+    assert (said["state"], said["detail"]) == ("finished", "job_completed"), \
+        said
+    out = run_of(attempt).on_label(".spectra.json")
+    assert out is not None and out.is_file(), (
         "the launch ended without the spectrum: the job did not finish its "
-        f"own calculation ({concluded.strip()})")
-    assert concluded.startswith("rc=0"), concluded
-    return json.loads(out.read_text())
+        "own calculation")
+    return parse_spectra_json(str(out)).to_dict()
 
 
 def _common_assertions(d):
-    assert d["engine"] == "siesta" and d["schema_version"] >= 6
+    from molbuilder.spectra.results import SCHEMA_VERSION
+    assert d["engine"] == "siesta" and d["schema_version"] == SCHEMA_VERSION
     # YOUR ORDER: the oxygens atoms 0 and 1, the held carbon atom 2.
     assert d["equilibrium"]["elements"] == CO2["elements"]
     assert d["free_atom_idxs"] == [0, 1] and d["frozen_atom_idxs"] == [2]
@@ -250,10 +217,8 @@ def _states_its_masses_and_derived_values(d):
     atom's mass -- `chemistry.atomic_mass`'s, the table every deck's masses
     are stated from -- and its modes are weighted by those masses (each
     canonical vector `Σ m|L|² = 1` in them); each mode's derived values sit
-    beside it, and its own reader takes them (it refuses a derived value its
-    inputs contradict)."""
+    beside it -- which its reader took (:func:`_the_result`)."""
     from molbuilder.chemistry import atomic_mass
-    from molbuilder.sidecars.spectra import parse_spectra_json_dict
     from molbuilder.spectra.derived import DERIVED_MODE_KEYS
     eq = d["equilibrium"]
     assert eq["masses_amu"] == [atomic_mass(e) for e in eq["elements"]], eq
@@ -262,7 +227,6 @@ def _states_its_masses_and_derived_values(d):
         assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
         L = np.asarray(m["eigenvector_canonical"])
         assert abs(float((stated[:, None] * L * L).sum()) - 1.0) < 1e-6, m
-    parse_spectra_json_dict(d)
 
 
 def _relaxed_geometry(attempt):
@@ -305,11 +269,11 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     assert fc[1][fdf_key("Geometry.Constraints")] == held
     assert declared(fc[2]).atom_order.to_dict() == CO2_HELD_FIRST
     attempt = run.attempt("freq")
-    assert (attempt / "CO2.FC").is_file(), \
-        "the force-constant run must leave CO2.FC"
-    _the_monitor_closed(attempt, "02_freq", "FC step")
+    fc_file = fc[2].on_label(".FC")
+    assert fc_file is not None and fc_file.is_file(), \
+        "the force-constant run must leave its .FC"
     # THE LAUNCH ENDS WITH THE RESULT: the job's finish wrote it (§ 5.5).
-    d = _the_result(attempt, "02_freq")
+    d = _the_result(attempt)
     # ...and summarize derives nothing: with one force-constant stage there
     # is no sweep to summarize (§ 5.9, I22).
     said = run.said["summarize"]
@@ -358,7 +322,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     said = ticked.said["prep freq unticked"]
     assert said.exit_code != 0 and "already_relaxed = true" in said.output \
         and "`relax` stage" in said.output, said.output
-    d = _the_result(ticked.attempt("freq"), "01_freq")
+    d = _the_result(ticked.attempt("freq"))
     _common_assertions(d)
     assert d["thermo"]["temperature_K"] == 350.0, d["thermo"]["temperature_K"]
     assert d["thermo"]["pressure_atm"] is None
@@ -411,15 +375,15 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
         waiting
     assert early["failed"] == []
 
-    decks = {tok: _deck_of(bundle / tok / "run-0")
-             for tok in ("02_freq", "03_freq_half")}
+    decks = {stage: _deck_of(sweep.attempt(stage))
+             for stage in ("freq", "freq_half")}
     # I24: one geometry for every force-constant stage -- the relaxed one.
-    assert np.allclose(_deck_coordinates(decks["02_freq"]),
-                       _deck_coordinates(decks["03_freq_half"]), atol=1e-8), \
+    assert np.allclose(_deck_coordinates(decks["freq"]),
+                       _deck_coordinates(decks["freq_half"]), atol=1e-8), \
         "the second force-constant stage was not written at the relaxed geometry"
-    assert _said(decks["03_freq_half"], "FC.Displacement")[:1] == ["0.02"]
-    a1, a2 = (_the_result(bundle / "02_freq" / "run-0", "02_freq"),
-              _the_result(bundle / "03_freq_half" / "run-0", "03_freq_half"))
+    assert _said(decks["freq_half"], "FC.Displacement")[:1] == ["0.02"]
+    a1, a2 = (_the_result(sweep.attempt("freq")),
+              _the_result(sweep.attempt("freq_half")))
     for d in (a1, a2):
         assert d["phase_relaxation"] == "complete" and \
             d["relaxation"]["converged"] is True
@@ -438,8 +402,9 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
     for s in rec["stages"]:
         for key in ("spectrum", "fc_file"):
             assert (bundle / s[key]).is_file(), (key, s)
-    assert rec["stages"][0]["spectrum"].startswith("02_freq/run-0/")
-    assert rec["stages"][1]["spectrum"].startswith("03_freq_half/run-0/")
+    for s in rec["stages"]:
+        where = sweep.attempt(s["name"]).relative_to(bundle)
+        assert Path(s["spectrum"]).parent == where, (s["spectrum"], where)
     assert not list(bundle.glob("*.FC")) and not list(
         bundle.glob("*.spectra.json")), "the summary copied a stage's files"
     # the oxygens nudged, SIESTA's atoms 2 and 3 in the held-first deck

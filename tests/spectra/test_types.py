@@ -243,32 +243,12 @@ class TestSpectraResults:
             SpectraResults.from_dict({**base, "schema_version": 999})
 
     def test_schema_version_pinned(self):
-        """Pin the current on-disk schema version.  A stray edit to
-        SCHEMA_VERSION should fail this test and prompt the author
-        to add a row in results.py's SCHEMA_VERSION history comment.
-
-        v2: split eigenvector_free into eigenvector_canonical +
-            eigenvector_display.
-        v3 (2026-05-21): rename ``fixed_atom_idxs`` ->
-            ``frozen_atom_idxs`` (terminology unification).
-        v4 (2026-05-22): add ``runtime_info`` (n_threads, GPU info,
-            hostname); same "no backward compat" rule.
-        v5 (2026-08-20): + the OPTIONAL relaxation/thermo blocks
-            (spectra-migration plan D4) -- and the rule CHANGES here:
-            additive bumps read the old version whole
-            (READABLE_SCHEMA_VERSIONS is a set, the molstruct sidecar's
-            own doctrine), so "no backward compat" now applies only to
-            facts that MOVED.
-        v6: + the OPTIONAL ``removed_motions`` block (what the harmonic
-            analysis projected out before diagonalising); additive, so
-            v4 and v5 files still read whole.
-        v7 (2026-10-10): + ``equilibrium.masses_amu`` beside the geometry,
-            and each mode's derived values stated by every writer and
-            checked on read (`engines/vibration.md` § 6.1, § 6.6); v4-v6
-            files still read whole.
-        v8 (2026-10-14): the SIESTA route's force-constant range named as
-            SIESTA's numbering in ``engine_metadata``; v4-v7 files still read
-            whole.
+        """The on-disk schema version, pinned: an edit to SCHEMA_VERSION
+        fails here and asks for its row in results.py's history comment and
+        `engines/vibration.md` § 6.1.  Additive versions read the older ones
+        whole (READABLE_SCHEMA_VERSIONS is a set, the molstruct sidecar's
+        rule); a fact that moved is read in its new place -- a v4-v7 file's
+        force-constant range under v8's name.
         """
         r = _make_results()
         assert r.schema_version == SCHEMA_VERSION == 8
@@ -280,6 +260,11 @@ class TestSpectraResults:
         back = SpectraResults.from_dict(d)
         assert back.schema_version == 4
         assert back.phase_relaxation == "empty" and back.thermo == {}
+        # A fact that moved, executed: a v7 file's range read under v8's name.
+        d = r.to_dict(); d["schema_version"] = 7
+        d["engine_metadata"] = {"fc_range_1based": [2, 3]}
+        assert SpectraResults.from_dict(d).engine_metadata == {
+            "fc_range_engine_1based": [2, 3]}
 
     def test_engine_metadata_passes_through(self):
         """engine_metadata is the escape valve for engine-specific

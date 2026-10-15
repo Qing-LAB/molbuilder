@@ -91,19 +91,19 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     `<label>.spectra.json`, so two force-constant stages would overwrite each
     other's result: `prep` refuses the description before any sort or deck is
     written, at whichever stage is prepared first (`engines/vibration.md`
-    § 5.9) -- counting the stages the description runs: a disabled one is
-    never prepared (`engines/stages.md` § 6.2).  The road's CO2 described
-    flat, a second force-constant stage added.
+    § 5.9).  The road's CO2 described flat, a second force-constant stage
+    added on Task setup.
 
     MUTATION THIS MUST FAIL AGAINST: the check not made.
     """
     from support.road import (CO2, describe_calculation, group_words, jobset,
-                              stage_added)
+                              ladder_edited)
     bundle = describe_calculation(tmp_path, monkeypatch, shape="flat",
                                   name="CO2", calculation="vibration",
                                   structure=CO2)
-    stage_added(bundle, {"name": "freq_half", "group": 3,
-                         "overrides": {"fc_displacement": 0.02}})
+    ladder_edited({"added": [{"name": "freq_half",
+                              "overrides": {"fc_displacement": 0.02}}]},
+                  bundle)
     r = jobset("prep", "task", *group_words(bundle, "relax"),
                "--bundle", bundle, "--target", "this")
     assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output

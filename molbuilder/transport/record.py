@@ -8,7 +8,7 @@ integral — parsed, never recomputed).  Both formats were pinned against
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@6``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@7``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the mode's
 average over a frame set (`average.mode_average`), the junction's TOTAL
 current, with the
@@ -42,6 +42,8 @@ from ..persist import json_safe
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``@7``: ``order_unstated`` -- the sentence a junction composed before
+#: 2.10.0 is said with, its order not recorded (I9), or ``None``.
 #: ``@6``: the provenance names no ``atom_permutation`` file -- the junction
 #: (``junction_file``) carries its order record in its sidecar.
 #: ``@5``: the ``average`` carries no slope or curvature, and states the
@@ -58,7 +60,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@6"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@7"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -668,19 +670,15 @@ def _rung_points(base: Path, task, name: str, token: str,
     return out
 
 
-def device_regions(base: Path) -> Dict[str, List[int]]:
+def device_regions(junction) -> Dict[str, List[int]]:
     """The device's regions molbuilder owns -- L-electrode, bridge,
     R-electrode -- as atom indices (0-based, the composed junction's order,
-    which is every rung's deck's), read from the calculation's composed
-    junction (`compose`'s copy and its sidecar).  ``{}`` before it is
-    composed."""
-    from ..runfiles import JUNCTION_FILE
-    from ..workingcopy_structure import StructureCodec
+    which is every rung's deck's), from the calculation's composed junction
+    (:func:`composed_junction`).  ``{}`` before it is composed (``None``)."""
     from .sort import ELECTRODE_LABELS, REGION_BRIDGE
-    path = Path(base) / JUNCTION_FILE
-    if not path.is_file():
+    if junction is None:
         return {}
-    regions = StructureCodec().load(path).regions or {}
+    regions = junction.regions or {}
     return {label: [int(i) for i in regions.get(label, ())]
             for label in (ELECTRODE_LABELS[0], REGION_BRIDGE,
                           ELECTRODE_LABELS[1])
@@ -750,7 +748,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     failed: List[Dict] = []
     token = stage_home(base, task, "transmission").token
     names = RunNames.of(task.label, token, task.shape)
-    regions = device_regions(base)
+    regions = device_regions(junction)
     stages = _stage_facts(base, task, task.label)
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
@@ -866,6 +864,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
     provenance = read_provenance(base)
+    from .compose import order_unstated
     # THE DESCRIPTION'S, as stated (`Task.treatment`): a list of several
     # voltages states the switch; one is a single bias.  Never inferred
     # from how many points ran.
@@ -897,6 +896,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # THE COMPOSED JUNCTION the device was built from, by its catalogue
         # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
         "junction_file": JUNCTION_FILE,
+        # WHEN ITS ORDER IS NOT RECORDED -- a junction composed before 2.10.0
+        # (I9) -- the sentence the report says beside the drawing, which then
+        # lists the atoms as TranSIESTA does; ``None`` otherwise.
+        "order_unstated": order_unstated(base, provenance=provenance),
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for
@@ -995,11 +998,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     from .compose import order_unstated
     unstated = order_unstated(base)
     if unstated:
-        raise RecordError(f"{unstated}: prepare the calculation again to "
-                          f"have it recorded")
-    junction = composed_junction(base)
-    if junction is None:
-        raise RecordError("this calculation's junction is not composed yet")
+        raise RecordError(unstated)
     read_at, where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {said}")
@@ -1008,6 +1007,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
         raise RecordError(f"the transmission at {said} has written "
                           f"no {task.label}.TBT.nc (nor both "
                           f"{task.label}.TBT_UP.nc and .TBT_DN.nc)")
+    junction = composed_junction(base)
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
     _dev_at, dev = _at("device", run=gathered_device_run(base, task))

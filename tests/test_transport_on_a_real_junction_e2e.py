@@ -367,7 +367,7 @@ def junction(tmp_path_factory):
                                      template_with_values)
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
-    from support.road import group_words, jobset, ladder_of_freq_alone
+    from support.road import group_words, jobset, ladder_edited
 
     def seed_and_leads(on):
         # ONE GROUP, ONE JOB (`engines/stages.md` § 2): the defaults put
@@ -503,7 +503,7 @@ def junction(tmp_path_factory):
         assert r.exit_code == 0, r.output
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
         _run_card(vib.bundle)
-        ladder_of_freq_alone(vib.bundle)
+        ladder_edited({"removed": ["relax"]}, vib.bundle)
         for name, value in {**RELAXED_WITH, "already_relaxed": True}.items():
             _set_by_the_person(vib.bundle / "V.template.toml", name, value)
         _taken(vib, "prep freq", "prep", "task",
@@ -702,15 +702,16 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
     assert _files(junction.tree / junction.cite) == junction.cited_before
 
 
-def test_the_record_answers_for_the_citation_it_was_composed_from(junction,
-                                                                   tmp_path):
+def test_the_record_answers_for_the_citation_it_was_composed_from(
+        junction, tmp_path, monkeypatch):
     """`load_compose_record`'s "no record" is said in words: nothing
     composed here, a record composed from another citation, or one composed
     before 2.10.0 recorded the order its junction's atoms are in -- known by
     its own schema, a record stamped `slot-provenance@1`; prep then composes
     it again, and the data file and a selection's PDOS, which name the
-    junction's atoms in your order, are refused by name
-    (`model/overview.md` § 2.2a, I9; `execution/job-contracts.md` § 6.1)."""
+    junction's atoms in your order, are refused by name, and the record the
+    report draws by carries the sentence (`model/overview.md` § 2.2a, I9;
+    `execution/job-contracts.md` § 6.1)."""
     from molbuilder.transport.compose import (compose_junction,
                                               load_compose_record,
                                               write_compose_record)
@@ -739,14 +740,29 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(junction,
                                tree_root=junction.tree, why=why) is None
     stated = "written before 2.10.0 recorded the order"
     assert stated in why[0], why
-    from molbuilder.task import read_task
-    from molbuilder.transport.datafile import DataFileError, write_data_file
-    from molbuilder.transport.record import RecordError, selection_pdos
-    task = read_task(junction.bundle / "task.json")
-    with pytest.raises(DataFileError, match=stated):
-        write_data_file(rec, task, {})
-    with pytest.raises(RecordError, match=stated):
-        selection_pdos(rec, task, 0.0, [0], "all")
+    # ...AND THE DOORS A PERSON ASKS of such a calculation -- a copy of the
+    # one run here, its record stamped `@1`: `summarize task`, whose data
+    # file names atoms in your order, and the report's PDOS, refused by name;
+    # the report's record carries the sentence for its drawing.
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.web.app import create_app
+    from support.real_runs import copy_of
+    from support.road import jobset
+
+    def stamped(copy):
+        write_json(copy.bundle / SLOT_PROVENANCE_FILE,
+                   {**read_provenance(copy.bundle),
+                    "schema": "molbuilder/slot-provenance@1"})
+    old = copy_of(junction, "composed-before-2.10.0", stamped)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    r = jobset("summarize", "task", "--bundle", old.bundle)
+    assert r.exit_code != 0 and stated in r.output, r.output
+    client = create_app(config={}).test_client()
+    got = client.get(f"/api/transport/pdos?path={old.bundle}&point=0"
+                     f"&atoms=0&orbitals=all")
+    assert got.status_code == 400 and stated in got.get_json()["error"]
+    rec_said = client.get(f"/api/transport/record?path={old.bundle}")
+    assert stated in rec_said.get_json()["record"]["order_unstated"]
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -871,12 +887,15 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
         "pair", _N_FRAMES)
 
 
+#: THE ATOM FREED in the rows below: the right block's atom next to the
+#: bridge, which the relaxation held.
+_FREED = _at(_LEAD + _WIRE)
+
+
 @pytest.mark.parametrize("change, severity, words, as_the_deck", [
     ("hold", "info", "holds 21: every atom it held, and 1 more", False),
-    ("free", "warn", f"leaves atom index {_at(_LEAD - 1)} (H) of them free",
-     False),
-    ("free", "warn", f"leaves atom index {_at(_LEAD - 1)} (H) of them free",
-     True),
+    ("free", "warn", f"leaves atom index {_FREED} (H) of them free", False),
+    ("free", "warn", f"leaves atom index {_FREED} (H) of them free", True),
 ], ids=["holds-more-for-the-spectrum", "frees-an-atom-the-relaxation-held",
         "names-it-in-your-order-on-the-decks-sorted-copy"])
 def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
@@ -886,24 +905,25 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
     pair whose `info.relaxation` record names the atoms the relaxation held
     (`held_atom_keys`) -- history the labels do not change.  Holding one
     middle atom more for the spectrum is the partial Hessian over fewer
-    atoms, every one balanced: information.  Freeing the left electrode's
+    atoms, every one balanced: information.  Freeing the right electrode's
     atom next to the bridge, which the relaxation held, is a warning naming
     it: its force was never balanced -- named in your order also when the
-    check is asked of the deck's held-first copy, as prep asks it
-    (`model/overview.md` § 2.2a, I3: the sorted order never reaches a
-    person)."""
+    check is asked of the deck's held-first copy, as prep asks it, where that
+    atom stands at another index (`model/overview.md` § 2.2a, I3: the sorted
+    order never reaches a person)."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.validation import validate
     from molbuilder.workingcopy_structure import StructureCodec
     s = StructureCodec().load(junction.tree / junction.pair)
     held = set(s.frozen_atoms)
-    assert len(held) == 20 and _at(_LEAD - 1) in held, sorted(held)
+    assert len(held) == 20 and _FREED in held, sorted(held)
     s.frozen_atoms = sorted(held | {_at(_LEAD + _WIRE // 2 - 1)}
-                            if change == "hold" else held - {_at(_LEAD - 1)})
+                            if change == "hold" else held - {_FREED})
     if as_the_deck:
         from molbuilder.transport.sort import deck_sort_key, sort_by
         s = sort_by(s, deck_sort_key("siesta", "vibration")).structure
-        assert s.atom_order is not None
+        # the row's premise: in the copy the freed atom has another index
+        assert s.indices_of_yours([_FREED]) != [_FREED]
     cfg = SiestaConfig(system_label="J", psml_lib="pseudopotential",
                        already_relaxed=True, **RELAXED_WITH)
     found = [i for i in validate(s, cfg, calculation="vibration")
@@ -957,13 +977,14 @@ def test_every_rung_of_the_junction_states_its_order(junction):
     yours while its atoms are in TranSIESTA's.  Each run asked through the
     run door (`runs.run_of`) and its reader (`runs.declared`)."""
     from molbuilder.runs import declared, run_of
+    from molbuilder.transport.stages import Point
     chain = {"key": "transport",
              "sorted_to_original": [_at(p) for p in range(len(_LISTED))],
              "original_to_sorted": list(_LISTED)}
     runs = ([(junction.attempt(s), w) for s, w in
              (("seed", chain), ("electrode_L", None), ("electrode_R", None))]
-            + [(_point(junction, rung, 0, v), chain)
-               for rung in ("04_device", "05_transmission") for v in _BIAS])
+            + [(junction.attempt(rung) / Point(volts=v).rel, chain)
+               for rung in ("device", "transmission") for v in _BIAS])
     for where, want in runs:
         got = declared(run_of(where)).atom_order
         assert (None if got is None else got.to_dict()) == want, where
@@ -1493,8 +1514,10 @@ def test_the_report_draws_the_junction_in_your_order(junction, page,
     TranSIESTA's order -- put back in your order, the order its PDOS
     selections are named in, and says so: the viewer's notice names the
     order the file was in, and no line says its atoms are in the engine's
-    order.  Mounted as the Results page mounts it, on the server's answer
-    for the calculation's `task.json` (`/api/results/dir`).  The silent
+    order.  Mounted through the registry with the page's default context, on
+    the server's answer for the calculation's `task.json`
+    (`/api/results/dir`), as the Results page's dispatcher mounts it.  The
+    silent
     failure: a drawing in TranSIESTA's order whose selections the PDOS door
     reads as yours."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
@@ -1518,8 +1541,7 @@ def test_the_report_draws_the_junction_in_your_order(junction, page,
                 const reg = window.molbuilder.inspectors;
                 const host = document.getElementById('inspector-host');
                 host.innerHTML = '';
-                reg.mount(host, file, {showError: (m) => {
-                    host.textContent = 'ERROR: ' + m; }}, meta);
+                reg.mount(host, file, reg.createDefaultContext(host), meta);
                 return reg.pick(file, meta).name;
             }""", str(task))
         assert name == "transport", name
