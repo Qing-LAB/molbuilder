@@ -212,14 +212,14 @@ def api_transport_describe_attempt() -> Any:
                                     swap_electrodes=swap)
         rel_struct = (composed.relaxed
                       if composed.relaxed is not None
-                      else composed.sorted.structure)
+                      else composed.junction)
         structure_wire = rel_struct.to_dict()
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
         # -- it biases the other end -- so the tab gets the observation
         # (the sort's one note, with the numbers) plus `fix` as a WORD
         # it can act on without matching prose.
-        for note in composed.sorted.notes:
+        for note in composed.notes:
             findings.append(Issue("warn", note))
         # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model` and
         # the compose gate measure the periodic seam and the
@@ -231,7 +231,7 @@ def api_transport_describe_attempt() -> Any:
         for model in (composed.electrode_left, composed.electrode_right):
             for note in (model.notes if model is not None else ()):
                 findings.append(Issue("info", f"{model.label}: {note}"))
-        if (electrode_orientation(composed.sorted.structure)
+        if (electrode_orientation(composed.junction)
                 == ORDER_INVERTED):
             fix = "swap_electrodes"
     except Exception as exc:  # noqa: BLE001 -- surfaced, never fatal

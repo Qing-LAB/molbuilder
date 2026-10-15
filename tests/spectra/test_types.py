@@ -266,10 +266,13 @@ class TestSpectraResults:
             and each mode's derived values stated by every writer and
             checked on read (`engines/vibration.md` § 6.1, § 6.6); v4-v6
             files still read whole.
+        v8 (2026-10-14): the SIESTA route's force-constant range named as
+            SIESTA's numbering in ``engine_metadata``; v4-v7 files still read
+            whole.
         """
         r = _make_results()
-        assert r.schema_version == SCHEMA_VERSION == 7
-        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7}
+        assert r.schema_version == SCHEMA_VERSION == 8
+        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7, 8}
         # The additive rule, executed: a v4 payload reads whole.
         d = r.to_dict(); d["schema_version"] = 4
         for k in ("phase_relaxation", "relaxation", "thermo"):

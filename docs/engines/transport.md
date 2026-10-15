@@ -1848,10 +1848,13 @@ I1): the report draws the composed junction put back in your order — its load
 asks the load route to restore it — while `junction.xyz` stays the engine's
 record, since the device's regions and the leads are read from it in its
 order; a projected-DOS selection is named in your order, mapped into the
-junction's through its order record (`sorted_of`) and its `atoms` and
-`outside_device` back (`original_of`). The data file's atom axis is in your
-order, the composed junction restored, and the record holds no atom's row —
-its DOS is per region.
+junction's through its order record and its `atoms` and `outside_device` back
+(`Structure.indices_of_yours`, `Structure.your_indices`). The data file's atom
+axis is in your order, the composed junction restored, and the record holds
+no atom's row — its DOS is per region. A calculation whose composition record
+was written before 2.10.0 (`slot-provenance@1`) records no order: its data
+file and a selection's PDOS are refused by name, one check
+(`transport.compose.order_unstated`; I9).
 
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the
@@ -2040,14 +2043,20 @@ ds.transmission.sel(frame=0, bias_v=0.0).plot(x="energy_ev")
 pt = ds.sel(frame=1, bias_v=0.2)
 pt.device_scf_ddmax.isel(scf_cycle=slice(0, int(pt.device_scf_cycles)))
 
-# a selection's PDOS, from the point's own .TBT.nc, by sisl
+# a selection's PDOS, from the point's own .TBT.nc, by sisl: the run's files
+# list the atoms in TranSIESTA's order, so atoms named in yours -- the data
+# file's `atom` axis -- cross through the composed junction's order record
 import sisl
+from molbuilder.workingcopy_structure import StructureCodec
+junction = StructureCodec().load("junction.xyz")
 tbt = sisl.get_sile(f"{pt.point_folder.item()}/J.TBT.nc")
-tbt.DOS(atoms=[10, 11])          # the device's atoms, by index
+tbt.DOS(atoms=junction.indices_of_yours([10, 11]))
 ```
 
 `point_folder` is relative to the calculation's folder, and every index — an
-atom's, a frame's — is the code's own, from 0 (`model/overview.md` § 2).
+atom's, a frame's — is the code's own, from 0 (`model/overview.md` § 2); an
+atom's is in your order in the data file and in TranSIESTA's in a run's own
+files (§ 2.2a).
 
 **The report, rung by rung** ([`model/parse.md`](?doc=model/parse.md) § 5d).
 Each rung has its run record — computation, setup with what the engine used,

@@ -55,15 +55,15 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
 # cycle to worry about.
 from .issues import calling as _calling
 # THE BLOCK GRAMMAR IS `deck_record`'s -- the names, the fences, the one JSON
-# reader -- which this module writes with and reads through.  It lives below
-# this one because a job reads two blocks beside itself, where this module
+# reader -- which this module writes with.  It lives below this one because a
+# job reads three blocks beside itself (`deck_record`), where this module
 # (whose bench declarations are built against the template at import) cannot
 # be imported.
 from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
                           BLOCK_ENGINE_OFFSET, BLOCK_HEADER, BLOCK_PARAMETERS,
                           BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
                           MARKER_RE, begin_marker, end_marker,
-                          read_json_block, without_stamps)
+                          without_stamps)
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing

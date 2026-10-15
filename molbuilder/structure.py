@@ -1681,6 +1681,16 @@ class Structure:
             return [int(i) for i in indices]
         return self.atom_order.original_of(indices)
 
+    def indices_of_yours(self, indices) -> List[int]:
+        """The atoms named by their index in the person's order, as indices
+        in this structure (``model/overview.md`` § 2.2a) -- :meth:`your_indices`
+        the other way: through the order record (``sorted_of``) in an engine's
+        order, as they stand in yours.  A selection made in your order asked
+        of data in the engine's (the transport report's PDOS)."""
+        if self.atom_order is None:
+            return [int(i) for i in indices]
+        return self.atom_order.sorted_of(indices)
+
     def atoms_named(self, indices, *, limit: Optional[int] = None) -> str:
         """The atoms named by their index here, as every message names them
         (:func:`atom_words`) -- in the person's order, each with its element

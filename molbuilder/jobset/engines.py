@@ -316,8 +316,7 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
     """SIESTA's shared package: the pseudopotentials it put in the folder --
     the same files ``siesta_provide_pseudos`` stages, named by the engine
     that staged them (`script-preparation.md` § 4, the data-files step),
-    under ``pseudos/``.  (A deck written from a sorted copy states its own
-    order record, so no file of it travels: `model/overview.md` § 2.2a, I5.)
+    under ``pseudos/``.
 
     ``plan`` -- the folder as a prep will leave it (`jobset.planned`).
     """

@@ -4,8 +4,10 @@ it is rendered from, and the modes derived from what the run leaves.
 science/normal-modes.md § 4a.6 and design § 8: SIESTA nudges the free atoms
 (`MD.TypeOfRun FC`, one contiguous range) and writes `.FC`; everything after
 that is the one path both engines share.  The held-first sort is what makes
-a scattered held set a range (`model/overview.md` § 2.2), and the recorded
-permutation is what puts the answer back in the input order.
+a scattered held set a range (`model/overview.md` § 2.2), and the copy's
+order record is what puts the answer back in the input order.  And a flat
+calculation's refusal of a second force-constant stage, which prep makes
+before any deck is written.
 """
 from __future__ import annotations
 
@@ -81,3 +83,29 @@ def test_every_atom_held_is_refused_by_the_gate():
                       calculation="vibration")
     assert any(i.severity == "error" and "every atom is held" in i.message
                for i in issues)
+
+
+def test_a_flat_calculation_refuses_a_second_force_constant_stage(
+        tmp_path, monkeypatch):
+    """In the flat layout every stage writes the same `<label>.FC` and
+    `<label>.spectra.json`, so two force-constant stages would overwrite each
+    other's result: `prep` refuses the description before any sort or deck is
+    written, at whichever stage is prepared first (`engines/vibration.md`
+    § 5.9) -- counting the stages the description runs: a disabled one is
+    never prepared (`engines/stages.md` § 6.2).  The road's CO2 described
+    flat, a second force-constant stage added.
+
+    MUTATION THIS MUST FAIL AGAINST: the check not made.
+    """
+    from support.road import (CO2, describe_calculation, group_words, jobset,
+                              stage_added)
+    bundle = describe_calculation(tmp_path, monkeypatch, shape="flat",
+                                  name="CO2", calculation="vibration",
+                                  structure=CO2)
+    stage_added(bundle, {"name": "freq_half", "group": 3,
+                         "overrides": {"fc_displacement": 0.02}})
+    r = jobset("prep", "task", *group_words(bundle, "relax"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
+    for written in ("*.fdf", "job-set.json"):
+        assert not list(bundle.glob(written)), f"{written} before refusing"

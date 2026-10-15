@@ -69,15 +69,18 @@ except ImportError:                         # beside a job, in a bundle
 #          the harmonic analysis projected out before diagonalising, and
 #          their Cartesian patterns over the free atoms (science/normal-modes.md
 #          R7: what was removed is stated beside what was kept).  ADDITIVE.
-SCHEMA_VERSION = 7   # 7: + `equilibrium.masses_amu`, every atom's mass as
-#                    the deck stated it and the analysis weighted by it, beside
-#                    the geometry (I3); and each mode's DERIVED values -- the
-#                    activity classes, the zero-point amplitude and
-#                    displacement -- written by every engine through
-#                    `spectra.derived` and checked on read (engines/vibration.md
-#                    § 6.6).  A v4-v6 file reads as before: no masses, its
-#                    derived values computed on read.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7})
+#  v7: + `equilibrium.masses_amu`, every atom's mass as the deck stated it
+#          and the analysis weighted by it, beside the geometry (I3); and
+#          each mode's DERIVED values -- the activity classes, the zero-point
+#          amplitude and displacement -- written by every engine through
+#          `spectra.derived` and checked on read (engines/vibration.md
+#          § 6.6).  A v4-v6 file reads as before: no masses, its derived
+#          values computed on read.
+SCHEMA_VERSION = 8   # 8: the SIESTA route's `engine_metadata` names its
+#                    force-constant range as SIESTA's numbering,
+#                    `fc_range_engine_1based` (model/overview.md § 2.2a); a
+#                    v4-v7 file reads as before, its range under the old name.
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8})
 
 
 # Phase status vocabulary -- per-layer flag carried on

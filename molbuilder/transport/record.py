@@ -990,18 +990,16 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
         raise RecordError(f"no transmission point at {bias_v:g} V")
     # THE SELECTION CROSSES INTO THE JUNCTION'S ORDER through its own order
     # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
-    # the runs list the atoms as the composed junction does.
+    # the runs list the atoms as the composed junction does.  A record that
+    # states no order names no atom in yours (I9).
+    from .compose import order_unstated
+    unstated = order_unstated(base)
+    if unstated:
+        raise RecordError(f"{unstated}: prepare the calculation again to "
+                          f"have it recorded")
     junction = composed_junction(base)
     if junction is None:
         raise RecordError("this calculation's junction is not composed yet")
-    stray = [int(a) for a in atoms if not 0 <= int(a) < junction.n_atoms]
-    if stray:
-        raise RecordError(f"atom index {stray[0]} is not one of the "
-                          f"junction's {junction.n_atoms} atoms (0 … "
-                          f"{junction.n_atoms - 1})")
-    order = junction.atom_order
-    into = order.sorted_of if order is not None else list
-    back = order.original_of if order is not None else list
     read_at, where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {said}")
@@ -1021,10 +1019,11 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
-        got = _pdos(ncs, orb, into(atoms), orbitals)
+        got = _pdos(ncs, orb, junction.indices_of_yours(atoms), orbitals)
         return {**got,
-                "atoms": sorted(back(got["atoms"])),
-                "outside_device": sorted(back(got["outside_device"])),
+                "atoms": sorted(junction.your_indices(got["atoms"])),
+                "outside_device": sorted(
+                    junction.your_indices(got["outside_device"])),
                 "point": Point(frame=read_at.frame, volts=read_at.volts,
                                of=want.of).to_wire()}
     except (TbtError, OSError, ValueError) as exc:

@@ -402,7 +402,13 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     from .transiesta import LEAD_NAMES
     base = Path(base_dir)
     # THE ATOM AXIS IN YOUR ORDER (`model/overview.md` § 2.2a, I1): the
-    # composed junction, in the engine's order, restored through its record.
+    # composed junction, in the engine's order, restored through its record
+    # -- which a record composed before 2.10.0 does not state (I9).
+    from .compose import order_unstated
+    unstated = order_unstated(base)
+    if unstated:
+        raise DataFileError(f"{unstated}: prepare the calculation again to "
+                            f"have it recorded")
     junction = composed_junction(base)
     junction = junction.restored() if junction is not None else None
     frame_set = read_frame_set(junction) if junction is not None else None

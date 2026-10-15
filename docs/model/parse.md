@@ -477,13 +477,6 @@ extract_atom_metadata(fdf_text)   # the block dict, or None if absent
 read_provenance_block(fdf_text)   # the PROVENANCE block, or None
 ```
 
-*(A `read_script(text) -> ScriptSource` door stood here until 2026-09-05. It
-had zero callers for three weeks while carrying a schema-version gate the
-live readers do not apply, so the tree held two answers for one block; it was
-deleted rather than wired up. The extractors are the way in — they are
-underscore-named and not in `__all__`, which is an inconsistency worth
-resolving, not a signal to build a second door.)*
-
 **Skip detection when you already know the type** — call the parser class's
 `parse()` directly. *(Never to build a run's structure: that asks the run door,
 § 5.3 — decided 2026-10-14, `model/overview.md` § 2.2a.)*

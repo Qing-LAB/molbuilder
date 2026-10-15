@@ -6,10 +6,10 @@ THE JUNCTION is the smallest one with the parts a transport calculation is
 made of, and the one whose answer is known: a perfect chain of hydrogen at
 one spacing -- a half-filled band, a metal -- its two ends the electrode
 blocks, nine atoms each, and the four atoms between them the device's own,
-every atom held but the middle two -- listed bridge first, then the left
-block, then the right, so the order TranSIESTA needs (the blocks at the ends,
-`transport/sort.py`) is not yours and every result has to come back through
-the junction's order record.  A perfect single channel conducts one
+every atom held but the middle two -- listed bridge first, then the right
+block, then the left, so the order TranSIESTA needs (the blocks at the ends,
+`transport/sort.py`) moves every atom and every result has to come back
+through the junction's order record.  A perfect single channel conducts one
 quantum, G = G0 (Landauer), and its device is bulk-like up to each electrode
 boundary, so its screening is complete there (`engines/transport.md`
 § 2a.13, *the lead layer count inside the device*).  One pseudopotential,
@@ -81,12 +81,13 @@ _WIRE = 4
 _BOX = 8.0
 
 #: THE ORDER THE JUNCTION IS LISTED IN, by each atom's place along the chain
-#: (0 the lowest): the bridge, then the left block, then the right.
+#: (0 the lowest): the bridge, then the right block, then the left.
 #: TranSIESTA's order is the chain's, so the sort moves every atom, and its
 #: record is not its own inverse -- a result put back the wrong way round is
 #: told apart (`model/overview.md` § 2.2a).
-_LISTED = (tuple(range(_LEAD, _LEAD + _WIRE)) + tuple(range(_LEAD))
-           + tuple(range(_LEAD + _WIRE, 2 * _LEAD + _WIRE)))
+_LISTED = (tuple(range(_LEAD, _LEAD + _WIRE))
+           + tuple(range(_LEAD + _WIRE, 2 * _LEAD + _WIRE))
+           + tuple(range(_LEAD)))
 
 
 def _at(place: int) -> int:
@@ -366,7 +367,7 @@ def junction(tmp_path_factory):
                                      template_with_values)
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
-    from support.road import group_words, jobset
+    from support.road import group_words, jobset, ladder_of_freq_alone
 
     def seed_and_leads(on):
         # ONE GROUP, ONE JOB (`engines/stages.md` § 2): the defaults put
@@ -502,11 +503,7 @@ def junction(tmp_path_factory):
         assert r.exit_code == 0, r.output
         vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
         _run_card(vib.bundle)
-        vt = json.loads((vib.bundle / "task.json").read_text())
-        # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
-        vt["stages"] = [dict(s, group=1) for s in vt["stages"]
-                        if s["name"] == "freq"]
-        (vib.bundle / "task.json").write_text(json.dumps(vt, indent=2))
+        ladder_of_freq_alone(vib.bundle)
         for name, value in {**RELAXED_WITH, "already_relaxed": True}.items():
             _set_by_the_person(vib.bundle / "V.template.toml", name, value)
         _taken(vib, "prep freq", "prep", "task",
@@ -697,8 +694,8 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
                                            REGION_RIGHT_ELECTRODE)
     out = compose_junction(junction.cite, tree_root=junction.tree,
                            swap_electrodes=True)
-    regions = out.sorted.structure.regions
-    zs = np.asarray(out.sorted.structure.positions)[:, 2]
+    regions = out.junction.regions
+    zs = np.asarray(out.junction.positions)[:, 2]
     assert min(zs[regions[REGION_LEFT_ELECTRODE]]) > max(
         zs[regions[REGION_RIGHT_ELECTRODE]])
     assert out.provenance["swap_electrodes"] is True
@@ -710,9 +707,10 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(junction,
     """`load_compose_record`'s "no record" is said in words: nothing
     composed here, a record composed from another citation, or one composed
     before 2.10.0 recorded the order its junction's atoms are in -- known by
-    its own schema, `slot-provenance@1` as 2.9.6 wrote it; prep then composes
-    it again (`model/overview.md` § 2.2a, I9; `execution/job-contracts.md`
-    § 6.1)."""
+    its own schema, a record stamped `slot-provenance@1`; prep then composes
+    it again, and the data file and a selection's PDOS, which name the
+    junction's atoms in your order, are refused by name
+    (`model/overview.md` § 2.2a, I9; `execution/job-contracts.md` § 6.1)."""
     from molbuilder.transport.compose import (compose_junction,
                                               load_compose_record,
                                               write_compose_record)
@@ -739,7 +737,16 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(junction,
     why = []
     assert load_compose_record(rec, citation=junction.cite,
                                tree_root=junction.tree, why=why) is None
-    assert "composed before 2.10.0" in why[0], why
+    stated = "written before 2.10.0 recorded the order"
+    assert stated in why[0], why
+    from molbuilder.task import read_task
+    from molbuilder.transport.datafile import DataFileError, write_data_file
+    from molbuilder.transport.record import RecordError, selection_pdos
+    task = read_task(junction.bundle / "task.json")
+    with pytest.raises(DataFileError, match=stated):
+        write_data_file(rec, task, {})
+    with pytest.raises(RecordError, match=stated):
+        selection_pdos(rec, task, 0.0, [0], "all")
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -947,17 +954,19 @@ def test_every_rung_of_the_junction_states_its_order(junction):
     in its deck the order record of TranSIESTA's order, the chain's
     (:data:`_LISTED`); a lead's deck, a cell of its own, states none.  The
     silent failure: a rung whose deck states no order, so its run reads as
-    yours while its atoms are in TranSIESTA's."""
-    from molbuilder.deck_record import extract_atom_metadata, order_record_of
+    yours while its atoms are in TranSIESTA's.  Each run asked through the
+    run door (`runs.run_of`) and its reader (`runs.declared`)."""
+    from molbuilder.runs import declared, run_of
     chain = {"key": "transport",
              "sorted_to_original": [_at(p) for p in range(len(_LISTED))],
              "original_to_sorted": list(_LISTED)}
-    for stage, want in (("seed", chain), ("electrode_L", None),
-                        ("electrode_R", None), ("device", chain),
-                        ("transmission", chain)):
-        for deck in _prepared_decks(junction, stage):
-            got = order_record_of(extract_atom_metadata(deck.read_text()))
-            assert (None if got is None else got.to_dict()) == want, deck
+    runs = ([(junction.attempt(s), w) for s, w in
+             (("seed", chain), ("electrode_L", None), ("electrode_R", None))]
+            + [(_point(junction, rung, 0, v), chain)
+               for rung in ("04_device", "05_transmission") for v in _BIAS])
+    for where, want in runs:
+        got = declared(run_of(where)).atom_order
+        assert (None if got is None else got.to_dict()) == want, where
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):

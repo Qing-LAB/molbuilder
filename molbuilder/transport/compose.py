@@ -30,7 +30,7 @@ import numpy as np
 from ..cell import entering
 from ..structure import Structure
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
-                   SortResult, deck_sort_key, sort_by)
+                   deck_sort_key, sort_by)
 from .wizard import ElectrodeModel, extract_electrode_model
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -115,8 +115,12 @@ def _unusable_cell(struct) -> Optional[str]:
 @dataclass(frozen=True)
 class ComposedJunction:
     """Everything the transport stages render from."""
-    #: the relaxed, LABELED junction in canonical transport order
-    sorted: SortResult
+    #: the relaxed, LABELED junction in TranSIESTA's order, carrying its
+    #: order record (`model/overview.md` § 2.2a)
+    junction: Structure
+    #: what the sort said of it on the compose that made it (`sort_by`'s
+    #: notes) -- none on a record read back, which no sort made
+    notes: Tuple[str, ...]
     #: the same structure before the sort (relaxed positions, source
     #: order).  ``None`` on a record loaded back from the travelled
     #: copy: the original order lives in the citation and the sorted
@@ -759,7 +763,8 @@ def compose_junction(citation: str, *, tree_root,
         **said,
     }
     return ComposedJunction(
-        sorted=sorted_res,
+        junction=dev,
+        notes=sorted_res.notes,
         relaxed=relaxed,
         electrode_left=elec_l,
         electrode_right=elec_r,
@@ -854,7 +859,7 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     base_dir = Path(base_dir)
     # THE ENGINE'S RECORD, in the engine's order with its order record in
     # the sidecar (`model/overview.md` § 2.2a) -- the codec's one door for it.
-    StructureCodec().write(composed.sorted.structure,
+    StructureCodec().write(composed.junction,
                            base_dir / JUNCTION_GEOMETRY, engine_record=True)
     if composed.deck_text is not None:
         (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
@@ -901,6 +906,23 @@ def read_provenance(base_dir) -> Optional[Dict]:
     from ..persist import read_json
     path = Path(base_dir) / PROVENANCE_FILE
     return read_json(path) if path.is_file() else None
+
+
+def order_unstated(base_dir) -> Optional[str]:
+    """WHY THIS CALCULATION'S COMPOSED JUNCTION STATES NO ORDER though its
+    atoms are TranSIESTA's -- its composition record written before 2.10.0
+    recorded it, known by the record's own schema (`model/overview.md`
+    § 2.2a, I9) -- or ``None``.  THE ONE CHECK, asked by every door that
+    names the junction's atoms in your order: the record's read for prep and
+    the gather (:func:`load_compose_record`), the data file
+    (`datafile.write_data_file`) and a selection's PDOS
+    (`record.selection_pdos`)."""
+    provenance = read_provenance(base_dir)
+    if provenance is None or provenance.get("schema") == PROVENANCE_SCHEMA:
+        return None
+    return (f"the composition record ({PROVENANCE_FILE}, "
+            f"{provenance.get('schema')!r}) was written before 2.10.0 "
+            f"recorded the order the junction's atoms are in")
 
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
@@ -954,12 +976,9 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     if provenance is None:
         return _no(f"there is no {PROVENANCE_FILE} beside it, so nothing "
                    f"here has been composed yet")
-    # A RECORD COMPOSED BEFORE 2.10.0 states no order for its junction's
-    # atoms, though they are TranSIESTA's (I9): known by its own schema.
-    if provenance.get("schema") != PROVENANCE_SCHEMA:
-        return _no(f"the record beside it ({PROVENANCE_FILE}, "
-                   f"{provenance.get('schema')!r}) was composed before 2.10.0 "
-                   f"recorded the order its junction's atoms are in")
+    said = order_unstated(base_dir)
+    if said:
+        return _no(said)
     if provenance.get("citation") != citation:
         return _no(f"the record beside it was composed from "
                    f"{provenance.get('citation')!r}, and this task now "
@@ -988,7 +1007,6 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # sidecar (`model/overview.md` § 2.2a, I7) -- none for an order the sort
     # left as it was.
     dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
-    sorted_res = SortResult(structure=dev)
     ion_dir = None
     if tree_root is not None:
         try:
@@ -1008,7 +1026,8 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir)
     deck_text = deck_path.read_text() if kind == "run" else None
     return ComposedJunction(
-        sorted=sorted_res,
+        junction=dev,
+        notes=(),
         relaxed=None,
         electrode_left=elec_l,
         electrode_right=elec_r,

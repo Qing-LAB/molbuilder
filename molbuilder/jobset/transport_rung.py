@@ -153,7 +153,7 @@ def transport_parts(task, stage: str, composed, config):
     else:
         # The junction -- and for the device it carries the region
         # partition the NEGF block is built from.
-        struct, label = composed.sorted.structure, task.label
+        struct, label = composed.junction, task.label
         # A FRAME SET (`engines/transport.md` § 2a.9): the seed runs once,
         # on frame 0; the device and the transmission run per frame, each
         # point's deck its frame (`at_frame`).
@@ -182,7 +182,7 @@ def transport_parts(task, stage: str, composed, config):
     # from, is handed to the deck writer, which says so in every rung
     # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
     from ..electronic_state import electronic_state
-    state = electronic_state(composed.sorted.structure, labelled(config),
+    state = electronic_state(composed.junction, labelled(config),
                              kind="transport")
     # A STATE TRANSIESTA CANNOT RUN is refused HERE, on the junction, where
     # each value still says where it came from (`template.md` § 6.3a, ES4):
@@ -190,7 +190,7 @@ def transport_parts(task, stage: str, composed, config):
     # recorded or detected value *stated*.
     from ..validation.chemistry import check_electronic_state
     refused = [i for i in check_electronic_state(
-        composed.sorted.structure, labelled(config), calculation="transport")
+        composed.junction, labelled(config), calculation="transport")
         if i.severity == "error"]
     if refused:
         raise PrepError(refused[0].message)

@@ -687,7 +687,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     # THE RUNG'S POINTS (`transport.stages.rung_points`): a frame of the
     # cited set and a voltage each, the frames the junction composed here.
     points = tuple(point_folders(base, task, stage,
-                                 frames=composed.sorted.structure.n_frames))
+                                 frames=composed.junction.n_frames))
     citation = task.slots["junction"]
 
     def provide_data(plan):
@@ -698,10 +698,10 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
         # functional the run will ask for.
         cfg = configure(pset[0].render_config())
         if composed.provenance["kind"] == "pair":
-            siesta_provide_pseudos(composed.sorted.structure, cfg, base,
+            siesta_provide_pseudos(composed.junction, cfg, base,
                                     plan=plan)
         else:
-            provide_pseudos(composed.sorted.structure, cfg, base,
+            provide_pseudos(composed.junction, cfg, base,
                                        citation, plan=plan)
 
     def job_facts(job):

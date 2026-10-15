@@ -12,11 +12,11 @@ LAST in the input, so the held-first order the decks are written in is a
 order through the order record its deck states (`model/overview.md` § 2.2a,
 I5, I7).
 
-WHAT THE PHYSICS SAYS OF IT.  Six free coordinates; the carbon held on the
-molecule's axis leaves two whole-body motions -- the turns about it across
-the axis -- so four modes (`science/normal-modes.md` § 3.1): a bend pair,
-degenerate by the molecule's symmetry, moving the oxygens in the plane (x, y)
-across the axis, and two stretches along it, z.
+WHAT THE PHYSICS SAYS OF IT.  The molecule lies along z.  Six free
+coordinates; the carbon held on the axis leaves two whole-body motions -- the
+turns about it, about x and about y -- so four modes (`science/normal-modes.md`
+§ 3.1): a bend pair, degenerate by the molecule's symmetry, moving the
+oxygens in the (x, y) plane, and two stretches along z.
 
 MUTATIONS THIS MUST FAIL AGAINST: a wrapper that does not run the finish
 (the launch then ends with no spectrum); a finish bundle missing a member
@@ -28,8 +28,8 @@ The roads: one per state of the person's one box (`engines/vibration.md`
 § 2.2) -- unticked, the ladder `init` writes relaxes first (the shared
 relaxation, `support.real_runs.relaxed_for_vibration`), and `freq` is written
 at the geometry `relax` reached (§ 5.2a); ticked, `freq` alone measures at
-the geometry as given -- then a displacement sweep (§ 5.9), and a flat
-calculation's refusal of it.
+the geometry as given -- then a displacement sweep (§ 5.9).  A flat
+calculation's refusal of a sweep needs no engine: `test_siesta_vibration_deck`.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
 cleanly anywhere else.  Each force-constant run is thirteen single points of
@@ -44,7 +44,8 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available, set_template_value
-from support.road import CO2, CO2_HELD_FIRST, group_words, jobset
+from support.road import (CO2, CO2_HELD_FIRST, group_words,
+                          ladder_of_freq_alone, stage_added)
 
 pytestmark = [
     pytest.mark.engine,
@@ -65,17 +66,14 @@ def _co2_on_the_road(tree, *, stage=None):
     (`support.real_runs`'s one maker): the kind's ladder, one rank, one
     thread -- and ``stage``, when given, added to the ladder with the
     overrides it states, the description varying them (`engines/stages.md`
-    § 6.2).  A `RealRun` of it, nothing typed yet."""
+    § 6.2; `support.road.stage_added`).  A `RealRun` of it, nothing typed
+    yet."""
     from support.real_runs import RealRun, _described
     bundle = _described(tree, "P/freq/CO2", structure=CO2, name="CO2",
                         calculation="vibration",
                         execution={"mpi_np": 1, "omp_threads": 1})
     if stage is not None:
-        task = json.loads((bundle / "task.json").read_text())
-        task["varies"] = sorted(set(task.get("varies") or [])
-                                | set(stage["overrides"]))
-        task["stages"].append(stage)
-        (bundle / "task.json").write_text(json.dumps(task, indent=2))
+        stage_added(bundle, stage)
     return RealRun(tree=tree, bundle=bundle)
 
 
@@ -99,11 +97,7 @@ def ticked(tmp_path_factory):
         run = _co2_on_the_road(tree)
         _typed(run, "prep freq before relax", "prep", "task",
                *group_words(run.bundle, "freq"), "--target", "this")
-        task = json.loads((run.bundle / "task.json").read_text())
-        # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
-        task["stages"] = [dict(s, group=1) for s in task["stages"]
-                          if s["name"] == "freq"]
-        (run.bundle / "task.json").write_text(json.dumps(task, indent=2))
+        ladder_of_freq_alone(run.bundle)
         _typed(run, "prep freq unticked", "prep", "task",
                *group_words(run.bundle, "freq"), "--target", "this")
         template = run.bundle / "CO2.template.toml"
@@ -127,7 +121,7 @@ def sweep(tmp_path_factory):
     from support.real_runs import _on_the_road, _taken
     with _on_the_road(tmp_path_factory, "sweep") as tree:
         run = _co2_on_the_road(tree, stage={
-            "name": "freq_half", "group": 3, "enabled": True,
+            "name": "freq_half", "group": 3,
             "overrides": {"fc_displacement": 0.02}})
         record = run.bundle / "CO2.fc-sweep.json"
         for stage in ("relax", "freq"):
@@ -149,21 +143,20 @@ def sweep(tmp_path_factory):
     return run
 
 
-def _kw(deck, key):
-    """The value tokens of the first line of ``deck`` that sets ``key``."""
-    for line in deck.splitlines():
-        parts = line.split()
-        if parts and parts[0] == key:
-            return parts[1:]
-    return []
+def _deck_of(attempt):
+    """The deck the run in ``attempt`` read, through the run door
+    (`runs.run_of`), as fdf reads it (`parse.fdf.read_fdf`): ``(scalars,
+    blocks, run)``."""
+    from molbuilder.parse.fdf import read_fdf
+    from molbuilder.runs import run_of
+    run = run_of(attempt)
+    return (*read_fdf(run.deck.read_text()), run)
 
 
-def _order_record(deck_text):
-    """The order record ``deck_text`` states, through its reader
-    (`deck_record.order_record_of`), as a dict -- or ``None``."""
-    from molbuilder.deck_record import extract_atom_metadata, order_record_of
-    got = order_record_of(extract_atom_metadata(deck_text))
-    return None if got is None else got.to_dict()
+def _said(deck, key):
+    """What the deck (:func:`_deck_of`) sets ``key`` to, as fdf reads it."""
+    from molbuilder.parse.fdf import fdf_key
+    return deck[0].get(fdf_key(key), [])
 
 
 def _the_monitor_closed(attempt, stage, step_words):
@@ -212,7 +205,8 @@ def _common_assertions(d):
     assert d["equilibrium"]["elements"] == CO2["elements"]
     assert d["free_atom_idxs"] == [0, 1] and d["frozen_atom_idxs"] == [2]
     assert d["hessian_scope"] == "free" and d["n_atoms_in_hessian"] == 2
-    # the two turns about the held carbon across the axis; four modes left
+    # the two turns about the held carbon, about x and about y; four modes
+    # left
     assert d["removed_motions"]["count"] == 2
     _a_bend_pair_and_two_stretches(d["modes"])
     assert d["equilibrium"]["mo_energies_eh"] is None
@@ -289,26 +283,27 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     stage launched again starts over: its kind's rerun carries nothing of
     its own (`warm-files.toml` [vibration] `resumes`, `job-system.md` § 5.4,
     *A stage launched again*)."""
-    from support.real_runs import relax_decks
+    from molbuilder.parse.fdf import fdf_key
+    from molbuilder.runs import declared
     run = ladder
     task = json.loads((run.bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"]
     # the ordinary relaxation deck, from the same held-first copy: Broyden
-    # to the kind's recommended 0.01 eV/A, the held carbon (first after the
-    # sort) constrained
-    for deck in relax_decks(run):
-        text = deck.read_text()
-        assert _kw(text, "MD.TypeOfRun") == ["Broyden"], deck
-        assert _kw(text, "MD.MaxForceTol")[:1] == ["0.01"], deck
-        assert "position 1" in text, deck
-    # the force-constant deck: the oxygens SIESTA's atoms 2 and 3, its order
-    # record the held-first one
-    fc_deck = next((run.bundle / "02_freq").glob("*.fdf")).read_text()
-    assert (_kw(fc_deck, "MD.TypeOfRun")[:1] == ["FC"]
-            and _kw(fc_deck, "FC.First")[:1] == ["2"]
-            and _kw(fc_deck, "FC.Last")[:1] == ["3"]
-            and "position 1" in fc_deck), fc_deck
-    assert _order_record(fc_deck) == CO2_HELD_FIRST
+    # to the kind's recommended 0.01 eV/A, the held carbon -- SIESTA's atom 1
+    # after the sort -- constrained
+    relax = _deck_of(run.attempt("relax"))
+    assert _said(relax, "MD.TypeOfRun") == ["Broyden"]
+    assert _said(relax, "MD.MaxForceTol")[:1] == ["0.01"]
+    held = [["position", "1"]]
+    assert relax[1][fdf_key("Geometry.Constraints")] == held
+    # the force-constant deck: the oxygens SIESTA's atoms 2 and 3, the
+    # carbon held; and the run states the held-first order record, read by
+    # the run door's reader (I5)
+    fc = _deck_of(run.attempt("freq"))
+    assert (_said(fc, "MD.TypeOfRun"), _said(fc, "FC.First"),
+            _said(fc, "FC.Last")) == (["FC"], ["2"], ["3"])
+    assert fc[1][fdf_key("Geometry.Constraints")] == held
+    assert declared(fc[2]).atom_order.to_dict() == CO2_HELD_FIRST
     attempt = run.attempt("freq")
     assert (attempt / "CO2.FC").is_file(), \
         "the force-constant run must leave CO2.FC"
@@ -386,10 +381,11 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
         > 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE
 
 
-def _deck_coordinates(deck_text):
-    """The deck's own coordinate block, as SIESTA reads it."""
-    from molbuilder.parse.fdf import fdf_key, read_fdf
-    rows = read_fdf(deck_text)[1][fdf_key("AtomicCoordinatesAndAtomicSpecies")]
+def _deck_coordinates(deck):
+    """The deck's own coordinate block (:func:`_deck_of`), as SIESTA reads
+    it."""
+    from molbuilder.parse.fdf import fdf_key
+    rows = deck[1][fdf_key("AtomicCoordinatesAndAtomicSpecies")]
     return np.array([[float(x) for x in r[:3]] for r in rows])
 
 
@@ -415,13 +411,13 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
         waiting
     assert early["failed"] == []
 
-    decks = {tok: next((bundle / tok).glob("*.fdf")).read_text()
+    decks = {tok: _deck_of(bundle / tok / "run-0")
              for tok in ("02_freq", "03_freq_half")}
     # I24: one geometry for every force-constant stage -- the relaxed one.
     assert np.allclose(_deck_coordinates(decks["02_freq"]),
                        _deck_coordinates(decks["03_freq_half"]), atol=1e-8), \
         "the second force-constant stage was not written at the relaxed geometry"
-    assert _kw(decks["03_freq_half"], "FC.Displacement")[:1] == ["0.02"]
+    assert _said(decks["03_freq_half"], "FC.Displacement")[:1] == ["0.02"]
     a1, a2 = (_the_result(bundle / "02_freq" / "run-0", "02_freq"),
               _the_result(bundle / "03_freq_half" / "run-0", "03_freq_half"))
     for d in (a1, a2):
@@ -469,31 +465,3 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
     assert fc["against"] == "freq" and fc["max_abs_change_ev_ang2"] > 0.0
     assert all(m["flagged"] is True for m in rec2["modes"])
     assert rec2["tolerance_cm1"] == 1e-6
-
-
-def test_a_flat_calculation_refuses_a_second_force_constant_stage(
-        tmp_path, monkeypatch):
-    """In the flat layout every stage writes the same `<label>.FC` and
-    `<label>.spectra.json`, so two force-constant stages would overwrite each
-    other's result: `prep` refuses the description before any sort or deck is
-    written, at whichever stage is prepared first (`engines/vibration.md`
-    § 5.9) -- counting the stages the description runs: a disabled one is
-    never prepared (`engines/stages.md` § 6.2).
-
-    MUTATION THIS MUST FAIL AGAINST: the check not made.
-    """
-    from support.road import describe_calculation
-    bundle = describe_calculation(tmp_path, monkeypatch, shape="flat",
-                                  name="CO2", calculation="vibration",
-                                  structure=CO2)
-    task = json.loads((bundle / "task.json").read_text())
-    # a stage overrides only what the description varies (stages.md § 6.2)
-    task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    task["stages"].append({"name": "freq_half", "group": 3, "enabled": True,
-                           "overrides": {"fc_displacement": 0.02}})
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = jobset("prep", "task", *group_words(bundle, "relax"),
-               "--bundle", bundle, "--target", "this")
-    assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
-    for written in ("*.fdf", "job-set.json"):
-        assert not list(bundle.glob(written)), f"{written} before refusing"

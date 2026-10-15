@@ -132,10 +132,9 @@ class TestBookkeepingCrossesTheSort:
     def test_permutation_is_a_recorded_bijection(self):
         struct, rows = _junction(shuffle=True)
         perm = sort_by(struct, SORT_TRANSPORT).structure.atom_order
-        n = len(rows)
-        assert sorted(perm.sorted_to_original) == list(range(n))
-        for old in range(n):
-            assert perm.sorted_to_original[perm.original_to_sorted[old]] == old
+        every = list(range(len(rows)))
+        assert sorted(perm.sorted_of(every)) == every
+        assert perm.original_of(perm.sorted_of(every)) == every
 
     def test_every_atom_keeps_its_identity(self):
         """The user's 'nothing missed': same multiset of
@@ -168,7 +167,7 @@ class TestBookkeepingCrossesTheSort:
             got.positions[tagged, 2] == 5.0 and val == -0.3
         # parallel array rides with its atom
         for j, name in enumerate(got.atom_names):
-            assert name == f"n{got.atom_order.sorted_to_original[j]}"
+            assert name == f"n{got.your_indices([j])[0]}"
 
     def test_cell_title_vacuum_are_untouched(self):
         struct, _ = _junction(shuffle=True)
