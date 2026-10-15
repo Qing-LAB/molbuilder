@@ -8,14 +8,15 @@ integral — parsed, never recomputed).  Both formats were pinned against
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@5``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@6``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the mode's
 average over a frame set (`average.mode_average`), the junction's TOTAL
 current, with the
 figure TBtrans printed and the factor between them (:data:`CURRENT_MEANS`)
--- and the provenance that says which junction built it — the citation (from ``slot-provenance.json``) and
-the atom-permutation reference, so every downstream index can be
-mapped back to the relaxation's identities.
+-- and the provenance that says which junction built it — the citation (from
+``slot-provenance.json``).  The junction it names (``junction_file``)
+carries its own order record in its sidecar (`model/overview.md` § 2.2a), so
+every index in the engine's order goes back to yours.
 
 Reading is ASYNCHRONOUS by design, the same doctrine as the bench
 summarizer: a point whose transmission has not run yet reads as
@@ -35,13 +36,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from ..runfiles import PERMUTATION_FILE
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
 
 if TYPE_CHECKING:
     from .stages import Point
 
+#: ``@6``: the provenance names no ``atom_permutation`` file -- the junction
+#: (``junction_file``) carries its order record in its sidecar.
 #: ``@5``: the ``average`` carries no slope or curvature, and states the
 #: mode's definition by its own names -- the structure's rows of a mode's
 #: frame set (`model/structure.md` § 2.2f) -- its weights checked at the
@@ -56,7 +58,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@5"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@6"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -911,7 +913,6 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                           for s in sorted({p["spin"] for p in points_out})},
         "provenance": {
             "slot": provenance,
-            "atom_permutation": PERMUTATION_FILE,
             # WHAT EACH RUNG WAS GATHERED FROM -- its attempt's
             # `.gathered-from`, never the newest attempt by file time
             # (`engines/transport.md` § 2a.12).
@@ -945,9 +946,11 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     to one orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5):
     read from that point's transmission run's ``.TBT.nc``, each orbital's
     type from the device run's ``.ORB_INDX`` at the same point -- the two
-    runs share the composed junction's atom order.  ``frame`` is the frame's
-    index, named for a frame set and for nothing else.
-    :class:`RecordError` names what is missing."""
+    runs share the composed junction's atom order.  ``atoms`` are named in
+    your order, the order the report draws the junction in, and so are the
+    answer's ``atoms`` and ``outside_device`` (`model/overview.md` § 2.2a,
+    I1, I3).  ``frame`` is the frame's index, named for a frame set and for
+    nothing else.  :class:`RecordError` names what is missing."""
     from ..structure import frame_words
     from .stages import Point, frames_of, same_volts
     from .tbtnc import TbtError, spin_selection_pdos as _pdos, tbt_files
@@ -985,6 +988,20 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     if not any(same_volts(v, bias_v)
                for v in (task.bias or (0.0,))):
         raise RecordError(f"no transmission point at {bias_v:g} V")
+    # THE SELECTION CROSSES INTO THE JUNCTION'S ORDER through its own order
+    # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
+    # the runs list the atoms as the composed junction does.
+    junction = composed_junction(base)
+    if junction is None:
+        raise RecordError("this calculation's junction is not composed yet")
+    stray = [int(a) for a in atoms if not 0 <= int(a) < junction.n_atoms]
+    if stray:
+        raise RecordError(f"atom index {stray[0]} is not one of the "
+                          f"junction's {junction.n_atoms} atoms (0 … "
+                          f"{junction.n_atoms - 1})")
+    order = junction.atom_order
+    into = order.sorted_of if order is not None else list
+    back = order.original_of if order is not None else list
     read_at, where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {said}")
@@ -1004,7 +1021,10 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
-        return {**_pdos(ncs, orb, atoms, orbitals),
+        got = _pdos(ncs, orb, into(atoms), orbitals)
+        return {**got,
+                "atoms": sorted(back(got["atoms"])),
+                "outside_device": sorted(back(got["outside_device"])),
                 "point": Point(frame=read_at.frame, volts=read_at.volts,
                                of=want.of).to_wire()}
     except (TbtError, OSError, ValueError) as exc:

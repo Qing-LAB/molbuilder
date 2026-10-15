@@ -992,7 +992,7 @@ What a run holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
 | moment | the run holds | `run_status` |
 |---|---|---|
-| prepared | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed — every one with its writer and door in § 5.3 *(decided 2026-10-14, not built: retires — each deck states its own order record, `model/overview.md` § 2.2a, I5)* | `pending` |
+| prepared | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials; the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed — every one with its writer and door in § 5.3 | `pending` |
 | launched — its send | + what it takes, copied in: the warm files and `.continued-from` if it continues, a transport rung's inputs and `.gathered-from` | `pending` until the record is written |
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
@@ -2651,11 +2651,9 @@ or a run said about itself; **result**, what a run produced.
 ### 5.1 The calculation root — both shapes
 
 In the flat shape the root is also the run folder, so the files of § 5.2 and
-§ 5.3 sit here too. *(Decided 2026-10-14, not built: `atom-permutation.json`
-retires — the order record lives in each deck's ATOM-METADATA block and in a remapped
-pair's sidecar, never a file of its own, so it can no longer be overwritten
-by the next prep in the flat shape; `model/overview.md` § 2.2a, I5 and I7;
-plan § 5ab R5.)*
+§ 5.3 sit here too. An order record lives in its deck's ATOM-METADATA block
+and in a remapped pair's sidecar, never a file of its own
+(`model/overview.md` § 2.2a, I5 and I7).
 
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
@@ -2676,7 +2674,6 @@ plan § 5ab R5.)*
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.load` | derived |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
-| `atom-permutation.json` — only: a SIESTA vibration, or a transport calculation | the atom order the decks were written in | prep (`transport.sort.write_permutation`) | `atom_permutation.read_permutation` | derived |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
 | `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |

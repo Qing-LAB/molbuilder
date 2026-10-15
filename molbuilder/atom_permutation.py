@@ -1,16 +1,13 @@
-"""The atom-permutation record -- a sorted deck's order, and the way back to the person's.
+"""The order record -- a sorted deck's order, and the way back to the person's.
 
 MODULE  atom_permutation (L1, the job as described; stdlib + numpy only)
 ROLE    the order record -- the class every reader crosses with, its one dict
-        reader, the sort keys' names; and
-        ``atom-permutation.json``'s schema and reader, until the file retires
-        (`model/overview.md` § 2.2a, plan § 5ab R5)
+        reader, the sort keys' names (`model/overview.md` § 2.2a)
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
-        (the keys, and the record it sorts by), transport/compose.py (the
-        composite's record), deck_record.py (a deck's record, read by
-        ``order_record_of``), jobset/transport_rung.py (its refusal),
-        spectra/vibrational_analysis.py and spectra/siesta_vibration.py
-        (read it back, beside the job)
+        (the keys, and the record it sorts by), deck_record.py (a deck's
+        record, read by ``order_record_of``), jobset/transport_rung.py (its
+        refusal), spectra/vibrational_analysis.py and
+        spectra/siesta_vibration.py (read it back, beside the job)
 TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
         (`runwrap.VIBRATION_COMPANIONS`), and in ``mb_pyscf.pyz``
         (`runwrap.PYSCF_COMPANIONS`) as the type ``structure.py`` holds
@@ -25,20 +22,16 @@ and never inverts by hand.
 
 ITS OWN MODULE, because the record travels: the SIESTA vibration's finish
 runs beside a job, where the sort's imports do not exist, and reads the
-record.  The sort WRITES the record (`sort.write_permutation`), from the
-result it produced.
+record from its deck.  The sort MAKES the record (`sort.apply_order`) and the
+sorted copy carries it; the copy's writers state it -- the deck's block, the
+geometry's sidecar.
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
-
-#: The record's schema name (registered: `job-contracts.md` § 6.1).
-PERMUTATION_SCHEMA = "molbuilder/atom-permutation@1"
 
 #: THE SORT KEYS, by name -- what a calculation needs done to the atom order:
 #: TranSIESTA's electrode blocks, or a SIESTA force-constant run's held atoms
@@ -56,15 +49,14 @@ SORT_KEY_WORDS = {SORT_TRANSPORT: "TranSIESTA's order",
 
 
 class PermutationError(ValueError):
-    """A record that cannot put a run's rows back in the input order: absent,
-    of another schema, or whose two directions are not inverse bijections.
-    The message names the file, ready to surface verbatim."""
+    """A record that cannot put a run's rows back in the input order: not an
+    object, a key that is not a sort's, or two directions that are not inverse
+    bijections.  The message names its source, ready to surface verbatim."""
 
 
 def _two_lists(o2s, s2o, source: str) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
-    """THE ONE CHECK of an order record's two lists, for both its readers
-    (:meth:`Permutation.from_dict`, :func:`read_permutation`): each a list of
-    whole atom indices, each naming every one of its atoms once, each undoing
+    """THE ONE CHECK of an order record's two lists, for its reader
+    (:meth:`Permutation.from_dict`): each a list of whole atom indices, each naming every one of its atoms once, each undoing
     the other.  Refused naming ``source``."""
     def indices(v):
         if not isinstance(v, (list, tuple)) or not all(
@@ -203,33 +195,6 @@ class Permutation:
             [orig[k] for k in order]
 
 
-def read_permutation(directory) -> Permutation:
-    """The permutation recorded in ``directory``, or a refusal naming the
-    file: a sorted run with no record is a run whose numbers cannot be
-    returned."""
-    # THE CATALOGUE'S NAME (`runfiles.WRITTEN`), imported both ways and only
-    # here: the module travels in two bundles, one without `runfiles`.
-    try:                                    # inside molbuilder
-        from .runfiles import PERMUTATION_FILE
-    except ImportError:                     # beside a job
-        from runfiles import PERMUTATION_FILE  # type: ignore[no-redef]
-    p = Path(directory) / PERMUTATION_FILE
-    if not p.is_file():
-        raise PermutationError(
-            f"no {PERMUTATION_FILE} beside {Path(directory)}: the run was "
-            f"written from a sorted copy and its per-atom results cannot "
-            f"be put back in the input order without the record")
-    d = json.loads(p.read_text(encoding="utf-8"))
-    if d.get("schema") != PERMUTATION_SCHEMA:
-        raise PermutationError(f"{p}: schema {d.get('schema')!r} is not "
-                               f"{PERMUTATION_SCHEMA!r}")
-    o2s, s2o = _two_lists(d.get("original_to_sorted"),
-                          d.get("sorted_to_original"), str(p))
-    return Permutation(original_to_sorted=o2s, sorted_to_original=s2o,
-                       key=str(d.get("key", "") or ""))
-
-
-__all__ = ["PERMUTATION_SCHEMA", "Permutation", "PermutationError",
+__all__ = ["Permutation", "PermutationError",
            "SORT_HELD_FIRST", "SORT_KEY_NAMES", "SORT_KEY_WORDS",
-           "SORT_TRANSPORT",
-           "read_permutation"]
+           "SORT_TRANSPORT"]

@@ -313,29 +313,18 @@ def engine_seam(engine: str) -> EngineSeam:
 
 
 def _siesta_shared_package(base: Path, plan=None) -> List[str]:
-    """SIESTA's shared package: the pseudopotentials it put in the folder,
-    and the atom-permutation record when its decks are written from a sorted
-    copy.
-
-    The same files ``siesta_provide_pseudos`` stages, named by the engine
+    """SIESTA's shared package: the pseudopotentials it put in the folder --
+    the same files ``siesta_provide_pseudos`` stages, named by the engine
     that staged them (`script-preparation.md` § 4, the data-files step),
-    under ``pseudos/``.
-
-    THE PERMUTATION TRAVELS WITH THE RUNS, because a run of a sorted copy
-    speaks the sorted order in every file it writes and the record is the
-    one way back (`atom_permutation`, I7): every attempt holds its copy, so
-    a SIESTA force-constant job's finish reads it beside the run it finishes
-    (`engines/vibration.md` § 5.5).
+    under ``pseudos/``.  (A deck written from a sorted copy states its own
+    order record, so no file of it travels: `model/overview.md` § 2.2a, I5.)
 
     ``plan`` -- the folder as a prep will leave it (`jobset.planned`).
     """
-    from ..runfiles import PERMUTATION_FILE
     from .planned import Plan
     view = plan if plan is not None else Plan()
-    pseudos = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
-                     for p in view.glob(base / PSEUDO_DIRNAME, "*.psml"))
-    return pseudos + ([PERMUTATION_FILE]
-                      if view.is_file(base / PERMUTATION_FILE) else [])
+    return sorted(f"{PSEUDO_DIRNAME}/{p.name}"
+                  for p in view.glob(base / PSEUDO_DIRNAME, "*.psml"))
 
 
 __all__ = ["EngineSeam", "engine_seam", "pseudo_dir", "screen_pseudos",

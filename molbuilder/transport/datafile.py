@@ -35,8 +35,11 @@ import numpy as np
 from .sort import REGION_BRIDGE, REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
 from .stages import same_volts
 
-#: The file's schema, stated in it.
-DATA_SCHEMA = "molbuilder/transport-data@1"
+#: The file's schema, stated in it.  ``@2``: the atom axis is in your order
+#: (`model/overview.md` § 2.2a, I1) -- the composed junction restored through
+#: its order record.  An older file is refused by its version, and `summarize
+#: task` writes it again.
+DATA_SCHEMA = "molbuilder/transport-data@2"
 
 #: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
 #: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
@@ -185,8 +188,8 @@ def _variables() -> Tuple[Var, ...]:
             "the I-V's voltage",
             "the description's voltage list, in its order, or 0 V"),
         Var("atom", ("atom",), "coordinate", "1", "atom index",
-            "counted from 0 in the composed junction -- the sorted copy every "
-            "deck is written in; atom-permutation.json maps back to the input",
+            "counted from 0 in your order -- the composed junction put back "
+            "in your order through its order record",
             dtype="i4"),
         Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
             "x, y, z", dtype=S),
@@ -398,7 +401,10 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
     base = Path(base_dir)
+    # THE ATOM AXIS IN YOUR ORDER (`model/overview.md` § 2.2a, I1): the
+    # composed junction, in the engine's order, restored through its record.
     junction = composed_junction(base)
+    junction = junction.restored() if junction is not None else None
     frame_set = read_frame_set(junction) if junction is not None else None
     n_frames = frames_of(base)
     biases = _voltages(pt.bias_v for pt in rung_points(

@@ -585,9 +585,9 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     """A SIESTA vibration's rung (`engines/vibration.md` § 5.2a, § 5.9).
 
     The atoms in the order the force-constant run needs -- the held ones
-    first, so it nudges one contiguous range -- on a COPY, whose permutation
-    is recorded beside the calculation and inverted by the job's finish
-    (`model/overview.md` § 2.2); the input order never reaches the engine
+    first, so it nudges one contiguous range -- on a COPY, whose order record
+    its deck states and the job's finish inverts (`model/overview.md`
+    § 2.2a, I5); the input order never reaches the engine
     and the sorted order never reaches a person.  The `relax` rung is the
     relaxation deck; every other rung is written at the coordinates the
     relax rung reached, in that run's own cell, so the force constants are
@@ -610,24 +610,21 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
             f"result.  A displacement sweep needs the hierarchical layout "
             f"(engines/vibration.md 5.9): describe it with --shape "
             f"hierarchical, or keep one force-constant stage here.")
-    from ..transport.sort import deck_sort_key, sort_by, write_permutation
+    from ..transport.sort import deck_sort_key, sort_by
     # THE GEOMETRY FIRST, IN YOUR ORDER (`model/overview.md` § 2.2a, I3-I5;
     # plan V1.41): a force-constant stage's coordinates and cell are the
-    # relaxation's, restored through `relax`'s own order record; the labels
-    # and the held set are this calculation's as it stands -- and then this
-    # prep sorts, as every prep does, never one deck's order copied into
-    # another's.
+    # relaxation's, restored through `relax`'s own order record, taken onto
+    # the calculation's structure -- and then this prep sorts, as every prep
+    # does, never one deck's order copied into another's.
     struct, cell, relaxed_by = _vibration_stage_geometry(
         base, task, pset, _structure_for(task, base, pset),
         builds_on=continuation, log=log, template_text=template_text)
-    _sorted = sort_by(struct, deck_sort_key(task.engine, task.calculation,
-                                            pset.stage))
-    _perm_path = write_permutation(base, _sorted, plan=plan)
-    struct = _sorted.structure
-    log.step("the atom order the engine needs")
-    log.produced(_perm_path.name,
-                 f"key {_sorted.key}, {struct.n_atoms} atoms -> "
-                 f"{_perm_path.name}")
+    key = deck_sort_key(task.engine, task.calculation, pset.stage)
+    struct = sort_by(struct, key).structure
+    # THE ORDER RECORD RIDES THE COPY into its deck's ATOM-METADATA block
+    # (I5): the deck states the way back, beside the job.
+    log.step(f"the atom order the engine needs -- {key}, {struct.n_atoms} "
+             f"atoms; the deck states its order record")
     render_kind = _rung_kind(task, pset.stage)
     finishes = render_kind == "vibration"
     # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w K4,

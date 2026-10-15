@@ -929,11 +929,9 @@ Walk through it with the *why* for each piece:
   (`<seq>_<name>` versus `bench/bench-<point>` inside the stage it measures,
   `job-contracts.md` § 6.3) and nothing about scheduling.
 - **`JobSet.shared`** lists files that every job needs but that never change
-  between jobs — the pseudopotentials and the geometry, and the
-  atom-permutation record when the decks come from a sorted copy
-  (`engines/vibration.md` § 5.2). *(Decided 2026-10-14, not built: the
-  record retires — each deck states its own order record, `model/overview.md`
-  § 2.2a, plan § 5ab R5.)* (The monitor travels beside each wrapper
+  between jobs — the pseudopotentials and the geometry. (A deck written from
+  a sorted copy states its own order record, so none travels beside it:
+  `model/overview.md` § 2.2a, I5.) (The monitor travels beside each wrapper
   instead, `run-reports.md` § 2.3, and so does a job's finish.) They
   are **copied** into each job's folder as real files (user, 2026-08-24): a run
   directory holds everything it needs, and a link holds nothing

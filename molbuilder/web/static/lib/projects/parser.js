@@ -32,7 +32,7 @@ function _modelOf(viewer) {
 
 
 /**
- * openMolecule(viewer, path, { confirmDiscard? }) -- THE load door (contract §2).
+ * openMolecule(viewer, path, { confirmDiscard?, restore? }) -- THE load door (contract §2).
  *
  * FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model install
  * primitive (`molview.data.installMolecule({path})`), which POSTs it to `/api/build/load`
@@ -42,7 +42,10 @@ function _modelOf(viewer) {
  * missing sidecar is NOT an error (a lone file loads as atoms and coordinates, and
  * the answer says so -- model/structure.md § 2.3); format (.xyz vs
  * .pdb) is dispatched server-side from the extension.  `confirmDiscard` is the injected
- * dirty-canvas gate (UI policy; this layer stays DOM-free).  Returns `{ok:true, payload}`
+ * dirty-canvas gate (UI policy; this layer stays DOM-free).  `restore: true` asks for
+ * a file in an engine's order put back in your order, said in the answer's
+ * `structure.restored` notice (`model/overview.md` § 2.2a) -- a viewer that names
+ * atoms in your order, the transport report, asks it.  Returns `{ok:true, payload}`
  * | `{ok:false, cancelled|error}`.
  */
 export async function openMolecule(viewer, path, opts) {
@@ -76,6 +79,7 @@ export async function openMolecule(viewer, path, opts) {
   try {
     payload = await model.installMolecule({
       path:   path,
+      restore: opts.restore === true,
       /* THIS IS THE USER SAYING "LOAD THIS FILE", so it replaces whatever is
        * there.  Without it a read-only viewer that already holds a structure
        * answers null and does nothing.

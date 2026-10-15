@@ -169,7 +169,7 @@ def test_emit_atom_metadata_with_regions_only():
 def _atom_metadata_payload(block: str) -> dict:
     """THE EMITTER'S INDEPENDENT ORACLE: the block's JSON body, read back
     here by reversing the comment prefix -- not by the block's reader
-    (`read_atom_metadata_block`), which the tests below ask separately."""
+    (`deck_record.extract_atom_metadata`), which the tests below ask separately."""
     body_lines = []
     in_json = False
     for raw in block.splitlines():
@@ -284,7 +284,7 @@ def test_the_block_carries_every_field_but_the_box(row):
         assert payload[key] == want, (key, payload[key])
     assert not set(BOX_FIELDS) & set(payload), payload
 
-    read = sc.read_atom_metadata_block(block)
+    read = dr.extract_atom_metadata(block)
     assert order_record_of(read) == struct.atom_order
     back = Structure(elements=struct.elements, positions=struct.positions)
     assert sc.apply_atom_metadata(back, read) is True
@@ -402,7 +402,7 @@ def test_merge_user_custom_from_target_rendered_lacks_placeholder(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_read_atom_metadata_block_round_trips_through_emit_then_parse():
+def test_extract_atom_metadata_round_trips_through_emit_then_parse():
     """Emit + extract should round-trip the same data."""
     emitted = sc.emit_atom_metadata(
         _atoms(5, regions={"L-electrode": [0, 1, 2], "bridge": [3, 4],
@@ -412,7 +412,7 @@ def test_read_atom_metadata_block_round_trips_through_emit_then_parse():
     )
     # Wrap in a "host" file so it looks like real .fdf content.
     text = "SystemLabel siesta\n\n" + emitted + "\n\nBlockSize 64\n"
-    payload = sc.read_atom_metadata_block(text)
+    payload = dr.extract_atom_metadata(text)
     assert payload is not None
     assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4],
                                   "frozen_atoms": [0, 4]}
@@ -420,8 +420,8 @@ def test_read_atom_metadata_block_round_trips_through_emit_then_parse():
     assert payload["created_by"] == "molbuilder jobset prep"
 
 
-def test_read_atom_metadata_block_returns_none_when_block_missing():
-    assert sc.read_atom_metadata_block("SystemLabel siesta\nBlockSize 64\n") is None
+def test_extract_atom_metadata_returns_none_when_block_missing():
+    assert dr.extract_atom_metadata("SystemLabel siesta\nBlockSize 64\n") is None
 
 
 @pytest.mark.parametrize("text, words", [
@@ -446,7 +446,7 @@ def test_a_block_present_and_unreadable_is_refused_not_read_as_none(text,
     the block and the way out."""
     from molbuilder.deck_record import DeckRecordUnreadable
     with pytest.raises(DeckRecordUnreadable) as exc:
-        sc.read_atom_metadata_block(text)
+        dr.extract_atom_metadata(text)
     assert words in str(exc.value) and "atom-metadata" in str(exc.value)
     assert "molbuilder checkpoint restore" in str(exc.value)
 
@@ -457,7 +457,7 @@ def test_apply_atom_metadata_populates_the_label_store():
         _atoms(20, regions={"R-electrode": [10, 11, 12],
                             "frozen_atoms": [10, 12]}))
     text = "engine body\n" + emitted + "\nmore engine\n"
-    assert sc.apply_atom_metadata(struct, sc.read_atom_metadata_block(text)) is True
+    assert sc.apply_atom_metadata(struct, dr.extract_atom_metadata(text)) is True
     assert struct.regions == {"R-electrode": [10, 11, 12],
                               "frozen_atoms": [10, 12]}
     assert struct.frozen_atoms == [10, 12]
@@ -465,7 +465,7 @@ def test_apply_atom_metadata_populates_the_label_store():
 
 def test_apply_atom_metadata_returns_false_when_no_block():
     struct = _atoms(20)
-    assert sc.read_atom_metadata_block("SystemLabel siesta\n") is None
+    assert dr.extract_atom_metadata("SystemLabel siesta\n") is None
     assert struct.regions == {}
     assert struct.frozen_atoms == []
 
@@ -483,7 +483,7 @@ def test_apply_atom_metadata_normalises_indices():
         '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
-    assert sc.apply_atom_metadata(struct, sc.read_atom_metadata_block(text)) is True
+    assert sc.apply_atom_metadata(struct, dr.extract_atom_metadata(text)) is True
     assert struct.regions == {"r": [1, 2, 3], "frozen_atoms": [0, 2]}
     assert struct.frozen_atoms == [0, 2]
 
@@ -624,7 +624,7 @@ def test_a_current_block_applies():
                   "regions": {k: list(v) for k, v in s.regions.items()},
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    assert sc.apply_atom_metadata(back, sc.read_atom_metadata_block(blk)) is True
+    assert sc.apply_atom_metadata(back, dr.extract_atom_metadata(blk)) is True
     assert len(back.regions[FROZEN]) == len(frozen)
 
 
@@ -645,7 +645,7 @@ def test_a_block_written_for_a_different_structure_is_refused():
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
     with pytest.raises(MolstructPairingError):
-        sc.apply_atom_metadata(back, sc.read_atom_metadata_block(blk))
+        sc.apply_atom_metadata(back, dr.extract_atom_metadata(blk))
     assert not back.regions, "labels were applied before the guard fired"
 
 
@@ -736,7 +736,7 @@ def test_a_brace_in_a_region_name_does_not_destroy_the_block():
     the reader's brace-balance walk (which exists so both pretty-printed and
     compact JSON are accepted) counted `{` and `}` per line with no idea what
     a string was. A `}` inside a label closed the walk early, the truncated
-    text failed to parse, and `read_atom_metadata_block` returned `None` —
+    text failed to parse, and the block's reader returned `None` —
     the same value it returns for a block that is not there.
 
     So a user who named a region `chain}2` lost every label AND the frozen
@@ -753,7 +753,7 @@ def test_a_brace_in_a_region_name_does_not_destroy_the_block():
         block = sc.emit_atom_metadata(_atoms(2, regions={label: [0, 1]}),
                                       created_at="2026-01-01T00:00:00Z")
         assert block, f"nothing emitted for {label!r}"
-        got = sc.read_atom_metadata_block(block)
+        got = dr.extract_atom_metadata(block)
         assert got is not None, (
             f"a region named {label!r} made the block unreadable — every "
             "reader gets None, which is indistinguishable from 'no block'")
@@ -781,7 +781,7 @@ def test_the_brace_walk_still_accepts_both_json_layouts():
 
     for name, text in (("pretty", json.dumps(payload, indent=2)),
                        ("compact", json.dumps(payload))):
-        got = sc.read_atom_metadata_block(wrap(text))
+        got = dr.extract_atom_metadata(wrap(text))
         assert got is not None, f"{name}-printed JSON no longer reads"
         assert got["regions"] == {"a}b": [0, 1]}
 

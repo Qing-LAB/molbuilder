@@ -1066,8 +1066,13 @@ const WORKSPACE_TAG = "results:transport";
             return;
         }
         state.handle = handle;              // disposed with the report
+        /* IN YOUR ORDER (`model/overview.md` § 2.2a, I1): the composed
+         * junction is the engine's record, in TranSIESTA's order; the report
+         * draws it put back in yours, and names a selection's atoms so to the
+         * PDOS door, which crosses them into the junction's order. */
         const res = await proj.parser.openMolecule(
-            handle, (state.dir ? state.dir + "/" : "") + junctionFile);
+            handle, (state.dir ? state.dir + "/" : "") + junctionFile,
+            { restore: true });
         if (state.disposed) return;
         if (res && res.ok === false) {
             molHost.appendChild(_el("p", "transport-note",

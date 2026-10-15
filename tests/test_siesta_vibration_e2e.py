@@ -1,117 +1,152 @@
 """The vibration kind on SIESTA, through the whole described road.
 
 ``jobset init --engine siesta --calculation vibration`` → ``prep task`` →
-``launch task --mode direct`` on this workstation, and nothing after it: a
-two-atom molecule with one atom held, the force-constant run nudging the
-free atom only, and the modes derived BY THE JOB -- its finish,
-``mb_vibration.pyz``, run by the wrapper after SIESTA with the job's own
-python, which cannot import molbuilder -- through the one path both engines
-share (`engines/vibration.md` § 5.5, I22, I23).  The held atom is LAST in
-the input, so the held-first sort really reorders the copy the deck is
-written from and the answer has to come back through the recorded
-permutation.
+``launch task --mode direct`` on this workstation, and nothing after it: the
+road's CO2 (`support.road.CO2`), listed O O C with the carbon held, the
+force-constant run nudging the two oxygens only, and the modes derived BY THE
+JOB -- its finish, ``mb_vibration.pyz``, run by the wrapper after SIESTA with
+the job's own python, which cannot import molbuilder -- through the one path
+both engines share (`engines/vibration.md` § 5.5, I22, I23).  The carbon is
+LAST in the input, so the held-first order the decks are written in is a
+3-cycle (`support.road.CO2_HELD_FIRST`), and the result comes back in your
+order through the order record its deck states (`model/overview.md` § 2.2a,
+I5, I7).
+
+WHAT THE PHYSICS SAYS OF IT.  Six free coordinates; the carbon held on the
+molecule's axis leaves two whole-body motions -- the turns about it across
+the axis -- so four modes (`science/normal-modes.md` § 3.1): a bend pair,
+degenerate by the molecule's symmetry, moving the oxygens in the plane (x, y)
+across the axis, and two stretches along it, z.
 
 MUTATIONS THIS MUST FAIL AGAINST: a wrapper that does not run the finish
 (the launch then ends with no spectrum); a finish bundle missing a member
-(the job's python cannot import it, and the job fails).
+(the job's python cannot import it, and the job fails); a finish that reads
+no order record from its deck (the result's oxygens then stand where the
+carbon is).
 
 The roads: one per state of the person's one box (`engines/vibration.md`
-§ 2.2) -- unticked, the ladder `init` writes relaxes first, a `relax` stage
-whose geometry the `freq` stage is written at (§ 5.2a), and the finish
-judges the reference-step forces by the template's own tolerance; ticked,
-`freq` alone measures at the geometry as given -- then a displacement sweep
-(§ 5.9) and its refusals, and the finish's own failures: a finish that
-fails, and one that cannot load, which stops the job before SIESTA.
+§ 2.2) -- unticked, the ladder `init` writes relaxes first (the shared
+relaxation, `support.real_runs.relaxed_for_vibration`), and `freq` is written
+at the geometry `relax` reached (§ 5.2a); ticked, `freq` alone measures at
+the geometry as given -- then a displacement sweep (§ 5.9), and a flat
+calculation's refusal of it.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
-cleanly anywhere else.  Each launch is a short Broyden relaxation or seven
-single points of H2 -- about 15-30 s here -- and the module launches a dozen
-(about five minutes in all).
+cleanly anywhere else.  Each force-constant run is thirteen single points of
+CO2 on one rank, about a minute here, and the module launches five, with one
+relaxation of its own.
 """
 from __future__ import annotations
 
 import json
-import os
-import shutil
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, env_bin
-from support.road import group_words
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-
-
-CONDA_SH = conda_hook()
+from _road import conda_hook, env_available, set_template_value
+from support.road import CO2, CO2_HELD_FIRST, group_words, jobset
 
 pytestmark = [
     pytest.mark.engine,
     pytest.mark.skipif(
-        not (CONDA_SH.is_file()
-             and env_available("molbuilder-siesta")),
+        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-
-def _describe(tree, monkeypatch, positions, shape="hierarchical"):
-    """The calculation the way a person makes it: the structure in the
-    projects tree, the free atom FIRST and the held atom second (so the
-    held-first sort really reorders), `init` on the SIESTA vibration kind."""
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    shutil.copy(FIXTURES / "psml" / "H.psml", tree / "pseudopotential" / "H.psml")
-    s = Structure(elements=["H", "H"], positions=np.asarray(positions, float),
-                  cell=np.diag([10.0, 10.0, 10.0]),
-                  axis_kind=("isolated",) * 3)
-    s.frozen_atoms = [1]
-    StructureCodec().write(s, tree / "P" / "structure" / "h2.xyz")
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    monkeypatch.chdir(tree.parent)
-    # The wrapper looks the engine up BY NAME after activating the env --
-    # the road itself.  The suite's stub toolchain (conftest) sits ahead of
-    # the env's bin so that no test reaches the host's engine; this test
-    # wants the env's REAL engine on that same road, so the env's own bin
-    # goes in front of the stubs -- the binary the product finds when the
-    # person launches, and never /usr/local/bin's.
-    bin_ = env_bin("molbuilder-siesta")
-    assert (bin_ / "siesta").is_file(), bin_
-    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
-
-    r = CliRunner().invoke(jobset_group, [
-        "init", "--structure", "P/structure/h2.xyz",
-        "--bundle", "P/frequency/F", "--engine", "siesta",
-        "--shape", shape, "--calculation", "vibration",
-        "--name", "H2", "--psml-lib", "pseudopotential"])
-    assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "frequency" / "F"
-    # How a shell enters conda HERE is this machine's record's to say -- the
-    # activation the generator reads (`configuration.md` § 4).
-    from conftest import write_machine_record
-    write_machine_record(env_init={
-        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    task = json.loads((bundle / "task.json").read_text())
-    # Two atoms, two ranks, one thread: the run states its shape
-    # (`architecture.md` § 5.2).
-    task["execution"] = {**task.get("execution", {}), "mpi_np": 2,
-                         "omp_threads": 1}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    return bundle
+#: q0² · ν̃ for every mode: the zero-point amplitude in mass-weighted units is
+#: q0 = sqrt(ħ / 2ω), so q0² ν̃ = ħ / (4π c) -- CODATA 2018's ħ, c and atomic
+#: mass unit, in amu Å² cm⁻¹ (`engines/vibration.md` § 6.6).
+_ZERO_POINT = 1.054571817e-34 / (4 * np.pi * 2.99792458e10
+                                 * 1.66053906660e-27 * 1e-20)
 
 
-def _jobset(*args):
-    from click.testing import CliRunner
+def _co2_on_the_road(tree, *, stage=None):
+    """The road's CO2 described as a SIESTA vibration in ``tree``
+    (`support.real_runs`'s one maker): the kind's ladder, one rank, one
+    thread -- and ``stage``, when given, added to the ladder with the
+    overrides it states, the description varying them (`engines/stages.md`
+    § 6.2).  A `RealRun` of it, nothing typed yet."""
+    from support.real_runs import RealRun, _described
+    bundle = _described(tree, "P/freq/CO2", structure=CO2, name="CO2",
+                        calculation="vibration",
+                        execution={"mpi_np": 1, "omp_threads": 1})
+    if stage is not None:
+        task = json.loads((bundle / "task.json").read_text())
+        task["varies"] = sorted(set(task.get("varies") or [])
+                                | set(stage["overrides"]))
+        task["stages"].append(stage)
+        (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    return RealRun(tree=tree, bundle=bundle)
 
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, list(args))
+
+@pytest.fixture(scope="module")
+def ladder(real_relaxed_for_vibration, tmp_path_factory):
+    """The box unticked: the shared relaxation's calculation with its `freq`
+    stage prepared and launched, `summarize` asked, and `freq` launched again
+    (`support.real_runs.freq_launched_on`)."""
+    from support.real_runs import freq_launched_on
+    return freq_launched_on(real_relaxed_for_vibration, tmp_path_factory)
+
+
+@pytest.fixture(scope="module")
+def ticked(tmp_path_factory):
+    """The box ticked, on the road: `freq` asked before `relax` has run; the
+    ladder cut to `freq` alone and asked again unticked; then ticked, the
+    template's temperature set to 350 K, prepared and launched -- each answer
+    written down."""
+    from support.real_runs import _on_the_road, _taken, _typed
+    with _on_the_road(tmp_path_factory, "ticked") as tree:
+        run = _co2_on_the_road(tree)
+        _typed(run, "prep freq before relax", "prep", "task",
+               *group_words(run.bundle, "freq"), "--target", "this")
+        task = json.loads((run.bundle / "task.json").read_text())
+        # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
+        task["stages"] = [dict(s, group=1) for s in task["stages"]
+                          if s["name"] == "freq"]
+        (run.bundle / "task.json").write_text(json.dumps(task, indent=2))
+        _typed(run, "prep freq unticked", "prep", "task",
+               *group_words(run.bundle, "freq"), "--target", "this")
+        template = run.bundle / "CO2.template.toml"
+        set_template_value(template, "already_relaxed", "true")
+        set_template_value(template, "temperature_K", "350.0")
+        _taken(run, "prep freq", "prep", "task",
+               *group_words(run.bundle, "freq"), "--target", "this")
+        _taken(run, "launch freq", "launch", "task", "--stage", "freq",
+               "--mode", "direct", "--yes")
+    return run
+
+
+@pytest.fixture(scope="module")
+def sweep(tmp_path_factory):
+    """A displacement sweep on the road: `freq_half` at 0.02 Bohr beside
+    `freq`, in a group of its own -- `freq` is launched before it is
+    prepared, and a launched group is fixed (`engines/stages.md` § 2);
+    `relax` and `freq` launched, `freq_half` prepared and the sweep
+    summarized (``early``), `freq_half` launched and summarized
+    (``record``), and summarized again under a tolerance (``flagged``)."""
+    from support.real_runs import _on_the_road, _taken
+    with _on_the_road(tmp_path_factory, "sweep") as tree:
+        run = _co2_on_the_road(tree, stage={
+            "name": "freq_half", "group": 3, "enabled": True,
+            "overrides": {"fc_displacement": 0.02}})
+        record = run.bundle / "CO2.fc-sweep.json"
+        for stage in ("relax", "freq"):
+            _taken(run, f"prep {stage}", "prep", "task",
+                   *group_words(run.bundle, stage), "--target", "this")
+            _taken(run, f"launch {stage}", "launch", "task", "--stage",
+                   stage, "--mode", "direct", "--yes")
+        _taken(run, "prep freq_half", "prep", "task",
+               *group_words(run.bundle, "freq_half"), "--target", "this")
+        _taken(run, "summarize early", "summarize", "task")
+        run.early = json.loads(record.read_text())
+        _taken(run, "launch freq_half", "launch", "task", "--stage",
+               "freq_half", "--mode", "direct", "--yes")
+        _taken(run, "summarize", "summarize", "task")
+        run.record = json.loads(record.read_text())
+        _taken(run, "summarize with a tolerance", "summarize", "task",
+               "--tolerance-cm1", "1e-6")
+        run.flagged = json.loads(record.read_text())
+    return run
 
 
 def _kw(deck, key):
@@ -123,24 +158,12 @@ def _kw(deck, key):
     return []
 
 
-def _tick_already_relaxed(bundle):
-    tmpl = bundle / "H2.template.toml"
-    text = tmpl.read_text()
-    head, _, tail = text.partition("[item.already_relaxed]")
-    assert tail, text
-    tail = tail.replace("value = false", "value = true", 1)
-    tmpl.write_text(head + "[item.already_relaxed]" + tail)
-
-
-def _set_template_value(bundle, item, old, new):
-    """Change one item's value in the calculation's template, the way a
-    person edits it -- the ``value = <old>`` line under ``[item.<item>]``."""
-    tmpl = bundle / "H2.template.toml"
-    head, _, tail = tmpl.read_text().partition(f"[item.{item}]")
-    assert tail, item
-    assert f"value = {old}" in tail, (item, tail[:400])
-    tmpl.write_text(head + f"[item.{item}]"
-                    + tail.replace(f"value = {old}", f"value = {new}", 1))
+def _order_record(deck_text):
+    """The order record ``deck_text`` states, through its reader
+    (`deck_record.order_record_of`), as a dict -- or ``None``."""
+    from molbuilder.deck_record import extract_atom_metadata, order_record_of
+    got = order_record_of(extract_atom_metadata(deck_text))
+    return None if got is None else got.to_dict()
 
 
 def _the_monitor_closed(attempt, stage, step_words):
@@ -148,22 +171,22 @@ def _the_monitor_closed(attempt, stage, step_words):
     (`run-reports.md` § 2.1a, § 2.3): how the run ended in the Results tab's
     words, the step in SIESTA's own, every SCF phase converged -- and a
     utilisation basis that is the JOB's: a run started directly is its
-    process tree over the two ranks it was launched on, and a CPU run is
+    process tree over the one rank it was launched on, and a CPU run is
     judged on no GPU."""
+    import re
+
     from molbuilder.runfiles import compose
-    log = (attempt / compose("H2", ".monitor.log", stage, run=0)).read_text()
+    log = (attempt / compose("CO2", ".monitor.log", stage, run=0)).read_text()
     closing = [ln for ln in log.splitlines() if "[STATUS]" in ln][-1]
     assert "finished" in closing and step_words in closing, closing
     assert "converged: periodic yes" in closing, closing
     basis = next(ln for ln in log.splitlines() if "[UTIL-BASIS]" in ln)
-    assert ("cpu% of 2 core(s) [launched on]" in basis
+    assert ("cpu% of 1 core(s) [launched on]" in basis
             and "cpu time [process tree]" in basis
             and "mem [process tree" in basis), basis
     summary = next(ln for ln in log.splitlines() if "[UTIL-SUMMARY]" in ln)
     assert "gpu" not in summary.lower(), summary
-    # a fraction of the two cores it holds -- two busy ranks, not 87445%
-    # (the first sample once took its rate over two microseconds)
-    import re
+    # a fraction of the core it holds -- one busy rank
     mean = float(re.search(r"cpu mean=(\d+)%", summary).group(1))
     assert 20.0 <= mean <= 120.0, summary
 
@@ -173,8 +196,9 @@ def _the_result(attempt, stage):
     itself, so the attempt concluded 0 only with it (`engines/vibration.md`
     § 5.5: the finish's failure is the job's)."""
     from molbuilder.runfiles import compose
-    out = attempt / "H2.spectra.json"
-    concluded = (attempt / compose("H2", ".concluded", stage, run=0)).read_text()
+    out = attempt / "CO2.spectra.json"
+    concluded = (attempt / compose("CO2", ".concluded", stage,
+                                   run=0)).read_text()
     assert out.is_file(), (
         "the launch ended without the spectrum: the job did not finish its "
         f"own calculation ({concluded.strip()})")
@@ -184,10 +208,13 @@ def _the_result(attempt, stage):
 
 def _common_assertions(d):
     assert d["engine"] == "siesta" and d["schema_version"] >= 6
-    # The input order: the free atom is atom 0, the held one atom 1.
-    assert d["free_atom_idxs"] == [0] and d["frozen_atom_idxs"] == [1]
+    # YOUR ORDER: the oxygens atoms 0 and 1, the held carbon atom 2.
+    assert d["equilibrium"]["elements"] == CO2["elements"]
+    assert d["free_atom_idxs"] == [0, 1] and d["frozen_atom_idxs"] == [2]
+    assert d["hessian_scope"] == "free" and d["n_atoms_in_hessian"] == 2
+    # the two turns about the held carbon across the axis; four modes left
     assert d["removed_motions"]["count"] == 2
-    assert d["hessian_scope"] == "free" and d["n_atoms_in_hessian"] == 1
+    _a_bend_pair_and_two_stretches(d["modes"])
     assert d["equilibrium"]["mo_energies_eh"] is None
     assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert d["thermo"]["regime"] == "vibrational-only"
@@ -196,19 +223,32 @@ def _common_assertions(d):
     assert d["phase_frequencies"] == "complete"
     assert (d["phase_raman"], d["phase_es"]) == ("not requested",) * 2
     assert "Head1997" in d["bibliography_keys"]
-    # R5 on this route: the reference-step forces read back and judged by
-    # the template's own tolerance -- the kind's recommended 0.01 eV/A
-    rx = d["relaxation"]
+    # R5 on this route: the reference-step forces judged by the template's
+    # own tolerance -- the kind's recommended 0.01 eV/A
     assert d["engine_metadata"]["reference_force_criterion_ev_ang"] == 0.01
-    assert rx["converged"] is True
-    # the mass-calibrated displacement a transport step displaces along:
-    # one hydrogen near 3000 cm-1 swings about 0.075 A at its zero point
-    m0 = d["modes"][0]
-    assert 0.06 < m0["zero_point_amplitude_amu12_ang"] < 0.09
+    # the mass-calibrated displacement a transport step displaces along
+    for m in d["modes"]:
+        assert (m["zero_point_amplitude_amu12_ang"] ** 2
+                * m["frequency_cm1"]) == pytest.approx(_ZERO_POINT,
+                                                       rel=1e-3), m
     _states_its_masses_and_derived_values(d)
     # no strength is computed on this route, so no mode can be placed in a
     # channel (`engines/vibration.md` § 6.5)
     assert {m["activity_class"] for m in d["modes"]} == {"partial"}
+
+
+def _a_bend_pair_and_two_stretches(modes):
+    """The module's head: the two lowest modes a degenerate pair moving the
+    oxygens in (x, y) alone, the two highest moving them along z alone."""
+    assert len(modes) == 4, [m["frequency_cm1"] for m in modes]
+    freqs = [m["frequency_cm1"] for m in modes]
+    assert freqs == sorted(freqs)
+    assert freqs[1] - freqs[0] < 0.01 * freqs[0], freqs
+    assert freqs[2] > freqs[1], freqs
+    for k, m in enumerate(modes):
+        L = np.asarray(m["eigenvector_canonical"])
+        along_z = float((L[:, 2] ** 2).sum() / (L ** 2).sum())
+        assert (along_z < 0.01 if k < 2 else along_z > 0.99), (k, along_z)
 
 
 def _states_its_masses_and_derived_values(d):
@@ -218,7 +258,6 @@ def _states_its_masses_and_derived_values(d):
     canonical vector `Σ m|L|² = 1` in them); each mode's derived values sit
     beside it, and its own reader takes them (it refuses a derived value its
     inputs contradict)."""
-    import numpy as np
     from molbuilder.chemistry import atomic_mass
     from molbuilder.sidecars.spectra import parse_spectra_json_dict
     from molbuilder.spectra.derived import DERIVED_MODE_KEYS
@@ -232,103 +271,82 @@ def _states_its_masses_and_derived_values(d):
     parse_spectra_json_dict(d)
 
 
-def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond(
-        tmp_path, monkeypatch):
+def _relaxed_geometry(attempt):
+    """Where the `relax` run in ``attempt`` ended, in your order -- the run
+    door's one read of a run's geometry (`runs.steps_of`)."""
+    from molbuilder.runs import openable, run_of, steps_of
+    return np.asarray(steps_of(run_of(attempt), openable(attempt)[0])
+                      .last.positions, dtype=float)
+
+
+def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geometry(
+        ladder):
     """The box unticked (the default `init` writes): the ladder is `relax`
-    then `freq`; `freq` is refused before `relax` has concluded; after it,
-    `freq` is written at the relaxed geometry and the modes come out at
-    the relaxed bond's frequency with the reference forces within the
-    template's own tolerance (vibration.md § 2.2, § 5.2a, § 5.5).  And a
-    force-constant stage launched again starts over: its kind's rerun
-    carries nothing of its own (`warm-files.toml` [vibration] `resumes`,
-    `job-system.md` § 5.4, *A stage launched again*)."""
-    from molbuilder.atom_permutation import read_permutation
-
-    tree = tmp_path / "projects"
-    # The experimental bond, 0.741 A -- NOT the stationary point at this
-    # level of theory (measured 2026-09-24 on this road: 1.27 eV/A there,
-    # and 3358 cm-1 where the relaxed bond gives 3022).
-    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
-    task = json.loads((bundle / "task.json").read_text())
+    then `freq`; after `relax`, `freq` is written at the geometry `relax`
+    reached, in the held-first order its deck states, and the modes come out
+    in your order with the reference forces within the template's own
+    tolerance (vibration.md § 2.2, § 5.2a, § 5.5).  And a force-constant
+    stage launched again starts over: its kind's rerun carries nothing of
+    its own (`warm-files.toml` [vibration] `resumes`, `job-system.md` § 5.4,
+    *A stage launched again*)."""
+    from support.real_runs import relax_decks
+    run = ladder
+    task = json.loads((run.bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"]
-
-    # THE JOB SET'S OWN ORDER: freq before relax has run is refused by the
-    # one hand-over door, naming the stage to run first and how
-    # (`continuation`, vibration.md § 5.2a's table).
-    r = _jobset("prep", "task", *group_words(bundle, "freq"),
-                "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code != 0 and "`freq` builds on `relax`" in r.output \
-        and "Run it first" in r.output, r.output
-
-    r = _jobset("prep", "task", *group_words(bundle, "relax"),
-                "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code == 0, r.output
-    relax_deck = next((bundle / "01_relax").glob("*.fdf")).read_text()
-    # the ordinary relaxation deck, from the same sorted copy: Broyden to
-    # the kind's recommended 0.01 eV/A, the held atom (first after the
+    # the ordinary relaxation deck, from the same held-first copy: Broyden
+    # to the kind's recommended 0.01 eV/A, the held carbon (first after the
     # sort) constrained
-    assert _kw(relax_deck, "MD.TypeOfRun") == ["Broyden"], relax_deck
-    assert _kw(relax_deck, "MD.MaxForceTol")[:1] == ["0.01"], relax_deck
-    assert "position 1" in relax_deck
-    r = _jobset("launch", "task", "--stage", "relax", "--bundle", str(bundle),
-                "--mode", "direct", "--yes")
-    assert r.exit_code == 0, r.output
-    _the_monitor_closed(bundle / "01_relax" / "run-0", "01_relax",
-                        "Broyden opt. move")
-
-    r = _jobset("prep", "task", *group_words(bundle, "freq"),
-                "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code == 0, r.output
-    perm = read_permutation(bundle)
-    assert perm.key == "held-first" and perm.sorted_to_original == (1, 0)
-    fc_deck = next((bundle / "02_freq").glob("*.fdf")).read_text()
-    assert "MD.TypeOfRun      FC" in fc_deck and "FC.First          2" in fc_deck \
-        and "FC.Last           2" in fc_deck and "position 1" in fc_deck
-    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
-                "--mode", "direct", "--yes")
-    assert r.exit_code == 0, r.output
-    attempt = bundle / "02_freq" / "run-0"
-    assert (attempt / "H2.FC").is_file(), "the force-constant run must leave H2.FC"
+    for deck in relax_decks(run):
+        text = deck.read_text()
+        assert _kw(text, "MD.TypeOfRun") == ["Broyden"], deck
+        assert _kw(text, "MD.MaxForceTol")[:1] == ["0.01"], deck
+        assert "position 1" in text, deck
+    # the force-constant deck: the oxygens SIESTA's atoms 2 and 3, its order
+    # record the held-first one
+    fc_deck = next((run.bundle / "02_freq").glob("*.fdf")).read_text()
+    assert (_kw(fc_deck, "MD.TypeOfRun")[:1] == ["FC"]
+            and _kw(fc_deck, "FC.First")[:1] == ["2"]
+            and _kw(fc_deck, "FC.Last")[:1] == ["3"]
+            and "position 1" in fc_deck), fc_deck
+    assert _order_record(fc_deck) == CO2_HELD_FIRST
+    attempt = run.attempt("freq")
+    assert (attempt / "CO2.FC").is_file(), \
+        "the force-constant run must leave CO2.FC"
     _the_monitor_closed(attempt, "02_freq", "FC step")
     # THE LAUNCH ENDS WITH THE RESULT: the job's finish wrote it (§ 5.5).
     d = _the_result(attempt, "02_freq")
     # ...and summarize derives nothing: with one force-constant stage there
     # is no sweep to summarize (§ 5.9, I22).
-    r = _jobset("summarize", "task", "--bundle", str(bundle))
-    assert r.exit_code != 0 and "a sweep compares two or more" in r.output, \
-        r.output
+    said = run.said["summarize"]
+    assert said.exit_code != 0 and "a sweep compares two or more" in \
+        said.output, said.output
     _common_assertions(d)
+    assert d["relaxation"]["converged"] is True
     # the ladder relaxed first, and the artifact says so from the relax
     # stage's own record (vibration.md § 4.9)
     assert d["relaxation"]["already_relaxed"] is False
     assert d["phase_relaxation"] == "complete"
     assert d["relaxation"]["enabled"] is True and d["relaxation"]["n_steps"] >= 1
-    freqs = [m["frequency_cm1"] for m in d["modes"]]
-    # the relaxed bond's frequency (3022-3024 across the tolerances measured
-    # 2026-09-24), not the unrelaxed 3358
-    assert len(freqs) == 1 and 2950.0 < freqs[0] < 3100.0, freqs
     # the geometry in the file is the one the force constants were taken
-    # at -- the RELAXED bond, read from the run's own reference step
-    pos = np.asarray(d["equilibrium"]["positions_ang"])
-    bond = abs(pos[0, 2] - pos[1, 2])
-    assert 0.76 < bond < 0.79, bond
+    # at -- where `relax` ended, in your order
+    assert np.allclose(d["equilibrium"]["positions_ang"],
+                       _relaxed_geometry(run.attempt("relax")), atol=1e-5)
 
     # LAUNCHED AGAIN, the force constants start over -- nothing handed on.
-    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
-                "--mode", "direct", "--yes")
-    assert r.exit_code == 0, r.output
     assert ("launched again into run-1: it starts over -- nothing is handed "
-            "on from a run of its own") in r.output, r.output
-    again = bundle / "02_freq" / "run-1"
+            "on from a run of its own") in run.said["launch freq again"].output
+    again = run.attempt("freq", 1)
     assert again.is_dir() and not (again / ".continued-from").exists()
 
 
-def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
-                                                             monkeypatch):
+def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     """The box ticked: no relaxation, the force constants at the geometry as
-    given, the reference forces judged by the template's tolerance.  And
-    the contradiction refused first: unticked with no relax stage in the
-    ladder is neither state, and prep names both ways out (§ 5.2a).
+    given, the reference forces judged by the template's tolerance -- the
+    road's CO2, one C=O long, is no stationary point, and the result says so.
+    Before it, the ladder's own order and the contradiction refused: `freq`
+    before `relax` has run names the stage to run first (`continuation`,
+    § 5.2a's table), and unticked with no relax stage in the ladder is
+    neither state, so prep names both ways out (§ 5.2a).
 
     The thermochemistry is summed at the TEMPLATE'S temperature, which is
     one meaning on both engines (§ 3.1): set to 350 K here, it reaches the
@@ -338,29 +356,14 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     MUTATION THIS MUST FAIL AGAINST: prep leaving the temperature out of the
     block -- the finish then refuses the deck and the launch fails.
     """
-    tree = tmp_path / "projects"
-    # the relaxed bond (H-H 0.7745 A, measured 2026-09-24 on this road)
-    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
-    task = json.loads((bundle / "task.json").read_text())
-    # THE ONE STAGE LEFT is the ladder's first, so its group is 1.
-    task["stages"] = [dict(s, group=1) for s in task["stages"]
-                      if s["name"] == "freq"]
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-
-    r = _jobset("prep", "task", *group_words(bundle, "freq"),
-                "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code != 0 and "already_relaxed = true" in r.output \
-        and "`relax` stage" in r.output, r.output
-    _tick_already_relaxed(bundle)
-    _set_template_value(bundle, "temperature_K", "298.15", "350.0")
-    r = _jobset("prep", "task", *group_words(bundle, "freq"),
-                "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code == 0, r.output
-    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
-                "--mode", "direct", "--yes")
-    assert r.exit_code == 0, r.output
-    attempt = bundle / "01_freq" / "run-0"
-    d = _the_result(attempt, "01_freq")
+    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    said = ticked.said["prep freq before relax"]
+    assert said.exit_code != 0 and "`freq` builds on `relax`" in said.output \
+        and "Run it first" in said.output, said.output
+    said = ticked.said["prep freq unticked"]
+    assert said.exit_code != 0 and "already_relaxed = true" in said.output \
+        and "`relax` stage" in said.output, said.output
+    d = _the_result(ticked.attempt("freq"), "01_freq")
     _common_assertions(d)
     assert d["thermo"]["temperature_K"] == 350.0, d["thermo"]["temperature_K"]
     assert d["thermo"]["pressure_atm"] is None
@@ -369,10 +372,18 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     # nothing relaxed: the force-constant run itself never does
     assert d["phase_relaxation"] == "not requested"
     assert d["relaxation"]["enabled"] is False
-    freqs = [m["frequency_cm1"] for m in d["modes"]]
-    assert len(freqs) == 1 and 2950.0 < freqs[0] < 3100.0, freqs
-    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    assert d["relaxation"]["max_force_eh_bohr"] < 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE
+    # at the geometry as given, in your order, placed in its box as the deck
+    # states it -- design + applied_offset (`model/structure-periodicity.md`
+    # § 6.0) -- and judged off a stationary point by the template's 0.01 eV/A
+    from molbuilder.deck_record import extract_engine_offset
+    from molbuilder.runs import run_of
+    deck = run_of(ticked.attempt("freq")).deck.read_text()
+    placed = (np.asarray(CO2["positions"], dtype=float)
+              + extract_engine_offset(deck)["applied_offset"])
+    assert np.allclose(d["equilibrium"]["positions_ang"], placed, atol=1e-6)
+    assert d["relaxation"]["converged"] is False
+    assert d["relaxation"]["max_force_eh_bohr"] \
+        > 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE
 
 
 def _deck_coordinates(deck_text):
@@ -382,64 +393,34 @@ def _deck_coordinates(deck_text):
     return np.array([[float(x) for x in r[:3]] for r in rows])
 
 
-def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
-        tmp_path, monkeypatch):
+def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_geometry(
+        sweep):
     """A displacement sweep (`engines/vibration.md` § 5.9): after `relax`,
     two force-constant stages -- `freq` at the template's 0.04 Bohr and
     `freq_half` at 0.02 -- BOTH measure at the relaxed geometry, whatever
     their names (I24); each stage's job writes its own spectrum; and
     `summarize task` compares them into `<label>.fc-sweep.json` at the root,
-    naming each stage's files rather than copying them (I25).  Before
-    `freq_half` is launched the record lists it as pending, in its attempt's
-    own words.
+    naming each stage's files rather than copying them (I25), each stage's
+    nudged atoms in SIESTA's numbering.  Before `freq_half` is launched the
+    record lists it as pending, in its attempt's own words.
 
     MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
-    relaxed geometry -- `freq_half` then measures the unrelaxed input bond.
+    relaxed geometry -- `freq_half` then measures the unrelaxed input.
     """
-    tree = tmp_path / "projects"
-    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
-    task = json.loads((bundle / "task.json").read_text())
-    # a stage overrides only what the description varies (stages.md § 6.2)
-    task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    # A GROUP OF ITS OWN: `freq` is launched before it is prepared, and a
-    # launched group is fixed (engines/stages.md § 2).
-    task["stages"].append({"name": "freq_half", "group": 3, "enabled": True,
-                           "overrides": {"fc_displacement": 0.02}})
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-
-    def _prep_and_launch(stage):
-        r = _jobset("prep", "task", *group_words(bundle, stage),
-                    "--bundle", str(bundle), "--target", "this")
-        assert r.exit_code == 0, r.output
-        r = _jobset("launch", "task", "--stage", stage, "--bundle", str(bundle),
-                    "--mode", "direct", "--yes")
-        assert r.exit_code == 0, r.output
-
-    _prep_and_launch("relax")
-    _prep_and_launch("freq")
-    r = _jobset("prep", "task", *group_words(bundle, "freq_half"),
-                "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code == 0, r.output
-    # A STAGE STILL TO COME is pending, never a failure, in the words its
-    # attempt's `run_status` gives (prepared, not launched).
-    r = _jobset("summarize", "task", "--bundle", str(bundle))
-    assert r.exit_code == 0, r.output
-    early = json.loads((bundle / "H2.fc-sweep.json").read_text())
+    bundle, early, rec, rec2 = (sweep.bundle, sweep.early, sweep.record,
+                                sweep.flagged)
     assert [s["name"] for s in early["stages"]] == ["freq"], early["stages"]
     (waiting,) = early["pending"]
     assert (waiting["stage"], waiting["state"]) == ("freq_half", "pending"), \
         waiting
     assert early["failed"] == []
-    r = _jobset("launch", "task", "--stage", "freq_half", "--bundle", str(bundle),
-                "--mode", "direct", "--yes")
-    assert r.exit_code == 0, r.output
 
     decks = {tok: next((bundle / tok).glob("*.fdf")).read_text()
              for tok in ("02_freq", "03_freq_half")}
     # I24: one geometry for every force-constant stage -- the relaxed one.
     assert np.allclose(_deck_coordinates(decks["02_freq"]),
                        _deck_coordinates(decks["03_freq_half"]), atol=1e-8), \
-        "the second force-constant stage was not written at the relaxed bond"
+        "the second force-constant stage was not written at the relaxed geometry"
     assert _kw(decks["03_freq_half"], "FC.Displacement")[:1] == ["0.02"]
     a1, a2 = (_the_result(bundle / "02_freq" / "run-0", "02_freq"),
               _the_result(bundle / "03_freq_half" / "run-0", "03_freq_half"))
@@ -447,17 +428,14 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
         assert d["phase_relaxation"] == "complete" and \
             d["relaxation"]["converged"] is True
 
-    r = _jobset("summarize", "task", "--bundle", str(bundle))
-    assert r.exit_code == 0, r.output
-    rec = json.loads((bundle / "H2.fc-sweep.json").read_text())
-    assert rec["schema"] == "molbuilder/fc-displacement-sweep@1"
+    assert rec["schema"] == "molbuilder/fc-displacement-sweep@2"
     assert rec["pending"] == [] and rec["failed"] == []  # every stage has one
     # the Results tab offers only what the parse registry reads
     # (`model/parse.md` § 5.5): the record has its own reader
     from molbuilder.parse import detect
-    kind = detect(str(bundle / "H2.fc-sweep.json"))
+    kind = detect(str(bundle / "CO2.fc-sweep.json"))
     assert kind.name == "fc-sweep-json", kind
-    assert kind.parse(bundle / "H2.fc-sweep.json").schema == "fc-sweep/v1"
+    assert kind.parse(bundle / "CO2.fc-sweep.json").schema == "fc-sweep/v1"
     assert [s["name"] for s in rec["stages"]] == ["freq", "freq_half"]
     # I25: each stage's files are NAMED where its run wrote them, and are its
     # own -- the record carries paths, not copies.
@@ -468,54 +446,54 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     assert rec["stages"][1]["spectrum"].startswith("03_freq_half/run-0/")
     assert not list(bundle.glob("*.FC")) and not list(
         bundle.glob("*.spectra.json")), "the summary copied a stage's files"
+    # the oxygens nudged, SIESTA's atoms 2 and 3 in the held-first deck
+    assert [s["fc_range_engine_1based"] for s in rec["stages"]] == [[2, 3]] * 2
     # the displacement each stage USED, from its own spectrum
     d1, d2 = (s["fc_displacement_ang"] for s in rec["stages"])
     assert abs(d2 / d1 - 0.5) < 1e-6, (d1, d2)
     assert rec["stages"][1]["varies"] == {"fc_displacement": 0.02}
     assert rec["stages"][1]["varies_units"] == {"fc_displacement": "Bohr"}
-    # the one mode, matched by shape, at both displacements
-    (m,) = rec["modes"]
-    assert set(m["frequency_cm1"]) == {"freq", "freq_half"}
-    assert min(m["overlap"].values()) > 0.999, m
-    assert m["spread_cm1"] == pytest.approx(
-        abs(m["frequency_cm1"]["freq"] - m["frequency_cm1"]["freq_half"]))
-    assert m["flagged"] is None and rec["tolerance_cm1"] is None
+    # every mode at both displacements; the stretches matched by shape -- a
+    # degenerate bend pair's shapes are any two in their plane, so theirs
+    # may mix between the stages
+    assert len(rec["modes"]) == 4
+    for m in rec["modes"]:
+        assert set(m["frequency_cm1"]) == {"freq", "freq_half"}
+        assert m["spread_cm1"] == pytest.approx(
+            abs(m["frequency_cm1"]["freq"] - m["frequency_cm1"]["freq_half"]))
+        assert m["flagged"] is None
+    for m in rec["modes"][2:]:
+        assert min(m["overlap"].values()) > 0.999, m
+    assert rec["tolerance_cm1"] is None
     (fc,) = rec["force_constants"]
     assert fc["against"] == "freq" and fc["max_abs_change_ev_ang2"] > 0.0
-
-    # a tolerance the person gives flags; the numbers are unchanged
-    r = _jobset("summarize", "task", "--bundle", str(bundle),
-                "--tolerance-cm1", "1e-6")
-    assert r.exit_code == 0, r.output
-    rec2 = json.loads((bundle / "H2.fc-sweep.json").read_text())
-    assert rec2["modes"][0]["flagged"] is True and rec2["tolerance_cm1"] == 1e-6
+    assert all(m["flagged"] is True for m in rec2["modes"])
+    assert rec2["tolerance_cm1"] == 1e-6
 
 
 def test_a_flat_calculation_refuses_a_second_force_constant_stage(
         tmp_path, monkeypatch):
     """In the flat layout every stage writes the same `<label>.FC` and
     `<label>.spectra.json`, so two force-constant stages would overwrite each
-    other's result: `prep` refuses the description before any sort,
-    permutation record or deck is written, at whichever stage is prepared
-    first (`engines/vibration.md` § 5.9) -- counting the stages the
-    description runs: a disabled one is never prepared (`engines/stages.md`
-    § 6.2).
+    other's result: `prep` refuses the description before any sort or deck is
+    written, at whichever stage is prepared first (`engines/vibration.md`
+    § 5.9) -- counting the stages the description runs: a disabled one is
+    never prepared (`engines/stages.md` § 6.2).
 
     MUTATION THIS MUST FAIL AGAINST: the check not made.
     """
-    tree = tmp_path / "projects"
-    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]],
-                       shape="flat")
+    from support.road import describe_calculation
+    bundle = describe_calculation(tmp_path, monkeypatch, shape="flat",
+                                  name="CO2", calculation="vibration",
+                                  structure=CO2)
     task = json.loads((bundle / "task.json").read_text())
     # a stage overrides only what the description varies (stages.md § 6.2)
     task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    # A GROUP OF ITS OWN: `freq` is launched before it is prepared, and a
-    # launched group is fixed (engines/stages.md § 2).
     task["stages"].append({"name": "freq_half", "group": 3, "enabled": True,
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = _jobset("prep", "task", *group_words(bundle, "relax"),
-                "--bundle", str(bundle), "--target", "this")
+    r = jobset("prep", "task", *group_words(bundle, "relax"),
+               "--bundle", bundle, "--target", "this")
     assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
-    for written in ("*.fdf", "atom-permutation.json", "job-set.json"):
+    for written in ("*.fdf", "job-set.json"):
         assert not list(bundle.glob(written)), f"{written} before refusing"

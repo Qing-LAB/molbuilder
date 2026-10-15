@@ -149,7 +149,7 @@ _DISPATCH_CASES = [
     # name -- so by name alone the record is the text pane's.
     ("/projects/BDT/transport/bdt.transport.json", "source",
      "transport_json_by_name→source"),
-    ("/projects/BDT/transport/atom-permutation.json", "source",
+    ("/projects/BDT/transport/slot-provenance.json", "source",
      "other_json_still→source"),
     # Plain .json → source (first-match-wins after spectra missed).
     ("/projects/foo/user/config.json", "source", "plain_json→source"),

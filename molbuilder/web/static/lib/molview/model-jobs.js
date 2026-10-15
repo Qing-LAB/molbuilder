@@ -642,9 +642,12 @@ function requestBodyFor(input) {
     const which = (input.frame != null) ? { frame: input.frame }
                                         : { frames: true };
     // A project file is read BY THE SERVER, which owns file access and the
-    // pairing with the sidecar — the browser sends a path and no text.
+    // pairing with the sidecar — the browser sends a path and no text — in
+    // your order when the caller asks (`model/overview.md` § 2.2a).
     if (typeof input.path === "string" && input.path) {
-        return Object.assign({ path: input.path }, which);
+        return Object.assign({ path: input.path },
+                             input.restore === true ? { restore: true } : {},
+                             which);
     }
 
     /* A STRUCTURE PUT BACK — `exportFile`'s exact inverse, which is what that

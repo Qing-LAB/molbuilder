@@ -449,14 +449,14 @@ def declared(run: Run) -> Declared:
     except OSError:
         return Declared(deck=deck)
     from molbuilder.deck_record import (DeckRecordUnreadable,
+                                        extract_atom_metadata,
                                         extract_engine_offset)
-    from molbuilder.script_emit import read_atom_metadata_block
     # A BLOCK THAT CANNOT BE READ IS REFUSED, naming the deck -- read as a
     # deck that records nothing, the run would be shown with no labels and
     # the engine's box guessed, and nothing said.
     try:
         said = Declared(deck=deck,
-                        atom_metadata=read_atom_metadata_block(text),
+                        atom_metadata=extract_atom_metadata(text),
                         engine_offset=extract_engine_offset(text))
         order = said.atom_order
     except DeckRecordUnreadable as exc:

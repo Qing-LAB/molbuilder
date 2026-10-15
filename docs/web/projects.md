@@ -135,9 +135,10 @@ the **server** reads the `.xyz` *and* its paired `.molstruct.json` and answers
 with the whole enriched molecule — atoms, cell, the region/frozen labels, the
 `customized` rows and the `info` records — in one go:
 
-- **`projects.parser.openMolecule(viewer, path, { confirmDiscard? })`** — for a
+- **`projects.parser.openMolecule(viewer, path, { confirmDiscard?, restore? })`** — for a
   viewer that shows a file whole (the Spectrum tab's Inspect-structure card,
-  read-only). It hands the path to `viewer.data.installMolecule({ path,
+  read-only; the transport report's junction, which passes `restore: true` to
+  draw it in your order, `model/overview.md` § 2.2a). It hands the path to `viewer.data.installMolecule({ path,
   enforce: true })`, which asks for the whole file — a frame set with every
   frame (`molview.md` § 9.4) — and MolView installs it, the 3D viewer painting
   it with its labels and cell. If the model already has unsaved edits it can

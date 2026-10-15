@@ -6,7 +6,10 @@ THE JUNCTION is the smallest one with the parts a transport calculation is
 made of, and the one whose answer is known: a perfect chain of hydrogen at
 one spacing -- a half-filled band, a metal -- its two ends the electrode
 blocks, nine atoms each, and the four atoms between them the device's own,
-every atom held but the middle two.  A perfect single channel conducts one
+every atom held but the middle two -- listed bridge first, then the left
+block, then the right, so the order TranSIESTA needs (the blocks at the ends,
+`transport/sort.py`) is not yours and every result has to come back through
+the junction's order record.  A perfect single channel conducts one
 quantum, G = G0 (Landauer), and its device is bulk-like up to each electrode
 boundary, so its screening is complete there (`engines/transport.md`
 § 2a.13, *the lead layer count inside the device*).  One pseudopotential,
@@ -77,6 +80,21 @@ _LEAD = 9
 _WIRE = 4
 _BOX = 8.0
 
+#: THE ORDER THE JUNCTION IS LISTED IN, by each atom's place along the chain
+#: (0 the lowest): the bridge, then the left block, then the right.
+#: TranSIESTA's order is the chain's, so the sort moves every atom, and its
+#: record is not its own inverse -- a result put back the wrong way round is
+#: told apart (`model/overview.md` § 2.2a).
+_LISTED = (tuple(range(_LEAD, _LEAD + _WIRE)) + tuple(range(_LEAD))
+           + tuple(range(_LEAD + _WIRE, 2 * _LEAD + _WIRE)))
+
+
+def _at(place: int) -> int:
+    """The index, in the junction as listed, of the atom at ``place`` along
+    the chain."""
+    return _LISTED.index(place)
+
+
 #: What the relaxation's template is set to before it runs -- each
 #: distinguishable from the catalogue's default (300 Ry / DZP / 300 K /
 #: unpolarized / a mixing weight of 0.02 and a history of 8), so a value that
@@ -128,13 +146,21 @@ _FRAME_ROWS = (("displacement_ang", "measured", "angstrom",
                ("node_sigma", "derived", None, "q in units of σ", None),
                ("weight", "given", None, "Weight", None))
 
-#: The PDOS of a selection -- every atom of the junction -- asked where the
-#: Results tab asks it (`/api/transport/pdos`, `web/results.md` § 2.5), a
-#: row each: the point ``at`` -- (frame index, voltage) -- whose total DOS
-#: it is, or the words it is ``refused`` with.
+#: The PDOS of a selection asked where the Results tab asks it
+#: (`/api/transport/pdos`, `web/results.md` § 2.5), a row each: every atom of
+#: the junction, or the ``atoms`` it names in your order; the point ``at`` --
+#: (frame index, voltage) -- whose total DOS it is, or whose ``region``'s;
+#: or the words it is ``refused`` with.
 _PDOS_ASKS = (
     {"name": "a frame set's point", "calc": "P/transport/F",
      "query": "frame=1&point=0.2&orbitals=all", "at": (1, 0.2)},
+    # THE BRIDGE, NAMED IN YOUR ORDER: its atoms are listed first, and
+    # TranSIESTA's order puts the left block there -- the answer is the
+    # bridge's only through the junction's order record.
+    {"name": "the bridge's atoms, named in your order",
+     "calc": "P/transport/F", "query": "frame=1&point=0.2&orbitals=all",
+     "atoms": tuple(_at(p) for p in range(_LEAD, _LEAD + _WIRE)),
+     "region": "bridge", "at": (1, 0.2)},
     {"name": "by orbital type, through the device run's orbital index",
      "calc": "P/transport/F", "query": "frame=2&point=0&orbitals=s",
      "at": (2, 0.0)},
@@ -159,24 +185,26 @@ _DEFINITION_CASES = tomllib.loads(
 
 
 def _junction() -> dict:
-    """The junction as `jobset init` takes it: one chain, its ends the
-    electrode blocks and its middle the bridge; every atom held but the
-    middle two, whose neighbours on each side are the same; the room at the
-    transport boundary one lead spacing (§ 6.1c, I12)."""
+    """The junction as `jobset init` takes it, listed as :data:`_LISTED`:
+    one chain, its ends the electrode blocks and its middle the bridge;
+    every atom held but the middle two, whose neighbours on each side are
+    the same; the room at the transport boundary one lead spacing (§ 6.1c,
+    I12)."""
     from molbuilder.transport.sort import (REGION_BRIDGE,
                                            REGION_LEFT_ELECTRODE,
                                            REGION_RIGHT_ELECTRODE)
-    n = _LEAD + _WIRE + _LEAD
-    zs = [i * _SPACING for i in range(n)]
+    n = len(_LISTED)
     labels = ([REGION_LEFT_ELECTRODE] * _LEAD + [REGION_BRIDGE] * _WIRE
               + [REGION_RIGHT_ELECTRODE] * _LEAD)
     regions: dict = {}
-    for i, lab in enumerate(labels):
-        regions.setdefault(lab, []).append(i)
+    for i, place in enumerate(_LISTED):
+        regions.setdefault(labels[place], []).append(i)
     middle = (_LEAD + _WIRE // 2 - 1, _LEAD + _WIRE // 2)
-    regions["frozen_atoms"] = [i for i in range(n) if i not in middle]
+    regions["frozen_atoms"] = [i for i, place in enumerate(_LISTED)
+                               if place not in middle]
     return {"elements": ["H"] * n,
-            "positions": [[_BOX / 2, _BOX / 2, z] for z in zs],
+            "positions": [[_BOX / 2, _BOX / 2, place * _SPACING]
+                          for place in _LISTED],
             "regions": regions,
             "cell": [_BOX, _BOX, n * _SPACING],
             "axis_kind": ["isolated", "isolated", "transport"]}
@@ -598,12 +626,13 @@ def junction(tmp_path_factory):
             f"/api/task-setup/folder?dir={from_pair.bundle}").get_json()
         # THE PDOS OF A SELECTION, every atom of the junction, asked where
         # the Results tab asks it, a row of `_PDOS_ASKS` each.
-        everyone = ",".join(str(i) for i in range(StructureCodec().load(
-            tree / frame_set, frames=True).n_atoms))
+        everyone = range(StructureCodec().load(tree / frame_set,
+                                               frames=True).n_atoms)
         run.pdos_said = {}
         for ask in _PDOS_ASKS:
+            atoms = ",".join(str(i) for i in ask.get("atoms", everyone))
             got = client.get(f"/api/transport/pdos?path={tree / ask['calc']}"
-                             f"&atoms={everyone}&{ask['query']}")
+                             f"&atoms={atoms}&{ask['query']}")
             run.pdos_said[ask["name"]] = (got.status_code, got.get_json())
         run.vibration = vibration
         run.frame_set = frame_set
@@ -679,7 +708,11 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
 def test_the_record_answers_for_the_citation_it_was_composed_from(junction,
                                                                    tmp_path):
     """`load_compose_record`'s "no record" is said in words: nothing
-    composed here, or a record composed from another citation."""
+    composed here, a record composed from another citation, or one composed
+    before 2.10.0 recorded the order its junction's atoms are in -- known by
+    its own schema, `slot-provenance@1` as 2.9.6 wrote it; prep then composes
+    it again (`model/overview.md` § 2.2a, I9; `execution/job-contracts.md`
+    § 6.1)."""
     from molbuilder.transport.compose import (compose_junction,
                                               load_compose_record,
                                               write_compose_record)
@@ -698,6 +731,15 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(junction,
     assert junction.cite in why[0] and other in why[0]
     assert load_compose_record(rec, citation=junction.cite,
                                tree_root=junction.tree) is not None
+    from molbuilder.persist import write_json
+    from molbuilder.runfiles import SLOT_PROVENANCE_FILE
+    from molbuilder.transport.compose import read_provenance
+    write_json(rec / SLOT_PROVENANCE_FILE,
+               {**read_provenance(rec), "schema": "molbuilder/slot-provenance@1"})
+    why = []
+    assert load_compose_record(rec, citation=junction.cite,
+                               tree_root=junction.tree, why=why) is None
+    assert "composed before 2.10.0" in why[0], why
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -824,8 +866,10 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
 
 @pytest.mark.parametrize("change, severity, words, as_the_deck", [
     ("hold", "info", "holds 21: every atom it held, and 1 more", False),
-    ("free", "warn", "leaves atom index 8 (H) of them free", False),
-    ("free", "warn", "leaves atom index 8 (H) of them free", True),
+    ("free", "warn", f"leaves atom index {_at(_LEAD - 1)} (H) of them free",
+     False),
+    ("free", "warn", f"leaves atom index {_at(_LEAD - 1)} (H) of them free",
+     True),
 ], ids=["holds-more-for-the-spectrum", "frees-an-atom-the-relaxation-held",
         "names-it-in-your-order-on-the-decks-sorted-copy"])
 def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
@@ -846,9 +890,9 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
     from molbuilder.workingcopy_structure import StructureCodec
     s = StructureCodec().load(junction.tree / junction.pair)
     held = set(s.frozen_atoms)
-    assert len(held) == 20 and 8 in held, sorted(held)
-    s.frozen_atoms = sorted(held | {_LEAD + _WIRE // 2 - 1} if change == "hold"
-                            else held - {_LEAD - 1})
+    assert len(held) == 20 and _at(_LEAD - 1) in held, sorted(held)
+    s.frozen_atoms = sorted(held | {_at(_LEAD + _WIRE // 2 - 1)}
+                            if change == "hold" else held - {_at(_LEAD - 1)})
     if as_the_deck:
         from molbuilder.transport.sort import deck_sort_key, sort_by
         s = sort_by(s, deck_sort_key("siesta", "vibration")).structure
@@ -894,6 +938,26 @@ def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
             got = parse_fdf_params(deck.read_text()).mixing_weight
             assert (got is None if weight is None
                     else got == pytest.approx(weight)), (deck, got, weight)
+
+
+def test_every_rung_of_the_junction_states_its_order(junction):
+    """`model/overview.md` § 2.2a, I5, I7: every rung written from the
+    composed junction -- the seed, and the device's and the transmission's
+    points, which a later prep renders from the composition record -- states
+    in its deck the order record of TranSIESTA's order, the chain's
+    (:data:`_LISTED`); a lead's deck, a cell of its own, states none.  The
+    silent failure: a rung whose deck states no order, so its run reads as
+    yours while its atoms are in TranSIESTA's."""
+    from molbuilder.deck_record import extract_atom_metadata, order_record_of
+    chain = {"key": "transport",
+             "sorted_to_original": [_at(p) for p in range(len(_LISTED))],
+             "original_to_sorted": list(_LISTED)}
+    for stage, want in (("seed", chain), ("electrode_L", None),
+                        ("electrode_R", None), ("device", chain),
+                        ("transmission", chain)):
+        for deck in _prepared_decks(junction, stage):
+            got = order_record_of(extract_atom_metadata(deck.read_text()))
+            assert (None if got is None else got.to_dict()) == want, deck
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):
@@ -1202,7 +1266,8 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     """§ 2a.12, *the data file*: `<label>.transport.nc`, read through its
     door, holds every point on one grid -- frame x voltage x energy, the
     I-V's voltages the description's -- its T(E) TBtrans's own, each frame's
-    definition rows and every atom's mass and coordinates beside it, the
+    definition rows and every atom's element, mass and coordinates beside it
+    in your order, the cited set's (`model/overview.md` § 2.2a, I1), the
     device's facts, the I-V and the mode's average each at its own point as
     the record states them; every dimension a coordinate of its own name and
     the labels of its points coordinates beside it; every variable says what
@@ -1212,7 +1277,6 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     from molbuilder.task import read_task
     from molbuilder.transport.datafile import (VARIABLES, data_file_path,
                                                read_data_file)
-    from molbuilder.transport.record import composed_junction
     run = junction.from_pair
     label = read_task(run.bundle / "task.json").label
     got = read_data_file(data_file_path(run.bundle, label))
@@ -1230,14 +1294,16 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
         assert np.allclose(V["average_transmission"][b],
                            sum(w * c for w, c in zip(_WEIGHTS, curves)),
                            rtol=1e-12, atol=0)
-    composed = composed_junction(run.bundle)
+    cited = _the_set(junction)
     for r in FRAME_ROWS:
-        assert list(V[r.name]) == [composed.customized_value(r.name, frame=f)
+        assert list(V[r.name]) == [cited.customized_value(r.name, frame=f)
                                    for f in range(_N_FRAMES)], r.name
-    masses = composed.annotations[MASS_CHANNEL].data
-    assert list(V["mass_amu"]) == [masses[i] for i in range(composed.n_atoms)]
+    masses = cited.annotations[MASS_CHANNEL].data
+    assert list(V["atom"]) == list(range(cited.n_atoms))
+    assert list(V["element"]) == list(cited.elements)
+    assert list(V["mass_amu"]) == [masses[i] for i in range(cited.n_atoms)]
     assert np.array_equal(V["positions_ang"],
-                          np.asarray(composed.frames, dtype=float))
+                          np.asarray(cited.frames, dtype=float))
     # EACH VALUE PLACED BY ITS OWN POINT, as the record states it: the
     # device's facts, the I-V, the averaged conductance.
     rec = _record(run)
@@ -1382,24 +1448,79 @@ def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
     """`web/results.md` § 2.5: the PDOS of a selection is asked at the
     selected frame and voltage -- the per-orbital DOS summed over the atoms'
     orbitals, so every atom of the junction (the device region's counted,
-    the rest named outside it) is that point's total DOS, as the record
-    states it, and no other point's; a frame set's point names its frame,
-    one structure's names none, and either asked otherwise is refused by
-    name (`web/web-api.md`, `/api/transport/pdos`)."""
+    the rest named outside it) is that point's total DOS, and the bridge's
+    atoms its bridge's, as the record states them, and no other point's; the
+    atoms named in your order, asked and answered (`model/overview.md`
+    § 2.2a, I1); a frame set's point names its frame, one structure's names
+    none, and either asked otherwise is refused by name (`web/web-api.md`,
+    `/api/transport/pdos`)."""
     status, body = junction.pdos_said[ask["name"]]
     if "refused" in ask:
         assert status == 400 and ask["refused"] in body["error"], body
         return
     assert status == 200 and body["ok"], body
+    asked = sorted(ask.get("atoms", range(len(_LISTED))))
+    assert sorted(body["atoms"] + body["outside_device"]) == asked, body
+
+    def curve(p):
+        dos = p["dos"]
+        return dos["by_label"][ask["region"]] if "region" in ask \
+            else dos["total"]
     points = _record(junction.from_pair)["points"]
     point = next(p for p in points if (p["frame"], p["bias_v"]) == ask["at"])
     assert body["energy_ev"] == point["dos"]["energy_ev"]
-    assert np.allclose(body["pdos"], point["dos"]["total"], rtol=1e-9,
+    assert np.allclose(body["pdos"], curve(point), rtol=1e-9,
                        atol=0), ask["name"]
     others = [p for p in points if (p["frame"], p["bias_v"]) != ask["at"]]
     assert others and not any(
-        np.allclose(body["pdos"], p["dos"]["total"], rtol=1e-6, atol=0)
+        np.allclose(body["pdos"], curve(p), rtol=1e-6, atol=0)
         for p in others), "the points' DOS do not tell them apart"
+
+
+def test_the_report_draws_the_junction_in_your_order(junction, page,
+                                                     monkeypatch):
+    """`web/results.md` § 2.5, § 3; `model/overview.md` § 2.2a, I1: the
+    transport report draws the composed junction -- the engine's record, in
+    TranSIESTA's order -- put back in your order, the order its PDOS
+    selections are named in, and says so: the viewer's notice names the
+    order the file was in, and no line says its atoms are in the engine's
+    order.  Mounted as the Results page mounts it, on the server's answer
+    for the calculation's `task.json` (`/api/results/dir`).  The silent
+    failure: a drawing in TranSIESTA's order whose selections the PDOS door
+    reads as yours."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    task = junction.from_pair.bundle / "task.json"
+    with serve() as base:
+        page.goto(f"{base}/results", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.inspectors"
+            "      && window.molbuilder.inspectors.pick")
+        name = page.evaluate(
+            """async (file) => {
+                const dir = file.slice(0, file.lastIndexOf('/'));
+                const answer = await (await fetch(
+                    '/api/results/dir?path=' + encodeURIComponent(dir))).json();
+                const hit = answer.files.find((f) => f.name === 'task.json');
+                const meta = {role: hit.role, label: hit.label,
+                              stage: hit.stage, parser: hit.parser,
+                              engine: answer.engine};
+                const reg = window.molbuilder.inspectors;
+                const host = document.getElementById('inspector-host');
+                host.innerHTML = '';
+                reg.mount(host, file, {showError: (m) => {
+                    host.textContent = 'ERROR: ' + m; }}, meta);
+                return reg.pick(file, meta).name;
+            }""", str(task))
+        assert name == "transport", name
+        page.wait_for_function(
+            "() => [...document.querySelectorAll('.molviewer-notices')]"
+            "      .some((n) => n.textContent.includes('put back in your order'))",
+            timeout=30000)
+        notices = " ".join(page.locator(".molviewer-notices").all_inner_texts())
+        assert "TranSIESTA's order" in notices, notices
+        assert page.locator(".molviewer-order").is_hidden()
 
 
 # --------------------------------------------------------------------- #

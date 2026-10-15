@@ -6,9 +6,8 @@ ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
         :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
         block's JSON payload (:func:`read_json_block`), with the readers of
-        what a job reads beside itself -- ENGINE-OFFSET, VIBRATION -- and
-        the reader of the ATOM-METADATA block's order record
-        (:func:`order_record_of`), the run door's
+        the blocks a job reads beside itself -- ATOM-METADATA and its order
+        record (:func:`order_record_of`), ENGINE-OFFSET, VIBRATION
 USED-BY script_emit (writes every block and reads the rest through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
         the job), runs.declared, transport/compose, runwrap and
@@ -214,6 +213,14 @@ def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
             from exc
 
 
+def extract_atom_metadata(text: str) -> Optional[Dict[str, Any]]:
+    """The ATOM-METADATA block's payload -- the structure's metadata but its
+    box, the order record among it (`job-contracts.md` § 3.4) -- or ``None``
+    for a deck that carries none.  Read by the run door (``runs.declared``)
+    and by the finish beside a job (:func:`order_record_of`)."""
+    return read_json_block(text, BLOCK_ATOM_METADATA)
+
+
 def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
     """The ENGINE-OFFSET block's payload -- ``{applied_offset, cell,
     axis_kind, stated}`` -- or ``None`` for a deck that carries none.  The deck's
@@ -237,9 +244,9 @@ def order_record_of(block: Optional[Dict[str, Any]]):
     ATOM-METADATA payload's ``atom_order``, read by the order record's one
     reader (``atom_permutation.Permutation.from_dict``) over the block's own
     atom count -- ``None`` for a deck in your order, or one that carries no
-    block.  Asked by the run door (``runs.declared``); it imports both ways
-    because the finish beside a job is to read its deck's record through it
-    (plan § 5ab R5)."""
+    block.  Asked by the run door (``runs.declared``) and by the finish
+    beside a job, which reads its own deck's record (`model/overview.md`
+    § 2.2a, I5)."""
     record = (block or {}).get("atom_order")
     if record is None:
         return None
@@ -255,6 +262,6 @@ __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "MARKER_RE",
            "begin_marker", "end_marker", "order_record_of", "read_json_block",
-           "DeckRecordUnreadable",
+           "DeckRecordUnreadable", "extract_atom_metadata",
            "extract_engine_offset", "extract_vibration_record",
            "without_stamps"]

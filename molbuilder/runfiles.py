@@ -830,7 +830,6 @@ MACHINE_RECORD_FILE = "environment.json"
 JOBSET_FILE = "job-set.json"
 PLAN_FILE = "STAGE-PLAN.md"
 LEDGER_FILE = "jobset-decisions.log"
-PERMUTATION_FILE = "atom-permutation.json"
 PSEUDO_DIR = "pseudos"
 JUNCTION_FILE = "junction.xyz"
 JUNCTION_SIDECAR_FILE = "junction.molstruct.json"
@@ -1234,12 +1233,6 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=LEDGER_FILE, what="one line per decision of every verb",
              when="prep", level="calculation", kind="record",
              writer="every verb (`jobset.ledger.record`)"),
-    Artifact(name=PERMUTATION_FILE,
-             what="the atom order the decks were written in",
-             when="prep", level="calculation", kind="derived",
-             writer="prep (`transport.sort.write_permutation`)",
-             door="atom_permutation.read_permutation",
-             only="a SIESTA vibration, or a transport calculation"),
     Artifact(name="{element}.psml",
              what="a pseudopotential: the calculation's one copy in "
                   "`pseudos/`, and a real copy beside every deck — SIESTA "

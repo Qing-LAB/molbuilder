@@ -515,12 +515,12 @@ constants into its spectrum.  It needs arrays, so its rule is **the standard
 library and numpy — which the SIESTA job envs carry for it — AND
 travels**; its members import each other the same two ways.  The monitor's
 set stays stdlib-only: the bundles are built by one builder from their own
-tables, and nothing of the finish's reaches the monitor. *(Decided 2026-10-14, not built — `model/overview.md`
-§ 2.2a, plan § 5ab R5: the finish reads its deck's order record through
-`deck_record` and `atom_permutation`, both already in the set, so RMP adds no
-member; what V1.39 adds to it — the structure, the sidecar codec, the atomic
-writer, and `netCDF4` among the imports its writing functions may make — is
-V1.39's, stated with it.)*
+tables, and nothing of the finish's reaches the monitor. The finish reads its deck's
+order record through `deck_record` and `atom_permutation`, both in the set
+(`model/overview.md` § 2.2a, I5). *(Decided 2026-10-14, not built: what V1.39
+adds to it — the structure, the sidecar codec, the atomic writer, and
+`netCDF4` among the imports its writing functions may make — is V1.39's,
+stated with it.)*
 
 **A third, imported rather than run.** A PySCF script imports every molbuilder
 function it runs from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,

@@ -40,8 +40,11 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-#: The record's schema (`execution/job-contracts.md` § 6.1).
-SWEEP_SCHEMA = "molbuilder/fc-displacement-sweep@1"
+#: The record's schema (`execution/job-contracts.md` § 6.1).  ``@2``: each
+#: stage's force-constant range is named as SIESTA's numbering,
+#: ``fc_range_engine_1based`` (`model/overview.md` § 2.2a); a ``@1`` record is
+#: refused by its version, and `summarize task` writes it again.
+SWEEP_SCHEMA = "molbuilder/fc-displacement-sweep@2"
 
 
 class SweepError(Exception):
@@ -235,7 +238,7 @@ def collect_sweep(base_dir, task, *,
             "varies": overrides,
             "varies_units": {k: _unit(k) for k in overrides},
             "fc_displacement_ang": meta.get("fc_displacement_ang"),
-            "fc_range_1based": meta.get("fc_range_1based"),
+            "fc_range_engine_1based": meta.get("fc_range_engine_1based"),
             "fc_asymmetry_max_ev_ang2": meta.get("fc_asymmetry_max_ev_ang2"),
             "n_modes": len(res.modes),
             "removed_motions": dict(res.removed_motions or {}).get("count"),
@@ -321,12 +324,15 @@ def collect_sweep(base_dir, task, *,
     # THE FORCE CONSTANTS THEMSELVES, H(δ) against the reference's, over the
     # block both runs nudged -- read from the raw files, in eV/Å².
     constants: List[Dict[str, Any]] = []
-    rng = ref_meta.get("fc_range_1based") or []
+    rng = ref_meta.get("fc_range_engine_1based") or []
     # SIESTA's atom numbers through the one door (`engine_atom_index`).
     displaced = (list(range(from_engine_index(int(rng[0]), "siesta"),
                             from_engine_index(int(rng[1]), "siesta") + 1))
                  if len(rng) == 2 else [])
     H_ref, ref_why = None, "a force-constant file is missing"
+    if ref_fc_file is not None and not displaced:
+        ref_why = (f"{ref_name}'s result states no force-constant range "
+                   f"(fc_range_engine_1based)")
     if ref_fc_file is not None and displaced:
         try:
             H_ref = (hessian_from_fc(read_fc(ref_fc_file), displaced)
@@ -341,7 +347,7 @@ def collect_sweep(base_dir, task, *,
             entry["why"] = ref_why
         elif fc_file is None:
             entry["why"] = "a force-constant file is missing"
-        elif (meta.get("fc_range_1based") or []) != rng:
+        elif (meta.get("fc_range_engine_1based") or []) != rng:
             entry["why"] = "the two runs nudged different atoms"
         else:
             try:

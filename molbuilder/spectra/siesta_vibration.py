@@ -24,14 +24,15 @@ EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
   * the deck (``SystemLabel``, the species, the FC range, the lattice) --
     the fdf reader, `parse.fdf`;
   * the deck's molbuilder blocks -- their one reader, `deck_record`:
-    ``engine-offset`` (the axis kinds, R3) and ``vibration`` (the
-    stationarity criterion, the thermochemistry's temperature, the person's
-    statement, the ladder's relaxation record, the stage, the molbuilder
-    that prepared it);
+    ``atom-metadata``'s order record (the deck's atoms in held-first order,
+    the way back to the input's; none for a deck the sort left in your
+    order -- `model/overview.md` § 2.2a, I5), ``engine-offset`` (the axis
+    kinds, R3) and ``vibration`` (the stationarity criterion, the
+    thermochemistry's temperature, the person's statement, the ladder's
+    relaxation record, the stage, the molbuilder that prepared it);
   * ``<label>.FC`` -- `parse.engines.siesta_fc`;
   * the run's output (FC step 0's geometry and forces, SIESTA's version) --
     SIESTA's one reading pass, `siesta_reader`;
-  * ``atom-permutation.json``, the copy in the attempt -- `atom_permutation`;
   * the masses -- every atom's, as `prep` stated them in the ``vibration``
     block from `chemistry.atomic_mass` (I3): the analysis weights by them and
     the result states them.
@@ -54,7 +55,7 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
-    from ..atom_permutation import Permutation, read_permutation
+    from ..atom_permutation import Permutation
     from ..constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..parse.engines.siesta_fc import (ForceConstantFile,
                                            fc_block_asymmetry,
@@ -64,8 +65,9 @@ try:                                        # inside molbuilder
     from ..parse.fdf import (deck_atoms, fdf_key, read_fdf, parse_fdf_params,
                              system_label)
     from ..runfiles import compose
-    from ..deck_record import (DeckRecordUnreadable, extract_engine_offset,
-                               extract_vibration_record)
+    from ..deck_record import (DeckRecordUnreadable, extract_atom_metadata,
+                               extract_engine_offset,
+                               extract_vibration_record, order_record_of)
     from ..engine_atom_index import from_engine_index, siesta_atom_index
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import LOG_CLOCK, LOG_LINE
@@ -73,7 +75,7 @@ try:                                        # inside molbuilder
     from .results import SpectraResults
     from .vibrational_analysis import vibrational_analysis
 except ImportError:                         # beside a job, in mb_vibration.pyz
-    from atom_permutation import Permutation, read_permutation
+    from atom_permutation import Permutation
     from constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
@@ -81,8 +83,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from fdf import (deck_atoms, fdf_key, read_fdf,  # type: ignore[no-redef]
                      parse_fdf_params, system_label)
     from runfiles import compose
-    from deck_record import (DeckRecordUnreadable, extract_engine_offset,
-                             extract_vibration_record)
+    from deck_record import (DeckRecordUnreadable, extract_atom_metadata,
+                             extract_engine_offset, extract_vibration_record,
+                             order_record_of)
     from engine_atom_index import from_engine_index, siesta_atom_index
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import LOG_CLOCK, LOG_LINE
@@ -159,7 +162,8 @@ class ForceConstantRun:
     displaced: Tuple[int, ...]
     cell: Optional[np.ndarray]
     axis_kind: Tuple[str, str, str]
-    permutation: Permutation
+    #: the deck's order record -- ``None`` for a deck in the input order
+    permutation: Optional[Permutation]
     fc: ForceConstantFile
     siesta_version: str
     #: the deck's ``vibration`` block (`script_emit.emit_vibration_record`)
@@ -219,6 +223,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     try:
         offset = extract_engine_offset(text)
         record = extract_vibration_record(text)
+        order = order_record_of(extract_atom_metadata(text))
     except DeckRecordUnreadable as exc:
         raise FinishError(f"{deck.name}: {exc}") from exc
     if not offset or len(offset.get("axis_kind") or ()) != 3:
@@ -258,7 +263,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         displaced=displaced,
         cell=(np.asarray(cell, dtype=float) if cell is not None else None),
         axis_kind=tuple(str(k) for k in offset["axis_kind"]),
-        permutation=read_permutation(attempt),
+        permutation=order,
         fc=read_fc(fc_path),
         siesta_version=str(build.get("version") or ""),
         record=record)
@@ -314,7 +319,10 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         engine_metadata={
             "fc_file": Path(run.fc.path).name,
             "fc_displacement_ang": run.fc.displacement_ang,
-            "fc_range_1based": [siesta_atom_index(run.displaced[0]),
+            # SIESTA'S NUMBERING -- the deck's held-first order, 1-based:
+            # an engine fact, not an atom's identity (`model/overview.md`
+            # § 2.2a).
+            "fc_range_engine_1based": [siesta_atom_index(run.displaced[0]),
                                 siesta_atom_index(run.displaced[-1])],
             # The block's own numerics, before the symmetrisation hides them
             # (`engines/vibration.md` § 5.5).

@@ -473,7 +473,7 @@ def emit_atom_metadata(struct: Any,
 
 def atom_metadata_block(payload: Dict[str, Any]) -> str:
     """THE ATOM-METADATA BLOCK'S FRAMING, of a payload as its one reader
-    reads it back (:func:`read_atom_metadata_block`): the fences, the format
+    reads it back (`deck_record.extract_atom_metadata`): the fences, the format
     line naming the payload's own ``schema_version``, and the JSON one
     top-level key a line.  :func:`emit_atom_metadata` writes every deck's
     through it."""
@@ -697,7 +697,7 @@ __all__ = [
     # USER-CUSTOM round-trip
     "replace_user_custom_inner", "merge_user_custom_from_target",
     # The deck's own records, read back
-    "read_provenance_block", "read_atom_metadata_block",
+    "read_provenance_block",
     "read_bench_marks_block",
     # Git / time
     "molbuilder_git_sha", "generator_version", "written_by",
@@ -1876,13 +1876,6 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
     return text.splitlines()[begin_idx + 1: end_idx]
 
 
-def read_atom_metadata_block(text: str) -> Optional[Dict[str, Any]]:
-    """The ATOM-METADATA block's payload; ``None`` when the deck carries
-    none.  A block that cannot be read is refused,
-    `deck_record.DeckRecordUnreadable` (:func:`read_json_block`)."""
-    return read_json_block(text, BLOCK_ATOM_METADATA)
-
-
 def _coerce_scalar(s: str) -> Any:
     """Best-effort numeric coercion for BENCH-MARKS scalar values.
     Returns the original string when neither int nor float parses."""
@@ -2018,7 +2011,7 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     § 2.2a, I5).  Returns ``True`` when the block had something to say
     (:func:`atom_metadata_has_something`), ``False`` when it carries
     nothing.  A caller holding a whole script extracts first --
-    ``read_atom_metadata_block(text)`` -- and hands the payload here.
+    ``deck_record.extract_atom_metadata(text)`` -- and hands the payload here.
 
     THE RULE: the block is read as it is written today.  Nothing translates an
     older layout, and a block that no longer says what this build reads simply

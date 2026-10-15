@@ -491,7 +491,7 @@ def _emit_geometry_block(struct, cfg, frame=None) -> str:
 
     # NO `emit_atom_metadata` CALL HERE.  The FRAMEWORK emits that fence
     # once, in the record section (`script_emit.py`, the only caller among
-    # the engines): `read_atom_metadata_block` stops at the first END
+    # the engines): `deck_record.extract_atom_metadata` stops at the first END
     # marker, so a second copy here would win over the framework's.
     # `cfg` THROUGH, because the species order is a value a person may set
     # and this block writes `ChemicalSpeciesLabel` (`model/chemistry.md` § 3a).

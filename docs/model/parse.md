@@ -466,15 +466,15 @@ st.active_source             # "BDT-run0.out"
 ```
 
 **Extract the reserved blocks from a `.fdf` / `.py` body** — **not this
-package.** The blocks are molbuilder's own, so they are read by the module that
-writes them:
+package.** The blocks are molbuilder's own, read by their grammar's module,
+`deck_record` (which travels beside a job), and the provenance by its writer:
 
 ```python
-from molbuilder.script_emit import (read_atom_metadata_block,
-                                    read_provenance_block)
+from molbuilder.deck_record import extract_atom_metadata
+from molbuilder.script_emit import read_provenance_block
 
-read_atom_metadata_block(fdf_text)   # the block dict, or None if absent
-read_provenance_block(fdf_text)      # the PROVENANCE block, or None
+extract_atom_metadata(fdf_text)   # the block dict, or None if absent
+read_provenance_block(fdf_text)   # the PROVENANCE block, or None
 ```
 
 *(A `read_script(text) -> ScriptSource` door stood here until 2026-09-05. It

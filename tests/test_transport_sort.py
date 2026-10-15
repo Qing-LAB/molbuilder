@@ -23,7 +23,6 @@ from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.structure import AtomChannel, Structure
-from molbuilder.atom_permutation import PERMUTATION_SCHEMA
 from molbuilder.transport.sort import SORT_TRANSPORT, SortError, sort_by
 
 
@@ -132,14 +131,11 @@ class TestBookkeepingCrossesTheSort:
 
     def test_permutation_is_a_recorded_bijection(self):
         struct, rows = _junction(shuffle=True)
-        out = sort_by(struct, SORT_TRANSPORT)
+        perm = sort_by(struct, SORT_TRANSPORT).structure.atom_order
         n = len(rows)
-        assert sorted(out.sorted_to_original) == list(range(n))
+        assert sorted(perm.sorted_to_original) == list(range(n))
         for old in range(n):
-            assert out.sorted_to_original[out.original_to_sorted[old]] == old
-        side = out.sidecar()
-        assert side["schema"] == PERMUTATION_SCHEMA
-        assert side["original_to_sorted"] == list(out.original_to_sorted)
+            assert perm.sorted_to_original[perm.original_to_sorted[old]] == old
 
     def test_every_atom_keeps_its_identity(self):
         """The user's 'nothing missed': same multiset of
@@ -172,7 +168,7 @@ class TestBookkeepingCrossesTheSort:
             got.positions[tagged, 2] == 5.0 and val == -0.3
         # parallel array rides with its atom
         for j, name in enumerate(got.atom_names):
-            assert name == f"n{out.sorted_to_original[j]}"
+            assert name == f"n{got.atom_order.sorted_to_original[j]}"
 
     def test_cell_title_vacuum_are_untouched(self):
         struct, _ = _junction(shuffle=True)

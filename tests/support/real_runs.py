@@ -32,8 +32,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
   (`support.road.CO2`; plan T-CO2).
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`): its
-decks as an older molbuilder wrote them, and its next stage prepared on the
-road.
+decks as an older molbuilder wrote them, its next stage prepared on the road
+(:func:`freq_prepared_on`), or prepared and launched
+(:func:`freq_launched_on`).
 """
 from __future__ import annotations
 
@@ -319,14 +320,14 @@ def _fenced(deck: Path, name: str, change) -> None:
 
 def with_atom_metadata(deck: Path, change) -> None:
     """``deck``'s ATOM-METADATA block read by its reader
-    (`script_emit.read_atom_metadata_block`), ``change(payload)`` applied,
+    (`deck_record.extract_atom_metadata`), ``change(payload)`` applied,
     and written back through the block's own framing
     (`script_emit.atom_metadata_block`) -- as an older molbuilder stated it,
     or as a damaged deck does, the way the pin table rewrites a sidecar."""
-    from molbuilder.deck_record import BLOCK_ATOM_METADATA
-    from molbuilder.script_emit import (atom_metadata_block,
-                                        read_atom_metadata_block)
-    payload = read_atom_metadata_block(deck.read_text())
+    from molbuilder.deck_record import (BLOCK_ATOM_METADATA,
+                                        extract_atom_metadata)
+    from molbuilder.script_emit import atom_metadata_block
+    payload = extract_atom_metadata(deck.read_text())
     change(payload)
     _fenced(deck, BLOCK_ATOM_METADATA, lambda _old: atom_metadata_block(
         payload))
@@ -380,3 +381,21 @@ def freq_prepared_on(run: RealRun, name: str, alter,
         _typed_on_the_road(copy, tmp_path_factory, "prep freq", "prep",
                            "task", "--group", "2", "--target", "this")
     return copy_of(run, name, alter_and_prepare)
+
+
+def freq_launched_on(run: RealRun, tmp_path_factory) -> RealRun:
+    """A copy of the calculation (:func:`copy_of`) with its `freq` stage
+    prepared and launched on the road, `summarize` asked of it, and `freq`
+    launched again -- what each answered written down, ``said["prep freq"]``,
+    ``said["launch freq"]``, ``said["summarize"]``,
+    ``said["launch freq again"]``."""
+    def launched(copy):
+        with _road_at(copy.tree.parent, tmp_path_factory):
+            _taken(copy, "prep freq", "prep", "task", "--group", "2",
+                   "--target", "this")
+            _taken(copy, "launch freq", "launch", "task", "--stage", "freq",
+                   "--mode", "direct", "--yes")
+            _typed(copy, "summarize", "summarize", "task")
+            _taken(copy, "launch freq again", "launch", "task", "--stage",
+                   "freq", "--mode", "direct", "--yes")
+    return copy_of(run, "freq-launched", launched)

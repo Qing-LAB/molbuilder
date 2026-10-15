@@ -711,16 +711,14 @@ flowchart LR
   end
   subgraph S["SIESTA — central differences of forces, periodic or not"]
     direction TB
-    S1["prep: sort a COPY held-first,<br/>record atom-permutation.json"] --> S2["deck: Geometry.Constraints ·<br/>MD.TypeOfRun FC · FC.First..FC.Last = the free range"]
+    S1["prep: sort a COPY held-first,<br/>its order record on it"] --> S2["deck: Geometry.Constraints ·<br/>MD.TypeOfRun FC · FC.First..FC.Last = the free range ·<br/>the order record stated"]
     S2 --> S3["run: SCF at R₀, then ±δ on each free coordinate<br/>→ forces on every atom → &lt;label&gt;.FC"]
-    S3 --> S4["summarize: read .FC, central difference,<br/>symmetrise → H_AA · invert the permutation"]
+    S3 --> S4["the finish: read .FC, central difference,<br/>symmetrise → H_AA · invert the deck's order record"]
   end
   P4 --> M["spectra/normal_modes.vibrational_modes<br/>mass-weight H_AA · remove the surviving whole-body<br/>motions (the rank of § 3.1) · diagonalise"]
   S4 --> M
   M --> R["&lt;label&gt;.spectra.json — the one artifact:<br/>modes · what was removed · thermochemistry ·<br/>intensities (PySCF) or null (SIESTA)"]
 ```
-
-*(Decided 2026-10-14, not built: the sorted copy carries its order record and its deck states it — no `atom-permutation.json`; the finish inverts it from the deck. `model/overview.md` § 2.2a, plan § 5ab R5.)*
 
 ### 4b.2 A two-atom example with real numbers
 
@@ -844,7 +842,7 @@ How each engine implements the idea, in this tool:
 |---|---|---|
 | where the held set comes from | `frozen_atoms` in the structure's own sidecar, set in the viewer — never a form field (`vibration.md` § 2.3) | the same fact, the same file |
 | the constrained relaxation | Phase 0: geomeTRIC with a `$freeze` file naming the held atoms; the gate judges the largest force **over the free atoms** (R5); `already_relaxed` skips the optimiser and still checks | the ladder relaxes first when the box is unticked — a `relax` stage, an ordinary SIESTA relaxation holding the same set (`Geometry.Constraints`), then `freq` at the geometry it left (`vibration.md` § 5.2a); ticked, the force constants are taken at the geometry as given and the reference-step forces are read back and judged |
-| the partial Hessian | `hess_elec(atmlst = A) + hess_nuc(atmlst = A) + D3[A, A]` on a plain mean field — the block is computed, never sliced from a full one; what shrinks and what does not is read from PySCF's source (`vibration.md` § 4.4) | a sorted copy, held atoms first, so the free atoms are one contiguous `FC.First..FC.Last` range; the held atoms in `Geometry.Constraints`; six whole-system SCFs per free atom; the permutation recorded beside the calculation and undone at read-back (`vibration.md` § 5.2–5.5) |
+| the partial Hessian | `hess_elec(atmlst = A) + hess_nuc(atmlst = A) + D3[A, A]` on a plain mean field — the block is computed, never sliced from a full one; what shrinks and what does not is read from PySCF's source (`vibration.md` § 4.4) | a sorted copy, held atoms first, so the free atoms are one contiguous `FC.First..FC.Last` range; the held atoms in `Geometry.Constraints`; six whole-system SCFs per free atom; the order record stated by the deck and undone at read-back (`vibration.md` § 5.2–5.5) |
 | the cross terms | every free–free pair, in the block | every free–free pair: a displaced coordinate's column holds the force on *every* atom, and the free rows are kept |
 | what a held atom still does | enters every SCF, every derivative integral and the dispersion sum; feels `−H_FA u_A` and cannot answer | enters every SCF; its force rows are written to the `.FC` file and never read |
 | what this tool adds on both | the rank rule (§ 3.1) removes the whole-body motions the held geometry leaves free, before the eigenproblem (R3), and the artifact says how many and which (R7) | |
@@ -1063,7 +1061,7 @@ the one path slices.
 definition; modes such as the Au–S stretch and mixed molecule–surface modes
 that an isolated-molecule calculation cannot produce. *Tool:* the same
 function as PySCF's (§ 4b.5 C), the rank rule in front of it, and every row
-put back in the input's numbering through the recorded permutation.
+put back in the input's numbering through the order record its deck states.
 
 **F — enlarge the active region systematically.** *Discussion:* Model A
 (molecule active), B (plus the first gold layer), C (plus two); compare

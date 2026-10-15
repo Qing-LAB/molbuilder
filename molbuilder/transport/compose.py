@@ -27,12 +27,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..atom_permutation import read_permutation
-from ..runfiles import PERMUTATION_FILE
 from ..cell import entering
 from ..structure import Structure
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
-                   SortResult, deck_sort_key, sort_by, write_permutation)
+                   SortResult, deck_sort_key, sort_by)
 from .wizard import ElectrodeModel, extract_electrode_model
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -51,18 +49,23 @@ class ComposeError(Exception):
 from ..runfiles import JUNCTION_FILE as JUNCTION_GEOMETRY  # noqa: E402 -- the SORTED junction (codec pair)
 from ..runfiles import JUNCTION_CITED_FILE as JUNCTION_DECK  # noqa: E402 -- the attempt's own deck, verbatim
 from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
-# (`PERMUTATION_FILE`, the record beside them, is the catalogue's too.)
 
 #: The citation kinds a record names (`engines/transport.md` § 3.1).
 CITATION_KINDS = ("run", "pair")
+
+#: The composition record's schema (`execution/job-contracts.md` § 6.1).
+#: ``@2``: the junction's sidecar carries its order record, and no file of it
+#: lies beside (`model/overview.md` § 2.2a, I7) -- an ``@1`` record, composed
+#: before 2.10.0, is read as none, and prep composes the junction again.
+PROVENANCE_SCHEMA = "molbuilder/slot-provenance@2"
 
 
 def record_files(kind: str) -> Tuple[str, ...]:
     """WHAT THE TRAVELLED RECORD CONSISTS OF for a citation of ``kind`` —
     one answer, read by the write and by the load, so they cannot disagree
     about whether a copy is complete: the sorted geometry and its label file
-    (every frame, and a cited pair's ``info.calculation``), the provenance,
-    the permutation, and a cited run's deck (the electronic contract IS the
+    (every frame, its order record, and a cited pair's ``info.calculation``),
+    the provenance, and a cited run's deck (the electronic contract IS the
     file).
 
     The geometry's label file is not named literally: it is whatever
@@ -75,7 +78,7 @@ def record_files(kind: str) -> Tuple[str, ...]:
                          f"{', '.join(CITATION_KINDS)}, not {kind!r}")
     return ((JUNCTION_GEOMETRY,
              sidecar_path_for(Path(JUNCTION_GEOMETRY)).name,
-             PROVENANCE_FILE, PERMUTATION_FILE)
+             PROVENANCE_FILE)
             + ((JUNCTION_DECK,) if kind == "run" else ()))
 
 
@@ -116,8 +119,8 @@ class ComposedJunction:
     sorted: SortResult
     #: the same structure before the sort (relaxed positions, source
     #: order).  ``None`` on a record loaded back from the travelled
-    #: copy: the original order lives in the citation and the
-    #: permutation sidecar, and no stage renders from it.
+    #: copy: the original order lives in the citation and the sorted
+    #: junction's own order record, and no stage renders from it.
     relaxed: Optional[Structure]
     electrode_left: ElectrodeModel
     electrode_right: ElectrodeModel
@@ -740,7 +743,7 @@ def compose_junction(citation: str, *, tree_root,
         dev, prior_positions=start, ion_dir=ion_dir)
 
     provenance = {
-        "schema": "molbuilder/slot-provenance@1",
+        "schema": PROVENANCE_SCHEMA,
         # WHICH KIND was cited (§ 3.1): it decides which files the record
         # holds (`record_files`).
         "kind": "pair" if isinstance(cited, CitedPair) else "run",
@@ -856,7 +859,6 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     if composed.deck_text is not None:
         (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
     write_json(base_dir / PROVENANCE_FILE, composed.provenance)
-    write_permutation(base_dir, composed.sorted)
 
     expected = record_files(composed.provenance["kind"])
     missing = [n for n in expected if not (base_dir / n).is_file()]
@@ -952,6 +954,12 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     if provenance is None:
         return _no(f"there is no {PROVENANCE_FILE} beside it, so nothing "
                    f"here has been composed yet")
+    # A RECORD COMPOSED BEFORE 2.10.0 states no order for its junction's
+    # atoms, though they are TranSIESTA's (I9): known by its own schema.
+    if provenance.get("schema") != PROVENANCE_SCHEMA:
+        return _no(f"the record beside it ({PROVENANCE_FILE}, "
+                   f"{provenance.get('schema')!r}) was composed before 2.10.0 "
+                   f"recorded the order its junction's atoms are in")
     if provenance.get("citation") != citation:
         return _no(f"the record beside it was composed from "
                    f"{provenance.get('citation')!r}, and this task now "
@@ -975,14 +983,12 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                    f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} "
                    f"missing")
     deck_path = base_dir / JUNCTION_DECK
-    perm = read_permutation(base_dir)
     from ..workingcopy_structure import StructureCodec
+    # THE JUNCTION, IN THE ENGINE'S ORDER, CARRIES ITS OWN ORDER RECORD in its
+    # sidecar (`model/overview.md` § 2.2a, I7) -- none for an order the sort
+    # left as it was.
     dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
-    # THE RECORD'S ORDER IS ITS atom-permutation.json UNTIL THAT FILE RETIRES
-    # (`model/overview.md` § 2.2; plan § 5ab R5): the junction, in the
-    # engine's order, carries it -- none for the order that moved nothing.
-    dev = dev.replace(atom_order=perm.recorded)
-    sorted_res = SortResult(structure=dev, key=perm.key)
+    sorted_res = SortResult(structure=dev)
     ion_dir = None
     if tree_root is not None:
         try:

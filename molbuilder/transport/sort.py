@@ -32,14 +32,11 @@ impossible.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
 
-from ..atom_permutation import (PERMUTATION_SCHEMA, Permutation,
-                                SORT_HELD_FIRST, SORT_TRANSPORT)
-from ..runfiles import PERMUTATION_FILE
+from ..atom_permutation import Permutation, SORT_HELD_FIRST, SORT_TRANSPORT
 from ..structure import REMAPPED_NOT_EDITED, Structure
 
 # --------------------------------------------------------------------- #
@@ -146,68 +143,12 @@ class SortError(ValueError):
 class SortResult:
     """A sorted copy and what the sort said.  The copy carries its own order
     record (``structure.atom_order``, `model/overview.md` § 2.2a) -- none
-    when the sort moved nothing -- and the two directions below are VIEWS of
-    it, never a second copy.  ``key`` names the sort even when it moved
-    nothing, which ``atom-permutation.json`` states until it retires (plan
-    § 5ab R5) -- with the file, the views and ``key`` go."""
+    when the sort moved nothing."""
     structure: Structure
     #: what the sort observed but did not refuse — today the one
     #: convention note.  Carried, never raised: the caller decides
     #: where a warning belongs on its surface.
     notes: Tuple[str, ...] = ()
-    #: WHICH sort produced this copy -- a name from
-    #: ``atom_permutation.SORT_KEY_NAMES``, so the record says what was done
-    #: and a reader can tell a transport order from a held-first one.
-    key: str = ""
-
-    @property
-    def _order(self) -> Permutation:
-        """The copy's order record -- the identity when the sort moved
-        nothing, which the structure does not record (I2)."""
-        if self.structure.atom_order is not None:
-            return self.structure.atom_order
-        ident = tuple(range(self.structure.n_atoms))
-        return Permutation(original_to_sorted=ident,
-                           sorted_to_original=ident, key=self.key)
-
-    @property
-    def original_to_sorted(self) -> Tuple[int, ...]:
-        """``original_to_sorted[i]`` = where original atom ``i`` now sits."""
-        return self._order.original_to_sorted
-
-    @property
-    def sorted_to_original(self) -> Tuple[int, ...]:
-        """``sorted_to_original[j]`` = which original atom sits at ``j``."""
-        return self._order.sorted_to_original
-
-    def sidecar(self) -> dict:
-        """The recorded permutation — what maps every downstream index
-        (forces, Mulliken, PDOS, the 1-based numbers in the files) back
-        to the relaxation's identities."""
-        out = {
-            "schema": PERMUTATION_SCHEMA,
-            "original_to_sorted": list(self.original_to_sorted),
-            "sorted_to_original": list(self.sorted_to_original),
-        }
-        if self.key:
-            out["key"] = self.key
-        return out
-
-
-def write_permutation(directory, result: SortResult, *,
-                      plan=None) -> "Path":
-    """Record the permutation beside the calculation -- both directions,
-    the schema, one file (`model/overview.md` § 2.2: recorded once).  The
-    record, its class and its reader are `atom_permutation`'s, which travels
-    beside a job where this module cannot.  ``plan``
-    (`jobset.planned.Plan`) receives it instead of the disk."""
-    from ..persist import json_text, write_json
-    out = Path(directory) / PERMUTATION_FILE
-    if plan is not None:
-        plan.text(out, json_text(result.sidecar()))
-    else:
-        write_json(out, result.sidecar())
-    return out
 
 
 def _partition_of(struct: Structure) -> List[str]:
@@ -416,8 +357,7 @@ def _held_first_order(struct: Structure
     every held atom before every free one, and the free range is the
     tail: ``FC.First = n_held + 1``, ``FC.Last = n``.  Nothing held means
     the identity order, which the structure carries no record of
-    (`model/overview.md` § 2.2a, I2); ``atom-permutation.json`` still states
-    it until that file retires (plan § 5ab R5).
+    (`model/overview.md` § 2.2a, I2).
     """
     n = len(struct.elements)
     held = sorted(int(i) for i in (struct.frozen_atoms or []))
@@ -453,4 +393,4 @@ def apply_order(struct: Structure, order: List[int],
                        sorted_to_original=tuple(int(i) for i in order),
                        key=key)
     sorted_struct = struct.take(order).replace(atom_order=perm.recorded)
-    return SortResult(structure=sorted_struct, notes=tuple(notes), key=key)
+    return SortResult(structure=sorted_struct, notes=tuple(notes))

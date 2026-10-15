@@ -1843,15 +1843,15 @@ else.
 
 ### 2a.12 What the Results surface reads
 
-*(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, plan § 5ab R5–R6: the report draws the composed junction **in the
-person's order**, restored by a server door — `junction.xyz` stays the
-engine's record, since the device's regions and the leads are read from it in
-its order — and a projected-DOS selection is mapped into the junction's order
-through its index (`sorted_of`) and its `outside_device` atoms back
-(`original_of`); the record's per-atom content and the data file's atom axis
-are in the person's order (I1). Today they are all in the junction's sorted
-order, which the data file states only in its atom axis's description.)*
+**In your order** ([`model/overview.md`](?doc=model/overview.md) § 2.2a,
+I1): the report draws the composed junction put back in your order — its load
+asks the load route to restore it — while `junction.xyz` stays the engine's
+record, since the device's regions and the leads are read from it in its
+order; a projected-DOS selection is named in your order, mapped into the
+junction's through its order record (`sorted_of`) and its `atoms` and
+`outside_device` back (`original_of`). The data file's atom axis is in your
+order, the composed junction restored, and the record holds no atom's row —
+its DOS is per region.
 
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the
@@ -1958,7 +1958,7 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 | `energy_ev` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
 | `spin` | the spin channels TBtrans wrote, by the record's names — the one channel of a `non-polarized` run, or `up` and `down` |
 | `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
-| `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components *(Decided 2026-10-14, not built: on the person's side — the data file is a result molbuilder computes for the person, so its atom axis is in the person's order, restored through the junction's own order record, and the record's per-atom content the same; the composed junction stays the engine's record, carrying its order record in its sidecar; `model/overview.md` § 2.2a, I1; plan § 5ab R5)* |
+| `atom` · `xyz` | the junction's atoms **in your order** — the composed junction, the engine's record in TranSIESTA's order, restored through its own order record (`Structure.restored`; [`model/overview.md`](?doc=model/overview.md) § 2.2a, I1) — and the three Cartesian components; every per-atom variable (`element`, `mass_amu`, `positions_ang`) along it |
 | `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's `.TBT.nc` holds — those TBtrans was asked for (`TBT.T.Eig`), none where no file is read, nor for a polarized point, whose eigenchannels are one set per spin, in the record |
 | `rung` | the rungs that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names |
 | `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
@@ -2004,7 +2004,7 @@ row of a mode's frame set (§ 2.2f); along `atom` each atom's `element` and
 ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
 obtained, the formula for a derived one — and, for a raw one, `source`, the
 file it was read from. The file says what it is: `schema`
-(`molbuilder/transport-data@1`), the label, the treatment, the citation and its
+(`molbuilder/transport-data@2`), the label, the treatment, the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
 (`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
 and `iv_notes`, the voltages the window does not reach); for a frame set the
@@ -4496,8 +4496,8 @@ flowchart TB
     LOAD["<b>2 · labeled_citation_structure</b><br/>a run: its last step, by runs.view_of<br/>a pair: its own frames, cell and labels<br/>axis_kind: z STATED, x/y as the citation recorded"]
     GATE["<b>3 · _unusable_cell</b><br/>refuses: no cell · not 3 finite vectors · no volume"]
     OVER["<b>4 · the start</b><br/>a run's first step, for the lead gate"]
-    SORT["<b>5 · sort_by, the transport key</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
-    REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json (every frame)<br/>+ a run's cited.fdf + provenance + permutation"]
+    SORT["<b>5 · sort_by, the transport key</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>the copy carries its order record"]
+    REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json (every frame,<br/>the order record) + a run's cited.fdf + provenance"]
     EX["<b>7 · extract_electrode_model → as_structure</b><br/>a SUBSET: the lead<br/>device's lat_a/lat_b verbatim + derived z-period"]
     EM["<b>8 · _emit_geometry</b><br/>cell verbatim · atoms shifted by −origin<br/>species re-derived"]
 
@@ -4506,7 +4506,7 @@ flowchart TB
     REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
 ```
 
-*(Decided 2026-10-14: step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own — not built, plan § 5ab R5; a cited run's geometry is restored before step 5 — built 2026-10-14, R3; `model/overview.md` § 2.2a.)*
+*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, 2026-10-14. A record composed before 2.10.0 — `slot-provenance@1`, its own schema — is read as none, so prep composes the junction again.)*
 
 **Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
 later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,
