@@ -100,6 +100,13 @@ class Permutation:
         return len(self.sorted_to_original)
 
     @property
+    def recorded(self) -> "Optional[Permutation]":
+        """What a structure in this order carries as its ``atom_order``:
+        this record, or ``None`` for the identity, which is never recorded
+        (`model/overview.md` § 2.2a, I2)."""
+        return None if self.is_identity else self
+
+    @property
     def words(self) -> str:
         """What this order is called where a person reads it
         (:data:`SORT_KEY_WORDS`)."""

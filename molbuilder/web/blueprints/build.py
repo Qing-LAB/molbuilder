@@ -655,24 +655,22 @@ def api_build_load():
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
         # Molbuilder tab fixes it through (`structure-molstruct.md` § 3).
         changed: list = []
+        # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8):
+        # its open asks for the file restored, and a run whose order nothing
+        # states is refused it (I9); a viewer is answered the file as it is,
+        # its order record attached -- or said to have none.
+        restore = _pbody.get("restore") is True
+        unstated: list = []
         try:
-            whole = StructureCodec().read(_resolved, frames=True,
-                                          retired_out=retired, said_out=lone,
-                                          changed_out=changed)
+            whole = StructureCodec().read(
+                _resolved, frames=True, retired_out=retired, said_out=lone,
+                changed_out=changed,
+                unstated_out=None if restore else unstated)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
-        # AN EDITOR HOLDS ONLY YOUR ORDER (`model/overview.md` § 2.2a, I8): its
-        # open asks for the file restored; a viewer is answered the file as it
-        # is, its order record attached.
         restored: list = []
-        if _pbody.get("restore") is True:
-            # ...AND A FILE WHOSE ORDER NOTHING STATES IS NOT OPENED IN AN
-            # EDITOR (I8, I9): refused with the sentence said of it.
-            from molbuilder.runs import ORDER_UNSTATED
-            for s in lone:
-                if s.where == ORDER_UNSTATED:
-                    return jsonify({"ok": False, "error": s.message}), 400
+        if restore:
             from ._shared import in_your_order
             whole, restored = in_your_order(whole, _resolved.name)
         try:
@@ -688,10 +686,12 @@ def api_build_load():
         from molbuilder.periodicity_gate import notices_for_report
         # A LONE FILE IS ATOMS AND COORDINATES, said with its comment line
         # quoted (`model/structure.md` § 2.3).
+        from molbuilder.runs import order_unstated_notice
         said = notices_for_report(
-            list(lone)
+            [Issue("info", s, "structure.lone_file") for s in lone]
             + [Issue("warn", s, "structure.geometry_changed")
-               for s in changed]) + restored
+               for s in changed]
+            + [order_unstated_notice(s) for s in unstated]) + restored
         if retired.get("cell_origin") is not None:
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
             said += notices_for_report([Issue(

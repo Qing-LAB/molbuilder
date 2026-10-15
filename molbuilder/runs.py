@@ -347,6 +347,23 @@ ORDER_RECORDED_SINCE = "2.10.0"
 ORDER_UNSTATED = "structure.order_unstated"
 
 
+def order_unstated_notice(sentence: str):
+    """THE NOTICE a door that shows a run whose order nothing states says
+    (I9): :attr:`Declared.order_unstated`'s ``sentence``, a warning under
+    :data:`ORDER_UNSTATED` -- one level and one name for every door, the
+    Results tab's load and the Molbuilder tab's."""
+    from molbuilder.issues import Issue
+    return Issue("warn", sentence, ORDER_UNSTATED)
+
+
+class OrderUnstated(ValueError):
+    """A RUN WHOSE ORDER NOTHING STATES, refused by a door that builds from
+    it (`model/overview.md` § 2.2a, I9): its deck was written before the
+    order was recorded, for a kind that reorders.  The message is
+    :attr:`Declared.order_unstated`'s sentence; a door that only shows the
+    run says that sentence instead (the codec's ``unstated_out``)."""
+
+
 def _reorders(run: "Run") -> bool:
     """Whether ``run``'s kind writes its decks from a reordered copy (I9): a
     SIESTA vibration's every stage (held atoms first, `engines/vibration.md`
@@ -465,11 +482,10 @@ def declared(run: Run) -> Declared:
     # A DECK WRITTEN BEFORE THE RULE (I9): known by its own version, for a
     # kind that reorders -- never by a file found beside it.
     if order is None and _reorders(run):
-        from molbuilder.script_emit import written_by
+        from molbuilder.script_emit import molbuilder_words, written_by
         version = written_by(text)
         if _before(version, ORDER_RECORDED_SINCE):
-            by = (f"molbuilder {version}" if version
-                  else "a molbuilder before 2.0.0")
+            by = molbuilder_words(version)
             said = Declared(
                 deck=deck, atom_metadata=said.atom_metadata,
                 engine_offset=said.engine_offset,
@@ -548,6 +564,65 @@ def view_of(run: Optional[Run], *, output=None, traj: Any = None,
                    periodicity=said.frame(lattice),
                    info=run_info(deck=said.deck, output=output, traj=traj),
                    order_unstated=said.order_unstated)
+
+
+class RunStepsError(ValueError):
+    """A run's output that cannot give its geometry: it does not parse, or
+    it holds no geometry step.  The message names the file; the door that
+    asked adds its way on."""
+
+
+@dataclass(frozen=True)
+class RunSteps:
+    """A run's geometry, IN YOUR ORDER (:func:`steps_of`): the ``first`` and
+    ``last`` geometry steps of its ``output`` -- where it started and where
+    it ended -- each with what the run says about it, restored through the
+    run's own order record; the ``lattice`` its last step had; and the
+    output's parse, ``traj``, for a reader that asks it more."""
+    output: Path
+    traj: Any
+    first: Any
+    last: Any
+    lattice: Optional[List[List[float]]]
+
+
+def steps_of(run: Run, output) -> RunSteps:
+    """THE ONE READ OF A RUN'S GEOMETRY BY A DOOR THAT BUILDS FROM IT
+    (`model/overview.md` § 2.2a, I3-I5, I9): ``output``, the run's file the
+    door chose, parsed by the registry; its first and last geometry steps
+    through the run's view (:func:`view_of` -- its deck's labels, order
+    record and box, the output's own lattice); each crossed back to your
+    order (``Structure.restored``).  Asked by the force-constant prep
+    (`relax`'s geometry) and the transport citation (the relaxed junction
+    and where it started).  Raises :class:`RunStepsError` for an output with
+    no geometry to give, :class:`OrderUnstated` for a run whose order
+    nothing states."""
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
+    output = Path(output)
+    try:
+        traj = detect(output).parse(str(output))
+    except (ParseError, OSError, ValueError) as exc:
+        raise RunStepsError(f"{output.name} does not read as the run's "
+                            f"output: {exc}") from exc
+    steps = [fr for fr in traj.frames if fr.structure is not None]
+    if not steps:
+        raise RunStepsError(f"{output.name} holds no geometry step: the run "
+                            f"never reached its first geometry")
+    first, last = steps[0], steps[-1]
+    lattice = last.lattice if last.lattice is not None else traj.lattice
+    lattice = (None if lattice is None
+               else [[float(v) for v in row] for row in lattice])
+    view = view_of(run, output=output, traj=traj,
+                   n_atoms=len(last.structure.elements), lattice=lattice)
+    if view.order_unstated:
+        raise OrderUnstated(view.order_unstated)
+    return RunSteps(
+        output=output, traj=traj, lattice=lattice,
+        first=view.structure(first.structure.elements,
+                             first.structure.positions).restored(),
+        last=view.structure(last.structure.elements,
+                            last.structure.positions).restored())
 
 
 def about(path) -> Dict[str, Any]:
@@ -797,5 +872,7 @@ def folder_answer(directory) -> Dict[str, Any]:
 
 
 __all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
-           "declared", "RunView", "view_of", "about", "run_answer",
+           "declared", "ORDER_RECORDED_SINCE", "ORDER_UNSTATED",
+           "OrderUnstated", "order_unstated_notice", "RunView", "view_of",
+           "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
            "openable", "folder_answer"]

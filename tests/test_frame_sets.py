@@ -241,11 +241,9 @@ def test_frame_set(case, tmp_path, monkeypatch):
         (tree / "P").mkdir()
         lone = tree / "P" / "lone.xyz"
         lone.write_text(case["document"])
-        read_said: list = []
-        got = StructureCodec().load(lone, said_out=read_said)
-        assert [s.where for s in read_said] == ["structure.lone_file"]
-        said = [s.message for s in read_said]
-        _check(expect, got, built, said=said)
+        said: list = []
+        _check(expect, StructureCodec().load(lone, said_out=said), built,
+               said=said)
         client = create_app(config={}).test_client()
         for body in ({"path": str(lone)},
                      {"text": case["document"], "filename": lone.name}):

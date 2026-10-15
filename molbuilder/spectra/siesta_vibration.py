@@ -61,7 +61,8 @@ try:                                        # inside molbuilder
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
     from ..parse.engines.siesta_reader import SiestaReader
-    from ..parse.fdf import fdf_key, read_fdf, parse_fdf_params, system_label
+    from ..parse.fdf import (deck_atoms, fdf_key, read_fdf, parse_fdf_params,
+                             system_label)
     from ..runfiles import compose
     from ..deck_record import (DeckRecordUnreadable, extract_engine_offset,
                                extract_vibration_record)
@@ -77,7 +78,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
     from siesta_reader import SiestaReader
-    from fdf import fdf_key, read_fdf, parse_fdf_params, system_label
+    from fdf import (deck_atoms, fdf_key, read_fdf,  # type: ignore[no-redef]
+                     parse_fdf_params, system_label)
     from runfiles import compose
     from deck_record import (DeckRecordUnreadable, extract_engine_offset,
                              extract_vibration_record)
@@ -180,25 +182,16 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     label = system_label(text)
     if not label:
         raise FinishError(f"{deck.name} states no SystemLabel")
-    scalars, blocks = read_fdf(text)
+    scalars = read_fdf(text)[0]
 
-    # THE ATOMS, as the deck wrote them: each row's species index names a
-    # (Z, label) pair in ChemicalSpeciesLabel.
-    species = {}
-    for row in blocks.get(fdf_key("ChemicalSpeciesLabel")) or ():
-        if len(row) >= 3:
-            species[int(row[0])] = (int(row[1]), row[2])
-    rows = blocks.get(fdf_key("AtomicCoordinatesAndAtomicSpecies")) or ()
+    # THE ATOMS, as the deck wrote them -- the one reader (`parse.fdf`).
     try:
-        picked = [species[int(r[3])] for r in rows]
-    except (KeyError, IndexError, ValueError):
-        raise FinishError(
-            f"{deck.name}: an atom names a species ChemicalSpeciesLabel "
-            f"does not define") from None
-    if not picked:
+        atoms = deck_atoms(text)
+    except ValueError as exc:
+        raise FinishError(f"{deck.name}: {exc}") from None
+    if not atoms.labels:
         raise FinishError(f"{deck.name} holds no atoms")
-    atomic_numbers = tuple(z for z, _ in picked)
-    elements = tuple(lab for _, lab in picked)
+    atomic_numbers, elements = atoms.atomic_numbers, atoms.labels
     n = len(elements)
 
     # WHICH ATOMS WERE NUDGED: the range the run was told.

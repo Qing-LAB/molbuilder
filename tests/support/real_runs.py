@@ -225,21 +225,37 @@ def relaxed_for_vibration(tmp_path_factory):
     return bundle
 
 
-def as_prepared_by_2_9_6(bundle: Path) -> Path:
-    """A copy of the calculation ``bundle`` beside it, every deck of its
-    `relax` stage as molbuilder 2.9.6 wrote it -- that version's stamp, and
-    no order record in its ATOM-METADATA block (`model/overview.md` § 2.2a,
-    I9), as the pin table rewrites a sidecar as an older molbuilder wrote it.
-    Made once; the run's own files are left as they are."""
-    import re
-    copy = bundle.parent / f"{bundle.name}-before-2.10.0"
+def copy_of(bundle: Path, name: str, alter) -> Path:
+    """THE SHARED RUN WITH ONE THING CHANGED: a copy of the calculation
+    ``bundle`` beside it, ``<bundle>-<name>``, altered once by
+    ``alter(copy)`` -- made once a session, the run's own files left as
+    they are.  Every test that reads the run with one change asks it."""
+    copy = bundle.parent / f"{bundle.name}-{name}"
     if not copy.exists():
         shutil.copytree(bundle, copy)
-        for deck in copy.rglob(f"{bundle.name}_01_relax.fdf"):
+        alter(copy)
+    return copy
+
+
+def relax_decks(copy: Path):
+    """Every deck of the `relax` stage of a copy (:func:`copy_of`)."""
+    return sorted(copy.rglob("*_01_relax.fdf"))
+
+
+def as_prepared_by_2_9_6(bundle: Path) -> Path:
+    """A copy of the calculation ``bundle`` (:func:`copy_of`), every deck of
+    its `relax` stage as molbuilder 2.9.6 wrote it -- that version's stamp,
+    and no order record in its ATOM-METADATA block (`model/overview.md`
+    § 2.2a, I9), as the pin table rewrites a sidecar as an older molbuilder
+    wrote it."""
+    import re
+
+    def as_2_9_6_wrote_it(copy):
+        for deck in relax_decks(copy):
             lines = deck.read_text().splitlines(keepends=True)
             kept = [re.sub(r"(generator-version\s+)\S+", r"\g<1>2.9.6", ln)
                     for ln in lines if '"atom_order":' not in ln]
             assert len(kept) == len(lines) - 1, deck
             deck.write_text("".join(kept))
-    return copy
+    return copy_of(bundle, "before-2.10.0", as_2_9_6_wrote_it)
 

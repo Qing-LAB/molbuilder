@@ -379,8 +379,9 @@ def free_contiguous_sort(struct: Structure) -> SortResult:
     is whatever a person ticked.  So the copy the deck renders from puts
     every held atom before every free one, and the free range is the
     tail: ``FC.First = n_held + 1``, ``FC.Last = n``.  Nothing held means
-    the identity order, recorded all the same -- the record is what a
-    reader inverts, and an absent record is a question.
+    the identity order, which the structure carries no record of
+    (`model/overview.md` § 2.2a, I2); ``atom-permutation.json`` still states
+    it until that file retires (plan § 5ab R5).
     """
     n = len(struct.elements)
     held = sorted(int(i) for i in (struct.frozen_atoms or []))
@@ -411,11 +412,9 @@ def apply_order(struct: Structure, order: List[int],
     # THE STRUCTURE'S OWN REORDER (`model/structure.md` § 2.2e): every
     # per-atom field moves with its atom, and so does every frame of a frame
     # set; every other field rides whole.  The copy then carries its order
-    # record -- none when nothing moved, the identity never being recorded.
-    sorted_struct = struct.take(order)
+    # record (``Permutation.recorded``: none when nothing moved).
     perm = Permutation(original_to_sorted=tuple(old_to_new[i] for i in range(n)),
                        sorted_to_original=tuple(int(i) for i in order),
                        key=key)
-    if not perm.is_identity:
-        sorted_struct = sorted_struct.replace(atom_order=perm)
+    sorted_struct = struct.take(order).replace(atom_order=perm.recorded)
     return SortResult(structure=sorted_struct, notes=tuple(notes), key=key)

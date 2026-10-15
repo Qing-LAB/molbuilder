@@ -50,7 +50,7 @@ class ComposeError(Exception):
 from ..runfiles import JUNCTION_FILE as JUNCTION_GEOMETRY  # noqa: E402 -- the SORTED junction (codec pair)
 from ..runfiles import JUNCTION_CITED_FILE as JUNCTION_DECK  # noqa: E402 -- the attempt's own deck, verbatim
 from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
-# (`PERMUTATION_FILE`, the record beside them, is `atom_permutation`'s.)
+# (`PERMUTATION_FILE`, the record beside them, is the catalogue's too.)
 
 #: The citation kinds a record names (`engines/transport.md` § 3.1).
 CITATION_KINDS = ("run", "pair")
@@ -254,6 +254,15 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     from ..jobset.runstatus import converged_of
     from ..parse.dirs.rundir import run_state_of
     st = run_state_of(cite_dir, run.names, run.run)
+    # A RUN THAT RELAXED NO GEOMETRY is not what transport cites (§ 3.1): a
+    # vibration's force-constant stage, whose last geometry is a
+    # displacement, or a transport rung -- its output reports an SCF alone.
+    if st.verdict is not None and st.verdict[0] != "geometry":
+        raise ComposeError(
+            f"{cite_dir} holds the run {run.basename}, which relaxed no "
+            f"geometry -- its output reports a self-consistent field alone, "
+            f"so its last geometry is not a relaxed junction.  "
+            f"{CITATION_CONDITION}.")
     return CitedRun(path=cite_dir, run=run, concluded=end.line,
                     exit_code=end.code, converged=converged_of(st),
                     verdict=st.verdict)
@@ -285,6 +294,11 @@ def _classify_pair(path: Path) -> CitedPair:
     except (ValueError, OSError) as exc:
         raise ComposeError(f"{path} does not read as a structure pair "
                            f"({exc}).  {CITATION_CONDITION}.") from exc
+    # A CITATION IS IN YOUR ORDER (`model/overview.md` § 2.2a, I1, I3): a pair
+    # that is an engine's record -- a composed junction -- crosses back here,
+    # so every reader of the citation, and the composer's sort (I4), starts
+    # from your order.
+    struct = struct.restored()
     calc = (struct.info or {}).get("calculation")
     if not isinstance(calc, dict) or not isinstance(calc.get("contract"),
                                                     dict):
@@ -451,35 +465,24 @@ def _run_geometry(cited: CitedRun, kinds):
     relaxation started, for the lead gate's *frozen means unmoved*.  The
     axis kinds are ``kinds`` (:func:`junction_axis_kind`: z transport),
     stated at construction so ``__post_init__`` validates the box."""
-    from ..parse import detect
-    from ..parse.errors import ParseError
-    from ..runs import openable, view_of
+    from ..runs import OrderUnstated, RunStepsError, openable, steps_of
     output, _trail = openable(cited.path)
     if output is None:
         raise ComposeError(
             f"{cited.path} holds no output of the run {cited.run.basename} "
             f"that a parser reads, so nothing says what geometry the "
             f"relaxation left.  {CITATION_CONDITION}.")
+    # THE RUN'S GEOMETRY IN YOUR ORDER, through the run door's one read
+    # (`runs.steps_of`): the relaxed junction and where it started, each
+    # restored through the run's own order record -- and the composer sorts
+    # it for TranSIESTA from there (`model/overview.md` § 2.2a, I3, I4).  A
+    # run whose order nothing states is refused by name (I9).
     try:
-        traj = detect(output).parse(str(output))
-    except (ParseError, OSError, ValueError) as exc:
-        raise ComposeError(f"{Path(output).name} does not read as the "
-                           f"run's output: {exc}") from exc
-    steps = [fr for fr in traj.frames if fr.structure is not None]
-    if not steps:
-        raise ComposeError(
-            f"{Path(output).name} holds no geometry step: the run "
-            f"{cited.run.basename} never reached its first geometry.")
-    first, last = steps[0], steps[-1]
-    lattice = last.lattice if last.lattice is not None else traj.lattice
-    view = view_of(cited.run, output=output, traj=traj,
-                   n_atoms=len(last.structure.elements),
-                   lattice=(None if lattice is None
-                            else [[float(v) for v in row] for row in lattice]))
+        steps = steps_of(cited.run, output)
+    except (RunStepsError, OrderUnstated) as exc:
+        raise ComposeError(str(exc)) from exc
     try:
-        struct = view.structure(last.structure.elements,
-                                last.structure.positions).replace(
-                                    axis_kind=kinds)
+        struct = steps.last.replace(axis_kind=kinds)
     except ValueError as exc:
         # `prep` catches only ComposeError/SortError, so a bare ValueError
         # would surface as a traceback.
@@ -497,12 +500,12 @@ def _run_geometry(cited: CitedRun, kinds):
             f"R-electrode; engines/transport.md 3.1, 4) -- label the junction "
             f"on the Molbuilder tab and relax it through `jobset init` -> "
             f"`prep task` -> `launch task`, then cite that run.")
-    return (struct, np.asarray(first.structure.positions, dtype=float),
+    return (struct, np.asarray(steps.first.positions, dtype=float),
             Path(output))
 
 
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
-                                 atom_ids=None, ion_dir=None):
+                                 ion_dir=None):
     """Extract both leads from the sorted device, then measure the one
     § 3 condition that needs files from outside the structure.
 
@@ -527,9 +530,9 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     compare against — the recompose-from-record path, where the comparison
     was made when the record was written.
 
-    *atom_ids* is the sort's ``sorted_to_original``, so a refusal names
-    atoms by the identity in the person's own file rather than by their
-    place in TranSIESTA's deck order (`engine_atom_index`).
+    A refusal names atoms in the person's own order, read back through the
+    device's order record (`wizard._atoms_named`), never by their place in
+    TranSIESTA's deck order (`engine_atom_index`).
     """
     from ..parse.ion import max_orbital_rc_ang
     # BOTH BLOCKS, THEN RAISE, so a junction with two broken blocks is
@@ -538,8 +541,7 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     for region in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
         try:
             models.append(extract_electrode_model(
-                dev, region, prior_positions=prior_positions,
-                atom_ids=atom_ids))
+                dev, region, prior_positions=prior_positions))
         except ValueError as exc:
             refusals.append(str(exc))
     if len(refusals) == 1:
@@ -733,16 +735,15 @@ def compose_junction(citation: str, *, tree_root,
     # § 3 lead gates, which is the same step: a block that is not frozen
     # bulk does not become a model (`wizard.extract_electrode_model`).
     #
-    # The starting geometry goes in the SORTED device's index order, so
-    # the gate compares atom i against atom i; `sorted_to_original[new] =
-    # old` is exactly the indexing `categorical_sort` used to build the
-    # sorted positions.  The same tuple travels as `atom_ids` so a
-    # refusal names atoms the way the person's own file does.
-    prior = (None if start is None
-             else start[list(sorted_res.sorted_to_original)])
+    # The starting geometry, in the person's order, goes into the SORTED
+    # device's order through the device's own order record -- position j
+    # holds the person's atom `original_of(j)` -- so the gate compares atom
+    # i against atom i; a refusal names atoms back through the same record.
+    order = dev.atom_order
+    prior = (None if start is None else start if order is None
+             else start[order.original_of(range(dev.n_atoms))])
     elec_l, elec_r = _extract_and_gate_electrodes(
-        dev, prior_positions=prior,
-        atom_ids=sorted_res.sorted_to_original, ion_dir=ion_dir)
+        dev, prior_positions=prior, ion_dir=ion_dir)
 
     provenance = {
         "schema": "molbuilder/slot-provenance@1",
@@ -986,7 +987,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # THE RECORD'S ORDER IS ITS atom-permutation.json UNTIL THAT FILE RETIRES
     # (`model/overview.md` § 2.2; plan § 5ab R5): the junction, in the
     # engine's order, carries it -- none for the order that moved nothing.
-    dev = dev.replace(atom_order=None if perm.is_identity else perm)
+    dev = dev.replace(atom_order=perm.recorded)
     sorted_res = SortResult(structure=dev, key=perm.key)
     ion_dir = None
     if tree_root is not None:
@@ -1004,8 +1005,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # the unmoved comparison ran when the record was written.  The frozen
     # DECLARATION is asked separately and does re-run here, as does
     # even-spacing.  Both need only the structure.
-    elec_l, elec_r = _extract_and_gate_electrodes(
-        dev, atom_ids=sorted_res.sorted_to_original, ion_dir=ion_dir)
+    elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir)
     deck_text = deck_path.read_text() if kind == "run" else None
     return ComposedJunction(
         sorted=sorted_res,

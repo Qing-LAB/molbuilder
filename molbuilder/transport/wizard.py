@@ -188,19 +188,20 @@ class ElectrodeModel:
 FROZEN_TOL_ANG = 1e-3
 
 
-def _atoms_named(device: Structure, idxs, atom_ids=None,
-                 limit: int = 6) -> str:
+def _atoms_named(device: Structure, idxs, limit: int = 6) -> str:
     """``atom indices 3 (Au), 4 (Au) and 12 more`` (`structure.atom_words`),
     in the identity the person can act on.
 
     `engine_atom_index`: the canonical atom identity is the index in the
-    source file's order, which is what the Modify tab shows.  A device
-    that has been through `categorical_sort` is in TranSIESTA's deck
-    order instead, so *atom_ids* carries ``sorted_to_original``; ``None``
-    means this device's indices are already canonical.
+    person's own order, which is what the Modify tab shows.  A device in
+    TranSIESTA's order carries its order record (`model/overview.md`
+    § 2.2a), and the atoms are named back through it (``original_of``);
+    one in the person's order is named as it stands.
     """
     els = getattr(device, "elements", ()) or ()
-    shown = [atom_ids[i] if atom_ids is not None else i for i in idxs]
+    order = device.atom_order
+    shown = (order.original_of(idxs) if order is not None
+             else [int(i) for i in idxs])
     return atom_words(shown, {s: els[i] for s, i in zip(shown, idxs)
                               if i < len(els)}, limit=limit)
 
@@ -273,7 +274,6 @@ def _refuse_unless_frozen_bulk(
     label: str,
     idxs,
     prior_positions: Optional[np.ndarray],
-    atom_ids=None,
 ) -> None:
     """The lead must be frozen, and must have stayed where it was.
 
@@ -286,7 +286,7 @@ def _refuse_unless_frozen_bulk(
     if loose:
         raise ValueError(
             f"{len(loose)} atom(s) in {label!r} are NOT FROZEN: "
-            f"{_atoms_named(device, loose, atom_ids)}.  A lead is the "
+            f"{_atoms_named(device, loose)}.  A lead is the "
             f"pristine bulk "
             f"the self-energy attaches to, so every atom carrying an "
             f"electrode label must be held still — freeze them (the Modify "
@@ -307,7 +307,7 @@ def _refuse_unless_frozen_bulk(
     moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
     if moved:
         shown = "; ".join(
-            f"{_atoms_named(device, [i], atom_ids)} moved {d:.4f} A"
+            f"{_atoms_named(device, [i])} moved {d:.4f} A"
             for i, d in moved[:6])
         more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
         raise ValueError(
@@ -325,7 +325,6 @@ def extract_electrode_model(
     label: str,
     *,
     prior_positions: Optional[np.ndarray] = None,
-    atom_ids=None,
     z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
@@ -353,10 +352,8 @@ def extract_electrode_model(
     1 before 2 because it is cheaper and its answer is the fix for both;
     1 and 2 before 3 because the spacings of a block that moved describe
     nothing.  Raises ``ValueError``; `compose` turns it into a
-    ``ComposeError`` verbatim.
-
-    *atom_ids* maps this device's indices back to the canonical ones the
-    person sees; see :func:`_atoms_named`.
+    ``ComposeError`` verbatim.  A refusal names atoms in the person's order
+    (:func:`_atoms_named`, through the device's own order record).
     """
     electrodes = {lab: (name, idxs)
                   for lab, name, idxs in _find_electrode_regions(device)}
@@ -368,8 +365,7 @@ def extract_electrode_model(
     block_name, idxs = electrodes[label]
     idxs = sorted(idxs)
 
-    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions,
-                               atom_ids)
+    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions)
 
     pos = np.asarray(device.positions, dtype=float)[idxs]
     elems = [device.elements[i] for i in idxs]

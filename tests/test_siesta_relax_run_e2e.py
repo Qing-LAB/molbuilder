@@ -66,18 +66,18 @@ def _tolerance(bundle: Path) -> float:
     raise AssertionError("the relax deck states no MD.MaxForceTol")
 
 
-def _deck_geometry(bundle: Path):
-    """The structure as the deck hands it to SIESTA -- its own coordinate
-    block and its species block, read by fdf's label rule: the atoms in the
-    order the engine was given them."""
-    from molbuilder.parse.fdf import fdf_key, read_fdf
+def _deck_geometry(deck: Path, atom_order=None):
+    """The structure as ``deck`` hands it to SIESTA -- the atoms in the
+    order the engine was given them, through the readers of a deck's
+    species and coordinates (`parse.fdf.deck_atoms`,
+    ``parse_fdf_params(...).coords_ang``); with ``atom_order``, the order
+    record that order is."""
+    from molbuilder.parse.fdf import deck_atoms, parse_fdf_params
     from molbuilder.structure import Structure
-    blocks = read_fdf(_deck(bundle).read_text())[1]
-    species = {int(r[0]): r[2] for r in blocks[fdf_key("ChemicalSpeciesLabel")]}
-    rows = blocks[fdf_key("AtomicCoordinatesAndAtomicSpecies")]
-    return Structure(elements=[species[int(r[3])] for r in rows],
-                     positions=np.array([[float(x) for x in r[:3]]
-                                         for r in rows]))
+    text = deck.read_text()
+    return Structure(elements=list(deck_atoms(text).labels),
+                     positions=np.array(parse_fdf_params(text).coords_ang),
+                     atom_order=atom_order)
 
 
 def _final_geometry(bundle: Path):
@@ -93,7 +93,7 @@ def _final_geometry(bundle: Path):
         if len(words) < 3:
             break
         pos.append([float(w) for w in words[:3]])
-    return Structure(elements=_deck_geometry(bundle).elements,
+    return Structure(elements=_deck_geometry(_deck(bundle)).elements,
                      positions=np.array(pos))
 
 
@@ -120,7 +120,7 @@ def test_a_finished_relaxation_answers_its_record(relaxed):
     tol = _tolerance(relaxed)
     assert rec["force_tolerance_ev_ang"] == pytest.approx(tol)
     assert rec["n_steps"] == _moves(relaxed)
-    held = _deck_geometry(relaxed).geometry_lines()[0]
+    held = _deck_geometry(_deck(relaxed)).geometry_lines()[0]
     assert rec["held_atom_keys"] == [held]
     assert rec["converged"] is True and rec["run_state"] == "ended"
     assert rec["max_force_free_ev_ang"] <= tol
@@ -397,7 +397,7 @@ def test_the_run_is_in_the_engines_order_and_says_so(row, relaxed,
     run = _run(relaxed)
     if row["door"] == "deck":
         from molbuilder.runs import declared, run_of
-        assert _deck_geometry(relaxed).elements == _ENGINE_ELEMENTS
+        assert _deck_geometry(_deck(relaxed)).elements == _ENGINE_ELEMENTS
         assert declared(run_of(run)).atom_order.to_dict() == _ORDER
         return
     if row["door"] == "cite":
@@ -580,18 +580,17 @@ _BROKEN_ROWS = [
 
 @pytest.fixture(scope="module")
 def broken_order(relaxed):
-    """A copy of the run's calculation beside it, its `relax` decks' order
-    record naming one atom twice."""
-    import shutil
-    copy = relaxed.parent / "CO2-broken-order"
-    if not copy.exists():
-        shutil.copytree(relaxed, copy)
-        for deck in copy.rglob("CO2_01_relax.fdf"):
+    """A copy of the run's calculation (`support/real_runs.copy_of`), its
+    `relax` decks' order record naming one atom twice."""
+    from support.real_runs import copy_of, relax_decks
+
+    def break_it(copy):
+        for deck in relax_decks(copy):
             text = deck.read_text()
             assert '"sorted_to_original":[2,0,1]' in text, deck
             deck.write_text(text.replace('"sorted_to_original":[2,0,1]',
                                          '"sorted_to_original":[2,0,0]'))
-    return copy
+    return copy_of(relaxed, "broken-order", break_it)
 
 
 @pytest.mark.parametrize("row", _BROKEN_ROWS,
@@ -619,4 +618,76 @@ def test_an_order_record_that_cannot_be_read_is_refused(row, broken_order,
         "/api/watch/load", json={"path": str(run)})
     assert answer.status_code == 400, answer.get_data(as_text=True)[:300]
     assert words in answer.get_json()["error"], answer.get_json()
+
+
+# --------------------------------------------------------------------- #
+#  The force-constant stage builds on the relaxation (plan V1.41)       #
+# --------------------------------------------------------------------- #
+#
+# `engines/vibration.md` § 2.3a: within one ladder the held set may grow.
+# The same calculation, its structure's held set grown after `relax` ran --
+# the carbon and the first oxygen held, where `relax` held the carbon alone
+# -- and `freq` prepared: its deck is written in ITS OWN held-first order
+# (O C O, the order record [0, 2, 1]), and its coordinates are `relax`'s
+# relaxed ones, atom for atom, through both decks' order records.  The
+# silent failure: `relax`'s coordinates copied row by row into another
+# order, each atom given another atom's place.
+
+_HELD_GROWN = [2, 0]
+_FREQ_ORDER = {"key": "held-first", "sorted_to_original": [0, 2, 1],
+               "original_to_sorted": [0, 2, 1]}
+
+
+@pytest.fixture(scope="module")
+def held_grown(relaxed, tmp_path_factory):
+    """A copy of the calculation (`support/real_runs.copy_of`), its
+    structure's held set grown (`_HELD_GROWN`) as a person would on the
+    Molbuilder tab, and its `freq` stage prepared on the road."""
+    from _pytest.monkeypatch import MonkeyPatch
+    from _road import live_siesta
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.workingcopy_structure import StructureCodec
+    from support.real_runs import copy_of
+    from support.road import jobset
+
+    def grow_and_prepare(copy):
+        source = copy / "CO2.source.xyz"
+        mine = StructureCodec().load(source)
+        StructureCodec().write(
+            mine.replace(regions={**mine.regions,
+                                  "frozen_atoms": list(_HELD_GROWN)}),
+            source)
+        root = next(p for p in copy.parents if p.name == "projects")
+        mp = MonkeyPatch()
+        try:
+            mp.setenv(PROJECTS_ROOT_ENV, str(root))
+            with live_siesta(root, tmp_path_factory):
+                said = jobset("prep", "task", "--group", "2", "--bundle",
+                              copy, "--target", "this")
+                assert said.exit_code == 0, said.output
+        finally:
+            mp.undo()
+    return copy_of(relaxed, "held-grown", grow_and_prepare)
+
+
+def test_the_force_constant_deck_takes_the_relaxed_geometry_in_its_own_order(
+        relaxed, held_grown):
+    from molbuilder.deck_record import order_record_of
+    from molbuilder.script_emit import read_atom_metadata_block
+    from molbuilder.structure import Structure
+    deck = next(held_grown.glob("*_freq/**/CO2_*_freq.fdf"))
+    order = order_record_of(read_atom_metadata_block(deck.read_text()))
+    assert order.to_dict() == _FREQ_ORDER
+    freq = _deck_geometry(deck, atom_order=order)
+    assert freq.elements == ["O", "C", "O"]
+    relax_order = order_record_of(read_atom_metadata_block(
+        _deck(relaxed).read_text()))
+    assert relax_order.to_dict() == _ORDER and relax_order != order
+    mine = freq.restored()
+    theirs = Structure(elements=_ENGINE_ELEMENTS,
+                       positions=_final_geometry(relaxed).positions,
+                       atom_order=relax_order).restored()
+    assert mine.elements == theirs.elements == CO2_ELEMENTS
+    assert np.allclose(mine.positions, theirs.positions, atol=1e-5), (
+        mine.positions, theirs.positions)
 

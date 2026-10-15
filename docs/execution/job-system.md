@@ -2004,9 +2004,10 @@ starts from**:
 | when the stage before has not finished | the stage is prepared all the same; its **launch** refuses before anything is sent, says why in the status door's words, and names what to do: launch the one before, let it finish, or run it again — or choose: `--from` an earlier run of it that finished, `--cold` the structure (on the flat layout, the stage's run card's `restart: clean`) — a launch says these for one stage, so a member of a group of several is told to give it a group of its own first. One that finished without converging is taken, with a warning; one that failed is refused | transport: the **launch** refuses before anything is sent and names the stage to run first; a force-constant stage: its **prep** refuses — its preview gives the same refusal (§ 5.0) — since its deck needs `relax`'s geometry |
 | another source | yours to choose — any attempt by `--from`, none by `--cold`, at the launch | the frequency stage: a `relax` run you name with `--from` **at its prep**, taken as said — no other run, and no `--cold` at its first launch, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. The kind's first rung — a vibration's `relax` — builds on the structure: `--from` naming a run of another stage is refused. A transport rung: none — what it takes is its kind's, gathered from the rungs upstream at its first launch; launched again, `--gather` takes them anew, and `--cold` starts it with none of its own files, keeping what it gathered; `--from` is refused, and `--cold` at its first launch |
 
-**What crosses between stages, when a deck is a reordered copy** *(decided
-2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
-plan § 5ab R3–R4)*. A stage that takes another's **geometry** — a SIESTA
+**What crosses between stages, when a deck is a reordered copy**
+*([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3–R4; the
+geometry built 2026-10-14 with R3, through `runs.steps_of`; the restart files
+decided, not built — R4)*. A stage that takes another's **geometry** — a SIESTA
 force-constant stage taking `relax`'s — reads it through the run door and
 restores it to the person's order through that run's own order record; **only
 the coordinates and the cell come from it**: the labels and the held set are

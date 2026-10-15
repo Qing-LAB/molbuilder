@@ -634,6 +634,14 @@ def written_by(text: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+def molbuilder_words(version: Optional[str]) -> str:
+    """The molbuilder that wrote a file, as a person reads it --
+    ``molbuilder 2.9.6``, or ``a molbuilder from before 2.0.0`` for one that
+    named no version (:func:`written_by`).  Every door that names who wrote
+    a deck says it so."""
+    return f"molbuilder {version}" if version else "a molbuilder from before 2.0.0"
+
+
 def molbuilder_git_sha() -> str:
     """Return the molbuilder git SHA (short form), or ``"unknown"``.
 

@@ -622,14 +622,10 @@ def init_cmd(structure, bundle: str, shape: str,
         # (`model/structure.md` § 2.3, *Which frame*).
         said: list = []
         whole = StructureCodec().load(structure, frames=True, said_out=said)
-        # A CALCULATION IS BUILT ONLY IN YOUR ORDER (I1, I9): a file of a run
-        # whose deck predates the record is refused by the sentence said.
-        from ..runs import ORDER_UNSTATED
-        for line in said:
-            if line.where == ORDER_UNSTATED:
-                raise click.ClickException(line.message)
+        # (A CALCULATION IS BUILT ONLY IN YOUR ORDER, I1: a file of a run whose
+        # order nothing states is refused by the read itself, I9.)
         for line in said:              # what the read says (structure.md § 2.3)
-            click.echo(line.message)
+            click.echo(line)
         # A CALCULATION'S STRUCTURE IS IN YOUR ORDER (`model/overview.md`
         # § 2.2a, I1): a file in an engine's order is restored, and said.
         whole, restored = whole.in_your_order(Path(structure).name)

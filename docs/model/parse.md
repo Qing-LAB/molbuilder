@@ -886,8 +886,7 @@ transport citation ask, and the codec reading an engine's own structure
 file.
 
 **And the order the atoms are in** *(2026-10-14 —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2; the
-import in prep is R3's)*. A
+[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2, R3)*. A
 reordered run's files are in its engine's order; a parser reads them so and
 says nothing about it — the order is what the run declared, its deck's order
 record (`atom_order`), and the run door attaches it to every structure
@@ -896,8 +895,9 @@ reader (`watch parse`, `watch tail`, `runtime-info`) reads a file, not a run,
 and says so — a line on stderr, of a file a run of ours holds in its engine's
 order — and a bare `xv2xyz`, which writes a pair, refuses an `.XV` a
 reordered run of ours holds, naming `--from-run`. **No door builds a run's
-structure from a parser class it imports** — `jobset.prep._vibration_stage_geometry`
-does today (plan V1.41) — it asks the run door.
+structure from a parser class it imports** — it asks the run door: a door that
+builds from a run's geometry, `runs.steps_of`, the force-constant prep's and
+the transport citation's.
 
 **The atoms a run holds are stated by its own output, the same for both
 engines** *(user, 2026-10-04: "there is no reason why siesta can manage to

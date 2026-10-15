@@ -357,10 +357,10 @@ stands — and the prep sorts that structure as every prep does. `relax`'s
 density is read only when the two decks' order records are the same: prep
 writes `freq`'s deck not to read it otherwise (`DM.UseSaveDM .false.`, in
 either layout) and says so ([`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, I3–I6); the comparison above then judges the held set. *(Decided
-2026-10-14, not built: today `jobset.prep._vibration_stage_geometry` takes the
-coordinates in `relax`'s sorted order, row by row — right only while the two
-preps held the same atoms; plan V1.41, RMP R3.)*
+§ 2.2a, I3–I6); the comparison above then judges the held set. *(The
+geometry built 2026-10-14, plan V1.41, RMP R3: `jobset.prep._vibration_stage_geometry`
+reads it through the run door's one read, `runs.steps_of`, and the prep
+sorts afterwards. The density's rule is R4's, not built.)*
 
 ### 2.4 Where results land — `frequency/` and `spectrum/`
 
@@ -1226,15 +1226,17 @@ vacuum box, and the offset stated `0` with it (`model/structure-periodicity.md`
 deck re-centres the atoms in their new span, and a relaxed geometry moved
 against the real-space grid is not stationary on that grid any more.
 
-*(Decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, plan § 5ab R3–R4: the geometry is read through the run door, never a
-parser class, and restored to the input order through `relax`'s order record;
-only its coordinates and cell are taken — the labels and the held set are this
+*([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R3–R4.)*
+The geometry is read through the run door — `runs.steps_of`, never a parser
+class — and restored to the input order through `relax`'s order record; only
+its coordinates and cell are taken — the labels and the held set are this
 prep's — and this prep sorts its own copy, so the two decks' orders may
 differ; the `--from` row below then refuses a run that is not this
-calculation's atoms, compared in the input order; and `relax`'s restart files
-are read only when the two decks' order records are the same, prep writing
-the deck not to read them otherwise, in either layout (§ 2.3a).)*
+calculation's atoms, compared in the input order; a `relax` run whose deck was
+written before the order was recorded is refused by name (I9) *(built
+2026-10-14, R3)*. `relax`'s restart files are read only when the two decks'
+order records are the same, prep writing the deck not to read them otherwise,
+in either layout (§ 2.3a) *(decided 2026-10-14, not built — R4)*.
 
 **It is the one stage of every kind whose deck is written from another stage's
 result** *(2026-10-11, `execution/job-system.md`, *The task*)*: every other
@@ -2674,7 +2676,7 @@ nothing is in that state as of 2026-09-28.
 
 | | status | note |
 |---|---|---|
-| the remapped state — the index carried by the structure and each deck, restored at every door that crosses back, `atom-permutation.json` retired (`model/overview.md` § 2.2a) | **decided 2026-10-14, not built** — plan RMP, § 5ab R0–R6; V1.41 its R3 |  |
+| the remapped state — the index carried by the structure and each deck, restored at every door that crosses back, `atom-permutation.json` retired (`model/overview.md` § 2.2a) | **R1–R3 built 2026-10-14** (V1.41 with R3); R4–R6 decided, not built — plan RMP, § 5ab |  |
 | the one harmonic path, the rank rule, its gate | **built 2026-09-23** | § 4.5 |
 | one mass convention | **built 2026-09-21** | the 1823× defect |
 | stationarity on the free atoms | **built 2026-09-23** | § 4.3 |

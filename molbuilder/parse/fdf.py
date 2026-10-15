@@ -425,6 +425,37 @@ def system_label(text: str) -> Optional[str]:
     return val or None
 
 
-__all__ = ["FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS", "fdf_key",
-           "fdf_true", "read_fdf",
+@dataclass(frozen=True)
+class DeckAtoms:
+    """The atoms a SIESTA deck writes, IN THE ORDER IT LISTS THEM -- the
+    engine's (:func:`deck_atoms`): each one's atomic number and species
+    label.  Where they stand is :attr:`FdfParams.coords_ang`, the one
+    reading of the coordinate block's format."""
+    atomic_numbers: Tuple[int, ...]
+    labels: Tuple[str, ...]
+
+
+def deck_atoms(text: str) -> DeckAtoms:
+    """THE ONE READER OF A DECK'S SPECIES: each row of
+    ``AtomicCoordinatesAndAtomicSpecies`` names, by its species index, a
+    ``(Z, label)`` pair in ``ChemicalSpeciesLabel``, read through
+    :func:`read_fdf`.  Asked by the SIESTA vibration's finish beside a job
+    and by every reader of what a deck wrote.  Raises ``ValueError`` when an
+    atom names a species the deck does not define."""
+    blocks = read_fdf(text)[1]
+    species = {int(row[0]): (int(row[1]), row[2])
+               for row in blocks.get(fdf_key("ChemicalSpeciesLabel")) or ()
+               if len(row) >= 3}
+    rows = blocks.get(fdf_key("AtomicCoordinatesAndAtomicSpecies")) or ()
+    try:
+        picked = [species[int(r[3])] for r in rows]
+    except (KeyError, IndexError, ValueError):
+        raise ValueError("an atom names a species ChemicalSpeciesLabel does "
+                         "not define") from None
+    return DeckAtoms(atomic_numbers=tuple(z for z, _ in picked),
+                     labels=tuple(lab for _, lab in picked))
+
+
+__all__ = ["DeckAtoms", "FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS",
+           "deck_atoms", "fdf_key", "fdf_true", "read_fdf",
            "parse_fdf_params", "system_label"]

@@ -193,9 +193,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             if ran_text is not None and then != _this:
                 raise PrepError(
                     f"{upstream}'s newest run, {where.relative_to(base)}, was "
-                    f"prepared by "
-                    + (f"molbuilder {then}" if then else
-                       "a molbuilder from before 2.0.0")
+                    f"prepared by {_sc.molbuilder_words(then)}"
                     + f", and this is molbuilder {_this}: the deck it would "
                     f"write for {upstream} now differs from the one that "
                     f"ran, so its {filename} cannot be taken as part of this "

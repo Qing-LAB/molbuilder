@@ -460,20 +460,20 @@ def _struct_for_validate(path, *, one_frame_only: bool = False):
     """
     import numpy as np
     from .deck_record import DeckRecordUnreadable
-    from .runs import ORDER_UNSTATED
+    from .runs import OrderUnstated
     from .workingcopy_structure import StructureCodec
     said: list = []
+    # AN EDIT IS ONLY IN YOUR ORDER (I8, I9): the editing command is refused
+    # a file of a run whose order nothing states; a reading command says so.
+    unstated: list = []
     try:
-        whole = StructureCodec().load(path, frames=True, said_out=said)
-    except DeckRecordUnreadable as exc:   # its run's deck (job-contracts § 3.1)
+        whole = StructureCodec().load(
+            path, frames=True, said_out=said,
+            unstated_out=None if one_frame_only else unstated)
+    except (DeckRecordUnreadable, OrderUnstated) as exc:
         raise click.ClickException(str(exc)) from exc
-    # AN EDIT IS ONLY IN YOUR ORDER (I8, I9): the editing command refuses a
-    # file of a run whose deck predates the record, by the sentence said.
-    for line in said:
-        if one_frame_only and line.where == ORDER_UNSTATED:
-            raise click.ClickException(line.message)
-    for line in said:                  # what the read says (structure.md § 2.3)
-        click.echo(line.message, err=True)
+    for line in said + unstated:       # what the read says (structure.md § 2.3)
+        click.echo(line, err=True)
     if whole.n_frames > 1 and one_frame_only:
         raise click.ClickException(
             f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "
@@ -1115,19 +1115,20 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     return 0
 
 
-def _declared_by_its_run(path):
-    """What the run of ours that holds ``path`` declared (`runs.declared`):
-    its order record (`model/overview.md` § 2.2a, I5), or that its deck was
-    written before the order was recorded (I9) -- ``None`` for a file no run
-    of ours holds.  A deck block that cannot be read is refused, naming the
-    deck."""
+def _its_run(path):
+    """``(run, declared)`` -- the run of ours that holds ``path``
+    (`runs.run_of`) and what it declared (`runs.declared`: its labels, its
+    order record, that its deck predates the record) -- or ``None`` for a
+    file no run of ours holds.  A deck block that cannot be read is refused,
+    naming the deck.  THE ONE LOOKUP every CLI door that reads a run's file
+    asks."""
     from .deck_record import DeckRecordUnreadable
     from .runs import declared, run_of
     run = run_of(Path(path))
     if run is None:
         return None
     try:
-        return declared(run)
+        return run, declared(run)
     except DeckRecordUnreadable as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -1140,9 +1141,10 @@ def _say_a_file_is_not_its_run(path) -> None:
     (I9)."""
     if str(path) == "-":
         return
-    said = _declared_by_its_run(path)
-    if said is None:
+    found = _its_run(path)
+    if found is None:
         return
+    said = found[1]
     if said.atom_order is not None:
         click.echo(
             f"note: {Path(path).name} is {said.atom_order.said} -- this reads "
@@ -1160,7 +1162,8 @@ def _refuse_a_reordered_run(xv_path: Path) -> None:
     are in its engine's order, which only the run's deck states, and a pair
     written from them alone would be in that order, with nothing to say so.
     So is one whose run's deck predates the record (I9)."""
-    said = _declared_by_its_run(xv_path)
+    found = _its_run(xv_path)
+    said = found[1] if found is not None else None
     if said is not None and said.order_unstated:
         raise click.ClickException(said.order_unstated)
     order = said.atom_order if said is not None else None
@@ -1192,20 +1195,16 @@ def _apply_run_metadata(struct, xv_path: Path):
     A ``.XV`` no run of ours holds is refused: the flag says a run is there,
     and nothing declares this file's atoms.
     """
-    from .runs import declared, run_of, view_of
+    from .runs import view_of
 
-    run = run_of(xv_path)
-    if run is None:
+    found = _its_run(xv_path)
+    if found is None:
         raise click.ClickException(
             f"--from-run: no run of ours holds {xv_path} -- nothing marks its "
             f"folder as part of a calculation (calcdir.json, or task.json "
             f"above it; project-layout.md § 1.4a), so nothing declares its "
             f"atoms.  Without --from-run the .XV converts on its own.")
-    from .deck_record import DeckRecordUnreadable
-    try:
-        said = declared(run)
-    except DeckRecordUnreadable as exc:
-        raise click.ClickException(f"--from-run: {exc}") from exc
+    run, said = found
     # A DECK WRITTEN BEFORE THE ORDER WAS RECORDED (I9): the pair would be
     # in an order nothing states.
     if said.order_unstated:

@@ -804,7 +804,7 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
     own = {Path(job.script).name, names.name(".run.sh"),
            names.name(".sbatch")}
     differ = []
-    prepared_by = None
+    prepared_by, deck_read = None, False
     for path in now.plan.writes():
         rel = path.relative_to(base)
         if path.name not in own or any(attempt_index(part) is not None
@@ -815,6 +815,7 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
         if path.is_file() and path.name == Path(job.script).name:
             from ..script_emit import written_by
             prepared_by = written_by(path.read_text(errors="replace"))
+            deck_read = True
         if not path.is_file() or without_stamps(path.read_bytes()) != \
                 without_stamps(now.plan.read_bytes(path)):
             differ.append(str(rel))
@@ -827,9 +828,10 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
         differ.append(f"its row in {JOBSET_FILENAME}")
     if differ:
         from .. import __version__
-        upgraded = (f"; it was prepared by molbuilder {prepared_by}, and this "
-                    f"is {__version__}"
-                    if prepared_by and prepared_by != __version__ else "")
+        from ..script_emit import molbuilder_words
+        upgraded = (f"; it was prepared by {molbuilder_words(prepared_by)}, "
+                    f"and this is molbuilder {__version__}"
+                    if deck_read and prepared_by != __version__ else "")
         raise SubmitError(
             f"`{job.name}` was prepared from the description as it stood "
             f"then, and prep would write {', '.join(differ)} differently now "

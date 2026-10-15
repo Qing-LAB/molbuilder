@@ -124,7 +124,8 @@ class StructureCodec:
              frames: bool = False,
              retired_out: "dict | None" = None,
              said_out: "list | None" = None,
-             changed_out: "list | None" = None) -> Structure:
+             changed_out: "list | None" = None,
+             unstated_out: "list | None" = None) -> Structure:
         """Read the pair back into a Structure.
 
         WHICH FRAME (``model/structure.md`` § 2.3, *Which frame*): the pair is
@@ -138,14 +139,17 @@ class StructureCodec:
         says so (plan § 5q D14).
 
         ``said_out``: a caller that passes a list gets what the read says to a
-        person about this file, each an ``issues.Issue`` with its own name
-        and level -- a LONE ``.xyz`` (no sidecar, not an engine's own file in
-        one of our runs) is atoms and coordinates only, and its comment line
-        is quoted, never read as metadata (``model/structure.md`` § 2.3),
-        ``structure.lone_file``; an engine's own file of a run whose deck was
-        written before the order was recorded says so,
-        ``structure.order_unstated`` (``model/overview.md`` § 2.2a, I9).
-        Every door that opens a file for a person says them.
+        person about this file -- a LONE ``.xyz`` (no sidecar, not an engine's
+        own file in one of our runs) is atoms and coordinates only, and its
+        comment line is quoted, never read as metadata (``model/structure.md``
+        § 2.3).  Every door that opens a file for a person says it.
+
+        AN ENGINE'S OWN FILE OF A RUN WHOSE ORDER NOTHING STATES -- its deck
+        written before the order was recorded, for a kind that reorders
+        (``model/overview.md`` § 2.2a, I9) -- is refused,
+        :class:`runs.OrderUnstated`, as a changed geometry is: a door that
+        only shows the structure passes ``unstated_out``, a list, and gets
+        the file with the sentence appended to it.
 
         THE PIN IS COMPARED (``structure-molstruct.md`` § 3): a sidecar whose
         geometry hash is not the file's -- its atoms or cell changed after the
@@ -203,22 +207,19 @@ class StructureCodec:
             # labels of its deck, and the order record of a reordered run --
             # the file is in its engine's order (`model/overview.md` § 2.2a,
             # I5); what the run says about itself.
-            from .runs import run_of, view_of
+            from .runs import OrderUnstated, run_of, view_of
             view = view_of(run_of(src), n_atoms=struct.n_atoms)
+            if view.order_unstated:
+                if unstated_out is None:
+                    raise OrderUnstated(view.order_unstated)
+                unstated_out.append(view.order_unstated)
             struct = view.onto(struct)
-            if view.order_unstated and said_out is not None:
-                from .issues import Issue
-                from .runs import ORDER_UNSTATED
-                said_out.append(Issue("warn", view.order_unstated,
-                                      ORDER_UNSTATED))
         elif fmt == "xyz" and said_out is not None:
             # A LONE FILE: nothing molbuilder knows states its metadata, so it
             # is what `from_xyz` read -- atoms and coordinates -- and the read
             # says so, quoting the comment line it did not read as metadata
             # (`model/structure.md` § 2.3).
-            from .issues import Issue
-            said_out.append(Issue("info", lone_xyz_said(src.name, text),
-                                  "structure.lone_file"))
+            said_out.append(lone_xyz_said(src.name, text))
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what
@@ -499,7 +500,8 @@ class StructureCodec:
              frames: bool = False,
              retired_out: "dict | None" = None,
              said_out: "list | None" = None,
-             changed_out: "list | None" = None) -> Structure:
+             changed_out: "list | None" = None,
+             unstated_out: "list | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error -- except an engine's own file where its
@@ -507,7 +509,8 @@ class StructureCodec:
         ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
         ``retired_out`` collects the retired keys it carried, ``said_out``
         what it says about a lone file, ``changed_out`` a changed geometry,
+        ``unstated_out`` a run whose order nothing states,
         opened rather than refused (see `load`)."""
         return self.load(source_path, frame=frame, frames=frames,
                          retired_out=retired_out, said_out=said_out,
-                         changed_out=changed_out)
+                         changed_out=changed_out, unstated_out=unstated_out)

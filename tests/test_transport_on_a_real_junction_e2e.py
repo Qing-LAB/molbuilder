@@ -646,6 +646,18 @@ def test_a_finished_relaxation_composes_and_says_how_it_ended(junction):
     assert out.provenance["swap_electrodes"] is False
 
 
+def test_a_run_that_relaxed_no_geometry_is_not_cited(junction):
+    """`engines/transport.md` § 3.1: a citation is a relaxation.  A run whose
+    output reports a self-consistent field alone -- this calculation's own
+    seed rung, or a vibration's force-constant stage, whose last geometry is
+    a displacement -- is refused by name.  The silent failure: a geometry
+    nothing relaxed composed as the junction."""
+    from molbuilder.transport.compose import ComposeError, classify_citation
+    seed = next(junction.bundle.glob("*_seed/run-0"))
+    with pytest.raises(ComposeError, match="relaxed no geometry"):
+        classify_citation(seed)
+
+
 def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
         junction):
     """`transport.md` § 4: the electrode rename is applied to the

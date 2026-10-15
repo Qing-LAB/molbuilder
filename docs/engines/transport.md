@@ -2524,23 +2524,25 @@ built 2026-10-09, plan § 5z Q17-c)*.
 | **a structure pair** — `<name>.xyz` and its `<name>.molstruct.json` | the frames; the labels; `info.calculation`, the record of the optimization frame 0 came from — its engine, its deck and the deck's `contract` (basis, functional, mesh, k-grid, temperature, spin, charge, and how its SCF converged), written by `contract_of` when the pair was saved (the Results tab, `molbuilder xv2xyz --from-run`) | geometry (every frame) · labels · **settings** | the pair's `info.calculation.contract`; the pseudopotentials from the directory you give that holds them all |
 
 **A cited run in an engine's order, and a run that is not a relaxation**
-*(decided 2026-10-14, not built — [`model/overview.md`](?doc=model/overview.md)
-§ 2.2a, plan § 5ab R3)*. Today any finished run of ours is accepted — a
-vibration's force-constant stage among them, whose last geometry is a
-displacement — and a vibration's `relax` stage, a run in the `held-first`
-order, is sorted again for TranSIESTA from that order, so the record maps to
-the engine's order, not the person's. Decided: **a run whose verdict is not a
-geometry relaxation is refused**, as the condition above says, through the
-verdict `_classify_run` already reads; **a cited run's geometry crosses back
-first** — its relaxed structure and its starting geometry (the leads'
-*unmoved* gate compares the two), restored to the person's order through the
-run's own order record by `_run_geometry`, the one door every reader of a
-cited run asks — and the composer sorts it for TranSIESTA from there (I3,
-I4); the composer's own maps by hand (the starting geometry indexed by
-`sorted_to_original`, the atom names a refusal gives through `atom_ids`) go
-through the order record's methods. A cited pair is in the person's order
-(I1) — though one saved before this rule from a reordered run's view cannot
-be told apart (I9).
+*(built 2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
+plan § 5ab R3)*. **A run whose verdict is not a geometry relaxation is
+refused**, as the condition above says, through the verdict `_classify_run`
+reads (`run_state_of`): a vibration's force-constant stage, whose last
+geometry is a displacement, and a transport rung, whose output reports a
+self-consistent field alone. **A cited run's geometry crosses back first** —
+its relaxed structure and its starting geometry (the leads' *unmoved* gate
+compares the two), restored to the person's order through the run's own
+order record by the run door's one read of a run's geometry,
+`runs.steps_of`, which `_run_geometry` asks — and the composer sorts it for
+TranSIESTA from there (I3, I4); a run whose deck was written before the order
+was recorded is refused by name (I9). The starting geometry goes into the
+sorted device's order through the device's own order record
+(`Permutation.original_of`), and a refusal names atoms back through the same
+record — no map by hand. A cited pair is in the person's order (I1); a pair
+that is an engine's record — a composed junction — is restored where the
+citation reads it (`_classify_pair`), so every reader of the citation starts
+from your order. One saved before this rule from a reordered run's view
+cannot be told apart (I9).
 
 **One reader takes both kinds' settings** (`citation_defaults.citation_answers`):
 a cited run's deck through `contract_of` when the transport is described, a
@@ -4503,7 +4505,7 @@ flowchart TB
     REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
 ```
 
-*(Decided 2026-10-14, not built: step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a, plan § 5ab R3, R5.)*
+*(Decided 2026-10-14: step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own — not built, plan § 5ab R5; a cited run's geometry is restored before step 5 — built 2026-10-14, R3; `model/overview.md` § 2.2a.)*
 
 **Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
 later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,
