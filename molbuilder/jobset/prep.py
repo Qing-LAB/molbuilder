@@ -1943,7 +1943,7 @@ def prepared_already(base, task, kind: str, stage: str) -> Optional[str]:
     (`job-system.md` § 5.0, checkpoint 2a).  A benchmark prepared is not
     prepared again (user, 2026-10-02: *"refuse it, redo via rollback"*), so
     its sentence is that refusal; a run prepared and never launched is
-    prepared again (:func:`launched_already` says when it may not be).
+    prepared again (`ready.launched_already` says when it may not be).
 
     PREPARED IS WHAT `status` READS: the stage's job in the calculation's
     plan, ``job-set.json``, matched as `status` matches it
@@ -1977,38 +1977,6 @@ def prepared_already(base, task, kind: str, stage: str) -> Optional[str]:
     return (f"{what} is already prepared ({where}) -- a prepared benchmark "
             f"is not prepared again (job-system.md § 5.0).  To redo it, "
             + rollback("its prep", base=base))
-
-
-def launched_already(base, task, stage: str, *, jobset=None) -> Optional[str]:
-    """Why ``stage`` is not prepared again -- it was launched -- or ``None``
-    (`job-system.md` § 5.0, checkpoint 2a): earlier runs' facts are read
-    from the stage's job and its description (the optimizer a ``.CG``
-    follows, a swept rung's points), so its runs must keep the deck and job
-    they ran with.  The way back is the state saved before its group's first
-    launch, every run it builds on in it (`job-system.md`, *How the
-    checkpoint supports you*).  ``jobset`` is the plan as the caller read
-    it; with none it is read here."""
-    from .commands import redo_launched
-    from .materialize import ever_launched
-    from .ready import job_of
-    plan = Path(base) / JOBSET_FILENAME
-    js = jobset if jobset is not None else (
-        JobSet.load(plan) if plan.is_file() else None)
-    job = job_of(base, stage, jobset=js) if js is not None else None
-    if job is None:
-        return None
-    from ..runrecord import LaunchRecordError
-    try:
-        launched = ever_launched(js, base, job)
-    except LaunchRecordError as exc:
-        return str(exc)
-    if not launched:
-        return None
-    return (f"stage {stage!r} was launched -- a launched stage is not "
-            f"prepared again: its runs' facts are read from its job and its "
-            f"description, so they must stay what its runs ran with "
-            f"(job-system.md § 5.0).  To change it, "
-            + redo_launched(stage, base=base, task=task))
 
 
 def prepared_stages(base, task) -> List[str]:
@@ -2524,6 +2492,59 @@ def prep_task(base, kind: str, *, groups: Sequence[int] = (),
                         preview=preview, plan_id=plan_id, asked=asked)
 
 
+def record_junction_order(base) -> str:
+    """**`prep task` with no group left to prepare** (`engines/transport.md`
+    § 1.1, *No group left to prepare*; `job-system.md` § 5.0, R-P3): a
+    transport calculation's junction whose sidecar states no order record,
+    checked atom for atom against its citation composed again and its record
+    written again by the one writer (`composed_for_prep`) -- the folder's
+    state saved first, nothing else written.  Answers what to print: the
+    saved state and the files written.  A refusal is written down, as every
+    prep's is, and writes nothing."""
+    from ..checkpoint import CheckpointError, save_before
+    from ..transport.compose import recorded_junction
+    from .ledger import record as ledger
+    from .planned import Plan
+    base = Path(base).resolve()
+
+    def _refuse(why: str) -> PrepError:
+        ledger(base, "prep", "refused", kind="task", groups=None, reason=why)
+        return PrepError(why)
+
+    try:
+        task = read_description(base).task
+    except (PrepError, ValueError) as exc:
+        raise _refuse(str(exc)) from None
+    recorded = recorded_junction(base)
+    if recorded is None or not recorded.order_unstated:
+        raise _refuse("no group is left to prepare, and this calculation has "
+                      "no junction whose order is to be recorded -- each "
+                      "group is prepared or launched, or waits for what it "
+                      "says.  A group prepared and never launched is "
+                      "prepared again by naming it: --group N.")
+    plan = Plan()
+    try:
+        composed_for_prep(base, task, plan)
+    except PrepError as exc:
+        raise _refuse(str(exc)) from None
+    try:
+        with user_error_as_prep():
+            kept = save_before(base, "prep task: the junction's order record",
+                               engine=str(task.engine))
+    except (CheckpointError, PrepError) as exc:
+        raise _refuse(f"the folder's state could not be saved, so nothing "
+                      f"was written: {exc}") from None
+    ledger(base, "prep", "saved", groups=[], state=kept.state.short,
+           note=kept.state.note, new=kept.new)
+    plan.carry_out()
+    written = [str(w.relative_to(base)) for w in plan.writes()]
+    ledger(base, "prep", "order recorded", writes=written)
+    return (f"{kept.said()}\nthe composed junction's order recorded -- "
+            f"checked against its citation, atom for atom: "
+            f"{', '.join(written)} written; no group was left to prepare, "
+            f"and none was prepared")
+
+
 def group_header(base, task, number: int, jobs, environment, *,
                  emit_sbatch: bool = True) -> Optional[Tuple[Path, str]]:
     """``(path, text)`` of group ``number``'s one header -- its members'
@@ -2645,6 +2666,7 @@ def _prep_groups(base, numbers: List[int], *, target, allocation,
     # a launched group's members are fixed (§ 5.0, 2a) -- before any other.
     from ..runrecord import LaunchRecordError
     from .group import joined_launched, launched_without
+    from .ready import launched_already
     for n in whole:
         # A STAGE PUT INTO A LAUNCHED GROUP: that stage is the change, and
         # a group of its own the way on beside the restore.
@@ -2813,5 +2835,4 @@ def _prep_groups(base, numbers: List[int], *, target, allocation,
 
 __all__ = ["read_description", "checked", "plan_stage", "Described",
            "DECIDE", "prep_bench", "prep_task", "group_header", "PrepAnswer",
-           "prepared_already",
-           "launched_already", "prepared_stages"]
+           "prepared_already", "prepared_stages", "record_junction_order"]

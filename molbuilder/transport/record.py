@@ -42,8 +42,8 @@ from ..persist import json_safe
 if TYPE_CHECKING:
     from .stages import Point
 
-#: ``@7``: ``order_unstated`` -- the sentence a junction composed before
-#: 2.10.0 is said with, its order not recorded (I9), or ``None``.
+#: ``@7``: ``order_unstated`` -- the sentence a junction whose sidecar states
+#: no order record is said with, and its way on (I9), or ``None``.
 #: ``@6``: the provenance names no ``atom_permutation`` file -- the junction
 #: (``junction_file``) carries its order record in its sidecar.
 #: ``@5``: the ``average`` carries no slope or curvature, and states the
@@ -674,7 +674,8 @@ def device_regions(junction) -> Dict[str, List[int]]:
     """The device's regions molbuilder owns -- L-electrode, bridge,
     R-electrode -- as atom indices (0-based, the composed junction's order,
     which is every rung's deck's), from the calculation's composed junction
-    (:func:`composed_junction`).  ``{}`` before it is composed (``None``)."""
+    (`compose.recorded_junction`).  ``{}`` before it is composed
+    (``None``)."""
     from .sort import ELECTRODE_LABELS, REGION_BRIDGE
     if junction is None:
         return {}
@@ -731,13 +732,14 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..runrecord import LaunchRecordError, launch_record
     from ..frameset import FrameSetError, read as read_frame_set
     from .average import AverageError, mode_average
-    from .compose import read_provenance
+    from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
                         spin_dos, tbt_files)
 
     base = Path(base_dir)
-    junction = composed_junction(base)
+    recorded = recorded_junction(base)
+    junction = recorded.structure if recorded is not None else None
     try:
         frame_set = (read_frame_set(junction) if junction is not None
                      else None)
@@ -864,7 +866,6 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
     provenance = read_provenance(base)
-    from .compose import order_unstated
     # THE DESCRIPTION'S, as stated (`Task.treatment`): a list of several
     # voltages states the switch; one is a single bias.  Never inferred
     # from how many points ran.
@@ -896,10 +897,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # THE COMPOSED JUNCTION the device was built from, by its catalogue
         # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
         "junction_file": JUNCTION_FILE,
-        # WHEN ITS ORDER IS NOT RECORDED -- a junction composed before 2.10.0
-        # (I9) -- the sentence the report says beside the drawing, which then
-        # lists the atoms as TranSIESTA does; ``None`` otherwise.
-        "order_unstated": order_unstated(base),
+        # WHEN ITS ORDER IS NOT RECORDED -- a junction whose sidecar states
+        # none (I9) -- the sentence the report says beside the drawing, which
+        # then lists the atoms as TranSIESTA does; ``None`` otherwise.
+        "order_unstated": order_unstated_said(base, recorded),
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for
@@ -933,14 +934,17 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     return record
 
 
-def composed_junction(base: Path):
-    """The calculation's composed junction, every frame
-    (`compose.write_compose_record`, read through the codec), or ``None``
-    before its first prep composed it."""
-    from ..runfiles import JUNCTION_FILE
-    from ..workingcopy_structure import StructureCodec
-    path = base / JUNCTION_FILE
-    return StructureCodec().load(path, frames=True) if path.is_file() else None
+def order_unstated_said(base: Path, recorded) -> Optional[str]:
+    """What the record, its data file and a selection's PDOS say of a
+    junction whose sidecar states no order record (`model/overview.md`
+    § 2.2a, I9) -- the fact (`compose.RecordedJunction.order_unstated`) and
+    its way on, `prep task` (`engines/transport.md` § 1.1) -- or ``None``.
+    ``recorded`` is `compose.recorded_junction`'s answer, ``None`` before
+    anything was composed."""
+    if recorded is None or not recorded.order_unstated:
+        return None
+    from ..jobset.commands import order_recorded
+    return f"{recorded.order_unstated}.  {order_recorded(base=base)}"
 
 
 def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
@@ -995,8 +999,9 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
     # the runs list the atoms as the composed junction does.  A record that
     # states no order names no atom in yours (I9).
-    from .compose import order_unstated
-    unstated = order_unstated(base)
+    from .compose import recorded_junction
+    recorded = recorded_junction(base)
+    unstated = order_unstated_said(base, recorded)
     if unstated:
         raise RecordError(unstated)
     read_at, where = _at("transmission")
@@ -1007,7 +1012,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
         raise RecordError(f"the transmission at {said} has written "
                           f"no {task.label}.TBT.nc (nor both "
                           f"{task.label}.TBT_UP.nc and .TBT_DN.nc)")
-    junction = composed_junction(base)
+    junction = recorded.structure if recorded is not None else None
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
     _dev_at, dev = _at("device", run=gathered_device_run(base, task))

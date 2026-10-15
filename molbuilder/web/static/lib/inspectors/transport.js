@@ -143,9 +143,9 @@ const WORKSPACE_TAG = "results:transport";
         const device = _card("Device", "transport-device-card");
         const molHost = _el("div", "molviewer-host transport-molview");
         device.appendChild(molHost);
-        /* A JUNCTION WHOSE ORDER IS NOT RECORDED -- composed before 2.10.0
+        /* A JUNCTION WHOSE ORDER IS NOT RECORDED -- its sidecar states none
          * (`model/overview.md` § 2.2a, I9) -- is drawn as TranSIESTA lists
-         * it, and the record says so in its own words. */
+         * it, and the record says so, with its way on, in its own words. */
         if (rec.order_unstated) {
             device.appendChild(_el("p", "transport-note", rec.order_unstated));
         }

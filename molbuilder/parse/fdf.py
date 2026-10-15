@@ -53,20 +53,27 @@ def fdf_key(key: str) -> str:
     return key.lower().replace(".", "").replace("-", "").replace("_", "")
 
 
-def read_fdf(text: str) -> Tuple[Dict[str, List[str]],
-                                   Dict[str, List[List[str]]]]:
-    """``(scalars, blocks)`` from fdf text; first occurrence wins."""
+def read_fdf(text: str, *, spelled_out: Optional[Dict[str, str]] = None
+             ) -> Tuple[Dict[str, List[str]], Dict[str, List[List[str]]]]:
+    """``(scalars, blocks)`` from fdf text; first occurrence wins.
+
+    ``spelled_out``, when a dict is passed, receives each keyword's and
+    block's first spelling by its key (:func:`fdf_key`) -- the words a
+    sentence for a person names it by, where the key is what is compared."""
     scalars: Dict[str, List[str]] = {}
     blocks: Dict[str, List[List[str]]] = {}
     in_block: Optional[str] = None
     rows: List[List[str]] = []
+    spelled = spelled_out if spelled_out is not None else {}
     for raw in text.splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
         low = line.lower()
         if low.startswith("%block"):
-            in_block = fdf_key(line[len("%block"):].strip())
+            name = line[len("%block"):].strip()
+            in_block = fdf_key(name)
+            spelled.setdefault(in_block, name)
             rows = []
             continue
         if low.startswith("%endblock"):
@@ -80,6 +87,7 @@ def read_fdf(text: str) -> Tuple[Dict[str, List[str]],
         toks = line.split()
         if toks:
             scalars.setdefault(fdf_key(toks[0]), toks[1:])
+            spelled.setdefault(fdf_key(toks[0]), toks[0])
     return scalars, blocks
 
 
@@ -249,6 +257,15 @@ def _read_scf(sc, p: "FdfParams", source: str) -> None:
                 what="DM.EnergyTolerance", source=source)
     if "scffreeeconverge" in sc:
         p.scf_energy_converge = fdf_true(sc["scffreeeconverge"])
+
+
+#: THE KEYWORDS A DECK'S GEOMETRY IS WRITTEN WITH, by their keys -- what
+#: :func:`parse_fdf_params` reads into :attr:`FdfParams.coords_ang` and
+#: :attr:`FdfParams.cell_ang`, in Å whatever format and units the deck wrote
+#: them in; each atom's species is :func:`deck_atoms`'.
+GEOMETRY_KEYS = frozenset({"atomiccoordinatesandatomicspecies",
+                           "atomiccoordinatesformat", "latticevectors",
+                           "latticeconstant"})
 
 
 def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
@@ -457,5 +474,5 @@ def deck_atoms(text: str) -> DeckAtoms:
 
 
 __all__ = ["DeckAtoms", "FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS",
-           "deck_atoms", "fdf_key", "fdf_true", "read_fdf",
+           "GEOMETRY_KEYS", "deck_atoms", "fdf_key", "fdf_true", "read_fdf",
            "parse_fdf_params", "system_label"]

@@ -145,6 +145,7 @@ class StructureCodec:
              frame: "int | None" = None,
              frames: bool = False,
              retired_out: "dict | None" = None,
+             stated_out: "set | None" = None,
              said_out: "list | None" = None,
              opened: "tuple | frozenset" = (),
              in_your_order: bool = False) -> Structure:
@@ -159,6 +160,12 @@ class StructureCodec:
         ``retired_out``: a caller that passes a dict gets each retired key the
         sidecar carried with a value -- read and ignored, and the load door
         says so (plan § 5q D14).
+
+        ``stated_out``: a caller that passes a set gets every metadata field
+        the sidecar states -- a null one among them -- so a reader can tell a
+        field stated null from one written before the field existed
+        (``model/overview.md`` § 2.2a, I9: the composed junction's order
+        record, `transport.compose.recorded_junction`).
 
         ``said_out``: a caller that passes a list gets what the read says to a
         person about this file, each a notice at its level
@@ -223,7 +230,8 @@ class StructureCodec:
         restored_said = None
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
-            payload = molstruct.load(sidecar_path, retired_out=retired_out)
+            payload = molstruct.load(sidecar_path, retired_out=retired_out,
+                                     stated_out=stated_out)
             pinned = payload.get("geometry_hash")
             if pinned is not None and pinned != molstruct.geometry_hash(
                     text, fmt, payload["cell"], payload["axis_kind"]):
@@ -579,6 +587,7 @@ class StructureCodec:
              frame: "int | None" = None,
              frames: bool = False,
              retired_out: "dict | None" = None,
+             stated_out: "set | None" = None,
              said_out: "list | None" = None,
              opened: "tuple | frozenset" = (),
              in_your_order: bool = False) -> Structure:
@@ -587,10 +596,11 @@ class StructureCodec:
         metadata, not an error -- except an engine's own file where its
         run is recorded, which reads with that run's frame; see `load`).
         ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
-        ``retired_out`` collects the retired keys it carried, ``said_out``
-        what the read says, ``opened`` what a viewer opens rather than
-        refuses, ``in_your_order`` the read of an editor or a builder (see
-        `load`)."""
+        ``retired_out`` collects the retired keys it carried, ``stated_out``
+        the metadata fields it states, ``said_out`` what the read says,
+        ``opened`` what a viewer opens rather than refuses,
+        ``in_your_order`` the read of an editor or a builder (see `load`)."""
         return self.load(source_path, frame=frame, frames=frames,
-                         retired_out=retired_out, said_out=said_out,
-                         opened=opened, in_your_order=in_your_order)
+                         retired_out=retired_out, stated_out=stated_out,
+                         said_out=said_out, opened=opened,
+                         in_your_order=in_your_order)

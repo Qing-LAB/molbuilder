@@ -231,22 +231,23 @@ def transport_sources(element):
 
 def composed_for_prep(base, task, plan):
     """The junction a transport calculation's rungs describe: the record
-    beside ``task.json`` when it is for THIS citation (the folder travels,
-    `project-layout.md` § 2.1), else composed afresh from the projects tree,
-    its record written -- and READ BACK from it.
+    beside ``task.json`` when it is usable for THIS citation (the folder
+    travels, `project-layout.md` § 2.1) -- written again when its order was
+    found rather than read (`ComposedJunction.order_found`, a junction whose
+    sidecar states none) -- else composed afresh from the projects tree while
+    no stage is launched.  With a stage launched, the recorded junction is
+    never replaced: its runs ran on it (`engines/transport.md` § 1.1, *The
+    first prep*).
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
-    prep writes: the fresh record is written to a temporary folder outside
-    the calculation and read back from there -- the same round trip a later
-    prep makes from the calculation's own copy -- and its bytes go into the
-    plan."""
+    prep writes, by one road (:func:`_written_and_read_back`)."""
     from ..atom_permutation import PermutationError
     from ..deck_record import DeckRecordUnreadable
     from ..projects import find_projects_root
     from ..transport.compose import (ComposeError, compose_junction,
-                                     load_compose_record, order_unstated,
-                                     write_compose_record)
+                                     load_compose_record)
     from ..transport.sort import SortError
+    from .ready import launched_already
     citation = task.slots["junction"]
     try:
         # The tree root is resolved BEFORE the record is loaded: the
@@ -256,18 +257,30 @@ def composed_for_prep(base, task, plan):
         # out of its tree), that half degrades to UNVERIFIED honestly.
         root = find_projects_root(base)
         why: list = []
-        unstated = order_unstated(base)
         composed = load_compose_record(base, citation=citation,
                                        tree_root=root, why=why,
                                        swap_electrodes=task.swap_electrodes)
         if composed is not None:
-            if unstated:
-                # ITS ORDER FOUND, THE JUNCTION KEPT (`engines/transport.md`
-                # § 1.1, *The first prep*): the record's sidecar now states
-                # it and its provenance is written at this schema --
-                # `junction.xyz` itself is never written here.
-                _record_its_order(base, composed, plan)
-            return composed
+            # ITS ORDER FOUND (`engines/transport.md` § 1.1, *The first
+            # prep*): the record written again by its one writer -- the
+            # recorded junction's atoms, places, cell and labels as they
+            # were, its sidecar stating the order record.
+            return (_written_and_read_back(base, composed, plan, root=root,
+                                           task=task)
+                    if composed.order_found else composed)
+        # A LAUNCHED STAGE RAN ON THE JUNCTION RECORDED: never replaced,
+        # whatever made the record unusable.
+        launched = next((st.name for st in task.stages
+                         if launched_already(base, task, st.name)), None)
+        if launched is not None:
+            from .commands import redo_launched
+            raise PrepError(
+                f"this calculation's junction is not composed again: "
+                f"{why[-1] if why else 'there is no usable record'}.  "
+                f"`{launched}` ran on the junction recorded, and a launched "
+                f"stage's junction is never replaced (engines/transport.md "
+                f"§ 1.1); to compose it again, "
+                + redo_launched(launched, base=base, task=task))
         if root is None:
             # NAME WHICH OF THE THREE: no record, one composed from another
             # citation (a slot re-pointed after a re-relaxation), or one
@@ -281,71 +294,45 @@ def composed_for_prep(base, task, plan):
                 f"afresh.  Prep once inside the tree that holds the "
                 f"cited junction -- the record then travels with the "
                 f"folder (engines/transport.md § 3.1).")
-        # A LAUNCHED GROUP RAN ON THE JUNCTION RECORDED: one that composes
-        # differently now is not composed again (`engines/transport.md`
-        # § 1.1, *The first prep*).
-        from .prep import launched_already
-        launched = [st.name for st in task.stages
-                    if launched_already(base, task, st.name)]
-        if unstated and launched:
-            from .commands import redo_launched
-            raise PrepError(
-                f"this calculation's junction is not composed again: "
-                f"{why[-1] if why else unstated}.  `{launched[0]}` ran on the "
-                f"junction recorded, so it is not replaced; to compose it "
-                f"again, " + redo_launched(launched[0], base=base, task=task))
-        # RENDER FROM THE RECORD, on this prep as on every later one.  The
-        # fresh composition is the cited `.XV` at full float precision; the
-        # record is the codec's text of it, and every later prep -- the
-        # other rungs, a re-prep -- reads the record.  Rendering this one
-        # from the fresh copy gave two preps of the SAME calculation two
-        # sets of numbers ~1e-10 apart (measured 2026-09-25 on the
-        # ENGINE-OFFSET record), and the gather compares the engine's input
-        # number by number: a value near a rounding boundary then flips,
-        # and a good seed is refused.  One source, not rounding luck.
-        import tempfile
-        with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
-            names = write_compose_record(
-                tmp, compose_junction(citation, tree_root=root,
-                                      swap_electrodes=task.swap_electrodes))
-            composed = load_compose_record(tmp, citation=citation,
-                                           tree_root=root, why=why,
-                                           swap_electrodes=task.swap_electrodes)
-            if composed is None:
-                raise PrepError(
-                    f"the composed junction was written and could not be "
-                    f"read back: {why[-1] if why else 'no reason given'}")
-            for name in names:
-                plan.bytes(Path(base) / name, (Path(tmp) / name).read_bytes())
-        return composed
+        return _written_and_read_back(
+            base, compose_junction(citation, tree_root=root,
+                                   swap_electrodes=task.swap_electrodes),
+            plan, root=root, task=task)
     except (ComposeError, SortError, PermutationError,
             DeckRecordUnreadable) as exc:
         raise PrepError(str(exc)) from exc
 
 
-def _record_its_order(base, composed, plan) -> None:
-    """The composed junction's order record written into its sidecar, and
-    its provenance at this schema -- through ``plan``, by the one writer
-    (`compose.write_compose_record`), the junction's geometry left as it is:
-    the record written aside, its `junction.xyz` the very bytes beside the
-    calculation (the sidecar pins them), and only the sidecar and the
-    provenance taken."""
+def _written_and_read_back(base, composed, plan, *, root, task):
+    """``composed``'s record, written by its one writer
+    (`compose.write_compose_record`) to a temporary folder outside the
+    calculation and READ BACK from there -- the same round trip a later prep
+    makes from the calculation's own copy -- its bytes into ``plan``; the
+    junction as read back.
+
+    RENDER FROM THE RECORD, on this prep as on every later one.  A fresh
+    composition is the cited `.XV` at full float precision; the record is
+    the codec's text of it, and every later read -- the other rungs, a
+    re-prep, launch's check that a stage prepared is still what prep writes,
+    file for file (`job-system.md` § 6.0) -- reads the record.  Rendering
+    this one from the fresh copy gave two preps of the SAME calculation two
+    sets of numbers ~1e-10 apart (measured 2026-09-25 on the ENGINE-OFFSET
+    record), and a deck rendered from each differs."""
     import tempfile
-    from ..sidecars.molstruct import sidecar_path_for
-    from ..transport.compose import (JUNCTION_GEOMETRY, PROVENANCE_FILE,
-                                     write_compose_record)
-    base = Path(base)
-    with tempfile.TemporaryDirectory(prefix="molbuilder-order-") as tmp:
-        write_compose_record(tmp, composed)
-        if (Path(tmp) / JUNCTION_GEOMETRY).read_bytes() != \
-                (base / JUNCTION_GEOMETRY).read_bytes():
+    from ..transport.compose import load_compose_record, write_compose_record
+    why: list = []
+    with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
+        names = write_compose_record(tmp, composed)
+        back = load_compose_record(tmp, citation=task.slots["junction"],
+                                   tree_root=root, why=why,
+                                   swap_electrodes=task.swap_electrodes)
+        if back is None:
             raise PrepError(
-                f"{JUNCTION_GEOMETRY} written again differs from the one "
-                f"beside the calculation, so its order record cannot be "
-                f"added to it")
-        for name in (sidecar_path_for(Path(JUNCTION_GEOMETRY)).name,
-                     PROVENANCE_FILE):
-            plan.bytes(base / name, (Path(tmp) / name).read_bytes())
+                f"the composed junction was written and could not be read "
+                f"back: {why[-1] if why else 'no reason given'}")
+        for name in names:
+            plan.bytes(Path(base) / name, (Path(tmp) / name).read_bytes())
+    return back
 
 
 def transport_spec(task, stage: str, struct, config, state, volts=None, *,

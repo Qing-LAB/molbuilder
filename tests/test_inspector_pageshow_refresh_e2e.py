@@ -257,11 +257,11 @@ class TestTheTabSaysTheOrderIsNotRecorded:
 
     def test_the_load_says_it_and_a_quiet_poll_keeps_it(
             self, page, flask_server, prepared_before_the_rule):
-        from support.real_runs import PREPARED_BY_2_9_6
+        from support.real_runs import DECK_STATES_NO_ORDER
         _open_results_and_select(page, flask_server, prepared_before_the_rule)
         line = ("() => (document.querySelector('#trajectory-status') || {})"
                 ".textContent || ''")
-        said = PREPARED_BY_2_9_6[1]
+        said = DECK_STATES_NO_ORDER[1]
         page.wait_for_function(f"() => ({line})().includes({said!r})",
                                timeout=15000)
         with page.expect_request(lambda r: "/api/watch/data" in r.url,
@@ -271,5 +271,5 @@ class TestTheTabSaysTheOrderIsNotRecorded:
         page.wait_for_function(f"() => ({line})().includes('Up to date')",
                                timeout=10000)
         shown = page.evaluate(line)
-        assert all(part in shown for part in PREPARED_BY_2_9_6), shown
+        assert all(part in shown for part in DECK_STATES_NO_ORDER), shown
 

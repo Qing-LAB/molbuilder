@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
 from ..runfiles import RunNames
+from ..siesta.engine_input import engine_input_difference
 from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
 from .materialize import GATHERED, HandOver, hand_over, stage_home
@@ -40,10 +41,11 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     * its NEWEST run must have FINISHED -- the one rule every kind's default
       keeps (`job-system.md`, *The task*, D5): an older run never stands
       in, because a rung launched again is the run you mean;
-    * that run must have run **the deck that rung renders NOW** -- from the
-      current template, junction and run card, through the rung's own door
-      (`transport_rung`), never the stage folder's last render, which a
-      change since leaves as it was (plan § 5w K11) -- and hold the file.
+    * that run must have run **the same engine input as the deck that rung
+      renders NOW** -- from the current template, junction and run card,
+      through the rung's own door (`transport_rung`), never the stage
+      folder's last render, which a change since leaves as it was (plan § 5w
+      K11) -- and hold the file (`engines/transport.md` § 6.1).
 
     A run that fails a gate is refused by name, with what to do.  What was
     taken from where lands in ``.gathered-from`` beside the copies, so a
@@ -165,7 +167,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # stage folder's last render, which a changed template value or a
         # re-pointed junction leaves as it was -- comments and molbuilder's
         # records aside, an explicit engine default the same as none; never
-        # which molbuilder wrote it (`script_emit.engine_input_difference`).
+        # which molbuilder wrote it (`siesta.engine_input`).
         if composed is None:
             composed = composed_junction(base, task)
         now = rung_deck_now(base, task, upstream, composed,
@@ -179,7 +181,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         _run = run_of(where, stage=token)
         ran = _run.deck if _run is not None else None
         ran_text = ran.read_text() if ran is not None else None
-        differs = (_sc.engine_input_difference(ran_text, now)
+        differs = (engine_input_difference(ran_text, now)
                    if ran_text is not None else "it holds no deck")
         if differs:
             raise PrepError(
@@ -210,9 +212,10 @@ def gather_sources(base_dir, task, stage: str, *, template_text: str
     **Decided at the stage's first launch** (`job-system.md` § 6.0;
     recorded as `.gathered-from`), or at a launch that gathers anew
     (``--gather``): refused before anything is sent when an upstream is not
-    done, or ran another deck (:func:`transport_inputs`'s gates; strict
-    composition, ruling Q2).  Prep renders the decks without it: a deck is
-    the reviewable artifact, whether or not the rungs before it have run."""
+    done, or ran another engine input (:func:`transport_inputs`'s gates;
+    strict composition, ruling Q2).  Prep renders the decks without it: a
+    deck is the reviewable artifact, whether or not the rungs before it have
+    run."""
     from ..transport.stages import frames_of, rung_points
     base = Path(base_dir)
     return [(pt, transport_inputs(base, task, stage, point=pt,
@@ -238,14 +241,21 @@ def gather_into(base: Path, attempt_dir, inputs, plan, *, names: RunNames,
 def composed_junction(base, task):
     """The junction this calculation is composed from -- its record beside
     ``task.json``, for the cited junction (`composed_for_prep` writes
-    it before any rung's deck)."""
+    it before any rung's deck); read, never written: a record whose order a
+    composition in memory finds is written by prep.  A refusal of the
+    composition's is said as the gather's (:class:`PrepError`), as every
+    door that asks the gather catches it."""
     from ..projects import find_projects_root
-    from ..transport.compose import load_compose_record
+    from ..transport.compose import ComposeError, load_compose_record
+    from ..transport.sort import SortError
     why: list = []
-    composed = load_compose_record(base, citation=task.slots["junction"],
-                                   tree_root=find_projects_root(base),
-                                   why=why,
-                                   swap_electrodes=task.swap_electrodes)
+    try:
+        composed = load_compose_record(base, citation=task.slots["junction"],
+                                       tree_root=find_projects_root(base),
+                                       why=why,
+                                       swap_electrodes=task.swap_electrodes)
+    except (ComposeError, SortError) as exc:
+        raise PrepError(str(exc)) from exc
     if composed is None:
         # THE RECORD IS WRITTEN BY THE CALCULATION'S FIRST PREP, beside
         # `task.json`, and read by every prep and gather after it.

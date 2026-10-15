@@ -153,6 +153,38 @@ def job_of(base, stage: str, *, jobset=None):
     return jobset.job(stage)
 
 
+def launched_already(base, task, stage: str, *, jobset=None) -> Optional[str]:
+    """Why ``stage`` is not prepared again -- it was launched -- or ``None``
+    (`job-system.md` § 5.0, checkpoint 2a): earlier runs' facts are read
+    from the stage's job and its description (the optimizer a ``.CG``
+    follows, a swept rung's points), so its runs must keep the deck and job
+    they ran with.  The way back is the state saved before its group's first
+    launch, every run it builds on in it (`job-system.md`, *How the
+    checkpoint supports you*).  ``jobset`` is the plan as the caller read
+    it; with none it is read here."""
+    from .commands import redo_launched
+    from .materialize import ever_launched
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    plan = Path(base) / JOBSET_FILENAME
+    js = jobset if jobset is not None else (
+        JobSet.load(plan) if plan.is_file() else None)
+    job = job_of(base, stage, jobset=js) if js is not None else None
+    if job is None:
+        return None
+    from ..runrecord import LaunchRecordError
+    try:
+        launched = ever_launched(js, base, job)
+    except LaunchRecordError as exc:
+        return str(exc)
+    if not launched:
+        return None
+    return (f"stage {stage!r} was launched -- a launched stage is not "
+            f"prepared again: its runs' facts are read from its job and its "
+            f"description, so they must stay what its runs ran with "
+            f"(job-system.md § 5.0).  To change it, "
+            + redo_launched(stage, base=base, task=task))
+
+
 def first_launch_takes(base, task, stage: str, job, jobset, *,
                        template_text: Optional[str] = None,
                        from_attempt: Optional[str] = None,
@@ -592,7 +624,7 @@ def groups_text(gs: List[GroupAnswer]) -> str:
 
 
 __all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
-           "readiness", "job_of",
+           "readiness", "job_of", "launched_already",
            "first_launch_takes",
            "at_launch", "written_at_takes", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
            "groups_text"]

@@ -119,6 +119,30 @@ FROZEN_LABEL = "frozen_atoms"
 #: (``frameset``).
 XYZ_DECIMALS = 6
 
+#: HOW FAR TWO PLACES MAY STAND APART AND STILL BE ONE, in Å -- the rule two
+#: geometries are compared by, each atom and each lattice vector
+#: (:func:`farthest_apart`): far below any physics, above the rounding of a
+#: box placed again (6.6e-7 Å, measured on a real junction 2026-10-15).
+#: Asked by a recorded junction checked against its composition and by two
+#: decks' engine input (`engines/transport.md` § 1.1, § 6.1).
+SAME_PLACE_ANG = 1e-6
+
+
+def farthest_apart(a, b) -> Tuple[int, float]:
+    """``(i, d)`` of two equal-length lists of 3-vectors in Å -- atoms'
+    places, or lattice vectors: the row ``i`` that stands farthest from its
+    counterpart, and how far, ``d``; ``(-1, 0.0)`` for two empty lists.  The
+    one measure two geometries are compared by, against
+    :data:`SAME_PLACE_ANG`."""
+    apart = np.linalg.norm(np.asarray(a, dtype=float).reshape(-1, 3)
+                           - np.asarray(b, dtype=float).reshape(-1, 3),
+                           axis=1)
+    if not apart.size:
+        return -1, 0.0
+    i = int(np.argmax(apart))
+    return i, float(apart[i])
+
+
 #: THE metadata field set -- what :meth:`Structure.metadata_to_dict` writes and
 #: :meth:`Structure.apply_metadata_dict` accepts, named once so the two cannot
 #: enumerate different sets.  A dict carrying anything else is REFUSED rather

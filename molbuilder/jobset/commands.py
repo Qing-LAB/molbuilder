@@ -298,6 +298,17 @@ def way_back(stage: str, *, base, task, launched: bool) -> str:
     return redo_launched(stage, base=base, task=task)
 
 
+def order_recorded(*, base) -> str:
+    """How a transport calculation's junction whose sidecar states no order
+    record has it recorded (`engines/transport.md` § 1.1, *The first prep*):
+    `prep task`, with a group left to prepare or none, checks the junction
+    against its citation and records its order -- a sentence ending ``--``
+    and its line."""
+    return ("`prep task` records it, checking the junction against its "
+            "citation -- with a group left to prepare or none --\n"
+            + block([command("prep", *words_for(TASK), base=base)]))
+
+
 def launch_pending(stage: str, group: Optional[int], attempt: Optional[str],
                    *, base) -> List[str]:
     """The launch that sends ``stage``'s run that is opened and not launched
@@ -375,5 +386,5 @@ __all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
            "configured_mode", "stage_group", "prep_group_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",
            "block", "reason_of", "rollback", "redo_launched", "way_back",
-           "launch_pending",
+           "order_recorded", "launch_pending",
            "stage_lines", "takes_a_queue", "target_flags"]

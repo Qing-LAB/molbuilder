@@ -28,8 +28,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import numpy as np
 
 from ..cell import entering
-from ..structure import Structure
-from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
+from ..structure import SAME_PLACE_ANG, Structure, farthest_apart
+from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
                    deck_sort_key, sort_by)
 from .wizard import ElectrodeModel, extract_electrode_model
 
@@ -53,10 +53,12 @@ from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
 #: The citation kinds a record names (`engines/transport.md` § 3.1).
 CITATION_KINDS = ("run", "pair")
 
-#: The composition record's schema (`execution/job-contracts.md` § 6.1).
+#: The composition record's schema (`execution/job-contracts.md` § 6.1),
+#: stamped by its one writer (:func:`write_compose_record`).
 #: ``@2``: the junction's sidecar carries its order record, and no file of it
 #: lies beside (`model/overview.md` § 2.2a, I7).  What a record holds is
-#: asked of the files themselves, never of this name (:func:`order_unstated`).
+#: asked of the files themselves, never of this name
+#: (:func:`recorded_junction`).
 PROVENANCE_SCHEMA = "molbuilder/slot-provenance@2"
 
 
@@ -138,6 +140,12 @@ class ComposedJunction:
     #: ended and what it converged, or a cited pair's frame count — written
     #: beside the copies so a result can always say which junction built it
     provenance: Dict[str, object]
+    #: THE ORDER RECORD FOUND, NOT READ (`engines/transport.md` § 1.1, *The
+    #: first prep*): a recorded junction whose sidecar states none, checked
+    #: atom for atom against its citation composed again in memory and given
+    #: that composition's record -- which the prep that read it writes
+    #: (:func:`write_compose_record`).  ``False`` for every other junction.
+    order_found: bool = False
 
 
 def _sha256(path: Path) -> str:
@@ -747,7 +755,6 @@ def compose_junction(citation: str, *, tree_root,
         dev, prior_positions=start, ion_dir=ion_dir)
 
     provenance = {
-        "schema": PROVENANCE_SCHEMA,
         # WHICH KIND was cited (§ 3.1): it decides which files the record
         # holds (`record_files`).
         "kind": "pair" if isinstance(cited, CitedPair) else "run",
@@ -863,7 +870,10 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
                            base_dir / JUNCTION_GEOMETRY, engine_record=True)
     if composed.deck_text is not None:
         (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
-    write_json(base_dir / PROVENANCE_FILE, composed.provenance)
+    # AT THIS SCHEMA, whoever composed it: a record read back and written
+    # again holds what this molbuilder writes.
+    write_json(base_dir / PROVENANCE_FILE,
+               {**composed.provenance, "schema": PROVENANCE_SCHEMA})
 
     expected = record_files(composed.provenance["kind"])
     missing = [n for n in expected if not (base_dir / n).is_file()]
@@ -908,52 +918,56 @@ def read_provenance(base_dir) -> Optional[Dict]:
     return read_json(path) if path.is_file() else None
 
 
-def order_unstated(base_dir) -> Optional[str]:
-    """WHY THIS CALCULATION'S COMPOSED JUNCTION STATES NO ORDER -- its
-    sidecar written without the field (`atom_order`), known by what the file
-    states and never by the molbuilder that wrote it (the user, 2026-10-15:
-    "feature/format detection") -- in one sentence with its way on, or
-    ``None``: no junction composed yet, or one that states its order (null
-    for one the sort left as it was).  THE ONE CHECK, asked by every door
-    that names the junction's atoms in your order: the record's read for
-    prep and the gather, which then checks the junction against its
-    composition (:func:`load_compose_record`); the data file
-    (`datafile.write_data_file`) and a selection's PDOS
-    (`record.selection_pdos`), each saying it as it is; and the record, which
-    carries it for the report to say."""
-    from ..identity import LAUNCHED_WAY_BACK
-    from ..sidecars.molstruct import load as load_sidecar, sidecar_path_for
-    side = sidecar_path_for(Path(base_dir) / JUNCTION_GEOMETRY)
-    if not side.is_file():
+@dataclass(frozen=True)
+class RecordedJunction:
+    """The composed junction as its record holds it
+    (:func:`recorded_junction`)."""
+    #: every frame, in TranSIESTA's order, its order record from its sidecar
+    structure: Structure
+    #: WHY ITS ORDER IS NOT STATED -- its sidecar written before the field
+    #: (`model/overview.md` § 2.2a, I9) -- in one sentence, the fact alone:
+    #: each door that names the junction's atoms in your order says its own
+    #: way on.  ``None`` for a sidecar that states it (null for an order the
+    #: sort left as it was).
+    order_unstated: Optional[str]
+
+
+def recorded_junction(base_dir) -> Optional[RecordedJunction]:
+    """THE ONE READ OF THE COMPOSED JUNCTION beside ``task.json``, through the
+    codec (every frame, its order record from its sidecar), and whether that
+    sidecar states the order record at all -- known by what the file states,
+    never by the molbuilder that wrote it (the user, 2026-10-15:
+    "feature/format detection").  ``None`` before anything was composed.
+    Asked by the record's read for prep and the gather
+    (:func:`load_compose_record`), the transport record, its data file and a
+    selection's PDOS, and `prep task` with no group to prepare."""
+    from ..sidecars.molstruct import sidecar_path_for
+    from ..workingcopy_structure import StructureCodec
+    path = Path(base_dir) / JUNCTION_GEOMETRY
+    if not path.is_file():
         return None
     stated: set = set()
-    load_sidecar(side, stated_out=stated)
-    if "atom_order" in stated:
-        return None
-    return (f"the composed junction's {side.name} states no order record -- "
-            f"it was written before the field -- so its atoms stand in "
-            f"TranSIESTA's order with nothing stating the way back to yours; "
-            f"to have it recorded, prepare a group of this calculation not "
-            f"yet launched, which checks the junction against its citation, "
-            f"or go back to {LAUNCHED_WAY_BACK} and prepare it again")
-
-
-#: HOW FAR an atom or a cell vector of a junction composed again may stand
-#: from the recorded one and still be it (`engines/transport.md` § 1.1,
-#: *The first prep*): the tolerance one geometry is compared by
-#: (`engines/vibration.md` § 6.10) -- far below any physics, above the
-#: rounding of a record's text.
-SAME_PLACE_ANG = 1e-6
+    struct = StructureCodec().load(path, frames=True, stated_out=stated)
+    return RecordedJunction(
+        structure=struct,
+        order_unstated=(
+            None if "atom_order" in stated else
+            f"the composed junction's {sidecar_path_for(path).name} states "
+            f"no order record -- it was written before the field -- so its "
+            f"atoms stand in TranSIESTA's order with nothing stating the way "
+            f"back to yours"))
 
 
 def junction_difference(recorded: Structure,
                         composed: Structure) -> Optional[str]:
     """``None`` when ``composed`` is the junction ``recorded`` holds, both
     in TranSIESTA's order -- the same number of atoms and frames; atom *i*
-    the same element at the same place within :data:`SAME_PLACE_ANG` in
-    every frame; the same cell vectors within it and the same kind on each
-    axis; every label the same set of atoms -- else the first difference,
-    in words, an atom named in your order (`Structure.atoms_named`)."""
+    the same element at the same place in every frame, and the same cell
+    vectors, by the one rule two geometries are compared by
+    (`structure.farthest_apart`, `structure.SAME_PLACE_ANG`); the same kind
+    on each axis; every label the same set of atoms -- else the first
+    difference, in words, an atom named in your order
+    (`Structure.atoms_named`)."""
     if recorded.n_atoms != composed.n_atoms:
         return (f"it holds {composed.n_atoms} atoms, the record "
                 f"{recorded.n_atoms}")
@@ -966,20 +980,20 @@ def junction_difference(recorded: Structure,
                     f"holds {a}")
 
     def frames_of(s):
-        return np.asarray(s.frames if s.frames is not None
-                          else [s.positions], dtype=float)
-    apart = np.linalg.norm(frames_of(recorded) - frames_of(composed), axis=2)
-    if apart.size and float(apart.max()) > SAME_PLACE_ANG:
-        f, i = np.unravel_index(int(np.argmax(apart)), apart.shape)
-        return (f"{composed.atoms_named([int(i)])} stands "
-                f"{float(apart[f, i]):.2e} Å from its recorded place"
-                + (f" in frame {int(f)}" if recorded.n_frames > 1 else ""))
-    cells = [None if s.cell is None else np.asarray(s.cell, dtype=float)
-             for s in (recorded, composed)]
-    if (cells[0] is None) != (cells[1] is None) or (
-            cells[0] is not None
-            and float(np.abs(cells[0] - cells[1]).max()) > SAME_PLACE_ANG):
+        return s.frames if s.frames is not None else [s.positions]
+    for f, (a, b) in enumerate(zip(frames_of(recorded), frames_of(composed))):
+        i, d = farthest_apart(a, b)
+        if d > SAME_PLACE_ANG:
+            return (f"{composed.atoms_named([i])} stands {d:.2e} Å from its "
+                    f"recorded place"
+                    + (f" in frame {f}" if recorded.n_frames > 1 else ""))
+    if (recorded.cell is None) != (composed.cell is None):
         return "its cell is not the recorded one"
+    if recorded.cell is not None:
+        i, d = farthest_apart(recorded.cell, composed.cell)
+        if d > SAME_PLACE_ANG:
+            return (f"its lattice vector {i + 1} stands {d:.2e} Å from the "
+                    f"recorded one")
     if tuple(recorded.axis_kind or ()) != tuple(composed.axis_kind or ()):
         return (f"its axes are {tuple(composed.axis_kind)}, the record's "
                 f"{tuple(recorded.axis_kind)}")
@@ -1066,29 +1080,36 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                    f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} "
                    f"missing")
     deck_path = base_dir / JUNCTION_DECK
-    from ..workingcopy_structure import StructureCodec
     # THE JUNCTION, IN THE ENGINE'S ORDER, CARRIES ITS OWN ORDER RECORD in its
     # sidecar (`model/overview.md` § 2.2a, I7) -- none for an order the sort
     # left as it was.
-    dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
+    recorded = recorded_junction(base_dir)
+    dev = recorded.structure
     # ONE WHOSE SIDECAR STATES NO ORDER -- written before the field -- is
-    # checked against its composition, in memory (`engines/transport.md`
-    # § 1.1, *The first prep*): the same junction is kept as it is and given
-    # the composition's order record, its provenance at this schema; another
-    # is no record.  A launched group's runs ran on it, so it is never
-    # changed here.
-    unstated = order_unstated(base_dir)
-    if unstated:
+    # usable when its citation composed again, in memory, is the junction
+    # recorded (`engines/transport.md` § 1.1, *The first prep*): it is given
+    # that composition's order record, which the prep that read it writes
+    # (`order_found`); another, or a citation that does not compose here, is
+    # no record.
+    order_found = False
+    if recorded.order_unstated:
         if tree_root is None:
-            return _no(unstated)
-        composed = compose_junction(citation, tree_root=tree_root,
-                                    swap_electrodes=swap_electrodes)
+            return _no(f"{recorded.order_unstated}; it is checked against its "
+                       f"citation where the citation resolves, inside its "
+                       f"projects tree")
+        try:
+            composed = compose_junction(citation, tree_root=tree_root,
+                                        swap_electrodes=swap_electrodes)
+        except (ComposeError, SortError) as exc:
+            return _no(f"{recorded.order_unstated}; its citation does not "
+                       f"compose again here -- {exc}")
         differs = junction_difference(dev, composed.junction)
         if differs:
-            return _no(f"{unstated}; composed again from its citation, it is "
-                       f"not the junction recorded -- {differs}")
+            return _no(f"{recorded.order_unstated}; composed again from its "
+                       f"citation, it is not the junction recorded -- "
+                       f"{differs}")
         dev = dev.replace(atom_order=composed.junction.atom_order)
-        provenance = {**provenance, "schema": PROVENANCE_SCHEMA}
+        order_found = True
     ion_dir = None
     if tree_root is not None:
         try:
@@ -1115,4 +1136,5 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
         electrode_right=elec_r,
         deck_text=deck_text,
         provenance=provenance,
+        order_found=order_found,
     )

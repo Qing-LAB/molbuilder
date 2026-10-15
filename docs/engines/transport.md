@@ -643,29 +643,45 @@ along the wire the crystal's own repeat (§ 7.1). Nothing about a lead is typed
 by a person: it is derived from the labels (§ 4). The composition is written as
 a record beside `task.json`, and **every later prep reads that record** while
 it is for the cited junction; a prep composes afresh — and writes the record
-again — only when there is no usable one: none, one composed for another
-citation, or one that does not read (`transport_rung.composed_for_prep`).
+again — only when there is no usable one — none, one composed for another
+citation, or one that does not read — and no stage is launched (below;
+`transport_rung.composed_for_prep`).
+
 **A junction whose sidecar states no order record** — written before the
 field, `atom_order` absent — is known by what the file states, never by the
 molbuilder that wrote it *(the user, 2026-10-15: "feature/format detection")*
-([`model/overview.md`](?doc=model/overview.md) § 2.2a, I9;
-`compose.order_unstated`); a prep composes the junction again from the same
-citation and compares *(decided with the user 2026-10-15, plan UPG)*. **With a group
-already launched, the junction it ran on is never changed** *(the user: "i
-don't want to invalidate the previous calculation already launched")*: the
-prep composes the junction again in memory and compares it, in TranSIESTA's
-order, with the recorded one — the same number of atoms and frames; atom *i*
-the same element, at the same place within 10⁻⁶ Å in every frame; the same
-cell vectors within 10⁻⁶ Å and the same kind on each axis; every label the
-same set of atoms (the electrode blocks, the bridge, a buffer, the held
-atoms). **The same**: `junction.xyz` is kept as it is — its coordinates, cell
-and labels untouched — and given the new composition's order record in its
-sidecar, and `slot-provenance.json` is written at `@2`; no run folder is
-touched, and the prep saves the folder's state first, as every prep does.
-**Not the same**: the prep is refused and writes nothing, naming the first
-difference — the atom and what differs — and the state saved before the
-launched group's first launch. The launched group's runs are then taken by the
-next only when they ran the same engine input (§ 6.1's gates).
+([`model/overview.md`](?doc=model/overview.md) § 2.2a, I9; the codec's read,
+`compose.recorded_junction`). Its record is usable when the junction composed
+again from the same citation, in memory, is the recorded one *(decided with
+the user 2026-10-15, plan UPG)* — compared in TranSIESTA's order: the same
+number of atoms and frames; atom *i* the same element, at the same place
+within 10⁻⁶ Å in every frame; the same cell vectors within 10⁻⁶ Å and the same
+kind on each axis; every label the same set of atoms (the electrode blocks,
+the bridge, a buffer, the held atoms) (`compose.junction_difference`). **The
+same**: the prep writes the record again through the composition's one writer
+(`compose.write_compose_record`) — `junction.xyz` the recorded junction, its
+atoms, places, cell and labels as they were, its sidecar now stating the
+order record, and `slot-provenance.json` at `@2`; no run folder is touched,
+and the prep saves the folder's state first, as every prep does. **Not the
+same**: no usable record, the first difference named — the atom and what
+differs.
+
+**With a group launched, the recorded junction is never replaced** *(the
+user, 2026-10-15: "i don't want to invalidate the previous calculation
+already launched"; one rule for every junction, decided the same day)*: its
+runs ran on it. A prep that finds no usable record while a stage is launched
+— none, one composed for another citation or the other rename, one that does
+not read, one whose junction composed again is another — is refused and
+writes nothing, naming why and the state saved before the launched group's
+first launch; while none is launched, it composes afresh and writes the
+record. The launched group's runs are taken by the next only when they ran
+the same engine input (§ 6.1's gates).
+
+**No group left to prepare**: `prep task` with no group left to prepare records
+the order of a junction whose sidecar states none — the check above, the
+folder's state saved first, nothing else written — so a calculation an older
+molbuilder ran to its end gets its data file and its PDOS
+([`job-system.md`](?doc=execution/job-system.md) § 5.0, R-P3).
 
 #### Step 1 — the seed: the periodic density *(SIESTA; § 6.1, § 2a.15)*
 
@@ -1874,10 +1890,11 @@ junction's through its order record and its `atoms` and `outside_device` back
 axis is in your order, the composed junction restored, and the record holds
 no atom's row — its DOS is per region. A calculation whose junction's sidecar
 states no order record (written before the field) records no order until a
-prep finds it (*The first prep*): its data file and a selection's PDOS are
-refused by name, and the report says it beside
-the drawing, which lists the atoms as TranSIESTA does (the record's
-`order_unstated`) — one check, one sentence (`transport.compose.order_unstated`;
+prep finds it — `prep task`, with a group to prepare or none (*The first
+prep*): its data file and a selection's PDOS are refused by name, each naming
+that command, and the report says it beside the drawing, which lists the
+atoms as TranSIESTA does (the record's `order_unstated`) — one check, one
+fact, each door saying its own way on (`transport.compose.recorded_junction`;
 I9).
 
 The deliverable of a transport calculation is the **transmission** stage's
@@ -2531,10 +2548,10 @@ the old one, so a gather refuses until a prep composes it afresh (§ 1.1, *The
 first prep*), and a rung prepared from the old record is refused at its launch
 — the way on is to prepare every group again while none is launched, or, once
 one is, its way back ([`job-system.md`](?doc=execution/job-system.md)'s *How
-the checkpoint supports you*) — except a junction whose sidecar states no order
-record, to which a prep of the groups not yet launched adds it when a
-composition in memory is the same junction (*The first prep*); `--bias` must start at `0.0` (a list starts from
-equilibrium).
+the checkpoint supports you*): a prep never replaces a junction a launched
+group ran on, and gives one whose sidecar states no order record its record
+when a composition in memory is the same junction (*The first prep*);
+`--bias` must start at `0.0` (a list starts from equilibrium).
 
 ### 3.1 What you can cite, and what it brings
 
@@ -4122,17 +4139,23 @@ all that is changed is the comments …")*. The gather takes a run's file when
 the run computed what the deck this rung renders now would compute — the
 question is what the engine reads, never what molbuilder wrote around it.
 Both decks are read as SIESTA reads them, by the one fdf reader
-(`parse.fdf.read_fdf`):
+(`parse.fdf.read_fdf`, `parse.fdf.parse_fdf_params`), and compared by the
+SIESTA engine's own door (`siesta.engine_input.engine_input_difference`):
 
 - **comments are not input** — molbuilder's blocks among them, which record
   what molbuilder knows (the labels, the order record, the provenance, the
   stamps) and never what the engine computes;
 - **a keyword is named as fdf names it** — case, `.`, `-` and `_` aside
   (`parse.fdf.fdf_key`) — and **a value compared as a value**: a number as a
-  number (`1.0e-03` is `0.001`), a unit as written, a block row by row;
-- **every number exactly, but the geometry's**: the atomic coordinates and the
-  lattice vectors within 10⁻⁶ Å — the tolerance one geometry is compared by
-  (`engines/vibration.md` § 6.10), far below any physics and above the
+  number (`1.0e-03` is `0.001`), a logical as fdf reads it (`T` is `true`,
+  `parse.fdf.fdf_true`), a unit as written, a block row by row;
+- **every number exactly, but the geometry's**: the atoms' places and the
+  lattice vectors, read in Å as SIESTA places them — the coordinates' format,
+  `LatticeConstant` and the units folded in by the reader (`coords_ang`,
+  `cell_ang`) — each atom and each vector within 10⁻⁶ Å of the other deck's,
+  and each atom the same species: the one rule two geometries are compared by
+  (`structure.SAME_PLACE_ANG`, `structure.farthest_apart`; the composed
+  junction's check in § 1.1 asks it too), far below any physics and above the
   rounding of a box placed again (measured on a real junction, 2026-10-15:
   6.6·10⁻⁷ Å);
 - **a keyword one deck states and the other leaves out** is the same input only
@@ -4141,10 +4164,9 @@ Both decks are read as SIESTA reads them, by the one fdf reader
   § 5) — a deck that writes SIESTA's default `SCF.H.Tolerance 1.0e-03 eV`
   computes what one that leaves it to SIESTA does.
 
-Anything else that differs is another calculation, refused by name as before,
-naming the first difference — the keyword or the block row, as the run had it
-and as it renders now (`script_emit.engine_input_difference`) — never which
-molbuilder wrote the deck. So a calculation carries across an upgrade of
+Anything else that differs is another calculation, refused by name, naming
+the first difference — the keyword, the block row or the atom, as the run had
+it and as it renders now — never which molbuilder wrote the deck. So a calculation carries across an upgrade of
 molbuilder that changed only how molbuilder writes its decks. **What is compared is the run's deck against the
 deck its stage renders now — nothing else**: launch's check that a stage
 prepared and never launched is still what prep writes (`job-system.md` § 6.0,

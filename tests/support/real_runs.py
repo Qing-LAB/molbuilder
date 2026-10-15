@@ -354,22 +354,67 @@ def with_generator_version(deck: Path, version: str) -> None:
     assert written_by(deck.read_text()) == version, deck
 
 
-#: WHAT A DECK FROM BEFORE 2.10.0 IS SAID TO BE (`model/overview.md` § 2.2a,
-#: I9) -- the version :func:`as_2_9_6_wrote_it` stamps, the release the
-#: contract names, and its way out.
-PREPARED_BY_2_9_6 = ("prepared by molbuilder 2.9.6",
-                     "before 2.10.0 recorded the order a deck's atoms are in",
-                     "prepare the stage again")
+#: WHAT A DECK WHOSE BLOCK STATES NO ORDER RECORD IS SAID TO BE
+#: (`model/overview.md` § 2.2a, I9) -- known by what the block states, and
+#: its way out.
+DECK_STATES_NO_ORDER = ("atom-metadata block states no order record",
+                        "written before the field",
+                        "prepare the stage again")
+
+
+def decks_as_written_by(decks, version: str, block_schema: int, *,
+                        without=()) -> None:
+    """Each of ``decks`` as molbuilder ``version`` wrote it: its
+    ATOM-METADATA block, where it has one, at ``block_schema`` with no order
+    record; the keyword lines ``without`` names absent -- what a later
+    release states and that one left to the engine; its PROVENANCE block
+    stamped ``version``."""
+    import re
+
+    from molbuilder.deck_record import extract_atom_metadata
+    for deck in sorted(decks):
+        text = deck.read_text()
+        for keyword in without:
+            text = re.sub(rf"(?m)^{re.escape(keyword)}\b.*\n", "", text)
+        deck.write_text(text)
+        if extract_atom_metadata(text) is not None:
+            with_atom_metadata(deck, lambda block: (
+                block.pop("atom_order"),
+                block.update(schema_version=block_schema)))
+        with_generator_version(deck, version)
+
+
+def every_deck(copy: RealRun) -> set:
+    """Every deck of ``copy`` -- a transport calculation -- each stage's own
+    and each of its runs', a run's at each of its points
+    (`transport.stages.points_in`), asked of the run door (`runs.run_of`)."""
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.paths import attempt_dir, attempts_in
+    from molbuilder.runfiles import TASK_FILE
+    from molbuilder.runs import run_of
+    from molbuilder.task import read_task
+    from molbuilder.transport.stages import points_in
+    task = read_task(copy.bundle / TASK_FILE)
+    decks = set()
+    for st in task.stages:
+        home = stage_home(copy.bundle, task, st.name)
+        for n in attempts_in(home.dir):
+            run = attempt_dir(home.dir, n)
+            for place in ([p for p, _pt in points_in(run, task, st.name,
+                                                      base=copy.bundle)]
+                          or [run]):
+                ran = run_of(place, stage=home.token)
+                if ran is not None:
+                    decks |= {d for d in (ran.deck, ran.stage_deck)
+                              if d is not None}
+    return decks
 
 
 def as_2_9_6_wrote_it(copy: RealRun) -> None:
-    """Every deck of ``copy``'s `relax` stage as molbuilder 2.9.6 wrote it --
-    that version's stamp, and its ATOM-METADATA block at schema 13, with no
-    order record (`model/overview.md` § 2.2a, I9)."""
-    for deck in relax_decks(copy):
-        with_atom_metadata(deck, lambda block: (
-            block.pop("atom_order"), block.update(schema_version=13)))
-        with_generator_version(deck, "2.9.6")
+    """Every deck of ``copy``'s `relax` stage as molbuilder 2.9.6 wrote it
+    (:func:`decks_as_written_by`): its ATOM-METADATA block at schema 13, with
+    no order record (`model/overview.md` § 2.2a, I9)."""
+    decks_as_written_by(relax_decks(copy), "2.9.6", 13)
 
 
 def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
@@ -378,44 +423,36 @@ def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
     return copy_of(run, "before-2.10.0", as_2_9_6_wrote_it)
 
 
-def as_2_8_0_left_it(copy: RealRun, stages) -> None:
+def as_2_8_0_left_it(copy: RealRun) -> None:
     """``copy`` -- a transport calculation -- as molbuilder 2.8.0 left it
-    (`AuBDTAu/transport/lowbias_local`, read 2026-10-15): every deck of its
-    ``stages`` (each run's and the stage's own) without the engine default
-    later releases state (`SCF.H.Tolerance`), its ATOM-METADATA block at
-    schema 13 with no order record, stamped 2.8.0; its composed junction's
-    sidecar written before the field (`atom_order` absent, schema 13); its
-    composition record at `slot-provenance@1`."""
-    import re
+    (`AuBDTAu/transport/lowbias_local`, read 2026-10-15): every deck
+    (:func:`every_deck`) without the engine default later releases state
+    (`SCF.H.Tolerance`), its ATOM-METADATA block at schema 12 with no order
+    record, stamped 2.8.0 (:func:`decks_as_written_by`); its composed
+    junction's sidecar at schema 12 -- no order record, and the file's
+    `structure_hash` where later ones pin `geometry_hash`; the order record
+    in `atom-permutation.json` beside it; its composition record at
+    `slot-provenance@1`.  Its decks' coordinates are this release's own:
+    2.8.0 placed the box to within 6.6e-7 Å of them, which no copy
+    reproduces, so the 10⁻⁶ Å of the same engine input is held by review."""
+    import hashlib
 
-    from molbuilder.deck_record import extract_atom_metadata
-    from molbuilder.jobset.materialize import stage_home
     from molbuilder.persist import write_json
-    from molbuilder.runfiles import (JUNCTION_FILE, SLOT_PROVENANCE_FILE,
-                                     TASK_FILE)
-    from molbuilder.runs import run_of
+    from molbuilder.runfiles import JUNCTION_FILE, SLOT_PROVENANCE_FILE
     from molbuilder.sidecars.molstruct import dumps, load, sidecar_path_for
-    from molbuilder.task import read_task
     from molbuilder.transport.compose import read_provenance
-    task = read_task(copy.bundle / TASK_FILE)
-    decks = set()
-    for stage in stages:
-        home = stage_home(copy.bundle, task, stage).dir
-        for attempt in sorted(home.glob("run-*")):
-            ran = run_of(attempt)
-            decks |= {ran.deck, ran.stage_deck}
-    for deck in sorted(d for d in decks if d is not None):
-        deck.write_text(re.sub(r"(?m)^SCF\.H\.Tolerance\b.*\n", "",
-                               deck.read_text()))
-        if extract_atom_metadata(deck.read_text()) is not None:
-            with_atom_metadata(deck, lambda block: (
-                block.pop("atom_order", None),
-                block.update(schema_version=13)))
-        with_generator_version(deck, "2.8.0")
-    side = sidecar_path_for(copy.bundle / JUNCTION_FILE)
+    decks_as_written_by(every_deck(copy), "2.8.0", 12,
+                        without=("SCF.H.Tolerance",))
+    junction = copy.bundle / JUNCTION_FILE
+    side = sidecar_path_for(junction)
     payload = load(side)
-    payload.pop("atom_order")
-    side.write_text(dumps({**payload, "schema_version": 13}))
+    order = payload.pop("atom_order")
+    payload.pop("geometry_hash")
+    side.write_text(dumps({
+        **payload, "schema_version": 12,
+        "structure_hash": hashlib.sha256(junction.read_bytes()).hexdigest()}))
+    write_json(copy.bundle / "atom-permutation.json",
+               {"schema": "molbuilder/atom-permutation@1", **order})
     write_json(copy.bundle / SLOT_PROVENANCE_FILE,
                {**read_provenance(copy.bundle),
                 "schema": "molbuilder/slot-provenance@1"})

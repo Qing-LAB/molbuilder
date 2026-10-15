@@ -1143,6 +1143,13 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
         # each prepared, launched or waiting, then which to prepare --
         # answered here, or by --group.
         groups, asked = _ask_which_groups(base, list(groups))
+        if not groups:
+            from .prep import record_junction_order
+            try:
+                click.echo(record_junction_order(base))
+            except PrepError as e:
+                raise click.ClickException(str(e))
+            return
     allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
                         gres=gres, time=time_, mem=mem,
                         max_memory_mb=max_memory_mb, domain=domain)
@@ -1251,7 +1258,9 @@ def _ask_which_groups(base, named) -> tuple:
     Enter's answer (`ready.prep_offer`), the question and its answer
     ``asked``, which the entry writes down after its save.  With
     nobody to ask, refused, naming the line that picks them; with none to
-    offer, refused, the groups saying why."""
+    offer, refused, the groups saying why -- or, a transport calculation's
+    junction whose sidecar states no order record, ``([], None)``: its
+    order is recorded, no group prepared (`prep.record_junction_order`)."""
     from ..task import FILENAME
     from .ask import choose
     from .commands import block, prep_group_lines
@@ -1283,6 +1292,14 @@ def _ask_which_groups(base, named) -> tuple:
         return list(named), None
     pre = state.prep_offer
     if not pre:
+        # NO GROUP LEFT TO PREPARE, A JUNCTION'S ORDER TO RECORD
+        # (`engines/transport.md` § 1.1, *No group left to prepare*): `prep
+        # task` records it, preparing nothing (`prep.record_junction_order`).
+        from ..transport.compose import recorded_junction
+        recorded = recorded_junction(base)
+        if recorded is not None and recorded.order_unstated:
+            click.echo(text)
+            return [], None
         raise _refuse(
             text + "\nno group to prepare -- each one above is prepared or "
             "launched, or waits for what it says.  A group prepared and "

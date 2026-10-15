@@ -336,17 +336,10 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
 #  What a run declared about its atoms (B12)                            #
 # --------------------------------------------------------------------- #
 
-#: THE RELEASE THAT BEGAN RECORDING THE ORDER A DECK'S ATOMS ARE IN
-#: (`model/overview.md` § 2.2a, I9): a deck written by an older molbuilder,
-#: for a kind that reorders, states no order record though its atoms may be
-#: in the engine's order.
-ORDER_RECORDED_SINCE = "2.10.0"
-
-
 class OrderUnstated(ValueError):
     """A RUN WHOSE ORDER NOTHING STATES, refused by a door that builds from
-    it (`model/overview.md` § 2.2a, I9): its deck was written before the
-    order was recorded, for a kind that reorders.  The message is
+    it (`model/overview.md` § 2.2a, I9): its deck's atom-metadata block was
+    written before the order record, for a kind that reorders.  The message is
     :attr:`Declared.order_unstated`'s sentence; a door that only shows the
     run says that sentence instead, a notice
     (`workingcopy_structure.ORDER_UNSTATED`)."""
@@ -461,23 +454,22 @@ def declared(run: Run) -> Declared:
         order = said.atom_order
     except DeckRecordUnreadable as exc:
         raise DeckRecordUnreadable(f"{deck}: {exc}") from exc
-    # A DECK WRITTEN BEFORE THE RULE (I9): known by its own version, for a
-    # kind that reorders -- never by a file found beside it.
-    if order is None and _reorders(run):
-        from molbuilder.script_emit import molbuilder_words, written_by
-        from molbuilder.template import version_key
-        version = written_by(text)
-        if version_key(version) < version_key(ORDER_RECORDED_SINCE):
-            by = molbuilder_words(version)
-            said = Declared(
-                deck=deck, atom_metadata=said.atom_metadata,
-                engine_offset=said.engine_offset,
-                order_unstated=(
-                    f"{deck.name} was prepared by {by}, before "
-                    f"{ORDER_RECORDED_SINCE} recorded the order a deck's "
-                    f"atoms are in: this run's atoms may be in the engine's "
-                    f"order, and nothing states it -- prepare the stage "
-                    f"again to have it recorded"))
+    # A DECK WRITTEN BEFORE THE RULE (I9), for a kind that reorders: known by
+    # what its block states, never by the molbuilder that wrote it (the user,
+    # 2026-10-15: "feature/format detection") nor by a file found beside it.
+    # A block written since states `atom_order` for every structure, null in
+    # your order; a deck with no block wrote no label, so its sort had
+    # nothing to move.
+    block = said.atom_metadata
+    if (order is None and block is not None and "atom_order" not in block
+            and _reorders(run)):
+        said = Declared(
+            deck=deck, atom_metadata=block, engine_offset=said.engine_offset,
+            order_unstated=(
+                f"{deck.name}'s atom-metadata block states no order record "
+                f"-- it was written before the field -- so this run's atoms "
+                f"may be in the engine's order, and nothing states it -- "
+                f"prepare the stage again to have it recorded"))
     return said
 
 
@@ -871,7 +863,7 @@ def folder_answer(directory) -> Dict[str, Any]:
 
 
 __all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
-           "declared", "ORDER_RECORDED_SINCE", "OrderUnstated", "RunView",
+           "declared", "OrderUnstated", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
            "openable", "folder_answer"]

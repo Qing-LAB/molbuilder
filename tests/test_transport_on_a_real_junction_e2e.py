@@ -582,21 +582,42 @@ def junction(tmp_path_factory):
 
         # A CALCULATION CARRIED ACROSS AN UPGRADE (`engines/transport.md`
         # § 1.1, *The first prep*; § 6.1, *the same engine input*; plan UPG):
-        # the single voltage's copy as molbuilder 2.8.0 left it, its
-        # transmission -- never launched -- prepared now and its launch asked
-        # dry.
+        # the single voltage's copy as molbuilder 2.8.0 left it -- every
+        # group prepared, its transmission never launched, as
+        # `AuBDTAu/transport/lowbias_local` was -- its junction's order
+        # recorded by `prep task` with no group left to prepare, its
+        # transmission prepared again and its launch asked dry.
         from molbuilder.runfiles import JUNCTION_FILE
+        from support.real_runs import _files as every_file
         from support.real_runs import as_2_8_0_left_it, copy_of
-        older = copy_of(single, "as-left-by-2-8-0",
-                        lambda c: as_2_8_0_left_it(
-                            c, ("seed", "electrode_L", "electrode_R",
-                                "device")))
+
+        def left_by_2_8_0(c):
+            _taken(c, "prep transmission as 2.8.0 did", "prep", "task",
+                   *group_words(c.bundle, "transmission"), "--target",
+                   "this")
+            as_2_8_0_left_it(c)
+        older = copy_of(single, "as-left-by-2-8-0", left_by_2_8_0)
         run.junction_as_left = (older.bundle / JUNCTION_FILE).read_bytes()
+        run.files_as_left = every_file(older.bundle)
+        _typed(older, "record order", "prep", "task")
+        run.files_recorded = every_file(older.bundle)
         _typed(older, "prep transmission", "prep", "task",
                *group_words(older.bundle, "transmission"), "--target", "this")
         _typed(older, "launch transmission dry", "launch", "task", "--stage",
                "transmission", "--mode", "direct", "--dry-run", "--yes")
         run.older = older
+        # ...AND ONE WHOSE MESH CHANGED after its device ran: its
+        # transmission prepared now, its launch asked dry.
+        changed = copy_of(single, "mesh-changed", lambda c: (
+            _set_by_the_person(c.bundle / "S.template.toml", "mesh_cutoff",
+                               160.0),
+            _taken(c, "prep transmission", "prep", "task",
+                   *group_words(c.bundle, "transmission"), "--target",
+                   "this")))
+        _typed(changed, "launch transmission dry", "launch", "task",
+               "--stage", "transmission", "--mode", "direct", "--dry-run",
+               "--yes")
+        run.changed = changed
 
         # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
         # the good set with one change each, cited at `jobset init`, the door
@@ -735,8 +756,9 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(
     before the field, as 2.8.0 left it) is refused by name by the doors that
     name the junction's atoms in your order until a prep records it --
     `summarize task`'s data file and the report's PDOS -- and the record the
-    report draws by carries the sentence (`model/overview.md` § 2.2a, I9;
-    `execution/job-contracts.md` § 6.1)."""
+    report draws by carries the sentence, each naming `prep task`, which
+    records it (`model/overview.md` § 2.2a, I9; `engines/transport.md`
+    § 1.1)."""
     from molbuilder.transport.compose import (compose_junction,
                                               load_compose_record,
                                               write_compose_record)
@@ -765,17 +787,20 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(
     from support.real_runs import as_2_8_0_left_it, copy_of
     from support.road import jobset
     stated = "states no order record"
-    old = copy_of(junction, "as-left-by-2-8-0",
-                  lambda c: as_2_8_0_left_it(c, ()))
+    way_on = "molbuilder jobset prep task --bundle"
+    old = copy_of(junction, "as-left-by-2-8-0", as_2_8_0_left_it)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
     r = jobset("summarize", "task", "--bundle", old.bundle)
-    assert r.exit_code != 0 and stated in r.output, r.output
+    assert r.exit_code != 0, r.output
+    assert stated in r.output and way_on in r.output, r.output
     client = create_app(config={}).test_client()
     got = client.get(f"/api/transport/pdos?path={old.bundle}&point=0"
                      f"&atoms=0&orbitals=all")
-    assert got.status_code == 400 and stated in got.get_json()["error"]
+    error = got.get_json()["error"]
+    assert got.status_code == 400 and stated in error and way_on in error
     rec_said = client.get(f"/api/transport/record?path={old.bundle}")
-    assert stated in rec_said.get_json()["record"]["order_unstated"]
+    said = rec_said.get_json()["record"]["order_unstated"]
+    assert stated in said and way_on in said, said
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -1002,31 +1027,62 @@ def test_every_rung_of_the_junction_states_its_order(junction):
 
 def test_a_calculation_left_by_an_older_molbuilder_goes_on(junction):
     """`engines/transport.md` § 1.1 *The first prep* and § 6.1 *the same
-    engine input* (plan UPG): a transport calculation molbuilder 2.8.0 left
-    with its seed, leads and device launched -- its decks without the engine
-    default later releases state and without the order record, its
-    junction's sidecar without the field -- goes on.  The prep of its
-    transmission, never launched, finds the junction's order by composing it
-    again in memory and comparing it atom for atom: `junction.xyz` kept byte
-    for byte, the order record stated in its sidecar.  The transmission's
-    launch takes the device's newest run, which ran what the device renders
-    now in everything the engine reads.  Known by what the files state,
-    never by the molbuilder that wrote them.  The silent failures it guards:
-    a launched calculation refused for comments and a stated default, a
-    launched junction rewritten, or one whose order nothing states going on
-    as yours."""
-    from molbuilder.runfiles import JUNCTION_FILE
+    engine input* (plan UPG): a transport calculation as molbuilder 2.8.0
+    left it -- its seed, leads and device launched, its transmission
+    prepared; its decks without the engine default later releases state and
+    without the order record, its junction's sidecar without the field --
+    goes on.  `prep task` with no group left to prepare finds the junction's
+    order by composing it again in memory and comparing it atom for atom,
+    and records it: `junction.xyz` as it was, the order record stated in its
+    sidecar, the provenance at `@2`, no run folder touched.  The
+    transmission, prepared again, launches taking the device's newest run,
+    which ran what the device renders now in everything the engine reads.
+    The silent failures it guards: a launched calculation refused for
+    comments and a stated default, a launched junction or its runs
+    rewritten, or one whose order nothing states going on as yours."""
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.runfiles import JUNCTION_FILE, TASK_FILE
+    from molbuilder.task import read_task
+    from molbuilder.transport.compose import read_provenance
     from molbuilder.workingcopy_structure import StructureCodec
     older = junction.older
-    said = older.said["prep transmission"]
+    said = older.said["record order"]
     assert said.exit_code == 0, said.output
+    assert "order recorded" in said.output, said.output
     assert (older.bundle / JUNCTION_FILE).read_bytes() \
         == junction.junction_as_left
     kept = StructureCodec().load(older.bundle / JUNCTION_FILE)
     assert kept.atom_order is not None and kept.atom_order.to_dict() == _CHAIN
-    said = older.said["launch transmission dry"]
+    assert read_provenance(older.bundle)["schema"] == \
+        "molbuilder/slot-provenance@2"
+    task = read_task(older.bundle / TASK_FILE)
+    homes = [str(stage_home(older.bundle, task, st.name).dir.relative_to(
+        older.bundle)) for st in task.stages]
+    touched = sorted(f for f in set(junction.files_as_left)
+                     | set(junction.files_recorded)
+                     if f.split("/")[0] in homes
+                     and junction.files_as_left.get(f)
+                     != junction.files_recorded.get(f))
+    assert not touched, touched
+    for step in ("prep transmission", "launch transmission dry"):
+        said = older.said[step]
+        assert said.exit_code == 0, f"{step}: {said.output}"
     newest = older.attempt("device", 2).relative_to(older.bundle)
-    assert said.exit_code == 0 and str(newest) in said.output, said.output
+    assert str(newest) in said.output, said.output
+
+
+def test_a_run_of_another_engine_input_is_not_taken(junction):
+    """`engines/transport.md` § 6.1, *the same engine input*: a transport
+    rung's launch takes an upstream run only when it ran what the upstream
+    renders now.  The single voltage's copy with its mesh changed after its
+    device ran: the transmission's dry launch is refused, naming the
+    keyword.  The silent failure: the transmission integrating a device
+    Hamiltonian computed on another mesh -- which the upgrade's own test,
+    where every comparison comes out the same, cannot see."""
+    said = junction.changed.said["launch transmission dry"]
+    assert said.exit_code != 0, said.output
+    assert "MeshCutoff" in said.output and "device" in said.output, \
+        said.output
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):
@@ -1170,7 +1226,7 @@ def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     geometry; `status` counts the points with their axes, *k of N points
     done (F frames × V voltages)*."""
     from molbuilder.task import read_task
-    from molbuilder.transport.record import composed_junction
+    from molbuilder.transport.compose import recorded_junction
     run = junction.from_pair
     label = read_task(run.bundle / "task.json").label
     for f in range(_N_FRAMES):
@@ -1181,7 +1237,8 @@ def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     # Against frame 0's point at the same voltage, each frame's point moved
     # its atoms as the composed set's own frame moves them -- the deck's
     # atom order -- and by nothing else.
-    composed = np.asarray(composed_junction(run.bundle).frames, dtype=float)
+    composed = np.asarray(recorded_junction(run.bundle).structure.frames,
+                          dtype=float)
     for v in _BIAS:
         at_0 = _the_geometry_it_ran(_frame_point(run, "04_device", 0, v))
         for f in range(1, _N_FRAMES):

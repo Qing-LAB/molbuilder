@@ -396,20 +396,21 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     import netCDF4
     from ..frameset import STRUCTURE_ROWS, read as read_frame_set
     from ..persist import write_bytes
-    from .record import composed_junction
+    from .compose import recorded_junction
+    from .record import order_unstated_said
     from .stages import (TRANSPORT_STAGES, frame_token, frames_of,
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
     base = Path(base_dir)
     # THE ATOM AXIS IN YOUR ORDER (`model/overview.md` § 2.2a, I1): the
     # composed junction, in the engine's order, restored through its record
-    # -- which a record composed before 2.10.0 does not state (I9).
-    from .compose import order_unstated
-    unstated = order_unstated(base)
+    # -- which a junction whose sidecar states none does not hold (I9).
+    recorded = recorded_junction(base)
+    unstated = order_unstated_said(base, recorded)
     if unstated:
         raise DataFileError(unstated)
-    junction = composed_junction(base)
-    junction = junction.restored() if junction is not None else None
+    junction = (recorded.structure.restored() if recorded is not None
+                else None)
     frame_set = read_frame_set(junction) if junction is not None else None
     n_frames = frames_of(base)
     biases = _voltages(pt.bias_v for pt in rung_points(

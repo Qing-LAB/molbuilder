@@ -273,7 +273,7 @@ manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "float"
 value = 0.001
 default = 0.001
-engine_default = 0.001
+engine_default = { value = 0.001, source = "SIESTA 5.4.2 read_options.F90: dHtol = fdf_get('SCF.H.Tolerance', 1.e-3_dp*eV, 'Ry')" }
 unit = "eV"
 range = [1e-06, 0.1]
 tightens = "down"

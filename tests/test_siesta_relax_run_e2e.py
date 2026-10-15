@@ -343,8 +343,9 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
 #   first oxygen, with nothing to say so;
 # * a copy, its decks as molbuilder 2.9.6 wrote them -- their stamp, and the
 #   ATOM-METADATA block at schema 13 with no order record (I9) -- the silent
-#   failure: a run of a kind that reorders, made before 2.10.0, shown or
-#   built from as if its atoms were in your order.  A door that builds
+#   failure: a run of a kind that reorders, its deck's block written before
+#   the order record, shown or built from as if its atoms were in your
+#   order.  A door that builds
 #   refuses it by name, a door that shows it says so -- once.
 
 #: The viewer's mark of a structure in this order (`web/molview.md` § 6.2).
@@ -356,12 +357,12 @@ _ORDER_NOTICES = ("structure.restored", "structure.order_unstated")
 
 
 def _says_unstated(got, row) -> None:
-    """I9's one sentence, said once: who prepared the deck, the release
-    that began recording the order, and the way out
-    (`support/real_runs.PREPARED_BY_2_9_6`)."""
-    from support.real_runs import PREPARED_BY_2_9_6
-    assert all(part in got.text for part in PREPARED_BY_2_9_6), got.text
-    assert got.text.count(PREPARED_BY_2_9_6[1]) == 1, got.text
+    """I9's one sentence, said once: what the deck's block states, that it
+    was written before the field, and the way out
+    (`support/real_runs.DECK_STATES_NO_ORDER`)."""
+    from support.real_runs import DECK_STATES_NO_ORDER
+    assert all(part in got.text for part in DECK_STATES_NO_ORDER), got.text
+    assert got.text.count(DECK_STATES_NO_ORDER[1]) == 1, got.text
 
 
 def _says_restored(got, row) -> None:

@@ -297,14 +297,14 @@ class Item:
     #: anchors through fdf's own ``labeleq`` normalisation, which is how
     #: ``SaveHS`` finds the entry the manual spells ``Save.HS``.
     manual: str = ""
-    #: THE ENGINE'S OWN VALUE for this keyword, read from its source, on an
-    #: item whose keyword one deck may state and another leave to the engine
-    #: (`engines/template.md` § 5): a keyword one deck states at this value
-    #: and the other leaves out is the same engine input
-    #: (`script_emit.engine_input_difference`).  Not ``default``, which is
-    #: molbuilder's own.  A catalogue fact, never written into a calculation's
-    #: template.
-    engine_default: Any = None
+    #: THE ENGINE'S OWN VALUE for this keyword, and the line of its source
+    #: that sets it -- ``(value, source)``, on an item whose keyword one deck
+    #: may state and another leave to the engine (`engines/template.md` § 5):
+    #: a keyword one deck states at this value and the other leaves out is
+    #: the same engine input (`siesta.engine_input`).  Not ``default``, which
+    #: is molbuilder's own.  A catalogue fact, never written into a
+    #: calculation's template.  Empty: none stated.
+    engine_default: Tuple[Any, ...] = ()
 
     # --- bounds and presentation ---
     #: Required when type == "enum".  A member is a string or a WHOLE NUMBER
@@ -1592,6 +1592,27 @@ def _above_from(name: str, body: Mapping, type_: str,
     return (bound, why.strip())
 
 
+def _engine_default_from(name: str, body: Mapping, type_: str,
+                         choices) -> Tuple[Any, ...]:
+    """An item's ``engine_default`` (§ 5), ``(value, source)``: the engine's
+    own value for its keyword -- passing the item's own type, as ``value``
+    and ``default`` do (:func:`_check_raw_value`) -- and the line of the
+    engine's source that sets it."""
+    raw = body.get("engine_default")
+    if raw is None:
+        return ()
+    source = raw.get("source") if isinstance(raw, Mapping) else None
+    if (not isinstance(raw, Mapping) or set(raw) != {"value", "source"}
+            or not isinstance(source, str) or not source.strip()):
+        _refuse("`engine_default` is the engine's own value and the line of "
+                "its source that sets it, e.g. engine_default = { value = "
+                "0.001, source = \"read_options.F90: fdf_get('SCF.H."
+                "Tolerance', 1.e-3_dp*eV, 'Ry')\" }", where=name)
+    _check_raw_value(name, "engine_default", raw["value"], type_,
+                     tuple(choices) if choices else None)
+    return (_shape(raw["value"], type_), source.strip())
+
+
 def recommended_for(item: "Item", calculation: str) -> Any:
     """The value ``item`` recommends for ``calculation``, or ``None``."""
     for kind, v in item.recommended:
@@ -1767,7 +1788,7 @@ def _item_from(name: str, body: Any) -> Item:
         anchor=str(body.get("anchor", "") or ""),
         engine_key=str(body.get("engine_key", "") or ""),
         manual=str(body.get("manual", "") or ""),
-        engine_default=_shape(body.get("engine_default"), type_),
+        engine_default=_engine_default_from(name, body, type_, choices),
         expands=tuple(body.get("expands", ()) or ()),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),
