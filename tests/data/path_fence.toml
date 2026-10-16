@@ -86,6 +86,16 @@ name = "params.psml_lib"
 request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
 status = 200
 refusal = ["may not contain '..'"]
+[[route.path]]
+where = "json"
+name = "params.psml_lib"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_dir}" } } }
+status = 200
+[[route.path]]
+where = "json"
+name = "params.psml_lib"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{link_out_from_root}" } } }
+status = 200
 
 [[route]]
 rule = "/api/build/schema/<engine>"
@@ -496,6 +506,14 @@ where = "json"
 name = "params.psml_lib"
 request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
 refusal = ["may not contain '..'"]
+[[route.path]]
+where = "json"
+name = "params.psml_lib"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_dir}" } } }
+[[route.path]]
+where = "json"
+name = "params.psml_lib"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{link_out_from_root}" } } }
 
 [[route]]
 rule = "/api/task-setup/machines"
@@ -551,6 +569,7 @@ request = { json = { engine = "siesta", junction = "{outside_dir}", dest = "{ins
 where = "json"
 name = "junction"
 request = { json = { engine = "siesta", junction = "{outside_by_climbing}", dest = "{inside_dir}" } }
+refusal = ["may not contain '..'"]
 [[route.path]]
 where = "json"
 name = "junction"
@@ -571,6 +590,7 @@ request = { query = { path = "{outside_dir}" } }
 where = "query"
 name = "path"
 request = { query = { path = "{outside_by_climbing}" } }
+refusal = ["may not contain '..'"]
 [[route.path]]
 where = "query"
 name = "path"
@@ -603,6 +623,7 @@ request = { query = { engine = "siesta", junction = "{outside_dir}" } }
 where = "query"
 name = "junction"
 request = { query = { engine = "siesta", junction = "{outside_by_climbing}" } }
+refusal = ["may not contain '..'"]
 [[route.path]]
 where = "query"
 name = "junction"

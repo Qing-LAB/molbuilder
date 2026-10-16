@@ -71,13 +71,11 @@ def test_each_tab_comes_back_to_its_own_folder_and_file(
         return page.locator(f'.ps-entry[data-path="{path}"]')
 
     def shows(folder, file):
-        """The sidebar on ``folder``, ``file`` picked: its row marked and the
-        selection line naming it."""
+        """The sidebar on ``folder``, ``file`` picked: its row marked
+        (`projects.md` § 4: *"The selected file's row is highlighted"*)."""
         expect(page.locator(".ps-crumb.is-current")).to_have_attribute(
             "title", str(folder))
         expect(row(file)).to_have_class(re.compile(r"\bis-selected\b"))
-        expect(page.locator("#ps-actions .ps-selection")).to_have_attribute(
-            "title", str(file))
 
     page.goto(f"{flask_server}/structure-optimization")
     row(proj).click()

@@ -816,9 +816,10 @@ class TestSendToTaskSetup:
             before_send(page)
         page.locator("#send-to-task-setup").click()
 
-    def _sent(self, page, dest):
+    def _sent(self, page, dest, *, frames=False):
         """Send to Task setup, and the structure the hand-over written into
-        ``dest`` names, read back through the codec."""
+        ``dest`` names, read back through the codec -- every frame it holds
+        with ``frames``."""
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         page.locator("#send-to-task-setup").click()
@@ -827,7 +828,8 @@ class TestSendToTaskSetup:
             "      .textContent.includes('Wrote')",
             timeout=10_000)
         over = _json.loads((dest / "task.1st.json").read_text())
-        return StructureCodec().load(dest / over["structure"]["source"])
+        return StructureCodec().load(dest / over["structure"]["source"],
+                                     frames=frames)
 
     def test_send_writes_the_handover_into_the_selected_folder(
             self, page, flask_server, tmp_path, monkeypatch):
@@ -1053,6 +1055,10 @@ class TestSendToTaskSetup:
             "() => [window.molbuilder.projects.getCurrentDir(),"
             "       window.molbuilder.projects.getCurrentFile()]")
         assert picked == [str(dest), str(plain)], picked
+        # Whatever the clicks began has ended before the Send asks the
+        # viewer: a load a single click started would be on screen by now.
+        from playwright.sync_api import expect
+        expect(page.locator("#load-status")).not_to_contain_text("Loading")
 
         sent = self._sent(page, dest)
         assert sent.frozen_atoms == [0], (
@@ -1081,7 +1087,8 @@ class TestSendToTaskSetup:
 
         MUTATIONS THIS MUST FAIL AGAINST: the structure copied once, when
         the file loaded, and sent from the copy; `exportFile` answering the
-        first frame, or the last, whatever is on screen."""
+        first frame, or the last, whatever is on screen; or every frame from
+        the one on screen to the last."""
         from conftest import write_pseudos
         import numpy as np
         calc = (isolated_projects_root / "proj" / "opt" / "scan").resolve()
@@ -1104,7 +1111,9 @@ class TestSendToTaskSetup:
         page.get_by_role("button", name="Next frame").click()
         expect(counter).to_have_text("2 / 3")
 
-        sent = self._sent(page, calc)
+        sent = self._sent(page, calc, frames=True)
+        assert sent.n_frames == 1, (
+            f"the Send wrote {sent.n_frames} frames; the one on screen is one")
         assert np.allclose(sent.positions, frames[1], atol=1e-5), (
             "the Send wrote another frame than the one on screen: "
             f"{sent.positions.tolist()}")

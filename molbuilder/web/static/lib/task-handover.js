@@ -184,11 +184,6 @@
         const req = {
             engine:    o.engine,
             name:      (dest.split("/").filter(Boolean).pop() || ""),
-            // No `structure_path`: the projects sidebar's selected file
-            // would be a SECOND fact read at a second moment --
-            // `molview.md` § 9.3a's rule is that the facts which leave
-            // together were read together.  The server names the files
-            // it writes from the structure that is right here in this body.
         };
         /* THE KIND RIDES EVERY HAND-OVER, stated by the tab that sends it
          * -- the server refuses one with none (2026-10-06). */

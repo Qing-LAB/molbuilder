@@ -117,9 +117,10 @@ CONVENTIONAL_LIBRARY = "pseudopotential"
 
 
 class PsmlLibError(ValueError):
-    """A ``psml_lib`` spelling the rule cannot answer -- dotted, or an
-    absolute path outside the projects tree.  The message teaches the
-    rule; callers surface it verbatim in their own refusal type."""
+    """A ``psml_lib`` spelling the rule cannot answer -- a ``./`` one, one
+    with a ``..`` in it, or one that lands outside the projects tree,
+    absolute or through a link.  The message teaches the rule; callers
+    surface it verbatim in their own refusal type."""
 
 
 def resolve_psml_lib(raw: str, *,
@@ -137,9 +138,9 @@ def resolve_psml_lib(raw: str, *,
         ``projects_root()`` when there is no calculation yet (``base``
         overrides it, for tests and other trees);
       * an ABSOLUTE path is accepted as a convenience spelling of the
-        same fact; either spelling must lie INSIDE that tree -- a relative
-        one with a ``..`` inside it may not climb out -- and is refused
-        otherwise;
+        same fact; either spelling must lie INSIDE that tree, and is
+        refused otherwise -- and a ``..`` is refused in any spelling, inside
+        or out, before anything resolves it;
       * the ``./`` / ``../`` spellings are refused: pseudopotentials
         already beside the calculation are used without this field (prep
         adopts them).
@@ -169,8 +170,8 @@ def resolve_psml_lib(raw: str, *,
         tree = base if base is not None else projects_root()
 
     # INSIDE THE TREE, either spelling -- an absolute one, or a relative one
-    # measured from the root, which a `..` inside it may still climb out of:
-    # the one fence decides (`projects.contain`).
+    # measured from the root -- and no `..` in either: the one fence decides
+    # (`projects.contain`).
     named = p if p.is_absolute() else tree / p
     try:
         contain(named, tree)

@@ -112,8 +112,6 @@ def test_img_serves_a_real_docs_image(client):
 @pytest.mark.parametrize("bad", [
     "../design.md",                   # docs/ file OUTSIDE img/ (the old hole)
     "../toc.json",                    # ditto — served pre-hardening
-    "../../molbuilder/cli.py",        # repo escape
-    "../../../etc/passwd",            # filesystem escape
 ])
 def test_img_rejects_paths_outside_docs_img(client, bad):
     r = client.get("/api/docs/img/" + bad)

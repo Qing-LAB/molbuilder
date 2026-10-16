@@ -47,12 +47,6 @@ def client(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 
 
-def test_a_traversal_is_refused_by_its_own_name(client, tmp_path):
-    r = client.get(f"/api/bench/summary?path={tmp_path}/../../etc/passwd")
-    assert r.status_code == 400
-    assert ".." in r.get_json()["error"]
-
-
 def test_a_missing_path_argument_is_refused(client):
     r = client.get("/api/bench/summary")
     assert r.status_code == 400

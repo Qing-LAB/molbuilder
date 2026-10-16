@@ -654,19 +654,6 @@ class TestPathTraversalDefense:
         assert r.status_code == 400
         assert ".." in r.get_json()["error"]
 
-    def test_absolute_path_outside_root_rejected(self, web, picker_root):
-        """Without the containment check, any absolute path the server process
-        can read becomes readable by anyone with a session -- `/etc/shadow` was
-        the measured case (`web-api.md` § 2.1, the 2026-06-18 `watch.py` fix).
-
-        `web-api.md` § 2.1. The refusal must also NAME the allowed roots, which
-        is what the error-text assertion holds.
-        """
-        # /etc is not inside the tmp picker root → outside-root reject.
-        r = web.get("/api/files/list?path=/etc")
-        assert r.status_code == 400
-        assert "outside every configured root" in r.get_json()["error"]
-
     def test_symlink_to_outside_root_rejected(self, web, picker_root):
         """The fence resolves symlinks BEFORE it checks containment; reverse
         those two steps and a symlink planted inside `projects/` -- by an

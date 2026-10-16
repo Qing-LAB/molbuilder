@@ -246,9 +246,7 @@ class TestF2NoSecondSource:
     """
 
     def test_a_structure_without_labels_declares_no_labels(self):
-        """No second source: a structure carrying no labels HAS no labels, and
-        a ``structure_path`` beside it does not send the server to disk to find
-        some.
+        """No second source: a structure carrying no labels HAS no labels.
 
         F2 is a property of the SHAPE: the labels are a field of the structure,
         so "no labels" is just an empty field, and there is no other key that
@@ -259,7 +257,6 @@ class TestF2NoSecondSource:
                           "positions": [[0, 0, 0], [0.76, 0.59, 0],
                                         [-0.76, 0.59, 0]],
                           "metadata": {}},
-            "structure_path": "/tmp/whatever.xyz",
         })
         assert not s.frozen_atoms
         assert not s.regions

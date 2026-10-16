@@ -71,27 +71,6 @@ def test_load_by_json_path_empty(client):
 
 
 # --------------------------------------------------------------------- #
-#  Security regression — audit B1 (2026-06-18)                          #
-# --------------------------------------------------------------------- #
-
-
-def test_load_by_json_path_rejects_dot_dot_traversal(
-        client_with_default_roots):
-    """``..`` is rejected early per the defense-in-depth check in
-    ``_resolve_within_roots``."""
-    r = client_with_default_roots.post(
-        "/api/watch/load",
-        json={"path": "projects/../etc/passwd"},
-    )
-    body = r.get_json()
-    assert r.status_code == 400
-    assert body["ok"] is False
-    # The picker's defense-in-depth check rejects raw ``..`` before
-    # resolution, so the error names ``..`` rather than "outside".
-    assert ".." in body["error"], body["error"]
-
-
-# --------------------------------------------------------------------- #
 #  Multipart upload mode (file-picker fallback)                         #
 # --------------------------------------------------------------------- #
 
