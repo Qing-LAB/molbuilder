@@ -22,7 +22,6 @@ The pins below name the envelope the value actually arrives in.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 
@@ -50,13 +49,6 @@ class TestTheComposer:
 # --------------------------------------------------------------------- #
 #  4. The browser -- the store rides in, and survives a rebuild          #
 # --------------------------------------------------------------------- #
-
-def _src(rel: str) -> str:
-    """The module's CODE, comments removed.  A pin that reads comments passes
-    on the strength of a note describing the bug it guards against."""
-    src = (_LIB / rel).read_text()
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    return re.sub(r"^\s*//.*$", "", src, flags=re.M)
 
 
 REPO = Path(__file__).resolve().parents[1]

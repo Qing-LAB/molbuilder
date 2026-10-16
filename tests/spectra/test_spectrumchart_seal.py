@@ -108,26 +108,6 @@ const picture = {
 };
 """
 
-#: The same picture with BOTH half-planes occupied -- what the mirror
-#: actually ships.  Kept separate so the single-lane tests keep asserting
-#: the single-lane shape.
-PICTURE_MIRRORED = """
-const picture = {
-    lanes: [
-      { key: "raman", direction: "up", title: "Raman (A4/amu)", known: true,
-        sticks: { x: [100, 200], y: [1, 2], width: [2, 2],
-                  state: ["plain", "chosen"] },
-        curve: { x: [90, 100], y: [0.1, 1.0] } },
-      { key: "ir", direction: "down", title: "IR (km/mol)", known: true,
-        sticks: { x: [100, 200], y: [30, 0], width: [2, 2],
-                  state: ["plain", "plain"] },
-        curve: { x: [90, 100], y: [3.0, 30.0] } },
-    ],
-    rug: { x: [100, 200], cls: ["both", "raman-only"], index: [1, 2] },
-    xTitle: "frequency (cm-1)",
-};
-"""
-
 
 def seal(snippet: str):
     """Open a surface on a stand-in host and evaluate `snippet` against it."""

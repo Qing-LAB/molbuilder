@@ -24,9 +24,9 @@ door each one should have asked.
     python tools/classify_path_finders.py --json
 
 OVERRIDES ARE KEYED BY (file, enclosing function, pattern) -- NEVER BY LINE.
-`classify_source_reads.py` keyed its reasons by line number and two of them
-came unanchored the first time tests were deleted around them, one landing on
-an unrelated assertion (2026-09-08).  A reason someone wrote after reading a
+An earlier classifier keyed its reasons by line number and two of them came
+unanchored the first time tests were deleted around them, one landing on an
+unrelated assertion (2026-09-08).  A reason someone wrote after reading a
 site must survive an edit to the lines above it.
 """
 from __future__ import annotations
@@ -550,7 +550,7 @@ def survey(pkg: "pathlib.Path | None" = None,
 def stale_overrides(rows: list[dict]) -> list[tuple]:
     """Override keys that match no site any more.
 
-    THE LESSON `classify_source_reads.py` PAID FOR (2026-09-08): its reasons
+    THE LESSON AN EARLIER CLASSIFIER PAID FOR (2026-09-08): its reasons
     were keyed by line number, an edit displaced two and orphaned a third, and
     the tool then reported a count for assertions nobody had reclassified.
     Keying by (file, function, pattern) survives an edit above the site -- but

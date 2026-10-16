@@ -344,7 +344,9 @@ so a second copy is a **review** finding
 agrees with the first it gives the same answer, and nothing a run observes
 can tell them apart. Where the failure such a scan reached for matters, the
 test RUNS the code — the route, the CLI, `jobset init → prep → launch` — and
-asserts what came out.
+asserts what came out. The exceptions are § 3a's short list, each a rule whose
+break is silent and that no run can show — a composed name found by hand
+among them — where reading the file is the only instrument there is.
 
 **An API-shape assertion.** *"`find_by_role` returns sorted paths"*, *"`compose`
 refuses an unknown field"* — that is the signature restated in a second
@@ -686,29 +688,6 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   retiring a test for naming something undocumented, open the code: an
   undocumented rule that the code holds is a documentation gap, and the test
   is the thing keeping it honest.
-
-  **The instrument — `tools/classify_source_reads.py`** *(2026-09-06)*. The
-  boundary above is easy to state and easy to get wrong by eye: this population
-  had been counted three times with three answers (233, 256, 173) because each
-  count used a different definition and none wrote it down. The tool states the
-  definition in code and can be re-run, so **quote its output, never a number
-  from a document**. It separates the two things that look identical to a grep
-  — an assertion on GENERATED output (a deck, a wrapper, an `.sbatch`: a real
-  property of a real product, and the great majority of them are this) from one
-  on a file a person wrote — then splits the second by the rule above, and routes
-  each pin by *what would have to be true for the check to be honest*:
-  **browser** where the answer depends on the cascade, layout or real
-  visibility, which jsdom cannot give; **node** where the code must run but
-  nothing needs painting; **python** where calling the function is cheaper than
-  reading its source. Corrections made by READING a site live in the tool's own
-  `_OVERRIDES`, with the reason — *"the regex said so"* is the reasoning it
-  exists to replace. The backlog it measured is archived
-  ([`archive/2026-10-08-plan-consolidation.md`](?doc=archive/2026-10-08-plan-consolidation.md)
-  § 5h); what is still open from it is a row of `plans/plan.md` § 2.
-
-  *(This paragraph carried "1,147 of the 1,255" until 2026-09-07, three
-  sentences after telling you not to quote a number from a document. Both
-  figures had moved. The tool is the answer; there is no number here now.)*
 - **A contract's cases are a TABLE, run down the road** *(user, 2026-10-01:
   "why can't test be just data/config file driven query kind of test?";
   "(1) query, allow or deny, (2) correctly produce slurm command/header, (3)

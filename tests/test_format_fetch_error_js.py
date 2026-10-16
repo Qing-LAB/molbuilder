@@ -42,7 +42,6 @@ import pytest
 
 
 _ROOT = Path(__file__).resolve().parents[1]
-_VIEWER = _ROOT / "molbuilder/web/static/structure-optimization/viewer.js"
 _MODULE = _ROOT / "molbuilder/web/static/lib/fetch-error.js"
 
 

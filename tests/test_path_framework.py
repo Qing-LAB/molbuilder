@@ -80,7 +80,7 @@ def test_no_path_search_is_handcrafted():
 def test_no_recorded_exemption_has_come_unanchored():
     """An override that matches no site is a failure, not a leftover.
 
-    `classify_source_reads.py` keyed its reasons by LINE NUMBER; deleting tests
+    An earlier classifier keyed its reasons by LINE NUMBER; deleting tests
     around them displaced two and landed one on an unrelated assertion, and the
     tool then reported a number for work nobody had done (2026-09-08).  These
     keys are (file, function, pattern), which survives an edit above the site

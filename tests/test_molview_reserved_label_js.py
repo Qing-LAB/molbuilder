@@ -30,7 +30,6 @@ from tests._node_esm import run_node
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 MODEL = MODULE_DIR / "model.js"
-JOBS = MODULE_DIR / "model-jobs.js"
 
 FROZEN = "frozen_atoms"          # the label's one name, on both sides
 

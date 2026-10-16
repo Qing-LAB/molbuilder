@@ -1,9 +1,6 @@
 """Single-point engine atom-index translation (engine_atom_index.py) +
 the display↔engine consistency binding (model/overview.md § 2)."""
-from pathlib import Path
-
 from molbuilder import engine_atom_index as eai
-from _node_esm import run_node
 
 
 def test_siesta_and_geometric_are_1based():
@@ -50,7 +47,5 @@ def test_default_engine_is_siesta():
         assert eai.from_engine_index(eai.siesta_atom_index(i)) == i
 
 
-_JS = (Path(__file__).resolve().parent.parent
-       / "molbuilder/web/static/lib/molview/_atom-index.js")
 
 
