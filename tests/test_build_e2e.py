@@ -17,8 +17,9 @@ What the tests cover:
     when the value is fixed.
   * Send to Task setup — the tab's PRIMARY loop: the button writes the structure pair,
     the parameter template and the hand-over into the selected folder
-    through the one shared door (lib/task-handover.js), and the
-    one-calculation-per-folder guard fails CLOSED.
+    through the one shared door (lib/task-handover.js), carrying the
+    structure you loaded with its held atoms after a click elsewhere, and
+    the one-calculation-per-folder guard fails CLOSED.
 
 NOT covered here (intentional scope split): the HTTP layer is
 test_web.py's; Task setup's own save door is test_task_setup_tab.py's.
@@ -922,6 +923,87 @@ class TestSendToTaskSetup:
             "      .textContent.includes('Wrote')",
             timeout=10_000)
         assert (calc / "task.1st.json").is_file()
+
+    def test_send_carries_the_held_atoms_of_the_file_you_loaded(
+            self, page, flask_server, isolated_projects_root):
+        """A Send writes the structure you loaded, with the atoms it holds
+        still, into the folder you clicked -- not the file you clicked last.
+
+        THE SILENT FAILURE (2026-06-14).  A pair whose sidecar held 25 gold
+        atoms still was loaded; the person then clicked into a sibling folder
+        to write the calculation there, and the request was built from the
+        file clicked last, which had no sidecar.  The deck held nothing still,
+        SIESTA relaxed the gold surface, and the run looked like any other.
+
+        THE CONTRACT: a single click is a preview, a double click is *use
+        it* (`web/projects.md`); a request carries the structure on screen,
+        its held atoms read with its coordinates (`web/molview.md` § 9.3a);
+        the hand-over's pair keeps them (`handover-procedure.md`'s round
+        trip).  Driven through the sidebar's own rows: a double click on the
+        pair, a click on the sibling folder, a click on a plain copy in it.
+
+        MUTATIONS THIS MUST FAIL AGAINST: a single click loading the file;
+        the load dropping the sidecar; `exportFile` dropping the held atoms;
+        the Send building its structure from the sidebar's file."""
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        from conftest import write_pseudos
+        import json as _json
+        import numpy as np
+        topic = (isolated_projects_root / "proj" / "opt").resolve()
+        loaded_dir, dest = topic / "relaxed", topic / "next-run"
+        loaded_dir.mkdir(parents=True)
+        dest.mkdir()
+        box = [[18.0, 0, 0], [0, 18.0, 0], [0, 0, 18.0]]
+        at = [[9.000, 9.000, 9.000], [9.957, 9.000, 9.000],
+              [8.761, 9.927, 9.000]]
+        held = StructureCodec().write(
+            Structure(elements=["O", "H", "H"], positions=at, cell=box,
+                      frozen_atoms=[0]),
+            loaded_dir / "water.xyz")
+        # THE FILE CLICKED LAST: the same atoms a little apart, no sidecar.
+        plain = dest / "water.xyz"
+        plain.write_text("3\nwater\n" + "".join(
+            f"{e} {x + 0.3:.3f} {y:.3f} {z:.3f}\n"
+            for e, (x, y, z) in zip("OHH", at)))
+        write_pseudos(dest, ["O", "H"])
+
+        # The sidebar opens on the pair's folder, as it does arriving from
+        # another tab (`web/projects.md` § 5's hand-off).
+        page.add_init_script(
+            "try { sessionStorage.setItem('molbuilder.current_dir', "
+            f"{_json.dumps(str(loaded_dir))}); }} catch (_) {{}}")
+        _open_build(page, flask_server)
+
+        def row(path):
+            return page.locator(f'li.ps-entry[data-path="{path}"]')
+
+        row(held).dblclick()
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms')"
+            ".textContent.trim() === '3'", timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_selector("#siesta-form-container input",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.locator(f'.ps-crumb[title="{topic}"]').click()
+        row(dest).click()
+        row(plain).click()
+        picked = page.evaluate(
+            "() => [window.molbuilder.projects.getCurrentDir(),"
+            "       window.molbuilder.projects.getCurrentFile()]")
+        assert picked == [str(dest), str(plain)], picked
+
+        page.locator("#send-to-task-setup").click()
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('Wrote')",
+            timeout=10_000)
+        over = _json.loads((dest / "task.1st.json").read_text())
+        sent = StructureCodec().load(dest / over["structure"]["source"])
+        assert sent.frozen_atoms == [0], (
+            "the Send dropped the atoms the loaded pair holds still: "
+            f"{sent.frozen_atoms}")
+        assert np.allclose(sent.positions, at, atol=1e-5), (
+            "the Send wrote another structure than the one loaded")
 
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):

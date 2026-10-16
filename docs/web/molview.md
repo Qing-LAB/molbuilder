@@ -2184,14 +2184,13 @@ did it itself would be a second translator, and the two would drift.
 #### What that looks like — one worked case
 
 A user opens a 40-frame optimisation, scrubs to **frame 12**, tags four atoms
-`frozen_atoms`, sets a 10 Å cubic cell on the Cell page, and presses **Generate
-FDF**.
+`frozen_atoms`, sets a 10 Å cubic cell on the Cell page, and presses **Save**.
 
 ```
 the tab does exactly this:
 
     const out = viewer.data.exportFile();        // ONE read
-    POST /api/build/fdf  { structure: out.structure, params }
+    POST /api/structure/save  { path, structure: out.structure }
 ```
 
 and `out.structure` is:
@@ -2225,7 +2224,7 @@ be doing:
 **The nesting is not decoration.** A hand-built body once sent the cell as
 `metadata: {periodicity: …}` — a key the envelope does not define. The receiver
 refuses a key it does not know rather than ignoring it, so the whole request was
-rejected, on every Generate, until somebody drove the page.
+rejected, on every request, until somebody drove the page.
 
 #### The property this protects
 
