@@ -557,8 +557,8 @@ def load_fcc_lattice_full() -> dict:
     """Load the full FCC lattice-constant table from ``fcc_lattice.json``.
 
     Each metal carries ``a_experimental`` (Wyckoff 1963) and ``a_pbe``
-    (Haas-Tran-Blaha 2009) -- the two LITERATURE references, which is what
-    a shared table is for.
+    (Zhang et al. 2018) -- the two LITERATURE references, which is what a
+    shared table is for (`data/README.md`).
 
     Returns the metals dict directly: ``{symbol: {a_experimental: float,
     a_pbe: float, name: str, system: str}}``.

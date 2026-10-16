@@ -10,12 +10,12 @@
             "notes": "Room-T fcc lattice constants; reference choice when matching crystallographic geometry or running LDA/HSE."
         },
         "pbe": {
-            "citation": "Haas, Tran, Blaha 2009 PRB 79 085104 (Table II) + erratum PRB 79 209902; cross-checked Csonka 2009 PRB 79 155107, Janthon 2013/2014 JCTC 9 1631 / 10 3832",
-            "method": "all-electron WIEN2k, scalar-relativistic, basis-converged",
+            "citation": "Zhang, Reilly, Tkatchenko, Scheffler 2018 New J. Phys. 20 063020, supplementary Table II, PBE without the zero-point correction; cross-checked Csonka et al. 2009 PRB 79 155107 Table II (Cu 3.628, Pd 3.942, Ag 4.147)",
+            "method": "all-electron FHI-aims, tight settings with tier-2 basis sets, scalar-relativistic (scaled ZORA), third-order Birch-Murnaghan fit",
             "spin_polarized": [
                 "Ni"
             ],
-            "notes": "PBE-XC consistent. Use when running PBE DFT to avoid ~1-2% lead/device lattice mismatch in transport calcs. Ni value assumes SpinPolarized=T (ferromagnetic ground state)."
+            "notes": "PBE-XC consistent. Use when running PBE DFT to avoid ~1-2% lead/device lattice mismatch in transport calcs. Ni is the ferromagnetic ground state, as the source computed it."
         }
     },
     "metals": {
@@ -23,37 +23,37 @@
             "name": "Gold",
             "system": "fcc",
             "a_experimental": 4.0782,
-            "a_pbe": 4.158
+            "a_pbe": 4.157
         },
         "Ag": {
             "name": "Silver",
             "system": "fcc",
             "a_experimental": 4.0853,
-            "a_pbe": 4.147
+            "a_pbe": 4.149
         },
         "Cu": {
             "name": "Copper",
             "system": "fcc",
             "a_experimental": 3.6149,
-            "a_pbe": 3.635
+            "a_pbe": 3.631
         },
         "Ni": {
             "name": "Nickel",
             "system": "fcc",
             "a_experimental": 3.524,
-            "a_pbe": 3.52
+            "a_pbe": 3.518
         },
         "Pt": {
             "name": "Platinum",
             "system": "fcc",
             "a_experimental": 3.9242,
-            "a_pbe": 3.967
+            "a_pbe": 3.970
         },
         "Pd": {
             "name": "Palladium",
             "system": "fcc",
             "a_experimental": 3.8907,
-            "a_pbe": 3.943
+            "a_pbe": 3.942
         }
     },
     "_note_v3": "v3 (2026-08-30) DROPS a_pbe_siesta_psml. It was null for every metal and nothing in the codebase could write it: its only homes were this packaged file and a machine-wide MOLBUILDER_DATA_DIR override, so the 'Your bulk run' control it fed greyed itself out -- correctly -- from the day it shipped. A lattice constant measured in the user's own SIESTA+PSML setup belongs to ONE optimization run, not to a table shared by every project, so it is read from that run's result instead: POST /api/modify/lattice-from-run. This table keeps the two LITERATURE references, which is what a shared table is for. Loaders accept v2 and v3 alike -- a v2 file simply carries a column that is now ignored."

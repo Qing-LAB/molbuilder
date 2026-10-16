@@ -4760,11 +4760,11 @@ transport run needs from it.
 Pd (`data/fcc_lattice.json`). So the stacking is set by which face the molecule
 sees:
 
-| surface | stacking | period | interlayer `d` | Au, `a = 4.158 Å` (PBE) |
+| surface | stacking | period | interlayer `d` | Au, `a = 4.157 Å` (PBE) |
 |---|---|---|---|---|
-| (111) | ABCABC | **3 layers** | `a/√3` | 2.4006 Å |
-| (100) | ABAB | **2 layers** | `a/2` | 2.0790 Å |
-| (110) | ABAB | **2 layers** | `a/(2√2)` | 1.4701 Å |
+| (111) | ABCABC | **3 layers** | `a/√3` | 2.4000 Å |
+| (100) | ABAB | **2 layers** | `a/2` | 2.0785 Å |
+| (110) | ABAB | **2 layers** | `a/(2√2)` | 1.4697 Å |
 
 `a` is not a constant to assume: `fcc_lattice.json` carries
 `a_experimental` and `a_pbe` per metal (and the Modify tab can measure a third

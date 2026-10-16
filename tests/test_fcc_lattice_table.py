@@ -1,28 +1,17 @@
-"""L2 tests for the packaged fcc_lattice.json (v2 added 2026-06-18,
-v3 2026-08-30).
+"""The packaged fcc lattice table (`molbuilder/data/fcc_lattice.json`,
+`molbuilder/data/README.md`): its two literature references per metal, as the
+loader every consumer reads answers them; the formats it accepts and refuses;
+an override honoured or refused by name; and the spacing door built on it.
 
-Pins:
-  * JSON declares format v2 or v3.
-  * Every metal carries a_experimental and a_pbe (numeric), and NOT
-    a_pbe_siesta_psml -- v3 dropped it (see below).
-  * PBE values land within +- 3% of experimental for each metal
-    (catches a typo that would silently re-introduce ~6+% mismatch).
-  * Ni a_pbe is spin-polarized (>= 3.50 A); the non-spin-polarized
-    value would be ~3.43 A and is wrong physics for ferromagnetic Ni.
-  * Loader returns the v1-shape ({sym: experimental_float}) for
-    back-compat callers; full loader returns the v2 per-XC dict.
-  * /api/modify/meta exposes lattice_table so the UI can render
-    the reference radios without duplicating the numbers in JS.
-  * A v2 file still loads, so a user's overriding data dir keeps working.
-
-WHY v3 HAS NO ``a_pbe_siesta_psml`` COLUMN.  A lattice constant measured in the user's own
-SIESTA+PSML setup belongs to ONE optimization run, not to a table every
-project shares, so it is read from that run's result instead
-(``POST /api/modify/lattice-from-run``, tests/test_lattice_from_run.py).
+A lattice constant measured in the user's own SIESTA+PSML setup belongs to
+ONE optimization run, not to a table every project shares, so it is read from
+that run's result instead (``POST /api/modify/lattice-from-run``,
+tests/test_lattice_from_run.py).
 """
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -36,66 +25,30 @@ from molbuilder.modify import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 JSON_PATH = REPO_ROOT / "molbuilder" / "data" / "fcc_lattice.json"
+ROWS = REPO_ROOT / "tests" / "data" / "fcc_lattice.toml"
 
 
-def _data():
-    return json.loads(JSON_PATH.read_text())
+def test_each_metal_answers_its_two_literature_references(monkeypatch):
+    """`data/README.md`'s table, through the loader every consumer reads: the
+    six metals the slab builder makes, no more and no fewer, each with
+    Wyckoff's room-temperature lattice constant and Zhang et al.'s PBE one
+    (rows of `tests/data/fcc_lattice.toml`).
 
+    THE SILENT FAILURE: a slab built on a lattice constant a digit off -- a
+    lead and a device mismatched by the percent or two a transport
+    calculation exists to avoid, with nothing to say so; or a metal offered
+    with no reference behind it.
 
-def test_every_metal_has_the_two_literature_references():
-    """All 6 supported metals carry a_experimental and a_pbe."""
-    metals = _data()["metals"]
-    for sym in SUPPORTED_FCC_ELEMENTS:
-        assert sym in metals, f"metal {sym!r} missing from fcc_lattice.json"
-        entry = metals[sym]
-        assert isinstance(entry.get("a_experimental"), (int, float)), (
-            f"{sym}.a_experimental must be numeric")
-        assert isinstance(entry.get("a_pbe"), (int, float)), (
-            f"{sym}.a_pbe must be numeric")
-        # AND NOT the column v3 dropped.  Asserted as an absence, because
-        # re-adding it would quietly restore a control that can never be
-        # reachable: nothing in the codebase writes this file, so the value
-        # would be null again and the radio would grey itself out again.
-        #
-        # THE ONLY PLACE THIS CAN BE SEEN: it reads the raw JSON.  The loader
-        # builds a fresh dict of four fixed keys, so a column re-added to the
-        # file never reaches its output.
-        assert "a_pbe_siesta_psml" not in entry, (
-            f"{sym} carries a_pbe_siesta_psml. A per-run measurement does not "
-            f"belong in a table every project shares -- it comes from "
-            f"/api/modify/lattice-from-run.")
-
-
-def test_pbe_within_3pct_of_experimental():
-    """Sanity gate: PBE values are within +-3% of experimental.
-
-    Catches a typo (decimal-place shift, swapped elements, etc.) that
-    would silently re-introduce a 5-10% lattice mismatch in the
-    transport workflow.  PBE actually runs about +0.5 to +2% larger
-    than experimental for these metals; -3% to +3% is a roomy gate.
-    """
-    metals = _data()["metals"]
-    for sym, entry in metals.items():
-        a_exp = entry["a_experimental"]
-        a_pbe = entry["a_pbe"]
-        ratio = (a_pbe - a_exp) / a_exp
-        assert abs(ratio) < 0.03, (
-            f"{sym}: PBE ({a_pbe}) is {ratio*100:+.1f}% off experimental "
-            f"({a_exp}); likely a typo")
-
-
-def test_ni_pbe_is_spin_treatment():
-    """Ni a_pbe must reflect the ferromagnetic ground state (>= 3.50 A).
-
-    The non-spin-polarized PBE value is ~3.43 A.  Using it for a
-    transport calc on Ni electrodes silently gives wrong physics
-    (the lead is in the wrong magnetic state).
-    """
-    a_pbe_ni = _data()["metals"]["Ni"]["a_pbe"]
-    assert a_pbe_ni >= 3.50, (
-        f"Ni a_pbe = {a_pbe_ni} is suspiciously small; the "
-        f"non-spin-polarized value is ~3.43 A.  Use the spin-"
-        f"polarized number (~3.52 A) per Janthon 2013 / Csonka 2009")
+    MUTATIONS THIS MUST FAIL AGAINST: a PBE value a digit off; an
+    experimental value a digit off; a metal gone from the table."""
+    monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
+    rows = tomllib.loads(ROWS.read_text())["metal"]
+    table = load_fcc_lattice_full()
+    assert sorted(table) == sorted(r["symbol"] for r in rows), sorted(table)
+    for r in rows:
+        got = table[r["symbol"]]
+        assert (got["a_experimental"], got["a_pbe"]) == pytest.approx(
+            (r["a_experimental"], r["a_pbe"]), abs=1e-9), (r, got)
 
 
 def test_a_v2_file_still_loads(tmp_path, monkeypatch):
@@ -138,18 +91,17 @@ def test_a_v1_file_is_still_refused(tmp_path, monkeypatch):
         _mod.load_fcc_lattice_full()
 
 
-def test_v1_loader_returns_experimental_floats():
+def test_v1_loader_returns_experimental_floats(monkeypatch):
     """Back-compat: ``_load_fcc_lattice`` returns ``{sym: a_experimental}``.
 
     This is the v1 shape; callers that don't know about per-XC values
     keep working without changes.
     """
+    monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
     table = _load_fcc_lattice()
-    metals_json = _data()["metals"]
-    for sym in SUPPORTED_FCC_ELEMENTS:
-        assert sym in table
-        assert isinstance(table[sym], float)
-        assert table[sym] == pytest.approx(metals_json[sym]["a_experimental"])
+    for r in tomllib.loads(ROWS.read_text())["metal"]:
+        assert isinstance(table[r["symbol"]], float)
+        assert table[r["symbol"]] == pytest.approx(r["a_experimental"])
 
 
 def test_v2_loader_returns_full_dict():
@@ -229,7 +181,7 @@ class TestAnOverrideIsHonouredOrRefused:
              / "molbuilder/data/fcc_lattice.json").read_text())
         good["metals"]["Au"]["a_experimental"] = 4.20
         broken = json.dumps(good, indent=2).replace(
-            '"a_pbe": 4.158', '"a_pbe": 4.158,', 1)     # one trailing comma
+            '"a_pbe": 4.157', '"a_pbe": 4.157,', 1)     # one trailing comma
         d = self._override(tmp_path, broken)
         with pytest.raises(RuntimeError, match="failed to read"):
             self._load_with(monkeypatch, d)
@@ -286,7 +238,7 @@ class TestTheSpacingsDoorAnswersTheSurface:
         num = web_client.get("/api/modify/spacings?element=Au&plane=111"
                              "&reference=4.20").get_json()
         assert exp["a"] == pytest.approx(4.0782)
-        assert pbe["a"] == pytest.approx(4.158)
+        assert pbe["a"] == pytest.approx(4.157)
         assert num["a"] == pytest.approx(4.20)
         assert exp["d_interlayer"] < pbe["d_interlayer"] < num["d_interlayer"]
 

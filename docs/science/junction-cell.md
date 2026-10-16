@@ -48,11 +48,11 @@ one the same doc implies: add back the spacing the bbox dropped.
 `d` depends on which plane faces the molecule. For an fcc metal with cubic
 lattice constant `a`:
 
-| plane | interlayer spacing `d` | Au, `a = 4.0782 Å` (exp.) | Au, `a = 4.158 Å` (PBE) |
+| plane | interlayer spacing `d` | Au, `a = 4.0782 Å` (exp.) | Au, `a = 4.157 Å` (PBE) |
 |---|---|---|---|
-| (100) | `a / 2` | 2.0391 Å | 2.0790 Å |
-| (110) | `a / (2√2)` | 1.4419 Å | 1.4701 Å |
-| (111) | `a / √3` | 2.3545 Å | 2.4006 Å |
+| (100) | `a / 2` | 2.0391 Å | 2.0785 Å |
+| (110) | `a / (2√2)` | 1.4419 Å | 1.4697 Å |
+| (111) | `a / √3` | 2.3545 Å | 2.4000 Å |
 
 These are not asserted — they were checked against the slabs ASE actually
 builds, and agree to six decimals. Note that ASE's surface builders return

@@ -801,3 +801,58 @@
   % which contradicts "much denser" beside it -- read as a typo.
 }
 % @verified 2026-10-13 the manual source at tag 5.4.2 on this machine
+
+% ----- The fcc metals' lattice constants (molbuilder/data/fcc_lattice.json) -----
+
+@book{Wyckoff1963,
+  author    = {Wyckoff, Ralph W. G.},
+  title     = {Crystal Structures},
+  edition   = {2},
+  volume    = {1},
+  publisher = {Interscience Publishers},
+  address   = {New York},
+  year      = {1963}
+  % The `a_experimental` column: room-temperature lattice constants of the
+  % six fcc metals the slab builder makes (Au, Ag, Cu, Ni, Pt, Pd).  The
+  % data README cites p. 10, "Cubic close-packing, A1 type".
+}
+% @verified 2026-10-16 library catalogue records (NII, Loughborough): author,
+% title, edition, volume, publisher, place, year; the page not seen
+
+@article{Zhang2018,
+  author  = {Zhang, Guo-Xu and Reilly, Anthony M. and Tkatchenko, Alexandre
+             and Scheffler, Matthias},
+  title   = {Performance of various density-functional approximations for
+             cohesive properties of 64 bulk solids},
+  journal = {New Journal of Physics},
+  volume  = {20},
+  number  = {6},
+  pages   = {063020},
+  year    = {2018},
+  doi     = {10.1088/1367-2630/aac7f0}
+  % The `a_pbe` column: supplementary Table II, PBE without the zero-point
+  % correction -- Au 4.157, Ag 4.149, Cu 3.631, Ni 3.518, Pt 3.970,
+  % Pd 3.942 A.  All-electron FHI-aims, tight settings with tier-2 basis
+  % sets, scalar-relativistic (scaled ZORA); "the ferromagnetic metals: Fe
+  % and Ni" spin-polarized, the rest spin-restricted.  Open access (CC BY).
+}
+% @verified 2026-10-16 Crossref; the table read in the open supplement and
+% the methods in the article
+
+@article{Csonka2009,
+  author  = {Csonka, G{\'a}bor I. and Perdew, John P. and Ruzsinszky, Adrienn
+             and Philipsen, Pier H. T. and Leb{\`e}gue, S{\'e}bastien and
+             Paier, Joachim and Vydrov, Oleg A. and {\'A}ngy{\'a}n, J{\'a}nos G.},
+  title   = {Assessing the performance of recent density functionals for
+             bulk solids},
+  journal = {Physical Review B},
+  volume  = {79},
+  number  = {15},
+  pages   = {155107},
+  year    = {2009},
+  doi     = {10.1103/PhysRevB.79.155107}
+  % The `a_pbe` column's cross-check: Table II (all-electron BAND/LCAO),
+  % PBE Cu 3.628, Pd 3.942, Ag 4.147 A -- the three of the six metals it
+  % computes.
+}
+% @verified 2026-10-16 Crossref; the table read in the arXiv text (0903.4037)

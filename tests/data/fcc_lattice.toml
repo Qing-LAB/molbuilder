@@ -1,0 +1,40 @@
+# THE FCC METALS' TWO LITERATURE LATTICE CONSTANTS -- `molbuilder/data/README.md`'s
+# table, copied: `a_experimental` is Wyckoff 1963's room-temperature value,
+# `a_pbe` Zhang et al. 2018's (supplementary Table II, PBE without the
+# zero-point correction; nickel ferromagnetic).  Both are entries of
+# `docs/science/references.bib`.
+#
+# `tests/test_fcc_lattice_table.py` asks each row of the loader every consumer
+# reads (`modify.load_fcc_lattice_full`).  The list is closed at six metals.
+#
+# A NUMBER CHANGES WITH ITS SOURCE: the README's table, its citation, this row.
+
+[[metal]]
+symbol = "Au"
+a_experimental = 4.0782
+a_pbe = 4.157
+
+[[metal]]
+symbol = "Ag"
+a_experimental = 4.0853
+a_pbe = 4.149
+
+[[metal]]
+symbol = "Cu"
+a_experimental = 3.6149
+a_pbe = 3.631
+
+[[metal]]
+symbol = "Ni"
+a_experimental = 3.5240
+a_pbe = 3.518
+
+[[metal]]
+symbol = "Pt"
+a_experimental = 3.9242
+a_pbe = 3.970
+
+[[metal]]
+symbol = "Pd"
+a_experimental = 3.8907
+a_pbe = 3.942

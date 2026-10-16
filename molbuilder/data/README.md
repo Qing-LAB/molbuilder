@@ -80,19 +80,23 @@ used in single-molecule junction / NEGF transport DFT work.  Adding a
 new entry here is intentionally a deliberate act, not a casual
 convenience.
 
-| Symbol | Element  | *a* / Å | *T* / K | Crystal system | Citation |
-|--------|----------|---------|---------|----------------|----------|
-| Au | Gold      | 4.0782 | 298 | FCC | Wyckoff 1963 vol. 1 p. 10 |
-| Ag | Silver    | 4.0853 | 298 | FCC | Wyckoff 1963 vol. 1 p. 10 |
-| Cu | Copper    | 3.6149 | 298 | FCC | Wyckoff 1963 vol. 1 p. 10 |
-| Ni | Nickel    | 3.5240 | 298 | FCC | Wyckoff 1963 vol. 1 p. 10 |
-| Pt | Platinum  | 3.9242 | 298 | FCC | Wyckoff 1963 vol. 1 p. 10 |
-| Pd | Palladium | 3.8907 | 298 | FCC | Wyckoff 1963 vol. 1 p. 10 |
+| Symbol | Element  | `a_experimental` / Å (298 K) | `a_pbe` / Å | Crystal system |
+|--------|----------|------------------------------|-------------|----------------|
+| Au | Gold      | 4.0782 | 4.157 | FCC |
+| Ag | Silver    | 4.0853 | 4.149 | FCC |
+| Cu | Copper    | 3.6149 | 3.631 | FCC |
+| Ni | Nickel    | 3.5240 | 3.518 | FCC |
+| Pt | Platinum  | 3.9242 | 3.970 | FCC |
+| Pd | Palladium | 3.8907 | 3.942 | FCC |
 
-### Primary citation
+The experimental column is Wyckoff's; the PBE column is Zhang et al.'s
+(2018). Both are entries of `docs/science/references.bib` (`Wyckoff1963`,
+`Zhang2018`).
+
+### The experimental column
 
 > **R. W. G. Wyckoff**, *Crystal Structures*, 2nd edition,
-> volume 1 (Wiley, New York, 1963), p. 10 — "The structures of the
+> volume 1 (Interscience, New York, 1963), p. 10 — "The structures of the
 > elements: Cubic close-packing, A1 type."
 
 Wyckoff is the textbook source for room-temperature (~298 K, atmospheric
@@ -100,9 +104,7 @@ pressure) experimental lattice constants of the elemental metals;
 research-code lattice tables (ASE, GULP, VASP examples, …) generally
 trace back to it.
 
-### Cross-checks
-
-The values above were also verified against:
+Cross-checked against:
 
 * **CRC Handbook of Chemistry and Physics**, 95th edition (CRC Press,
   Boca Raton, 2014), Table "Properties of the Elements" → "Lattice
@@ -112,9 +114,29 @@ The values above were also verified against:
   rounded to 3 decimal places.  Our values keep the 4th decimal where
   Wyckoff's table provides it.
 
+### The PBE column
+
+> **G.-X. Zhang, A. M. Reilly, A. Tkatchenko and M. Scheffler**,
+> *Performance of various density-functional approximations for cohesive
+> properties of 64 bulk solids*, New J. Phys. **20**, 063020 (2018),
+> doi:10.1088/1367-2630/aac7f0 — supplementary Table II, the PBE column
+> without the zero-point correction.
+
+All-electron (FHI-aims, tight settings, tier-2 basis sets), scalar-relativistic
+(scaled ZORA), from a third-order Birch–Murnaghan fit; nickel is computed
+**ferromagnetic**, its ground state, so the value is a spin-polarized
+calculation's. The paper is open access, so every number can be checked against
+it.
+
+Cross-checked against **Csonka et al.**, Phys. Rev. B **79**, 155107 (2009),
+Table II (all-electron, BAND), for the three metals it computes: Cu 3.628,
+Pd 3.942, Ag 4.147 — within 0.004 Å, the spread between two all-electron codes
+for the same functional.
+
 ### When to override
 
-These are room-temperature *experimental* values.  Override (either by
+These are literature values — a room-temperature measurement and a PBE
+calculation at zero temperature.  Override (either by
 editing the JSON or by passing `lattice_constant=` to
 `add_slab` per call) when:
 
@@ -122,9 +144,10 @@ editing the JSON or by passing `lattice_constant=` to
   substrate).
 * You want a non-room-temperature value (low-T transport experiments).
 * You want the *DFT-equilibrium* lattice constant for your specific
-  XC functional.  Plain LDA underbinds gold by ~3 %, GGA-PBE overbinds
-  by ~1 %; if you optimise the slab cell self-consistently in your
-  production run, use that value.  **Do not put it here** — that is the
+  XC functional and setup.  The PBE column is one code's answer, and it
+  sits above the measured one by up to 2 % here (gold +1.9 %, nickel
+  −0.2 %); your basis and pseudopotentials move it again.  If you optimise
+  the slab cell self-consistently in your production run, use that value.  **Do not put it here** — that is the
   mistake v3 undid: it is a fact about one run, and this file is shared
   by every project.  The Modify tab reads it from the run's own result.
 
