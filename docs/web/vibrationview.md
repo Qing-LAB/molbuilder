@@ -151,7 +151,9 @@ script could reach for it. Convention alone did not hold last time.
 **Nothing it needs comes from a global, and nothing it holds is published to
 one.** It does not read `window.molbuilder` and it does not write to it. A viewer
 needs one thing at mount: an element to live in. Everything else arrives through
-the handle.
+the handle. The one thing the module keeps beyond a viewer is the sealed layer's
+**cleared windows** (§ 9.3a) — a resource of the page, holding nothing any viewer
+was given.
 
 This is the rule the previous design broke in both directions, and the reason
 this document exists (§ 15).
@@ -408,8 +410,10 @@ so a caller branches on `ok` and can call `dispose()` unconditionally. A live
 handle carries `ok: true`. This is the same mount contract MolView uses, for the
 same reason: teardown must never have to ask whether setup worked.
 
-`dispose()` stops the clock, releases the drawing surface, and leaves the host
-element empty. Calling it twice is safe.
+`dispose()` stops the clock, gives the drawing surface back to the sealed layer
+with everything drawn removed (§ 9.3a), and leaves the host element empty.
+Calling it twice is safe. So opening and closing viewers on a page any number of
+times leaves on it what one open and close left.
 
 Defaults: amplitude **0.15 Å**, **30 fps**, cycle **1.0 s**, caption **shown**.
 
@@ -509,6 +513,40 @@ It is also the door a recording needs. Video is captured from a live surface
 rather than asked for a frame at a time, so asking for the picture *is* the
 "repaint now" the encoder needs between frames — one door rather than the two an
 earlier draft guessed at.
+
+### 9.3a The windows are kept, and lent *(2026-10-16)*
+
+**A window is the drawing library's 3D view, living in an element the sealed
+layer owns.** The library has no way to take a window down: making one attaches
+listeners to the page — on its body and on the browser window — and an observer to
+the element it lives in, and holds one of the browser's graphics contexts, and
+none of it can be given back. Measured 2026-10-15: twenty viewers opened and
+closed left twenty windows in memory, sixty listeners on the page, and the
+graphics contexts climbing to sixteen — the browser's limit, past which it takes
+the oldest live one away, from whichever viewer holds it.
+
+**So the sealed layer keeps the windows it has made.** A mount takes a kept
+window — or a new one, when every window is in use — and puts its element in the
+host; `dispose` gives it back: everything drawn removed, its element taken out of
+the host. The page holds as many windows as viewers were ever open on it at once.
+Two viewers open at once hold two windows: a window is never shared between
+viewers that are open (§ 3).
+
+**A window taken is a new one.** Two things a viewer leaves on a window outlast
+it, and the take sets each the way a new window has it:
+
+| left behind | at the take |
+|---|---|
+| the ground | the new host's own (§ 13) — another page, theme or host has its own |
+| the camera | the view a new window opens with: no turn, no shift. `setStructure` fits it (§ 6.4) |
+
+**Its size is the library's to follow**: the library watches the element the
+window lives in, so a window put in a host of another size takes that size. A
+window given back in the middle of an export (§ 12) therefore needs nothing
+undone: it comes back at its new host's size, on its new host's ground.
+
+**Nothing above the sealed layer knows windows are kept** (§ 5.4). A mount asks
+for none; it gets its window as it always has.
 
 ---
 
@@ -1058,6 +1096,8 @@ the day it is crossed.
 | § 6.3 — a mode that does not fit is refused | a basis naming an atom the structure lacks, and a mode with more rows than atoms, are each turned away with nothing drawn — never padded with zeros into a partial animation |
 | § 6.4 — it holds no structure | the handle offers no read of the structure, the mode's vectors, the mode's index, or the camera |
 | § 4 — no hatch, for anyone | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state, and a test may not except one from the count |
+| § 8, § 9.3a — dispose gives the window back | opening and closing a viewer many times leaves on the page — listeners on the window, the document or an element still on it; live graphics contexts — what opening and closing it once left |
+| § 9.3a — a window taken is a new one | a viewer on the window another left — turned by the mouse, on another ground, closed in the middle of an export at another size on a transparent ground — draws, in a host of another size, the pixels a viewer on a new window draws: empty, and with a structure and a mode |
 | § 8 — mount always resolves | a mount that cannot build a surface still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 8 — the handle is live | every door works on the first call after `await`, with no readiness wait and nothing deferred |
 | § 9.2 — the knobs are live | amplitude, fps and cycle-length changes take effect on the next frame, issue no call to the drawing surface, and never stop a running animation |

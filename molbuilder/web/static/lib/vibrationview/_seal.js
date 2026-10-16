@@ -47,6 +47,7 @@ const STYLE = { stick: { radius: 0.15 }, sphere: { scale: 0.25 } };
 const ROOT_CLASS    = "vibview-window";
 const FAILED_CLASS  = "vibview-window--failed";
 const CAPTION_CLASS = "vibview-caption";
+const SURFACE_CLASS = "vibview-surface";
 
 const GROUND      = { name: "--vibview-ground",     fallback: "#0f1217" };
 const HELD_STILL  = { name: "--vibview-held-still", fallback: "#555555" };
@@ -101,11 +102,64 @@ function xyzText(elements, positions) {
     return lines.join("\n");
 }
 
+/* ── The windows, kept and lent (§ 9.3a) ─────────────────────────────────────
+ *
+ * A WINDOW is one library view, living for good in an element this layer owns.
+ * The library has no teardown: a view it makes puts listeners on the page and
+ * an observer on its element, holds a graphics context, and offers no way to
+ * take any of it back. So a window is never thrown away -- a mount takes one,
+ * its dispose gives it back, and the page holds as many as were ever open on it
+ * at once.
+ *
+ * KEPT holds the windows no viewer is using, cleared -- nothing any viewer was
+ * given.
+ */
+const KEPT = [];
+
+/* The camera a new window opens with: no turn, no shift. */
+const NEW_WINDOW_VIEW = [0, 0, 0, 0, 0, 0, 0, 1];
+
+function takeWindow(hostEl, ground) {
+    const kept = KEPT.pop();
+    if (kept) {
+        hostEl.appendChild(kept.el);
+        /* A WINDOW TAKEN IS A NEW ONE: the ground is this host's, and the camera
+         * a new window's -- `setStructure` fits it from there. Its size the
+         * library follows, as for any window: it watches the element. */
+        try { kept.viewer.setBackgroundColor(ground, 1); } catch (_) {}
+        try { kept.viewer.setView(NEW_WINDOW_VIEW); } catch (_) {}
+        return kept;
+    }
+    const $3Dmol = root.$3Dmol;
+    const el = (hostEl.ownerDocument || root.document).createElement("div");
+    el.className = SURFACE_CLASS;
+    hostEl.appendChild(el);
+    try {
+        return {
+            el: el,
+            viewer: $3Dmol.createViewer(el, {
+                backgroundColor: ground,
+                defaultcolors:   $3Dmol.elementColors.Jmol,
+            }),
+        };
+    } catch (e) {
+        try { el.remove(); } catch (_) {}
+        throw e;
+    }
+}
+
+function keepWindow(win) {
+    // Everything drawn goes: models, shapes, labels.
+    try { win.viewer.clear(); } catch (_) {}
+    try { win.el.remove(); } catch (_) {}
+    KEPT.push(win);
+}
+
+
 /* ── One drawing surface ──────────────────────────────────────────────────── */
 
 export async function create(hostEl) {
-    const $3Dmol = root.$3Dmol;
-    if (!$3Dmol) {
+    if (!root.$3Dmol) {
         throw new Error("vibrationview: the drawing library must be loaded first");
     }
     // The class is the sheet's hook, and it goes on FIRST: the tokens are declared
@@ -117,10 +171,8 @@ export async function create(hostEl) {
 
     const ground   = readCssVar(hostEl, GROUND.name, GROUND.fallback);
     const heldGrey = readCssVar(hostEl, HELD_STILL.name, HELD_STILL.fallback);
-    const viewer = $3Dmol.createViewer(hostEl, {
-        backgroundColor: ground,
-        defaultcolors:   $3Dmol.elementColors.Jmol,
-    });
+    const win      = takeWindow(hostEl, ground);
+    const viewer   = win.viewer;
 
     // Everything this layer holds. Note what is NOT here: a frame number, a
     // phase, an amplitude, a mode. It draws what it is handed (§ 9.3).
@@ -398,14 +450,14 @@ export async function create(hostEl) {
             return state.disposed ? null : compose();
         },
 
+        /* The window goes back to be kept (§ 9.3a). */
         dispose() {
             if (state.disposed) return;
             state.disposed = true;
             try { if (state.captionEl) state.captionEl.remove(); } catch (_) {}
             state.captionEl = null;
             state.composite = null;
-            try { viewer.removeAllModels(); } catch (_) {}
-            try { viewer.clear(); } catch (_) {}
+            keepWindow(win);
             try { hostEl.innerHTML = ""; } catch (_) {}
         },
     };

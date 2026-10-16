@@ -65,7 +65,7 @@
      * module can therefore always out-declare its host here, which is precisely
      * why it must not try.
      */
-    position: relative;   /* the drawing library positions its canvas absolutely */
+    position: relative;   /* the window's element is placed against it (§ 9.3a) */
     background: var(--vibview-ground);
     overflow: hidden;
 }
@@ -80,10 +80,19 @@
  * box needs no cooperation from here — and so a capture, which resizes the
  * backing buffer rather than the element, changes what is DRAWN without moving
  * anything on the page (§ 12). */
-.vibview-window > canvas {
+.vibview-surface > canvas {
     display: block;
     width: 100% !important;
     height: 100% !important;
+}
+
+/* THE WINDOW'S ELEMENT (§ 9.3a): the sealed layer keeps the library's view in
+ * an element of its own and lends it to a host while a viewer is open. It
+ * fills the host, so the library measures the host's box through it, and it
+ * carries no z-index, so the caption stays over it. */
+.vibview-surface {
+    position: absolute;
+    inset: 0;
 }
 
 /* ── The caption (§ 12.3) ────────────────────────────────────────────────────
