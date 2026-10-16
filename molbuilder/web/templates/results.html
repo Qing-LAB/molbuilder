@@ -263,11 +263,11 @@
    EVERY INSPECTOR BELOW CARRIES `defer` OR IS A MODULE, deliberately: that puts
    them all in one queue, which runs in document order, so the order written here
    is the order that happens.  Mix the two and the modules silently move behind
-   the classic ones -- see the note above source.js, and
-   tests/test_inspector_registration_order.py, which asserts it. #}
+   the classic ones -- see the note above source.js; the live page is asked
+   which viewer each file opens in (tests/data/presenters.toml). #}
 {# An EXACT basename (`job-set.json`) -- as specific as a match gets, so it
    is listed ahead of everything, and far ahead of the `.json` catch-all
-   below.  Pinned by tests/test_inspector_registration_order.py. #}
+   below (a row of tests/data/presenters.toml). #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/bench-summary.js') }}"></script>
 {# The transport report matches the registry's `transport-task` parser (a
    transport calculation's task.json, results.md 0.1) -- a `.json` by name,

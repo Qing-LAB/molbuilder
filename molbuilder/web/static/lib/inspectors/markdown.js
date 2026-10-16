@@ -258,8 +258,8 @@
     }
     // THE LOAD ORDER IS THE CONTRACT, and a bare guard is the whole of it --
     // the shape `structure.js` uses.  `registry.js` is a plain classic script,
-    // so it runs during parsing ahead of every deferred inspector, and
-    // `tests/test_inspector_registration_order.py` pins that order.
+    // so it runs during parsing ahead of every deferred inspector (the live
+    // page is asked which viewer a `.md` opens in, tests/data/presenters.toml).
     // Queueing for a later drain is wrong HERE: a presenter parked in a queue
     // is a `.md` file served by the read-only text viewer, and silently.
 })(typeof window !== "undefined" ? window : globalThis);

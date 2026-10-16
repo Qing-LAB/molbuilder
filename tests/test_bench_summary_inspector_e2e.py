@@ -4,7 +4,7 @@ Contract: ``docs/web/bench-summary.md``.
 
 Everything else about this feature is tested a layer down: the composition
 in ``test_prep_bench_fold.py``, the route in ``test_api_bench_summary.py``,
-the dispatch in ``test_inspector_registry_dispatch_js.py``.  What only a
+the dispatch in ``tests/data/presenters.toml``'s rows.  What only a
 browser can show is that the three meet: the page that mounts on a
 sweep's ``job-set.json`` polls it, says when it last looked, keeps the
 trajectory viewer's cadence and stops when it is disposed of.

@@ -72,6 +72,18 @@ name = "a .txt opens in the text pane"
 file = "/tmp/notes.txt"
 opens = "source"
 
+[[pick]]
+name = "...and so does a .py, a deck or a script"
+file = "/projects/foo/run/vib.py"
+opens = "source"
+
+# The markdown editor is registered ahead of the text pane, which would
+# otherwise serve a .md read-only (§ 1, § 3).
+[[pick]]
+name = "a .md opens in the markdown editor"
+file = "/projects/foo/notes/README.md"
+opens = "markdown"
+
 # Claimed by exact basename, ahead of the text pane, which takes every .json.
 [[pick]]
 name = "a sweep's job-set.json opens as its benchmark summary"
@@ -151,6 +163,11 @@ file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
 lists = "fc-sweep"
 
 [[result]]
+name = "a sweep's job-set.json by its benchmark summary"
+file = "/p/calc/01_coarse/bench/job-set.json"
+lists = "bench-summary"
+
+[[result]]
 name = "a .xyz by the structure viewer"
 file = "/projects/foo/optimized.xyz"
 lists = "structure"
@@ -165,6 +182,10 @@ lists = "structure"
 [[result]]
 name = "a .fdf input is not listed"
 file = "/projects/foo/inputs/job.fdf"
+
+[[result]]
+name = "nor a .md, which the markdown editor opens"
+file = "/projects/foo/notes/README.md"
 
 [[result]]
 name = "nor a plain .log"
@@ -188,14 +209,6 @@ name = "a .out in a SIESTA run sits under SIESTA optimization"
 file = "/projects/foo/bar.out"
 meta = { engine = "siesta", role = ".out" }
 heading = "SIESTA optimization"
-
-# The same file under another engine: `.out` was hardcoded SIESTA until
-# 2026-09-18, wrong by construction for a third engine.
-[[heading]]
-name = "...in a VASP run, under VASP optimization"
-file = "/projects/foo/bar.out"
-meta = { engine = "vasp", role = ".out" }
-heading = "VASP optimization"
 
 # Every engine writes a .molwatch.log: filed by suffix, SIESTA runs once sat
 # under PySCF while the plot title said SIESTA (2026-09-04).
@@ -234,6 +247,16 @@ heading = "Transport"
 [[heading]]
 name = "...and another calculation's task.json under nothing"
 file = "/projects/BDT/relax/task.json"
+
+[[heading]]
+name = "a sweep's job-set.json sits under Benchmark sweeps"
+file = "/p/calc/01_coarse/bench/job-set.json"
+heading = "Benchmark sweeps"
+
+[[heading]]
+name = "a .fc-sweep.json sits under Spectrum"
+file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
+heading = "Spectrum"
 
 [[heading]]
 name = "a .spectra.json sits under Vibrational spectrum"

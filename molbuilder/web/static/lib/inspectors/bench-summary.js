@@ -6,7 +6,7 @@
  * bench/ directory -- so there is nothing new to detect and no new kind of
  * thing for the picker to list (§ 1).  Registration order matters: the
  * source inspector matches every ``.json``, so this one is listed FIRST in
- * results.html and tests/test_inspector_registration_order.py pins it.
+ * results.html (the live page is asked, tests/data/presenters.toml).
  *
  * THIS FILE DRAWS; IT DOES NOT DECIDE (§ 2, B1).  Every number shown here
  * arrives composed from /api/bench/summary -- the trials, their measured
