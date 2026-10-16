@@ -1506,7 +1506,7 @@ function mountPanel(doc, card, model) {
      * A drag that never leaves its starting row is a CLICK, and is left to the
      * click handler: dragging one pixel while picking a single atom must not
      * become a different gesture. */
-    (function wireDragBox() {
+    const offDragBox = (function wireDragBox() {
         const DRAG_FLOOR_PX = 4;          // below this, it was a click
         let startX = 0, startY = 0, dragging = false, marquee = null;
 
@@ -1560,7 +1560,10 @@ function mountPanel(doc, card, model) {
             marquee.style.height = Math.abs(e.clientY - startY) + "px";
         });
 
-        doc.addEventListener("mouseup", (e) => {
+        /* ON THE DOCUMENT, so a drag that ends outside the list still ends
+         * -- which is why it is the one listener here the panel's dispose
+         * must take off: the document outlives the viewer. */
+        const endDrag = (e) => {
             if (!dragging) return;
             dragging = false;
             if (marquee) { marquee.remove(); marquee = null; }
@@ -1574,7 +1577,9 @@ function mountPanel(doc, card, model) {
             model.selection.add(hit);
             // The run's anchor follows the last thing the user touched.
             rangeAnchor = hit[hit.length - 1];
-        });
+        };
+        doc.addEventListener("mouseup", endDrag);
+        return () => doc.removeEventListener("mouseup", endDrag);
     })();
 
     /* ── The filter page: rows, edited one at a time (§ 8.4) ─────────────── */
@@ -3002,7 +3007,7 @@ function mountPanel(doc, card, model) {
 
     return {
         dispose() {
-            offSelection(); offData(); offCustFrame();
+            offSelection(); offData(); offCustFrame(); offDragBox();
             try { root.remove(); } catch (_) {}
         },
     };
