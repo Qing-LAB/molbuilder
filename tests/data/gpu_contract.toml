@@ -145,8 +145,9 @@ template = { diag_algorithm = "ELPA-2STAGE" }
 run = { use_gpu = true, gpu_count = 2, mpi_np = 8 }
 header = ["#SBATCH -n 8", "#SBATCH -p gpu", "#SBATCH --gres=gpu:2",
           "#SBATCH --gres-flags=enforce-binding"]
+header_lacks = ["a100"]
 deck = ["Diag.Algorithm ELPA-2STAGE", "Diag.ELPA.GPU .true."]
-run_sh = ["molbuilder-siesta-gpu"]
+run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
 launch = ["--domain", "gpu"]
 line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
 

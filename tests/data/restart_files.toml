@@ -37,6 +37,15 @@ before = [["prep", "task", "--group", "1"]]
 stage = "medium"
 plan_takes = { coarse = ["H2.XV", "H2.CG"], medium = ["H2.XV", "H2.CG"] }
 
+# ...and with every carried suffix withheld, no stage takes anything: the
+# producer forces none of its own, `.XV` included.
+[[case]]
+name = "...and with every one withheld, no stage takes any file"
+own_warm_files = { withhold = [".DM", ".XV", ".CG"] }
+before = [["prep", "task", "--group", "1"]]
+stage = "medium"
+plan_takes = { coarse = [], medium = [] }
+
 [[case]]
 name = "a run script says what its deck does with the state a run leaves, read off the deck as prep writes it -- a stage that continues (`running-a-job.md` § 3.5)"
 run_sh = ["This deck says 'start from: continue'"]

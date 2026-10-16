@@ -48,10 +48,8 @@ deck = ["MD.TypeOfRun FIRE", "MD.Steps 42"]
 # EACH RUNG CONVERGES TO ITS TIER (`engines/tuning.md` § 2.3, the authority
 # for SIESTA's force tolerance, one per tier): loose preopt 0.05 eV/Å,
 # publishable 0.04, tight -- the crystal and surface number -- 0.01.  A rung
-# whose deck said another would converge somewhere else and call it done;
-# three of the tight rung's criteria were once wrong in the code, copied from
-# the implementation it replaced (2026-08-18).  `vib-quality` is the shipped
-# ladder that runs all three rungs.
+# whose deck said another would converge somewhere else and call it done.
+# `vib-quality` is the shipped ladder that runs all three rungs.
 [[case]]
 name = "the coarse rung's deck states the loose-preopt force tolerance"
 stage_strategy = "vib-quality"
@@ -153,11 +151,11 @@ deck = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder eff
 
 # A deck is one rung (`stages.md` § 1.1a), so it relaxes through one call,
 # `relax`, which returns geomeTRIC's converged flag, carrying the rung's six
-# convergence targets.
+# convergence targets -- each under geomeTRIC's own keyword for it.
 [[case]]
 name = "a PySCF relaxation is one call, carrying the rung's six geomeTRIC targets"
 engine = "pyscf"
-deck = ["convergence_energy =", "convergence_grms =", "convergence_gmax =", "convergence_drms =", "convergence_dmax =", "maxsteps ="]
+deck = ["convergence_energy = _GEOM_ETOL,", "convergence_grms = _GEOM_GRMS,", "convergence_gmax = _GEOM_GMAX,", "convergence_drms = _GEOM_DRMS,", "convergence_dmax = _GEOM_DMAX,", "maxsteps = _GEOM_MAX_STEPS,"]
 deck_once = ["mol_eq, _GEOM_CONVERGED = _mb_relax("]
 
 [[case]]
@@ -186,7 +184,9 @@ deck = ["'01_coarse': {", "'max_force_tol_eV_per_A': 0.0102844", "'rms_force_tol
 # number on its own line as the deck assigns it: loose (coarse) gmax 2.0e-3,
 # grms 1.3e-3, dmax 7.2e-3, drms 4.8e-3 Ha/Bohr and Å, energy 1.0e-5 Ha, SCF
 # 1e-7; publishable (medium) 4.5e-4, 3.0e-4, 1.8e-3, 1.2e-3, 1.0e-6, SCF
-# 1e-9; tight 2.0e-4, 1.0e-4, 1.0e-3, 5.0e-4, 1.0e-6, SCF 1e-10.
+# 1e-9; tight 2.0e-4, 1.0e-4, 1.0e-3, 5.0e-4, 1.0e-6, SCF 1e-10.  Three of
+# the tight rung's criteria were once wrong in the code, copied from the
+# implementation it replaced (2026-08-18).
 [[case]]
 name = "the coarse rung's PySCF deck states the loose tier's five criteria and SCF tolerance"
 engine = "pyscf"
