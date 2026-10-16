@@ -564,7 +564,9 @@ async function _loadBulk(path) {
     try {
         _cm.setOption("mode", await modeFor(path || ""));
     } catch (e) {
-        console.error("[preview] mode selection failed:", e);   // plain text
+        // A mode that cannot be had is plain text -- never the last file's.
+        console.error("[preview] mode selection failed:", e);
+        _cm.setOption("mode", null);
     }
     try {
         _cm.setValue(body.text);

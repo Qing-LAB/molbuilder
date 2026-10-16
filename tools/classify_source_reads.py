@@ -194,12 +194,6 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
              "checks every entry carries a citation -- a property of the data")
         for ln in (81, 84)
     },
-    "tests/test_codemirror_vendor_bundle.py": {
-        ln: (KEEP_VEND,
-             "checks the VENDORED CodeMirror bundle declares its own "
-             "dependency -- a property of a third-party artifact we ship")
-        for ln in (120, 165, 169, 179)
-    },
     "tests/test_one_home_for_a_constant.py": {
         ln: (KEEP_LINT,
              "the Bohr radius has ONE home; asserting the digits appear there "

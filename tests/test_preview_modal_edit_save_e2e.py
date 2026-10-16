@@ -367,3 +367,79 @@ def test_preview_modal_close_prompts_when_dirty(
     assert native == [], f"a native dialog was opened: {native}"
     # The on-disk file was NOT modified (we declined to save).
     assert target.read_text() == "hello\n"
+
+
+#: `static/vendor/README.md`, *CodeMirror language modes*: each suffix and
+#: the mode it is highlighted with -- ``"null"``, plain text, for
+#: molbuilder's own formats, on purpose.  The `.md` row comes first: markdown
+#: needs xml loaded with it, and no row before it loads xml.
+_HIGHLIGHTED = [
+    ("README.md", "markdown"), ("notes.markdown", "markdown"),
+    ("data.json", "javascript"), ("tool.js", "javascript"),
+    ("script.py", "python"), ("H2.template.toml", "toml"),
+    ("H2_01_coarse.run.sh", "shell"), ("job.bash", "shell"),
+    ("H2.sbatch", "shell"), ("data.xml", "xml"), ("style.css", "css"),
+    ("conf.yaml", "yaml"), ("conf.yml", "yaml"),
+    ("H2.fdf", "null"), ("H2.xyz", "null"), ("H2.out", "null"),
+    ("H2.log", "null"),
+]
+
+
+def test_the_editor_searches_jumps_and_highlights_what_it_says(
+        page, flask_server, tmp_path, monkeypatch):
+    """The editor's files are vendored -- served by molbuilder itself, no
+    CDN (`static/vendor/README.md`) -- and one the bundle lacks fails in
+    silence: its script 404s, its command or mode never registers, and the
+    editor shows plain text and ignores Ctrl-F.
+
+    Opened as a person opens it, in the preview modal: Ctrl-F brings up the
+    search dialog and Alt-G the jump-to-line one; every suffix the README's
+    table names opens in its mode, molbuilder's own formats in plain text,
+    and a markdown file brings the xml mode it needs; no request for an
+    editor file fails.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a mode file missing from the bundle;
+    the search or the jump addon left out of the loader; markdown loaded
+    without xml."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "myproj"
+    proj.mkdir()
+    for name, _ in _HIGHLIGHTED:
+        (proj / name).write_text(f"{name}\n")
+    failed = []
+    page.on("response", lambda r: failed.append(f"{r.status} {r.url}")
+            if "/static/vendor/codemirror/" in r.url and r.status >= 400
+            else None)
+    page.on("requestfailed", lambda r: failed.append(f"failed {r.url}")
+            if "/static/vendor/codemirror/" in r.url else None)
+    cm = "document.getElementById('ps-preview-modal').__molbuilder_test_cm"
+    dialog = "#ps-preview-modal .CodeMirror-dialog"
+
+    _setup(page, flask_server, str(proj / _HIGHLIGHTED[0][0]))
+    page.locator("#ps-preview-modal .CodeMirror").click()
+    page.keyboard.press("Control+f")
+    page.wait_for_selector(dialog, timeout=5000)
+    page.keyboard.press("Escape")
+    page.wait_for_selector(dialog, state="detached", timeout=5000)
+    page.keyboard.press("Alt+g")
+    page.wait_for_selector(dialog, timeout=5000)
+    page.keyboard.press("Escape")
+
+    shown = {}
+    for name, _ in _HIGHLIGHTED:
+        page.evaluate(
+            "async (p) => {"
+            "  window.molbuilder.projects.setShared("
+            "    p.substring(0, p.lastIndexOf('/')), p);"
+            "  const mod = await import('/static/lib/projects/preview.js');"
+            "  await mod.showPreview(); }", str(proj / name))
+        page.wait_for_function(f"(t) => {cm}.getValue() === t",
+                               arg=f"{name}\n", timeout=10000)
+        if name == "README.md":
+            xml_with_markdown = page.evaluate(
+                "() => !!(window.CodeMirror.modes || {}).xml")
+        shown[name] = page.evaluate(f"() => {cm}.getMode().name")
+    assert shown == dict(_HIGHLIGHTED), {
+        n: m for n, m in shown.items() if m != dict(_HIGHLIGHTED)[n]}
+    assert xml_with_markdown, "markdown opened without the xml mode it needs"
+    assert not failed, failed
