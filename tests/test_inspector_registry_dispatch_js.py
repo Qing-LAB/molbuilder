@@ -1,24 +1,17 @@
-"""Inspector-registry contract — L2 module tests.
+"""Inspector-registry contract under Node -- what does not depend on the
+order the page registers presenters in: each presenter's ``isResult`` flag,
+and ``register``'s refusal of an incomplete presenter and its replacing one
+of the same name.
 
-Drives the registry's pick / pickResult / resultCategory / isResult
-+ list / register surface under Node with minimal DOM stubs, no
-Chromium bring-up.
-
-Module-scoped fixtures batch each contract's cases through a single
-Node invocation, then parametrize over the cached result dict.
-Per-case failure messages stay specific via pytest.param ids.
-
-Per docs/process/testing.md + § 7 (L5 → L2 demotion
-when the test's only payload is "call this pure JS function and
-check its return") and § 8 (parametrize when N tests assert the
-same contract over different inputs).
+Which viewer a file opens in, lists under and is headed by DOES depend on
+that order, which only the browser runs; those questions are
+``tests/data/presenters.toml``'s rows, asked on the live page by
+``test_inspector_registry_e2e.py``.
 """
 
 from __future__ import annotations
 
 import re
-
-import json
 from pathlib import Path
 
 import pytest
@@ -30,15 +23,15 @@ STATIC = ROOT / "molbuilder/web/static"
 
 
 # --------------------------------------------------------------------- #
-#  Node bootstrap — shared by all batched fixtures                      #
+#  Node bootstrap                                                        #
 # --------------------------------------------------------------------- #
 
 
 from _node_esm import run_node
 
-# THE PAGE'S ORDER, READ FROM THE PAGE (first-match-wins routing): the
-# element builder and the registry first, then every inspector module in the
-# order results.html loads it -- never a second copy of that order here.
+# THE PRESENTERS THE PAGE LOADS, READ FROM THE PAGE: the element builder and
+# the registry first, then every inspector module results.html names -- never
+# a second copy of that list here.
 # structure.js is an ES module (it imports { mount }); the others are classic
 # IIFEs.  run_node dynamic-imports each -- a classic IIFE runs + publishes its
 # global, an ES module runs + exports; structure.js's `import` transitively
@@ -72,265 +65,6 @@ def _run_node(snippet: str) -> object:
     then run the snippet.  The stub lets the molview graph structure.js pulls in load in Node;
     static_root resolves structure.js's browser-absolute ``/static/…`` import of molview/index.js."""
     return run_node(_INSPECTOR_MODULES, snippet, globals_js=_STUB, static_root=STATIC)
-
-
-def _batch_eval(filenames: list[str], js_expr: str) -> dict[str, object]:
-    """Apply ``js_expr`` (a JS expression whose value may depend on
-    the bound variable ``p``) to each filename in one Node call;
-    return a dict keyed by filename.  Powers the batched fixtures
-    below."""
-    return _run_node(
-        f"const paths = {json.dumps(filenames)};\n"
-        f"const out = {{}};\n"
-        f"for (const p of paths) {{ out[p] = {js_expr}; }}\n"
-        f"console.log(JSON.stringify(out));"
-    )
-
-
-# --------------------------------------------------------------------- #
-#  Dispatch contract — registry.pick(filename) → inspector             #
-# --------------------------------------------------------------------- #
-
-
-# (filename, expected_inspector_name_or_None, pytest-id).  Each case
-# is a distinct contract — see inline comments for the regression /
-# invariant each one guards.  The id is what pytest reports on
-# failure, so make it speaking.
-_DISPATCH_CASES = [
-    # 2026-06-12 regression: geomeTRIC's multi-frame *_geom_optim.xyz
-    # MUST hit trajectory, not structure (structure was claiming this
-    # file and rendering frame 0 as a single static structure).
-    ("/tmp/BDT/optimization/BDT_geom_optim.xyz", "trajectory",
-     "geom_optim_xyz→trajectory"),
-    # Older PySCF wrappers used *_optim.xyz without the _geom prefix.
-    ("/tmp/foo_optim.xyz", "trajectory", "plain_optim_xyz→trajectory"),
-    # Plain user-named .xyz (single structure) MUST go to structure —
-    # the trajectory match is narrowed to *_optim.xyz precisely so
-    # plain .xyz doesn't get hijacked.
-    ("/tmp/water_demo/water.xyz", "structure", "plain_xyz→structure"),
-    # molwatch unified trajectory log.
-    ("/tmp/run/foo.molwatch.log", "trajectory", "molwatch_log→trajectory"),
-    # SIESTA stdout redirect.
-    ("/tmp/run/foo.out", "trajectory", "siesta_out→trajectory"),
-    # Plain .log (PySCF stdout etc.) falls through trajectory's narrow
-    # .molwatch.log match → source.
-    ("/tmp/run/foo.log", "source", "plain_log→source"),
-    # ...and so does the COMPOUND one, which is the case worth stating
-    # separately: `.molwatch.log` IS claimed by trajectory, so a matcher
-    # written a little too loosely takes `.pyscf.log` with it.  PySCF's
-    # wrapper output was renamed from `.out` to `.pyscf.log` in 2026-06 so
-    # the dispatcher could tell PySCF from SIESTA; it is plain stdout, not
-    # a trajectory format, and it belongs in the text viewer until a
-    # dedicated inspector ships.
-    ("/tmp/run/foo.pyscf.log", "source", "pyscf_log→source"),
-    # .pdb is the second structure-inspector trigger.
-    ("/tmp/protein.pdb", "structure", "pdb→structure"),
-    # source claims a handful of plain text extensions (.txt is one).
-    ("/tmp/notes.txt", "source", "txt→source"),
-    # A sweep's plan, claimed by exact basename.  source.js matches every
-    # .json and is listed after it precisely so this one gets there first.
-    ("/p/calc/01_coarse/bench/job-set.json", "bench-summary",
-     "job_set_json→bench_summary"),
-    # ...and the exactness cuts both ways: a DIFFERENT .json is still the
-    # text viewer's, so claiming job-set.json cost nothing else.
-    ("/p/calc/01_coarse/bench/bench-result.json", "source",
-     "other_json→source"),
-    # .fdf is a SIESTA INPUT file — source viewer, not a result.
-    ("/projects/foo/spectrum/run.fdf", "source", "fdf→source"),
-    # Compound extension precedence: .spectra.json MUST win over plain
-    # .json (which source would also claim).  Load order in
-    # results.html makes spectra register before source.
-    ("/projects/foo/spectrum/water.spectra.json", "spectra",
-     "compound_spectra_json→spectra"),
-    # The transport record is `summarize task`'s copy for the command line
-    # and opens as a FILE (`web/results.md` § 0.1, decision 8): the report's
-    # handle is the calculation's description, claimed on the registry's
-    # word (`transport-task`, the meta-carrying table below), never on a
-    # name -- so by name alone the record is the text pane's.
-    ("/projects/BDT/transport/bdt.transport.json", "source",
-     "transport_json_by_name→source"),
-    ("/projects/BDT/transport/slot-provenance.json", "source",
-     "other_json_still→source"),
-    # Plain .json → source (first-match-wins after spectra missed).
-    ("/projects/foo/user/config.json", "source", "plain_json→source"),
-    # Truly unknown extension → null (not all unknowns fall through).
-    ("/projects/foo/spectrum/run.unknown_ext", None, "unknown_ext→null"),
-    # Empty path → null.
-    ("", None, "empty_path→null"),
-]
-
-
-@pytest.fixture(scope="module")
-def pick_results() -> dict[str, object]:
-    """Drive ``registry.pick`` over every dispatch case in one Node
-    call.  Module-scoped so all parametrized cases share the cost."""
-    return _batch_eval(
-        [c[0] for c in _DISPATCH_CASES],
-        "(window.molbuilder.inspectors.pick(p) || {name: null}).name",
-    )
-
-
-@pytest.mark.parametrize(
-    "filename,expected",
-    [pytest.param(f, exp, id=tid) for f, exp, tid in _DISPATCH_CASES],
-)
-def test_registry_pick_dispatches_filename(
-    pick_results, filename, expected,
-):
-    """``registry.pick(filename)`` routes to the documented inspector
-    (or null when no inspector claims it).  Each parametrized case is
-    a distinct contract — see inline comments in ``_DISPATCH_CASES``."""
-    assert pick_results[filename] == expected
-
-
-# --------------------------------------------------------------------- #
-#  pickResult — the picker-only subset (isResult-gated dispatch)        #
-# --------------------------------------------------------------------- #
-
-
-# pickResult returns the matching inspector iff its isResult flag is
-# True; otherwise null.  Used by /results to gate which files show up
-# in the dropdown.
-_PICK_RESULT_CASES = [
-    ("/projects/foo/bar.out", "trajectory", "out→trajectory"),
-    ("/projects/foo/run.molwatch.log", "trajectory",
-     "molwatch_log→trajectory"),
-    ("/projects/foo/raman.spectra.json", "spectra",
-     "spectra_json→spectra"),
-    # The transport record by name alone is no result: the report's handle
-    # is the description, claimed on the registry's word (decision 8; the
-    # meta-carrying table below has that case).
-    ("/projects/BDT/transport/bdt.transport.json", None,
-     "transport_json_by_name→null"),
-    # The third compound `.json`: a SIESTA vibration's displacement sweep
-    # (`engines/vibration.md` § 5.9).  It must be claimed by a RESULT
-    # presenter registered ahead of source.js, or the picker never offers it.
-    ("/projects/foo/spectrum/h2o/H2O.fc-sweep.json", "fc-sweep",
-     "fc_sweep_json→fc_sweep"),
-    ("/projects/foo/optimized.xyz", "structure", "xyz→structure"),
-    ("/projects/foo/protein.pdb", "structure", "pdb→structure"),
-    # .fdf is an INPUT file (source matches but isResult:false) — must
-    # NOT appear in the picker.
-    ("/projects/foo/inputs/job.fdf", None, "fdf_input→null"),
-    # Plain .log: source matches but isResult:false.
-    ("/projects/foo/build.log", None, "plain_log→null"),
-    ("/projects/foo/data.xyzzy", None, "unknown→null"),
-    ("", None, "empty_path→null"),
-]
-
-
-@pytest.fixture(scope="module")
-def pick_result_results() -> dict[str, object]:
-    return _batch_eval(
-        [c[0] for c in _PICK_RESULT_CASES],
-        "(window.molbuilder.inspectors.pickResult(p) || {name: null}).name",
-    )
-
-
-@pytest.mark.parametrize(
-    "filename,expected",
-    [pytest.param(f, exp, id=tid) for f, exp, tid in _PICK_RESULT_CASES],
-)
-def test_registry_pickResult_filters_by_isResult(
-    pick_result_results, filename, expected,
-):
-    """``pickResult`` returns the matching inspector iff
-    ``isResult:true``; null otherwise.  Gate for the /results picker
-    dropdown."""
-    assert pick_result_results[filename] == expected
-
-
-# --------------------------------------------------------------------- #
-#  resultCategory — engine-flavoured optgroup headers                   #
-# --------------------------------------------------------------------- #
-
-
-# Pin exact spellings — a typo silently changes the user-facing UI
-# (group headers in the picker dropdown).
-#
-# EVERY CASE CARRIES ITS OWN ``meta``, because that is the shape of the
-# call: ``resultCategory(file, meta)`` gets ``/api/results/dir``'s
-# per-file answer on the Results tab and nothing anywhere else
-# (`web/presenters.md` § 3).  The two halves are different contracts and
-# the list covers both.
-_RESULT_CATEGORY_CASES = [
-    # --- WITH the directory's answer: the heading names the engine ---
-    ("/projects/foo/bar.out", {"engine": "siesta", "role": ".out"},
-     "SIESTA optimization", "out+siesta→siesta_opt"),
-    # THE SAME FILE under a different engine.  `.out` was hardcoded
-    # "SIESTA" and `*_optim.xyz` "PySCF" until 2026-09-18 — right for the
-    # two engines that exist, wrong by construction for a third, and a
-    # VASP directory's trajectory was demonstrably labelled "PySCF
-    # optimization".
-    ("/projects/foo/bar.out", {"engine": "vasp", "role": ".out"},
-     "VASP optimization", "out+vasp→vasp_opt"),
-    # `.molwatch.log` is written by EVERY engine (`config/siesta.py`:
-    # `write_molwatch_log = True`; measured, 34 of the first 40 real logs
-    # in `projects/` declare `# engine: siesta`).  Filing it by suffix put
-    # most SIESTA runs under "PySCF optimization" while the plot title —
-    # which got the engine from the server — said SIESTA (2026-09-04).
-    # Asking the server is what lets it carry an engine at all.
-    ("/projects/foo/run.molwatch.log",
-     {"engine": "pyscf", "role": ".molwatch.log"},
-     "PySCF optimization", "molwatch+pyscf→pyscf_opt"),
-
-    # --- WITHOUT it: name what the file IS, leave the engine unclaimed --
-    # A caller outside the Results tab holds no directory answer.
-    ("/projects/foo/bar.out", None, "Optimization", "out_alone→unclaimed"),
-    ("/projects/foo/BDT_geom_optim.xyz", None, "Optimization",
-     "geom_optim_alone→unclaimed"),
-    # `engine: "unknown"` is the directory DECLINING to name one — two
-    # declarations that contradict each other (`parse/contract.py`) — and
-    # must read as absent, never as an engine spelled "UNKNOWN".
-    ("/projects/foo/BDT_optim.xyz", {"engine": "unknown"}, "Optimization",
-     "optim_xyz+unknown→unclaimed"),
-
-    # --- the other presenters, whose headings take no engine ---
-    # A transport calculation's report is opened through its DESCRIPTION,
-    # on the registry's word for it (`parse.sidecars.task`, decision 8) --
-    # `task.json` by name is every calculation's and claims nothing.
-    ("/projects/BDT/transport/task.json", {"parser": "transport-task"},
-     "Transport", "task_json+transport_task→transport"),
-    ("/projects/BDT/relax/task.json", None, None,
-     "task_json_alone→null"),
-    ("/projects/foo/r.spectra.json", None, "Vibrational spectrum",
-     "spectra_json→pyscf_spectrum"),
-    ("/projects/foo/q.xyz", None, "Structure", "xyz→structure"),
-    ("/projects/foo/p.pdb", None, "Structure", "pdb→structure"),
-]
-
-
-@pytest.fixture(scope="module")
-def result_category_results() -> dict[str, object]:
-    """Every case in one Node call, keyed by its pytest id — the id and
-    not the filename, because the same file answers differently under
-    different ``meta``, and that IS the contract."""
-    cases = [{"id": tid, "p": f, "m": m}
-             for f, m, _exp, tid in _RESULT_CATEGORY_CASES]
-    return _run_node(
-        f"const cases = {json.dumps(cases)};\n"
-        "const out = {};\n"
-        "for (const c of cases) {\n"
-        "  const r = window.molbuilder.inspectors.pickResult(c.p, c.m);\n"
-        "  out[c.id] = r ? r.resultCategory(c.p, c.m) : null;\n"
-        "}\n"
-        "console.log(JSON.stringify(out));"
-    )
-
-
-@pytest.mark.parametrize(
-    "case_id,expected",
-    [pytest.param(tid, exp, id=tid)
-     for _f, _m, exp, tid in _RESULT_CATEGORY_CASES],
-)
-def test_registry_resultCategory_labels(
-    result_category_results, case_id, expected,
-):
-    """``resultCategory`` returns the group header for the picker
-    dropdown, naming the engine when — and only when — the directory
-    said one.  The exact spelling IS the contract; a typo here changes
-    the user-visible UI."""
-    assert result_category_results[case_id] == expected
 
 
 # --------------------------------------------------------------------- #

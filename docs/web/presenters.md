@@ -48,14 +48,10 @@ viewer for one kind of file. Today there are eight:
 | `markdown` | `.md` | a markdown **editor** with a live preview + Save | no |
 | `source` | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
 
-*The first column is the `name` each presenter registers under, and it is
-there so this table can be **checked** rather than remembered:
-`test_inspector_registry_dispatch_js.py::test_the_documented_presenters_are_the_registered_ones`
-loads the presenter modules in the page's order under node, asks the registry
-what registered, and asserts this column and the yes/no one against its
-answer, set-equal in both directions. Added 2026-09-18
-(`plan.md` § 5p.3p step 10b) after the table spent an unknown stretch
-claiming five viewers and three results while six were registered.*
+*The first column is the `name` each presenter registers under. Which of
+them each kind of file opens in, is listed by and is headed under is asked of
+the live Results page, in the order the page registered them — rows of
+`tests/data/presenters.toml`; this table is kept true by review.*
 
 The six that say "yes" mark themselves as *results*, so they show up in the
 Results tab's file dropdown. The two that say "no" (markdown, plain text) are
@@ -273,9 +269,13 @@ See [`plans/plan.md`](?doc=plans/plan.md) **W15**.
 
 ## 8. Test map
 
-- `test_inspector_registry_e2e.py` — the pick/mount/dispose dispatch end to end.
-- `test_inspector_registry_dispatch_js.py` — the filename-match ordering (which
-  viewer wins for which extension).
-- `test_results_blueprint.py` — the registered set and the template script order.
+- `test_inspector_registry_e2e.py` — which viewer each kind of file opens in,
+  is listed by and is headed under, asked of the live page in the order it
+  registered the presenters (`tests/data/presenters.toml`, § 2); and the
+  mount/dispose lifecycle.
+- `test_inspector_registry_dispatch_js.py` — each presenter's `isResult` flag,
+  and `register` refusing an incomplete presenter and replacing one of the
+  same name.
+- `test_results_blueprint.py` — the page and its partials as served.
 - The structure/trajectory/spectra viewers are covered by their own viewer and
   engine tests.

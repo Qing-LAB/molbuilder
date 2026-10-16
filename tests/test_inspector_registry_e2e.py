@@ -18,6 +18,7 @@ driven /results architecture.
 """
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,8 @@ pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 ROOT = Path(__file__).resolve().parents[1]
+PRESENTERS = tomllib.loads(
+    (ROOT / "tests" / "data" / "presenters.toml").read_text())
 
 
 @pytest.fixture(scope="module")
@@ -58,25 +61,90 @@ def _open_results(page, base_url):
 
 
 # --------------------------------------------------------------------- #
-#  Mount lifecycle                                                       #
-#                                                                       #
-#  The pure dispatch/shape contracts (``pick`` / ``pickResult`` /       #
-#  ``list``) are ``tests/test_inspector_registry_dispatch_js.py``'s;    #
-#  this file keeps the real DOM mount + dispose + listener teardown    #
-#  that genuinely needs a browser.                                      #
+#  Which viewer opens a file -- in the order the page registered them    #
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="module")
+def registry_answers(browser, flask_server):
+    """Every row of `tests/data/presenters.toml`, asked of the registry on
+    the live `/results` page in one visit, once every presenter the rows
+    name has registered: ``{table: {row name: answer}}``."""
+    page = browser.new_page()
+    try:
+        page.goto(f"{flask_server}/results")
+        named = sorted({r[k] for tbl, k in (("pick", "opens"),
+                                             ("result", "lists"))
+                        for r in PRESENTERS[tbl] if k in r})
+        page.wait_for_function(
+            "(names) => { const reg = (window.molbuilder || {}).inspectors;"
+            "  return !!reg && names.every(n =>"
+            "    reg.list().some(i => i.name === n)); }",
+            arg=named, timeout=10000)
+        return page.evaluate("""(t) => {
+            const reg = window.molbuilder.inspectors;
+            const name = (p) => p ? p.name : null;
+            const out = { pick: {}, result: {}, heading: {} };
+            for (const r of t.pick) out.pick[r.name] = name(reg.pick(r.file));
+            for (const r of t.result)
+                out.result[r.name] = name(reg.pickResult(r.file));
+            for (const r of t.heading) {
+                const p = reg.pickResult(r.file, r.meta || null);
+                out.heading[r.name] = p ? p.resultCategory(r.file, r.meta || null)
+                                        : null;
+            }
+            return out; }""",
+            {k: PRESENTERS[k] for k in ("pick", "result", "heading")})
+    finally:
+        page.close()
+
+
+def _rows(table):
+    return pytest.mark.parametrize(
+        "row", PRESENTERS[table], ids=[r["name"] for r in PRESENTERS[table]])
+
+
+@_rows("pick")
+def test_a_file_opens_in_the_viewer_its_kind_names(registry_answers, row):
+    """`presenters.md` § 1, § 2: the first presenter to claim a file, in
+    the order the PAGE registered them, opens it.
+
+    THE SILENT FAILURE (2026-08-05): one presenter script in another queue
+    -- a module among plain scripts -- ran after the text pane, and
+    `.spectra.json` files opened as text; every presenter still matched and
+    mounted correctly on its own.
+
+    MUTATION THIS MUST FAIL AGAINST: the text pane's script left out of
+    the deferred queue, so it registers first."""
+    assert registry_answers["pick"][row["name"]] == row.get("opens")
+
+
+@_rows("result")
+def test_the_dropdown_lists_a_file_by_the_viewer_its_kind_names(
+        registry_answers, row):
+    """`presenters.md` § 1: the dropdown lists what a RESULT presenter
+    claims -- never the inputs and logs the text pane takes."""
+    assert registry_answers["result"][row["name"]] == row.get("lists")
+
+
+@_rows("heading")
+def test_the_dropdown_files_it_under_its_heading(registry_answers, row):
+    """`presenters.md` § 2: the heading names the engine when, and only
+    when, the directory's answer does; the spelling is what the person
+    reads."""
+    assert registry_answers["heading"][row["name"]] == row.get("heading")
+
+
+# --------------------------------------------------------------------- #
+#  Mount lifecycle -- the real DOM mount, dispose and listener teardown  #
 # --------------------------------------------------------------------- #
 
 
 class TestMountLifecycle:
     """The host element is owned exclusively by the active inspector;
     a new selection disposes the previous handle BEFORE mounting
-    the new one.
-
-    The unknown-extension → null path is covered at L2 by
-    ``test_inspector_registry_dispatch_js.py::
-    test_registry_pick_dispatches_filename[unknown_ext→null]``; mount()
-    returns null when pick() returns null, so the e2e equivalent
-    added no contract beyond the dispatch table."""
+    the new one.  (A file no presenter claims opens in nothing: the
+    table above, `presenters.toml`'s last two `pick` rows.)"""
 
     def test_mount_returns_handle_with_dispose(self, page, flask_server):
         """Registry's mount(host, file, ctx) returns a handle with

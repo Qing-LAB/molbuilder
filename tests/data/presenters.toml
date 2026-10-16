@@ -1,0 +1,251 @@
+# WHICH VIEWER OPENS A FILE ON THE RESULTS TAB -- `docs/web/presenters.md`
+# § 1 (the presenters and their files) and § 2 (the first presenter whose
+# `match` says yes, in the order they REGISTERED on the page, wins).
+#
+# `tests/test_inspector_registry_e2e.py` asks every row of the registry on
+# the live `/results` page, where the order is the one the browser ran the
+# scripts in: a plain script runs while the page parses, a deferred or
+# module one after it, so a presenter in the wrong queue moves -- on
+# 2026-08-05 `.spectra.json` files went to the text pane that way.
+#
+# Three questions, three tables:
+#   [[pick]]      -- the viewer a file opens in (`pick`); no `opens`, none;
+#   [[result]]    -- the viewer that lists it in the dropdown (`pickResult`,
+#                    a presenter marked a result); no `lists`, not listed;
+#   [[heading]]   -- the dropdown heading it sits under (`resultCategory`),
+#                    with the directory's answer about it when there is one
+#                    (`meta`, `/api/results/dir`); no `heading`, none.
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+# --------------------------------------------------------------------- #
+#  The viewer a file opens in                                            #
+# --------------------------------------------------------------------- #
+
+# geomeTRIC's multi-frame *_geom_optim.xyz is a trajectory, not a structure
+# (structure claimed it and drew frame 0 alone, 2026-06-12).
+[[pick]]
+name = "a geomeTRIC *_geom_optim.xyz opens as a trajectory"
+file = "/tmp/BDT/optimization/BDT_geom_optim.xyz"
+opens = "trajectory"
+
+[[pick]]
+name = "...and an older wrapper's *_optim.xyz"
+file = "/tmp/foo_optim.xyz"
+opens = "trajectory"
+
+# The trajectory match is narrowed to *_optim.xyz so a plain .xyz is not taken.
+[[pick]]
+name = "a plain .xyz opens as a structure"
+file = "/tmp/water_demo/water.xyz"
+opens = "structure"
+
+[[pick]]
+name = "a .molwatch.log opens as a trajectory"
+file = "/tmp/run/foo.molwatch.log"
+opens = "trajectory"
+
+[[pick]]
+name = "a SIESTA .out opens as a trajectory"
+file = "/tmp/run/foo.out"
+opens = "trajectory"
+
+[[pick]]
+name = "a plain .log falls through to the text pane"
+file = "/tmp/run/foo.log"
+opens = "source"
+
+# `.molwatch.log` is trajectory's, so a matcher a little too loose takes
+# PySCF's plain stdout, `.pyscf.log`, with it.
+[[pick]]
+name = "...and so does a .pyscf.log, which is plain stdout"
+file = "/tmp/run/foo.pyscf.log"
+opens = "source"
+
+[[pick]]
+name = "a .pdb opens as a structure"
+file = "/tmp/protein.pdb"
+opens = "structure"
+
+[[pick]]
+name = "a .txt opens in the text pane"
+file = "/tmp/notes.txt"
+opens = "source"
+
+# Claimed by exact basename, ahead of the text pane, which takes every .json.
+[[pick]]
+name = "a sweep's job-set.json opens as its benchmark summary"
+file = "/p/calc/01_coarse/bench/job-set.json"
+opens = "bench-summary"
+
+[[pick]]
+name = "...and another .json beside it still in the text pane"
+file = "/p/calc/01_coarse/bench/bench-result.json"
+opens = "source"
+
+[[pick]]
+name = "a .fdf, an input, opens in the text pane"
+file = "/projects/foo/spectrum/run.fdf"
+opens = "source"
+
+# The compound suffix wins over the plain .json the text pane also takes.
+[[pick]]
+name = "a .spectra.json opens as a spectrum"
+file = "/projects/foo/spectrum/water.spectra.json"
+opens = "spectra"
+
+[[pick]]
+name = "a .fc-sweep.json opens as its displacement sweep"
+file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
+opens = "fc-sweep"
+
+# The transport record is `summarize task`'s copy, opened as a file
+# (`results.md` § 0.1): the report is claimed on the registry's word for the
+# description, never on a name.
+[[pick]]
+name = "a transport record by name alone opens in the text pane"
+file = "/projects/BDT/transport/bdt.transport.json"
+opens = "source"
+
+[[pick]]
+name = "a plain .json opens in the text pane"
+file = "/projects/foo/user/config.json"
+opens = "source"
+
+[[pick]]
+name = "a suffix nothing claims opens in nothing"
+file = "/projects/foo/spectrum/run.unknown_ext"
+
+[[pick]]
+name = "nor does an empty path"
+file = ""
+
+# --------------------------------------------------------------------- #
+#  The viewer that lists a file in the dropdown                          #
+# --------------------------------------------------------------------- #
+
+[[result]]
+name = "a .out is listed by the trajectory viewer"
+file = "/projects/foo/bar.out"
+lists = "trajectory"
+
+[[result]]
+name = "a .molwatch.log too"
+file = "/projects/foo/run.molwatch.log"
+lists = "trajectory"
+
+[[result]]
+name = "a .spectra.json by the spectrum viewer"
+file = "/projects/foo/raman.spectra.json"
+lists = "spectra"
+
+[[result]]
+name = "a transport record by name alone is no result"
+file = "/projects/BDT/transport/bdt.transport.json"
+
+# A result presenter registered ahead of the text pane, or the dropdown
+# never offers a SIESTA vibration's sweep (`engines/vibration.md` § 5.9).
+[[result]]
+name = "a .fc-sweep.json by its sweep viewer"
+file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
+lists = "fc-sweep"
+
+[[result]]
+name = "a .xyz by the structure viewer"
+file = "/projects/foo/optimized.xyz"
+lists = "structure"
+
+[[result]]
+name = "a .pdb too"
+file = "/projects/foo/protein.pdb"
+lists = "structure"
+
+# The text pane matches inputs and logs, and is no result: the dropdown
+# would flood with them.
+[[result]]
+name = "a .fdf input is not listed"
+file = "/projects/foo/inputs/job.fdf"
+
+[[result]]
+name = "nor a plain .log"
+file = "/projects/foo/build.log"
+
+[[result]]
+name = "nor a suffix nothing claims"
+file = "/projects/foo/data.xyzzy"
+
+[[result]]
+name = "nor an empty path"
+file = ""
+
+# --------------------------------------------------------------------- #
+#  The heading a file sits under in the dropdown                         #
+# --------------------------------------------------------------------- #
+
+# With the directory's answer, the heading names the engine that ran there.
+[[heading]]
+name = "a .out in a SIESTA run sits under SIESTA optimization"
+file = "/projects/foo/bar.out"
+meta = { engine = "siesta", role = ".out" }
+heading = "SIESTA optimization"
+
+# The same file under another engine: `.out` was hardcoded SIESTA until
+# 2026-09-18, wrong by construction for a third engine.
+[[heading]]
+name = "...in a VASP run, under VASP optimization"
+file = "/projects/foo/bar.out"
+meta = { engine = "vasp", role = ".out" }
+heading = "VASP optimization"
+
+# Every engine writes a .molwatch.log: filed by suffix, SIESTA runs once sat
+# under PySCF while the plot title said SIESTA (2026-09-04).
+[[heading]]
+name = "a .molwatch.log in a PySCF run, under PySCF optimization"
+file = "/projects/foo/run.molwatch.log"
+meta = { engine = "pyscf", role = ".molwatch.log" }
+heading = "PySCF optimization"
+
+# Without it, the file is named for what it is and the engine left unclaimed.
+[[heading]]
+name = "a .out with no answer sits under Optimization"
+file = "/projects/foo/bar.out"
+heading = "Optimization"
+
+[[heading]]
+name = "...and a *_geom_optim.xyz"
+file = "/projects/foo/BDT_geom_optim.xyz"
+heading = "Optimization"
+
+# `unknown` is the directory declining to name an engine, read as no answer.
+[[heading]]
+name = "a run whose engine is unknown names none"
+file = "/projects/foo/BDT_optim.xyz"
+meta = { engine = "unknown" }
+heading = "Optimization"
+
+# A transport calculation's report opens through its description, on the
+# registry's word for it -- `task.json` by name is every calculation's.
+[[heading]]
+name = "a transport calculation's task.json sits under Transport"
+file = "/projects/BDT/transport/task.json"
+meta = { parser = "transport-task" }
+heading = "Transport"
+
+[[heading]]
+name = "...and another calculation's task.json under nothing"
+file = "/projects/BDT/relax/task.json"
+
+[[heading]]
+name = "a .spectra.json sits under Vibrational spectrum"
+file = "/projects/foo/r.spectra.json"
+heading = "Vibrational spectrum"
+
+[[heading]]
+name = "a .xyz under Structure"
+file = "/projects/foo/q.xyz"
+heading = "Structure"
+
+[[heading]]
+name = "a .pdb too"
+file = "/projects/foo/p.pdb"
+heading = "Structure"
