@@ -31,19 +31,19 @@ threads = 1
 name = "a CG relaxation is bounded by MD.Steps, the one count SIESTA reads"
 stage_strategy = ""
 template = { relax_type = "CG", relax_steps = 42 }
-deck = ["MD.TypeOfRun CG", "MD.Steps 42"]
+deck_says = { "MD.TypeOfRun" = "CG", "MD.Steps" = "42" }
 
 [[case]]
 name = "...a Broyden one too"
 stage_strategy = ""
 template = { relax_type = "Broyden", relax_steps = 42 }
-deck = ["MD.TypeOfRun Broyden", "MD.Steps 42"]
+deck_says = { "MD.TypeOfRun" = "Broyden", "MD.Steps" = "42" }
 
 [[case]]
 name = "...and a FIRE one"
 stage_strategy = ""
 template = { relax_type = "FIRE", relax_steps = 42 }
-deck = ["MD.TypeOfRun FIRE", "MD.Steps 42"]
+deck_says = { "MD.TypeOfRun" = "FIRE", "MD.Steps" = "42" }
 
 # EACH RUNG CONVERGES TO ITS TIER (`engines/tuning.md` § 2.3, the authority
 # for SIESTA's force tolerance, one per tier): loose preopt 0.05 eV/Å,
@@ -53,21 +53,21 @@ deck = ["MD.TypeOfRun FIRE", "MD.Steps 42"]
 [[case]]
 name = "the coarse rung's deck states the loose-preopt force tolerance"
 stage_strategy = "vib-quality"
-deck = ["MD.MaxForceTol 0.05 eV/Ang"]
+deck_says = { "MD.MaxForceTol" = "0.05 eV/Ang" }
 
 [[case]]
 name = "...the medium rung's the publishable one"
 stage_strategy = "vib-quality"
 before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-deck = ["MD.MaxForceTol 0.04 eV/Ang"]
+deck_says = { "MD.MaxForceTol" = "0.04 eV/Ang" }
 
 [[case]]
 name = "...and the tight rung's the crystal-and-surface one"
 stage_strategy = "vib-quality"
 before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
 stage = "tight"
-deck = ["MD.MaxForceTol 0.01 eV/Ang"]
+deck_says = { "MD.MaxForceTol" = "0.01 eV/Ang" }
 
 # The SCF's mixer and criteria, as the deck states them and as the one fdf
 # reader reads them back -- what a transport calculation citing this run
@@ -81,13 +81,13 @@ deck_reads = { mixing_weight = 0.1, pulay_history = 6, dm_tolerance = 0.0001, dm
 # One k-point has nothing to parallelise over; several do.
 [[case]]
 name = "a Gamma-only calculation's diagonaliser is not parallelised over k-points"
-deck = ["Diag.ParallelOverK .false."]
+deck_says = { "Diag.ParallelOverK" = ".false." }
 
 [[case]]
 name = "...a periodic one sampling several is"
 structure = { elements = ["H", "H"], positions = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]], cell = [10.0, 10.0, 10.0], axis_kind = ["periodic", "periodic", "periodic"] }
 template = { kgrid = [4, 4, 4] }
-deck = ["Diag.ParallelOverK .true."]
+deck_says = { "Diag.ParallelOverK" = ".true." }
 
 # The labels are the person's: the deck's record carries every one of them,
 # as the structure holds it (`model/structure-annotations.md`).
@@ -113,7 +113,7 @@ deck_lacks = ["\nBlockSize "]
 [[case]]
 name = "...and a set one is written as set, never snapped to a power of two"
 template = { block_size = 24 }
-deck = ["\nBlockSize 24\n"]
+deck_says = { "BlockSize" = "24" }
 
 # running-a-job.md § 4.2, job-contracts.md § 3.2: the engine is declared in PROVENANCE, deck and run script.
 [[case]]
@@ -126,7 +126,7 @@ run_sh = ["\n# engine siesta\n"]
 name = "a later rung's deck carries the calculation's label, unsuffixed"
 before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-deck = ["\nSystemLabel H2\n"]
+deck_says = { "SystemLabel" = "H2" }
 
 # SIESTA's OMM runs a polarized density only with the spin held
 # (`science/chemistry-correctness.md` ES6, `m_dminim.F90`).
@@ -138,7 +138,7 @@ refused = "solution_method = OMM with a floating moment"
 [[case]]
 name = "...and OMM with the count held is written"
 template = { solution_method = "OMM", spin_treatment = "unrestricted", unpaired_electrons = 2 }
-deck = ["\nSolutionMethod OMM\n", "\nSpin.Fix .true.\n"]
+deck_says = { "SolutionMethod" = "OMM", "Spin.Fix" = ".true." }
 
 # ===================================================================== #
 #  PySCF                                                                 #
@@ -181,17 +181,18 @@ deck = ["'01_coarse': {", "'max_force_tol_eV_per_A': 0.0102844", "'rms_force_tol
 
 # EACH RUNG CONVERGES TO ITS TIER (`engines/tuning.md` § 2.4, the authority
 # for geomeTRIC's five criteria, and § 2.5 for the SCF tolerance), each
-# number on its own line as the deck assigns it: loose (coarse) gmax 2.0e-3,
+# number as the deck assigns it: loose (coarse) gmax 2.0e-3,
 # grms 1.3e-3, dmax 7.2e-3, drms 4.8e-3 Ha/Bohr and Å, energy 1.0e-5 Ha, SCF
 # 1e-7; publishable (medium) 4.5e-4, 3.0e-4, 1.8e-3, 1.2e-3, 1.0e-6, SCF
-# 1e-9; tight 2.0e-4, 1.0e-4, 1.0e-3, 5.0e-4, 1.0e-6, SCF 1e-10.  Three of
-# the tight rung's criteria were once wrong in the code, copied from the
+# 1e-9; tight 2.0e-4, 1.0e-4, 1.0e-3, 5.0e-4, 1.0e-6, SCF 1e-10 -- each
+# the value Python holds when the deck runs, whatever its spelling.  Three
+# of the tight rung's criteria were once wrong in the code, copied from the
 # implementation it replaced (2026-08-18).
 [[case]]
 name = "the coarse rung's PySCF deck states the loose tier's five criteria and SCF tolerance"
 engine = "pyscf"
 stage_strategy = "vib-quality"
-deck = ["\n_GEOM_GMAX = 0.002\n", "\n_GEOM_GRMS = 0.0013\n", "\n_GEOM_DMAX = 0.0072\n", "\n_GEOM_DRMS = 0.0048\n", "\n_GEOM_ETOL = 1e-05\n", "\nmf.conv_tol = 1.0e-07\n"]
+deck_says = { _GEOM_GMAX = 2.0e-3, _GEOM_GRMS = 1.3e-3, _GEOM_DMAX = 7.2e-3, _GEOM_DRMS = 4.8e-3, _GEOM_ETOL = 1.0e-5, "mf.conv_tol" = 1.0e-7 }
 
 [[case]]
 name = "...the medium rung's the publishable tier's"
@@ -199,7 +200,7 @@ engine = "pyscf"
 stage_strategy = "vib-quality"
 before = [["prep", "task", "--group", "1"]]
 stage = "medium"
-deck = ["\n_GEOM_GMAX = 0.00045\n", "\n_GEOM_GRMS = 0.0003\n", "\n_GEOM_DMAX = 0.0018\n", "\n_GEOM_DRMS = 0.0012\n", "\n_GEOM_ETOL = 1e-06\n", "\nmf.conv_tol = 1.0e-09\n"]
+deck_says = { _GEOM_GMAX = 4.5e-4, _GEOM_GRMS = 3.0e-4, _GEOM_DMAX = 1.8e-3, _GEOM_DRMS = 1.2e-3, _GEOM_ETOL = 1.0e-6, "mf.conv_tol" = 1.0e-9 }
 
 [[case]]
 name = "...and the tight rung's the tight tier's"
@@ -207,7 +208,7 @@ engine = "pyscf"
 stage_strategy = "vib-quality"
 before = [["prep", "task", "--group", "1"], ["prep", "task", "--group", "2"]]
 stage = "tight"
-deck = ["\n_GEOM_GMAX = 0.0002\n", "\n_GEOM_GRMS = 0.0001\n", "\n_GEOM_DMAX = 0.001\n", "\n_GEOM_DRMS = 0.0005\n", "\n_GEOM_ETOL = 1e-06\n", "\nmf.conv_tol = 1.0e-10\n"]
+deck_says = { _GEOM_GMAX = 2.0e-4, _GEOM_GRMS = 1.0e-4, _GEOM_DMAX = 1.0e-3, _GEOM_DRMS = 5.0e-4, _GEOM_ETOL = 1.0e-6, "mf.conv_tol" = 1.0e-10 }
 
 # The progress log's writer writes its whole header when it is built, so
 # a runtime fact written after it is lost.

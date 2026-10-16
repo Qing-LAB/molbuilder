@@ -10,8 +10,10 @@ is in effect is asked of its route below: an answer the page lays out, which
 no `jobset` verb prints.
 
 PREVENTS (plan W36 ⑧): a calculation's own list followed by prep's carry and
-ignored by the run script's restart check and `jobset status`, which read the
-engine's file -- two doors onto one list.
+ignored by the run script's restart check, which read the engine's file --
+two doors onto one list.  (`jobset status`'s warm-files column, the third
+reader, lists the files a run left, which a prepared calculation has not;
+no row here asks it.)
 """
 from __future__ import annotations
 

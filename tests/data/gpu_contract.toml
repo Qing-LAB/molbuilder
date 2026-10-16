@@ -129,7 +129,7 @@ run = { use_gpu = true, gpu_count = 2, mpi_np = 8 }
 header = ["#SBATCH -n 8", "#SBATCH -p gpu", "#SBATCH --gres=gpu:2",
           "#SBATCH --gres-flags=enforce-binding"]
 header_lacks = ["a100"]
-deck = ["Diag.ELPA.GPU .true."]
+deck_says = { "Diag.ELPA.GPU" = ".true." }
 run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
 launch = ["--domain", "gpu"]
 line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
@@ -146,7 +146,7 @@ run = { use_gpu = true, gpu_count = 2, mpi_np = 8 }
 header = ["#SBATCH -n 8", "#SBATCH -p gpu", "#SBATCH --gres=gpu:2",
           "#SBATCH --gres-flags=enforce-binding"]
 header_lacks = ["a100"]
-deck = ["Diag.Algorithm ELPA-2STAGE", "Diag.ELPA.GPU .true."]
+deck_says = { "Diag.Algorithm" = "ELPA-2STAGE", "Diag.ELPA.GPU" = ".true." }
 run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
 launch = ["--domain", "gpu"]
 line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
@@ -167,7 +167,7 @@ engine = "pyscf"
 run = { use_gpu = true, gpu_count = 2, threads = 4 }
 header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
           "#SBATCH --gres=gpu:2"]
-deck = ["USE_GPU = True"]
+deck_says = { USE_GPU = true }
 
 # GPU acceleration is ELPA's: ScaLAPACK with a GPU is refused rather than
 # written (`engines/siesta.md` § 7).
@@ -194,7 +194,7 @@ name = "a CPU run asks for no GPU anywhere"
 run = { use_gpu = false, mpi_np = 4 }
 header = ["#SBATCH -n 4", "#SBATCH -p gpu"]
 header_lacks = ["--gres"]
-deck = ["Diag.ELPA.GPU .false."]
+deck_says = { "Diag.ELPA.GPU" = ".false." }
 run_sh = ["molbuilder-siesta"]
 run_sh_lacks = ["molbuilder-siesta-gpu", "socket co-location", "_have_mps=",
                 "MOLBUILDER_GPU_NUMA"]

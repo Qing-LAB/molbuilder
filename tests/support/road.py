@@ -243,9 +243,13 @@ def calls_made(calls: Path):
 #      (`launch_writes_nothing`: every file under the calculation as it was;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
-#      `header_absent`), the deck (`deck`; and `deck_reads`, what the one fdf
-#      reader -- `parse.fdf.parse_fdf_params`, the reader every consumer of
-#      a deck asks -- reads from it, field by field), the run script
+#      `header_absent`), the deck (`deck`; `deck_says`, what the engine
+#      reads for each keyword it names -- a SIESTA deck through the one fdf
+#      reader, `parse.fdf.read_fdf`, its comments skipped, a PySCF deck's
+#      assignments at the top level as Python runs them, the last one
+#      standing; and `deck_reads`, what the one fdf reader's
+#      `parse_fdf_params`, the reader every consumer of a deck asks, reads
+#      from it, field by field), the run script
 #      (`run_sh`), each
 #      with a `_lacks` twin -- and the first three with an `_order` twin
 #      (lines standing in that order) and a `_once` twin (lines standing
@@ -319,9 +323,10 @@ def calls_made(calls: Path):
 # (`card_written`: `{stage, moments}` each -- `_road_card_written`), the
 # atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
-# what each stage's job would take from a run it continues, as the plan
-# states it and its reader reads it (`plan_takes`, `{stage = [file, ...]}`
-# -- `_road_plan_takes`), the
+# the files each stage's job declares it carries from a run it continues,
+# as the plan states it and its reader reads it -- the declaration, which
+# the launch's `warm_carry` then judges pair by pair (`plan_carries`,
+# `{stage = [file, ...]}` -- `_road_plan_carries`), the
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
@@ -582,10 +587,12 @@ def _road_own_warm_files(case, bundle) -> None:
     (bundle / FILENAME).write_text(text)
 
 
-def _road_plan_takes(want, bundle) -> None:
-    """What each stage's job would take from a run it continues -- its
-    ``warm`` files, in order, as the plan prep wrote holds them and the
-    launch reads them (`jobset.model.JobSet.load`): ``{stage: [file, ...]}``."""
+def _road_plan_carries(want, bundle) -> None:
+    """The files each stage's job declares it carries from a run it
+    continues -- its ``warm`` files, in order, as the plan prep wrote holds
+    them and the launch reads them (`jobset.model.JobSet.load`):
+    ``{stage: [file, ...]}``.  Which of them a launch takes is
+    `warm_carry`'s, asked at the launch (`job-contracts.md` § 4.2a)."""
     from molbuilder.jobset.model import JobSet
     plan = JobSet.load(bundle / "job-set.json")
     jobs = {j.name: j for j in plan.jobs}
@@ -632,8 +639,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_card_written(case["card_written"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
-    if "plan_takes" in case:
-        _road_plan_takes(case["plan_takes"], bundle)
+    if "plan_carries" in case:
+        _road_plan_carries(case["plan_carries"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
@@ -834,6 +841,39 @@ def _write_machine_config(case) -> None:
         mine.write_text(json.dumps(case["machine_config"]))
 
 
+def _deck_says(engine, text):
+    """What the engine reads from a deck, keyword by keyword --
+    ``({key: value}, the key a keyword is filed under)``: SIESTA's through
+    the one fdf reader (`parse.fdf.read_fdf`), each value its words joined
+    by one space; a PySCF deck's names and attributes assigned at the top
+    level, as Python runs them -- the last assignment standing, its value a
+    literal or its source."""
+    if engine == "siesta":
+        from molbuilder.parse.fdf import fdf_key, read_fdf
+        scalars, _ = read_fdf(text)
+        return {k: " ".join(v) for k, v in scalars.items()}, fdf_key
+    import ast
+    said = {}
+
+    def top(body):
+        for node in body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, (ast.Name, ast.Attribute)):
+                        try:
+                            value = ast.literal_eval(node.value)
+                        except ValueError:
+                            value = ast.unparse(node.value)
+                        said[ast.unparse(target)] = value
+            elif isinstance(node, (ast.If, ast.Try, ast.With, ast.For)):
+                for part in ("body", "orelse", "finalbody"):
+                    top(getattr(node, part, []))
+                for handler in getattr(node, "handlers", []):
+                    top(handler.body)
+    top(ast.parse(text).body)
+    return said, (lambda keyword: keyword)
+
+
 def _road_lines(case, key, text):
     """``key``'s lines are in ``text``; ``key_lacks``'s are not;
     ``key_order``'s stand in that order -- every one of a line before the
@@ -1018,6 +1058,18 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             names = _stage_names(bundle, case.get("stage", "coarse"))
             _road_lines(case, key,
                         _the_runs(bundle, names.name(role)).read_text())
+    # ...and the deck as its engine reads it, keyword by keyword
+    if "deck_says" in case:
+        names = _stage_names(bundle, case.get("stage", "coarse"))
+        text = _the_runs(bundle, names.name(deck)).read_text()
+        said, key = _deck_says(case.get("engine", "siesta"), text)
+        for keyword, want in case["deck_says"].items():
+            assert key(keyword) in said, \
+                f"deck_says: {keyword} is not read from: {_one_line(text)}"
+            have = said[key(keyword)]
+            assert (have == pytest.approx(want)
+                    if isinstance(want, float) else have == want), \
+                (keyword, have, want)
     # ...and the deck as its readers read it: through the one fdf reader,
     # field by field, never by its lines
     if "deck_reads" in case:

@@ -1739,7 +1739,7 @@ new attempt, for real, right then:
 
 | File | What it carries | Copied when |
 |---|---|---|
-| `bdt_au.XV` | the **relaxed coordinates** (and the cell) | always — this is the point of continuing |
+| `bdt_au.XV` | the **relaxed coordinates** (and the cell) | always — this is the point of continuing — unless the calculation's own restart-file list withholds it ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a: every reader follows the list in effect) |
 | `bdt_au.DM` | the converged **density matrix**, so the first SCF starts warm | when the description says to reuse it |
 | `bdt_au.CG` | the optimiser's own history | **only if both stages use the same algorithm** — CG history means nothing to Broyden |
 

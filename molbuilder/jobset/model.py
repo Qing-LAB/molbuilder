@@ -477,7 +477,7 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     `project-layout.md` § 2.3.4 states the rule as three rows, and only the
     third needs two stages:
 
-    | `.XV` | the relaxed coordinates | **always** |
+    | `.XV` | the relaxed coordinates | **always**, unless the list in effect withholds it |
     | `.DM` | the converged density | when the description says to reuse it |
     | `.CG` | the optimiser's own history | **only if both stages use the same algorithm** |
 

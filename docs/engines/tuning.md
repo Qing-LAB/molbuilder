@@ -939,12 +939,25 @@ What the values look like emitted. **Both engines emit one deck per rung**
 rung of each — the same tier, in each engine's own syntax:
 
 ```python
-# PySCF: <label>_02_medium.py -- this rung's targets, handed to geomeTRIC
-mf.conv_tol = 1.0e-09
-mol_eq = optimize(mf, maxsteps=200,
-                  convergence_gmax=0.00045, convergence_grms=0.0003,
-                  convergence_dmax=0.0018,  convergence_drms=0.0012,
-                  convergence_energy=1e-06)
+# PySCF: <label>_02_medium.py -- this rung's targets, each a named constant
+# beside its explanation, handed to geomeTRIC by the one relax call
+_GEOM_ETOL = 1e-06
+_GEOM_GRMS = 0.0003
+_GEOM_GMAX = 0.00045
+_GEOM_DRMS = 0.0012
+_GEOM_DMAX = 0.0018
+_GEOM_MAX_STEPS = 200
+mf.conv_tol  = 1.0e-09
+...
+mol_eq, _GEOM_CONVERGED = _mb_relax(
+        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,
+        ...
+        convergence_energy    = _GEOM_ETOL,
+        convergence_grms      = _GEOM_GRMS,
+        convergence_gmax      = _GEOM_GMAX,
+        convergence_drms      = _GEOM_DRMS,
+        convergence_dmax      = _GEOM_DMAX,
+        maxsteps              = _GEOM_MAX_STEPS,
 ```
 
 ```fdf

@@ -393,8 +393,8 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 | a GPU run with no count, and a count for a run that does not use the GPU — by the run card or `--gpus`, either engine — are refused at prep before anything is written, naming where to write it — rows of the table; the Task setup card shows each refusal on its devices row (`test_bench_grid_card.py`, API-level: no `jobset` verb reaches the card) | **G5** |
 | a calculation that turns the binding off asks without it, in the header, on the launch line and in a benchmark's trials — rows of the table | **G9** |
 | a CPU deck writes `.false.` explicitly | **G6.** Absence crashes a CPU run; this is the test that would have caught it |
-| every name in § 1's table resolves to exactly one answerer | **the document's own integrity** — a tenth GPU name arrives with its row or it does not arrive |
 
-The last one is this document's `max_mem_gb` guard: the defect that produced
-every entry in § 5 was a fact with two homes, and the only durable protection
-is a test that fails when a new one appears.
+That every name in § 1's table resolves to exactly one answerer is this
+document's own integrity, held by review: a tenth GPU name arrives with its row
+or it does not arrive (`process/testing.md` § 3a: a test asks what ships,
+never the document; a document's claims are review's).
