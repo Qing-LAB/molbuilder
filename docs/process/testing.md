@@ -659,8 +659,9 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   by tests of the outcome (plan, TST). A lint asserts a property that must hold
   across *every* file in a class, checked on the artifact rather than on a
   runtime. E.g.
-  `test_no_inline_scripts.py` scans every served template for an inline `<script>`
-  (the CSP `script-src 'self'` rule would break at runtime otherwise), and
+  `test_security_headers.py::test_no_page_served_carries_inline_javascript`
+  parses every page the app serves for the inline JavaScript the CSP
+  `script-src 'self'` blocks, and
   `test_negative_body_assert_lint.py` AST-lints the *test suite* so a "body lacks X"
   assertion is always paired with a status check. Cheap, and they catch a class of
   bug no unit test would. The artifact is what SHIPS or what the code
@@ -942,8 +943,8 @@ deliberately not installed there.
   from `mb_pyscf.pyz` with molbuilder absent, and writes a pair the package's
   codec reads back.
 - `_node_esm.py` — the Node ESM load-sim harness the `*_js.py` tests use (§4).
-- `test_no_inline_scripts.py`, `test_negative_body_assert_lint.py` — the
-  artifact lints (§ 6).
+- `test_security_headers.py::test_no_page_served_carries_inline_javascript`,
+  `test_negative_body_assert_lint.py` — the artifact lints (§ 6).
 - `test_no_tests_read_the_projects_tree.py` — no test builds a folder inside
   the developer's real `projects/` tree (§ 2a); carries its own truth table.
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions

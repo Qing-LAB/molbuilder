@@ -1,12 +1,12 @@
-"""The server's security posture, as `ops/access-control.md` states it.
-
-Two gaps that document named as known (plan W49): the header VALUES were
-untested -- only the no-inline-script rule the CSP depends on had a test --
-and the bind guard's refusal of a public interface without TLS was pinned
-only through the ``--no-auth`` case.  Both are asked of the product's own
-doors: the app's responses, and ``molbuilder serve``.
+"""The server's security posture, as `ops/access-control.md` states it:
+the header values, no page carrying the inline JavaScript the CSP blocks,
+and the bind guard's refusal of a public interface without TLS -- each
+asked of the product's own doors: the app's responses, and
+``molbuilder serve``.
 """
 from __future__ import annotations
+
+from html.parser import HTMLParser
 
 import pytest
 
@@ -36,6 +36,78 @@ def test_every_response_carries_the_security_headers(client, path):
     assert r.headers.get("X-Content-Type-Options") == "nosniff"
     assert r.headers.get("X-Frame-Options") == "DENY"
     assert r.headers.get("Referrer-Policy") == "same-origin"
+
+
+class _InlineJavaScript(HTMLParser):
+    """What `script-src 'self'` blocks, found as the browser parses the
+    page: a ``<script>`` with no ``src``, an ``on…`` attribute, a
+    ``javascript:`` URL -- each with the line it stands on."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = []
+
+    def handle_starttag(self, tag, attrs):
+        line = self.getpos()[0]
+        if tag == "script" and not dict(attrs).get("src"):
+            self.found.append(f"line {line}: <script> with no src")
+        for name, value in attrs:
+            if name.startswith("on"):
+                self.found.append(f"line {line}: <{tag} {name}=...>")
+            elif (value or "").strip().lower().startswith("javascript:"):
+                self.found.append(f"line {line}: <{tag} {name}=javascript:...>")
+
+    handle_startendtag = handle_starttag
+
+
+def _served_pages(app):
+    """Every page ``app`` serves: each GET route with no URL argument,
+    outside ``/api/`` and ``/static/``, that answers 200 with HTML."""
+    web = app.test_client()
+    for rule in app.url_map.iter_rules():
+        path = str(rule)
+        if (path.startswith(("/api/", "/static/")) or rule.arguments
+                or "GET" not in rule.methods):
+            continue
+        r = web.get(path)
+        if r.status_code == 200 and r.mimetype == "text/html":
+            yield path, r.get_data(as_text=True)
+
+
+def test_no_page_served_carries_inline_javascript(isolated_projects_root):
+    """`script-src 'self'` blocks inline JavaScript, and blocks it in
+    silence: the browser logs one violation and the wiring never runs
+    (`web-api.md` § 2: *"no inline JavaScript anywhere"*; `ui-contract.md`:
+    *"no `<script>` blocks, no `onclick=` attributes"*).  On 2026-05-18
+    three tabs' *Load from current selection* buttons stayed dead that way.
+
+    Every page the app serves -- each one its route map names, and the
+    sign-in page from an app that has sign-in -- parsed as the browser
+    parses it, partials and all.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a script block in a page's template,
+    an ``onclick`` in a partial a page includes, a script in the sign-in
+    page."""
+    from molbuilder.web.app import create_app
+    quiet = {"rate_limit": {"enabled": False}}
+    sign_in = {"id": "cas", "label": "Sign in", "kind": "cas",
+               "allowed_users": ["user@example.com"],
+               "login_url": "https://cas.example.com/cas/login",
+               "email_domain": "example.com"}
+    pages = dict(_served_pages(create_app(config=quiet)))
+    pages.update(_served_pages(create_app(
+        config={**quiet, "auth": {"providers": [sign_in]}})))
+    assert {"/results", "/login"} <= set(pages), sorted(pages)
+    found = {}
+    for path, html in sorted(pages.items()):
+        parsed = _InlineJavaScript()
+        parsed.feed(html)
+        parsed.close()
+        if parsed.found:
+            found[path] = parsed.found
+    assert not found, (
+        "inline JavaScript the CSP blocks -- move it into a file under "
+        f"web/static/ and load it with <script src>: {found}")
 
 
 def test_hsts_is_sent_over_https_and_only_over_https(client):

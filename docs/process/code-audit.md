@@ -58,7 +58,7 @@ These hold regardless of which dimension you're auditing.
    | asserts | a property the shipped artifact must not violate | that one line is spelled a certain way |
    | a rename | is irrelevant to it | breaks it |
    | deleting the code | **fails** it | passes it, if the name survives in a comment |
-   | examples | `test_no_inline_scripts.py`, `test_page_ids_unique.py` (and `test_css_no_duplicate_selectors.py`, until its retirement on 2026-09-10) | `assert "function _themeColors" in core_js` |
+   | examples | `test_page_ids_unique.py`; every page the app serves parsed for inline JavaScript (`test_security_headers.py`) | `assert "function _themeColors" in core_js` |
 
    A lint is a *generalised* audit — the same reading you did by hand, done over
    the whole class, forever. A pin is a transcript of one line you happened to be

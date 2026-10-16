@@ -495,7 +495,7 @@ The transferable part. A new gate should be able to point at one of these.
 | TLS cert/key resolution (flags vs `molbuilder.json`, incomplete pairs fall back to HTTP) | `tests/test_cli_tls.py` |
 | The reload gate — **404** with no supervisor, **403** for a session that is not an admin's; the availability answer in four configurations; the respawn loop; the supervisor never importing the app; a reload refused, 409, while `molbuilder.json` cannot be read (`deployment.md` § 1.0b) | `tests/test_admin_reload.py` |
 | Revalidation staying invisible to the limiter (the § 4.3 assumption) | `tests/test_static_revalidates.py` |
-| No inline `<script>` anywhere (the CSP's `script-src 'self'` would break silently otherwise) | `tests/test_no_inline_scripts.py` |
+| No inline JavaScript on any page served — a `<script>` with no `src`, an `on…` attribute, a `javascript:` URL, each of which the CSP's `script-src 'self'` would block in silence; every page of the route map, the sign-in page included, parsed as the browser parses it | `tests/test_security_headers.py::test_no_page_served_carries_inline_javascript` |
 | The header values themselves — the CSP's directives, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` on a page and on an API answer; HSTS over HTTPS (direct or `X-Forwarded-Proto`) and never over plain HTTP | `tests/test_security_headers.py` *(since 2026-09-29; a known gap until then)* |
 | The bind guard's refusal of a public interface without TLS (`serve --host 0.0.0.0`, no certificate), before anything binds | `tests/test_security_headers.py::test_a_public_bind_without_tls_is_refused` *(since 2026-09-29; pinned only through `--no-auth` until then)* |
 

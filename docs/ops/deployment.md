@@ -665,5 +665,6 @@ shared-filesystem assumptions.
   before anything is signalled: `serve restart`, `jupyter start`/`restart`, and
   the Reload route (§ 1.0b).
 - `test_cli.py` — `--no-auth` refuses a non-loopback host.
-- `test_no_inline_scripts.py` — the CSP `script-src 'self'` invariant (no inline
-  `<script>` in any template).
+- `test_security_headers.py` — the header values, no page served carrying the
+  inline JavaScript the CSP `script-src 'self'` blocks, and a public bind
+  without TLS refused.
