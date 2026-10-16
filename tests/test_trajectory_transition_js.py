@@ -31,19 +31,16 @@ breaks. Only one of those two is a test.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests._node_esm import lifted, run_node
+
 MODULE = (Path(__file__).resolve().parents[1]
           / "molbuilder/web/static/lib/trajectory/core.js")
-
-
-def _slice(src: str, start: str, end: str) -> str:
-    i = src.index(start)
-    return src[i:src.index(end, i)].rstrip()
+LIFECYCLE = (Path(__file__).resolve().parents[1]
+             / "molbuilder/web/static/lib/inspectors/lifecycle.js")
 
 
 def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
@@ -53,12 +50,7 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
     Everything `transition` reaches outside itself is faked at the edge:
     the two pollers (which own a timer), and the abort controllers.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-
-    src = MODULE.read_text()
-    fn = _slice(src, "    function transition(target, payload) {",
+    fn = lifted(MODULE, "    function transition(target, payload) {",
                 "\n    function ")
 
     harness = f"""
@@ -88,21 +80,7 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
             run:          state.fileState.run,
         }}));
     """
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        hint = ""
-        if "is not defined" in proc.stderr:
-            hint = ("\n\nTHIS HARNESS STUBS `transition`'s COLLABORATORS BY "
-                    "NAME (`startPolling` / `stopPolling`).  Renaming one in "
-                    "the module breaks the stub, not the behaviour -- add the "
-                    "new name above.  Stated rather than hidden: a unit "
-                    "harness that fakes collaborators is coupled to their "
-                    "names, and the honest difference from the source-greps "
-                    "these replace is that this fails LOUDLY here instead of "
-                    "passing quietly on a broken behaviour.")
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}{hint}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([], harness)
 
 
 def test_idle_clears_the_file_identity():
@@ -159,25 +137,141 @@ def test_loading_forgets_the_last_files_run():
 
 
 # --------------------------------------------------------------------- #
+#  An answer is written under its own file's name, or not at all        #
+# --------------------------------------------------------------------- #
+
+_THE_FILE = "/p/H2/01_coarse/run-0/H2.out"
+_ANOTHER = "/p/H2/01_coarse/run-1/H2.out"
+_ONE_FRAME = [[["H", 0.0, 0.0, 0.0], ["H", 0.74, 0.0, 0.0]]]
+_TWO_FRAMES = _ONE_FRAME + [[["H", 0.0, 0.0, 0.0], ["H", 0.75, 0.0, 0.0]]]
+
+
+def _parsed(frames, mark):
+    """A parse of an output, marked so the test can tell whose it is."""
+    return {"frames": frames, "lattice": None, "run_state": "running",
+            "scf_history": [], "mark": mark}
+
+
+def _applied(answer, *, machine, path, held):
+    """Run the REAL `applyNewData(answer)` -- and through it the REAL
+    `transition("APPLY")` -- on the REAL state, the viewer in ``machine``
+    showing ``path`` with ``held`` parsed; report the file it then holds,
+    or what it threw.
+
+    Faked at the edge: MolView (none mounted, so a poll cannot append and
+    takes the rebuild) and the drawing calls."""
+    harness = f"""
+        const root = globalThis;
+        {lifted(MODULE, "    const state = {",
+                "\n    (function _wireBackcompatAliases")}
+        {lifted(MODULE, "    (function _wireBackcompatAliases",
+                "\n    // Transition orchestrator")}
+        {lifted(MODULE, "    function transition(target, payload) {",
+                "\n    function ")}
+        {lifted(MODULE, "    function _latticeEqual(a, b) {",
+                "\n    // Compare frame")}
+        {lifted(MODULE, "    function _frameEqualAt(", "\n    // Fingerprint")}
+        {lifted(MODULE, "    function _scfFingerprint(data) {",
+                "\n    function ")}
+        {lifted(MODULE, "    function applyNewData(r) {", "\n    function ")}
+        let _mv = null;
+        const _mvdata = () => null;
+        function startPolling() {{}}
+        function stopPolling() {{}}
+        function _renderRuntimeInfo() {{}}
+        function _renderParseWarnings() {{}}
+        function makePlots() {{}}
+        function _renderBadge() {{}}
+        function setStatus() {{}}
+        function rebuildModel() {{}}
+        function drawForces() {{}}
+        function _announceReady() {{}}
+        function _withRunNotes() {{}}
+        function _cellCameFromTheRun() {{ return false; }}
+        state.machine = {json.dumps(machine)};
+        state.fileState.path = {json.dumps(path)};
+        state.fileState.data = {json.dumps(held)};
+        let threw = null;
+        try {{ applyNewData({json.dumps(answer)}); }}
+        catch (e) {{ threw = String((e && e.message) || e); }}
+        console.log(JSON.stringify({{
+            path: state.fileState.path,
+            mark: state.fileState.data && state.fileState.data.mark,
+            threw,
+        }}));
+    """
+    return run_node([LIFECYCLE], harness)
+
+
+@pytest.mark.parametrize("machine,path,held,answer,holds", [
+    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
+                 {"path": _ANOTHER, "mtime": 2,
+                  "data": _parsed(_ONE_FRAME, "answer")},
+                 (_THE_FILE, "held"),
+                 id="a poll's answer with nothing new, for another file"),
+    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
+                 {"path": _ANOTHER, "mtime": 2,
+                  "data": _parsed(_TWO_FRAMES, "answer")},
+                 (_THE_FILE, "held"),
+                 id="a poll's new frames, for another file"),
+    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
+                 {"path": _THE_FILE, "mtime": 2,
+                  "data": _parsed(_ONE_FRAME, "answer")},
+                 (_THE_FILE, "answer"),
+                 id="a poll's answer with nothing new, for the file on screen"),
+    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
+                 {"path": _THE_FILE, "mtime": 2,
+                  "data": _parsed(_TWO_FRAMES, "answer")},
+                 (_THE_FILE, "answer"),
+                 id="a poll's new frames, for the file on screen"),
+    pytest.param("LOADING", "/p/H2/01_coarse/run-0", None,
+                 {"path": _THE_FILE, "mtime": 1, "format": "siesta",
+                  "data": _parsed(_ONE_FRAME, "answer")},
+                 (_THE_FILE, "answer"),
+                 id="a load, under the name of the file the server read"),
+    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
+                 {"mtime": 2, "data": _parsed(_TWO_FRAMES, "answer")},
+                 "refused",
+                 id="an answer that names no file"),
+])
+def test_an_answer_is_written_under_its_own_files_name_or_not_at_all(
+        machine, path, held, answer, holds):
+    """`results.md` § 4.2: *"A name and the data that belongs to it are
+    written together, or neither is"* -- an answer that names no file is
+    refused, a poll's answer for a file not on screen is dropped, and a
+    load takes the name of the file the server read.
+
+    THE SILENT FAILURE.  `/api/watch/data` answers for whatever file the
+    server is watching, so a poll's answer can belong to another file than
+    the one on screen; written, its frames are drawn under this file's
+    name, and nothing says so.
+
+    Run through the REAL `applyNewData` -- its arm for an answer with
+    nothing new and its rebuild -- so a write that went around `APPLY`
+    fails here as a missing guard does.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the poll's guard in `APPLY` gone;
+    either arm writing the data itself."""
+    out = _applied(answer, machine=machine, path=path, held=held)
+    if holds == "refused":
+        assert out["threw"] and "APPLY without a path" in out["threw"], out
+        assert out["mark"] == "held", out
+    else:
+        assert out["threw"] is None, out
+        assert (out["path"], out["mark"]) == holds, out
+
+
+# --------------------------------------------------------------------- #
 #  plottableFrames — which frames the plots are allowed to use          #
 # --------------------------------------------------------------------- #
 
 def _plottable(frames, in_progress):
     """Run the REAL `plottableFrames(data)` and return the indices it keeps."""
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    fn = _slice(MODULE.read_text(), "    function plottableFrames(data) {",
+    fn = lifted(MODULE, "    function plottableFrames(data) {",
                 "\n    // Expose for tests")
-    harness = (fn + "\nconsole.log(JSON.stringify(plottableFrames("
-               + json.dumps({"frames": frames, "in_progress": in_progress})
-               + ")));")
-    proc = subprocess.run([shutil.which("node"), "--input-type=commonjs",
-                           "-e", harness],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([], fn + "\nconsole.log(JSON.stringify(plottableFrames("
+                    + json.dumps({"frames": frames, "in_progress": in_progress})
+                    + ")));")
 
 
 def test_a_mid_write_frame_is_kept_out_of_the_plots():
@@ -218,10 +312,7 @@ def _refresh(*, path):
     bundle it reads the event name from, the listener registrar, the
     loader, and the observer it also installs.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    fn = _slice(MODULE.read_text(), "    function _wireRefreshListener() {",
+    fn = lifted(MODULE, "    function _wireRefreshListener() {",
                 "\n    function ")
     harness = f"""
         const _loaded = [];
@@ -245,11 +336,7 @@ def _refresh(*, path):
         if (h) h();
         console.log(JSON.stringify({{ wired: !!h, loaded: _loaded }}));
     """
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([], harness)
 
 
 def test_refresh_reloads_the_file_on_screen():
@@ -287,17 +374,12 @@ def _aliased_state():
     A flat name that stopped being an alias would become a second copy of
     the same fact, silently diverging.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    src = MODULE.read_text()
-    state_lit = _slice(src, "    const state = {", "\n    (function _wireBackcompatAliases")
-    wiring = _slice(src, "    (function _wireBackcompatAliases", "\n    // Transition orchestrator")
-    lifecycle = (Path(__file__).resolve().parents[1]
-                 / "molbuilder/web/static/lib/inspectors/lifecycle.js").read_text()
+    state_lit = lifted(MODULE, "    const state = {",
+                       "\n    (function _wireBackcompatAliases")
+    wiring = lifted(MODULE, "    (function _wireBackcompatAliases",
+                    "\n    // Transition orchestrator")
     harness = f"""
         const root = globalThis;
-        {lifecycle}
         {state_lit}
         {wiring}
         // Write through the FLAT name, read back through the BUCKET.
@@ -310,11 +392,7 @@ def _aliased_state():
             throughFile:  state.fileState.path,
         }}));
     """
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([LIFECYCLE], harness)
 
 
 def test_the_state_starts_idle_and_carries_its_buckets():
@@ -403,10 +481,7 @@ def test_starting_the_poll_wires_no_listener():
     runs the real function with a spying registrar and asserts it
     registered nothing.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    fn = _slice(MODULE.read_text(), "    function startPolling() {",
+    fn = lifted(MODULE, "    function startPolling() {",
                 "\n    function stopPolling")
     harness = f"""
         const _registered = [];
@@ -424,11 +499,7 @@ def test_starting_the_poll_wires_no_listener():
         console.log(JSON.stringify({{ registered: _registered,
                                       timer: state.pollTimer }}));
     """
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    out = run_node([], harness)
     assert out["registered"] == [], (
         f"startPolling registered {out['registered']!r}. Every load would "
         f"add another handler, so one Refresh fires N reloads.")
@@ -451,13 +522,11 @@ def _poll_once(*, changed, run, held=None, path="/p/run.molwatch.log"):
     run's state it carries (``"absent"`` for none: a poll with new content
     leaves it out); ``held`` -- the run's state the viewer already holds.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    src = MODULE.read_text()
-    run_state_const = _slice(src, "const RUN_STATE = Object.freeze", "});") + "});"
-    settle = _slice(src, "    function _settlePostLoad", "\n    function plottableFrames")
-    poll = _slice(src, "    async function pollOnce()", "\n    function ")
+    run_state_const = lifted(MODULE, "const RUN_STATE = Object.freeze",
+                             "});") + "});"
+    settle = lifted(MODULE, "    function _settlePostLoad",
+                    "\n    function plottableFrames")
+    poll = lifted(MODULE, "    async function pollOnce()", "\n    function ")
     answer = {"ok": True, "changed": changed, "mtime": 2 if changed else 1,
               "path": path, "data": {"frames": []}}
     if run != "absent":
@@ -501,11 +570,7 @@ def _poll_once(*, changed, run, held=None, path="/p/run.molwatch.log"):
             transitions: _seen, machine: state.machine,
         }})));
     """
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([], harness)
 
 
 _LIVE = {"state": "running", "detail": "running", "live": True}

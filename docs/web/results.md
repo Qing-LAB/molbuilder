@@ -1050,26 +1050,17 @@ Two consequences worth stating, because they are the point:
 old shape and all three failed on the correction, one of them because a
 non-greedy regex stopped at the new guard's `return`.*
 
-**Neither half has a test now.** Removing `path` from either caller was
-caught by an e2e test that computed CO2 itself --
-`test_the_viewer_draws_the_run_this_suite_just_optimised` (a relaxation,
-~4 s) and `test_the_viewer_reads_a_run_this_suite_just_computed` (a
-frequency job, ~2 s) -- and both were retired 2026-10-04 with their files:
-each ran its deck by hand, outside `init → prep → launch`, and opened that
-folder as a run of ours (`process/testing.md` § 6). A relaxation and a
-spectrum made on the road and opened in the browser are what prove the two
-halves again; until then the load path is uncovered. The calculation is
-still the proof *(user ruling, 2026-09-03: "e2e means you can calculate a CO2
-molecule within 5 min and use that output to do this. Why do you need
-anything copied? That would be true e2e.")* -- the road is how it is made.
-
-The **no-new-content** arm of the trajectory's `APPLY`, which runs only on a
-watch tick that finds the file unchanged, was never exercised: reaching it
-needs a run that is still going while the page watches it.
-
-*(Before the CO2 runs, no test in this suite had ever loaded a real spectra
-result: every spectra e2e mounted a `job.spectra.json` that did not exist,
-took the 404 and stopped in `ERROR` without reaching `APPLY`.)*
+**Both halves are proved on runs the road made** *(user ruling, 2026-09-03:
+"e2e means you can calculate a CO2 molecule within 5 min and use that output
+to do this")*: the trajectory viewer draws a real H2 relaxation
+(`test_siesta_run_in_the_viewer_e2e.py`) and the spectra viewer a real CO2
+vibration's modes, picked from the dropdown
+(`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibration_as_its_modes`)
+-- a load whose caller lost its `path` draws nothing. The guards themselves
+run on each viewer's shipped functions (`test_trajectory_transition_js.py`,
+`test_spectra_transition_js.py`): an answer for another file, one after
+dispose and one naming no file, through both arms of the trajectory's
+`applyNewData` -- the one for an answer with nothing new among them.
 
 `derived` is the one the prose above folds into "the parsed file", and it is a
 separate bucket for a reason: it is **recomputed**, never written by a
@@ -1259,10 +1250,10 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   — the Run panel (§ 3a) on a SIESTA run the road makes and stops: the closed
   line, the four sections, the deck's View, and hidden for a container and
   under a rebind whose scan fails.
-- `test_results_state_contract_js.py` — § 4.2's buckets and its two guards,
-  on the trajectory side.
-- `test_results_state_contract_spectra_js.py` — § 4.2's buckets and guards on
-  the spectra side, which is a second inspector and not a copy.
+- `test_trajectory_transition_js.py` and `test_spectra_transition_js.py` —
+  § 4 and § 4.2 run on each viewer's own state machine: a file switch, a
+  poll, dispose, Refresh, and an answer written under its own file's name
+  or not at all.
 - § 4.1, the run followed by the server's answer:
   `tests/data/hand_overs.toml` (the server's answer for a run that ended --
   not followed),
@@ -1271,12 +1262,3 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   poll's answer).  *(The run's end read before the file's last read, and the
   spectra viewer letting a run go, had tests that made the run by copying an
   output; they were retired 2026-10-03, `process/testing.md` § 6.)*
-
-*(The last two were missing from this list until 2026-09-02, which is how they
-came to be read as tests of a retired design: the vocabulary they use —
-`fileState`, `uiPrefs` — appeared in no live document, so a search for it
-landed in `archive/` and nowhere else. § 4 names the buckets now, so the
-search lands here. One word of that vocabulary has since gone from the code
-too: `fetchSeq` was deleted 2026-09-04 and the seven tests pinning it went
-with it — a name with no live home is a question, and the answer is
-sometimes "because it should not be there".)*

@@ -435,15 +435,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // forbidden list ("Direct mutation of fileState outside
             // a → LOADING → LOADED/WATCHING arc").
             //
-            // Two callers (both in applyNewData):
-            //   1. noNewContent branch -- payload carries only
-            //      {mtime, data} (format/label/path stay because the
-            //      file identity didn't change).  Contract § 3 matrix
-            //      row "watch tick (new SCF iter same step)" /
-            //      "watch tick (new frame)" → "replace .data".
-            //   2. full-rebuild branch -- payload carries all five
-            //      fields.  This is the LOADING → LOADED/WATCHING
-            //      arc.
+            // Every caller names its file: applyNewData's two arms -- an
+            // answer with nothing new ({path, mtime, data, run}) and the
+            // full rebuild (every field the load answered: the LOADING →
+            // LOADED/WATCHING arc) -- and a poll that found the file
+            // unchanged ({path, run}).
             //
             // Either way the writes happen atomically inside this
             // single function; render code observes either the

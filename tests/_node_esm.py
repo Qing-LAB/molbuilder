@@ -11,6 +11,9 @@ harness loads BOTH:
 A dynamic ``import()`` in a MODULE context runs either kind: the classic IIFE executes its
 side-effect, the ES module executes + exports. So ONE loader serves both.
 
+``lifted(module, start, end)``: a function or a literal of a shipped file, its text from
+  ``start`` up to ``end``, for a harness that runs it against fakes.
+
 ``run_node(files, snippet, *, globals_js="", timeout=20)``:
   * ``files``   : ordered list of Path/str module files to load (dependencies first). Each is
                   dynamically imported (side effects apply; a later file sees earlier globals).
@@ -32,6 +35,16 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
+
+def lifted(module, start: str, end: str) -> str:
+    """The text of the shipped file ``module`` from ``start`` up to ``end``
+    -- a function or a literal lifted out for a harness to run against its
+    fakes.  A harness that lifts by these two strings fails, naming them,
+    when either moves."""
+    src = Path(module).read_text()
+    i = src.index(start)
+    return src[i:src.index(end, i)].rstrip()
 
 
 def run_node(files, snippet: str, *, globals_js: str = "", static_root=None, timeout: int = 20):
