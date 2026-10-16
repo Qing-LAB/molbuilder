@@ -389,7 +389,7 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 | test | the rule |
 |---|---|
 | `test_gpu_answerers.py` — the `allocation` set is read from the catalogue and `use_gpu` is not in it | **G2.** The one door, so a document cannot disagree with the data |
-| the solver decides no environment and no resource | **G3.** Mutate `diag_algorithm` and assert env, gres and partition are unchanged |
+| the solver decides no environment and no resource — two pairs of rows of the table, each pair differing only in `diag_algorithm` (one-stage and two-stage ELPA on the GPU, ELPA and ScaLAPACK on the CPU) and asking the same queue, GPUs and environment | **G3** |
 | a GPU run with no count, and a count for a run that does not use the GPU — by the run card or `--gpus`, either engine — are refused at prep before anything is written, naming where to write it — rows of the table; the Task setup card shows each refusal on its devices row (`test_bench_grid_card.py`, API-level: no `jobset` verb reaches the card) | **G5** |
 | a calculation that turns the binding off asks without it, in the header, on the launch line and in a benchmark's trials — rows of the table | **G9** |
 | a CPU deck writes `.false.` explicitly | **G6.** Absence crashes a CPU run; this is the test that would have caught it |

@@ -86,29 +86,3 @@ def test_each_machine_answered_setting_really_carries_the_flag(name):
     assert item.allocation, (
         f"`gpu.md` G2 lists {name} as machine-answered and the catalogue "
         f"does not mark it -- so a surface would offer it to a person")
-
-
-def test_the_solver_decides_no_resource_and_no_environment():
-    """**G3.**  `diag_algorithm` is the eigensolver and nothing else -- the
-    packaged SIESTA runs both ELPA stages on CPU, measured, so only
-    `Diag.ELPA.GPU` re-routes anything.
-
-    Checked by SOURCE reach rather than behaviour: the claim is that the
-    solver's name never arrives at the code that picks an environment, a
-    gres or a partition.  A behavioural test would only cover the paths it
-    happened to walk.
-    """
-    import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "molbuilder"
-    resource_side = ["runwrap.py", "resolve.py", "jobset/submit.py",
-                     "scheduler/admit.py", "scheduler/place.py",
-                     "scheduler/emit.py"]
-    offenders = [f for f in resource_side
-                 if (root / f).is_file()
-                 and "diag_algorithm" in (root / f).read_text()]
-    assert not offenders, (
-        f"`diag_algorithm` reaches {offenders} -- the solver is deciding a "
-        f"resource or an environment.  That premise was measured FALSE on "
-        f"2026-08-13 (the packaged SIESTA runs ELPA on CPU through ELSI) and "
-        f"the deck-text scan it justified was deleted rather than replaced "
-        f"(gpu.md G3)")

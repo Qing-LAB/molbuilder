@@ -134,6 +134,22 @@ run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
 launch = ["--domain", "gpu"]
 line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
 
+# THE SOLVER IS NOT THE ACCELERATOR (G3): `diag_algorithm` chooses the
+# eigensolver and decides no environment and no resource -- the packaged
+# SIESTA runs ELPA on the CPU, through ELSI.  The row below is the one above
+# with the two-stage solver: the solver reaches the deck, and the queue, the
+# GPUs and the environment are the same.
+[[case]]
+name = "...on the two-stage ELPA, the same queue, GPUs and environment"
+template = { diag_algorithm = "ELPA-2STAGE" }
+run = { use_gpu = true, gpu_count = 2, mpi_np = 8 }
+header = ["#SBATCH -n 8", "#SBATCH -p gpu", "#SBATCH --gres=gpu:2",
+          "#SBATCH --gres-flags=enforce-binding"]
+deck = ["Diag.Algorithm ELPA-2STAGE", "Diag.ELPA.GPU .true."]
+run_sh = ["molbuilder-siesta-gpu"]
+launch = ["--domain", "gpu"]
+line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
+
 [[case]]
 name = "the binding turned off leaves both renderings"
 allocation = { gpu_binding = false }
@@ -152,17 +168,10 @@ header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
           "#SBATCH --gres=gpu:2"]
 deck = ["USE_GPU = True"]
 
-# GPU acceleration is ELPA's: the variant a template states reaches the
-# deck, and ScaLAPACK with a GPU is refused rather than written
-# (`engines/siesta.md` § 7).
+# GPU acceleration is ELPA's: ScaLAPACK with a GPU is refused rather than
+# written (`engines/siesta.md` § 7).
 [[case]]
-name = "the ELPA variant a template states reaches a GPU deck"
-template = { diag_algorithm = "ELPA-2STAGE" }
-run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
-deck = ["Diag.Algorithm ELPA-2STAGE"]
-
-[[case]]
-name = "...and a GPU run on ScaLAPACK is refused"
+name = "a GPU run on ScaLAPACK is refused"
 template = { diag_algorithm = "ScaLAPACK" }
 run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
 refused = "requires an ELPA diagonalizer"
@@ -182,11 +191,24 @@ header = ["#SBATCH --gres=gpu:3"]
 [[case]]
 name = "a CPU run asks for no GPU anywhere"
 run = { use_gpu = false, mpi_np = 4 }
-header = ["#SBATCH -n 4"]
+header = ["#SBATCH -n 4", "#SBATCH -p gpu"]
 header_lacks = ["--gres"]
 deck = ["Diag.ELPA.GPU .false."]
+run_sh = ["molbuilder-siesta"]
 run_sh_lacks = ["molbuilder-siesta-gpu", "socket co-location", "_have_mps=",
                 "MOLBUILDER_GPU_NUMA"]
+
+# ...and its twin on ScaLAPACK (G3): the solver decides neither the queue nor
+# the environment, so a CPU run on ELPA runs the packaged build as one on
+# ScaLAPACK does.
+[[case]]
+name = "...on ScaLAPACK, the same queue and the same packaged build"
+template = { diag_algorithm = "ScaLAPACK" }
+run = { use_gpu = false, mpi_np = 4 }
+header = ["#SBATCH -n 4", "#SBATCH -p gpu"]
+header_lacks = ["--gres"]
+run_sh = ["molbuilder-siesta"]
+run_sh_lacks = ["molbuilder-siesta-gpu"]
 
 [[case]]
 name = "a count for a run that does not use the GPU is refused at prep, before anything is written"
@@ -238,13 +260,6 @@ engine = "pyscf"
 run = { use_gpu = false }
 run_sh = ['" --interval "${MB_MONITOR_INTERVAL:-10}" ']
 run_sh_lacks = ["--gpu --interval"]
-
-[[case]]
-name = "a CPU run on ScaLAPACK runs the packaged build"
-template = { diag_algorithm = "ScaLAPACK" }
-run = { use_gpu = false }
-run_sh = ["molbuilder-siesta"]
-run_sh_lacks = ["molbuilder-siesta-gpu"]
 
 [[case]]
 name = "--env names the env a job activates, over the GPU route"
