@@ -50,7 +50,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         pyscf: null,
         // NOTHING structural is held here.  Coordinates, labels and periodicity
         // are read LIVE off the viewer at request time, in ONE read
-        // (getStructure) -- contract F1 (docs/science/validation.md 4.1).
+        // (exportFile) -- contract F1 (docs/science/validation.md 4.1).
     };
 
     /* THE STRUCTURE AS THE SERVER TAKES IT — ASKED FOR, NOT ASSEMBLED.

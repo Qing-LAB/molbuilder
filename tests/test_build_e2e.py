@@ -732,8 +732,8 @@ class TestSendToTaskSetup:
         return calc, xyz
 
     def _open_on(self, page, base_url, folder):
-        """The tab, its sidebar open on ``folder`` -- as arriving from
-        another tab leaves it (`web/projects.md` § 5's hand-off)."""
+        """The tab, its sidebar open on ``folder`` -- the most recent place,
+        where a tab never visited starts (`web/projects.md` § 2)."""
         import json as _json
         page.add_init_script(
             "try { sessionStorage.setItem('molbuilder.current_dir', "
@@ -1028,11 +1028,12 @@ class TestSendToTaskSetup:
         moment it is sent, in one read, for the frame on screen (F1;
         `web/molview.md` § 9.3a); a file opens on its first frame
         (§ 10.8).  Driven through the frame bar's own buttons, on a
-        relaxation's three frames.
+        relaxation's three frames, to the MIDDLE one -- neither the first
+        nor the last, the two frames a shortcut would answer.
 
         MUTATIONS THIS MUST FAIL AGAINST: the structure copied once, when
         the file loaded, and sent from the copy; `exportFile` answering the
-        first frame whatever is on screen."""
+        first frame, or the last, whatever is on screen."""
         from conftest import write_pseudos
         import numpy as np
         calc = (isolated_projects_root / "proj" / "opt" / "scan").resolve()
@@ -1053,11 +1054,10 @@ class TestSendToTaskSetup:
         counter = page.locator(".molviewer-frames-counter")
         expect(counter).to_have_text("1 / 3")
         page.get_by_role("button", name="Next frame").click()
-        page.get_by_role("button", name="Next frame").click()
-        expect(counter).to_have_text("3 / 3")
+        expect(counter).to_have_text("2 / 3")
 
         sent = self._sent(page, calc)
-        assert np.allclose(sent.positions, frames[2], atol=1e-5), (
+        assert np.allclose(sent.positions, frames[1], atol=1e-5), (
             "the Send wrote another frame than the one on screen: "
             f"{sent.positions.tolist()}")
 

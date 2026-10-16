@@ -56,8 +56,8 @@ def test_each_tab_comes_back_to_its_own_folder_and_file(
     picked on the Structure-optimization tab, another in another folder on
     the Molbuilder tab, and back.
 
-    MUTATIONS THIS MUST FAIL AGAINST: the file kept on re-listing, or the
-    file restored, read from the shared slot; every page keyed alike."""
+    MUTATIONS THIS MUST FAIL AGAINST: the file kept on re-listing read from
+    the shared slot; every page keyed alike."""
     from playwright.sync_api import expect
     proj = isolated_projects_root.resolve() / "P"
     here, there = proj / "structure", proj / "optimization" / "run"
