@@ -856,6 +856,40 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
             assert one(tmpl, name).source == "cited", name
 
 
+def _cited_on_the_tab(page, base, junction) -> dict:
+    """The Transport tab citing the relaxation as a returning person's tab
+    cites it: its session note, restored through the describe-and-adopt
+    path a pick takes (`lib/transport/core.js` `_restoreSession`) -- and
+    what the describe door answered the page."""
+    page.goto(f"{base}/transport-calculation",
+              wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.workspace "
+        "      && typeof window.molbuilder.workspace.persist "
+        "         === 'function'", timeout=10000)
+    assert page.evaluate(
+        """async (j) => {
+             const ws = window.molbuilder.workspace;
+             const id = {workspace_id: ws.workspaceId('transport:panel'),
+                         state_index: 0};
+             ws.persist('transport:panel', {v: 3, junction: j}, id);
+             for (let i = 0; i < 50; i++) {
+               const n = await ws.readState(id);
+               if (n && n.junction === j) return true;
+               await new Promise(r => setTimeout(r, 100));
+             }
+             return false;
+           }""", junction.cite), "the session note never landed"
+    with page.expect_response(
+            lambda r: "/api/transport/describe_attempt" in r.url,
+            timeout=30000) as described:
+        page.reload(wait_until="domcontentloaded")
+    page.wait_for_function(
+        "(j) => (document.getElementById('transport-junction-readout') || {})"
+        "        .textContent === j", arg=junction.cite, timeout=15000)
+    return described.value.json()
+
+
 def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
                                                            monkeypatch):
     """The Transport tab's chemistry card, on the relaxation it cites
@@ -863,9 +897,7 @@ def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
     rule; the spin the cited run's -- unrestricted (ES7) -- its count
     floating, since a transport rung cannot hold a fixed one (ES6); and
     stating restricted on the shared panel moves the card to a closed
-    shell.  Cited as a returning person's tab cites: its session note,
-    restored through the describe-and-adopt path a pick takes
-    (`lib/transport/core.js` `_restoreSession`).
+    shell.  Cited as a returning person's tab cites it.
 
     MUTATION THIS MUST FAIL AGAINST: the card asked without the panel's
     spin (the analyze door dropping it) -- stating restricted leaves the
@@ -875,26 +907,7 @@ def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
     from test_chemistry_card_e2e import _answered, _blocks
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
     with serve() as base:
-        page.goto(f"{base}/transport-calculation",
-                  wait_until="domcontentloaded")
-        page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.workspace "
-            "      && typeof window.molbuilder.workspace.persist "
-            "         === 'function'", timeout=10000)
-        assert page.evaluate(
-            """async (j) => {
-                 const ws = window.molbuilder.workspace;
-                 const id = {workspace_id: ws.workspaceId('transport:panel'),
-                             state_index: 0};
-                 ws.persist('transport:panel', {v: 3, junction: j}, id);
-                 for (let i = 0; i < 50; i++) {
-                   const n = await ws.readState(id);
-                   if (n && n.junction === j) return true;
-                   await new Promise(r => setTimeout(r, 100));
-                 }
-                 return false;
-               }""", junction.cite), "the session note never landed"
-        page.reload(wait_until="domcontentloaded")
+        _cited_on_the_tab(page, base, junction)
         _answered(page, "SIESTA")
         blocks = _blocks(page)
         assert list(blocks) == ["SIESTA"], "transport runs on SIESTA alone"
@@ -906,6 +919,41 @@ def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
         _answered(page, "closed shell")
         card = _blocks(page)["SIESTA"]
         assert "restricted (closed shell, 2S = 0)" in card, card
+
+
+def test_the_tab_shows_what_the_citation_measured(junction, page,
+                                                  monkeypatch):
+    """Every finding the describe door answers the Transport tab for the
+    junction it cites -- each lead's measurements among them -- is drawn on
+    the tab, a row each, by the one renderer (`science/validation.md`
+    § 4.1 R2, R2a, R3; `web/ui-contract.md` § 5.1).
+
+    THE SILENT FAILURE: the tab's script finds no renderer on the page -- it
+    reads it off a global that only a separate entry point publishes -- and
+    draws nothing, so what the composition measured never reaches the
+    person who cited the junction.
+
+    MUTATION THIS MUST FAIL AGAINST: the page without the renderer's
+    global entry point."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    with serve() as base:
+        said = _cited_on_the_tab(page, base, junction)["findings"]
+        drawn = page.evaluate(
+            "() => [...document.querySelectorAll("
+            "  '#transport-junction-findings li.issue-item')].map(li => ({"
+            "  severity: li.dataset.severity,"
+            "  message: li.querySelector('.issue-msg').textContent,"
+            "  where: (li.querySelector('.issue-where') || {}).textContent"
+            "         || null }))")
+    assert said, "the describe door measured nothing on the junction"
+    missing = [f for f in ({"severity": i["severity"],
+                            "message": i["message"],
+                            "where": i.get("where") or None}
+                           for i in said)
+               if f not in drawn]
+    assert not missing, missing
 
 
 def test_describe_is_one_act_and_refuses_a_described_folder(junction):

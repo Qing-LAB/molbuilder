@@ -12,7 +12,10 @@ the behaviours the three per-tab renderers it replaced got wrong:
   * a missing residual panel made the transport copy return BEFORE clearing the
     per-card panels, so stale findings survived a re-render.
 
-Plus the structural guard that no page re-grows its own renderer.
+Whether each page that shows findings draws them is asked of the page:
+`test_build_e2e.py`'s findings beside their field on the optimization tab,
+`test_spectrum_form_e2e.py` on the Spectrum tab, and
+`test_transport_on_a_real_junction_e2e.py` on the Transport tab.
 """
 from __future__ import annotations
 
@@ -271,40 +274,3 @@ class TestStaleStateCannotSurvive:
         """)
         assert got["aHidden"] is True and got["aRows"] == 0
         assert got["bHidden"] is False and got["bText"] == "No issues."
-
-
-class TestOneRendererOnly:
-    """PINS: docs/science/validation.md § 4.1 clause R2 (one channel into the
-    UI) — enforced STRUCTURALLY, by source inspection, because behaviour tests
-    cannot catch a fourth renderer appearing next to the third.
-
-    INVARIANT: the consumer surfaces delegate to
-    ``molbuilder.validationFindings`` and build no finding rows of their own; the
-    second row vocabulary and its stylesheet are gone; and every page that shows
-    findings actually loads the module (a page that forgets it would silently
-    render nothing).
-    """
-
-    _CONSUMERS = (
-        "molbuilder/web/static/structure-optimization/viewer.js",
-        # lib/spectra/core.js: the live-preflight panel (gate ① for the
-        # vibration kind) renders through the shared module.
-        "molbuilder/web/static/lib/spectra/core.js",
-    )
-
-
-    def test_every_page_that_renders_findings_loads_the_module(self):
-        # Task setup imports the module
-        # itself (an ES module needs no namespace).
-        tpl = REPO / "molbuilder/web/templates"
-        for name in ("index.html", "spectra.html", "results.html"):
-            html = (tpl / name).read_text(encoding="utf-8")
-            assert "filename='lib/validation-findings-global.js'" in html, (
-                f"{name} renders findings but never loads the namespace entry "
-                f"point.  Since 2026-09-11 the renderer itself publishes "
-                f"nothing -- a page that wants `molbuilder.validationFindings` "
-                f"for its classic scripts loads "
-                f"`lib/validation-findings-global.js`, and a module imports "
-                f"`lib/validation-findings.js` directly.")
-
-
