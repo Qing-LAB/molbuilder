@@ -1,12 +1,11 @@
 """The facts half of the delivery contract (docs/science/validation.md § 4.1).
 
-F1/F2 inbound (the facts a validating request carries) and F4 (the gate derives
+F2 inbound (the facts a validating request carries) and F4 (the gate derives
 what a check needs).  Each test names the invisible failure it prevents.
 """
 from __future__ import annotations
 
 import numpy as np
-import re
 
 import pytest
 
@@ -244,11 +243,6 @@ class TestF2NoSecondSource:
     alone.  The ``.molstruct.json`` sidecar is never read for it, so the deck can
     never mix body geometry with disk labels the model has since changed, and a
     body with no label keys declares NO labels.
-
-    NOTE: there is deliberately no server-side refusal keyed on
-    ``structure_path`` — that field also anchors pseudopotential and dest-dir
-    resolution, so refusing on it rejected legitimate callers.  Loudness lives on
-    the side that can guarantee it (F1, below).
     """
 
     def test_a_structure_without_labels_declares_no_labels(self):
@@ -269,60 +263,6 @@ class TestF2NoSecondSource:
         })
         assert not s.frozen_atoms
         assert not s.regions
-
-
-def _strip_js_comments(src: str) -> str:
-    """JS source with /* block */ and // line comments removed.
-
-    A source-pinning guard must search the CODE.  Searching raw text cannot tell
-    a call from a comment explaining why that call was removed -- so it fires on
-    the very prose that documents the removal, and the way to "fix" it is to
-    delete the explanation.  A guard that punishes documentation is a guard that
-    trains people to strip it.
-    """
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    return re.sub(r"//[^\n]*", "", src)
-
-
-class TestF1TheTabHoldsNoStructuralMirror:
-    """PINS: docs/science/validation.md § 4.1 clause F1 — one fact holder.
-
-    INVARIANT: coordinates, labels and periodicity are read from
-    ``molview.data.getStructure()`` at request time.  No page keeps its own
-    copy, and ONE read carries the whole master copy so a tab cannot send a
-    PARTIAL set of facts.
-
-    A second assembling accessor could drift from the master copy, so the
-    shape of the one read is what makes F1 true rather than the caller's
-    discipline.
-
-    PREVENTS: the stale-geometry bug — the structure-optimization tab read labels
-    and periodicity live but mirrored the geometry into ``state.xyz`` once at
-    load, so a request could carry fresh labels, fresh periodicity and stale
-    coordinates, and validation then judged a structure the viewer was not
-    showing.
-    """
-
-    def test_structure_optimization_has_no_geometry_mirror(self):
-        import pathlib
-        src = pathlib.Path(
-            "molbuilder/web/static/structure-optimization/viewer.js"
-        ).read_text()
-        # The mirror is gone from the state object...
-        assert "xyz: null," not in src, (
-            "the tab re-grew a page-local geometry mirror; read it live from "
-            "molview.data.getStructure() instead (F1)")
-        # ...and the one whole-master-copy read is what request bodies use.
-        assert "getStructure()" in src, (
-            "the tab must read the structure live through § 9.3's one door")
-        # A CALL, not a mention -- so the CODE is what gets searched.  What
-        # must not come back is a second accessor assembling
-        # the same facts in another shape, because two assemblers is exactly the
-        # drift F1 forbids.
-        code = _strip_js_comments(src)
-        assert "factsForRequest" not in code, (
-            "factsForRequest was retired by molview.md § 9.3; assembling the "
-            "facts a second way is the drift F1 exists to prevent")
 
 
 class TestF4DerivesOnlyABoxTheStructureAskedFor:

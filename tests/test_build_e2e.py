@@ -18,8 +18,9 @@ What the tests cover:
   * Send to Task setup — the tab's PRIMARY loop: the button writes the structure pair,
     the parameter template and the hand-over into the selected folder
     through the one shared door (lib/task-handover.js), carrying the
-    structure you loaded with its held atoms after a click elsewhere, and
-    the one-calculation-per-folder guard fails CLOSED.
+    structure you loaded with its held atoms after a click elsewhere, at
+    the frame on screen, and the one-calculation-per-folder guard fails
+    CLOSED.
 
 NOT covered here (intentional scope split): the HTTP layer is
 test_web.py's; Task setup's own save door is test_task_setup_tab.py's.
@@ -730,27 +731,55 @@ class TestSendToTaskSetup:
         write_pseudos(calc, ["O", "H"])
         return calc, xyz
 
-    def _load_and_send(self, page, base_url, calc, xyz, before_send=None):
+    def _open_on(self, page, base_url, folder):
+        """The tab, its sidebar open on ``folder`` -- as arriving from
+        another tab leaves it (`web/projects.md` § 5's hand-off)."""
+        import json as _json
+        page.add_init_script(
+            "try { sessionStorage.setItem('molbuilder.current_dir', "
+            f"{_json.dumps(str(folder))}); }} catch (_) {{}}")
         _open_build(page, base_url)
         page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.projects"
-            "  && typeof window.molbuilder.projects.publishCommit"
-            "     === 'function'"
-            "  && !!(window.molbuilder.taskHandover)",
+            "() => !!(window.molbuilder && window.molbuilder.taskHandover)",
             timeout=_BOOT_TIMEOUT_MS)
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": str(calc), "file": str(xyz)})
+
+    @staticmethod
+    def _row(page, path):
+        """``path``'s row in the sidebar."""
+        from pathlib import Path
+        return page.locator(f'li.ps-entry[data-path="{Path(path).resolve()}"]')
+
+    def _use(self, page, path, atoms):
+        """A double click on ``path``'s row -- *use it* (`web/projects.md`)
+        -- and the tab showing its ``atoms``, its form drawn for the Send to
+        read."""
+        self._row(page, path).dblclick()
         page.wait_for_function(
-            "() => document.querySelector('#info-atoms')"
-            ".textContent.trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS)
-        # The form must be rendered before collectParams reads it.
+            "(n) => document.querySelector('#info-atoms')"
+            ".textContent.trim() === String(n)",
+            arg=atoms, timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_selector("#siesta-form-container input",
                                timeout=_BOOT_TIMEOUT_MS)
+
+    def _load_and_send(self, page, base_url, calc, xyz, before_send=None):
+        self._open_on(page, base_url, calc)
+        self._use(page, xyz, 3)
         if before_send is not None:
             before_send(page)
         page.locator("#send-to-task-setup").click()
+
+    def _sent(self, page, dest):
+        """Send to Task setup, and the structure the hand-over written into
+        ``dest`` names, read back through the codec."""
+        import json as _json
+        from molbuilder.workingcopy_structure import StructureCodec
+        page.locator("#send-to-task-setup").click()
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('Wrote')",
+            timeout=10_000)
+        over = _json.loads((dest / "task.1st.json").read_text())
+        return StructureCodec().load(dest / over["structure"]["source"])
 
     def test_send_writes_the_handover_into_the_selected_folder(
             self, page, flask_server, tmp_path, monkeypatch):
@@ -948,7 +977,6 @@ class TestSendToTaskSetup:
         from molbuilder.structure import Structure
         from molbuilder.workingcopy_structure import StructureCodec
         from conftest import write_pseudos
-        import json as _json
         import numpy as np
         topic = (isolated_projects_root / "proj" / "opt").resolve()
         loaded_dir, dest = topic / "relaxed", topic / "next-run"
@@ -968,42 +996,70 @@ class TestSendToTaskSetup:
             for e, (x, y, z) in zip("OHH", at)))
         write_pseudos(dest, ["O", "H"])
 
-        # The sidebar opens on the pair's folder, as it does arriving from
-        # another tab (`web/projects.md` § 5's hand-off).
-        page.add_init_script(
-            "try { sessionStorage.setItem('molbuilder.current_dir', "
-            f"{_json.dumps(str(loaded_dir))}); }} catch (_) {{}}")
-        _open_build(page, flask_server)
-
-        def row(path):
-            return page.locator(f'li.ps-entry[data-path="{path}"]')
-
-        row(held).dblclick()
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms')"
-            ".textContent.trim() === '3'", timeout=_BOOT_TIMEOUT_MS)
-        page.wait_for_selector("#siesta-form-container input",
-                               timeout=_BOOT_TIMEOUT_MS)
+        self._open_on(page, flask_server, loaded_dir)
+        self._use(page, held, 3)
         page.locator(f'.ps-crumb[title="{topic}"]').click()
-        row(dest).click()
-        row(plain).click()
+        self._row(page, dest).click()
+        self._row(page, plain).click()
         picked = page.evaluate(
             "() => [window.molbuilder.projects.getCurrentDir(),"
             "       window.molbuilder.projects.getCurrentFile()]")
         assert picked == [str(dest), str(plain)], picked
 
-        page.locator("#send-to-task-setup").click()
-        page.wait_for_function(
-            "() => (document.querySelector('#handover-status') || {})"
-            "      .textContent.includes('Wrote')",
-            timeout=10_000)
-        over = _json.loads((dest / "task.1st.json").read_text())
-        sent = StructureCodec().load(dest / over["structure"]["source"])
+        sent = self._sent(page, dest)
         assert sent.frozen_atoms == [0], (
             "the Send dropped the atoms the loaded pair holds still: "
             f"{sent.frozen_atoms}")
         assert np.allclose(sent.positions, at, atol=1e-5), (
             "the Send wrote another structure than the one loaded")
+
+    def test_send_writes_the_frame_on_screen(
+            self, page, flask_server, isolated_projects_root):
+        """A Send writes the frame you are looking at, after the frame bar
+        has moved away from the one the file opened on.
+
+        THE SILENT FAILURE.  This tab once copied the geometry when a file
+        loaded and read the labels and the cell fresh at each request, so a
+        request carried coordinates the viewer no longer showed: the server
+        judged, and the calculation would start from, a structure on nobody's
+        screen (`science/validation.md` § 4.1, F1).
+
+        THE CONTRACT: a request's structure is read from the viewer at the
+        moment it is sent, in one read, for the frame on screen (F1;
+        `web/molview.md` § 9.3a); a file opens on its first frame
+        (§ 10.8).  Driven through the frame bar's own buttons, on a
+        relaxation's three frames.
+
+        MUTATIONS THIS MUST FAIL AGAINST: the structure copied once, when
+        the file loaded, and sent from the copy; `exportFile` answering the
+        first frame whatever is on screen."""
+        from conftest import write_pseudos
+        import numpy as np
+        calc = (isolated_projects_root / "proj" / "opt" / "scan").resolve()
+        calc.mkdir(parents=True)
+        frames = [[[9.000 + 0.1 * k, 9.000, 9.000], [9.957, 9.000, 9.000],
+                   [8.761, 9.927 - 0.1 * k, 9.000]] for k in range(3)]
+        trajectory = calc / "relax.xyz"
+        trajectory.write_text("".join(
+            f"3\nstep {k}\n" + "".join(
+                f"{e} {x:.3f} {y:.3f} {z:.3f}\n"
+                for e, (x, y, z) in zip("OHH", frame))
+            for k, frame in enumerate(frames)))
+        write_pseudos(calc, ["O", "H"])
+
+        self._open_on(page, flask_server, calc)
+        self._use(page, trajectory, 3)
+        from playwright.sync_api import expect
+        counter = page.locator(".molviewer-frames-counter")
+        expect(counter).to_have_text("1 / 3")
+        page.get_by_role("button", name="Next frame").click()
+        page.get_by_role("button", name="Next frame").click()
+        expect(counter).to_have_text("3 / 3")
+
+        sent = self._sent(page, calc)
+        assert np.allclose(sent.positions, frames[2], atol=1e-5), (
+            "the Send wrote another frame than the one on screen: "
+            f"{sent.positions.tolist()}")
 
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):
