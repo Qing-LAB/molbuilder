@@ -234,114 +234,125 @@ class TestResultsDispatchIntegration:
 
 
 class TestInspectorListenerTeardown:
-    """Behavioural verification that dispose() actually tears down
-    the element listeners it registered -- complement to the static
-    source-pin tests in tests/spectra/test_blueprint.py::
-    TestSpectraDisposeContract.
+    """A viewer put away leaves nothing listening: a listener left on a
+    document or a window after its viewer is gone fires against a dead
+    panel, on every later mount (`presenters.md` § 3, step 2)."""
 
-    The static tests catch "the cleanup CODE is wired"; these tests
-    catch "the cleanup CODE actually works at runtime".  Together
-    they fence in the dispose contract on both sides.
-    """
+    @pytest.mark.parametrize("viewer,file", [
+        ("structure", "water.xyz"),
+        ("trajectory", "relax_optim.xyz"),
+        ("spectra", "job.spectra.json"),
+    ])
+    def test_opening_a_viewer_again_and_again_leaves_what_once_left(
+            self, page, flask_server, isolated_projects_root, viewer, file):
+        """Opening and closing a viewer any number of times leaves on the
+        page what opening and closing it once left: the listeners on the
+        window, the document or an element still on the page, and the live
+        GL contexts (`molview.md` § 8, § 9.9a; `presenters.md` § 3, step 2).
 
-    def test_addremove_pair_balance_after_mount_dispose(
-            self, page, flask_server):
-        """Spy on EventTarget.{add,remove}EventListener globally,
-        mount the spectra inspector, dispose it, and assert every
-        addEventListener that fired during mount was paired with a
-        removeEventListener during dispose.
+        THE SILENT FAILURES: a listener a mount adds and its dispose leaves,
+        firing against a dead panel on every later mount (2026-08-23: the
+        shared scope took the registrations while each core drained an old
+        array of its own, 19 left a mount); a drawing window made for every
+        file opened, each left alive with its listeners for the page's life
+        (2026-10-15: twenty of twenty).
 
-        Why this catches the bug class:  a direct
-        ``els.foo.addEventListener("click", h)`` (i.e., one that
-        escaped the _on() helper) shows up as an unpaired add.  The
-        2026-05-18 review found exactly this latent issue with the
-        ES selector listener -- which would have failed this test if
-        it had existed.
+        Paired add to remove on ``EventTarget`` itself, so a listener added
+        outside the viewers' shared scope (`lib/inspectors/lifecycle.js`)
+        counts as surely as one inside it, on a settled page, each mount
+        waited out by the viewer's own word that its load has ended
+        (`EVENT_INSPECTOR_READY`).
 
-        Note: the spectra adapter does an async partial fetch before
-        calling into the core's mount.  We wait for the inner mount
-        to land by polling for the partial's well-known id
-        (``watch-status``).  Without that wait, dispose() might run
-        before mount() ever wires its listeners and the test would
-        always pass trivially.
-        """
-        _open_results(page, flask_server)
-        result = page.evaluate("""async () => {
-            // Spy add/remove globally.  Capture call counts only
-            // (not full args) to keep the snapshot serialisable
-            // across the Playwright bridge.
-            let adds = 0, removes = 0;
-            const origAdd    = EventTarget.prototype.addEventListener;
-            const origRemove = EventTarget.prototype.removeEventListener;
-            EventTarget.prototype.addEventListener = function (...a) {
-                adds += 1;
-                return origAdd.apply(this, a);
-            };
-            EventTarget.prototype.removeEventListener = function (...a) {
-                removes += 1;
-                return origRemove.apply(this, a);
-            };
-            try {
+        MUTATIONS THIS MUST FAIL AGAINST: a listener added outside the scope;
+        a drawing window made for every mount."""
+        folder = isolated_projects_root.resolve() / "P" / "s"
+        folder.mkdir(parents=True)
+        (folder / "water.xyz").write_text(
+            "3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+        (folder / "relax_optim.xyz").write_text("".join(
+            f"3\nstep {k}\nO 0 0 0\nH {0.957 + 0.01 * k:.3f} 0 0\n"
+            "H -0.239 0.927 0\n" for k in range(3)))
+        path = str(folder / file)
+        page.goto(f"{flask_server}/results", wait_until="networkidle")
+        page.wait_for_function(
+            "(c) => { const r = (window.molbuilder || {}).inspectors;"
+            "  return !!r && (r.pick(c.file) || {}).name === c.viewer; }",
+            arg={"file": path, "viewer": viewer}, timeout=10000)
+        page.wait_for_selector(".ps-entry, .ps-list-error, #ps-list.is-empty",
+                               state="attached", timeout=10000)
+        left = page.evaluate("""async (c) => {
+            const reg = window.molbuilder.inspectors;
+            const live = [];
+            const contexts = [];
+            const name = (t) => t === window ? "window"
+                : t === document ? "document"
+                : (t && t.nodeName) ? t.nodeName + (t.id ? "#" + t.id : "")
+                : String(t);
+            const add = EventTarget.prototype.addEventListener;
+            const remove = EventTarget.prototype.removeEventListener;
+            const getContext = HTMLCanvasElement.prototype.getContext;
+            EventTarget.prototype.addEventListener = function (type, fn, o) {
+                const by = String(new Error().stack || "").split("\\n")
+                    .slice(2, 4).map((s) => s.trim()).join(" | ");
+                live.push([this, type, fn, by]);
+                return add.call(this, type, fn, o); };
+            EventTarget.prototype.removeEventListener = function (type, fn, o) {
+                const i = live.findIndex(([t, ty, f]) =>
+                    t === this && ty === type && f === fn);
+                if (i >= 0) live.splice(i, 1);
+                return remove.call(this, type, fn, o); };
+            HTMLCanvasElement.prototype.getContext = function (kind, ...a) {
+                const g = getContext.call(this, kind, ...a);
+                if (g && /webgl/.test(kind) && !contexts.includes(g))
+                    contexts.push(g);
+                return g; };
+            const outlives = (t) => t === window || t === document
+                || (t instanceof Node && t.isConnected);
+            const state = () => ({
+                listeners: live.filter(([t]) => outlives(t))
+                    .map(([t, ty, , by]) => name(t) + ":" + ty + " <= " + by)
+                    .sort(),
+                contexts: contexts.filter((g) => !g.isContextLost()).length });
+            const cycle = async () => {
                 const host = document.createElement("div");
-                host.id = "test-host";
+                host.style.width = "900px";
                 document.body.appendChild(host);
-                // Mount via the registry so the full adapter chain
-                // runs (partial fetch + core mount).  ctx is required
-                // by the registry's mount(host, file, ctx) contract.
-                const reg    = window.molbuilder.inspectors;
-                const ctx    = reg.createDefaultContext(host);
-                const handle = reg.mount(
-                    host, "/projects/foo/job.spectra.json", ctx);
-                // Wait until the core's $() lookups would succeed --
-                // i.e., the partial has been injected and core mount
-                // ran.  Bounded poll (10x100ms) so a stuck mount
-                // surfaces as a test timeout, not a hang.
-                for (let i = 0; i < 30; i += 1) {
-                    if (host.querySelector("#watch-status")) break;
-                    await new Promise(r => setTimeout(r, 100));
-                }
-                const mounted = !!host.querySelector("#watch-status");
-                const addsAfterMount = adds;
-                const removesBeforeDispose = removes;
+                // The test's own wait, kept out of what it counts.
+                const ended = new Promise((resolve) => add.call(document,
+                    window.molbuilder.constants.EVENT_INSPECTOR_READY,
+                    () => resolve(true), { once: true }));
+                const handle = reg.mount(host, c.file,
+                                         reg.createDefaultContext(host));
+                const done = await Promise.race([ended,
+                    new Promise((r) => setTimeout(() => r(false), 8000))]);
                 handle.dispose();
                 document.body.removeChild(host);
-                return {
-                    mounted: mounted,
-                    addsDuringMount:    addsAfterMount,
-                    removesBeforeDisp:  removesBeforeDispose,
-                    removesAfterDisp:   removes,
-                };
+                return done;
+            };
+            try {
+                if (!(await cycle())) return { error: "the first never ended" };
+                const once = state();
+                for (let i = 1; i < c.times; i++) {
+                    if (!(await cycle())) return { error: "a mount never ended" };
+                }
+                return { once, again: state() };
             } finally {
-                EventTarget.prototype.addEventListener    = origAdd;
-                EventTarget.prototype.removeEventListener = origRemove;
+                EventTarget.prototype.addEventListener = add;
+                EventTarget.prototype.removeEventListener = remove;
+                HTMLCanvasElement.prototype.getContext = getContext;
             }
-        }""")
-        # Sanity: the mount actually ran.  If False, the partial
-        # fetch may have failed or the adapter chain is broken --
-        # surface that as a clear assertion rather than a confusing
-        # missing-pair count below.
-        assert result["mounted"], (
-            "spectra inspector did not finish mounting within 3s -- "
-            "the partial fetch or the core's init() may be broken; "
-            "fix the mount path before adding more dispose tests"
-        )
-        # The actual contract: every listener registered during the
-        # mount cycle must be removed during dispose.  We allow
-        # removes >= adds (third-party libs like 3Dmol may register
-        # and tear down their own listeners; we don't want a
-        # strict-equality test that breaks on every vendor update).
-        added_by_mount = (result["addsDuringMount"]
-                          - result["removesBeforeDisp"])
-        removed_by_disp = (result["removesAfterDisp"]
-                           - result["removesBeforeDisp"])
-        assert removed_by_disp >= added_by_mount, (
-            f"dispose() removed {removed_by_disp} listeners but "
-            f"mount() had registered (net) {added_by_mount} -- a "
-            f"listener was leaked.  Likely cause: an "
-            f"``addEventListener`` call inside mountInspector that "
-            f"escaped the _on() helper."
-        )
-
+        }""", {"file": path, "times": 5})
+        assert "error" not in left, left
+        grew = [x for x in left["again"]["listeners"]
+                if left["again"]["listeners"].count(x)
+                > left["once"]["listeners"].count(x)]
+        assert not grew, (
+            f"opening the {viewer} viewer five times left more on the page "
+            f"than opening it once:\n  " + "\n  ".join(sorted(set(grew))))
+        assert left["again"]["contexts"] == left["once"]["contexts"], (
+            f"the {viewer} viewer left {left['once']['contexts']} live GL "
+            f"context(s) opened once and {left['again']['contexts']} opened "
+            f"five times")
 
     def test_a_viewer_whose_file_cannot_load_says_why_and_lets_go(
             self, page, flask_server, isolated_projects_root_module):

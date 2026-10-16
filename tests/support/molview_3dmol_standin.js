@@ -160,21 +160,49 @@ globalThis.$3Dmol = {
     },
 };
 
+// An element the sealed layer makes for its drawing surface (molview.md
+// § 9.9a): put in a host, taken out, measured as the host it sits in.
+globalThis.__makeElement = function () {
+    const el = {
+        parentNode: null,
+        className: "",
+        get clientWidth()  { return el.parentNode ? el.parentNode.clientWidth : 0; },
+        get clientHeight() { return el.parentNode ? el.parentNode.clientHeight : 0; },
+        querySelector: function () { return null; },   // no canvas: the pngURI path
+        remove: function () {
+            if (!el.parentNode) return;
+            el.parentNode.children = el.parentNode.children.filter(function (c) {
+                return c !== el; });
+            el.parentNode = null;
+        },
+    };
+    return el;
+};
+
 // A host element that answers only what the sealed layer actually asks of it.
 globalThis.__makeHost = function () {
     const busyMsg = { textContent: "" };
     const busy = { hidden: true, querySelector: function () { return busyMsg; } };
-    return {
+    const host = {
         clientWidth: 300,
         clientHeight: 200,
+        children: [],
         _busy: busy,
         _busyMsg: busyMsg,
+        ownerDocument: { createElement: function () { return globalThis.__makeElement(); } },
+        appendChild: function (child) {
+            child.remove();
+            child.parentNode = host;
+            host.children.push(child);
+            return child;
+        },
         querySelector: function (sel) {
             if (sel === ".molview-busy") return busy;
             if (sel === "canvas") return null;         // force the pngURI path
             return null;
         },
     };
+    return host;
 };
 
 globalThis.atob = globalThis.atob || function (b64) {

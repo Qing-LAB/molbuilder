@@ -352,6 +352,9 @@ touches that one file and reaches no consumer of MolView.
 **It contains its own state.** The structure, the selection, the switches, the
 displayed frame and the session history all live inside the viewer. It keeps
 nothing in a global, and nothing outside it keeps a copy of anything it holds.
+The one thing the module keeps beyond a viewer is the sealed layer's shelf of
+**cleared drawing surfaces** (§ 9.9a) — a resource of the page, holding nothing
+any viewer was told or showed.
 
 **The test of all of this:** delete every other web module and MolView still
 loads, mounts, draws, selects, measures and exports. The only things it would
@@ -1462,6 +1465,12 @@ if (!viewer.ok) {
 // … use it …
 viewer.dispose();            // tears down in reverse order of assembly
 ```
+
+**Dispose leaves the page as the mount found it** — every listener the viewer's
+controls put on the document or the window taken off, every element it drew
+removed — **but for its drawing surface, which goes back on the sealed layer's
+shelf, cleared, for the next mount** (§ 9.9a). So opening and closing viewers on
+a page, any number of times, leaves on it what one open and close left.
 
 `mount` assembles a complete viewer in one call — the 3D window, the panel beside
 it, the switches, and MolView's own menu surface (§ 11.4). The frame bar is the
@@ -2717,6 +2726,45 @@ Which is why the camera used to be the awkward case: it was neither derived nor
 given — the user put it there by dragging — so it was the one fact only this
 layer knew. § 9.6 resolves that by not keeping it at all, rather than by opening
 a third kind of question.
+
+### 9.9a The drawing surfaces — kept by the sealed layer, lent to a mount *(2026-10-15)*
+
+**A surface is one drawing-library window**: the library's viewer, living for
+good in an element the sealed layer owns. The sealed layer keeps the page's
+surfaces on a **shelf**. A mount **takes** one — a cleared one off the shelf, or a
+new one when none is free — and puts its element in the 3D window; `dispose`
+**returns** it: every model, shape and label removed, its element taken out of
+the window, and the surface put back on the shelf. The
+library never learns its window moved: its element is the only container it was
+ever given, and it follows that element's size as it follows any window's.
+Nothing else measures it — measured on 2026-10-15, a size given by hand at the
+take was read while the card was still being laid out, and the window kept it.
+
+**A surface taken is a new one.** Its ground and its projection are the
+mount's own drawing settings, given to every window at mount (§ 9.6). The
+camera is the one setting of a window nothing above gives again — a fit keeps
+whatever turn it finds — so the layer gives a taken surface the camera a new
+window opens with, and the first draw fits it or puts the lane's pose back, as
+on any new window (§ 9.6). Nothing of the last owner survives: its drawing
+copy was cleared when the surface came back, and § 5.6 holds — two viewers
+open at once hold two surfaces, never one.
+
+**Why a surface is kept and not remade.** The drawing library has no teardown.
+A window it makes attaches listeners to the page — on the document's body and
+on the window — and an observer on its container, keeps a GL context, and
+offers no way to take any of it back. Made per mount, every file opened in a
+viewer left a window alive for the page's life: twenty viewers opened and
+closed on the Results tab left twenty windows in memory (measured 2026-10-15),
+and every resize of the browser window called each. Until 2026-09-02 their GL
+contexts piled up too, until the browser refused a new one; giving each context
+back by hand (`WEBGL_lose_context`) answered the contexts and left the windows.
+Kept on the shelf, the page holds as many surfaces — and their listeners and
+contexts — as viewers were ever open on it at once, by construction rather than
+by undoing what the library did.
+
+**The shelf is the sealed layer's own**, as the library is: nothing above it
+knows surfaces exist (§ 5.3), and a mount asks for none — it gets its window as
+it always has. It holds no fact about any viewer, only cleared surfaces.
 
 This is the layer that makes § 5.3 true. Everything above it — the commands, the
 renderEngine, the model, the panel, the tab — could be read end to end without
@@ -4778,6 +4826,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.7 — the browser writes no coordinate document | the module contains no coordinate or sidecar writer at all; what leaves the export door is the structure, and the bytes are the server's |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
+| § 8, § 9.9a — dispose leaves the page as the mount found it, but for the shelf | opening and closing a viewer many times leaves on the page — listeners on the window, the document or an element still on it; drawing surfaces; GL contexts — what opening and closing it once left |
+| § 9.9a — a surface taken is a new one | a viewer mounted after another was set to another ground, the other projection and a moved camera shows its own settings and a fitted camera, and holds nothing the other drew |
 | § 8.2 — the panel is not measured, it is given the same extent as its minimum | the panel's minimum height and the window's square edge come from one value; no script reads one to set the other; the panel's bottom is at or below the window's, equal when its content fits |
 | § 8.2 — the floor is the stacked minimum, not the row sum | a host narrower than the side-by-side sum still mounts, and stacks; only one narrower than the wider single piece gets the blank card and the error |
 | § 8.3 — the arrow turns, the handle does not | folding rotates the glyph only, so the handle's box keeps its shape in both layouts |
@@ -4889,6 +4939,7 @@ what they already said, and § 15 is a map for reading the code.
 | § 9 the APIs | 5.2, 5.4 | each surface named with who it serves, so nothing grows a second way to the same fact |
 | § 9.4 read-only | 5.1, 5.2 | one rule instead of a list of disabled buttons that drifts |
 | § 9.6 the camera is not held | **5.2** | the one fact MolView cannot own without owning something that goes stale — so it owns none of it |
+| § 9.9a the drawing surfaces | **5.3, 5.6** | the library cannot be torn down, so its windows are kept where it is hidden and lent, cleared, one to each open viewer |
 | § 10 the render pipeline | **5.1, 5.2, 5.3** | the one path from the master copy to the picture: what each switch produces, in what order, at what cost |
 | § 11 the other connections | 5.2, 5.5 | the server, the workspace, the three kinds of saving, and the one atom-numbering translation |
 | § 11.3–11.4 saving, and who decides it | **5.1, 5.2, 5.5** | four things wear the same word, and two of them are written by one call — separating those is what stops a sentence about the undo history being believed about the reopen, and separating the exports is what makes "the truth" and "a view of it" mean something at the point a user acts |

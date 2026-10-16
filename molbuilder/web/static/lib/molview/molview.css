@@ -1597,6 +1597,16 @@
     overflow:       hidden;
 }
 
+/* THE DRAWING SURFACE (molview.md § 9.9a): the element the sealed layer keeps its
+ * library window in, lent to this window while the viewer is mounted.  It fills
+ * the window, so the library measures the window's size through it, and it is
+ * positioned without a z-index, so it paints where the drawing's own canvas
+ * always has -- under the controls the window carries. */
+.molviewer-window-surface {
+    position: absolute;
+    inset:    0;
+}
+
 /* Busy scrim -- the ONE busy<->ready surface (handle.setBusy(msg|null)).  A gray
  * scrim + centered message over the canvas while a HEAVY render / load is in flight,
  * so a stale frame doesn't read as "done" and clicks can't hit a mid-rebuild scene.

@@ -179,19 +179,78 @@ function styleSpec(view) {
 const EMPTY_VIEW_ZOOM = 1.6;
 
 
-export function create(hostEl, opts) {
+/* The camera a library window opens with: no turn, no shift -- what
+ * `lookAlong` starts from, and what a surface taken off the shelf is given
+ * (§ 9.9a). */
+const NEW_WINDOW_VIEW = [0, 0, 0, 0, 0, 0, 0, 1];
+
+
+/* ── The drawing surfaces (§ 9.9a) ───────────────────────────────────────────
+ *
+ * A SURFACE is one library window living for good in an element this layer
+ * owns. The library has no teardown: a window it makes puts listeners on the
+ * page and an observer on its container, keeps a GL context, and offers no way
+ * to take any of it back. So a window is never thrown away -- a mount takes a
+ * surface, its dispose returns it, and the page holds as many as were ever
+ * open on it at once.
+ *
+ * The shelf holds the surfaces not in use, cleared -- nothing any viewer said.
+ */
+const SHELF = [];
+
+function takeSurface(hostEl, ground) {
     const $3Dmol = root.$3Dmol;
-    if (!$3Dmol) {
+    const kept = SHELF.pop();
+    if (kept) {
+        hostEl.appendChild(kept.el);
+        /* A SURFACE TAKEN IS A NEW ONE.  Its ground and projection are the
+         * mount's, given to every window at mount (§ 9.6); the camera is the
+         * one setting nothing above gives again -- a fit keeps the turn it
+         * finds -- so it is the new window's here. */
+        kept.viewer.setView(NEW_WINDOW_VIEW);
+        /* Its size is the library's to follow, as for any window: it watches
+         * the element it lives in. */
+        return kept;
+    }
+    const el = (hostEl.ownerDocument || root.document).createElement("div");
+    el.className = "molviewer-window-surface";
+    hostEl.appendChild(el);
+    try {
+        return {
+            el: el,
+            viewer: $3Dmol.createViewer(el, {
+                // No colour of its own: the window's ground is the card's, so
+                // the very first painted frame already matches the surface it
+                // sits in.
+                backgroundColor: ground,
+                defaultcolors:   $3Dmol.elementColors.Jmol,
+            }),
+        };
+    } catch (e) {
+        el.remove();
+        throw e;
+    }
+}
+
+function returnSurface(surface) {
+    const v = surface.viewer;
+    try { v.removeAllModels(); } catch (_) {}
+    try { v.removeAllShapes(); } catch (_) {}
+    try { v.removeAllLabels(); } catch (_) {}
+    surface.el.remove();
+    SHELF.push(surface);
+}
+
+
+export function create(hostEl, opts) {
+    if (!root.$3Dmol) {
         throw new Error("3dmol-embed: 3Dmol-min.js must be loaded first");
     }
     opts = opts || {};
 
-    const viewer = $3Dmol.createViewer(hostEl, {
-        // No colour of its own: the window's ground is the card's, so the very
-        // first painted frame already matches the surface it sits in.
-        backgroundColor: (opts.view && opts.view.background) || sceneBackground(hostEl),
-        defaultcolors:   $3Dmol.elementColors.Jmol,
-    });
+    const surface = takeSurface(
+        hostEl, (opts.view && opts.view.background) || sceneBackground(hostEl));
+    const viewer = surface.viewer;
 
     // Everything this layer holds. Note what is NOT here: a frame number. The
     // library owns the playhead of its own movie; asking it back would be the
@@ -796,7 +855,7 @@ export function create(hostEl, opts) {
             const turn = { x: [90, "y"], y: [90, "x"], z: null }[axis];
             if (turn === undefined) return;
             try {
-                state.viewer.setView([0, 0, 0, 0, 0, 0, 0, 1]);
+                state.viewer.setView(NEW_WINDOW_VIEW);
                 if (turn) state.viewer.rotate(turn[0], turn[1]);
                 state.viewer.zoomTo();
             } catch (_) {}
@@ -917,35 +976,9 @@ export function create(hostEl, opts) {
             if (state.disposed) return;
             state.disposed = true;
             state.pickHandler = null;
-            try { state.viewer.removeAllModels(); } catch (_) {}
-            try { state.viewer.removeAllShapes(); } catch (_) {}
-            try { state.viewer.removeAllLabels(); } catch (_) {}
             state.viewer = null;
-
-            /* RELEASE THE WEBGL CONTEXT, EXPLICITLY.
-             *
-             * Emptying the scene is not releasing the device: the canvas --
-             * and its live GL context -- stays in the host until GC runs
-             * (measured 2026-09-02: fifteen create/dispose cycles that only
-             * emptied the scene left fifteen canvases alive).
-             *
-             * A browser grants a bounded number of contexts, so "eventually"
-             * is not good enough for a page whose tabs each mount a viewer:
-             * they accumulate across a session until `createViewer` starts
-             * throwing, and the card then says the viewer could not start on
-             * every tab at once, on any server, until the browser is
-             * restarted.  `WEBGL_lose_context` is the only way to hand one
-             * back on purpose. */
-            try {
-                const cv = hostEl && hostEl.querySelector
-                    ? hostEl.querySelector("canvas") : null;
-                if (cv) {
-                    const gl = cv.getContext("webgl2") || cv.getContext("webgl");
-                    const ext = gl && gl.getExtension("WEBGL_lose_context");
-                    if (ext) ext.loseContext();
-                    if (cv.remove) cv.remove();
-                }
-            } catch (_) {}
+            // Back on the shelf, cleared, for the next mount (§ 9.9a).
+            returnSurface(surface);
         },
     };
 }

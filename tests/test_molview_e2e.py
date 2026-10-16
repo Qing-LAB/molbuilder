@@ -614,3 +614,72 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
     assert first_pages.nth(0).is_visible(), (
         "choosing a page in the second viewer moved the first viewer's"
     )
+
+
+def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
+    """§ 9.9a: a viewer's drawing surface is kept when it is disposed and lent
+    to the next mount -- and a surface taken is a new one.
+
+    THE SILENT FAILURE either way: made per mount, every viewer opened left a
+    drawing window alive for the page's life; kept without care, the next
+    viewer would open on the last one's camera, or with its molecule still in
+    the window.
+
+    Viewer A draws a structure on another ground, the other projection and a
+    turned camera, and is disposed; viewer B, mounted next, takes A's surface,
+    and viewer C, mounted beside it, a new one.  B and C draw the same
+    picture, empty and with the same structure installed.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a taken surface keeping the last
+    camera; a returned surface keeping its models; a taken surface measured
+    by hand before its card is laid out."""
+    out = demo.evaluate(
+        """async () => {
+            const { mount } = await import("/static/lib/molview/index.js");
+            const ws = { read: async () => null, write: async () => {} };
+            const water = { elements: ["O", "H", "H"],
+                            positions: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]],
+                            metadata: {} };
+            const host = () => {
+                const h = document.createElement("div");
+                h.style.width = "900px";
+                document.body.appendChild(h);
+                return h;
+            };
+            const picture = (h) => {
+                const c = h.querySelector(".molviewer-window-canvas canvas");
+                return c ? c.toDataURL() : "";
+            };
+            const settle = () => new Promise((r) => setTimeout(r, 300));
+
+            const hostA = host();
+            const a = await mount(hostA, ws, { owner: "first", mode: "readonly" });
+            await a.data.installMolecule({ structure: water });
+            a.data.view.set("background", "#ffffff");
+            a.data.view.set("orthographic", true);
+            a.lookAlong("x");
+            await settle();
+            a.dispose();
+            hostA.remove();
+
+            const hostB = host(), hostC = host();
+            const b = await mount(hostB, ws, { owner: "second", mode: "readonly" });
+            const c = await mount(hostC, ws, { owner: "third", mode: "readonly" });
+            await settle();
+            const empty = [picture(hostB), picture(hostC)];
+            await b.data.installMolecule({ structure: water });
+            await c.data.installMolecule({ structure: water });
+            await settle();
+            const drawn = [picture(hostB), picture(hostC)];
+            b.dispose(); c.dispose();
+            hostB.remove(); hostC.remove();
+            return { empty, drawn };
+        }"""
+    )
+    assert out["empty"][0] and out["drawn"][0], "a window drew nothing at all"
+    assert out["empty"][0] == out["empty"][1], (
+        "the viewer on a kept surface opened differently from a viewer on a "
+        "new one -- the last one's drawing, or a size it was never laid out at")
+    assert out["drawn"][0] == out["drawn"][1], (
+        "the viewer on a kept surface drew its structure differently from a "
+        "viewer on a new one -- the last viewer's camera or setting survived")

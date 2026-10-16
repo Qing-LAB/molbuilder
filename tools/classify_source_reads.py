@@ -150,15 +150,6 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
               "a reload refreshes a mirror too.  A browser test for staleness "
               "would pass whatever the code did"),
     },
-    "tests/test_inspector_lifecycle_teardown.py": {
-        ln: (KEEP_LINT,
-             "counts `.addEventListener(` across a whole core and pins the "
-             "shared scope to EXACTLY ONE registration site -- absence over "
-             "a file, which no runtime test can prove without walking every "
-             "path.  The behaviour half is driven: "
-             "test_inspector_registry_e2e.py's two teardown tests")
-        for ln in (172, 175)
-    },
     "tests/test_projects_api_envelope_js.py": {
         701: (KEEP_LINT,
               "the ABSENCE half beside it -- no `fetch(\"/api/files` anywhere "
