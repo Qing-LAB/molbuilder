@@ -4,8 +4,8 @@ registered, in the order it registered them:
 
   * which viewer opens a file, which lists it in the dropdown, and under
     which heading -- each row of ``tests/data/presenters.toml``;
-  * a viewer mounted draws into its host, and its dispose empties it;
-  * opening a viewer again and again leaves on the page what once left;
+  * opening a viewer again and again, or switching files in the dropdown,
+    leaves on the page what once left;
   * a viewer whose file cannot load says why, and lets the host go.
 """
 from __future__ import annotations
@@ -61,7 +61,19 @@ def _open_results(page, base_url):
 def registry_answers(browser, flask_server):
     """Every row of `tests/data/presenters.toml`, asked of the registry on
     the live `/results` page in one visit, once every presenter the rows
-    name has registered: ``{table: {row name: answer}}``."""
+    name has registered -- each with its row's ``meta``, as the dropdown
+    passes the directory's answer: ``{table: {row name: answer}}``.
+
+    A row's answer is one the server can give: its role one the catalogue
+    declares, its parser one the registry holds."""
+    from molbuilder.parse.registry import _FILE_PARSERS
+    from molbuilder.runfiles import roles
+    parsers = {k.name for k in _FILE_PARSERS}
+    for tbl in ("pick", "result", "heading"):
+        for r in PRESENTERS[tbl]:
+            meta = r.get("meta", {})
+            assert meta.get("role") in (None, *roles()), (r["name"], meta)
+            assert meta.get("parser") in (None, *parsers), (r["name"], meta)
     page = browser.new_page()
     try:
         page.goto(f"{flask_server}/results")
@@ -77,9 +89,10 @@ def registry_answers(browser, flask_server):
             const reg = window.molbuilder.inspectors;
             const name = (p) => p ? p.name : null;
             const out = { pick: {}, result: {}, heading: {} };
-            for (const r of t.pick) out.pick[r.name] = name(reg.pick(r.file));
+            for (const r of t.pick)
+                out.pick[r.name] = name(reg.pick(r.file, r.meta || null));
             for (const r of t.result)
-                out.result[r.name] = name(reg.pickResult(r.file));
+                out.result[r.name] = name(reg.pickResult(r.file, r.meta || null));
             for (const r of t.heading) {
                 const p = reg.pickResult(r.file, r.meta || null);
                 out.heading[r.name] = p ? p.resultCategory(r.file, r.meta || null)
@@ -128,44 +141,15 @@ def test_the_dropdown_files_it_under_its_heading(registry_answers, row):
 
 
 # --------------------------------------------------------------------- #
-#  Mount lifecycle -- the real DOM mount, dispose and listener teardown  #
-# --------------------------------------------------------------------- #
-
-
-class TestMountLifecycle:
-    """A viewer put away takes what it drew with it: the Results tab puts
-    the old viewer away before it mounts the next (`presenters.md` § 3,
-    step 2), and the next draws into an empty host.  (A file no presenter
-    claims opens in nothing: the table above, `presenters.toml`'s last two
-    `pick` rows.)"""
-
-    def test_dispose_clears_the_host(self, page, flask_server):
-        _open_results(page, flask_server)
-        cleared = page.evaluate("""() => {
-            const host = document.createElement("div");
-            document.body.appendChild(host);
-            const reg = window.molbuilder.inspectors;
-            const ctx = reg.createDefaultContext(host);
-            const h   = reg.mount(host, "/projects/foo/x.fdf", ctx);
-            const beforeHTML = host.innerHTML.length;
-            h.dispose();
-            const afterHTML = host.innerHTML.length;
-            document.body.removeChild(host);
-            return {beforeHTML, afterHTML};
-        }""")
-        assert cleared["beforeHTML"] > 0, "mount produced no DOM"
-        assert cleared["afterHTML"] == 0, "dispose did not clear the host"
-
-
-# --------------------------------------------------------------------- #
 #  Listener-leak regression test (review P1 #1 from 2026-05-18)         #
 # --------------------------------------------------------------------- #
 
 
 class TestInspectorListenerTeardown:
-    """A viewer put away leaves nothing listening: a listener left on a
-    document or a window after its viewer is gone fires against a dead
-    panel, on every later mount (`presenters.md` § 3, step 2)."""
+    """A viewer put away leaves on the page no more than opening it once
+    left: a listener left on a document or a window after its viewer is
+    gone fires against a dead panel, on every later mount (`presenters.md`
+    § 3, step 2)."""
 
     @pytest.mark.parametrize("viewer,file,loads", [
         ("structure", "water.xyz", True),
@@ -258,6 +242,81 @@ class TestInspectorListenerTeardown:
             f"the {viewer} viewer left {left['once']['contexts']} live GL "
             f"context(s) opened once and {left['again']['contexts']} opened "
             f"five times")
+
+    def test_switching_files_in_the_dropdown_again_and_again_leaves_what_once_left(
+            self, page, flask_server, isolated_projects_root):
+        """`presenters.md` § 3, step 2: picking a file in the dropdown puts
+        away the viewer showing the last one -- its timers, listeners and
+        drawing -- BEFORE it mounts the next.
+
+        THE SILENT FAILURE: every pick leaving the last viewer mounted
+        behind the new one, its listeners firing against a panel that is
+        gone, its drawing window held, until the page runs out of them.
+
+        Two structures in one folder, the Results tab bound to it as a
+        returning tab finds it, each picked in the dropdown in turn five
+        times, each pick waited out by the viewer's word that its load has
+        ended; what the page holds after five is what it held after one
+        (`support/leftovers.SPY`).
+
+        MUTATION THIS MUST FAIL AGAINST: the tab mounting the next viewer
+        without putting the last one away."""
+        import json as _json
+        from support.leftovers import SPY, grew
+        folder = isolated_projects_root.resolve() / "P" / "two"
+        folder.mkdir(parents=True)
+        files = [folder / "water.xyz", folder / "co2.xyz"]
+        files[0].write_text(
+            "3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+        files[1].write_text("3\nco2\nC 0 0 0\nO 1.16 0 0\nO -1.16 0 0\n")
+        page.add_init_script(
+            "try { sessionStorage.setItem('molbuilder.current_dir', "
+            f"{_json.dumps(str(folder))}); }} catch (_) {{}}")
+        page.goto(f"{flask_server}/results", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "(want) => { const s = document.getElementById("
+            "  'results-file-picker-select');"
+            "  return !!s && want.every(w => [...s.options]"
+            "    .some(o => o.value === w)); }",
+            arg=[str(f) for f in files], timeout=15000)
+        left = page.evaluate("""async (c) => {
+            const spy = """ + SPY + """;
+            const sel = document.getElementById("results-file-picker-select");
+            const READY = window.molbuilder.constants.EVENT_INSPECTOR_READY;
+            const pick = async (path) => {
+                const ended = new Promise((resolve) => spy.quietly(document,
+                    READY, (e) => resolve((e && e.detail) || {}),
+                    { once: true }));
+                sel.value = path;
+                sel.dispatchEvent(new Event("change"));
+                const said = await Promise.race([ended,
+                    new Promise((r) => setTimeout(() => r(null), 8000))]);
+                if (!said) return "a pick never ended";
+                if (said.error) return "it could not load: " + said.error;
+                return null;
+            };
+            const cycle = async () =>
+                (await pick(c.files[1])) || (await pick(c.files[0]));
+            try {
+                const first = await cycle();
+                if (first) return { error: first };
+                const once = spy.state();
+                for (let i = 1; i < c.times; i++) {
+                    const again = await cycle();
+                    if (again) return { error: again };
+                }
+                return { once, again: spy.state() };
+            } finally {
+                spy.restore();
+            }
+        }""", {"files": [str(f) for f in files], "times": 5})
+        assert "error" not in left, left
+        assert not grew(left), (
+            "switching files five times left more on the page than switching "
+            "once:\n  " + "\n  ".join(grew(left)))
+        assert left["again"]["contexts"] == left["once"]["contexts"], (
+            f"{left['once']['contexts']} live GL context(s) after one switch, "
+            f"{left['again']['contexts']} after five")
 
     def test_a_viewer_whose_file_cannot_load_says_why_and_lets_go(
             self, page, flask_server, isolated_projects_root_module):

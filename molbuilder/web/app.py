@@ -218,6 +218,39 @@ def serve_port() -> int:
         return 0
 
 
+#: THE Content-Security-Policy (`web-api.md` § 2), as its directives -- one
+#: list: a page that needs one more is this policy with it added
+#: (:func:`content_security_policy`), never a second copy.
+#:
+#: ``default-src 'self'``: scripts, styles and fonts load from molbuilder's
+#: own origin.  No ``script-src 'unsafe-inline'``: the pages carry no inline
+#: JavaScript, so if XSS ever lands the policy blocks the payload from
+#: loading more or beaconing out.  ``'unsafe-inline'`` for STYLE only: 3Dmol
+#: and the inspector cards set a little inline ``style=`` (a structure card's
+#: height), and the risk is CSS injection at worst.  ``img-src data:`` covers
+#: Plotly's data-URI tiles; ``connect-src 'self'`` our ``/api/*`` fetches, and
+#: is the CSRF defence: a cross-origin fetch is blocked.
+_CSP = (
+    ("default-src", "'self'"),
+    ("script-src", "'self'"),
+    ("style-src", "'self' 'unsafe-inline'"),
+    ("img-src", "'self' data:"),
+    ("connect-src", "'self'"),
+    ("font-src", "'self'"),
+    ("object-src", "'none'"),
+    ("frame-ancestors", "'none'"),
+    ("base-uri", "'self'"),
+    ("form-action", "'self'"),
+)
+
+
+def content_security_policy(**more: str) -> str:
+    """The policy, with ``more`` directives added -- each keyword its
+    directive with ``_`` for ``-`` (``frame_src="..."``)."""
+    pairs = list(_CSP) + [(k.replace("_", "-"), v) for k, v in more.items()]
+    return "; ".join(f"{name} {value}" for name, value in pairs)
+
+
 def create_app(*, config=None) -> Flask:
     """Build the molbuilder Flask app.
 
@@ -472,35 +505,9 @@ def create_app(*, config=None) -> Flask:
     # suspenders are fine, headers compose.
     @app.after_request
     def _add_security_headers(response):
-        # Content-Security-Policy: the heaviest one.  Default-src
-        # 'self' means JS / CSS / fonts only load from molbuilder's
-        # own origin.  We DON'T allow inline scripts (no script-src
-        # 'unsafe-inline') because the project already audits for
-        # no inline-event-handler markup -- if XSS ever lands, CSP
-        # blocks the attacker's payload from loading additional
-        # JS or beaconing data out.
-        #
-        # 'unsafe-inline' is allowed for STYLE only because 3Dmol +
-        # the inspector cards use a small amount of inline style=
-        # (e.g., structure-inspector's height = "420px").  Dropping
-        # this would mean a wider CSS refactor; the risk delta of
-        # inline style is small (CSS injection at worst, not JS).
-        #
-        # img-src 'self' data: covers Plotly's data-URI tiles.
-        # connect-src 'self' covers our /api/* fetches.
+        # Content-Security-Policy: the heaviest one (`_CSP`, above).
         response.headers.setdefault(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "connect-src 'self'; "
-            "font-src 'self'; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'",
-        )
+            "Content-Security-Policy", content_security_policy())
         # Prevents the browser from MIME-sniffing a response away from
         # its declared Content-Type.  Cheap; no behavior change.
         response.headers.setdefault(
@@ -586,30 +593,19 @@ def create_app(*, config=None) -> Flask:
         # stops.  Contract: docs/web/jupyter.md.  The route spells the tab's
         # label, as every route here does (`tabs.md` 1).
         #
-        # ITS OWN Content-Security-Policy, because the global one says
-        # `frame-src` falls back to `default-src 'self'` and the notebook is
-        # a DIFFERENT ORIGIN (this host, the next port up).  Set here rather
-        # than widened globally: every other page in this app frames nothing,
-        # and a `frame-src` that admitted another origin everywhere would be
-        # a hole opened for one page.  `_add_security_headers` uses
-        # `setdefault`, so this one stands.
+        # THE POLICY WITH ONE DIRECTIVE MORE, `frame-src`: the global one
+        # lets it fall back to `default-src 'self'`, and the notebook is a
+        # DIFFERENT ORIGIN (this host, the next port up).  Added here rather
+        # than globally: every other page in this app frames nothing, and a
+        # `frame-src` that admitted another origin everywhere would be a hole
+        # opened for one page.  `_add_security_headers` uses `setdefault`,
+        # so this one stands.
         from ..jupyter import jupyter_port
         resp = make_response(render_template("jupyternb.html"))
         port = serve_port()
         frame = f"{request.scheme}://*:{jupyter_port(port)}" if port else "'none'"
-        resp.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "connect-src 'self'; "
-            "font-src 'self'; "
-            "object-src 'none'; "
-            f"frame-src {frame}; "
-            "frame-ancestors 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'"
-        )
+        resp.headers["Content-Security-Policy"] = content_security_policy(
+            frame_src=frame)
         return resp
 
     @app.route("/this-machine")

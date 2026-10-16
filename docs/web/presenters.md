@@ -250,22 +250,25 @@ This module is the file-viewer registry that is being renamed and modernized
 
 | File | Today | After the W15 pass |
 |---|---|---|
-| `structure.js` | hybrid — imports, but registers via the global | clean ES module, renamed to `presenters` |
+| `structure.js`, `spectra.js`, `transport.js` | hybrid — modules that import, but register via the global | clean ES modules, renamed to `presenters` |
 | `lib/trajectory/core.js` (engine) | hybrid — imports MolView, publishes a global | clean ES module, renamed |
-| `registry.js`, `_partial_inspector_factory.js`, `trajectory.js`, `spectra.js`, `source.js`, `markdown.js`, `bench-summary.js`, `lifecycle.js` | classic scripts | converted to ES modules + renamed |
+| `registry.js`, `_partial_inspector_factory.js`, `lifecycle.js`, `trajectory.js`, `bench-summary.js`, `fc-sweep.js`, `markdown.js`, `source.js` | classic scripts | converted to ES modules + renamed |
 | `lib/spectra/core.js` (engine) | classic script | converted |
 
-So two of the module's **eleven** files already import as modules (still
-global-registered = hybrid), and the rest are classic; converting them all —
-plus the `molbuilder.inspectors` → `presenters` rename — is the pending pass.
-See [`plans/plan.md`](?doc=plans/plan.md) **W15**.
+So four of the module's **thirteen** files — the **eleven** in
+`lib/inspectors/` and the **two** engines outside it — already import as
+modules (still global-registered = hybrid), and the rest are classic;
+converting them all — plus the `molbuilder.inspectors` → `presenters` rename —
+is the pending pass. See [`plans/plan.md`](?doc=plans/plan.md) **W15**.
 
 > *This table listed seven files and said "nine" until 2026-09-17, omitting
-> `bench-summary.js` and `lifecycle.js`. The real set is the **nine** files in
-> `lib/inspectors/` plus the **two** engines outside it. `lifecycle.js` is not a
-> presenter — it is the mount/listen/dispose helper both engine cores share,
-> which is why it was easy to leave out of a list of viewers and why a list of
-> FILES must not be written from a list of viewers.*
+> `bench-summary.js` and `lifecycle.js`; and it said nine in
+> `lib/inspectors/` and two hybrids until 2026-10-16, after `fc-sweep.js` and
+> `transport.js` had joined and `spectra.js` had become a module.
+> `lifecycle.js` is not a presenter — it is the mount/listen/dispose helper
+> both engine cores share, which is why it was easy to leave out of a list of
+> viewers and why a list of FILES must not be written from a list of
+> viewers.*
 
 ## 8. Test map
 

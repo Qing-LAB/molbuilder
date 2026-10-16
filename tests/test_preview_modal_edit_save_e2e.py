@@ -395,22 +395,30 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     silence: its script 404s, its command or mode never registers, and the
     editor shows plain text and ignores Ctrl-F.
 
-    Opened as a person opens it, in the preview modal: Ctrl-F and a word find
-    it in the file, and Alt-G brings up the jump-to-line dialog; every suffix
+    Opened as a person opens it, in the preview modal: Ctrl-F brings up the
+    search dialog, styled, and a word finds it in the file, and Alt-G and a
+    line number jump to that line; every suffix
     the README's table names opens in its mode, molbuilder's own formats in
     plain text -- a file large enough to be paged in included, opened right
-    after one that was highlighted -- and a markdown file brings the xml mode
-    it needs; no request for an editor file fails.
+    after one that was highlighted -- and the first markdown file opened
+    highlights its HTML, through the xml mode it needs; no request for an
+    editor file fails.
 
     MUTATIONS THIS MUST FAIL AGAINST: a mode file missing from the bundle;
-    the search, its cursor or the jump addon left out of the loader; markdown
-    loaded without xml; JSON highlighted as plain JavaScript; a paged file
-    left in the last file's mode."""
+    the search, its cursor, the jump addon or the dialog's stylesheet left
+    out of the loader; markdown
+    loaded without xml; JSON highlighted as plain JavaScript; a
+    paged file left in the last file's mode."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj"
     proj.mkdir()
-    for name, _ in _HIGHLIGHTED:
-        (proj / name).write_text(f"{name}\n")
+    # Each file's own name its first line; the markdown file an HTML tag
+    # after it, which markdown hands to the xml mode.
+    texts = {name: f"{name}\n" + ("<b>bold</b>\n" if name == "README.md"
+                                  else "")
+             for name, _ in _HIGHLIGHTED}
+    for name, text in texts.items():
+        (proj / name).write_text(text)
     failed = []
     page.on("response", lambda r: failed.append(f"{r.status} {r.url}")
             if "/static/vendor/codemirror/" in r.url and r.status >= 400
@@ -424,6 +432,10 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     page.locator("#ps-preview-modal .CodeMirror").click()
     page.keyboard.press("Control+f")
     page.wait_for_selector(dialog, timeout=5000)
+    # The dialog sits over the editor, as its stylesheet places it.
+    assert page.evaluate(
+        "(s) => getComputedStyle(document.querySelector(s)).position",
+        dialog) == "absolute", "the search dialog drawn without its styles"
     page.keyboard.type("README")
     page.keyboard.press("Enter")
     page.wait_for_function(f"() => {cm}.getSelection() === 'README'",
@@ -432,7 +444,10 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     page.wait_for_selector(dialog, state="detached", timeout=5000)
     page.keyboard.press("Alt+g")
     page.wait_for_selector(dialog, timeout=5000)
-    page.keyboard.press("Escape")
+    page.keyboard.type("2")
+    page.keyboard.press("Enter")
+    page.wait_for_function(f"() => {cm}.getCursor().line === 1",
+                           timeout=5000)
 
     shown = {}
     for name, _ in _HIGHLIGHTED:
@@ -443,10 +458,11 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
             "  const mod = await import('/static/lib/projects/preview.js');"
             "  await mod.showPreview(); }", str(proj / name))
         page.wait_for_function(f"(t) => {cm}.getValue() === t",
-                               arg=f"{name}\n", timeout=10000)
+                               arg=texts[name], timeout=10000)
         if name == "README.md":
             xml_with_markdown = page.evaluate(
-                "() => !!(window.CodeMirror.modes || {}).xml")
+                f"() => String({cm}.getTokenTypeAt({{line: 1, ch: 1}}))"
+                "  .includes('tag')")
         shown[name] = page.evaluate(f"() => {cm}.getMode().name")
         if name in _JSON:
             assert bool(page.evaluate(f"() => {cm}.getMode().jsonMode")) \
@@ -468,5 +484,7 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
                                arg=name.split(".")[0], timeout=20000)
     assert page.evaluate(f"() => {cm}.getMode().name") == "null", (
         "a paged-in file kept the last file's highlighting")
-    assert xml_with_markdown, "markdown opened without the xml mode it needs"
+    assert xml_with_markdown, (
+        "the first markdown file opened did not highlight its HTML -- "
+        "markdown set up without the xml mode it needs")
     assert not failed, failed

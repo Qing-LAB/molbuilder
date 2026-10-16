@@ -12,9 +12,16 @@
 #   [[pick]]      -- the viewer a file opens in (`pick`); no `opens`, none;
 #   [[result]]    -- the viewer that lists it in the dropdown (`pickResult`,
 #                    a presenter marked a result); no `lists`, not listed;
-#   [[heading]]   -- the dropdown heading it sits under (`resultCategory`),
-#                    with the directory's answer about it when there is one
-#                    (`meta`, `/api/results/dir`); no `heading`, none.
+#   [[heading]]   -- the dropdown heading it sits under (`resultCategory`);
+#                    no `heading`, none.
+#
+# Each asked with the directory's answer about the file when the Results
+# tab has one (`meta`, `/api/results/dir`: the file's `role` in the
+# catalogue, the `parser` the registry gives it, the `engine` that ran in
+# the folder -- `presenters.md` § 2), as the dropdown passes it; without one
+# where no run declares the file.  The test checks each row's role and
+# parser are ones the server can answer (`runfiles.roles`, the parse
+# registry).
 #
 # A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
 
@@ -27,6 +34,7 @@
 [[pick]]
 name = "a geomeTRIC *_geom_optim.xyz opens as a trajectory"
 file = "/tmp/BDT/optimization/BDT_geom_optim.xyz"
+meta = { role = "_geom_optim.xyz", parser = "pyscf-geom", engine = "pyscf" }
 opens = "trajectory"
 
 [[pick]]
@@ -43,11 +51,13 @@ opens = "structure"
 [[pick]]
 name = "a .molwatch.log opens as a trajectory"
 file = "/tmp/run/foo.molwatch.log"
+meta = { role = ".molwatch.log", parser = "molwatch", engine = "siesta" }
 opens = "trajectory"
 
 [[pick]]
 name = "a SIESTA .out opens as a trajectory"
 file = "/tmp/run/foo.out"
+meta = { role = ".out", parser = "siesta", engine = "siesta" }
 opens = "trajectory"
 
 [[pick]]
@@ -88,6 +98,7 @@ opens = "markdown"
 [[pick]]
 name = "a sweep's job-set.json opens as its benchmark summary"
 file = "/p/calc/01_coarse/bench/job-set.json"
+meta = { parser = "job-set-sweep" }
 opens = "bench-summary"
 
 [[pick]]
@@ -104,11 +115,13 @@ opens = "source"
 [[pick]]
 name = "a .spectra.json opens as a spectrum"
 file = "/projects/foo/spectrum/water.spectra.json"
+meta = { role = ".spectra.json", parser = "spectra-json", engine = "pyscf" }
 opens = "spectra"
 
 [[pick]]
 name = "a .fc-sweep.json opens as its displacement sweep"
 file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
+meta = { role = ".fc-sweep.json", parser = "fc-sweep-json", engine = "siesta" }
 opens = "fc-sweep"
 
 # The transport record is `summarize task`'s copy, opened as a file
@@ -117,7 +130,14 @@ opens = "fc-sweep"
 [[pick]]
 name = "a transport record by name alone opens in the text pane"
 file = "/projects/BDT/transport/bdt.transport.json"
+meta = { role = ".transport.json", parser = "transport-json", engine = "siesta" }
 opens = "source"
+
+[[pick]]
+name = "...and the calculation's task.json, on the registry's word, as its report"
+file = "/projects/BDT/transport/task.json"
+meta = { parser = "transport-task", engine = "siesta" }
+opens = "transport"
 
 [[pick]]
 name = "a plain .json opens in the text pane"
@@ -139,32 +159,50 @@ file = ""
 [[result]]
 name = "a .out is listed by the trajectory viewer"
 file = "/projects/foo/bar.out"
+meta = { role = ".out", parser = "siesta", engine = "siesta" }
 lists = "trajectory"
 
 [[result]]
 name = "a .molwatch.log too"
 file = "/projects/foo/run.molwatch.log"
+meta = { role = ".molwatch.log", parser = "molwatch", engine = "pyscf" }
+lists = "trajectory"
+
+[[result]]
+name = "...and a geomeTRIC *_geom_optim.xyz"
+file = "/projects/foo/BDT_01_coarse_geom_optim.xyz"
+meta = { role = "_geom_optim.xyz", parser = "pyscf-geom", engine = "pyscf" }
 lists = "trajectory"
 
 [[result]]
 name = "a .spectra.json by the spectrum viewer"
 file = "/projects/foo/raman.spectra.json"
+meta = { role = ".spectra.json", parser = "spectra-json", engine = "pyscf" }
 lists = "spectra"
 
 [[result]]
 name = "a transport record by name alone is no result"
 file = "/projects/BDT/transport/bdt.transport.json"
+meta = { role = ".transport.json", parser = "transport-json", engine = "siesta" }
+
+[[result]]
+name = "...but a transport calculation's task.json is, as its report"
+file = "/projects/BDT/transport/task.json"
+meta = { parser = "transport-task", engine = "siesta" }
+lists = "transport"
 
 # A result presenter registered ahead of the text pane, or the dropdown
 # never offers a SIESTA vibration's sweep (`engines/vibration.md` § 5.9).
 [[result]]
 name = "a .fc-sweep.json by its sweep viewer"
 file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
+meta = { role = ".fc-sweep.json", parser = "fc-sweep-json", engine = "siesta" }
 lists = "fc-sweep"
 
 [[result]]
 name = "a sweep's job-set.json by its benchmark summary"
 file = "/p/calc/01_coarse/bench/job-set.json"
+meta = { parser = "job-set-sweep" }
 lists = "bench-summary"
 
 [[result]]

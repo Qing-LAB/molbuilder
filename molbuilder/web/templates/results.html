@@ -297,7 +297,7 @@
    you read here is the order that happens. #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/markdown.js') }}"></script>
 {# ...then the catch-all source inspector (matches .log / .json /
-   .py / .fdf / .out / .txt / .md -- LAST so the specific inspectors
+   .py / .fdf / .txt / .md -- LAST so the specific inspectors
    above get first crack at compound extensions). #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/source.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>

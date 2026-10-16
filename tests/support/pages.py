@@ -30,27 +30,36 @@ def served_pages(app, *, user=None):
             yield path, r.get_data(as_text=True)
 
 
-#: A CAS sign-in, which needs no secret: an app built with it serves the
-#: sign-in page the plain test app does not have.
-SIGN_IN = {"id": "cas", "label": "Sign in", "kind": "cas",
-           "allowed_users": ["user@example.com"],
-           "login_url": "https://cas.example.com/cas/login",
-           "email_domain": "example.com"}
+#: One sign-in of every kind molbuilder offers, none needing a secret to be
+#: built: an app built with them serves the sign-in page the plain test app
+#: does not have, each kind's button drawn.
+_ALLOWED = {"allowed_users": ["user@example.com"]}
+SIGN_INS = [
+    {"id": "cas", "label": "Sign in", "kind": "cas",
+     "login_url": "https://cas.example.com/cas/login",
+     "email_domain": "example.com", **_ALLOWED},
+    *({"id": kind, "label": f"Sign in with {kind}", "kind": kind,
+       "client_id": "a-client", **_ALLOWED}
+      for kind in ("google", "github", "microsoft", "orcid")),
+]
 
-#: The person signed in through it, as its login stores them.
+#: The person signed in through the CAS one, as its login stores them.
 SIGNED_IN = {"email": "user@example.com", "provider_id": "cas",
              "name": "A person", "picture": None, "sub": None}
 
 
 def every_served_page() -> dict:
-    """Every page the app serves -- the plain app's; one that has sign-in,
-    signed out (its sign-in page) and signed in (every page, with the
-    account strip a signed-in page carries, keyed ``"<path> (signed in)"``)
-    -- ``{path: html}``."""
+    """Every page the app serves -- the plain app's; one that has sign-in
+    of every kind, signed out (its sign-in page) and signed in (every page,
+    with the account strip a signed-in page carries, keyed
+    ``"<path> (signed in)"``) -- ``{path: html}``."""
+    from molbuilder.runtime_config import _PROVIDER_KINDS
     from molbuilder.web.app import create_app
+    assert {s["kind"] for s in SIGN_INS} == set(_PROVIDER_KINDS), \
+        sorted(_PROVIDER_KINDS)
     quiet = {"rate_limit": {"enabled": False}}
     pages = dict(served_pages(create_app(config=quiet)))
-    signed = create_app(config={**quiet, "auth": {"providers": [SIGN_IN]}})
+    signed = create_app(config={**quiet, "auth": {"providers": SIGN_INS}})
     pages.update(served_pages(signed))
     pages.update({f"{path} (signed in)": html
                   for path, html in served_pages(signed, user=SIGNED_IN)})

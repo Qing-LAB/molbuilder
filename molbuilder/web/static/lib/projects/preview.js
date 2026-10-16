@@ -510,10 +510,6 @@ export async function showPreview(wanted) {
     }
 }
 
-/**
- * Bulk-read path: ``/api/files/read`` with the server's max
- * budget.  Editable round-trip available afterwards.
- */
 /* HIGHLIGHT BY SUFFIX, on every open, whichever way the file is read: the
  * editor is one, reused across opens, so a mode not set here is the last
  * file's.  `modeFor` loads the vendored mode for this path on first use and
@@ -528,6 +524,10 @@ async function _highlightFor(path) {
     }
 }
 
+/**
+ * Bulk-read path: ``/api/files/read`` with the server's max
+ * budget.  Editable round-trip available afterwards.
+ */
 async function _loadBulk(path) {
     _state.mode = "bulk";
     // Envelope read: ``maxBytes`` lifts the budget to the BULK ceiling; the

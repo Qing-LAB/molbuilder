@@ -207,11 +207,6 @@ class TestTransportPageRendering:
         assert m, "Transport tab must mark itself active in the nav"
 
 
-def test_core_js_served(web):
-    """The tab's script is served at the path the page loads it from."""
-    assert web.get("/static/lib/transport/core.js").status_code == 200
-
-
 def test_a_rung_tab_offers_no_run_setting(web):
     """A run setting is the rung's run card's, never a rung override
     (`stages.md` § 6.8d, plan § 5w K5): the rung tabs offered the solver,

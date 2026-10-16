@@ -17,22 +17,45 @@ def client():
     return create_app(config={}).test_client()
 
 
-@pytest.mark.parametrize("path", ["/api/health", "/results"])
-def test_every_response_carries_the_security_headers(client, path):
-    """`app.py`'s `_add_security_headers`, on an API answer and on a page:
+#: `web-api.md` § 2's Content-Security-Policy, directive by directive.
+_POLICY = {
+    "default-src": ["'self'"],
+    "script-src": ["'self'"],
+    "style-src": ["'self'", "'unsafe-inline'"],
+    "img-src": ["'self'", "data:"],
+    "connect-src": ["'self'"],
+    "font-src": ["'self'"],
+    "object-src": ["'none'"],
+    "frame-ancestors": ["'none'"],
+    "base-uri": ["'self'"],
+    "form-action": ["'self'"],
+}
+
+
+@pytest.mark.parametrize("path,more", [
+    ("/api/health", {}),
+    ("/results", {}),
+    # The JupyterNB tab frames the notebook, another origin: the same
+    # policy with `frame-src` added (`web/jupyter.md`), `'none'` when the
+    # server was started on no port this request knows.
+    ("/jupyternb", {"frame-src": ["'none'"]}),
+])
+def test_every_response_carries_the_security_headers(client, path, more):
+    """`app.py`'s `_add_security_headers`, on an API answer and on pages:
     scripts only from molbuilder's own origin and never inline, no plugins,
-    no framing, no MIME sniffing, the referrer kept to the origin."""
+    no framing, no cross-origin fetch, no MIME sniffing, the referrer kept
+    to the origin -- every directive `web-api.md` § 2 states, on every page,
+    the one that frames the notebook included.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a directive loosened in the policy
+    every page carries; the notebook page's policy written apart from it,
+    and loosened there."""
     r = client.get(path)
     assert r.status_code == 200, (path, r.status_code)
     csp = r.headers.get("Content-Security-Policy", "")
     directives = {d.split()[0]: d.split()[1:]
                   for d in (p.strip() for p in csp.split(";")) if d}
-    assert directives.get("default-src") == ["'self'"], csp
-    assert directives.get("script-src") == ["'self'"], csp
-    assert directives.get("object-src") == ["'none'"], csp
-    assert directives.get("frame-ancestors") == ["'none'"], csp
-    assert directives.get("base-uri") == ["'self'"], csp
-    assert directives.get("form-action") == ["'self'"], csp
+    assert directives == {**_POLICY, **more}, csp
     assert r.headers.get("X-Content-Type-Options") == "nosniff"
     assert r.headers.get("X-Frame-Options") == "DENY"
     assert r.headers.get("Referrer-Policy") == "same-origin"
@@ -68,13 +91,15 @@ def test_no_page_served_carries_inline_javascript(isolated_projects_root):
     three tabs' *Load from current selection* buttons stayed dead that way.
 
     Every page the app serves -- each one its route map names, the sign-in
-    page from an app that has sign-in, and each page again signed in, with
+    page from an app that has sign-in of every kind, and each page again
+    signed in, with
     the account strip only a signed-in page carries -- parsed as the
     browser parses it, partials and all.
 
     MUTATIONS THIS MUST FAIL AGAINST: a script block in a page's template,
     an ``onclick`` in a partial a page includes, a script in the sign-in
-    page, an ``onclick`` on the account strip's *Sign out*."""
+    page, an ``onload`` on a sign-in kind's button, an ``onclick`` on the
+    account strip's *Sign out*."""
     from support.pages import every_served_page
     pages = every_served_page()
     assert {"/results", "/login", "/results (signed in)"} <= set(pages), \

@@ -84,6 +84,16 @@ discovered under `molbuilder/`, and optional extras (`rdkit`, `web`, `name`,
 `auth`, `test`, `e2e`, `all`). Package-data ships the templates + the static
 assets.
 
+**The rule: an installed copy is the checkout.** Every file git tracks under
+`molbuilder/` ships in the wheel — the scripts, styles, templates and data
+files an installed copy reads as well as its modules — and every asset a page
+the server serves names is one of them. The repo cannot show a break: Flask
+serves `web/static/` off disk, so a pattern that misses a directory, or a file
+never added to git, works in the checkout and is missing from the install (it
+happened twice: no `.toml` pattern until 2026-08-14, and a wheel with 90 of
+141 static files on 2026-09-03). `tests/test_wheel_ships_the_front_end.py`
+builds the wheel from the tracked files and asks both halves.
+
 Two corrections, 2026-09-18: there is no `full` extra (the aggregate is
 `all`), and `gpu` is **gone** — it declared `nvidia-ml-py` for the
 system-load monitor, which stopped importing NVML in-process on 2026-08-28

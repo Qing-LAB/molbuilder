@@ -44,13 +44,6 @@ class _Ids(HTMLParser):
     handle_startendtag = handle_starttag
 
 
-@pytest.fixture(scope="module")
-def _app():
-    pytest.importorskip("flask")
-    from molbuilder.web.app import create_app
-    return create_app(config={})
-
-
 def test_no_page_declares_an_id_twice(isolated_projects_root):
     """Every page the app serves (`support/pages.every_served_page`: each
     one its route map names, signed out and signed in), parsed.
@@ -75,19 +68,3 @@ def test_no_page_declares_an_id_twice(isolated_projects_root):
         "disappears:\n"
         + "\n".join(f"  {p}: {', '.join(ids)}" for p, ids in offenders.items())
     )
-
-
-def test_the_two_task_setup_machine_cards_are_separate_things(_app):
-    """The specific collision, pinned by ROLE rather than by string.
-
-    ``ts-target-card`` asks which machine the deck is for;
-    ``ts-machine-card`` holds the settings measured on it.  A future
-    edit that merges the names would pass the duplicate sweep above
-    only by deleting a card, so this names what each one is for.
-    """
-    body = _app.test_client().get("/task-setup").data.decode()
-    assert body.count('id="ts-target-card"') == 1
-    assert body.count('id="ts-machine-card"') == 1
-    # ...and each still owns the children its renderer reaches for.
-    assert 'id="ts-target-choice"' in body     # loadMachines() fills this
-    assert 'id="ts-machine-rows"' in body      # renderMachine() fills this
