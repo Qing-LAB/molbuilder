@@ -676,6 +676,54 @@ class TestFindingsSitBesideTheirField:
         assert in_card == 0, f"{in_card} finding(s) also sitting in a card list"
 
 
+def test_every_finding_the_live_check_returns_is_on_the_page(
+        page, flask_server, water_xyz_file):
+    """Every finding each engine's live check returns is drawn on the tab, a
+    row each, in that engine's panel and form -- beside its control, on its
+    card, or in the panel (`science/validation.md` § 4.1 R2, R3).
+
+    THE SILENT FAILURE: a finding lost on its way to the page -- the tab
+    drawing only those about a field, or none -- so a structure the check
+    has something to say about reads as a clean one.
+
+    Water loaded, then SIESTA's mesh cutoff set far below its floor: each
+    engine's answer read off the page's own request -- PySCF's to the load,
+    SIESTA's to the edit, which speaks of a field and of the structure.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the page without the renderer's global
+    entry point; the tab drawing only the findings about a field, or only
+    the others; a finding drawn twice."""
+    from pathlib import Path
+    from support.findings import assert_every_finding_drawn
+
+    def answer_for(engine):
+        return lambda r: ("/api/build/preflight" in r.url
+                          and (r.request.post_data_json or {}).get("engine")
+                          == engine)
+    _open_build(page, flask_server)
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.projects"
+        "   && typeof window.molbuilder.projects.publishCommit === 'function'",
+        timeout=_BOOT_TIMEOUT_MS)
+    p = str(Path(water_xyz_file).resolve())
+    with page.expect_response(answer_for("siesta")), \
+            page.expect_response(answer_for("pyscf")) as loaded:
+        page.evaluate(
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
+            {"dir": str(Path(p).parent), "file": p})
+    assert_every_finding_drawn(page, ["#pyscf-issues", "#pyscf-form-container"],
+                               loaded.value.json()["issues"])
+    with page.expect_response(answer_for("siesta")) as edited:
+        page.fill("#p-mesh-cutoff", "5")
+        page.dispatch_event("#p-mesh-cutoff", "change")
+    said = edited.value.json()["issues"]
+    wheres = [i.get("where") or "" for i in said]
+    assert "config.mesh_cutoff" in wheres, said
+    assert any(not w.startswith("config.") for w in wheres), said
+    assert_every_finding_drawn(page, ["#fdf-issues", "#siesta-form-container"],
+                               said)
+
+
 class TestSendToTaskSetup:
     """The tab's PRIMARY loop, witnessed in a browser: every layer below
     this one -- the endpoint in test_task_setup_tab.py -- can be green while

@@ -68,19 +68,19 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     reads as a clean one.
 
     Water picked in the sidebar and loaded, as a person loads it; what the
-    check answered is read off the page's own request.
+    check answered is read off the page's own request, and the rows drawn in
+    the tab's findings panel and its two forms are those findings.
 
-    MUTATION THIS MUST FAIL AGAINST: the page without the renderer's
-    global entry point."""
+    MUTATIONS THIS MUST FAIL AGAINST: the page without the renderer's
+    global entry point; the tab drawing only the findings about a field; a
+    finding drawn twice."""
+    from support.findings import assert_every_finding_drawn
     from test_chemistry_card_e2e import (_ready_for_a_pick,
                                          _register_tmp_as_picker_root)
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     water = tmp_path / "w" / "water.xyz"
     water.parent.mkdir()
     water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
-    answers = []
-    page.on("response", lambda r: answers.append(r)
-            if "/api/build/preflight" in r.url else None)
     page.goto(f"{flask_server}/spectrum-calculation",
               wait_until="domcontentloaded")
     _ready_for_a_pick(page)
@@ -91,20 +91,10 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
         "() => !document.getElementById('load-from-sidebar-btn').disabled",
         timeout=5000)
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
-                              timeout=15000):
+                              timeout=15000) as answered:
         page.locator("#load-from-sidebar-btn").click()
-    page.wait_for_load_state("networkidle")
-    said = answers[-1].json()["issues"]
+    said = answered.value.json()["issues"]
     assert said, "the live check said nothing about water"
-    drawn = page.evaluate(
-        "() => [...document.querySelectorAll('li.issue-item')].map(li => ({"
-        "  severity: li.dataset.severity,"
-        "  message: li.querySelector('.issue-msg').textContent,"
-        "  where: (li.querySelector('.issue-where') || {}).textContent"
-        "         || null }))")
-    missing = [f for f in ({"severity": i["severity"],
-                            "message": i["message"],
-                            "where": i.get("where") or None}
-                           for i in said)
-               if f not in drawn]
-    assert not missing, missing
+    assert_every_finding_drawn(
+        page, ["#spectra-issues", "#spectra-form-pyscf", "#spectra-form-siesta"],
+        said)

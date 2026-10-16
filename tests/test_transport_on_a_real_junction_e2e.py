@@ -933,27 +933,17 @@ def test_the_tab_shows_what_the_citation_measured(junction, page,
     draws nothing, so what the composition measured never reaches the
     person who cited the junction.
 
-    MUTATION THIS MUST FAIL AGAINST: the page without the renderer's
-    global entry point."""
+    MUTATIONS THIS MUST FAIL AGAINST: the page without the renderer's
+    global entry point; a finding drawn twice."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.findings import assert_every_finding_drawn
     from support.live_server import serve
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
     with serve() as base:
         said = _cited_on_the_tab(page, base, junction)["findings"]
-        drawn = page.evaluate(
-            "() => [...document.querySelectorAll("
-            "  '#transport-junction-findings li.issue-item')].map(li => ({"
-            "  severity: li.dataset.severity,"
-            "  message: li.querySelector('.issue-msg').textContent,"
-            "  where: (li.querySelector('.issue-where') || {}).textContent"
-            "         || null }))")
-    assert said, "the describe door measured nothing on the junction"
-    missing = [f for f in ({"severity": i["severity"],
-                            "message": i["message"],
-                            "where": i.get("where") or None}
-                           for i in said)
-               if f not in drawn]
-    assert not missing, missing
+        assert said, "the describe door measured nothing on the junction"
+        assert_every_finding_drawn(page, ["#transport-junction-findings"],
+                                   said)
 
 
 def test_describe_is_one_act_and_refuses_a_described_folder(junction):
