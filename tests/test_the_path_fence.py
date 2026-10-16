@@ -15,6 +15,10 @@ the whole request that reaches the fence.  The table is the app's route map
 fails by name; then each place a path enters is asked with a path OUTSIDE
 the projects tree (:func:`test_a_path_outside_the_projects_tree_is_refused`)
 -- refused in the fence's words, and a file beside the tree untouched.
+
+MUTATIONS THIS MUST FAIL AGAINST: a route's path handed on unfenced (Prep's
+`from`, describe's `dest`, `files/read`); a relative `psml_lib` joined to
+the tree unfenced; a tree-relative name joined to the root unfenced.
 """
 from __future__ import annotations
 
@@ -37,13 +41,11 @@ def _served(app):
 
 @pytest.fixture
 def tree(tmp_path, monkeypatch):
-    """The projects tree the app serves -- with a file, a folder, a
-    structure pair and a link to the folder outside it -- and, beside it, a
-    folder outside it holding a file and a structure pair."""
+    """The projects tree the app serves -- with a file, a folder and a
+    link to the folder outside it -- and, beside it, a folder outside it
+    holding a file."""
     from molbuilder.diagnostics import reset_capabilities
     from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
     root = tmp_path / "projects"
     inside = root / "P" / "here"
     inside.mkdir(parents=True)
@@ -51,10 +53,6 @@ def tree(tmp_path, monkeypatch):
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "loot.txt").write_text("loot\n")
-    water = Structure(elements=["O", "H", "H"],
-                      positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
-    StructureCodec().write(water, inside / "water.xyz")
-    StructureCodec().write(water, outside / "loot.xyz")
     (inside / "out").symlink_to(outside, target_is_directory=True)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
     reset_capabilities()
@@ -134,14 +132,14 @@ def test_a_path_outside_the_projects_tree_is_refused(tree, route, probe):
     outside, inside = tree["outside"], tree["inside"]
     docs_img = Path(__file__).resolve().parents[1] / "docs" / "img"
     places = {"outside_file": str(outside / "loot.txt"),
-              "outside_xyz": str(outside / "loot.xyz"),
               "outside_dir": str(outside),
               "inside_file": str(inside / "notes.txt"),
-              "inside_xyz": str(inside / "water.xyz"),
               "inside_dir": str(inside),
               "outside_by_climbing": "P/" + os.path.relpath(
                   outside, tree["root"] / "P"),
               "link_out": "out",
+              "link_out_from_root": str(
+                  (inside / "out").relative_to(tree["root"])),
               "outside_from_docs_img": os.path.relpath(
                   outside / "loot.txt", docs_img)}
     before = _state(outside)

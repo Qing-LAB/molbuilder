@@ -75,38 +75,6 @@ def test_load_by_json_path_empty(client):
 # --------------------------------------------------------------------- #
 
 
-def test_load_by_json_path_rejects_path_outside_picker_roots(
-        client_with_default_roots):
-    """Pre-fix /api/watch/load resolved arbitrary host paths via
-    ``os.path.realpath`` with an OPTIONAL ``MOLBUILDER_WATCH_ROOT``
-    gate that the default deployment left unset.  A logged-in user
-    could POST ``{"path": "/etc/shadow"}`` and the parser read it.
-
-    Hotfix routes through ``_resolve_within_roots``, which constrains
-    the path to picker roots (default: ``<cwd>/projects``).  This
-    test posts ``/etc/passwd`` and asserts the picker error fires
-    BEFORE any disk read attempt — proving the read-arbitrary-file
-    primitive is gone.
-
-    Pinned to web-api.md § 2.1 (every path-taking endpoint goes
-    through ``_resolve_within_roots``).
-    """
-    r = client_with_default_roots.post(
-        "/api/watch/load",
-        json={"path": "/etc/passwd"},
-    )
-    body = r.get_json()
-    assert r.status_code == 400, (
-        f"expected 400 (outside picker roots); got {r.status_code} "
-        f"body={body!r}.  If you see 200/404, the security fix has "
-        f"regressed and the endpoint is reading arbitrary host files."
-    )
-    assert body["ok"] is False
-    # The picker error names the resolved path + roots so the user
-    # knows WHY it was rejected.
-    assert "outside" in body["error"].lower(), body["error"]
-
-
 def test_load_by_json_path_rejects_dot_dot_traversal(
         client_with_default_roots):
     """``..`` is rejected early per the defense-in-depth check in

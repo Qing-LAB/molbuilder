@@ -139,15 +139,6 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
         pass    # tmp_path removes the tree
 
 
-def test_save_refuses_outside_the_roots(web_client):
-    """The save door owns `task.json` because it owns that schema — but it is
-    still inside the picker's roots guard like every other write."""
-    r = web_client.post("/api/task-setup/save",
-                        json={"dest": "/tmp", "text": "{}"})
-    assert r.status_code >= 400
-    assert "root" in str(r.get_json().get("error", "")).lower()
-
-
 # --------------------------------------------------------------------- #
 #  T1 shape · T2 save                                                    #
 # --------------------------------------------------------------------- #

@@ -505,12 +505,23 @@ own routes (`/api/docs/read`, `/api/docs/img/…`) fence against `docs/`, the
 tree they serve, through `projects.contain` with that root — they read
 molbuilder's documents, never the projects tree.
 
+**A refusal says why, in the fence's words**: a path outside the tree *is
+outside* it (the web layer: *"… is outside every configured root"*), and a
+`..` — refused in any spelling, before anything resolves it — *may not
+contain '..'*; the documentation's routes say *escapes docs/* or *invalid
+path*. Words of their own are what tell a fence's refusal from a refusal made
+after the file was read.
+
 **Checked by asking every route** (`tests/test_the_path_fence.py`, its cases
 `tests/data/path_fence.toml`): the table is the app's route map, so a route
 added without its row fails by name, and each place a path enters is given one
-outside the projects tree — refused in the fence's words, a file beside the
-tree untouched *(2026-10-15; it found a relative `psml_lib` climbing out of the
-tree with `..`, and Prep's `from` reaching no fence — both fixed)*.
+outside the projects tree — every spelling that could climb out, for a route
+that takes a tree-relative name — refused in the fence's words, a file beside
+the tree untouched *(2026-10-15; it found a relative `psml_lib` climbing out of
+the tree with `..`, and Prep's `from` reaching no fence — both fixed)*. **A path
+parameter added to a route that already has its row is review's**: the table
+names the places a path enters each route, and a new one is caught where the
+route changes.
 
 ## 3. Endpoint index — all 99 routes
 

@@ -175,9 +175,13 @@ def resolve_psml_lib(raw: str, *,
     try:
         contain(named, tree)
     except OutsideRoot as exc:
+        # The fence refuses a `..` in any spelling, before it resolves one,
+        # so a `..` that stays inside is refused too -- said as what it is.
+        said = (f"{raw!r} is refused: {exc.reason}"
+                if ".." in p.parts else
+                f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree ({tree})")
         raise PsmlLibError(
-            f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree "
-            f"({tree}).  `psml_lib` always lives inside the tree -- "
+            f"{said}.  `psml_lib` always lives inside the tree -- "
             f"copy the library in (e.g. {tree}/pseudopotential) and "
             f"write the tree-relative name.") from exc
     return named

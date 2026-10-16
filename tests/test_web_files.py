@@ -988,22 +988,6 @@ class TestFilesMkdir:
         assert r.status_code == 400
         assert "missing 'name'" in r.get_json()["error"]
 
-    def test_mkdir_400_for_parent_outside_root(self, web, picker_root):
-        """`mkdir` is a WRITE, so a route that skipped the fence lets a session
-        create directories anywhere the server user can write.
-
-        `web-api.md` § 2.1. What this test holds is that THIS route reaches the
-        fence at all; the fence's own behaviour is `TestPathTraversalDefense`.
-        """
-        # Reuses the same outside-root rejection as /api/files/list.
-        r = web.post(
-            "/api/files/mkdir",
-            json={"parent": "/etc", "name": "evil"},
-        )
-        assert r.status_code == 400
-        assert "outside every configured root" in r.get_json()["error"]
-        assert not Path("/etc/evil").exists()  # paranoia
-
     def test_mkdir_400_for_dot_dot_in_parent(self, web, picker_root):
         """A raw `..` in `parent` reaching resolution.
 
@@ -1356,18 +1340,6 @@ class TestFilesWrite:
         assert r.status_code == 400
         assert "picker root" in r.get_json()["error"]
         assert not (picker_root / "orphan.txt").exists()
-
-    def test_write_outside_root_rejected(self, web, picker_root):
-        """`write` is the most dangerous route in this file -- a skipped fence
-        means arbitrary file creation as the server user.
-
-        `web-api.md` § 2.1: what this holds is that the route reaches the
-        fence.
-        """
-        r = web.post("/api/files/write",
-                     json={"path": "/etc/evil", "text": "x"})
-        assert r.status_code == 400
-        assert "outside every configured root" in r.get_json()["error"]
 
     def test_write_dot_dot_rejected(self, web, picker_root):
         """The `..` that CANCELS. `<root>/proj/../outside` resolves to
@@ -2054,24 +2026,6 @@ class TestFilesDelete:
         r = self._delete(web, target)
         assert r.status_code == 404
 
-    def test_delete_outside_root_rejected(self, web, picker_root):
-        """The worst case in this file: a delete route that skipped the fence
-        removes anything the server user can remove. The comment in the body is
-        load-bearing -- `tmp_path` IS the picker root here, so an outside path
-        must be built above it.
-
-        `web-api.md` § 2.1.
-        """
-        # Absolute path on a sibling tree the picker root has never
-        # heard of.  (Can't use pytest's ``tmp_path`` here -- the
-        # ``picker_root`` fixture aliases the SAME tmp directory, so
-        # any path under tmp_path resolves inside the root.)
-        outside = picker_root.parent.parent / "molbuilder_test_outside"
-        r = self._delete(web, outside / "elsewhere.txt")
-        assert r.status_code == 400
-        err = r.get_json()["error"]
-        assert "outside" in err or "root" in err
-
     def test_delete_dot_dot_in_path_rejected(self, web, picker_root):
         """A raw `..` in a delete path.
 
@@ -2332,23 +2286,6 @@ class TestFilesUpload:
         r = self._post(web, target / "blob.bin", "file.txt")
         assert r.status_code == 400
         assert "directory" in r.get_json()["error"]
-
-    def test_upload_outside_root_rejected(self, web, picker_root):
-        """An upload whose `target_dir` is outside the picker root is refused.
-
-        `web-api.md` § 2.1 -- a path from the browser is fenced at the ROUTE.
-        """
-        # A sibling tree the picker root has never heard of -- built ABOVE it
-        # for the reason `test_delete_outside_root_rejected` records: anything
-        # under `tmp_path` resolves inside the root.
-        outside = picker_root.parent.parent / "molbuilder_test_outside"
-        r = self._post(web, outside, "file.txt")
-        assert r.status_code == 400
-        err = r.get_json()["error"]
-        # The path is NOT allowed to be the evidence: pytest names its temp
-        # directory after the test, so the echoed path can carry the word.
-        # The refusal must be the fence's.
-        assert "outside" in err.replace(str(outside), ""), err
 
     def test_upload_dot_dot_in_target_rejected(self, web, picker_root):
         """A raw `..` in `target_dir` reaching resolution.
@@ -2956,19 +2893,6 @@ class TestDownloadZip:
         r = self._prepare(web, picker_root / "water.xyz")
         assert r.status_code == 400
         assert "/api/files/download" in r.get_json()["error"]
-
-    def test_outside_the_fence_is_refused(self, web, picker_root):
-        """`zip_prepare` is a READ of a whole tree, so a skipped fence exports
-        an arbitrary directory as a downloadable archive -- the most complete
-        exfiltration available in this file.
-
-        `web-api.md` § 2.1, and § 1's status table for the code: a path
-        outside the roots is a malformed REQUEST, where 403 is the admin gate,
-        which is genuinely authorization.
-        """
-        r = self._prepare(web, "/etc")
-        assert r.status_code == 400
-        assert r.get_json()["ok"] is False
 
     def test_missing_is_a_404(self, web, picker_root):
         """A missing directory answered with an empty archive: the far machine

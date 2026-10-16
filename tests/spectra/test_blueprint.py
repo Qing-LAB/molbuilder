@@ -406,35 +406,6 @@ class TestLoadEndpoint:
 #  The fence (web-api.md § 2.1)                                         #
 # ===================================================================== #
 
-def test_load_refuses_a_readable_spectra_file_outside_the_roots(
-        web_client, tmp_path_factory):
-    """The file is a PERFECTLY GOOD spectra.json — it is simply not
-    somewhere this server may read from.
-
-    The bait matters.  Pointing this at ``/etc/passwd`` would prove nothing:
-    that answers 400 whether the fence holds or not, because it fails to
-    parse a moment later.  Only a file the endpoint would happily serve can
-    tell a fence from a parse error.
-
-    Until 2026-08-25 this route handed ``body["path"]`` straight to
-    ``parse_spectra_json``, which — correctly, being a generic reader —
-    does a bare ``open()``.  Contents did not leak (the decode error reports
-    only the parser's position), but EXISTENCE did, which is filesystem
-    enumeration; and the rate limiter's attack-string screen reads the URL,
-    while this path arrives in a JSON body.
-    """
-    outside = tmp_path_factory.mktemp("elsewhere")
-    good = outside / "job.spectra.json"
-    dump_spectra_json(_make_minimal_results(), good)
-    assert good.is_file()                      # the bait really is readable
-
-    r = web_client.post("/api/spectra/load", json={"path": str(good)})
-    assert r.status_code == 400
-    body = r.get_json()
-    assert body["ok"] is False
-    assert "outside every configured root" in body["error"], body["error"]
-
-
 def test_load_still_reads_a_spectra_file_inside_the_roots(
         web_client, tmp_path):
     """...and the fence does not break the ordinary case."""

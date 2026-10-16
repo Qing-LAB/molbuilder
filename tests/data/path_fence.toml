@@ -7,15 +7,21 @@
 # OUTSIDE the projects tree.  `only_when` marks a route the app registers
 # only on a machine set up for it.  A probe is refused in the fence's words,
 # "is outside", unless it names its own (`refusal`: the docs routes fence
-# against docs/, not the projects tree), with a 4xx unless it states the
+# against docs/, not the projects tree; a `..` refused before it resolves
+# says "may not contain '..'"), with a 4xx unless it states the
 # `status` its route answers a refusal with (the preflight answers what it
 # found, its refusal a finding).
 #
 # PLACEHOLDERS the runner fills:
-#   {outside_file} {outside_xyz} {outside_dir}  beside the projects tree
-#   {inside_file} {inside_xyz} {inside_dir}     inside it
+#   {outside_file} {outside_dir}  beside the projects tree
+#   {inside_file} {inside_dir}    inside it
 #   {outside_by_climbing}    a tree-relative name whose `..` climbs out of it
-#   {link_out}               a link inside {inside_dir} to {outside_dir}
+#   {link_out}               a link inside {inside_dir} to {outside_dir},
+#                            named from {inside_dir}
+#   {link_out_from_root}     the same link, named from the tree's root
+#
+# A route that takes a TREE-RELATIVE name is asked each spelling that could
+# climb out: an absolute path, a `..`, and a link inside the tree.
 #   {outside_from_docs_img}  {outside_file}, relative to the docs' images
 
 [[route]]
@@ -53,7 +59,6 @@ takes_no_path = "Nothing; it lists the builder backends this machine has."
 [[route]]
 rule = "/api/bench/summary"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -62,7 +67,6 @@ request = { query = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/build/load"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "path"
@@ -76,12 +80,12 @@ takes_no_path = "A build kind (peptide / dna / rna / smiles / name) and its inpu
 [[route]]
 rule = "/api/build/preflight"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "params.psml_lib"
 request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
 status = 200
+refusal = ["may not contain '..'"]
 
 [[route]]
 rule = "/api/build/schema/<engine>"
@@ -91,7 +95,6 @@ takes_no_path = "An engine name in the URL (siesta / pyscf) and a calculation ki
 [[route]]
 rule = "/api/checkpoint/init"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -100,7 +103,6 @@ request = { json = { path = "{outside_dir}" } }
 [[route]]
 rule = "/api/checkpoint/list"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -109,7 +111,6 @@ request = { query = { path = "{outside_dir}" } }
 [[route]]
 rule = "/api/checkpoint/restore"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -118,7 +119,6 @@ request = { json = { path = "{outside_dir}", state = "probe" } }
 [[route]]
 rule = "/api/checkpoint/save"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -127,7 +127,6 @@ request = { json = { path = "{outside_dir}", note = "probe" } }
 [[route]]
 rule = "/api/checkpoint/state"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -136,7 +135,6 @@ request = { query = { path = "{outside_dir}" } }
 [[route]]
 rule = "/api/checkpoint/tag"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -145,7 +143,6 @@ request = { json = { path = "{outside_dir}", name = "probe", note = "probe" } }
 [[route]]
 rule = "/api/docs/img/<path:img_path>"
 method = "GET"
-writes = false
 [[route.path]]
 where = "url"
 name = "img_path"
@@ -155,7 +152,6 @@ refusal = ["invalid path"]
 [[route]]
 rule = "/api/docs/read"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -170,7 +166,6 @@ takes_no_path = "Nothing; it reads the repo's own docs/toc.json (`root_readme` i
 [[route]]
 rule = "/api/files/copy"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -183,7 +178,6 @@ request = { json = { path = "{inside_file}", dest_dir = "{outside_dir}" } }
 [[route]]
 rule = "/api/files/delete"
 method = "DELETE"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -192,7 +186,6 @@ request = { json = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/files/download"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -206,7 +199,6 @@ takes_no_path = "A token minted by /api/files/zip_prepare; the archive it stream
 [[route]]
 rule = "/api/files/list"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -215,7 +207,6 @@ request = { query = { path = "{outside_dir}" } }
 [[route]]
 rule = "/api/files/mkdir"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "parent"
@@ -224,7 +215,6 @@ request = { json = { parent = "{outside_dir}", name = "probe" } }
 [[route]]
 rule = "/api/files/move"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -237,7 +227,6 @@ request = { json = { path = "{inside_file}", dest_dir = "{outside_dir}" } }
 [[route]]
 rule = "/api/files/read"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -246,7 +235,6 @@ request = { query = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/files/read_range"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -255,7 +243,6 @@ request = { query = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/files/rename"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -269,7 +256,6 @@ takes_no_path = "Nothing; it lists the picker roots (today the one projects root
 [[route]]
 rule = "/api/files/stat"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -278,7 +264,6 @@ request = { query = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/files/upload"
 method = "POST"
-writes = true
 [[route.path]]
 where = "multipart"
 name = "target_dir"
@@ -287,7 +272,6 @@ request = { form = { target_dir = "{outside_dir}" }, files = { file = { filename
 [[route]]
 rule = "/api/files/write"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -296,7 +280,6 @@ request = { json = { path = "{outside_dir}/probe.txt", text = "probe" } }
 [[route]]
 rule = "/api/files/zip_prepare"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -340,7 +323,6 @@ takes_no_path = "A structure envelope and the atom indices to delete."
 [[route]]
 rule = "/api/modify/lattice-from-run"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "path"
@@ -419,7 +401,6 @@ takes_no_path = "A project name (projects.validate_name: letters, digits, '_', '
 [[route]]
 rule = "/api/results/contract"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -428,7 +409,6 @@ request = { query = { path = "{outside_file}" } }
 [[route]]
 rule = "/api/results/dir"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -442,7 +422,6 @@ takes_no_path = "The atoms the browser holds and a selection rule; nothing reads
 [[route]]
 rule = "/api/spectra/load"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "path"
@@ -466,7 +445,6 @@ takes_no_path = "A structure envelope, a periodicity op and its payload."
 [[route]]
 rule = "/api/structure/save"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "path"
@@ -480,7 +458,6 @@ takes_no_path = "Nothing; it snapshots CPU / GPU load."
 [[route]]
 rule = "/api/task-setup/bench-grid"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "dest"
@@ -494,7 +471,6 @@ takes_no_path = "An engine and a calculation kind; the columns come from the shi
 [[route]]
 rule = "/api/task-setup/commands"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "dest"
@@ -503,7 +479,6 @@ request = { json = { dest = "{outside_dir}", kind = "task", groups = [1] } }
 [[route]]
 rule = "/api/task-setup/folder"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "dir"
@@ -512,7 +487,6 @@ request = { query = { dir = "{outside_dir}" } }
 [[route]]
 rule = "/api/task-setup/handover"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "dest"
@@ -521,6 +495,7 @@ request = { json = { engine = "siesta", calculation = "optimization", structure 
 where = "json"
 name = "params.psml_lib"
 request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
+refusal = ["may not contain '..'"]
 
 [[route]]
 rule = "/api/task-setup/machines"
@@ -530,7 +505,6 @@ takes_no_path = "Nothing; it lists the machine records this server knows."
 [[route]]
 rule = "/api/task-setup/prep"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "dest"
@@ -543,7 +517,6 @@ request = { json = { dest = "{inside_dir}", kind = "task", groups = [1], plan = 
 [[route]]
 rule = "/api/task-setup/prep-plan"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "dest"
@@ -557,7 +530,6 @@ takes_no_path = "An engine and a calculation kind; the presets are the shipped t
 [[route]]
 rule = "/api/task-setup/save"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "dest"
@@ -571,11 +543,18 @@ takes_no_path = "An engine and a calculation kind; the items come from the shipp
 [[route]]
 rule = "/api/transport/describe"
 method = "POST"
-writes = true
 [[route.path]]
 where = "json"
 name = "junction"
 request = { json = { engine = "siesta", junction = "{outside_dir}", dest = "{inside_dir}" } }
+[[route.path]]
+where = "json"
+name = "junction"
+request = { json = { engine = "siesta", junction = "{outside_by_climbing}", dest = "{inside_dir}" } }
+[[route.path]]
+where = "json"
+name = "junction"
+request = { json = { engine = "siesta", junction = "{link_out_from_root}", dest = "{inside_dir}" } }
 [[route.path]]
 where = "json"
 name = "dest"
@@ -584,16 +563,22 @@ request = { json = { engine = "siesta", junction = "{inside_file}", dest = "{out
 [[route]]
 rule = "/api/transport/describe_attempt"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
 request = { query = { path = "{outside_dir}" } }
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_by_climbing}" } }
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{link_out_from_root}" } }
 
 [[route]]
 rule = "/api/transport/pdos"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -602,7 +587,6 @@ request = { query = { path = "{outside_dir}" } }
 [[route]]
 rule = "/api/transport/record"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "path"
@@ -611,11 +595,18 @@ request = { query = { path = "{outside_dir}" } }
 [[route]]
 rule = "/api/transport/schema"
 method = "GET"
-writes = false
 [[route.path]]
 where = "query"
 name = "junction"
 request = { query = { engine = "siesta", junction = "{outside_dir}" } }
+[[route.path]]
+where = "query"
+name = "junction"
+request = { query = { engine = "siesta", junction = "{outside_by_climbing}" } }
+[[route.path]]
+where = "query"
+name = "junction"
+request = { query = { engine = "siesta", junction = "{link_out_from_root}" } }
 
 [[route]]
 rule = "/api/watch/data"
@@ -625,7 +616,6 @@ takes_no_path = "An optional mtime number; it re-reads the file the last /api/wa
 [[route]]
 rule = "/api/watch/load"
 method = "POST"
-writes = false
 [[route.path]]
 where = "json"
 name = "path"

@@ -144,12 +144,6 @@ class TestTheTwoRefusals:
         d = _ask(client, path, element="Au")
         assert d["ok"] is True and abs(d["a"] - A) < 1e-6
 
-    def test_a_path_outside_the_picker_roots_is_refused(self, client, picker_root):
-        """web-api.md § 2.1: the fence is at the route, before anything opens
-        the file."""
-        r = client.post("/api/modify/lattice-from-run", json={"path": "/etc/passwd"})
-        assert r.status_code >= 400
-
     def test_an_element_the_file_does_not_hold(self, client, picker_root):
         d = _ask(client, _write(picker_root, _au_supercell()), element="Cu")
         assert d["ok"] is False and "holds no Cu" in d["error"]
