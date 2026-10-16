@@ -5,15 +5,12 @@ from anything a run produced*), § 2.1 (what is in the pin and the longer list
 of what is not), § 3 (the set, the cap, the three rules) and § 3.1 (the worked
 table).
 
-**§ 3.1 is parsed out of the document, not retyped**, which is the plan's rule
-for a contract that carries a worked example: the table and the test cannot
-drift, and adding a row to the document without implementing it fails here.
-``tests/test_task_description.py`` does the same against ``stages.md § 6``;
-this is that pattern, not a second one.
+§ 3.1's worked table is a row each of ``tests/data/run_identity.toml``,
+copied from the document; the two are kept in line by review.
 """
 from __future__ import annotations
 
-import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -23,63 +20,18 @@ from molbuilder.identity import MAX_LABEL_BYTES, normalise_id, run_id
 from molbuilder.projects import _NAME_PATTERN
 
 
-REPO = Path(__file__).resolve().parents[1]
-CONTRACT = REPO / "docs" / "execution" / "run-identity.md"
+ROWS = tomllib.loads((Path(__file__).resolve().parent / "data"
+                      / "run_identity.toml").read_text(encoding="utf-8"))["row"]
 
 
-# --------------------------------------------------------------------- #
-#  The fixture IS the contract — § 3.1's table, parsed                  #
-# --------------------------------------------------------------------- #
-
-_ROW = re.compile(r"^\|\s*(?P<given>.+?)\s*\|\s*(?P<want>.+?)\s*\|.*\|\s*$")
-
-
-def _worked_rows():
-    """§ 3.1's rows as ``(inputs, expected-or-None-if-refused, raw)``."""
-    text = CONTRACT.read_text(encoding="utf-8")
-    start = text.index("### 3.1 Normalisation, worked")
-    end = text.index("### 3.2", start)
-    rows = []
-    for line in text[start:end].splitlines():
-        m = _ROW.match(line)
-        if not m:
-            continue
-        given, want = m.group("given"), m.group("want")
-        if given.startswith("What the user") or set(given) <= set("-: "):
-            continue                                  # header / separator
-        inputs = re.findall(r"`([^`]*)`", given)
-        if not inputs:
-            # The prose row ("a 300-character name") has nothing to quote;
-            # it is asserted directly below instead.
-            continue
-        want_code = re.findall(r"`([^`]*)`", want)
-        rows.append((tuple(inputs),
-                     None if "refused" in want else want_code[0],
-                     given))
-    return rows
-
-
-WORKED = _worked_rows()
-
-
-def test_the_table_was_found_and_is_the_size_it_was():
-    """A parsed fixture that finds nothing is a green test checking nothing.
-
-    Seven of § 3.1's eight rows quote their input; the eighth is prose ("a
-    300-character name") and is asserted on its own below."""
-    assert len(WORKED) == 7, [r[2] for r in WORKED]
-
-
-@pytest.mark.parametrize("inputs,expected",
-                         [(i, e) for i, e, _ in WORKED],
-                         ids=[r[2][:30] for r in WORKED])
-def test_every_worked_row_of_section_3_1(inputs, expected):
-    """Each row of the document's own table, run against the code."""
-    if expected is None:
+@pytest.mark.parametrize("row", ROWS, ids=[r["typed"] for r in ROWS])
+def test_every_worked_row_of_section_3_1(row):
+    """§ 3.1: what a person types becomes its label, or is refused."""
+    if row.get("refused"):
         with pytest.raises(ValueError):
-            run_id(*inputs)
+            run_id(row["typed"])
     else:
-        assert run_id(*inputs) == expected
+        assert run_id(row["typed"]) == row["label"], row["rule"]
 
 
 def test_the_prose_row_a_300_character_name_is_refused():

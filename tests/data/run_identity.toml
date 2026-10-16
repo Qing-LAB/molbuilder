@@ -1,0 +1,43 @@
+# WHAT A PERSON TYPES AS A CALCULATION'S NAME, AND THE LABEL IT BECOMES --
+# `docs/execution/run-identity.md` § 3.1's worked table, a row each, copied.
+# `tests/test_run_identity.py` runs every row through `identity.run_id`: a
+# row with `label` must come back as it; one with `refused = true` must be
+# refused.  (§ 3.1's last row, a 300-character name, has no text to type
+# here; that test states it directly.)
+#
+# A RULE CHANGES, ITS ROW CHANGES WITH IT: § 3.1 and this file.
+
+[[row]]
+typed = "BDT/Au relax"
+label = "BDT_Au_relax"
+rule = "/ and the space are outside the set; case is kept"
+
+[[row]]
+typed = "BDT  --  Au"
+label = "BDT_Au"
+rule = "a run of separator characters collapses to one _"
+
+[[row]]
+typed = "_relax_"
+label = "relax"
+rule = "leading and trailing separators trimmed"
+
+[[row]]
+typed = "Relax.v2"
+label = "Relax_v2"
+rule = "the dot is outside the label's set"
+
+[[row]]
+typed = "BDT-Au"
+label = "BDT-Au"
+rule = "hyphens are kept"
+
+[[row]]
+typed = "Über"
+refused = true
+rule = "a letter, not a separator: never silently dropped"
+
+[[row]]
+typed = "///"
+refused = true
+rule = "reduces to nothing"

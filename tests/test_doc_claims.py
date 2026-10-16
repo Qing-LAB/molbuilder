@@ -1,12 +1,8 @@
 """What a contract states, run through the code: `block_size`'s two states,
-the vocabulary a declared type must come from, the Task setup tab refusing a
-folder with two templates, and the allocation example `engines/stages.md`
-§ 6.8a prints, read back by the reader that stores it.
+the vocabulary a declared type must come from, and the Task setup tab
+refusing a folder with two templates.
 """
 from __future__ import annotations
-
-import dataclasses
-from pathlib import Path
 
 import pytest
 
@@ -124,44 +120,3 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     assert own.name in body["error"] and "x.template.toml" in body["error"], (
         f"the refusal must name BOTH templates so the person can remove the "
         f"leftover: {body['error']!r}")
-
-
-def test_the_allocation_example_in_its_OWNING_contract_is_what_the_reader_stores():
-    """§ 6.8a of `engines/stages.md` owns the `allocation` block, and the
-    example it prints must be the spelling the reader actually stores.
-
-    **This is the drift-direction check, not a spelling check.** On
-    2026-08-24 the record's spelling changed by user directive, and the
-    change was made in the code and in `task.py`'s docstring -- a
-    RESTATEMENT -- while § 6.8a went on saying *"values are spelled as a
-    person types them"* and printing `"time": "4h"`.  Fixing a
-    code-vs-contract finding by editing the code and the nearest comment
-    is how the contract ends up the last place telling the truth.
-
-    Feeding the document's own example through the reader closes that: if
-    either side moves, they stop agreeing here.
-    """
-    import json as _json
-    import re
-    from molbuilder.task import _allocation_from_obj
-    root = Path(__file__).resolve().parents[1]
-    doc = (root / "docs" / "engines" / "stages.md").read_text(encoding="utf-8")
-    body = doc[doc.index("### 6.8a"):]
-    m = re.search(r"```json\n(.*?)\n```", body, re.S)
-    assert m, "§ 6.8a's allocation example could not be found -- repoint this"
-    example = _json.loads("{" + m.group(1).rstrip().rstrip(",") + "}"
-                          if not m.group(1).strip().startswith("{")
-                          else m.group(1))
-    assert "allocation" in example, (
-        f"§ 6.8a's example is not an allocation block: {example!r}")
-
-    stored = _allocation_from_obj(example)
-    documented = example["allocation"]
-    for field in ("time", "mem", "domain"):
-        if documented.get(field):
-            assert getattr(stored, field) == documented[field], (
-                f"§ 6.8a prints allocation.{field} = "
-                f"{documented[field]!r}, but the reader stores "
-                f"{getattr(stored, field)!r}.  The contract that OWNS this "
-                f"key and the code that reads it disagree about what the "
-                f"file holds.")

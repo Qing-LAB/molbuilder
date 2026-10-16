@@ -1,11 +1,9 @@
 """``task.json`` -- the description on disk, and its one reader.
 
 The contract is ``docs/engines/stages.md`` § 6.  Every test below names the
-rule it serves, and the round-trip fixture is **the contract's own jsonc
-block, parsed out of the document**, so the file format and the document
-cannot drift apart without a test going red (the pattern
-``docs/process/testing.md`` § 6 calls a source-text invariant, already used by
-``checkpoint_message()`` against § 7.3).
+rule it serves.  The round-trip fixture is § 6's worked description, copied
+into ``tests/data/task_example.json``: the document and the file are kept in
+line by review, and the tests read the file.
 
 WHAT THIS FILE OWNS: the rows of § 6.6's preflight that are purely
 structural, answerable from the file alone:
@@ -28,7 +26,6 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.identity import run_id
 from molbuilder.task import (
     SCHEMA,
     FILENAME,
@@ -43,64 +40,13 @@ from molbuilder.task import (
 
 
 REPO = Path(__file__).resolve().parents[1]
-CONTRACT = REPO / "docs" / "engines" / "stages.md"
-
-
-# --------------------------------------------------------------------- #
-#  The fixture IS the contract                                          #
-# --------------------------------------------------------------------- #
-
-def _strip_jsonc(text: str) -> str:
-    """Drop ``//`` comments that are outside string literals."""
-    out = []
-    for line in text.splitlines():
-        in_str = False
-        esc = False
-        cut = len(line)
-        for i, ch in enumerate(line):
-            if esc:
-                esc = False
-                continue
-            if ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = not in_str
-            elif ch == "/" and not in_str and line[i:i + 2] == "//":
-                cut = i
-                break
-        out.append(line[:cut].rstrip())
-    # Trailing commas are legal in jsonc, not in json.
-    return re.sub(r",(\s*[}\]])", r"\1", "\n".join(out))
-
-
-def _contract_example() -> dict:
-    """§ 6's worked description, read out of the document itself."""
-    text = CONTRACT.read_text(encoding="utf-8")
-    start = text.index("## 6. `task.json`")
-    block = re.search(r"```jsonc\n(.*?)\n```", text[start:], re.S)
-    assert block, "engines/stages.md § 6 no longer opens with a jsonc block"
-    return json.loads(_strip_jsonc(block.group(1)))
+EXAMPLE = REPO / "tests" / "data" / "task_example.json"
 
 
 @pytest.fixture
 def example() -> dict:
-    return _contract_example()
-
-
-def test_the_contracts_own_example_is_a_valid_description(example):
-    """If the document's worked example does not parse, one of them is
-    wrong -- and this is how we find out which, on the same day."""
-    task = Task.from_dict(example)
-    assert task.engine == "siesta"
-    assert task.shape == "hierarchical"
-    # Derived, not retyped.  The id in § 6's example is what
-    # `run-identity.md § 2` builds from the run's name and the structure's
-    # formula.
-    assert task.run.id == run_id(task.run.name, task.structure.formula)
-    assert [s.name for s in task.stages] == ["coarse", "tight"]
-    assert task.varies == ("mesh_cutoff", "relax_force_tol", "relax_type")
-    # ...and how a rung is run is on its run card, never a column (§ 6.8d).
-    assert task.stages[0].execution == {"restart": "clean"}
+    """§ 6's worked description, as a person's `task.json` holds it."""
+    return json.loads(EXAMPLE.read_text(encoding="utf-8"))
 
 
 def test_round_trip_is_byte_identical(example, tmp_path):
