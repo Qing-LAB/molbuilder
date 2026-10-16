@@ -5,8 +5,8 @@
                                     from GET /partials/trajectory-inspector.
 
     This partial is the DOM contract for what lib/trajectory/core.js
-    reaches via getElementById (the pinned set is
-    tests/test_trajectory_inspector_partial.py's TRAJECTORY_PARTIAL_IDS).
+    looks up on its host by id (every lookup answering one element, asked
+    of a real run in tests/test_siesta_run_in_the_viewer_e2e.py).
 
     Hardcoded element ids are the API: the JS finds elements by
     these names.  Renaming any of them is a wire-format change --

@@ -297,32 +297,18 @@ header. The header's source-path line has the username redacted.
 
 ## 8. Test map
 
-- `test_trajectory_hide_frozen_invariants_js.py` — the force-filter (hide-frozen)
-  behavior.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
 - `test_siesta_run_in_the_viewer_e2e.py` — § 4 on a SIESTA relaxation the road
   makes: the SCF line's rate is the run record's (the timing log, one reader),
-  and the badge dates the run by its `>> End of run`, in its folder.
+  and the badge dates the run by its `>> End of run`, in its folder; and every
+  element the viewer draws into, looked up on the panel the server sends,
+  answers — one element, at the moment it is asked, as the run opens and as
+  § 1's three force controls are used.
 - § 4's badge and § 5's follow read the run the server sends:
   `test_trajectory_settle_post_load_js.py` (the settle, as a case table) and
   `test_trajectory_transition_js.py` (a quiet poll's answer taken) —
   `results.md` § 10 lists the server's half.
-- **The poll loop.** `test_live_poll_invariants_audit.py` was retired
-  2026-09-03: 18 of its 21 tests asserted on the spelling of lines in
-  `lib/trajectory/core.js` (`process/testing.md` § 3a). What replaced it is
-  a **real optimisation**, not a fixture — `test_trajectory_from_a_real_run
-  _e2e.py` stretches CO2 to 1.30 Å, relaxes it through the production deck
-  in the env the four-env model routes PySCF to (~4 s), and opens the
-  `*_geom_optim.xyz` it wrote on /results. It checks the physics (the bond
-  comes back to ~1.19 Å, the energy falls monotonically) and then the
-  drawing (the energy curve has one point per step, falling).
-  `test_inspector_registry_e2e.py`'s poll-timer fixture runs the same
-  optimisation and keeps the trajectory alone beside a launch record: a run
-  launched and not over is live, which is what the viewer follows, while a
-  finished run's log and conclusion would stop the poll the test exists to
-  watch.
-
-  **Which file the viewer is showing, and why it is the log.**
+- **Which file the viewer is showing, and why it is the log.**
   *(Corrected 2026-09-04: an earlier note here said "the discovery chain
   prefers the richer per-step log". That is wrong and was written from
   observation instead of from the contract. `/api/watch/load` returns

@@ -174,32 +174,11 @@ class TestPartialTrajectoryInspectorEndpoint:
         Set as ``private`` so intermediaries don't cache (no user
         data in the body, but consistency with the per-session
         responses elsewhere).
-      * Partial-id parity: the body MUST contain the same ids the
-        trajectory core (lib/trajectory/core.js) queries.  A drift
-        between this partial and the core's selectors silently
-        breaks the inspector on /results.  We pin the load-bearing
-        ids that core.js scopes via $() rather than re-deriving
-        the full partial-id set (that's tested separately in
-        test_trajectory_inspector_partial.py::TestPartialIntegrity).
-    """
 
-    # Hand-picked from `grep -oE '\$\("[a-z0-9_-]+"\)' lib/trajectory/core.js`
-    # -- a representative slice covering each functional area (MolView
-    # mount host, force overlay, plots).  We don't pin EVERY id (~28 of
-    # them; tested exhaustively in test_trajectory_inspector_partial.py::
-    # TestPartialIntegrity), just enough that a partial-id removal
-    # caught by either test surfaces here too.
-    REQUIRED_IDS = (
-        "viewer-host",             # empty host molview.mount fills (task #34)
-        "force-scale",             # force overlay magnitude knob
-        "hide-frozen",             # force-arrow frozen-atom filter
-        "energy-plot",             # Plotly chart: per-frame energy
-        "force-plot",              # Plotly chart: max force
-        "scf-energy-plot",         # Plotly chart: SCF history (hidden when no data)
-        # The viewer + frame bar + selection/atom-pick UI + playback
-        # controls live in MolView (task #34).  See
-        # test_trajectory_inspector_partial.py for the authoritative set.
-    )
+    Every element the trajectory viewer looks up on the panel answers
+    when the panel is mounted on a real run
+    (`test_siesta_run_in_the_viewer_e2e.py`).
+    """
 
     def test_endpoint_returns_html_200(self, web):
         r = web.get("/partials/trajectory-inspector")
@@ -231,20 +210,6 @@ class TestPartialTrajectoryInspectorEndpoint:
         assert "max-age=300" in cc, (
             f"expected max-age=300 (got {cc!r}); short cap prevents "
             f"stale clients after a partial-template deploy"
-        )
-
-    @pytest.mark.parametrize("element_id", REQUIRED_IDS)
-    def test_body_carries_required_inspector_ids(self, web, element_id):
-        """Every id the trajectory core scopes ``$()`` against must
-        be present in the partial response.  A missing id silently
-        breaks the inspector on /results (the $() lookup returns
-        null + later code crashes at the first .addEventListener)."""
-        body = web.get("/partials/trajectory-inspector").get_data(as_text=True)
-        needle = f'id="{element_id}"'
-        assert needle in body, (
-            f"partial response is missing {needle!r}; "
-            f"lib/trajectory/core.js queries this id via $() and "
-            f"will crash when mounted on /results"
         )
 
     def test_partial_does_not_carry_page_chrome(self, web):

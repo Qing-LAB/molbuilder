@@ -121,3 +121,41 @@ def test_the_scf_plot_draws_both_tests_siesta_requires(
         sorted([deck.dm_tolerance, deck.h_tolerance_ev])), drawn
     scf = page.locator("#scf-status").inner_text()
     assert "dDmax=" in scf and "dHmax=" in scf, scf
+
+
+def test_every_element_the_viewer_draws_into_is_on_its_panel(
+        finished, tree, page, flask_server, monkeypatch):
+    """Every element the trajectory viewer looks up on its panel answers, one
+    element, at the moment it is asked (`process/code-audit.md` § 3.4) --
+    as the run opens, and as its three force controls are used
+    (`web/trajectory.md` § 1).
+
+    THE SILENT FAILURE: an element the viewer draws into missing from the
+    panel the server sends -- a plot, the badge or a control's readout
+    stays blank, and nothing says why; or there twice, the viewer writing
+    into one copy while the person reads the other.
+
+    Every lookup the viewer makes on the Results tab's viewer host is
+    recorded with how many elements answered it.
+
+    MUTATIONS THIS MUST FAIL AGAINST: an element taken out of the panel;
+    one written into it twice; the viewer looking its elements up outside
+    its host."""
+    page.add_init_script("""(() => {
+        const one = Element.prototype.querySelector;
+        const all = Element.prototype.querySelectorAll;
+        window.__asked = [];
+        Element.prototype.querySelector = function (sel) {
+            if (this.id === "inspector-host" && /^#[\\w-]+$/.test(sel))
+                window.__asked.push([sel, all.call(this, sel).length]);
+            return one.call(this, sel);
+        };
+    })();""")
+    _open(page, flask_server, finished, tree, monkeypatch)
+    page.locator("#force-scale").fill("2.5")
+    page.locator("#force-min").fill("0.05")
+    page.locator("#hide-frozen").check()
+    asked = page.evaluate("() => window.__asked")
+    assert asked, "the viewer asked its panel for nothing"
+    wrong = sorted({f"{sel} answered by {n}" for sel, n in asked if n != 1})
+    assert not wrong, wrong
