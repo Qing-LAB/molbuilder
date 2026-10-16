@@ -514,6 +514,20 @@ export async function showPreview(wanted) {
  * Bulk-read path: ``/api/files/read`` with the server's max
  * budget.  Editable round-trip available afterwards.
  */
+/* HIGHLIGHT BY SUFFIX, on every open, whichever way the file is read: the
+ * editor is one, reused across opens, so a mode not set here is the last
+ * file's.  `modeFor` loads the vendored mode for this path on first use and
+ * answers null for the formats CodeMirror has none for, which is plain text;
+ * a mode that cannot be had is plain text too -- never the last file's. */
+async function _highlightFor(path) {
+    try {
+        _cm.setOption("mode", await modeFor(path || ""));
+    } catch (e) {
+        console.error("[preview] mode selection failed:", e);
+        _cm.setOption("mode", null);
+    }
+}
+
 async function _loadBulk(path) {
     _state.mode = "bulk";
     // Envelope read: ``maxBytes`` lifts the budget to the BULK ceiling; the
@@ -557,17 +571,7 @@ async function _loadBulk(path) {
             + "The modal was likely closed during the read.");
         return;
     }
-    // Highlight by suffix.  The modal previews .md / .py / .json / .toml as
-    // readily as an .fdf.  `modeFor` loads the vendored mode for this path on
-    // first use and answers null for the formats CodeMirror has none for,
-    // which is plain text.
-    try {
-        _cm.setOption("mode", await modeFor(path || ""));
-    } catch (e) {
-        // A mode that cannot be had is plain text -- never the last file's.
-        console.error("[preview] mode selection failed:", e);
-        _cm.setOption("mode", null);
-    }
+    await _highlightFor(path);
     try {
         _cm.setValue(body.text);
     } catch (e) {
@@ -597,6 +601,7 @@ async function _loadPaginated(path, totalSize) {
     // Paginated is always view-only (large files); pair with the
     // is-view-only class so selection is disabled too.
     if (elCmView) elCmView.classList.add("is-view-only");
+    await _highlightFor(path);
     _cm.setValue("");
     const sizeMB    = (totalSize / (1024 * 1024)).toFixed(1);
     // View-only kicks in above the BULK read ceiling (the server refuses a single-shot

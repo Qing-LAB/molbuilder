@@ -381,8 +381,11 @@ _HIGHLIGHTED = [
     ("H2.sbatch", "shell"), ("data.xml", "xml"), ("style.css", "css"),
     ("conf.yaml", "yaml"), ("conf.yml", "yaml"),
     ("H2.fdf", "null"), ("H2.xyz", "null"), ("H2.out", "null"),
-    ("H2.log", "null"),
+    ("H2.log", "null"), ("H2.molwatch.log", "null"), ("H2.STRUCT_OUT", "null"),
 ]
+#: JSON is the javascript mode in its JSON setting -- the mode a `.json` asks
+#: for, and the one a plain `.js` does not.
+_JSON = {"data.json": True, "tool.js": False}
 
 
 def test_the_editor_searches_jumps_and_highlights_what_it_says(
@@ -392,15 +395,17 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     silence: its script 404s, its command or mode never registers, and the
     editor shows plain text and ignores Ctrl-F.
 
-    Opened as a person opens it, in the preview modal: Ctrl-F brings up the
-    search dialog and Alt-G the jump-to-line one; every suffix the README's
-    table names opens in its mode, molbuilder's own formats in plain text,
-    and a markdown file brings the xml mode it needs; no request for an
-    editor file fails.
+    Opened as a person opens it, in the preview modal: Ctrl-F and a word find
+    it in the file, and Alt-G brings up the jump-to-line dialog; every suffix
+    the README's table names opens in its mode, molbuilder's own formats in
+    plain text -- a file large enough to be paged in included, opened right
+    after one that was highlighted -- and a markdown file brings the xml mode
+    it needs; no request for an editor file fails.
 
     MUTATIONS THIS MUST FAIL AGAINST: a mode file missing from the bundle;
-    the search or the jump addon left out of the loader; markdown loaded
-    without xml."""
+    the search, its cursor or the jump addon left out of the loader; markdown
+    loaded without xml; JSON highlighted as plain JavaScript; a paged file
+    left in the last file's mode."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj"
     proj.mkdir()
@@ -419,7 +424,11 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
     page.locator("#ps-preview-modal .CodeMirror").click()
     page.keyboard.press("Control+f")
     page.wait_for_selector(dialog, timeout=5000)
-    page.keyboard.press("Escape")
+    page.keyboard.type("README")
+    page.keyboard.press("Enter")
+    page.wait_for_function(f"() => {cm}.getSelection() === 'README'",
+                           timeout=5000)
+    # Enter both searches and closes the dialog.
     page.wait_for_selector(dialog, state="detached", timeout=5000)
     page.keyboard.press("Alt+g")
     page.wait_for_selector(dialog, timeout=5000)
@@ -439,7 +448,25 @@ def test_the_editor_searches_jumps_and_highlights_what_it_says(
             xml_with_markdown = page.evaluate(
                 "() => !!(window.CodeMirror.modes || {}).xml")
         shown[name] = page.evaluate(f"() => {cm}.getMode().name")
+        if name in _JSON:
+            assert bool(page.evaluate(f"() => {cm}.getMode().jsonMode")) \
+                is _JSON[name], name
     assert shown == dict(_HIGHLIGHTED), {
         n: m for n, m in shown.items() if m != dict(_HIGHLIGHTED)[n]}
+
+    # A file past the one-read ceiling is paged in -- after a .py.
+    big = proj / "big.out"
+    big.write_text("big\n" + ("x" * 99 + "\n") * (17 * 1024 * 1024 // 100))
+    for name in ("script.py", "big.out"):
+        page.evaluate(
+            "async (p) => {"
+            "  window.molbuilder.projects.setShared("
+            "    p.substring(0, p.lastIndexOf('/')), p);"
+            "  const mod = await import('/static/lib/projects/preview.js');"
+            "  await mod.showPreview(); }", str(proj / name))
+        page.wait_for_function(f"(t) => {cm}.getValue().startsWith(t)",
+                               arg=name.split(".")[0], timeout=20000)
+    assert page.evaluate(f"() => {cm}.getMode().name") == "null", (
+        "a paged-in file kept the last file's highlighting")
     assert xml_with_markdown, "markdown opened without the xml mode it needs"
     assert not failed, failed
