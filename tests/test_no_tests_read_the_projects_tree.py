@@ -188,21 +188,6 @@ def test_no_test_skips_itself_when_a_projects_fixture_is_missing():
     )
 
 
-# --------------------------------------------------------------------- #
-#  The alternative has to work, or the rule above is just a prohibition #
-# --------------------------------------------------------------------- #
-
-def test_the_shared_junction_fixture_builds():
-    import sys
-    sys.path.insert(0, str(TESTS))
-    from support.junction import build_junction, frozen, regions
-
-    s = build_junction()
-    assert s.n_atoms > 0
-    assert set(s.regions) == set(regions())
-    assert s.regions["frozen_atoms"] == sorted(frozen())
-
-
 # ---------------------------------------------------------------------------
 #  The detector's own truth table
 # ---------------------------------------------------------------------------

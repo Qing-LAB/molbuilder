@@ -329,7 +329,7 @@ propose — never grounds to delete.
 | kind | what it pins | why a review cannot replace it |
 |---|---|---|
 | **a measured regression** | a defect that ACTUALLY happened, with its numbers | a person forgets; the file does not |
-| **an artifact lint** | a property of *every* shipped artifact of a class — each served template, each stylesheet, each generated deck | it replaces the manual sweep entirely (§ 3a) |
+| **an artifact lint** | a property of *every* shipped artifact of a class, asked as it ships — each page the server serves, each generated deck, the built wheel | it replaces the manual sweep entirely (§ 3a) |
 | **a contract a document states** | a rule someone wrote down and code must obey | the document and the code drift silently |
 
 ### What does NOT earn a place
@@ -931,6 +931,12 @@ deliberately not installed there.
   `test_negative_body_assert_lint.py` — the artifact lints (§ 6).
 - `test_no_tests_read_the_projects_tree.py` — no test builds a folder inside
   the developer's real `projects/` tree (§ 2a); carries its own truth table.
+- `test_no_test_is_shadowed.py` — no test is silently replaced by a namesake
+  defined later in its module or class, so never run (§ 3a).
+- `tests/support/` — the shared roads: `pages.py` (the pages the app serves,
+  signed out and in), `findings.py` (a page's findings, drawn row for row),
+  `leftovers.py` (what opening again leaves on the page), `road.py` (the
+  contract tables' one runner), `live_server.py`, `real_runs.py`.
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `jobset init → prep`, because the pair is one file. Written

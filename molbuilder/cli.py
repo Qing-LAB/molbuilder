@@ -2465,13 +2465,13 @@ def jupyter_group():
 
     **The tab's buttons do the same thing through the same door**, so a
     notebook that will not start is debuggable without a browser --
-    `docs/web/jupyter.md` § 5, the same reason `serve` has these verbs.
+    `docs/web/jupyter.md` § 5, the same reason ``serve`` has these verbs.
 
     The server is parented to the molbuilder SUPERVISOR, not to the web
     server, so a code reload does not destroy notebook state and
-    `serve stop` takes the notebook with it, and Jupyter's own cleanup
+    ``serve stop`` takes the notebook with it, and Jupyter's own cleanup
     takes the kernels with that.  These verbs
-    signal that supervisor; without one (`serve foreground`,
+    signal that supervisor; without one (``serve foreground``,
     `--no-supervise`) there is nobody to hold the notebook and they say so.
     """
 

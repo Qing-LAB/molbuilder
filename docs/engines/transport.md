@@ -4017,17 +4017,18 @@ outlive refactors and function lists do not.
 **One: reduce the lists.** § 6 above names roles, not function lists — three
 fewer things to keep true per module. That is the part that needed no mechanism.
 
-**Two: assert the lists that must remain, by MEMBERSHIP.** Some enumerations
-genuinely are the contract and cannot be dissolved — the six presenters, the 97
-routes, the 19 commands. For those the repo had an answer:
+**Two: ask the running product for the lists that must remain, by
+MEMBERSHIP.** Some enumerations genuinely are the contract and cannot be
+dissolved — the presenters, the routes, the commands. Each is asked of the
+product, never of a document: every route of the app's own map has its row in
+the path fence's table (`tests/test_the_path_fence.py`), every presenter's
+answer a row of `tests/data/presenters.toml` asked of the live page, every
+command a group's help names is run (`test_cli`). A document's copy of such a
+list is review's (`process/testing.md` § 3a). *(Until 2026-09-27
 `tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
-compared `architecture.md`'s L1 index against `test_layering.py`'s set in both
-directions, and on 2026-09-17 it failed **the moment** a module was deleted
-without the document being swept. *(Both retired 2026-09-27: the second list
-was a source scan's copy, and the layer rule is review's — `process/code-audit.md`
-§ 1c (e).)* The pattern stands for a list a running product states — the
-routes the app serves, the commands the CLI accepts (`plans/plan.md`
-§ 5p.3p.8).
+compared `architecture.md`'s L1 index against `test_layering.py`'s set; both
+were retired — the second list was a source scan's copy, and the layer rule is
+review's, `process/code-audit.md` § 1c (e).)*
 
 > **Membership, never a count — the count hides an even number of errors.**
 > `web-api.md` § 3's heading says *"all 97 routes"* and a test asserts that

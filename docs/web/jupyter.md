@@ -191,6 +191,15 @@ if the pid is alive and its `/proc/<pid>/cmdline` shows a Jupyter we started**,
 stops it. Same rule `serve_daemon` states: a stale file whose pid was recycled
 is reported stale, never signalled.
 
+**The shepherd's polite phase ends before reconciliation stops waiting.** A
+stop asks the shepherd's group to go and waits a grace before it takes it
+(`jupyter._STOP_GRACE_S`, 4 s); reconciliation's stop of the shepherd waits
+its own (`serve_daemon.stop_by_pidfile`, 5 s) and reports *"(forced)"* when it
+had to take it. Equal, the two would expire together and every polite stop of
+a server slow to go would read *forced*; so the shepherd's stays strictly
+under (both were 5.0 until 2026-09-14, `test_jupyter_contract.py` keeps them
+apart).
+
 ### 3.4 Parented to the supervisor
 
 molbuilder's supervisor **respawns the server child on `RELOAD_EXIT_CODE`**. If

@@ -520,9 +520,8 @@ class TestInterplanarSpacingIsDerivedNotTabulated:
         We cannot allow none… It's going to be deceiving.")*  Which reference
         a constant came from moves it ~2%, so a silent default makes the
         answer impossible to validate without reading the source."""
-        import inspect
-        sig = inspect.signature(cellmod.interplanar_spacing)
-        assert sig.parameters["a"].default is inspect.Parameter.empty
+        with pytest.raises(TypeError):
+            cellmod.interplanar_spacing("fcc", "111")
         for bad in (0.0, -1.0, float("nan")):
             with pytest.raises(ValueError, match="positive length"):
                 cellmod.interplanar_spacing("fcc", "111", bad)

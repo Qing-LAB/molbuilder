@@ -726,9 +726,10 @@ When a new bug class turns up:
 3. Add the check to the relevant § 5 checklist.
 4. Reference this entry from any related memory note — don't duplicate the content
    there.
-5. Once the invariant stops finding fresh violations, graduate it into an **artifact
-   lint** (§ 5 rule 5 — a property of every file in a class, never a pin on one
-   line: [`testing.md § 3a`](?doc=process/testing.md)) and mark it enforced here.
+5. Once the invariant stops finding fresh violations, ask whether a test of the
+   OUTCOME can reach it — what ships, asked as it ships, never the source it was
+   made from ([`testing.md § 3a`](?doc=process/testing.md)). If one can, write it
+   and name it here; if none can, the invariant stays a review item (§ 1c).
 
 > **Migration note.** Corrected against code during the docs migration: the `[hidden]`
 > invariant § 3.1 only *wished for* a test in the legacy copy — it then existed

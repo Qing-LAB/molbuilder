@@ -54,11 +54,10 @@ def test_top_level_help_exits_cleanly():
 
 def test_every_verb_a_groups_help_names_runs():
     """A group's help, as printed, sends a person only to commands that run
-    (`process/conventions.md` § 3, the CLI-wide conventions): each name it
-    marks as code that is a command of the tree -- ````name```` in that
-    group or from the root, `name …` whose first word is one of the tree's
-    -- and each `molbuilder …` line of an example, resolves to a command,
-    and that command's ``--help`` answers 0.
+    (`process/conventions.md` § 3, the CLI-wide conventions): each command
+    it names -- marked ````name````, in that group or from the root, or a
+    `molbuilder …` line of an example -- resolves to a command, and that
+    command's ``--help`` answers 0.
 
     THE SILENT FAILURE: a help that tells a person to run a verb that was
     renamed or retired -- they type what the help said and meet a usage
@@ -109,13 +108,6 @@ def test_every_verb_a_groups_help_names_runs():
         for name in set(re.findall(r"``([^`]+)``", text)):
             if "." not in name:
                 check(where, name.split(), group, path)
-        for span in set(re.findall(r"(?<!`)`([^`]+)`(?!`)", text)):
-            words = span.split()
-            if (words and not words[0].startswith("-")
-                    and not any(c in span for c in "./")
-                    and (words[0] in group.commands
-                         or words[0] in root.commands)):
-                check(where, words, group, path)
         for line in text.splitlines():
             words = line.split()
             if words[:1] == ["molbuilder"] and len(words) > 1:

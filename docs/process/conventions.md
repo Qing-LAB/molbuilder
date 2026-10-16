@@ -271,10 +271,11 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
   `jobset prep`, `validate --exit-on-error`) — the number tells a script "stop,
   this won't work."
 - **A help names only what runs.** Every command a group's `--help` tells a
-  person to run — a name its text marks as code, in that group or from the
-  root, and each `molbuilder …` line of an example — is a command of the tree;
-  a help that sends someone to a verb that is gone is worse than none
-  (`test_cli.py`, every group of the tree).
+  person to run is marked ` ``name`` ` — in that group or from the root — or
+  written as a `molbuilder …` line of an example, and is a command of the
+  tree; a help that sends someone to a verb that is gone is worse than none
+  (`test_cli.py`, every group of the tree). Single backticks are for the rest
+  of the code a help quotes — a flag, a file, a key.
 - **stdout vs stderr:** structure/data output goes to **stdout**, the human summary
   to **stderr**, and `-` means stdin/stdout — so `molbuilder … | molbuilder …`
   pipes cleanly.

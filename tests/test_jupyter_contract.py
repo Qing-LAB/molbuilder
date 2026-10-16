@@ -167,8 +167,9 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
 
     THE SILENT FAILURE: a directory in every folder somebody opened a
     notebook in, swept up by result scans and carried to the cluster with
-    every copy -- or every notebook start failing, as on 2026-09-14, when an
-    edit deleted the class that answers the checkpoints.
+    every copy -- which is what comes back, in silence, when the class that
+    answers the checkpoints is lost from the config (traitlets logs the
+    config file's error and starts on its defaults).
 
     The notebook server started as the supervisor starts it (`shepherd_argv`,
     the env entered through the manager), rooted at the projects tree; the
@@ -288,12 +289,15 @@ def test_a_caller_who_may_not_control_gets_403_not_404(route, monkeypatch):
 # --------------------------------------------------------------------- #
 
 def test_the_shepherds_grace_stays_under_the_supervisors():
-    """J12 -- asserted by a comment and by nothing else until now.
+    """`jupyter.md` § 3.3: the shepherd's polite phase ends before
+    reconciliation stops waiting for it.
 
     The two were both 5.0, so reconciliation's poll timed out at the same
     instant the shepherd would have exited and reported *"(forced)"* for
     every perfectly polite stop. It was fixed by changing one number, and
-    nothing stopped the other moving back.
+    nothing stopped the other moving back.  No run shows it -- a polite stop
+    ends in well under a second unless the server stalls the whole grace --
+    so the two numbers are asked (`process/testing.md` § 3a).
     """
     from molbuilder import serve_daemon
     supervisor = inspect.signature(
