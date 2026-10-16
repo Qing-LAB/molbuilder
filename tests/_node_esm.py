@@ -1,4 +1,4 @@
-"""Shared Node harness for the MolView JS unit tests — ES-module capable.
+"""Shared Node harness for the browser modules' JS unit tests — ES-module capable.
 
 The loaded set can be MIXED (classic IIFE files under ``lib/``, native ES modules), so the
 harness loads BOTH:

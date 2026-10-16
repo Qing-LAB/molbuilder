@@ -145,7 +145,7 @@ tab has had, so the division is written out in full:
 | **Single-click a file** in the sidebar | the **file card** says what it is (§ 3b), when it is in the folder whose files the card holds — the panel's, or the run picked off the ladder; nothing else here changes — a single click is a preview, and the mounted viewer stays |
 | **Double-click a file** in the sidebar | opens it in the sidebar's own **file viewer** (the same modal the View button opens). It does **not** reach this panel |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
-| **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
+| **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and opens the file on screen again (§ 2.3). This is the sidebar's whole authority over this tab |
 | **Come back to the browser tab** | re-reads the folder already bound, so files written while you were away appear. It does **not** re-point |
 | **Open the tab** | binds the panel to the folder this tab was last pointed at and scans it **once**. The browser's `pageshow` fires on every load, but only a page restored from the back/forward cache comes back holding an old listing, so only that restore re-reads (`file-picker.js::_onPageShow`). Until 2026-09-27 every load scanned twice, and the second scan emptied the menu the first had filled, at the moment the load completed |
 
@@ -987,7 +987,15 @@ Read from `lib/trajectory/core.js`, which is the shipped implementation:
 
 **A name and the data that belongs to it are written together, or neither
 is.** `transition("APPLY", …)` will not accept a payload without a `path`,
-and drops one whose path is not the file on screen.
+and drops one whose path is not the file on screen — whatever the viewer is
+doing when the answer lands: a trajectory viewer polls while it follows a
+run, and again when the browser tab comes back into view, a file that
+settled or stopped included. **One answer names the file instead of being
+checked against it: a load's.** The trajectory viewer takes the name the
+server read (below) — it may differ from the one asked for — and every later
+answer must name that one. A poll that finds nothing new (`changed: false`)
+carries no name: the viewer gives it the name of the file it polled for,
+read when the poll went out.
 
 That row said *atomically* from the day the state machine landed, and the
 code did not do it. Every caller passed `{results}` or `{mtime, data}` and
@@ -1004,7 +1012,7 @@ out:
 
 | viewer | the name compared | where it comes from |
 |---|---|---|
-| trajectory | `r.path` | the SERVER's reply — `/api/watch/load` and `/api/watch/data` both carry it, the file the server actually read |
+| trajectory | `r.path` | the SERVER's reply — `/api/watch/load` and `/api/watch/data` carry it when they send a file, the file the server actually read |
 | spectra | the requested path | the browser's own string, echoed by `fetchResults(path)` — **`/api/spectra/load` returns no `path` at all** |
 
 Either way `APPLY` compares against `state.fileState.path`, and either way

@@ -776,7 +776,7 @@ V1.13; the fingerprint reads `phase_ir` since that flag has been written,
 The calculation's own tests — the rank rule, the decks, the artifact's gates,
 the end-to-end runs on both engines — are mapped in
 [`engines/vibration.md`](?doc=engines/vibration.md) § 9. This tab's: `test_spectra_transition_js.py` (the viewer's
-state: a file switch, a poll, dispose, Refresh, an answer under its own
+state: a file switch, the follow, a poll, dispose, an answer under its own
 file's name, the legacy names), `test_spectra_phase_indicator_js.py` (the phase indicator, the
 relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),

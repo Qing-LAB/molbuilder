@@ -4,11 +4,13 @@ viewer's keeps (`test_trajectory_transition_js.py`), asked of its own
 state.
 
 * a file switch releases the last file's requests and forgets it, resets
-  the view and keeps the preferences; a live run is polled, one no longer
-  live is not (§ 4, § 4.1);
+  the view and keeps the preferences; after an answer the viewer follows
+  the run the server named while it is live, and not once it is not, or
+  for a file that belongs to no run (§ 4, § 4.1; `spectra.md` § 7);
 * an answer is written under its own file's name or not at all, one that
-  names no file is refused, and after dispose a late answer writes nothing
-  (§ 4.2);
+  names no file is refused, after dispose a late answer writes nothing,
+  and a poll's answer that arrives after the same file was opened again
+  draws nothing (§ 4.2);
 * the legacy flat names and the buckets are one value, and a knob's write
   is saved (`spectra.md` § 7).
 
@@ -40,18 +42,21 @@ _A = "/p/CO2/02_freq/run-0/CO2.spectra.json"
 _B = "/p/CO2/02_freq/run-1/CO2.spectra.json"
 _PREFS = {"modeFilter": "ir", "broadeningFWHM": 12}
 _LIVE = {"state": "running", "detail": "running", "live": True}
+_FINISHED = {"state": "finished", "detail": "job_completed", "live": False}
+_FAILED = {"state": "failed", "detail": "stopped", "live": False}
 
 
 def _viewer(script, *, machine, path=_A, results="A", polling=True,
-            run=None):
+            run=None, in_flight=True):
     """The spectra viewer's state -- ``machine``, showing ``path`` with
     ``results`` (a mark, or none), its poll timer running when ``polling``
-    -- driven by ``script`` through the REAL `transition` and `dispose`;
-    what it then holds.
+    and a poll on the wire when ``in_flight`` -- driven by ``script`` through the REAL `transition`, `dispose`,
+    `_settlePostLoad` and `watchTick`; what it then holds, and what it drew.
 
     Faked at the edge: the timers and the abort controllers (each says
-    when it is used), the loader, the listener registrar, and what dispose
-    lets go of besides the state."""
+    when it is used), the server (``answer``, which a script may replace),
+    the listener registrar, the drawing calls, and what dispose lets go of
+    besides the state."""
     held = {"from": results} if results else None
     harness = f"""
         const _aborted = [];
@@ -60,7 +65,15 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         globalThis.setInterval = () => {{ _polling = true; return 7; }};
         globalThis.clearInterval = () => {{ _polling = false; }};
         const WATCH_INTERVAL_MS = 2000;
-        function watchTick() {{}}
+        const WATCH_MAX_ERRORS = 5;
+        const _drawn = [];
+        let answer = async () => ({{ body: {{ ok: true, results: {{}} }} }});
+        const fetchResults = (p, signal) => answer(p, signal);
+        function setStatus() {{ _drawn.push("status"); }}
+        function stopWatch() {{ _drawn.push("stopped"); }}
+        function renderResults() {{ _drawn.push("results"); }}
+        function updatePhaseIndicator() {{ _drawn.push("phases"); }}
+        function _showRunStatus() {{ _drawn.push("run status"); }}
         const _listeners = {{ disposeAll() {{}} }};
         const document = {{}};
         let chart = null, chartReady = null;
@@ -73,7 +86,7 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
             viewState: {{ selectedMode: 3 }},
             uiPrefs: {json.dumps(_PREFS)},
             lifecycle: {{ loadAbort: _ac("load"), watchAbort: _ac("watch"),
-                         watchInFlight: true,
+                         watchInFlight: {json.dumps(in_flight)},
                          watchTimer: {json.dumps(7 if polling else None)},
                          watchErrors: 2 }},
             derived: {{}},
@@ -81,11 +94,16 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         }};
         {lifted(MODULE, "    function transition(target, payload) {",
                 "\n    function ")}
+        {lifted(MODULE, "    function _settlePostLoad() {", "\n    }")}
+        }}
+        {lifted(MODULE, "    async function watchTick() {",
+                "\n    function ")}
         const handle = {{
         {lifted(MODULE, "        dispose() {", "\n        },")}
         }}
         }};
         let threw = null;
+        (async () => {{
         try {{ {script} }}
         catch (e) {{ threw = String((e && e.message) || e); }}
         console.log(JSON.stringify({{
@@ -97,8 +115,10 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
             prefs: state.uiPrefs,
             polling: _polling,
             aborted: _aborted.sort(),
+            drawn: _drawn,
             threw,
         }}));
+        }})();
     """
     return run_node([], harness)
 
@@ -143,6 +163,44 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         {"machine": "IDLE", "path": None, "results": None, "polling": False,
          "aborted": ["load", "watch"]},
         id="after dispose a late answer for the file writes nothing"),
+    pytest.param(
+        {"machine": "LOADING", "polling": False, "run": _LIVE},
+        '_settlePostLoad();',
+        {"machine": "WATCHING", "polling": True},
+        id="a run the server says is live is followed"),
+    pytest.param(
+        {"machine": "LOADING", "run": _FINISHED},
+        '_settlePostLoad();',
+        {"machine": "LOADED", "polling": False},
+        id="a run that finished is not followed"),
+    pytest.param(
+        {"machine": "LOADING", "run": _FAILED},
+        '_settlePostLoad();',
+        {"machine": "LOADED", "polling": False},
+        id="a run that stopped is not followed"),
+    pytest.param(
+        {"machine": "LOADING", "run": None},
+        '_settlePostLoad();',
+        {"machine": "LOADED", "polling": False},
+        id="a file that belongs to no run is not followed"),
+    pytest.param(
+        {"machine": "WATCHING", "run": _LIVE, "in_flight": False},
+        'answer = async (p) => { transition("LOADING", { path: p });'
+        '  return { body: { ok: true, results: { from: "tick" },'
+        '                   run: ' + json.dumps(_LIVE) + ' } }; };'
+        ' await watchTick();',
+        {"machine": "LOADING", "path": _A, "results": None, "polling": False,
+         "drawn": []},
+        id="a poll answered after the same file was opened again draws "
+           "nothing"),
+    pytest.param(
+        {"machine": "WATCHING", "run": _LIVE, "in_flight": False},
+        'answer = async () => ({ body: { ok: true, results: { from: "tick" },'
+        '                   run: ' + json.dumps(_FINISHED) + ' } });'
+        ' await watchTick();',
+        {"machine": "LOADED", "run": _FINISHED, "polling": False,
+         "drawn": ["results", "phases", "run status"]},
+        id="a poll that says the run finished is drawn, and ends the follow"),
 ])
 def test_what_the_spectra_viewer_holds_after(start, script, holds):
     """THE SILENT FAILURES: a late answer for a file you have moved off,
@@ -154,7 +212,8 @@ def test_what_the_spectra_viewer_holds_after(start, script, holds):
     MUTATIONS THIS MUST FAIL AGAINST: APPLY's path guard gone; IDLE leaving
     the path; dispose not reaching IDLE; LOADING keeping a request or
     clearing the preferences; LOADED leaving the timer; WATCHING starting
-    none."""
+    none; the settle following any run, live or not; a tick's answer drawn
+    after its request was let go."""
     out = _viewer(script, **start)
     for key, want in holds.items():
         if key == "threw":

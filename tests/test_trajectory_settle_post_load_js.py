@@ -38,7 +38,8 @@ def _run(state, live):
 #: (case, the run the server sent, the file's own ending, the transition the
 #: settle makes, the badge's kind).  The badge's words for its kinds, from
 #: `web/trajectory.md` § 4: `finished` Finished, `stopped` Stopped, `queued`
-#: Queued, `pending` Not launched, `running` Running.
+#: Queued, `pending` Not launched, `unreadable` Record unreadable, `running`
+#: Running.
 CASES = [
     ("a live run is followed",
      _run("running", True), "running", "WATCHING", "running"),
@@ -56,6 +57,8 @@ CASES = [
      _run("failed", False), "stopped", "ERROR", "stopped"),
     ("a run never launched is not followed -- nothing arrives until it is",
      _run("pending", False), None, "LOADED", "pending"),
+    ("a run whose launch record does not read is never followed, and says so",
+     _run("unreadable", False), "running", "LOADED", "unreadable"),
     ("an upload that stopped settles on its own ending",
      None, "stopped", "ERROR", "stopped"),
     ("an upload out of memory settles on its own ending",
@@ -116,7 +119,8 @@ def _badge(run, run_state):
 def test_the_badge_reads_the_run_or_the_files_own_ending(
         case, run, run_state, want, badge):
     """`web/trajectory.md` § 4: the badge reads THE RUN the file belongs to
-    -- Finished, Stopped (failed), Queued, Not launched, else Running -- and
+    -- Finished, Stopped (failed), Queued, Not launched, Record unreadable,
+    else Running -- and
     a file that belongs to no run by its own ending: `ended` Finished,
     `stopped` or `out_of_memory` Stopped, anything else Running.
 

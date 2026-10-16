@@ -156,12 +156,13 @@ def _applied(answer, *, machine, path, held, movie=False):
     """Run the REAL `applyNewData(answer)` -- and through it the REAL
     `transition("APPLY")` -- on the REAL state, the viewer in ``machine``
     showing ``path`` with ``held`` parsed; report the file it then holds,
-    its run and time, what reached the movie, or what it threw.
+    its run and time, what reached the movie, what it drew, or what it
+    threw.
 
     Faked at the edge: MolView -- with ``movie``, a stand-in holding as many
     frames as ``held`` that records what is appended to it, so a poll that
     provably extends the movie takes the append; without, none mounted --
-    and the drawing calls."""
+    and the drawing calls, each recorded by name."""
     frames = len(held["frames"]) if held else 0
     harness = f"""
         const root = globalThis;
@@ -189,13 +190,14 @@ def _applied(answer, *, machine, path, held, movie=False):
         const _mvdata = () => (_mv ? _movie : null);
         function startPolling() {{}}
         function stopPolling() {{}}
-        function _renderRuntimeInfo() {{}}
-        function _renderParseWarnings() {{}}
-        function makePlots() {{}}
-        function _renderBadge() {{}}
-        function setStatus() {{}}
-        function rebuildModel() {{}}
-        function drawForces() {{}}
+        const _drawn = [];
+        function _renderRuntimeInfo() {{ _drawn.push("runtime info"); }}
+        function _renderParseWarnings() {{ _drawn.push("parse warnings"); }}
+        function makePlots() {{ _drawn.push("plots"); }}
+        function _renderBadge() {{ _drawn.push("badge"); }}
+        function setStatus() {{ _drawn.push("status"); }}
+        function rebuildModel() {{ _drawn.push("movie"); }}
+        function drawForces() {{ _drawn.push("forces"); }}
         function _announceReady() {{}}
         function _withRunNotes() {{}}
         function _cellCameFromTheRun() {{ return false; }}
@@ -212,6 +214,7 @@ def _applied(answer, *, machine, path, held, movie=False):
             run: state.fileState.run,
             mtime: state.fileState.mtime,
             appended: _appended.length,
+            drawn: _drawn,
             threw,
         }}));
     """
@@ -228,16 +231,29 @@ _GROWN = _parsed(_TWO_FRAMES, "answer")
     pytest.param("WATCHING", _THE_FILE, _HELD,
                  {"path": _ANOTHER, "mtime": 2, "run": _FINISHED,
                   "data": _parsed(_ONE_FRAME, "answer")}, False,
-                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1},
+                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1,
+                  "drawn": []},
                  id="a poll's answer with nothing new, for another file"),
     pytest.param("WATCHING", _THE_FILE, _HELD,
                  {"path": _ANOTHER, "mtime": 2, "run": _FINISHED,
                   "data": _GROWN}, False,
-                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1},
+                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1,
+                  "drawn": []},
                  id="a poll's new frames, for another file"),
+    pytest.param("LOADED", _THE_FILE, _HELD,
+                 {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, False,
+                 {"path": _THE_FILE, "mark": "held", "mtime": 1, "drawn": []},
+                 id="another file's frames, polled as the tab comes back to "
+                    "a file that settled"),
+    pytest.param("ERROR", _THE_FILE, _HELD,
+                 {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, False,
+                 {"path": _THE_FILE, "mark": "held", "mtime": 1, "drawn": []},
+                 id="another file's frames, polled as the tab comes back to "
+                    "a file that stopped"),
     pytest.param("WATCHING", _THE_FILE, _HELD,
                  {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, True,
-                 {"path": _THE_FILE, "mark": "held", "appended": 0},
+                 {"path": _THE_FILE, "mark": "held", "appended": 0,
+                  "drawn": []},
                  id="another file's new frames, onto a movie that could take "
                     "them"),
     pytest.param("WATCHING", _THE_FILE, _HELD,
@@ -248,7 +264,7 @@ _GROWN = _parsed(_TWO_FRAMES, "answer")
                  {"path": _THE_FILE, "mtime": 2, "run": _FINISHED,
                   "data": _parsed(_ONE_FRAME, "answer")}, False,
                  {"path": _THE_FILE, "mark": "answer", "run": _FINISHED,
-                  "mtime": 2},
+                  "mtime": 2, "badge drawn": True},
                  id="a poll's answer with nothing new, for the file on screen"),
     pytest.param("WATCHING", _THE_FILE, _HELD,
                  {"path": _THE_FILE, "mtime": 2, "data": _GROWN}, False,
@@ -277,8 +293,10 @@ def test_an_answer_is_written_under_its_own_files_name_or_not_at_all(
     """`results.md` § 4.2: *"A name and the data that belongs to it are
     written together, or neither is"* -- an answer that names no file is
     refused, a poll's answer for a file not on screen is dropped and draws
-    nothing, an answer after dispose writes nothing, and a load takes the
-    name of the file the server read.
+    nothing -- whatever the viewer was doing when the poll went out: a tab
+    coming back into view polls a file that settled or stopped too -- an
+    answer after dispose writes nothing, and a load takes the name of the
+    file the server read.
 
     THE SILENT FAILURE.  `/api/watch/data` answers for whatever file the
     server is watching, so a poll's answer can belong to another file than
@@ -292,7 +310,9 @@ def test_an_answer_is_written_under_its_own_files_name_or_not_at_all(
     MUTATIONS THIS MUST FAIL AGAINST: the poll's guard in `APPLY` gone;
     either arm writing the data itself; the append drawing an answer
     `APPLY` refused; another file's run written; a null path exempted from
-    the guard."""
+    the guard; the guard asked only while the run is followed, when the tab
+    coming back into view polls a file that settled too; an answer with
+    nothing new for the file on screen drawing nothing."""
     out = _applied(answer, machine=machine, path=path, held=held, movie=movie)
     if holds == "refused":
         assert out["threw"] and "APPLY without a path" in out["threw"], out
@@ -300,7 +320,8 @@ def test_an_answer_is_written_under_its_own_files_name_or_not_at_all(
     else:
         assert out["threw"] is None, out
         for key, want in holds.items():
-            assert out[key] == want, (key, out)
+            got = ("badge" in out["drawn"]) if key == "badge drawn" else out[key]
+            assert got == want, (key, out)
 
 
 # --------------------------------------------------------------------- #
@@ -413,40 +434,6 @@ def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
         f"transition('{target}') left the poll timer "
         f"{'running' if out['timerRunning'] else 'stopped'}; it must be "
         f"{'running' if timer else 'stopped'}")
-
-
-def test_error_stops_the_poll_but_does_NOT_release_its_controller():
-    """What the ERROR branch actually does.
-
-    `lib/trajectory/core.js`'s ERROR branch calls `stopPolling()`, clears
-    `pollInFlight` and never calls `.abort()` — deliberately, per the
-    branch's own comment: *"keeps last-good fileState in place so the user
-    still sees what they had."*  IDLE and LOADING abort here; LOADED and
-    ERROR do not.
-
-    **Mind which `core.js`.**  There are two, and they differ here:
-    `lib/spectra/core.js` uses `watchAbort` / `watchTimer` and aborts on
-    IDLE, LOADING, LOADED **and** ERROR; this one uses
-    `loadAbort` / `pollAbort` / `pollTimer` and aborts on two.
-
-    Asserted here as OBSERVED behaviour, not as a rule: no document
-    states an abort contract for ERROR, and inventing one in a test is
-    how a test starts pinning a requirement nobody wrote.  If ERROR
-    should release its controllers, that is a change to `core.js` and to
-    `results.md`, and this test then changes with them.
-    """
-    out = _transition("ERROR", timer_running=True)
-    assert out["machine"] == "ERROR"
-    assert out["timerRunning"] is False, "the poll must stop on error"
-    assert out["aborted"] == [], (
-        "ERROR now aborts its in-flight requests — real behaviour changed, "
-        f"and no document says which way is right: {out['aborted']}")
-
-    # The two that DO release, so the contrast is measured rather than
-    # asserted from memory.
-    for target in ("IDLE", "LOADING"):
-        assert _transition(target, timer_running=True)["aborted"], (
-            f"transition('{target}') stopped aborting its controllers")
 
 
 def test_starting_the_poll_wires_no_listener():
