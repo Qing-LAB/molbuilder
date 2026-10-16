@@ -376,7 +376,8 @@ list empty Lab offers nothing to restore, and a path that could still be
 reached must never silently discard an edit. *(Asked for by the user
 2026-09-14; verified the same day — a checkpoint POST answered
 `{"id": "no-checkpoint"}`, the list came back empty, and no directory
-appeared.)*
+appeared — and asked of a real notebook server, started as the supervisor
+starts it, by `test_jupyter_contract.py`.)*
 
 ### 4.3 Where a notebook is saved, said out loud
 

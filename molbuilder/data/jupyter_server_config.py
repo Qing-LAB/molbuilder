@@ -29,8 +29,8 @@ imported by molbuilder, so it may name jupyter_server freely -- while
 pyflakes, an editor and `ast.parse` all still read it as Python.
 
 ``c`` is the config object jupyter-core injects when it execs this file; it is
-undefined to a linter reading the file on its own, which is what the two
-``noqa`` markers are for.
+undefined to a linter reading the file on its own, which is what the
+``noqa`` marker is for.
 """
 from datetime import datetime, timezone
 
@@ -65,7 +65,8 @@ class NoCheckpoints(AsyncCheckpoints):
         )
 
 
-# Both sections: `AsyncContentsManager` redeclares the trait that
-# `ContentsManager` defines, and the running manager inherits from both.
-c.ContentsManager.checkpoints_class = NoCheckpoints        # noqa: F821
-c.AsyncContentsManager.checkpoints_class = NoCheckpoints   # noqa: F821
+# On the class every contents manager inherits from, sync or async: a setting
+# for a class reaches its subclasses, so the running manager takes it whichever
+# it is (measured 2026-10-15: a notebook saved leaves no checkpoint with this
+# line alone, and one with it gone).
+c.ContentsManager.checkpoints_class = NoCheckpoints   # noqa: F821

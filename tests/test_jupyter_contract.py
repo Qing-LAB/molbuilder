@@ -14,7 +14,7 @@ the code broken, the right test watched to fail, the code restored:
 1. the schema gate                  `jupyter.md` § 4.1 · `data/jupyter.toml`
 2. an unknown section, refused by name                  `data/jupyter.toml`
 3. every authored setting reaches the command line      `jupyter.md` § 4
-4. the generated config is real, readable Python        `jupyter.md` § 4.2
+4. a notebook saved leaves no checkpoint beside it    `jupyter.md` § 4.2
 5. the control routes' 404 and 403                      `jupyter.md` § 5.2
 6. the stop grace stays under the supervisor's          `jupyter.py`
 7. a start forgets the workspace and keeps the settings `jupyter.md` § 4.1
@@ -22,7 +22,6 @@ the code broken, the right test watched to fail, the code restored:
 """
 from __future__ import annotations
 
-import ast
 import inspect
 import json
 
@@ -139,50 +138,105 @@ def test_the_notebook_token_never_reaches_the_command_line():
 
 
 # --------------------------------------------------------------------- #
-#  4. The generated config is real Python a tool can read                #
+#  4. A notebook saved leaves no checkpoint beside it                    #
 # --------------------------------------------------------------------- #
 
-def test_the_generated_server_config_is_readable_python():
-    """THE ASSERTION J2's ACCIDENT WOULD HAVE TRIPPED.
+def _free_serve_port() -> int:
+    """A serve port whose notebook port (`jupyter_port`) is free here."""
+    import socket
+    for _ in range(50):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", J.jupyter_port(port)))
+            except OSError:
+                continue
+        return port
+    raise RuntimeError("no free port pair")
 
-    This was a 40-line string literal until 2026-09-15, and an edit deleted
-    it on 2026-09-14 and shipped a `NameError` on every notebook start --
-    invisible to pyflakes, to imports and to every test. As a real file it
-    can be parsed without being imported, which matters: it subclasses
-    jupyter_server's `AsyncCheckpoints`, and the HOST env does not have
-    jupyter_server and must not need it.
-    """
-    src = (J.rules_path().parent / "jupyter_server_config.py").read_text(
-        encoding="utf-8")
-    tree = ast.parse(src)          # raises on anything unparseable
-    classes = [n.name for n in ast.walk(tree)
-               if isinstance(n, ast.ClassDef)]
-    assert "NoCheckpoints" in classes
-    # It has to ANSWER the checkpoint API, not merely exist: Lab calls all
-    # five, and a missing one is an exception in the browser.
-    methods = {n.name for n in ast.walk(tree)
-               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assert {"create_checkpoint", "list_checkpoints", "rename_checkpoint",
-            "delete_checkpoint", "restore_checkpoint"} <= methods
-    # AND THAT IT IS ACTUALLY WIRED IN.  The class existing configures
-    # nothing -- the two trailing assignments do, and the file's own comment
-    # says BOTH are needed because the running manager inherits from both
-    # bases.  Deleting one looks redundant and is the likelier edit than
-    # deleting the block, and it would put `.ipynb_checkpoints/` back into
-    # the projects tree while every other assertion here stayed green
-    # (gap found in review 2026-09-15).
-    wired = {
-        f"{n.targets[0].value.value.id}.{n.targets[0].value.attr}"
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Assign)
-        and isinstance(n.targets[0], ast.Attribute)
-        and isinstance(n.targets[0].value, ast.Attribute)
-        and isinstance(n.targets[0].value.value, ast.Name)
-        and n.targets[0].attr == "checkpoints_class"
-    }
-    assert wired == {"c.ContentsManager", "c.AsyncContentsManager"}, (
-        f"the no-op checkpoints class is wired into {wired or 'nothing'}; "
-        f"jupyter.md 4.2 requires both managers")
+
+@pytest.mark.slow
+def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
+        isolated_projects_root, tmp_path):
+    """`jupyter.md` § 4.2: the framed server writes no `.ipynb_checkpoints/`
+    beside a notebook it saves -- a checkpoint asked for answers
+    ``no-checkpoint``, the list comes back empty, and a restore is refused
+    rather than quietly doing nothing.
+
+    THE SILENT FAILURE: a directory in every folder somebody opened a
+    notebook in, swept up by result scans and carried to the cluster with
+    every copy -- or every notebook start failing, as on 2026-09-14, when an
+    edit deleted the class that answers the checkpoints.
+
+    The notebook server started as the supervisor starts it (`shepherd_argv`,
+    the env entered through the manager), rooted at the projects tree; the
+    notebook saved and checkpointed through Jupyter's own contents API, as
+    Lab saves one.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the config file not handed to the
+    server; the class wired into either manager alone; a restore that
+    quietly does nothing."""
+    import os
+    import signal
+    import subprocess
+    import time
+    import urllib.error
+    import urllib.request
+    from _road import env_available
+    if not env_available("molbuilder-jupyternb"):
+        pytest.skip("needs the molbuilder-jupyternb env")
+    serve_port = _free_serve_port()
+    folder = isolated_projects_root / "P" / "notes"
+    folder.mkdir(parents=True)
+    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"))
+    shepherd = subprocess.Popen(
+        J.shepherd_argv(serve_port, host="127.0.0.1"), env=env,
+        stdout=open(tmp_path / "notebook.log", "w"), stderr=subprocess.STDOUT,
+        start_new_session=True)
+    try:
+        for _ in range(120):
+            if J.answering(serve_port) or shepherd.poll() is not None:
+                break
+            time.sleep(0.5)
+        assert J.answering(serve_port), (
+            (tmp_path / "notebook.log").read_text()[-3000:])
+        runtime = J.read_runtime(serve_port)
+        base = f"{runtime['base']}/api/contents/P/notes/a.ipynb"
+
+        def ask(method, url, body=None):
+            req = urllib.request.Request(
+                url, method=method,
+                data=None if body is None else json.dumps(body).encode(),
+                headers={"Authorization": f"token {runtime['token']}",
+                         "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return r.status, json.loads(r.read() or b"null")
+            except urllib.error.HTTPError as e:
+                return e.code, None
+
+        notebook = {"cells": [], "metadata": {}, "nbformat": 4,
+                    "nbformat_minor": 5}
+        saved, _ = ask("PUT", base, {"type": "notebook", "content": notebook})
+        made, checkpoint = ask("POST", f"{base}/checkpoints")
+        listed, checkpoints = ask("GET", f"{base}/checkpoints")
+        restored, _ = ask("POST", f"{base}/checkpoints/no-checkpoint")
+    finally:
+        os.killpg(shepherd.pid, signal.SIGTERM)
+        try:
+            shepherd.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            os.killpg(shepherd.pid, signal.SIGKILL)
+    assert saved in (200, 201), saved
+    assert (made, (checkpoint or {}).get("id")) == (201, "no-checkpoint"), (
+        made, checkpoint)
+    assert (listed, checkpoints) == (200, []), (listed, checkpoints)
+    assert restored >= 400, restored
+    left = sorted(str(q.relative_to(isolated_projects_root))
+                  for q in isolated_projects_root.rglob("*"))
+    assert left == ["P", "P/notes", "P/notes/a.ipynb"], left
 
 
 # --------------------------------------------------------------------- #
