@@ -1,20 +1,18 @@
 """Tests for the ``/results`` blueprint -- the post-merge unified
 inspector page.
 
-Architecture (see ``docs/web/results.md`` § 4 + the
-Inspector Registry pattern in
-``molbuilder/web/static/lib/inspectors/registry.js``):
+Architecture (``docs/web/results.md`` § 0, ``docs/web/presenters.md`` § 3):
 
   * The page has ONE mount point (``#inspector-host``).
   * Each file type is owned by its own inspector module under
     ``static/lib/inspectors/`` that self-registers on script load.
-  * ``static/results/viewer.js`` subscribes to the sidebar
-    selection, asks the registry for a match, and lets the
-    inspector own the host.
+  * ``static/results/viewer.js`` mounts the file the picker announces:
+    it asks the registry for a match and lets the inspector own the host.
 
 These tests pin the contract that lets new inspectors slot in
-without touching this file: route + sidebar + the registered
-inspectors served + the partials + the contract endpoint.
+without touching this file: route + sidebar + the partials + the
+contract endpoint.  The modules the page names are asked of the server by
+``test_wheel_ships_the_front_end.py``.
 """
 from __future__ import annotations
 
@@ -99,54 +97,6 @@ class TestResultsInTabNav:
                 body,
             )
             assert not m, f"{path!r} incorrectly marks /results active"
-
-
-# --------------------------------------------------------------------- #
-#  Inspector modules are served + carry the expected interface          #
-# --------------------------------------------------------------------- #
-
-
-class TestInspectorModulesServed:
-    """Each inspector module + the registry are reachable via the
-    static route + carry the canonical Inspector interface fields."""
-
-    INSPECTORS = ["source", "structure", "trajectory", "spectra"]
-
-
-    @pytest.mark.parametrize("name", INSPECTORS)
-    def test_inspector_module_served(self, web, name):
-        r = web.get(f"/static/lib/inspectors/{name}.js")
-        assert r.status_code == 200
-
-
-# --------------------------------------------------------------------- #
-#  Error-rendering contract for inspector adapters                       #
-#                                                                       #
-#  Surfaced by the 2026-05-20 audit: no test pinned what the user        #
-#  sees when an inspector mount or partial-fetch fails (404, network    #
-#  drop, malformed file).  Both registry adapters (trajectory +         #
-#  spectra) render an inspector-card.error-card via _renderError on     #
-#  fetch failure; this section pins the wiring at source level (the     #
-#  full behavioural verification lives in the Playwright suite          #
-#  test_inspector_registry_e2e.py).                                     #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  Dispatch JS                                                          #
-# --------------------------------------------------------------------- #
-
-
-class TestResultsDispatchJS:
-    """results/viewer.js is intentionally tiny: it only does
-    pick + mount + dispose against the registry.  No per-file-type
-    logic should land here."""
-
-    def test_viewer_js_served(self, web):
-        assert web.get("/static/results/viewer.js").status_code == 200
-
-    def test_style_css_served(self, web):
-        assert web.get("/static/results/style.css").status_code == 200
 
 
 # --------------------------------------------------------------------- #

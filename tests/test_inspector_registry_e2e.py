@@ -1,20 +1,12 @@
-"""End-to-end runtime tests for the Inspector Registry contract.
+"""The inspector registry (`web/presenters.md`) on a live ``/results``
+page, where alone it exists -- in JavaScript, with the presenters the page
+registered, in the order it registered them:
 
-The registry's logic (register, pick, mount, dispose ordering) only
-exists in JavaScript, so we drive it via Playwright against a live
-``/results`` page.  Tests here pin the behavior contract a future
-inspector author needs to depend on:
-
-  * pick() returns null for unknown extensions
-  * pick() honours registration order (first match wins)
-  * register() is idempotent (re-registering same name replaces)
-  * mount() returns a handle with dispose()
-  * dispose() runs before the next inspector takes the host
-
-Plus the integration test: selecting a file in the sidebar via
-``window.molbuilder.projects.setShared()`` swaps the visible
-inspector.  This is the milestone validation for the registry-
-driven /results architecture.
+  * which viewer opens a file, which lists it in the dropdown, and under
+    which heading -- each row of ``tests/data/presenters.toml``;
+  * a viewer mounted draws into its host, and its dispose empties it;
+  * opening a viewer again and again leaves on the page what once left;
+  * a viewer whose file cannot load says why, and lets the host go.
 """
 from __future__ import annotations
 
@@ -141,74 +133,11 @@ def test_the_dropdown_files_it_under_its_heading(registry_answers, row):
 
 
 class TestMountLifecycle:
-    """The host element is owned exclusively by the active inspector;
-    a new selection disposes the previous handle BEFORE mounting
-    the new one.  (A file no presenter claims opens in nothing: the
-    table above, `presenters.toml`'s last two `pick` rows.)"""
-
-    def test_mount_returns_handle_with_dispose(self, page, flask_server):
-        """Registry's mount(host, file, ctx) returns a handle with
-        ``dispose()``.  The ctx arg is required (added 2026-05-18 to
-        carry shared state into each inspector adapter); tests use
-        ``createDefaultContext(host)`` for the standard context."""
-        _open_results(page, flask_server)
-        ok = page.evaluate("""() => {
-            const reg = window.molbuilder.inspectors;
-            const host = document.createElement("div");
-            const ctx  = reg.createDefaultContext(host);
-            const h = reg.mount(host, "/projects/foo/spectrum/run.fdf", ctx);
-            return h && typeof h.dispose === "function";
-        }""")
-        assert ok
-
-
-# --------------------------------------------------------------------- #
-#  /results integration: sidebar selection swaps inspector              #
-# --------------------------------------------------------------------- #
-
-
-class TestResultsDispatchIntegration:
-    """End-to-end: setting the sidebar's current_file fires the
-    dispatch + mounts the right inspector inside #inspector-host."""
-
-    def test_sidebar_selection_mounts_source_inspector_for_fdf(
-            self, page, flask_server):
-        _open_results(page, flask_server)
-        # Drive the sidebar's selection state directly + wait for
-        # the dispatch to land + render.  No real file on disk
-        # because the source inspector's readFile will 404, but the
-        # placeholder card structure renders first.
-        page.evaluate("""() => {
-            // Use the published setShared if available; otherwise
-            // fall back to sessionStorage + a manual dispatch tick.
-            const proj = window.molbuilder.projects;
-            if (proj && proj.onChange) {
-                // onChange fires the subscriber; setShared is
-                // exposed via projects/state.js as an internal --
-                // do it via sessionStorage + dispatching a custom
-                // change.
-                sessionStorage.setItem("molbuilder.current_dir", "/projects/foo");
-                sessionStorage.setItem("molbuilder.current_file",
-                                       "/projects/foo/spectrum/run.fdf");
-                // No public publish API -- the dispatch listens to
-                // onChange.  Easiest reliable trigger is calling
-                // proj.refresh() if exposed, else a small DOM event.
-            }
-        }""")
-        # The integration test exercises the dispatch directly via the
-        # public mount call.
-        page.evaluate("""() => {
-            const host = document.getElementById("inspector-host");
-            const reg  = window.molbuilder.inspectors;
-            const ctx  = reg.createDefaultContext(host);
-            const handle = reg.mount(
-                host, "/projects/foo/spectrum/run.fdf", ctx);
-            window._testHandle = handle;
-        }""")
-        # The source inspector injects a .source-card.
-        page.wait_for_selector(".source-card", timeout=3000)
-        title = page.locator(".source-card .inspector-card-title").inner_text()
-        assert "run.fdf" in title
+    """A viewer put away takes what it drew with it: the Results tab puts
+    the old viewer away before it mounts the next (`presenters.md` § 3,
+    step 2), and the next draws into an empty host.  (A file no presenter
+    claims opens in nothing: the table above, `presenters.toml`'s last two
+    `pick` rows.)"""
 
     def test_dispose_clears_the_host(self, page, flask_server):
         _open_results(page, flask_server)

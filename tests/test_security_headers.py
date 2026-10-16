@@ -67,16 +67,18 @@ def test_no_page_served_carries_inline_javascript(isolated_projects_root):
     *"no `<script>` blocks, no `onclick=` attributes"*).  On 2026-05-18
     three tabs' *Load from current selection* buttons stayed dead that way.
 
-    Every page the app serves -- each one its route map names, and the
-    sign-in page from an app that has sign-in -- parsed as the browser
-    parses it, partials and all.
+    Every page the app serves -- each one its route map names, the sign-in
+    page from an app that has sign-in, and each page again signed in, with
+    the account strip only a signed-in page carries -- parsed as the
+    browser parses it, partials and all.
 
     MUTATIONS THIS MUST FAIL AGAINST: a script block in a page's template,
     an ``onclick`` in a partial a page includes, a script in the sign-in
-    page."""
+    page, an ``onclick`` on the account strip's *Sign out*."""
     from support.pages import every_served_page
     pages = every_served_page()
-    assert {"/results", "/login"} <= set(pages), sorted(pages)
+    assert {"/results", "/login", "/results (signed in)"} <= set(pages), \
+        sorted(pages)
     found = {}
     for path, html in sorted(pages.items()):
         parsed = _InlineJavaScript()

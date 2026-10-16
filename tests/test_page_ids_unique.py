@@ -26,33 +26,22 @@ same way.
 """
 from __future__ import annotations
 
-import re
+from html.parser import HTMLParser
 
 import pytest
 
 
-#: ``id="..."`` in served markup.  Attribute order varies by hand, so
-#: this reads the attribute itself rather than assuming a tag shape.
-_ID = re.compile(r'\bid="([^"]+)"')
+class _Ids(HTMLParser):
+    """Each element's ``id``, as the browser parses the page."""
 
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.ids = []
 
-def _html_get_routes(app):
-    """Every parameter-free GET route that answers with a page.
+    def handle_starttag(self, tag, attrs):
+        self.ids += [value for name, value in attrs if name == "id"]
 
-    Enumerated from the url_map rather than listed by hand: a page
-    added tomorrow is covered without anyone remembering to add it,
-    which is the whole point of a structural guard.
-    """
-    out = []
-    for rule in app.url_map.iter_rules():
-        if rule.arguments:                      # needs a parameter
-            continue
-        if "GET" not in (rule.methods or set()):
-            continue
-        if str(rule).startswith("/api/"):       # JSON, not markup
-            continue
-        out.append(str(rule))
-    return sorted(set(out))
+    handle_startendtag = handle_starttag
 
 
 @pytest.fixture(scope="module")
@@ -62,21 +51,23 @@ def _app():
     return create_app(config={})
 
 
-def test_no_page_declares_an_id_twice(_app):
+def test_no_page_declares_an_id_twice(isolated_projects_root):
+    """Every page the app serves (`support/pages.every_served_page`: each
+    one its route map names, signed out and signed in), parsed.
+
+    MUTATION THIS MUST FAIL AGAINST: an id a page already carries given to
+    an element of a partial it includes -- the account strip a signed-in
+    page alone carries among them."""
+    pytest.importorskip("flask")
+    from support.pages import every_served_page
     offenders = {}
-    client = _app.test_client()
-    for path in _html_get_routes(_app):
-        resp = client.get(path)
-        if resp.status_code != 200:
-            continue                            # redirect / partial / 404
-        if "html" not in resp.headers.get("Content-Type", ""):
-            continue
-        body = resp.data.decode()
-        seen, dupes = set(), set()
-        for name in _ID.findall(body):
-            (dupes if name in seen else seen).add(name)
+    for path, html in sorted(every_served_page().items()):
+        parsed = _Ids()
+        parsed.feed(html)
+        parsed.close()
+        dupes = sorted({i for i in parsed.ids if parsed.ids.count(i) > 1})
         if dupes:
-            offenders[path] = sorted(dupes)
+            offenders[path] = dupes
     assert not offenders, (
         "an element id is declared more than once on a page; "
         "getElementById answers with the first, so whichever element "
