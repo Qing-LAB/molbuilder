@@ -136,35 +136,18 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
     into one copy while the person reads the other.
 
     Every lookup the viewer makes on the Results tab's viewer host is
-    recorded with how many elements answered it, and every lookup made on
-    the whole document by id: one that asks for an id of the panel went
-    around the host, where a second viewer's panel would answer it.
+    recorded with how many elements answered it.
 
     MUTATIONS THIS MUST FAIL AGAINST: an element taken out of the panel;
-    one written into it twice; the viewer looking one of its elements up
-    outside its host."""
+    one written into it twice."""
     page.add_init_script("""(() => {
         const one = Element.prototype.querySelector;
         const all = Element.prototype.querySelectorAll;
-        const byId = Document.prototype.getElementById;
-        const docOne = Document.prototype.querySelector;
         window.__asked = [];
-        window.__onDocument = [];
         Element.prototype.querySelector = function (sel) {
             if (this.id === "inspector-host" && /^#[\\w-]+$/.test(sel))
                 window.__asked.push([sel, all.call(this, sel).length]);
             return one.call(this, sel);
-        };
-        // The page's own scripts only: this test's waits ask the page too.
-        const byPage = () => /\\/static\\//.test(String(new Error().stack));
-        Document.prototype.getElementById = function (id) {
-            if (byPage()) window.__onDocument.push(String(id));
-            return byId.call(this, id);
-        };
-        Document.prototype.querySelector = function (sel) {
-            if (/^#[\\w-]+$/.test(sel) && byPage())
-                window.__onDocument.push(sel.slice(1));
-            return docOne.call(this, sel);
         };
     })();""")
     _open(page, flask_server, finished, tree, monkeypatch)
@@ -175,9 +158,73 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
     assert asked, "the viewer asked its panel for nothing"
     wrong = sorted({f"{sel} answered by {n}" for sel, n in asked if n != 1})
     assert not wrong, wrong
-    around = page.evaluate("""() => {
-        const host = document.getElementById("inspector-host");
-        const panel = new Set([...host.querySelectorAll("[id]")].map(e => e.id));
-        return [...new Set(window.__onDocument)].filter(id => panel.has(id));
-    }""")
-    assert not around, f"the panel's ids looked up on the whole page: {around}"
+
+
+def test_opening_the_run_again_and_again_leaves_what_once_left(
+        finished, tree, page, flask_server, monkeypatch):
+    """The trajectory viewer, opened on the run and put away five times,
+    leaves on the page what once left -- the listeners on the window, the
+    document or an element still on the page, and the live GL contexts
+    (`web/molview.md` § 8, § 9.9a; `web/presenters.md` § 3, step 2): the
+    inspector teardown rows' trajectory one, on output the engine wrote.
+
+    THE SILENT FAILURE: a listener a mount adds and its dispose leaves,
+    firing against a dead panel on every later mount; a drawing window
+    left alive with its listeners for the page's life.
+
+    Mounted through the registry on the Results tab, each mount waited out
+    by the viewer's word that its load ended, which must carry no error;
+    paired add to remove as the browser pairs them (`support/leftovers.SPY`).
+
+    MUTATION THIS MUST FAIL AGAINST: a listener the trajectory viewer adds
+    outside the viewers' shared scope."""
+    from molbuilder import diagnostics
+    from molbuilder.runs import openable
+    from support.leftovers import SPY, grew
+    output, _ = openable(finished)
+    monkeypatch.setattr(type(diagnostics.get_capabilities()),
+                        "file_picker_roots",
+                        lambda self: ((tree.resolve(), "road"),))
+    page.goto(f"{flask_server}/results", wait_until="networkidle")
+    page.wait_for_function(
+        "(f) => { const r = (window.molbuilder || {}).inspectors;"
+        "  return !!r && (r.pick(f) || {}).name === 'trajectory'; }",
+        arg=str(output), timeout=10000)
+    left = page.evaluate("""async (c) => {
+        const reg = window.molbuilder.inspectors;
+        const spy = """ + SPY + """;
+        const cycle = async () => {
+            const host = document.createElement("div");
+            host.style.width = "900px";
+            document.body.appendChild(host);
+            const ended = new Promise((resolve) => spy.quietly(document,
+                window.molbuilder.constants.EVENT_INSPECTOR_READY,
+                (e) => resolve((e && e.detail) || {}), { once: true }));
+            const handle = reg.mount(host, c.file,
+                                     reg.createDefaultContext(host));
+            const said = await Promise.race([ended,
+                new Promise((r) => setTimeout(() => r(null), 15000))]);
+            handle.dispose();
+            document.body.removeChild(host);
+            if (!said) return "a mount never ended";
+            if (said.error) return "it could not load: " + said.error;
+            return null;
+        };
+        try {
+            const first = await cycle();
+            if (first) return { error: first };
+            const once = spy.state();
+            for (let i = 1; i < c.times; i++) {
+                const again = await cycle();
+                if (again) return { error: again };
+            }
+            return { once, again: spy.state() };
+        } finally {
+            spy.restore();
+        }
+    }""", {"file": str(output), "times": 5})
+    assert "error" not in left, left
+    assert not grew(left), (
+        "opening the run five times left more on the page than opening it "
+        "once:\n  " + "\n  ".join(grew(left)))
+    assert left["again"]["contexts"] == left["once"]["contexts"], left

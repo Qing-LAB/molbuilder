@@ -54,6 +54,38 @@ def molview_server():
         thread.join(timeout=5)
 
 
+#: A workspace a test's own viewer saves through: the calls `workspace.md`
+#: § 5 lists, answered from memory -- the demo page's stand-in, as a
+#: JavaScript expression (`molview.md` § 8: a stand-in provides those same
+#: calls, or the viewer's view context goes quietly off).
+_MEMORY_WORKSPACE = """(() => {
+    const sessions = new Map(), points = new Map(), ids = new Map();
+    return {
+        workspaceId(tag) {
+            if (!ids.has(tag)) ids.set(tag, "test-" + tag);
+            return ids.get(tag);
+        },
+        persist(tag, bytes, identity) {
+            if (bytes) sessions.set(tag, bytes);
+            if (identity) points.set(
+                identity.workspace_id + ":" + identity.state_index, bytes);
+            return true;
+        },
+        async readState(identity) {
+            const key = identity.workspace_id + ":" + identity.state_index;
+            return points.has(key) ? points.get(key) : null;
+        },
+        pruneStatesAbove(id, index) {
+            for (const key of Array.from(points.keys())) {
+                const [owner, step] = key.split(":");
+                if (owner === id && Number(step) > index) points.delete(key);
+            }
+        },
+        onPersistError() { return () => {}; },
+    };
+})()"""
+
+
 @pytest.fixture
 def demo(page, molview_server):
     """The demo page with a structure loaded and the drawing settled."""
@@ -509,7 +541,7 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
             const host = document.createElement("div");
             host.style.width = "900px";
             document.body.appendChild(host);
-            const ws = { read: async () => null, write: async () => {} };
+            const ws = """ + _MEMORY_WORKSPACE + """;
             const v = await mount(host, ws, { owner: "cell-door" });
 
             await v.data.installMolecule({
@@ -581,7 +613,7 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
             host.style.width = "900px";
             document.body.appendChild(host);
             const { mount } = await import("/static/lib/molview/index.js");
-            const ws = { read: async () => null, write: async () => {} };
+            const ws = """ + _MEMORY_WORKSPACE + """;
             window.__second = await mount(host, ws, { owner: "second-viewer" });
         }"""
     )
@@ -639,7 +671,7 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
     out = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
-            const ws = { read: async () => null, write: async () => {} };
+            const ws = """ + _MEMORY_WORKSPACE + """;
             const water = { elements: ["O", "H", "H"],
                             positions: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]],
                             metadata: {} };
@@ -666,7 +698,7 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
                 throw new Error("a window's cover never came down");
             };
 
-            const hostA = host("640px");
+            const hostA = host("400px");
             const a = await mount(hostA, ws, { owner: "first", mode: "readonly" });
             await a.data.installMolecule({ structure: water });
             await drawn(hostA);

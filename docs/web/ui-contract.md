@@ -409,7 +409,10 @@ travels, and what the UI must do with it — is
 > layer up. It had two of the three severities from
 > 2026-08-01 (`b39ba6bc`) to 2026-09-11 and drew an error in the tone of a
 > remark; nothing noticed, because the guard for "one renderer"
-> checked two filenames instead of searching. It searches now.
+> checked two filenames instead of searching. "One renderer" is held by
+> review now ([`code-audit.md`](?doc=process/code-audit.md) § 1c), and each
+> page that shows findings is asked to draw every one its check returned
+> ([`validation.md`](?doc=science/validation.md) § 4.1 R2).
 
 ## 6. The `[hidden]` gotcha
 

@@ -153,7 +153,6 @@ class TestInspectorListenerTeardown:
 
     @pytest.mark.parametrize("viewer,file,loads", [
         ("structure", "water.xyz", True),
-        ("trajectory", "relax_optim.xyz", True),
         ("spectra", "job.spectra.json", False),
     ])
     def test_opening_a_viewer_again_and_again_leaves_what_once_left(
@@ -176,10 +175,12 @@ class TestInspectorListenerTeardown:
         viewers' shared scope (`lib/inspectors/lifecycle.js`) counts as
         surely as one inside it, on a settled page, each mount waited out by
         the viewer's own word that its load has ended
-        (`EVENT_INSPECTOR_READY`) -- the structure and the trajectory each
-        loaded from its file, the word carrying no error.  The spectra row's
-        file is not there: its viewer mounts, refuses the load, and is put
-        away -- the mount's wiring and the refused road, no spectrum drawn.
+        (`EVENT_INSPECTOR_READY`) -- the structure loaded from its file, the
+        word carrying no error.  The spectra row's file is not there: its
+        viewer mounts, refuses the load, and is put away -- the mount's
+        wiring and the refused road, no spectrum drawn.  The trajectory's
+        row is on a run the engine made
+        (`test_siesta_run_in_the_viewer_e2e.py`): what it opens is output.
 
         MUTATIONS THIS MUST FAIL AGAINST: a listener added outside the scope;
         a drawing window made for every mount; a capturing listener taken off
@@ -188,9 +189,6 @@ class TestInspectorListenerTeardown:
         folder.mkdir(parents=True)
         (folder / "water.xyz").write_text(
             "3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
-        (folder / "relax_optim.xyz").write_text("".join(
-            f"3\nstep {k}\nO 0 0 0\nH {0.957 + 0.01 * k:.3f} 0 0\n"
-            "H -0.239 0.927 0\n" for k in range(3)))
         path = str(folder / file)
         page.goto(f"{flask_server}/results", wait_until="networkidle")
         page.wait_for_function(

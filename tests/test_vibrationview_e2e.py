@@ -92,7 +92,8 @@ def test_opening_and_closing_a_viewer_again_and_again_leaves_what_once_left(
 def test_a_viewer_on_a_kept_window_draws_as_a_new_one(
         page, flask_server, isolated_projects_root):
     """§ 9.3a: a window taken is a new one.  Viewer A, on a white ground, is
-    given a structure and a mode, turned with the mouse, and closed in the
+    given a structure and a mode, turned with the mouse -- its picture
+    asserted turned -- and closed in the
     middle of an export at 1600 x 1200 on a transparent ground.  Viewer B,
     opened next in a host of another size, takes A's window; viewer C,
     beside it, a new one.  B and C draw the same picture -- empty, and with
@@ -115,18 +116,25 @@ def test_a_viewer_on_a_kept_window_draws_as_a_new_one(
         a.setStructure(c.water);
         a.showMode(c.mode);
         window.__a = { vib: a, host: host };
+        await new Promise((r) => requestAnimationFrame(
+            () => requestAnimationFrame(r)));
         const r = host.getBoundingClientRect();
-        return { x: r.x, y: r.y, w: r.width, h: r.height };
+        return { x: r.x, y: r.y, w: r.width, h: r.height,
+                 picture: host.querySelector("canvas").toDataURL() };
     }""", {"water": WATER, "mode": MODE})
     cx, cy = box["x"] + box["w"] / 2, box["y"] + box["h"] / 2
     page.mouse.move(cx, cy)
     page.mouse.down()
     page.mouse.move(cx + 120, cy + 40, steps=8)
     page.mouse.up()
+    turned = page.evaluate("""() => new Promise((r) => requestAnimationFrame(
+        () => requestAnimationFrame(() => r(window.__a.host
+            .querySelector("canvas").toDataURL()))))""")
+    assert turned != box["picture"], "the drag did not turn viewer A"
     out = page.evaluate("""async (c) => {
         const { mount } = await import("/static/lib/vibrationview/index.js");
         const settle = () => new Promise((r) => requestAnimationFrame(
-            () => requestAnimationFrame(() => setTimeout(r, 300))));
+            () => requestAnimationFrame(r)));
         const a = window.__a;
         let closed = false;
         await a.vib.exportAnimation({
@@ -159,7 +167,8 @@ def test_a_viewer_on_a_kept_window_draws_as_a_new_one(
         return { closed, empty, drawn };
     }""", {"water": WATER, "mode": MODE})
     assert out["closed"], "the export never reached its first frame"
-    assert out["empty"][0] and out["drawn"][0], "a window drew nothing at all"
+    assert all(d != e for d, e in zip(out["drawn"], out["empty"])), (
+        "a viewer given a structure and a mode drew nothing of them")
     assert out["empty"][0] == out["empty"][1], (
         "the viewer on a kept window opened differently from one on a new "
         "window -- the last viewer's molecule, ground or export size")

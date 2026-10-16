@@ -67,9 +67,10 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     draws nothing, so a structure the check has something to say about
     reads as a clean one.
 
-    Water picked in the sidebar and loaded, as a person loads it; what the
-    check answered is read off the page's own request, and the rows drawn in
-    the tab's findings panel and its two forms are those findings.
+    Water set as the sidebar's selection and loaded with the tab's Load
+    button; what the check answered is read off the page's own request --
+    a finding about the structure among it -- and the rows drawn in the
+    tab's findings panel and its two forms are those findings.
 
     MUTATIONS THIS MUST FAIL AGAINST: the page without the renderer's
     global entry point; the tab drawing only the findings about a field; a
@@ -94,7 +95,9 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
                               timeout=15000) as answered:
         page.locator("#load-from-sidebar-btn").click()
     said = answered.value.json()["issues"]
-    assert said, "the live check said nothing about water"
+    assert any(not (i.get("where") or "").startswith("config.")
+               for i in said), ("the live check said nothing about water "
+                                "itself", said)
     assert_every_finding_drawn(
         page, ["#spectra-issues", "#spectra-form-pyscf", "#spectra-form-siesta"],
         said)
