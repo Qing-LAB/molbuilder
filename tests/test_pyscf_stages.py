@@ -10,10 +10,9 @@ carries it.  **This file is deliberately the twin of ``test_siesta_stages.py``**
 differ in which parameters a rung varies and in nothing else, so a rule that
 holds for one and is untested on the other is where they drift apart.
 
-The per-tier NUMBERS are not asserted here.  They are asserted against
-``tuning.md`` § 2.4 / § 2.5 -- the table that is their authority -- by
-``test_doc_claims.py::test_a_tier_table_stated_in_prose_is_the_table_the_code_ships``.
-Restating them here would make this file a third copy and the check circular.
+The per-tier NUMBERS are not asserted here: each rung's deck states them,
+asserted by ``tests/data/the_deck.toml``'s rows -- the numbers ``tuning.md``
+§ 2.4 / § 2.5 state as their authority.
 """
 from __future__ import annotations
 

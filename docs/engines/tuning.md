@@ -904,18 +904,11 @@ default**.
 > two ladders wants them side by side; if it ever disagrees with one of those,
 > that section wins.
 >
-> **What is machine-checked**, by `test_doc_claims.py`'s `TIER_TABLES`: § 2.4
-> and § 2.5 against `PYSCF_STAGE_PRESETS`, and § 2.3 against
-> `SIESTA_STAGE_PRESETS`. The rest — this table, and § 2.10's step budgets —
-> are read by people only.
->
-> *(Corrected 2026-09-02. It claimed § 2.4 and § 2.5 were the authority for
-> BOTH engines and that both were checked against both preset tables. Neither
-> half held: § 2.4 is geomeTRIC's and has no SIESTA column, § 2.5's SIESTA
-> column is one global rather than a ladder, and no SIESTA table was
-> registered at all — so the sentence asserting the check was the only thing
-> standing in for one. § 2.3 is now registered, which is what makes the
-> claim true rather than the claim being edited away.)*
+> **What is checked is the deck each rung runs**: prepared on the road, the
+> coarse, medium and tight rung's deck states § 2.3's force tolerance (SIESTA)
+> and § 2.4's five criteria and § 2.5's SCF tolerance (PySCF) — rows of
+> `tests/data/the_deck.toml`, their numbers copied from those tables. The rest
+> — this table, and § 2.10's step budgets — are read by people only.
 
 **The geometry flows from each stage to the next, and the optimizer history is
 reset at the boundary (§ 5). Both engines flow it the same way: a rung ends, a
