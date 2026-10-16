@@ -136,19 +136,35 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
     into one copy while the person reads the other.
 
     Every lookup the viewer makes on the Results tab's viewer host is
-    recorded with how many elements answered it.
+    recorded with how many elements answered it, and every lookup made on
+    the whole document by id: one that asks for an id of the panel went
+    around the host, where a second viewer's panel would answer it.
 
     MUTATIONS THIS MUST FAIL AGAINST: an element taken out of the panel;
-    one written into it twice; the viewer looking its elements up outside
-    its host."""
+    one written into it twice; the viewer looking one of its elements up
+    outside its host."""
     page.add_init_script("""(() => {
         const one = Element.prototype.querySelector;
         const all = Element.prototype.querySelectorAll;
+        const byId = Document.prototype.getElementById;
+        const docOne = Document.prototype.querySelector;
         window.__asked = [];
+        window.__onDocument = [];
         Element.prototype.querySelector = function (sel) {
             if (this.id === "inspector-host" && /^#[\\w-]+$/.test(sel))
                 window.__asked.push([sel, all.call(this, sel).length]);
             return one.call(this, sel);
+        };
+        // The page's own scripts only: this test's waits ask the page too.
+        const byPage = () => /\\/static\\//.test(String(new Error().stack));
+        Document.prototype.getElementById = function (id) {
+            if (byPage()) window.__onDocument.push(String(id));
+            return byId.call(this, id);
+        };
+        Document.prototype.querySelector = function (sel) {
+            if (/^#[\\w-]+$/.test(sel) && byPage())
+                window.__onDocument.push(sel.slice(1));
+            return docOne.call(this, sel);
         };
     })();""")
     _open(page, flask_server, finished, tree, monkeypatch)
@@ -159,3 +175,9 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
     assert asked, "the viewer asked its panel for nothing"
     wrong = sorted({f"{sel} answered by {n}" for sel, n in asked if n != 1})
     assert not wrong, wrong
+    around = page.evaluate("""() => {
+        const host = document.getElementById("inspector-host");
+        const panel = new Set([...host.querySelectorAll("[id]")].map(e => e.id));
+        return [...new Set(window.__onDocument)].filter(id => panel.has(id));
+    }""")
+    assert not around, f"the panel's ids looked up on the whole page: {around}"

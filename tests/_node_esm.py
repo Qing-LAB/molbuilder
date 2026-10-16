@@ -43,8 +43,13 @@ def lifted(module, start: str, end: str) -> str:
     fakes.  A harness that lifts by these two strings fails, naming them,
     when either moves."""
     src = Path(module).read_text()
-    i = src.index(start)
-    return src[i:src.index(end, i)].rstrip()
+    i = src.find(start)
+    if i < 0:
+        raise ValueError(f"{Path(module).name}: no {start!r} to lift from")
+    j = src.find(end, i)
+    if j < 0:
+        raise ValueError(f"{Path(module).name}: no {end!r} after {start!r}")
+    return src[i:j].rstrip()
 
 
 def run_node(files, snippet: str, *, globals_js: str = "", static_root=None, timeout: int = 20):

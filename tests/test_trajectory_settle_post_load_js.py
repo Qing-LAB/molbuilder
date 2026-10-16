@@ -35,34 +35,37 @@ def _run(state, live):
     return {"state": state, "detail": f"({state})", "live": live}
 
 
-#: (case, the run the server sent, the file's own ending, the transition)
+#: (case, the run the server sent, the file's own ending, the transition the
+#: settle makes, the badge's kind).  The badge's words for its kinds, from
+#: `web/trajectory.md` § 4: `finished` Finished, `stopped` Stopped, `queued`
+#: Queued, `pending` Not launched, `running` Running.
 CASES = [
     ("a live run is followed",
-     _run("running", True), "running", "WATCHING"),
+     _run("running", True), "running", "WATCHING", "running"),
     ("a queued run is followed -- it will start writing",
-     _run("queued", True), None, "WATCHING"),
+     _run("queued", True), None, "WATCHING", "queued"),
     ("an output that ended belongs to a job still deriving its result: followed",
-     _run("running", True), "ended", "WATCHING"),
+     _run("running", True), "ended", "WATCHING", "running"),
     ("a finished run is not followed",
-     _run("finished", False), "ended", "LOADED"),
+     _run("finished", False), "ended", "LOADED", "finished"),
     ("a run that concluded is finished, whatever its output states",
-     _run("finished", False), "running", "LOADED"),
+     _run("finished", False), "running", "LOADED", "finished"),
     ("a run killed mid-step -- its output states nothing -- stops, as failed",
-     _run("failed", False), "running", "ERROR"),
+     _run("failed", False), "running", "ERROR", "stopped"),
     ("a run whose output states a stop stops, as failed",
-     _run("failed", False), "stopped", "ERROR"),
+     _run("failed", False), "stopped", "ERROR", "stopped"),
     ("a run never launched is not followed -- nothing arrives until it is",
-     _run("pending", False), None, "LOADED"),
+     _run("pending", False), None, "LOADED", "pending"),
     ("an upload that stopped settles on its own ending",
-     None, "stopped", "ERROR"),
+     None, "stopped", "ERROR", "stopped"),
     ("an upload out of memory settles on its own ending",
-     None, "out_of_memory", "ERROR"),
+     None, "out_of_memory", "ERROR", "stopped"),
     ("an upload that ended is loaded",
-     None, "ended", "LOADED"),
+     None, "ended", "LOADED", "finished"),
     ("an upload is never followed, whatever its file says",
-     None, "running", "LOADED"),
+     None, "running", "LOADED", "running"),
     ("an upload whose file can state no ending is loaded",
-     None, "unknown", "LOADED"),
+     None, "unknown", "LOADED", "running"),
 ]
 
 
@@ -90,10 +93,40 @@ def _settle(run, run_state):
     """)
 
 
-@pytest.mark.parametrize("case, run, run_state, want", CASES,
+@pytest.mark.parametrize("case, run, run_state, want, badge", CASES,
                          ids=[c[0] for c in CASES])
-def test_the_viewer_follows_the_run(case, run, run_state, want):
+def test_the_viewer_follows_the_run(case, run, run_state, want, badge):
     assert _settle(run, run_state) == [want], case
+
+
+def _badge(run, run_state):
+    """The REAL `_badgeKind` for one row -- the run's state, or for a file
+    that belongs to no run, its own ending."""
+    data = None if run_state is None else {"run_state": run_state}
+    return run_node([], f"""
+        {lifted(MODULE, "const RUN_STATE = Object.freeze", "});")}}});
+        {lifted(MODULE, "function _badgeKind(run, data) {", "\n    function ")}
+        console.log(JSON.stringify(_badgeKind({json.dumps(run)},
+                                              {json.dumps(data)})));
+    """)
+
+
+@pytest.mark.parametrize("case, run, run_state, want, badge", CASES,
+                         ids=[c[0] for c in CASES])
+def test_the_badge_reads_the_run_or_the_files_own_ending(
+        case, run, run_state, want, badge):
+    """`web/trajectory.md` § 4: the badge reads THE RUN the file belongs to
+    -- Finished, Stopped (failed), Queued, Not launched, else Running -- and
+    a file that belongs to no run by its own ending: `ended` Finished,
+    `stopped` or `out_of_memory` Stopped, anything else Running.
+
+    THE SILENT FAILURE: an uploaded output that ran out of memory, or ended,
+    shown Running for as long as anyone looks -- the viewer spelling the
+    parser's word its own way, with every follow decision still right.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the viewer's `ended` spelled off the
+    parser's; out-of-memory read as running."""
+    assert _badge(run, run_state) == badge, case
 
 
 def test_every_ending_the_parser_concludes_with_has_a_row():
@@ -106,5 +139,5 @@ def test_every_ending_the_parser_concludes_with_has_a_row():
     MUTATION THIS MUST FAIL AGAINST: a concluded ending the parser declares
     and no row answers."""
     from molbuilder.parse.engines._run_ending import CONCLUDED
-    rows = {run_state for _, run, run_state, _ in CASES if run is None}
+    rows = {run_state for _, run, run_state, _, _ in CASES if run is None}
     assert set(CONCLUDED) <= rows, sorted(set(CONCLUDED) - rows)

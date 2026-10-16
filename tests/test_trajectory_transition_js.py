@@ -1,22 +1,19 @@
-"""`transition()` — the two side effects nothing else was checking.
+"""`results.md` § 4 and § 4.2 on the TRAJECTORY side, run: the viewer's
+own `transition()` and `applyNewData`.
 
-`results.md` § 4 makes `transition()` the single entry point for state
-writes; these pin two of its side effects:
+* `IDLE` clears the file's name, so an answer after dispose fails the
+  guard; each target lands the machine and leaves the poll timer right;
+* an answer is written under its own file's name or not at all, and an
+  answer refused draws nothing -- through both of `applyNewData`'s arms,
+  against a stand-in movie;
+* mid-write frames stay out of the plots; the legacy flat names are the
+  buckets' values; the poll wires no listener; the loaders reach the
+  settle (§ 4.1's case table is `test_trajectory_settle_post_load_js.py`).
 
-* **`IDLE` clears `fileState.path`** — that null is what makes a late
-  poll answer from a DISPOSED inspector fail the path guard
-  (`if (myPath !== state.fileState.path) return`).  Leave it set and a
-  dead viewer gets painted.
-* **`LOADED` stops the poll timer**.
-
-The third behaviour in that group, § 4.1's settle by the run's state, is
-`test_trajectory_settle_post_load_js.py`'s case table, which drives
-`_settlePostLoad` in node.
-
-**These RUN the real function.** `transition`'s source is lifted from the
-shipped module and executed against a fake state, so what is asserted is
-the OUTCOME — the path is null, the timer is off — and not the presence
-of a string.
+**These RUN the real functions.** Their source is lifted from the shipped
+module (`tests/_node_esm.lifted`) and executed against a fake state, so
+what is asserted is the OUTCOME -- the path is null, the timer is off, the
+movie holds nothing it should not -- and not the presence of a string.
 
 **One honest limitation, measured.** The harness stubs `transition`'s two
 collaborators BY NAME (`startPolling` / `stopPolling`), so renaming one
@@ -25,8 +22,8 @@ identical and fails these tests. It is a real coupling and it is the
 price of a unit harness that fakes collaborators; the difference from a
 source-grep is the direction of the error. A grep passes quietly when the
 behaviour breaks and fails when a name moves. This fails loudly when a
-name moves — with a message saying so — and fails when the behaviour
-breaks. Only one of those two is a test.
+name moves — `lifted` names the marker it could not find — and fails
+when the behaviour breaks. Only one of those two is a test.
 """
 from __future__ import annotations
 
@@ -152,14 +149,20 @@ def _parsed(frames, mark):
             "scf_history": [], "mark": mark}
 
 
-def _applied(answer, *, machine, path, held):
+_FINISHED = {"state": "finished", "detail": "job_completed", "live": False}
+
+
+def _applied(answer, *, machine, path, held, movie=False):
     """Run the REAL `applyNewData(answer)` -- and through it the REAL
     `transition("APPLY")` -- on the REAL state, the viewer in ``machine``
     showing ``path`` with ``held`` parsed; report the file it then holds,
-    or what it threw.
+    its run and time, what reached the movie, or what it threw.
 
-    Faked at the edge: MolView (none mounted, so a poll cannot append and
-    takes the rebuild) and the drawing calls."""
+    Faked at the edge: MolView -- with ``movie``, a stand-in holding as many
+    frames as ``held`` that records what is appended to it, so a poll that
+    provably extends the movie takes the append; without, none mounted --
+    and the drawing calls."""
+    frames = len(held["frames"]) if held else 0
     harness = f"""
         const root = globalThis;
         {lifted(MODULE, "    const state = {",
@@ -174,8 +177,16 @@ def _applied(answer, *, machine, path, held):
         {lifted(MODULE, "    function _scfFingerprint(data) {",
                 "\n    function ")}
         {lifted(MODULE, "    function applyNewData(r) {", "\n    function ")}
-        let _mv = null;
-        const _mvdata = () => null;
+        const _appended = [];
+        let _count = {frames};
+        const _movie = {{
+            frameCount: () => _count,
+            currentFrame: () => _count - 1,
+            addFrames: (fs) => {{ _appended.push(...fs); _count += fs.length; }},
+            setCurrentFrame: () => {{}},
+        }};
+        let _mv = {json.dumps(movie)} ? {{}} : null;
+        const _mvdata = () => (_mv ? _movie : null);
         function startPolling() {{}}
         function stopPolling() {{}}
         function _renderRuntimeInfo() {{}}
@@ -191,74 +202,105 @@ def _applied(answer, *, machine, path, held):
         state.machine = {json.dumps(machine)};
         state.fileState.path = {json.dumps(path)};
         state.fileState.data = {json.dumps(held)};
+        state.fileState.mtime = 1;
         let threw = null;
         try {{ applyNewData({json.dumps(answer)}); }}
         catch (e) {{ threw = String((e && e.message) || e); }}
         console.log(JSON.stringify({{
             path: state.fileState.path,
             mark: state.fileState.data && state.fileState.data.mark,
+            run: state.fileState.run,
+            mtime: state.fileState.mtime,
+            appended: _appended.length,
             threw,
         }}));
     """
     return run_node([LIFECYCLE], harness)
 
 
-@pytest.mark.parametrize("machine,path,held,answer,holds", [
-    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
-                 {"path": _ANOTHER, "mtime": 2,
-                  "data": _parsed(_ONE_FRAME, "answer")},
-                 (_THE_FILE, "held"),
+#: One frame, then a poll whose file has grown to two from the same start --
+#: what two attempts of one stage, begun from the same structure, look like.
+_HELD = _parsed(_ONE_FRAME, "held")
+_GROWN = _parsed(_TWO_FRAMES, "answer")
+
+
+@pytest.mark.parametrize("machine,path,held,answer,movie,holds", [
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"path": _ANOTHER, "mtime": 2, "run": _FINISHED,
+                  "data": _parsed(_ONE_FRAME, "answer")}, False,
+                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1},
                  id="a poll's answer with nothing new, for another file"),
-    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
-                 {"path": _ANOTHER, "mtime": 2,
-                  "data": _parsed(_TWO_FRAMES, "answer")},
-                 (_THE_FILE, "held"),
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"path": _ANOTHER, "mtime": 2, "run": _FINISHED,
+                  "data": _GROWN}, False,
+                 {"path": _THE_FILE, "mark": "held", "run": None, "mtime": 1},
                  id="a poll's new frames, for another file"),
-    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
-                 {"path": _THE_FILE, "mtime": 2,
-                  "data": _parsed(_ONE_FRAME, "answer")},
-                 (_THE_FILE, "answer"),
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"path": _ANOTHER, "mtime": 2, "data": _GROWN}, True,
+                 {"path": _THE_FILE, "mark": "held", "appended": 0},
+                 id="another file's new frames, onto a movie that could take "
+                    "them"),
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"path": _THE_FILE, "mtime": 2, "data": _GROWN}, True,
+                 {"path": _THE_FILE, "mark": "answer", "appended": 1},
+                 id="the file on screen's new frames, appended to its movie"),
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"path": _THE_FILE, "mtime": 2, "run": _FINISHED,
+                  "data": _parsed(_ONE_FRAME, "answer")}, False,
+                 {"path": _THE_FILE, "mark": "answer", "run": _FINISHED,
+                  "mtime": 2},
                  id="a poll's answer with nothing new, for the file on screen"),
-    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
-                 {"path": _THE_FILE, "mtime": 2,
-                  "data": _parsed(_TWO_FRAMES, "answer")},
-                 (_THE_FILE, "answer"),
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"path": _THE_FILE, "mtime": 2, "data": _GROWN}, False,
+                 {"path": _THE_FILE, "mark": "answer", "mtime": 2},
                  id="a poll's new frames, for the file on screen"),
     pytest.param("LOADING", "/p/H2/01_coarse/run-0", None,
                  {"path": _THE_FILE, "mtime": 1, "format": "siesta",
-                  "data": _parsed(_ONE_FRAME, "answer")},
-                 (_THE_FILE, "answer"),
+                  "data": _parsed(_ONE_FRAME, "answer")}, False,
+                 {"path": _THE_FILE, "mark": "answer"},
                  id="a load, under the name of the file the server read"),
-    pytest.param("WATCHING", _THE_FILE, _parsed(_ONE_FRAME, "held"),
-                 {"mtime": 2, "data": _parsed(_TWO_FRAMES, "answer")},
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"mtime": 2, "data": _GROWN}, False, "refused",
+                 id="new frames that name no file"),
+    pytest.param("WATCHING", _THE_FILE, _HELD,
+                 {"mtime": 2, "data": _parsed(_ONE_FRAME, "answer")}, False,
                  "refused",
-                 id="an answer that names no file"),
+                 id="an answer with nothing new that names no file"),
+    pytest.param("IDLE", None, None,
+                 {"path": _THE_FILE, "mtime": 2,
+                  "data": _parsed(_ONE_FRAME, "late")}, False,
+                 {"path": None, "mark": None},
+                 id="after dispose, a late answer for the file"),
 ])
 def test_an_answer_is_written_under_its_own_files_name_or_not_at_all(
-        machine, path, held, answer, holds):
+        machine, path, held, answer, movie, holds):
     """`results.md` § 4.2: *"A name and the data that belongs to it are
     written together, or neither is"* -- an answer that names no file is
-    refused, a poll's answer for a file not on screen is dropped, and a
-    load takes the name of the file the server read.
+    refused, a poll's answer for a file not on screen is dropped and draws
+    nothing, an answer after dispose writes nothing, and a load takes the
+    name of the file the server read.
 
     THE SILENT FAILURE.  `/api/watch/data` answers for whatever file the
     server is watching, so a poll's answer can belong to another file than
-    the one on screen; written, its frames are drawn under this file's
-    name, and nothing says so.
+    the one on screen; written -- or drawn -- its frames appear under this
+    file's name, or its run stops this file's follow, and nothing says so.
 
     Run through the REAL `applyNewData` -- its arm for an answer with
-    nothing new and its rebuild -- so a write that went around `APPLY`
-    fails here as a missing guard does.
+    nothing new, its append and its rebuild -- so a write or a draw that
+    went around `APPLY` fails here as a missing guard does.
 
     MUTATIONS THIS MUST FAIL AGAINST: the poll's guard in `APPLY` gone;
-    either arm writing the data itself."""
-    out = _applied(answer, machine=machine, path=path, held=held)
+    either arm writing the data itself; the append drawing an answer
+    `APPLY` refused; another file's run written; a null path exempted from
+    the guard."""
+    out = _applied(answer, machine=machine, path=path, held=held, movie=movie)
     if holds == "refused":
         assert out["threw"] and "APPLY without a path" in out["threw"], out
         assert out["mark"] == "held", out
     else:
         assert out["threw"] is None, out
-        assert (out["path"], out["mark"]) == holds, out
+        for key, want in holds.items():
+            assert out[key] == want, (key, out)
 
 
 # --------------------------------------------------------------------- #
@@ -301,7 +343,7 @@ def test_no_frames_is_not_an_error():
 
 
 # --------------------------------------------------------------------- #
-#  The state's shape, and the legacy names that read through to it      #
+#  A fresh viewer, and the legacy names that read through to the state #
 # --------------------------------------------------------------------- #
 
 def _aliased_state():
@@ -325,9 +367,6 @@ def _aliased_state():
         // Write through the FLAT name, read back through the BUCKET.
         state.path = "/p/x.out";
         console.log(JSON.stringify({{
-            buckets:      Object.keys(state).filter(k =>
-                              ["fileState","viewState","uiPrefs","lifecycle","derived"]
-                              .includes(k)),
             machine:      state.machine,
             throughFile:  state.fileState.path,
         }}));
@@ -335,14 +374,11 @@ def _aliased_state():
     return run_node([LIFECYCLE], harness)
 
 
-def test_the_state_starts_idle_and_carries_its_buckets():
+def test_a_viewer_starts_idle():
     out = _aliased_state()
     assert out["machine"] == "IDLE", (
         "a freshly built viewer must be IDLE; anything else means a mount "
         "starts in a state whose transition side effects never ran")
-    for bucket in ("fileState", "viewState", "uiPrefs", "lifecycle"):
-        assert bucket in out["buckets"], (
-            f"§ 4's `{bucket}` bucket is missing from the state object")
 
 
 def test_a_legacy_flat_name_writes_THROUGH_to_its_bucket():

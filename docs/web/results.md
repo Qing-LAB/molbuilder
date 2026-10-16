@@ -164,7 +164,7 @@ tab has one" until 2026-09-19, and the commit that added it said /results was
 `/transport-calculation` shows the sidebar and subscribes to **neither**
 channel, deliberately: the citation is that tab's one structure door, and a
 sidebar commit would be a second source for one fact (user, 2026-08-29). It is
-pinned by `tests/test_transport_blueprint.py::test_core_js_reads_no_sidebar_structure_channel`.
+kept by review (`process/code-audit.md` § 1c).
 Read as written, the sentence would send someone to wire transport and reverse
 a recorded decision.)*
 
@@ -1062,7 +1062,9 @@ vibration's modes, picked from the dropdown
 run on each viewer's shipped functions (`test_trajectory_transition_js.py`,
 `test_spectra_transition_js.py`): an answer for another file, one after
 dispose and one naming no file, through both arms of the trajectory's
-`applyNewData` -- the one for an answer with nothing new among them.
+`applyNewData` -- the one for an answer with nothing new among them -- and
+an answer refused draws nothing: another file's frames never reach the
+movie, against a stand-in that would take them.
 
 `derived` is the one the prose above folds into "the parsed file", and it is a
 separate bucket for a reason: it is **recomputed**, never written by a

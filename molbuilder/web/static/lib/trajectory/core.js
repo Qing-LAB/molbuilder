@@ -19,10 +19,9 @@
  * The inspector body lives inside ``mountInspector(rootEl)`` so DOM
  * queries are scoped.  All inside-partial ids (defined in
  * ``_trajectory_inspector.html``) go through ``$()`` (scoped to
- * rootEl, which is the host element on /results).  The single
- * page-level lookup (``status`` banner) is inlined as
- * ``document.getElementById`` in ``setStatus`` — a no-op on
- * /results where that banner doesn't exist.
+ * rootEl, which is the host element on /results) -- the panel's own
+ * status line among them, so two viewers on one page cannot write into
+ * each other's.
  */
 
 import { mount } from "/static/lib/molview/index.js";
@@ -439,7 +438,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // answer with nothing new ({path, mtime, data, run}) and the
             // full rebuild (every field the load answered: the LOADING →
             // LOADED/WATCHING arc) -- and a poll that found the file
-            // unchanged ({path, run}).
+            // unchanged ({path, run}).  It answers whether it WROTE, and
+            // applyNewData draws nothing for an answer it refused: the
+            // movie is this file's as surely as the state is.
             //
             // Either way the writes happen atomically inside this
             // single function; render code observes either the
@@ -483,7 +484,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
              * inspector was torn down must not reach a dead panel. */
             if (state.machine !== "LOADING"
                 && payload.path !== state.fileState.path) {
-                return;          // a POLL answer for a file we are not showing
+                return false;    // a POLL answer for a file we are not showing
             }
             if (payload.mtime  !== undefined) state.fileState.mtime  = payload.mtime;
             if (payload.data   !== undefined) state.fileState.data   = payload.data;
@@ -510,7 +511,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 state.fileState.run = payload.run;
             if (payload.notices !== undefined)
                 state.fileState.notices = payload.notices;
-            return;
+            return true;
         }
         // Unknown target: silent no-op.  Future targets (the
         // contract reserves room for sub-states) land here.
@@ -656,9 +657,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // The inspector's own status line (`_trajectory_inspector.html`
         // #trajectory-status): a refused load, a viewer that could not
         // mount, the cell's provenance, an export.  A mount without the
-        // partial has none, and this returns.
-        if (!document.getElementById("trajectory-status")) return;
-        window.molbuilder.status.set("trajectory-status", msg, kind);
+        // partial has none, and this returns.  On this viewer's host, as
+        // every lookup of its panel is.
+        const line = $("trajectory-status");
+        if (!line) return;
+        window.molbuilder.status.set(line, msg, kind);
     }
 
     /* THE LOAD HAS ENDED -- drawn, or refused (the shared inspector door,
@@ -2148,8 +2151,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // Contract § 2: route fileState writes through
             // transition().  noNewContent only updates the
             // fields that can change on a same-content tick.
-            transition("APPLY", { path: r.path, mtime: r.mtime,
-                                  data: r.data, run: r.run });
+            if (!transition("APPLY", { path: r.path, mtime: r.mtime,
+                                       data: r.data, run: r.run })) return;
             _renderRuntimeInfo(state.data.runtime_info);
             _renderParseWarnings(state.data.parse_warnings);
             if (runStateChanged || scfChanged) makePlots();
@@ -2182,7 +2185,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // "pyscf-geom", "molwatch").  "unknown" is a real answer and
         // renders as the neutral banner.
         const resolvedFormat = r.format || "unknown";
-        transition("APPLY", {
+        const written = transition("APPLY", {
             mtime:  r.mtime,
             data:   r.data,
             format: resolvedFormat,
@@ -2203,6 +2206,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // leaves it out, which keeps it.
             notices:      r.notices,
         });
+        // AN ANSWER REFUSED DRAWS NOTHING: its frames are another file's.
+        if (!written) return;
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
 
