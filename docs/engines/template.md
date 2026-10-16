@@ -331,12 +331,10 @@ states as an exception. So the honest position is that the duplication is
 measured and **unguarded**, and that is the argument for deleting it rather
 than for writing a test that has to know that exception.
 
-> **The number above is asserted, not typed.** A count stated in prose is a
-> claim about the code, and this one had been wrong by 145 for three days
-> before a review caught it. `tests/test_doc_claims.py` now measures every
-> such claim in this document and fails naming the sentence — the same
-> mechanism, one class of claim wider, that already keeps the closed
-> vocabularies in step.
+> **The number above is a claim about the code, held by review.** It had
+> been wrong by 145 for three days before a review caught it; a count stated
+> in prose is re-derived when the code it counts changes
+> ([`process/code-audit.md`](?doc=process/code-audit.md) § 1c).
 
 **The form question is closed.** `web/form-schema.md` § 1 now builds the SIESTA
 and PySCF forms from the catalogue: cards from `group`, legends from `category`,

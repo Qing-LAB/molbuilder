@@ -1,14 +1,13 @@
-"""Every vendored browser asset ships with its notice, its release and its
-citation (`molbuilder/web/static/vendor/README.md`, the inventory; user,
-2026-10-09: "explicit citation and license for all embedded packages ...
-should have the right files and information included in the package/git file
-structure").
+"""Every vendored browser asset ships with its notice
+(`molbuilder/web/static/vendor/README.md`, the inventory; user, 2026-10-09:
+"explicit citation and license for all embedded packages ... should have the
+right files and information included in the package/git file structure").
 
 An artifact lint over the vendor directory as it ships (`testing.md` § 6,
-*Artifact lints*): a third-party file added without an inventory row, a row
-whose license file is not beside it, or a component with no citation is a
-redistribution without its notice -- found here rather than by a reader of
-the wheel.  The package-data rule ships the whole directory
+*Artifact lints*): a third-party file added without an inventory row, or a
+row whose license file is not beside it, is a redistribution without its
+notice -- found here rather than by a reader of the wheel.  Each row's
+release and citation are the inventory's, kept by review.  The package-data rule ships the whole directory
 (`pyproject.toml`, `web/static/**/*`), so what is checked here is what ships.
 """
 from __future__ import annotations

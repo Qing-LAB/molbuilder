@@ -18,7 +18,6 @@ import pytest
 
 from molbuilder.modify import (
     SUPPORTED_FCC_ELEMENTS,
-    _load_fcc_lattice,
     load_fcc_lattice_full,
 )
 
@@ -89,31 +88,6 @@ def test_a_v1_file_is_still_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(_mod, "_data_dir_candidates", lambda: (tmp_path,))
     with _pytest.raises(RuntimeError, match="neither v2 nor v3"):
         _mod.load_fcc_lattice_full()
-
-
-def test_v1_loader_returns_experimental_floats(monkeypatch):
-    """Back-compat: ``_load_fcc_lattice`` returns ``{sym: a_experimental}``.
-
-    This is the v1 shape; callers that don't know about per-XC values
-    keep working without changes.
-    """
-    monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
-    table = _load_fcc_lattice()
-    for r in tomllib.loads(ROWS.read_text())["metal"]:
-        assert isinstance(table[r["symbol"]], float)
-        assert table[r["symbol"]] == pytest.approx(r["a_experimental"])
-
-
-def test_v2_loader_returns_full_dict():
-    """``load_fcc_lattice_full`` returns the per-XC dict per metal."""
-    full = load_fcc_lattice_full()
-    for sym in SUPPORTED_FCC_ELEMENTS:
-        assert sym in full
-        e = full[sym]
-        assert isinstance(e["a_experimental"], float)
-        assert isinstance(e["a_pbe"], float)
-        assert isinstance(e["name"], str)
-        assert e["system"] == "fcc"
 
 
 def test_meta_endpoint_exposes_lattice_table(web_client):

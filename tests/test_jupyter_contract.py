@@ -176,8 +176,9 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
     Lab saves one.
 
     MUTATIONS THIS MUST FAIL AGAINST: the config file not handed to the
-    server; the class wired into either manager alone; a restore that
-    quietly does nothing."""
+    server; the class wired into no manager; a restore that quietly does
+    nothing; a restore the class no longer answers (the server's own
+    error, not a refusal)."""
     import os
     import signal
     import subprocess
@@ -233,7 +234,7 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
     assert (made, (checkpoint or {}).get("id")) == (201, "no-checkpoint"), (
         made, checkpoint)
     assert (listed, checkpoints) == (200, []), (listed, checkpoints)
-    assert restored >= 400, restored
+    assert 400 <= restored < 500, restored
     left = sorted(str(q.relative_to(isolated_projects_root))
                   for q in isolated_projects_root.rglob("*"))
     assert left == ["P", "P/notes", "P/notes/a.ipynb"], left

@@ -145,7 +145,7 @@ editing the JSON or by passing `lattice_constant=` to
 * You want a non-room-temperature value (low-T transport experiments).
 * You want the *DFT-equilibrium* lattice constant for your specific
   XC functional and setup.  The PBE column is one code's answer, and it
-  sits above the measured one by up to 2 % here (gold +1.9 %, nickel
+  differs from the measured one by up to 2 % here (gold +1.9 %, nickel
   −0.2 %); your basis and pseudopotentials move it again.  If you optimise
   the slab cell self-consistently in your production run, use that value.  **Do not put it here** — that is the
   mistake v3 undid: it is a fact about one run, and this file is shared

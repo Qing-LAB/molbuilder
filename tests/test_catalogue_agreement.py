@@ -8,9 +8,8 @@ defined there, and a config class carries a name, a type and its validators.
 rebuilt from the catalogue (the debt is measured at `template.md` § 2.1a),
 those facts live in **two** homes.
 
-**The size of the debt is stated in `template.md` § 2.1a and asserted by
-`tests/test_doc_claims.py`**, not typed here: a number in a docstring that
-nothing measures goes stale. The debt compounds with every parameter added, which is what makes deleting it
+**The size of the debt is stated in `template.md` § 2.1a**, a count held by
+review, and not typed here: a number in a docstring goes stale. The debt compounds with every parameter added, which is what makes deleting it
 worth scheduling rather than admiring.
 
 That breaks D3 (*each value is stored once*), and D3's own reasoning says what

@@ -53,10 +53,12 @@ def test_top_level_help_exits_cleanly():
 
 
 def test_every_verb_a_groups_help_names_runs():
-    """A group's help, as printed, names only verbs that run: every name it
-    marks as code (````name````) that is not a file answers
-    ``<group> <name> --help`` with 0 (`process/conventions.md` § 3, the
-    CLI-wide conventions).
+    """A group's help, as printed, sends a person only to commands that run
+    (`process/conventions.md` § 3, the CLI-wide conventions): each name it
+    marks as code that is a command of the tree -- ````name```` in that
+    group or from the root, `name …` whose first word is one of the tree's
+    -- and each `molbuilder …` line of an example, resolves to a command,
+    and that command's ``--help`` answers 0.
 
     THE SILENT FAILURE: a help that tells a person to run a verb that was
     renamed or retired -- they type what the help said and meet a usage
@@ -64,34 +66,68 @@ def test_every_verb_a_groups_help_names_runs():
 
     Every group of the command tree, walked from the tree itself.
 
-    MUTATION THIS MUST FAIL AGAINST: a group's help naming a verb the group
-    does not have."""
+    MUTATIONS THIS MUST FAIL AGAINST: a group's own verb renamed in its
+    help; another group's verb renamed where a help names it; a verb
+    renamed in an example line."""
     import re
 
     import click
     from click.testing import CliRunner
 
+    root = cli.cli
+
+    def resolved(words, group):
+        """The command path ``words`` names from ``group``, or None -- the
+        words a group's subcommands name, down to the first command."""
+        cmd, path = group, []
+        for word in words:
+            if not isinstance(cmd, click.Group):
+                break
+            if word not in cmd.commands:
+                return None
+            cmd = cmd.commands[word]
+            path.append(word)
+        return path
+
     def helped(path):
-        r = CliRunner().invoke(cli.cli, path + ["--help"],
-                               prog_name="molbuilder")
+        r = CliRunner().invoke(root, path + ["--help"], prog_name="molbuilder")
         assert r.exit_code == 0, (path, r.output)
         return r.output
 
     named, gone = [], []
 
+    def check(where, words, group, group_path):
+        rel = resolved(words, group)
+        full = (group_path + rel) if rel is not None else resolved(words, root)
+        named.append(" ".join(words[:len(full or words)]))
+        if full is None or CliRunner().invoke(root, full + ["--help"]).exit_code:
+            gone.append(f"{where}: {' '.join(words)}")
+
     def walk(group, path):
-        for name in set(re.findall(r"``([^`]+)``", helped(path))):
-            if "." in name:
-                continue                       # a file the help names
-            named.append(" ".join(path + [name]))
-            if CliRunner().invoke(cli.cli, path + [name, "--help"]).exit_code:
-                gone.append(" ".join(path + [name]))
+        text = helped(path)
+        where = " ".join(["molbuilder"] + path)
+        for name in set(re.findall(r"``([^`]+)``", text)):
+            if "." not in name:
+                check(where, name.split(), group, path)
+        for span in set(re.findall(r"(?<!`)`([^`]+)`(?!`)", text)):
+            words = span.split()
+            if (words and not words[0].startswith("-")
+                    and not any(c in span for c in "./")
+                    and (words[0] in group.commands
+                         or words[0] in root.commands)):
+                check(where, words, group, path)
+        for line in text.splitlines():
+            words = line.split()
+            if words[:1] == ["molbuilder"] and len(words) > 1:
+                # From the root, down while each word names a subcommand:
+                # the first word past a command is its argument.
+                check(where, words[1:], root, [])
         for sub, cmd in group.commands.items():
             if isinstance(cmd, click.Group):
                 walk(cmd, path + [sub])
-    walk(cli.cli, [])
-    assert named, "no group's help names a verb"
-    assert not gone, f"a help names verbs that do not run: {sorted(gone)}"
+    walk(root, [])
+    assert named, "no group's help names a command"
+    assert not gone, f"a help names commands that do not run: {sorted(gone)}"
 
 
 def test_no_subcommand_is_an_error():

@@ -504,9 +504,14 @@ break is silent and no run can show it: a test silently never run
 a 404 (`test_negative_body_assert_lint.py`), runtime text written into the page
 as markup (`test_xss_audit.py`), a vendored file shipped without its licence
 (`test_vendor_notices.py`), a composed name found by hand
-(`test_path_framework.py`). A test that guards a real rule by reading a file
-stays until a test of the outcome replaces it — plan, TST, lists each with
-the outcome test that replaces it; every other one was retired 2026-10-15.
+(`test_path_framework.py`), the catalogue's facts disagreeing with the config
+classes that carry them through their loaders (`test_catalogue_agreement.py`),
+a catalogue item with no panel to sit in
+(`test_every_catalogue_item_declares_a_panel`), and the notebook shepherd's
+stop grace overrunning the supervisor's
+(`test_the_shepherds_grace_stays_under_the_supervisors`). Every other test
+that read a file for what is in it was retired or replaced by a test of the
+outcome (plan, TST, 2026-10-15 and 16).
 
 **What replaces a retired pin is REVIEW, not silence.** The claims those
 tests make are real; what is wrong is asking a grep to check them. The four

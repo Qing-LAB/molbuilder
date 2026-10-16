@@ -194,8 +194,8 @@ stale unnoticed. **The vocabulary grows; the axis does not.**
 meaning, function and reader in a contract**, so that expanding the data set has
 rules rather than precedents.*
 
-**15 keys are carried by the two engine configs** *(measured on every run,
-`tests/test_doc_claims.py`)*, and they split into two groups that this table conflated until
+**15 keys are carried by the two engine configs** *(a count held by review,
+re-derived when a config changes)*, and they split into two groups that this table conflated until
 2026-08-17 — when it listed fifteen and said *"this is all of them"*, while
 seven were in the tree with no entry anywhere. The rule above is what made that
 a defect rather than an oversight: a tag with no contract entry is a tag whose

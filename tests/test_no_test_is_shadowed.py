@@ -64,9 +64,7 @@ def _is_property_partner(node) -> bool:
     """``@x.setter`` / ``@x.getter`` / ``@x.deleter`` beneath ``@property``.
 
     These REBIND the name deliberately -- that is how the descriptor is
-    assembled -- so they are the one legitimate second definition.  Measured
-    before this exemption existed: exactly two in the tree
-    (``PySCFConfig.molwatch_log``, ``Structure._frozen_atoms``), both correct.
+    assembled -- so they are the one legitimate second definition.
     """
     for dec in getattr(node, "decorator_list", []):
         if (isinstance(dec, ast.Attribute)
@@ -123,12 +121,7 @@ def test_the_scan_catches_a_shadowed_definition():
     assert _shadowed(clean) == []
 
 
-# ---------------------------------------------------------------------------
-#  The same defect, in the product
-# ---------------------------------------------------------------------------
-
-
-def test_the_package_scan_spares_a_property_setter_pair():
+def test_the_scan_spares_a_property_setter_pair():
     """Anti-false-positive: the one legitimate rebinding must not trip it."""
     prop = ast.parse(
         "class C:\n"
