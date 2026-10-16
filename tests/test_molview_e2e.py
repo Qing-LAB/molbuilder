@@ -625,14 +625,17 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
     viewer would open on the last one's camera, or with its molecule still in
     the window.
 
-    Viewer A draws a structure on another ground, the other projection and a
-    turned camera, and is disposed; viewer B, mounted next, takes A's surface,
-    and viewer C, mounted beside it, a new one.  B and C draw the same
-    picture, empty and with the same structure installed.
+    Viewer A, in a host of another width, draws a structure with its axes
+    and atom numbers, on another ground, the other projection and a turned
+    camera -- which change its picture -- and is disposed; viewer B, mounted
+    next, takes A's surface, and viewer C, mounted beside it, a new one.  B
+    and C draw the same picture, empty and with the same structure
+    installed.  Each step is waited out by the window's own cover, which a
+    redraw raises and lowers (§ 10.9).
 
     MUTATIONS THIS MUST FAIL AGAINST: a taken surface keeping the last
-    camera; a returned surface keeping its models; a taken surface measured
-    by hand before its card is laid out."""
+    camera; a returned surface keeping its models, its shapes or its
+    labels; a surface kept at the last window's size."""
     out = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
@@ -640,9 +643,9 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
             const water = { elements: ["O", "H", "H"],
                             positions: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]],
                             metadata: {} };
-            const host = () => {
+            const host = (width) => {
                 const h = document.createElement("div");
-                h.style.width = "900px";
+                h.style.width = width;
                 document.body.appendChild(h);
                 return h;
             };
@@ -650,36 +653,58 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
                 const c = h.querySelector(".molviewer-window-canvas canvas");
                 return c ? c.toDataURL() : "";
             };
-            const settle = () => new Promise((r) => setTimeout(r, 300));
+            // DRAWN: the turn the redraw was started in has ended, and the
+            // window's cover is down.
+            const drawn = async (...hosts) => {
+                await new Promise((r) => setTimeout(r, 0));
+                for (let i = 0; i < 250; i++) {
+                    if (hosts.every((h) => {
+                        const c = h.querySelector(".molviewer-window-busy");
+                        return c && c.hidden; })) return;
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+                throw new Error("a window's cover never came down");
+            };
 
-            const hostA = host();
+            const hostA = host("640px");
             const a = await mount(hostA, ws, { owner: "first", mode: "readonly" });
             await a.data.installMolecule({ structure: water });
+            await drawn(hostA);
+            const plain = picture(hostA);
             a.data.view.set("background", "#ffffff");
             a.data.view.set("orthographic", true);
+            a.data.selection.setSwitch("showAxis", true);
+            a.data.selection.setSwitch("showIndex", true);
             a.lookAlong("x");
-            await settle();
+            await drawn(hostA);
+            const dressed = picture(hostA);
             a.dispose();
             hostA.remove();
 
-            const hostB = host(), hostC = host();
+            const hostB = host("900px"), hostC = host("900px");
             const b = await mount(hostB, ws, { owner: "second", mode: "readonly" });
             const c = await mount(hostC, ws, { owner: "third", mode: "readonly" });
-            await settle();
+            await drawn(hostB, hostC);
             const empty = [picture(hostB), picture(hostC)];
             await b.data.installMolecule({ structure: water });
             await c.data.installMolecule({ structure: water });
-            await settle();
-            const drawn = [picture(hostB), picture(hostC)];
+            await drawn(hostB, hostC);
+            const full = [picture(hostB), picture(hostC)];
             b.dispose(); c.dispose();
             hostB.remove(); hostC.remove();
-            return { empty, drawn };
+            return { plain, dressed, empty, full };
         }"""
     )
-    assert out["empty"][0] and out["drawn"][0], "a window drew nothing at all"
+    assert out["plain"] and out["dressed"] != out["plain"], (
+        "viewer A's settings did not change its picture -- nothing it left "
+        "would show")
+    assert out["empty"][0] and out["full"][0] != out["empty"][0], (
+        "the viewer on a kept surface drew nothing for its structure")
+    assert out["full"][1] != out["empty"][1], (
+        "the viewer on a new surface drew nothing for its structure")
     assert out["empty"][0] == out["empty"][1], (
         "the viewer on a kept surface opened differently from a viewer on a "
-        "new one -- the last one's drawing, or a size it was never laid out at")
-    assert out["drawn"][0] == out["drawn"][1], (
+        "new one -- the last one's drawing, or the last window's size")
+    assert out["full"][0] == out["full"][1], (
         "the viewer on a kept surface drew its structure differently from a "
         "viewer on a new one -- the last viewer's camera or setting survived")

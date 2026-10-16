@@ -194,7 +194,9 @@ const NEW_WINDOW_VIEW = [0, 0, 0, 0, 0, 0, 0, 1];
  * surface, its dispose returns it, and the page holds as many as were ever
  * open on it at once.
  *
- * The shelf holds the surfaces not in use, cleared -- nothing any viewer said.
+ * The shelf holds the surfaces not in use, every model, shape and label
+ * removed; the camera, ground and projection a viewer left are given again
+ * at the take.
  */
 const SHELF = [];
 

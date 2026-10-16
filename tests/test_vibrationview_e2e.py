@@ -50,43 +50,15 @@ def test_opening_and_closing_a_viewer_again_and_again_leaves_what_once_left(
     contexts run out and the browser takes one from a viewer on screen
     (measured 2026-10-15: twenty of twenty, sixteen contexts).
 
-    Paired add to remove on ``EventTarget`` itself, each listener named with
-    what added it.
+    Paired add to remove on ``EventTarget`` itself, as the browser pairs
+    them, each listener named with what added it (`support/leftovers.SPY`).
 
     MUTATION THIS MUST FAIL AGAINST: a window made for every mount."""
     _open(page, flask_server)
+    from support.leftovers import SPY, grew
     left = page.evaluate("""async (c) => {
         const { mount } = await import("/static/lib/vibrationview/index.js");
-        const live = [];
-        const contexts = [];
-        const name = (t) => t === window ? "window"
-            : t === document ? "document"
-            : (t && t.nodeName) ? t.nodeName : String(t);
-        const add = EventTarget.prototype.addEventListener;
-        const remove = EventTarget.prototype.removeEventListener;
-        const getContext = HTMLCanvasElement.prototype.getContext;
-        EventTarget.prototype.addEventListener = function (type, fn, o) {
-            const by = String(new Error().stack || "").split("\\n")
-                .slice(2, 4).map((s) => s.trim()).join(" | ");
-            live.push([this, type, fn, by]);
-            return add.call(this, type, fn, o); };
-        EventTarget.prototype.removeEventListener = function (type, fn, o) {
-            const i = live.findIndex(([t, ty, f]) =>
-                t === this && ty === type && f === fn);
-            if (i >= 0) live.splice(i, 1);
-            return remove.call(this, type, fn, o); };
-        HTMLCanvasElement.prototype.getContext = function (kind, ...a) {
-            const g = getContext.call(this, kind, ...a);
-            if (g && /webgl/.test(kind) && !contexts.includes(g))
-                contexts.push(g);
-            return g; };
-        const outlives = (t) => t === window || t === document
-            || (t instanceof Node && t.isConnected);
-        const state = () => ({
-            listeners: live.filter(([t]) => outlives(t))
-                .map(([t, ty, , by]) => name(t) + ":" + ty + " <= " + by)
-                .sort(),
-            contexts: contexts.filter((g) => !g.isContextLost()).length });
+        const spy = """ + SPY + """;
         const cycle = async () => {
             const host = document.createElement("div");
             host.style.width = "400px"; host.style.height = "300px";
@@ -102,21 +74,16 @@ def test_opening_and_closing_a_viewer_again_and_again_leaves_what_once_left(
         };
         try {
             await cycle();
-            const once = state();
+            const once = spy.state();
             for (let i = 1; i < c.times; i++) await cycle();
-            return { once, again: state() };
+            return { once, again: spy.state() };
         } finally {
-            EventTarget.prototype.addEventListener = add;
-            EventTarget.prototype.removeEventListener = remove;
-            HTMLCanvasElement.prototype.getContext = getContext;
+            spy.restore();
         }
     }""", {"water": WATER, "mode": MODE, "times": 5})
-    grew = [x for x in left["again"]["listeners"]
-            if left["again"]["listeners"].count(x)
-            > left["once"]["listeners"].count(x)]
-    assert not grew, (
+    assert not grew(left), (
         "opening a viewer five times left more on the page than opening it "
-        "once:\n  " + "\n  ".join(sorted(set(grew))))
+        "once:\n  " + "\n  ".join(grew(left)))
     assert left["again"]["contexts"] == left["once"]["contexts"], (
         f"{left['once']['contexts']} live graphics context(s) opened once, "
         f"{left['again']['contexts']} opened five times")

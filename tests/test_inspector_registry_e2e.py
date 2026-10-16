@@ -167,13 +167,14 @@ class TestInspectorListenerTeardown:
     document or a window after its viewer is gone fires against a dead
     panel, on every later mount (`presenters.md` § 3, step 2)."""
 
-    @pytest.mark.parametrize("viewer,file", [
-        ("structure", "water.xyz"),
-        ("trajectory", "relax_optim.xyz"),
-        ("spectra", "job.spectra.json"),
+    @pytest.mark.parametrize("viewer,file,loads", [
+        ("structure", "water.xyz", True),
+        ("trajectory", "relax_optim.xyz", True),
+        ("spectra", "job.spectra.json", False),
     ])
     def test_opening_a_viewer_again_and_again_leaves_what_once_left(
-            self, page, flask_server, isolated_projects_root, viewer, file):
+            self, page, flask_server, isolated_projects_root, viewer, file,
+            loads):
         """Opening and closing a viewer any number of times leaves on the
         page what opening and closing it once left: the listeners on the
         window, the document or an element still on the page, and the live
@@ -186,14 +187,19 @@ class TestInspectorListenerTeardown:
         file opened, each left alive with its listeners for the page's life
         (2026-10-15: twenty of twenty).
 
-        Paired add to remove on ``EventTarget`` itself, so a listener added
-        outside the viewers' shared scope (`lib/inspectors/lifecycle.js`)
-        counts as surely as one inside it, on a settled page, each mount
-        waited out by the viewer's own word that its load has ended
-        (`EVENT_INSPECTOR_READY`).
+        Paired add to remove on ``EventTarget`` itself, as the browser pairs
+        them (`support/leftovers.SPY`), so a listener added outside the
+        viewers' shared scope (`lib/inspectors/lifecycle.js`) counts as
+        surely as one inside it, on a settled page, each mount waited out by
+        the viewer's own word that its load has ended
+        (`EVENT_INSPECTOR_READY`) -- the structure and the trajectory each
+        loaded from its file, the word carrying no error.  The spectra row's
+        file is not there: its viewer mounts, refuses the load, and is put
+        away -- the mount's wiring and the refused road, no spectrum drawn.
 
         MUTATIONS THIS MUST FAIL AGAINST: a listener added outside the scope;
-        a drawing window made for every mount."""
+        a drawing window made for every mount; a capturing listener taken off
+        without its capture flag."""
         folder = isolated_projects_root.resolve() / "P" / "s"
         folder.mkdir(parents=True)
         (folder / "water.xyz").write_text(
@@ -209,75 +215,45 @@ class TestInspectorListenerTeardown:
             arg={"file": path, "viewer": viewer}, timeout=10000)
         page.wait_for_selector(".ps-entry, .ps-list-error, #ps-list.is-empty",
                                state="attached", timeout=10000)
+        from support.leftovers import SPY, grew
         left = page.evaluate("""async (c) => {
             const reg = window.molbuilder.inspectors;
-            const live = [];
-            const contexts = [];
-            const name = (t) => t === window ? "window"
-                : t === document ? "document"
-                : (t && t.nodeName) ? t.nodeName + (t.id ? "#" + t.id : "")
-                : String(t);
-            const add = EventTarget.prototype.addEventListener;
-            const remove = EventTarget.prototype.removeEventListener;
-            const getContext = HTMLCanvasElement.prototype.getContext;
-            EventTarget.prototype.addEventListener = function (type, fn, o) {
-                const by = String(new Error().stack || "").split("\\n")
-                    .slice(2, 4).map((s) => s.trim()).join(" | ");
-                live.push([this, type, fn, by]);
-                return add.call(this, type, fn, o); };
-            EventTarget.prototype.removeEventListener = function (type, fn, o) {
-                const i = live.findIndex(([t, ty, f]) =>
-                    t === this && ty === type && f === fn);
-                if (i >= 0) live.splice(i, 1);
-                return remove.call(this, type, fn, o); };
-            HTMLCanvasElement.prototype.getContext = function (kind, ...a) {
-                const g = getContext.call(this, kind, ...a);
-                if (g && /webgl/.test(kind) && !contexts.includes(g))
-                    contexts.push(g);
-                return g; };
-            const outlives = (t) => t === window || t === document
-                || (t instanceof Node && t.isConnected);
-            const state = () => ({
-                listeners: live.filter(([t]) => outlives(t))
-                    .map(([t, ty, , by]) => name(t) + ":" + ty + " <= " + by)
-                    .sort(),
-                contexts: contexts.filter((g) => !g.isContextLost()).length });
+            const spy = """ + SPY + """;
             const cycle = async () => {
                 const host = document.createElement("div");
                 host.style.width = "900px";
                 document.body.appendChild(host);
                 // The test's own wait, kept out of what it counts.
-                const ended = new Promise((resolve) => add.call(document,
+                const ended = new Promise((resolve) => spy.quietly(document,
                     window.molbuilder.constants.EVENT_INSPECTOR_READY,
-                    () => resolve(true), { once: true }));
+                    (e) => resolve((e && e.detail) || {}), { once: true }));
                 const handle = reg.mount(host, c.file,
                                          reg.createDefaultContext(host));
-                const done = await Promise.race([ended,
-                    new Promise((r) => setTimeout(() => r(false), 8000))]);
+                const said = await Promise.race([ended,
+                    new Promise((r) => setTimeout(() => r(null), 8000))]);
                 handle.dispose();
                 document.body.removeChild(host);
-                return done;
+                if (!said) return "a mount never ended";
+                if (c.loads && said.error) return "it could not load: " + said.error;
+                return null;
             };
             try {
-                if (!(await cycle())) return { error: "the first never ended" };
-                const once = state();
+                const first = await cycle();
+                if (first) return { error: first };
+                const once = spy.state();
                 for (let i = 1; i < c.times; i++) {
-                    if (!(await cycle())) return { error: "a mount never ended" };
+                    const again = await cycle();
+                    if (again) return { error: again };
                 }
-                return { once, again: state() };
+                return { once, again: spy.state() };
             } finally {
-                EventTarget.prototype.addEventListener = add;
-                EventTarget.prototype.removeEventListener = remove;
-                HTMLCanvasElement.prototype.getContext = getContext;
+                spy.restore();
             }
-        }""", {"file": path, "times": 5})
+        }""", {"file": path, "times": 5, "loads": loads})
         assert "error" not in left, left
-        grew = [x for x in left["again"]["listeners"]
-                if left["again"]["listeners"].count(x)
-                > left["once"]["listeners"].count(x)]
-        assert not grew, (
+        assert not grew(left), (
             f"opening the {viewer} viewer five times left more on the page "
-            f"than opening it once:\n  " + "\n  ".join(sorted(set(grew))))
+            f"than opening it once:\n  " + "\n  ".join(grew(left)))
         assert left["again"]["contexts"] == left["once"]["contexts"], (
             f"the {viewer} viewer left {left['once']['contexts']} live GL "
             f"context(s) opened once and {left['again']['contexts']} opened "
@@ -346,10 +322,8 @@ class TestInspectorListenerTeardown:
 
 
 class TestInspectorErrorCardRuntime:
-    """Behavioural verification of the .inspector-card.error-card UX
-    when the partial-fetch fails.  Complements the static source-pin
-    tests in tests/test_results_blueprint.py::TestInspectorErrorRendering;
-    those pin the wiring, these pin the user-visible rendering."""
+    """What a viewer shows when the panel it fetches cannot be had: the
+    ``.inspector-card.error-card``, saying which file and why."""
 
     def test_partial_fetch_404_renders_error_card(
             self, page, flask_server):

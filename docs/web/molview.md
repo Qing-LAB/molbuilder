@@ -353,8 +353,9 @@ touches that one file and reaches no consumer of MolView.
 displayed frame and the session history all live inside the viewer. It keeps
 nothing in a global, and nothing outside it keeps a copy of anything it holds.
 The one thing the module keeps beyond a viewer is the sealed layer's shelf of
-**cleared drawing surfaces** (§ 9.9a) — a resource of the page, holding nothing
-any viewer was told or showed.
+**cleared drawing surfaces** (§ 9.9a) — a resource of the page, holding no
+model, shape or label any viewer drew; the camera, ground and projection a
+surface was left at are given again when it is next taken.
 
 **The test of all of this:** delete every other web module and MolView still
 loads, mounts, draws, selects, measures and exports. The only things it would
@@ -1469,7 +1470,7 @@ viewer.dispose();            // tears down in reverse order of assembly
 **Dispose leaves the page as the mount found it** — every listener the viewer's
 controls put on the document or the window taken off, every element it drew
 removed — **but for its drawing surface, which goes back on the sealed layer's
-shelf, cleared, for the next mount** (§ 9.9a). So opening and closing viewers on
+shelf, its models, shapes and labels removed, for the next mount** (§ 9.9a). So opening and closing viewers on
 a page, any number of times, leaves on it what one open and close left.
 
 `mount` assembles a complete viewer in one call — the 3D window, the panel beside
@@ -2764,7 +2765,9 @@ by undoing what the library did.
 
 **The shelf is the sealed layer's own**, as the library is: nothing above it
 knows surfaces exist (§ 5.3), and a mount asks for none — it gets its window as
-it always has. It holds no fact about any viewer, only cleared surfaces.
+it always has. What a surface on it still has of the last viewer — the camera
+it was left at, its ground and its projection — nothing reads, and the take
+gives each again.
 
 This is the layer that makes § 5.3 true. Everything above it — the commands, the
 renderEngine, the model, the panel, the tab — could be read end to end without
