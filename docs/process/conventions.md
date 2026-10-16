@@ -270,6 +270,10 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
   user must fix before anything runs (e.g. a missing pseudopotential at
   `jobset prep`, `validate --exit-on-error`) — the number tells a script "stop,
   this won't work."
+- **A help names only what runs.** Every verb a group's `--help` tells a person
+  to run — the names its text marks as code — is one of that group's commands;
+  a help that sends someone to a verb that is gone is worse than none
+  (`test_cli.py`, every group of the tree).
 - **stdout vs stderr:** structure/data output goes to **stdout**, the human summary
   to **stderr**, and `-` means stdin/stdout — so `molbuilder … | molbuilder …`
   pipes cleanly.

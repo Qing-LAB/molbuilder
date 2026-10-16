@@ -23,7 +23,6 @@ own `~/.config/molbuilder` must never decide whether these pass.
 """
 from __future__ import annotations
 
-import json
 
 import pytest
 from click.testing import CliRunner
@@ -133,23 +132,3 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
         _write_record(home, "sol")
         assert choice_required() is True
         assert "--target" in _run(["machines"]).output
-
-
-class TestTheHelpNamesOnlyLiveVerbs:
-
-    def test_jobset_help_names_live_verbs(self):
-        """Any ``verb`` in the group's help text that looks like one of ours must
-        resolve to a registered command.
-        """
-        import re
-        registered = set(jobset_group.commands)
-        help_text = jobset_group.__doc__ or ""
-        cited = set(re.findall(r"``([a-z][a-z-]+)``", help_text))
-        # only judge words that are plausibly verbs of THIS group
-        suspects = {c for c in cited if "." not in c and "-" not in c}
-        unknown = {c for c in suspects
-                   if c not in registered and c not in {"prep", "job", "set"}}
-        assert not unknown, (
-            f"`jobset --help` names {sorted(unknown)}, which are not "
-            f"registered commands ({sorted(registered)}).  A help text that "
-            f"recommends a nonexistent verb is worse than none.")

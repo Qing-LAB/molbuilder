@@ -52,6 +52,48 @@ def test_top_level_help_exits_cleanly():
     assert exc.value.code == 0
 
 
+def test_every_verb_a_groups_help_names_runs():
+    """A group's help, as printed, names only verbs that run: every name it
+    marks as code (````name````) that is not a file answers
+    ``<group> <name> --help`` with 0 (`process/conventions.md` § 3, the
+    CLI-wide conventions).
+
+    THE SILENT FAILURE: a help that tells a person to run a verb that was
+    renamed or retired -- they type what the help said and meet a usage
+    error, sent there by the help itself.
+
+    Every group of the command tree, walked from the tree itself.
+
+    MUTATION THIS MUST FAIL AGAINST: a group's help naming a verb the group
+    does not have."""
+    import re
+
+    import click
+    from click.testing import CliRunner
+
+    def helped(path):
+        r = CliRunner().invoke(cli.cli, path + ["--help"],
+                               prog_name="molbuilder")
+        assert r.exit_code == 0, (path, r.output)
+        return r.output
+
+    named, gone = [], []
+
+    def walk(group, path):
+        for name in set(re.findall(r"``([^`]+)``", helped(path))):
+            if "." in name:
+                continue                       # a file the help names
+            named.append(" ".join(path + [name]))
+            if CliRunner().invoke(cli.cli, path + [name, "--help"]).exit_code:
+                gone.append(" ".join(path + [name]))
+        for sub, cmd in group.commands.items():
+            if isinstance(cmd, click.Group):
+                walk(cmd, path + [sub])
+    walk(cli.cli, [])
+    assert named, "no group's help names a verb"
+    assert not gone, f"a help names verbs that do not run: {sorted(gone)}"
+
+
 def test_no_subcommand_is_an_error():
     """Running `molbuilder` with no subcommand should fail with a
     usage error, not an unhelpful crash."""
