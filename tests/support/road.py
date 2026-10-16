@@ -319,7 +319,9 @@ def calls_made(calls: Path):
 # (`card_written`: `{stage, moments}` each -- `_road_card_written`), the
 # atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
-# the
+# what each stage's job would take from a run it continues, as the plan
+# states it and its reader reads it (`plan_takes`, `{stage = [file, ...]}`
+# -- `_road_plan_takes`), the
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
@@ -580,6 +582,19 @@ def _road_own_warm_files(case, bundle) -> None:
     (bundle / FILENAME).write_text(text)
 
 
+def _road_plan_takes(want, bundle) -> None:
+    """What each stage's job would take from a run it continues -- its
+    ``warm`` files, in order, as the plan prep wrote holds them and the
+    launch reads them (`jobset.model.JobSet.load`): ``{stage: [file, ...]}``."""
+    from molbuilder.jobset.model import JobSet
+    plan = JobSet.load(bundle / "job-set.json")
+    jobs = {j.name: j for j in plan.jobs}
+    for stage, files in want.items():
+        assert stage in jobs, f"the plan holds no job {stage!r}: {sorted(jobs)}"
+        assert [w.name for w in jobs[stage].warm] == files, \
+            (stage, [w.name for w in jobs[stage].warm])
+
+
 def _road_progress_log_holds(want, bundle) -> None:
     """The atoms each progress log the prep wrote states the run holds,
     as its own reader reads them (`model/parse.md` § 5.3)."""
@@ -617,6 +632,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_card_written(case["card_written"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
+    if "plan_takes" in case:
+        _road_plan_takes(case["plan_takes"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)

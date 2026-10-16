@@ -25,6 +25,18 @@ name = "a restart file a calculation's own list adds is one its run script check
 own_warm_files = { add = [".NEWSTATE"] }
 run_sh = ["NEWSTATE"]
 
+# ...and one it withholds -- `carry` taken off its row, as the shipped list
+# says to do for one debugging ladder -- is one no stage takes: prep writes
+# what the list declares, so it knows no suffix of its own (`run-identity.md`
+# § 4 rules 1 and 4: a declaration on the job, never engine knowledge in
+# the producer).
+[[case]]
+name = "...and one it withholds is one no stage takes from the run it continues"
+own_warm_files = { withhold = [".DM"] }
+before = [["prep", "task", "--group", "1"]]
+stage = "medium"
+plan_takes = { coarse = ["H2.XV", "H2.CG"], medium = ["H2.XV", "H2.CG"] }
+
 [[case]]
 name = "a run script says what its deck does with the state a run leaves, read off the deck as prep writes it -- a stage that continues (`running-a-job.md` § 3.5)"
 run_sh = ["This deck says 'start from: continue'"]
