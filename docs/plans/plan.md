@@ -225,11 +225,24 @@ the remount for every viewer or the in-place reload for every viewer (TST
 viewer since `2b56aed39`, so the two refresh listeners are dead and § 2's
 sentence is what changes; to measure first: whether MolView's playback speed
 and loop survive a remount); 3Dmol's listeners (TST (13)'s
-finding) — MolView keeping one 3Dmol viewer per page and reusing it across
-mounts, a newer 3Dmol if one removes its own, or the leak accepted and
-written down (recommended: first look whether a newer 3Dmol release has a
-viewer teardown, which keeps MolView's design; vendor files are never
-edited). The questions this list
+finding), measured 2026-10-15 through MolView's mount on the Results tab, 20
+open/dispose cycles of the structure and the trajectory viewer each: **the
+WebGL context is handled** — `3dmol-embed.js`'s dispose loses it on purpose
+(`WEBGL_lose_context`, measured 2026-09-02, a code comment and nowhere in
+`molview.md`): 0 of 21 contexts live after the cycles, a 21st viewer starts,
+no browser warning; **the viewer object is not** — 3Dmol 2.5.2's constructor
+attaches `mouseup` and `touchend` to `document.body`, `resize` to `window`
+(fresh bound functions) and a `ResizeObserver` on its container, none of
+which the dispose takes off, so every disposed viewer — its renderer, its
+canvas, the card it drew into — stays in memory for the page's life (20 of
+20 canvases alive after forced garbage collection; with those listeners
+taken off, 2; with the observer disconnected too, 1), and every window
+resize calls each dead viewer's `resize` (no error, measured). No 3Dmol
+teardown found upstream. Recommended: MolView's 3Dmol seal records, while
+the constructor runs, what it attaches to the page, and its dispose takes
+it off before losing the context — one place, inside the seal, no viewer
+touched; `molview.md` § 8 says what dispose releases. The alternative,
+one 3Dmol viewer per page reused across mounts, changes MolView's design. The questions this list
 carried before were answered on 2026-10-13 from the contracts and the user's
 own rulings (W40, F-MDNC, PL-R in § 2; EL-W and E7 in
 [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)).
