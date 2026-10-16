@@ -12,7 +12,8 @@ times, because Flask serves `web/static/` off disk.
 
 Both halves are asked of the artifacts: the wheel, built from what git
 tracks as it stands on disk, and the pages, as the server answers them --
-each asset they name looked for in that wheel.
+each asset they name looked for in that wheel.  And the third-party files
+it carries are asked of it too: each ships with its notice.
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ def wheel(tmp_path_factory):
     """The wheel built from every file git tracks under `molbuilder/`, as
     they stand on disk, with the environment's own setuptools (`pip wheel
     --no-build-isolation`): nothing is installed, and the checkout is left
-    as it was -- ``(the tracked files, the wheel's names)``."""
+    as it was -- ``(the tracked files, the wheel's names, the wheel)``."""
     import shutil
     import subprocess
     import sys
@@ -52,7 +53,7 @@ def wheel(tmp_path_factory):
         capture_output=True, text=True, timeout=300)
     assert built.returncode == 0, built.stderr[-2000:]
     built_wheel = next((tmp / "dist").glob("molbuilder-*.whl"))
-    return files, set(zipfile.ZipFile(built_wheel).namelist())
+    return files, set(zipfile.ZipFile(built_wheel).namelist()), built_wheel
 
 
 def test_a_built_wheel_carries_every_file_of_the_package(wheel):
@@ -62,7 +63,7 @@ def test_a_built_wheel_carries_every_file_of_the_package(wheel):
 
     MUTATION THIS MUST FAIL AGAINST: the static tree's pattern one level
     deep again, as the hand-kept list was."""
-    files, shipped = wheel
+    files, shipped, _ = wheel
     missing = [f for f in files if f not in shipped]
     assert not missing, (
         f"{len(missing)} of the package's {len(files)} files are not in the "
@@ -106,7 +107,7 @@ def test_every_asset_a_served_page_names_answers(isolated_projects_root,
     script a page names that git does not track; a script from a CDN."""
     from molbuilder.web.app import create_app
     from support.pages import every_served_page
-    _, shipped = wheel
+    _, shipped, _ = wheel
     web = create_app(config={"rate_limit": {"enabled": False}}).test_client()
     named, elsewhere = {}, {}
     for key, html in every_served_page().items():
@@ -135,3 +136,66 @@ def test_every_asset_a_served_page_names_answers(isolated_projects_root,
               and f"molbuilder/web{url}" not in shipped):
             dangling[url] = f"not in the wheel, named by {page}"
     assert not dangling, dangling
+
+
+#: The vendored browser assets, as the wheel holds them.
+VENDOR = "molbuilder/web/static/vendor/"
+
+
+def _inventory(readme: str):
+    """The inventory table of the vendor directory's README, as the wheel
+    carries it: ``(component, files cell, license cell)`` per row."""
+    start = readme.index("## Inventory")
+    rest = readme[start + 3:]
+    section = rest[:rest.find("\n## ")] if "\n## " in rest else rest
+    rows = []
+    for line in section.splitlines():
+        if not line.startswith("| ") or line.startswith("| Component") \
+                or set(line.replace("|", "").strip()) <= set("-: "):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        rows.append((cells[0], cells[1], cells[-1]))
+    return rows
+
+
+def test_every_vendored_file_ships_with_its_notice(wheel):
+    """THE SILENT FAILURE: a third-party file redistributed without its
+    licence -- added to `static/vendor/` with no inventory row, or a row
+    whose licence file is not shipped beside it (`static/vendor/README.md`,
+    the inventory; the user, 2026-10-09: *"explicit citation and license for
+    all embedded packages ... should have the right files and information
+    included in the package/git file structure"*).
+
+    Asked of the wheel, what ships: every vendored file in it is a file an
+    inventory row names or a row's notice, and every row's licence file is
+    in it.  Each row's release and citation are the inventory's, kept by
+    review.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a vendored file with no row; a row's
+    licence file not shipped."""
+    import fnmatch
+    import re
+    import zipfile
+    _, shipped, built = wheel
+    readme = zipfile.ZipFile(built).read(VENDOR + "README.md").decode()
+    rows = _inventory(readme)
+    assert rows, "the shipped inventory has no rows"
+    covered = []
+    for _name, files, notice in rows:
+        covered += [g for g in re.findall(r"`([^`]+)`", files)
+                    if not g.startswith("/")]
+        covered += re.findall(r"`([^`]+)`", notice)
+        covered += re.findall(r"\]\(([^)]+)\)", notice)
+    vendored = sorted(n[len(VENDOR):] for n in shipped
+                      if n.startswith(VENDOR) and not n.endswith("/")
+                      and n != VENDOR + "README.md")
+    orphans = [f for f in vendored
+               if not any(fnmatch.fnmatch(f, g) for g in covered)]
+    assert not orphans, (
+        f"shipped with no inventory row naming them: {orphans} -- add the "
+        f"component's row, its license file and its citation to "
+        f"static/vendor/README.md")
+    unshipped = [(name, link) for name, _files, notice in rows
+                 for link in re.findall(r"\]\(([^)]+)\)", notice)
+                 if VENDOR + link not in shipped]
+    assert not unshipped, f"licence files the wheel does not carry: {unshipped}"

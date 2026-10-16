@@ -191,11 +191,18 @@ somewhere temporary and builds inside it:
 Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
 time, so pointing the door is enough and the live server serves the tmp tree.
 
-**Enforced, not just written here.** `test_no_tests_read_the_projects_tree.py`
-AST-walks every test file for a path built from the repository root joined to
-`projects`, and carries a ten-row truth table of what must and must not fire —
-because a guard nobody has watched fail is a guard nobody has tested. It found
-thirteen sites in seven files, all converted 2026-09-06.
+**Enforced while every test runs, whatever spells the path.** `conftest.py`
+installs an audit hook (`sys.addaudithook`) that watches each test — its
+fixtures included — for an open, a listing, a mkdir, a rename or a removal
+under the real `projects/` tree, by any spelling: a literal, a relative path,
+or the code under test falling back to `projects_root()`'s default. The touch
+raises `TouchedYourProjectsTree` (a `BaseException`, which `except Exception`
+cannot swallow) and fails the test at report time even if something swallowed
+it. The shared input library `projects/pseudopotential/` may be read.
+*(Until 2026-10-16 an AST scan of the test files looked for the repository
+root joined to `projects`; it found thirteen sites in seven files, converted
+2026-09-06, and could not see the commoner road — a default reached through
+the code.)*
 
 **A fixture of your own that re-isolates `HOME` or `XDG_CONFIG_HOME` moves the
 machine scope out from under `conftest`'s.** If the test then preps, call
@@ -499,17 +506,19 @@ what ships is asked of what ships — the page as served
 — never of the template, sheet, module or document it was made from. A test
 that reads such a file for what is in it keeps its place only where its rule's
 break is silent and no run can show it: a test silently never run
-(`test_no_test_is_shadowed.py`), your `projects/` tree touched by the suite
-(`test_no_tests_read_the_projects_tree.py`), an assertion that passes against
+(`test_no_test_is_shadowed.py`), an assertion that passes against
 a 404 (`test_negative_body_assert_lint.py`), runtime text written into the page
-as markup (`test_xss_audit.py`), a vendored file shipped without its licence
-(`test_vendor_notices.py`), a composed name found by hand
-(`test_path_framework.py`), the catalogue's facts disagreeing with the config
+as markup (`test_xss_audit.py`), the catalogue's facts disagreeing with the config
 classes that carry them through their loaders (`test_catalogue_agreement.py`),
 a catalogue item with no panel to sit in
 (`test_every_catalogue_item_declares_a_panel`), and the notebook shepherd's
 stop grace overrunning the supervisor's
-(`test_the_shepherds_grace_stays_under_the_supervisors`). Every other test
+(`test_the_shepherds_grace_stays_under_the_supervisors`). Three that read text until 2026-10-16 now ask the outcome or
+went to review: your `projects/` tree touched by the suite is watched while
+every test runs (the guard in `conftest.py`, § 2a); a vendored file shipped
+without its licence is asked of the built wheel
+(`test_wheel_ships_the_front_end.py`); a composed name found by hand is
+review's (`code-audit.md` § 1c (f)). Every other test
 that read a file for what is in it was retired or replaced by a test of the
 outcome (plan, TST, 2026-10-15 and 16).
 
@@ -929,8 +938,8 @@ deliberately not installed there.
 - `_node_esm.py` — the Node ESM load-sim harness the `*_js.py` tests use (§4).
 - `test_security_headers.py::test_no_page_served_carries_inline_javascript`,
   `test_negative_body_assert_lint.py` — the artifact lints (§ 6).
-- `test_no_tests_read_the_projects_tree.py` — no test builds a folder inside
-  the developer's real `projects/` tree (§ 2a); carries its own truth table.
+- `conftest.py`'s projects-tree guard — no test reads or writes the
+  developer's real `projects/` tree (§ 2a), by any spelling.
 - `test_no_test_is_shadowed.py` — no test is silently replaced by a namesake
   defined later in its module or class, so never run (§ 3a).
 - `tests/support/` — the shared roads: `pages.py` (the pages the app serves,

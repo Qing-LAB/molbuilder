@@ -680,6 +680,125 @@ def web_client():
 #  function level by carrying an explicit @pytest.mark.<X>.            #
 # --------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------- #
+#  No test touches your projects/ tree                                   #
+# --------------------------------------------------------------------- #
+
+#: THE DEVELOPER'S REAL PROJECTS TREE -- `projects_root()`'s default, the
+#: user's scientific record (`process/testing.md` § 2a; user, 2026-08-03:
+#: *"Don't use a data file without confirming if it is relevant"*).  A test
+#: builds the tree it needs (`isolated_projects_root`).  Its shared input
+#: library, `pseudopotential/`, is an input and may be read.
+_REAL_PROJECTS = os.path.join(str(_REPO), "projects")
+_REAL_PROJECTS_RESOLVED = os.path.realpath(_REAL_PROJECTS)
+_INPUT_LIBRARY = ("pseudopotential",)
+
+#: The events that read or change what a directory holds -- every road to
+#: a file's contents or a directory's listing, whatever spells the path --
+#: each with where its paths and its directory descriptor sit in the event's
+#: arguments (the audit events table of the Python docs).  A relative path
+#: with a descriptor is relative to that directory, not to the working one.
+#: ``open`` carries no descriptor, so a relative path it names cannot be
+#: placed and is not judged; the listing that finds a name, and every
+#: change, still are.
+_TOUCHES = {
+    "open": ((0,), None),
+    "os.listdir": ((0,), None),
+    "os.scandir": ((0,), None),
+    "os.mkdir": ((0,), 2),
+    "os.rmdir": ((0,), 1),
+    "os.remove": ((0,), 1),
+    "os.rename": ((0, 1), 2),
+    "os.replace": ((0, 1), 2),
+    "os.link": ((0, 1), 2),
+    "os.symlink": ((1,), 2),
+    "os.truncate": ((0,), None),
+    "os.chmod": ((0,), 2),
+    "os.chown": ((0,), 3),
+    "os.utime": ((0,), 3),
+    "shutil.copyfile": ((0, 1), None),
+    "shutil.copytree": ((0, 1), None),
+    "shutil.rmtree": ((0,), 1),
+    "shutil.move": ((0, 1), None),
+    "glob.glob": ((0,), None),
+}
+
+#: What the running test touched, and whether one is running.
+_TOUCHED: list = []
+_WATCHING = [False]
+
+
+class TouchedYourProjectsTree(BaseException):
+    """A test reached the real projects tree.  A BaseException, so code that
+    catches ``OSError`` or ``Exception`` cannot swallow it -- and the report
+    fails the test even if something does."""
+
+
+def _placed(arg, dir_fd, event):
+    """``arg`` as an absolute path, or None when it names no place this
+    guard can find: a descriptor, a relative path ``open`` was given."""
+    if isinstance(arg, int) or arg is None:
+        return None
+    try:
+        path = os.fsdecode(arg)
+    except (TypeError, ValueError):
+        return None
+    if os.path.isabs(path):
+        return os.path.normpath(path)
+    if isinstance(dir_fd, int) and dir_fd >= 0:
+        try:
+            return os.path.normpath(os.path.join(
+                os.readlink(f"/proc/self/fd/{dir_fd}"), path))
+        except OSError:
+            return None
+    if event == "open":
+        return None
+    return os.path.abspath(path)
+
+
+def _in_your_projects_tree(path) -> bool:
+    for tree in (_REAL_PROJECTS, _REAL_PROJECTS_RESOLVED):
+        if path == tree:
+            return True
+        if path.startswith(tree + os.sep):
+            first = path[len(tree) + 1:].split(os.sep, 1)[0]
+            return first not in _INPUT_LIBRARY
+    return False
+
+
+def _guard_your_projects_tree(event, args):
+    if not _WATCHING[0] or event not in _TOUCHES:
+        return
+    where, fd_at = _TOUCHES[event]
+    dir_fd = args[fd_at] if fd_at is not None and fd_at < len(args) else None
+    for i in where:
+        if i >= len(args):
+            continue
+        path = _placed(args[i], dir_fd, event)
+        if path is not None and _in_your_projects_tree(path):
+            said = f"{event} {path}"
+            _TOUCHED.append(said)
+            raise TouchedYourProjectsTree(
+                f"a test reached your projects/ tree: {said} -- build the "
+                f"tree the test needs (`isolated_projects_root`)")
+
+
+import sys as _sys  # noqa: E402
+_sys.addaudithook(_guard_your_projects_tree)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    """Watch the projects tree while a test runs -- its fixtures, module
+    and session ones it starts included."""
+    _TOUCHED.clear()
+    _WATCHING[0] = True
+    try:
+        yield
+    finally:
+        _WATCHING[0] = False
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Stash each phase's report on the item so fixtures can tell, at
@@ -687,9 +806,19 @@ def pytest_runtest_makereport(item, call):
     diagnostic harness (a test flagged with @pytest.mark.capture_on_fail
     dumps browser state + console to a PERSISTENT ``test-artifacts/`` dir
     when it fails -- so a rare intermittent E2E failure is inspectable
-    after the fact instead of needing a re-repro)."""
+    after the fact instead of needing a re-repro).
+
+    And a phase that touched the real projects tree fails, even when the
+    code under test swallowed the refusal."""
     outcome = yield
     rep = outcome.get_result()
+    if _TOUCHED and rep.passed:
+        rep.outcome = "failed"
+        rep.longrepr = ("a test reached your projects/ tree:\n  "
+                        + "\n  ".join(dict.fromkeys(_TOUCHED))
+                        + "\nbuild the tree the test needs "
+                          "(`isolated_projects_root`)")
+    _TOUCHED.clear()
     setattr(item, "rep_" + rep.when, rep)
 
 

@@ -294,6 +294,23 @@ imported one's (§ 3's layer key: L1 is the index, L3 the two surfaces and
 only be L1. A new module that is core goes into § 3's index in the diff that
 adds it; otherwise it is L2.
 
+**(f) Does a caller spell a name the framework composes?**
+`project-layout.md` § 4.5: for every name molbuilder composes, the framework
+owns the search. A caller with a question and no finder spells a glob, or
+composes the name again beside its composer, and every spelling is a place the
+rule can drift (24 such sites surveyed on 2026-09-08). **It is kept by review,
+not by a test** *(2026-10-16; `testing.md` § 3a)*: the instrument is
+`tools/classify_path_finders.py --check`, an AST survey of `molbuilder/` that
+exits non-zero on a site that spells a composed name (`owned`), a site nobody
+has read (`unclassified`), and an exemption that no longer matches a site. What
+a run can show is held by tests: each finder's answer on files the test builds
+(`tests/test_path_framework_doors.py`), and the road tests that read every run
+through the run door.
+
+Look for: a `glob`, `rglob`, `iterdir` filter or f-string a diff adds that
+names one of the catalogue's roles, an attempt directory or a trial directory;
+run the survey at each milestone and read every site it lists.
+
 ### 1c.2 How to report one
 
 Under R3: say which class you swept, and name what you did not. "Swept (a)

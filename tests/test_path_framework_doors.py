@@ -1,8 +1,8 @@
 """What the doors ANSWER.
 
-`tests/test_path_framework.py` proves nobody hand-spells a name.  That is a
-claim about the source.  This file is the other half: each door must give the
-right answer.
+That nobody hand-spells a name is a claim about the source, kept by review
+(`tools/classify_path_finders.py --check`; `process/code-audit.md` § 1c (f)).
+This file is what a run can show: each door must give the right answer.
 
 Every test here builds files on disk and asks the function.  None of them reads
 source text.

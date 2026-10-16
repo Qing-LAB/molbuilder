@@ -32,9 +32,8 @@ interchangeable and neither replaces the other.
 **Why not the projects tree.** It was read from
 `projects/BDT/optimization/TJ-BDT-Au111/H.psml` until 2026-09-06 — a specific
 real calculation's file, whose relevance nobody confirmed and which would
-make the test skip silently on any other machine.
-`test_no_tests_read_the_projects_tree.py` forbids exactly that; it missed
-this one because it scanned a line at a time and the path was split across
-two. Same reasoning as `tests/watch/fixtures/siesta_frozen/`: what cannot be
+make the test skip silently on any other machine. The suite now fails any
+test that reaches the real projects tree, by any spelling
+(`process/testing.md` § 2a, the guard in `conftest.py`). Same reasoning as `tests/watch/fixtures/siesta_frozen/`: what cannot be
 constructed honestly is checked in, versioned with the tests, and reviewed
 when it changes.

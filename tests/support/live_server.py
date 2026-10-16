@@ -15,6 +15,9 @@ and the server itself is here, once.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 import threading
 from contextlib import contextmanager
 
@@ -27,10 +30,24 @@ def serve(config: dict | None = None):
     is what every caller used).  The port is chosen by the OS — 0 — so
     concurrent test modules never collide on a fixed number, and the thread is
     a daemon so a hung shutdown cannot keep the interpreter alive.
+
+    **A projects tree of its own** unless the test already pointed the one
+    door somewhere (`isolated_projects_root`): every page lists the
+    sidebar's root as it boots, and the default is the developer's real
+    tree (`process/testing.md` § 2a).  A test that isolates later, per
+    function, still wins: the root is read at call time.
     """
     from werkzeug.serving import make_server
 
+    from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
     from molbuilder.web.app import create_app
+
+    own = None
+    if not os.environ.get(PROJECTS_ROOT_ENV):
+        own = tempfile.mkdtemp(prefix="served-tree-")
+        tree = os.path.join(own, PROJECTS_ROOT_NAME)
+        os.mkdir(tree)
+        os.environ[PROJECTS_ROOT_ENV] = tree
 
     server = make_server("127.0.0.1", 0, create_app(config=config or {}),
                          threaded=True)
@@ -41,3 +58,6 @@ def serve(config: dict | None = None):
     finally:
         server.shutdown()
         thread.join(timeout=5)
+        if own is not None:
+            os.environ.pop(PROJECTS_ROOT_ENV, None)
+            shutil.rmtree(own, ignore_errors=True)

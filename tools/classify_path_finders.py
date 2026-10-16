@@ -176,7 +176,7 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 }
 
 #: The verdicts a site may NOT have once the migration is done.  `--check`
-#: fails on either, and `tests/test_path_framework.py` runs `--check`.
+#: fails on either; review runs it (`process/code-audit.md` § 1c (f)).
 #:
 #: `owned` means a door composes the name and this caller spelled it anyway.
 #: `unclassified` means nobody has read the site -- which is the same defect
@@ -501,7 +501,7 @@ def survey(pkg: "pathlib.Path | None" = None,
     that only asserts the real package is clean proves nothing about the check:
     it passes identically when the classifier has stopped classifying.  Pointed
     at a throwaway package holding one hand-spelled `glob("*.out")`, this must
-    report `owned` -- and `tests/test_path_framework.py` asserts exactly that.
+    report `owned` -- check that before trusting a clean survey.
     """
     pkg = PKG if pkg is None else pkg
     root = ROOT if root is None else root

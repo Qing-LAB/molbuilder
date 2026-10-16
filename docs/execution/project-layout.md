@@ -2539,23 +2539,15 @@ in its `owned` bucket. Its verdicts are keyed by `(file, function, pattern)`
 and never by line, because reasons keyed to line numbers come unanchored the
 first time anything above them is edited (`plans/plan.md` § 5h).
 
-**The bucket is empty, and a test keeps it empty.** `tools/classify_path_finders.py
+**The bucket is kept empty by review.** `tools/classify_path_finders.py
 --check` exits non-zero on any `owned` or `unclassified` site and on any
-exemption that no longer matches one; `tests/test_path_framework.py` is that
-check as an assertion. Three things stop it from being decorative:
-
-1. **It is shown to fail.** The same survey is pointed at a throwaway package
-   holding one hand-spelled `glob("*.out")` and must return `owned` — and a
-   third case, a call THROUGH the door, must not, so it cannot pass by flagging
-   everything.
-2. **An exemption cannot excuse a violation.** An override may only assign a
-   non-failing verdict; otherwise any site could be silenced with
-   `("owned - ...", "later")` and the check would go green while the code got
-   worse.
-3. **The verdict it recognises must be one the guard fails on.** Emptying
-   `FAILING_VERDICTS` leaves the classifier working perfectly and every
-   assertion green — a kill switch on the whole guard, and it survived until
-   that assertion was added (measured 2026-09-08).
+exemption that no longer matches one, and it is run at each milestone review
+(`process/code-audit.md` § 1c (f)). An exemption may only assign a
+non-failing verdict — otherwise any site could be silenced with
+`("owned - ...", "later")` and the check would go green while the code got
+worse. *(It ran as `tests/test_path_framework.py` until 2026-10-16: a scan of
+the package's own source, which `process/testing.md` § 3a leaves to review.
+What a run can show — each finder's answer — is `tests/test_path_framework_doors.py`.)*
 
 #### The rule has two halves, and the second one has its own check
 

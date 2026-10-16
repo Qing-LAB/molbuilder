@@ -17,8 +17,9 @@ It is current by construction, it is readable in source -- twelve lines and you
 can count the atoms -- and a test written on it exercises the real
 write-then-read path instead of trusting a snapshot of one.
 
-Used by ``tests/test_script_emit.py`` and
-``tests/test_no_tests_read_the_projects_tree.py`` (the structure), and its
+Used by ``tests/test_script_emit.py``, ``test_transport_compose.py``,
+``test_k_point_mesh.py``, ``test_where_an_item_binds.py`` and
+``test_hard_limits.py`` (the structure), and its
 spectrum sidecar by ``tests/parse/test_sidecars.py`` and
 ``tests/parse/test_round2_fixes.py`` (written by our writer, read back by our
 reader).
