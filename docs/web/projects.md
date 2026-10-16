@@ -447,7 +447,10 @@ into the Documents tab). These are tracked as known gaps.
 
 ## 7. Test map
 
-- `test_projects_state_lock_guard_js.py` — the selection state + the lock guard.
+- `test_projects_state_busy_guard_js.py` — the selection state's busy guard, and a
+  hand-off landing in the other tab's own slot.
+- `test_sidebar_e2e.py` — in the browser: each tab back to its own folder and file
+  (§ 2), and a project deleted only once its name is typed.
 - `test_projects_public_surface_js.py` — the public API surface stays complete.
 - `test_projects_render_sidebar_js.py` — the sidebar render + wiring.
 - `test_projects_api_envelope_js.py` — the uniform `{ ok, … }` result shape.
