@@ -63,6 +63,13 @@ FIELDS: Tuple[ReportField, ...] = (
     # § 2.3, `scf_timing_rows.timing_of`): the SIESTA wrapper's tee, a PySCF
     # deck's progress log.
     ReportField("per_iter_s", "Seconds per SCF iteration", "per iter", " s"),
+    # THE ENGINE'S OWN PROGRESS (`run-reports.md` § 4.1a): the share of its
+    # work it says is done and the time it says is left, read by the output's
+    # reading pass -- TBtrans's, the transport calculation's transmission.
+    ReportField("done_pct", "How much is done", "done", " %",
+                engines=("siesta",), calculations=("transport",)),
+    ReportField("eta_s", "How long it says is left", "left", " s",
+                engines=("siesta",), calculations=("transport",)),
 )
 
 #: Every field's name, in order -- the vocabulary a name is checked against.

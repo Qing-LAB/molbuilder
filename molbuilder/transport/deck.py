@@ -149,7 +149,7 @@ TBT_SECTION = _sc.Section(
     ("tbt_solution_method", "tbt_elecs_eta_ev", "tbt_contours_eta_ev",
      "tbt_spin",
      "tbt_dos_gf", "tbt_dos_a", "tbt_dos_elecs", "tbt_t_eig", "tbt_t_bulk",
-     "tbt_t_all", "tbt_verbosity"),
+     "tbt_t_all", "tbt_verbosity", "tbt_progress"),
     note=(
         "# Read by tbtrans, which runs no SCF: it takes the converged",
         "# Hamiltonian the device rung wrote (TBT.HS above) and the leads'",

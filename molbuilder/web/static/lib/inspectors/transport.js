@@ -51,6 +51,20 @@ const WORKSPACE_TAG = "results:transport";
         return root.molbuilder.stateChip(state);
     }
 
+    /* HOW FAR THE ENGINE SAYS IT IS -- TBtrans's own estimate as its output
+     * last stated it, a running point's `progress` `{done_pct, eta_s,
+     * estimated_at}` (results.md § 2.5); its times said as every page says
+     * them (`lib/time-ago.js`).  "" where the record states none. */
+    function _progressWords(pr) {
+        if (!pr || pr.done_pct === undefined || pr.done_pct === null) return "";
+        const m = root.molbuilder;
+        const left = m.timeSpan(pr.eta_s);
+        const at = pr.estimated_at ? Date.parse(pr.estimated_at) / 1000 : NaN;
+        return "TBtrans: " + (+Number(pr.done_pct).toFixed(2)) + " % done"
+            + (left ? ", about " + left + " left" : "")
+            + (isFinite(at) ? " (its estimate " + m.timeAgo(at) + ")" : "");
+    }
+
     function _dirOf(file) {
         const i = String(file).lastIndexOf("/");
         return i < 0 ? "" : String(file).slice(0, i);
@@ -334,7 +348,8 @@ const WORKSPACE_TAG = "results:transport";
         pending.concat(failed).forEach((p) => {
             const st = _el("td");
             st.appendChild(_chip(p.state));
-            const why = _el("td", null, p.why || "");
+            const why = _el("td", null, [p.why, _progressWords(p.progress)]
+                .filter(Boolean).join(" · "));
             why.setAttribute("colspan", "2");
             pickRow(_pf(p), p.bias_v, [st, why],
                     { frame: _pf(p), bias: p.bias_v }, "transport-pending");
@@ -452,8 +467,10 @@ const WORKSPACE_TAG = "results:transport";
                 s.textContent = "not in this description";
             } else {
                 s.appendChild(_chip(st.state));
-                if (st.detail) s.appendChild(_el("span", "transport-stage-detail",
-                                                 " " + st.detail));
+                const said = [st.detail, _progressWords(st.progress)]
+                    .filter(Boolean).join(" · ");
+                if (said) s.appendChild(_el("span", "transport-stage-detail",
+                                            " " + said));
             }
             tr.appendChild(s);
             /* A DEVICE'S E_F IS ITS NEGF PHASE'S, never the periodic

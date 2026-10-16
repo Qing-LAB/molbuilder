@@ -1937,7 +1937,13 @@ interpreted, reproduced, or compared with another.
 — because a transmission that has not run yet is *pending*, never a failure of
 the calculation, and a reader needs to see which of five rungs is the one still
 outstanding — and, on a rung that sweeps the bias, which of its points are
-done, read from each point's own files (§ 2a.11).
+done, read from each point's own files (§ 2a.11). **A running transmission
+says how far it is**: each pending point whose run is running carries
+`progress` — `{done_pct, eta_s, estimated_at}`, TBtrans's own estimate as its
+run record states it (`model/parse.md` § 5d.1a: the reading pass over the
+output's tail, every `TBT.Progress` per cent of its k-point × energy loop) —
+and the transmission rung carries its first unfinished point's; the report
+draws it on the rung's row and the point's line (`web/results.md` § 2.5).
 
 **The frame dimension** *(the record built 2026-10-10 — plan § 5z Q17-e,
 `transport/average.py`, read by `record.collect_record`; the data file Q17-e2,
@@ -2221,6 +2227,7 @@ binds anything, so re-running against an unchanged device costs seconds.
 | `tbt_t_eig` | `TBT.T.Eig` | Eigenchannel decomposition — what turns one number into a picture of which orbital pathway carries the current | 3 |
 | `tbt_t_bulk` · `tbt_t_all` | `TBT.T.Bulk` · `TBT.T.All` | The pristine-lead baseline; every electrode pair rather than the first | 3 |
 | `tbt_verbosity` | `TBT.Verbosity` | How much tbtrans writes to its log — the log only, never the transmission. 5 is tbtrans's own default *(row since 2026-09-29)* | 3 |
+| `tbt_progress` | `TBT.Progress` | How often tbtrans states its progress and its estimate of the time left — every so many per cent of its k-point × energy loop; the log only, never the transmission. 5 is tbtrans's own default, written explicitly; a long transmission is followed more closely at 1, and 0 states it after every energy point (`m_tbt_options.F90`) *(row since 2026-10-16)* | 3 |
 | `tbt_dos_gf` · `tbt_dos_a` · `tbt_dos_elecs` | `TBT.DOS.*` | Where on the molecule a transmitting state sits; which lead it is fed from; the bulk leads' own DOS | 3 |
 
 **Per-stage output preferences** — no effect on the answer, so each stage
@@ -4322,6 +4329,7 @@ cross-checked against the installed binaries (2026-09-29):
 | **`TBT.k` is a list or a block — nothing else** | `TBT.k [2 2 1]` or `%block TBT.k` is read; any other form falls through to `%block TBT.kgrid.MonkhorstPack`, then to the SCF's own `kgrid.MonkhorstPack` — which is `kgrid_Monkhorst_Pack`, since fdf drops `_ . -` and case when it compares labels. **A list is only a list in brackets** | `m_tbt_kpoint.F90` 800–810 (`setup_kpoint_grid`), 103–127; `libfdf` `parse.F90` 1726 (*"if the token starts with [ and ends with ], it will be a list"*), `utils.F90` 113–162 (`labeleq`) |
 | **the device Hamiltonian is found by name** | `TBT.HS` when given; otherwise the first of `<label>.TS.HSX`, `.TSHS`, `.HSX` that exists | `m_tbt_hs.F90` 210–220 |
 | **`TBT.Verbosity` defaults to 5** | `init_verbosity('TBT.Verbosity', 5)` | `tbt_reinit_m.F90` 206 |
+| **`TBT.Progress` defaults to 5 per cent** | `fdf_get('TBT.Progress', 5.)`, below 0 taken as 0, divided by 100; a progress line — `tbt: Calculated N %, ETA in S s` — each time that share more of the k-point × energy loop is done, after `tbt: Initial ETA in S s` once the first is | `m_tbt_options.F90` 486–487; `m_tbt_trik.F90` 883–900, 1554 |
 
 **A defect this found, in the deck as it was written until 2026-09-29:** the
 transmission rung wrote `TBT.k                  2 2 1` — three integers,

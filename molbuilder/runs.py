@@ -714,6 +714,51 @@ def _openable(folder: Path, label: str, stage: Optional[str],
     return None
 
 
+def transmission_point(folder) -> Optional["Point"]:
+    """The point a transport calculation's TRANSMISSION run folder runs at
+    -- a frame, a voltage, or the one point of a rung that runs once -- or
+    ``None`` for any other folder.  TBtrans writes no file a viewer reads on
+    its own, so such a folder's result is its calculation's report at that
+    point (`web/results.md` § 0.1, § 2): the one rule :func:`openable`,
+    :func:`folder_answer` and the ladder's run rows answer by."""
+    from .jobset.errors import PrepError
+    from .jobset.materialize import stage_home
+    from .transport.stages import Point, points_in
+    d = Path(folder)
+    place = place_of(d)
+    if (not place.ours or place.root is None
+            or place.task.calculation != "transport"):
+        return None
+    root = Path(place.root)
+    try:
+        stage_dir = stage_home(root, place.task, "transmission").dir
+    except PrepError:
+        return None
+    if stage_dir is None:
+        return None
+    try:
+        rel = d.resolve().relative_to(Path(stage_dir).resolve()).parts
+    except ValueError:
+        return None
+    if not rel or attempt_index(rel[0]) is None:
+        return None
+    points = points_in(Path(stage_dir) / rel[0], place.task, "transmission",
+                       base=root)
+    if not points:
+        return Point() if len(rel) == 1 else None
+    return next((pt for at, pt in points
+                 if at.resolve() == d.resolve()), None)
+
+
+def _the_report(place: Place, attempts: List[str]) -> str:
+    """A transmission run's result: its calculation's report, opened
+    through the description at the root (:func:`_container_product`)."""
+    attempts.append("a transmission run's result is its calculation's "
+                    "report at its point -- TBtrans writes no file a viewer "
+                    "reads on its own (web/results.md 0.1)")
+    return str(Path(place.root) / _rf.TASK_FILE)
+
+
 def openable(directory) -> Tuple[Optional[str], List[str]]:
     """``(path, trail)`` -- the file a viewer should load in ``directory``:
     the run it speaks for's result in a folder of ours, the calculation's
@@ -729,6 +774,8 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
     label, stage, _trial = _position(d, place)
     if place.role == calcdirs.CONTAINER:
         return _container_product(d, place, label, stage, attempts), attempts
+    if place.role == calcdirs.RUN and transmission_point(d) is not None:
+        return _the_report(place, attempts), attempts
     if place.role == calcdirs.RUN and stage is None:
         stage = speaking(d, label)
     return _openable(d, label, stage, place.task.calculation,
@@ -757,12 +804,43 @@ def _container_product(folder: Path, place: Place, label: str,
     return _openable(folder, label, stage, place.task.calculation, attempts)
 
 
+def _file_row(entry: Path, label: Optional[str], place: Place
+              ) -> Dict[str, Any]:
+    """What one file IS, for a viewer: its role, label and stage read back
+    with the run's label, the parser that claims it and what it opens as,
+    its size and time, and its catalogue line (`web/results.md` § 3b)."""
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
+    # READ BACK WITH THE RUN'S LABEL, a declared role or nothing
+    # (`job-contracts.md` § 2.2a): a name read without its label is not taken
+    # for one of ours -- SIESTA's `fdf.<stamp>.log` is not PySCF's log.
+    rec = _rf.parse(entry.name, label) if label else None
+    if rec is not None and rec.role not in set(_rf.roles()):
+        rec = None
+    try:
+        kind = detect(str(entry))
+        parser, opens = kind.name, getattr(
+            getattr(kind, "output", None), "__name__", None)
+    except (ParseError, OSError, ValueError, LookupError):
+        parser, opens = None, None
+    st_ = entry.stat()
+    return {"name": entry.name,
+            "role": rec.role if rec is not None else None,
+            "label": rec.label if rec is not None else None,
+            "stage": rec.stage if rec is not None else None,
+            "parser": parser, "opens": opens,
+            "size": st_.st_size, "mtime": st_.st_mtime,
+            "about": _row_about(entry, label, unread=place.problem)}
+
+
 def folder_answer(directory) -> Dict[str, Any]:
     """WHAT A FOLDER IS AND HOLDS, for a viewer -- the directory door the
     Results tab serves (`/api/results/dir`; `model/parse.md` § 5.0,
     `web/results.md` § 2.3): ``place``, ``engine``, ``openable``,
     ``attempts``, ``status`` and ``record``, and per file its role, label,
-    stage, whether a parser reads it and what it is (``files``).
+    stage, whether a parser reads it and what it is (``files``) -- with
+    ``report``, the same row for the file it opens when that lies outside
+    it, and ``point``, the point a transmission run's folder opens it at.
 
     **What the folder IS decides what is asked of it** (`project-layout.md`
     § 1.4a).  A RUN of ours is asked everything, about the run it speaks for
@@ -772,18 +850,16 @@ def folder_answer(directory) -> Dict[str, Any]:
     are listed, the registry says what it can open, and none of them is
     claimed -- no label read off a deck, no state asked.
     """
-    from molbuilder.parse import detect
     from molbuilder.parse.contract import engine_of
     from molbuilder.parse.dirs.record import run_record
     from molbuilder.parse.dirs.rundir import openable_in, run_state_of
-    from molbuilder.parse.errors import ParseError
 
     d = Path(directory)
     place = place_of(d)
     attempts: List[str] = []
     if place.problem:
         attempts.append(place.problem)
-    status = record = None
+    status = record = point = None
     label: Optional[str] = None
     if not place.ours:
         engine = engine_of(str(d))
@@ -799,7 +875,9 @@ def folder_answer(directory) -> Dict[str, Any]:
         attempts.append(f"calculation: {calc}")
         if place.role == calcdirs.RUN:
             run = run_of(d)
-            chosen = _openable(d, run.label, run.stage, calc, attempts)
+            point = transmission_point(d)
+            chosen = (_the_report(place, attempts) if point is not None
+                      else _openable(d, run.label, run.stage, calc, attempts))
             if run.stage is not None:
                 st = run_state_of(run.folder, run.names, run.run)
                 status = {"state": st.state, "detail": st.detail,
@@ -827,38 +905,23 @@ def folder_answer(directory) -> Dict[str, Any]:
                 "nothing marks this folder in its calculation (no "
                 "calcdir.json), so only what is in it is shown "
                 "(project-layout.md § 1.4a)")
-    declared = set(_rf.roles())
-    files = []
-    for entry in sorted(d.iterdir(), key=lambda e: e.name):
-        if not entry.is_file():
-            continue
-        # READ BACK WITH THE RUN'S LABEL, a declared role or nothing
-        # (`job-contracts.md` § 2.2a): a name read without its label is not
-        # taken for one of ours -- SIESTA's `fdf.<stamp>.log` is not PySCF's
-        # log.
-        rec = _rf.parse(entry.name, label) if label else None
-        if rec is not None and rec.role not in declared:
-            rec = None
-        try:
-            kind = detect(str(entry))
-            parser, opens = kind.name, getattr(
-                getattr(kind, "output", None), "__name__", None)
-        except (ParseError, OSError, ValueError, LookupError):
-            parser, opens = None, None
-        st_ = entry.stat()
-        files.append({
-            "name": entry.name,
-            "role": rec.role if rec is not None else None,
-            "label": rec.label if rec is not None else None,
-            "stage": rec.stage if rec is not None else None,
-            "parser": parser, "opens": opens,
-            "size": st_.st_size, "mtime": st_.st_mtime,
-            "about": _row_about(entry, label, unread=place.problem),
-        })
+    files = [_file_row(entry, label, place)
+             for entry in sorted(d.iterdir(), key=lambda e: e.name)
+             if entry.is_file()]
+    # THE FILE IT OPENS, WHEN IT LIES OUTSIDE IT -- a transmission run's
+    # calculation report (`web/results.md` § 2): its row, with its path, so
+    # the menu lists it first.
+    report = None
+    if chosen is not None and Path(chosen).parent != d:
+        report = dict(_file_row(Path(chosen), label, place), path=chosen)
     return {"place": {"role": place.role,
                       "calculation": str(place.root) if place.root else None},
             "engine": engine,
             "openable": chosen,
+            "report": report,
+            # THE POINT the opened report is at, for a transmission run's
+            # folder (:func:`transmission_point`); ``None`` elsewhere.
+            "point": point.to_wire() if point is not None else None,
             "attempts": attempts,
             "status": status,
             "record": record,
@@ -869,4 +932,4 @@ __all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
            "declared", "OrderUnstated", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_of", "about", "run_answer",
-           "openable", "folder_answer"]
+           "transmission_point", "openable", "folder_answer"]

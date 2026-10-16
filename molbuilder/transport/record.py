@@ -728,6 +728,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     """
     from ..jobset.materialize import stage_home
     from ..parse.dirs import run_status
+    from ..parse.dirs.record import engine_progress
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
     from ..frameset import FrameSetError, read as read_frame_set
@@ -779,6 +780,14 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         if st.state != "finished":
             entry = {**at, "attempt": rel, "state": st.state,
                      "why": st.detail}
+            # HOW FAR A RUNNING POINT IS, in TBtrans's own words -- the
+            # reading the point's run record states it by (`engine_progress`,
+            # `model/parse.md` § 5d.1b).
+            if st.state == "running":
+                outs = _outs_newest_first(where, token)
+                progress = engine_progress(outs[0] if outs else None)
+                if progress:
+                    entry["progress"] = progress
             (pending if st.state in ("pending", "queued", "running")
              else failed).append(entry)
             continue
@@ -930,6 +939,11 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     }
     # EVERY KEY, EVERY RECORD: an empty list where there is none.
     record["pending"] = pending
+    # THE RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED (`_stage_facts`), so
+    # its progress is that point's.
+    first = next((p for p in pending if p.get("progress")), None)
+    if first is not None:
+        rung["progress"] = first["progress"]
     record["failed"] = failed
     return record
 

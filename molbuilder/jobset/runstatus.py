@@ -302,7 +302,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
     each attempt's points (`transport.stages.points_in`), read as `status`
     reads a run (`run_state_of`), with the file it opens, root-relative:
-    the run's own (`runs.openable`), or the root's `task.json` for a
+    the run door's answer (`runs.openable`) -- the root's `task.json` for a
     transmission run, whose result is the report at its point (§ 0.1).
     ``[]`` for a stage nothing has prepared."""
     from ..runs import openable, run_of
@@ -327,18 +327,13 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             if run is None or run.stage is None:
                 continue
             got = run_state_of(run.folder, run.names, run.run)
-            if (getattr(task, "calculation", None) == "transport"
-                    and st.ref.name == "transmission"):
-                # A TRANSMISSION RUN'S RESULT IS THE CALCULATION'S REPORT AT
-                # ITS POINT (results.md § 0.1): T(E), the DOS and the current
-                # at this bias live in the record the root's task.json opens;
-                # TBtrans writes no file a viewer reads on its own.
-                from ..task import FILENAME as _task_file
-                opens_rel: Optional[str] = _task_file
-            else:
-                opens, _trail = openable(folder)
-                opens_rel = (str((folder / Path(opens).name).relative_to(root))
-                             if opens else None)
+            # THE FILE THE RUN'S FOLDER OPENS, the run door's answer -- a
+            # transmission run's is its calculation's report, at the root
+            # (`runs.transmission_point`, results.md § 0.1).
+            opens, _trail = openable(folder)
+            opens_rel: Optional[str] = (
+                str(Path(opens).resolve().relative_to(root.resolve()))
+                if opens else None)
             # WHAT THE RUN READ AND WHAT WAS CHECKED BEFORE IT WAS WRITTEN,
             # root-relative (`web/results.md` § 2.4): the deck in the run's
             # folder, and the `.validation.txt` prep wrote beside the deck

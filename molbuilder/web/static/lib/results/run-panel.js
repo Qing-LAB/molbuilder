@@ -179,6 +179,10 @@ const FIELDS = {
     s_per_iter:       { label: "Seconds per SCF iteration", fmt: seconds },
     iters_measured:   { label: "SCF iterations timed" },
     rows:             { label: "SCF iterations logged" },
+    // the engine's own estimate, as its output last stated it (a transmission)
+    done_pct:         { label: "Done, by the engine's estimate", fmt: pct },
+    eta_s:            { label: "Left, by the engine's estimate", fmt: duration },
+    estimated_at:     { label: "Estimated at", fmt: utc },
     // memory
     mem_peak_gb:     { label: "Peak memory", fmt: gb },
     mem_limit_gb:    { label: "Memory limit", fmt: gb },

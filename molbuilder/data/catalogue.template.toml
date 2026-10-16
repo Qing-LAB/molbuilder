@@ -2521,6 +2521,28 @@ help = """
 How much tbtrans writes to its own log, 0 to 10 -- smaller numbers print less.  5 is tbtrans's own default (`Util/TS/TBtrans/tbt_reinit_m.F90`: `init_verbosity('TBT.Verbosity', 5)`), so the deck states the default rather than moving anything.  It changes the log, never the transmission.
 """
 
+[item.tbt_progress]
+stages = ["transmission"]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.Progress"
+engine_key = "TBT.Progress"
+manual = "SIESTA 5.4.2 TBtrans §'fdf-flags'"
+type = "float"
+value = 5.0
+default = 5.0
+engine_default = { value = 5.0, source = "SIESTA 5.4.2 Util/TS/TBtrans/m_tbt_options.F90: percent_tracker = fdf_get('TBT.Progress', 5.)" }
+range = [0.0, 100.0]
+group = "output"
+label = "How often tbtrans states its progress, in per cent"
+tier = "advanced"
+help = """
+How often tbtrans writes how far it is and its estimate of the time left -- every so many per cent of its k-point x energy loop.  It changes the log, never the transmission.
+5 is tbtrans's own default (`Util/TS/TBtrans/m_tbt_options.F90`: `fdf_get('TBT.Progress', 5.)`), so the deck states the default rather than moving anything.  A long transmission is followed more closely at 1; 0 writes a line after every energy point.  The Results tab shows the latest line on the transmission's row.
+"""
+
 [item.negf_eq_pole_ev]
 stages = ["device"]
 kind = "engine"

@@ -167,6 +167,11 @@ class JobStatus:
         default_factory=dict)
     max_force: Optional[float] = None
     max_force_tol: Optional[float] = None
+    #: The engine's own estimate of how far it is, as its latest line states
+    #: it: the share of its work done, in per cent, and the time it says is
+    #: left -- TBtrans's (`run-reports.md` § 4.1a).
+    done_pct: Optional[float] = None
+    eta_s: Optional[float] = None
     #: At the end: each SCF phase's convergence, and the process's goodbye.
     converged: Dict[str, Optional[bool]] = field(default_factory=dict)
     #: At the end of a relaxation: whether its geometry converged, as the
@@ -202,6 +207,10 @@ class JobStatus:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
         if self.per_iter_s is not None:
             bits.append(f"{self.per_iter_s:.2f} s/iter")
+        if self.done_pct is not None:
+            bits.append(f"{self.done_pct:.2f} % done"
+                        + (f", about {_in_words(self.eta_s)} left (its "
+                           f"estimate)" if self.eta_s is not None else ""))
         if self.converged:
             bits.append("converged: " + ", ".join(
                 f"{ph} {'yes' if ok else 'no' if ok is False else '?'}"
@@ -234,8 +243,9 @@ LIVE_READERS: Dict[str, Callable[[Optional[str]], Any]] = {
     ".molwatch.log": lambda stage: MolwatchReader(stage=stage),
 }
 
-#: What a live reading must state to say where the run IS.
-_POSITION = ("cycle", "step", "energy")
+#: What a live reading must state to say where the run IS -- an SCF row, a
+#: step, or the engine's own progress (TBtrans states no SCF).
+_POSITION = ("cycle", "step", "energy", "done_pct")
 
 
 #: How much of a file's beginning, and of what was last read, identifies it
@@ -389,6 +399,8 @@ class WatchedRun:
             st.max_force = state["max_force"]
             st.max_force_tol = (state.get("targets") or {}).get(
                 "max_force_tol_eV_per_A")
+        st.done_pct = state.get("done_pct")
+        st.eta_s = state.get("eta_s")
 
     def conclude(self, st: JobStatus) -> JobStatus:
         """How the run ended, as the Results tab reads it: `run_status` over
@@ -1786,12 +1798,24 @@ def _append(log_path: Path, line: str) -> None:
 
 def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
     """Did real work advance between two ticks?  True iff the SCF row count,
-    the row's own iteration, the phase or the step moved."""
+    the row's own iteration, the phase or the step moved -- or the engine's
+    own progress did."""
     if (curr.n_iters or 0) > (prev.n_iters or 0):
         return True
     if (curr.phase, curr.cycle) != (prev.phase, prev.cycle):
         return curr.cycle is not None
+    if (curr.done_pct, curr.eta_s) != (prev.done_pct, prev.eta_s):
+        return curr.done_pct is not None
     return (curr.geom_step or 0) > (prev.geom_step or 0)
+
+
+def _in_words(seconds: float) -> str:
+    """A span of time as a person reads it: seconds, minutes, hours or
+    days, the largest unit that is at least one."""
+    for unit, size in (("days", 86400.0), ("h", 3600.0), ("min", 60.0)):
+        if seconds >= size:
+            return f"{seconds / size:.1f} {unit}"
+    return f"{seconds:.0f} s"
 
 
 def run_monitor(watched: "WatchedRun", *,

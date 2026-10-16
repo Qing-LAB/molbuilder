@@ -80,7 +80,17 @@ them. **TST's closing review done 2026-10-16**: two rounds of fresh
 reviewers, every finding verified and its fix forced by a measured mutation
 (`989cd1b8`..`0b66f6d3`); the three kept text-reading tests became a
 projects-tree guard over every test, a question of the built wheel and a review
-item (2026-10-16). **Next**: the wrong-data rows of § 0a's step 1.
+item (2026-10-16). **TBP** built 2026-10-16 *(the user: "yes fix the defect and
+add the progress readout … framework level and parser api unification")*: a
+transmission's progress, TBtrans's own line, read once by the SIESTA reading
+pass and stated by the monitor, the run record and the transport report
+(`run-reports.md` § 2.2, § 4.1a; `TBT.Progress` a catalogue item), and a
+transmission run's folder opening its calculation's report at its point
+(`web/results.md` § 2). **Open from it**: no test asks that an item a
+transport rung reads reaches that rung's deck — the form-field test covers the
+general SIESTA form only, and the transmission's items are a hand list in
+`transport/deck.py` beside the catalogue's `stages` (found by a mutation,
+2026-10-16). **Next**: the wrong-data rows of § 0a's step 1.
 
 **Pushed — 2.9.6** (origin `a74f1085`): T1, F-MDNC, F19b; the pin of V1.9
 (M2m, sidecar v13); A1.11, A1.5 / A1.13's `.pdb` name, A1.4; the held-set rule

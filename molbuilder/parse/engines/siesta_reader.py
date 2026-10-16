@@ -120,6 +120,10 @@ class SiestaReader:
         # Runtime facts, from SIESTA's own startup lines and the echoed
         # `# runtime.<k>:` comments of the .fdf.
         self.runtime_info: Dict[str, Any] = {}
+        # THE ENGINE'S OWN PROGRESS, as its latest line states it: TBtrans's
+        # share of its k-point x energy loop done, in per cent, and the time
+        # it says is left -- ``None`` until the output states one.
+        self.progress: Optional[Dict[str, float]] = None
         # SCF iteration history of the current step, and the latest column
         # header the rows are mapped by.
         self._current_scf: List[Dict[str, Any]] = []
@@ -759,6 +763,28 @@ class SiestaReader:
             el["gf_iterations_min"] = int(m.group(1))
             el["gf_iterations_max"] = int(m.group(2))
 
+    def _on_tbt_progress(self, line: str, line_no: int) -> None:
+        """TBtrans's estimate: its first, ``Initial ETA`` -- nothing done
+        yet -- and each ``Calculated N %, ETA in S s`` after it.  A time that
+        is not a number states none: TBtrans divides by the share done, so
+        at ``TBT.Progress 0`` its line at 0 % says ``Infinity`` or ``NaN``
+        (`m_tbt_trik.F90`)."""
+        m = _G.TBT_PROGRESS.match(line)
+        if m:
+            done, eta = m.group(1), m.group(2)
+        else:
+            m = _G.TBT_INITIAL_ETA.match(line)
+            if m is None:
+                return
+            done, eta = "0", m.group(1)
+        try:
+            done_pct, eta_s = _G.fortran_float(done), _G.fortran_float(eta)
+        except ValueError:
+            return
+        if math.isfinite(done_pct):
+            self.progress = {"done_pct": done_pct,
+                             "eta_s": eta_s if math.isfinite(eta_s) else None}
+
     def _on_emadel(self, line: str, line_no: int) -> None:
         m = _G.EMADEL.match(line)
         if m:
@@ -872,6 +898,13 @@ class SiestaReader:
             SectionRule(name="emadel", aliases=["siesta: Emadel = ..."],
                         start=matches_regex_ci(_G.EMADEL.pattern),
                         on_start=self._on_emadel),
+            SectionRule(name="tbt_progress",
+                        aliases=["tbt: Initial ETA in ...",
+                                 "tbt: Calculated N %, ETA in ..."],
+                        start=any_of(
+                            matches_regex_ci(_G.TBT_INITIAL_ETA.pattern),
+                            matches_regex_ci(_G.TBT_PROGRESS.pattern)),
+                        on_start=self._on_tbt_progress),
             SectionRule(name="run_start", aliases=[">> Start of run"],
                         start=matches_regex_ci(_G.RUN_START.pattern),
                         on_start=self._on_run_start),
@@ -978,12 +1011,14 @@ class SiestaReader:
 
         ``{phase, cycle, energy, dDmax, dHmax, dq, residuals, step,
         step_kind, steps_done, max_force, max_force_constrained, criteria,
-        targets}``, each present only when the output states it: the
+        targets, done_pct, eta_s}``, each present only when the output
+        states it: the
         current SCF row's values (a NEGF row's charge among them), and as
         ``residuals`` each beside the criterion its phase states --
         ``{name: (value, tolerance or None, unit)}``; the step SIESTA last
         began, its number and its words for what a step is, and so how many
-        steps are done; the latest largest force, and what each must reach.
+        steps are done; the latest largest force, and what each must reach;
+        the engine's own estimate of how far it is (TBtrans's).
         """
         out: Dict[str, Any] = {}
         cycle = (self._current_scf[-1] if self._current_scf else
@@ -1024,6 +1059,8 @@ class SiestaReader:
                    if k != "source"}
         if targets:
             out["targets"] = targets
+        if self.progress is not None:
+            out.update(self.progress)
         return out
 
     def finish(self) -> Dict[str, Any]:
@@ -1108,6 +1145,8 @@ class SiestaReader:
         if crit:
             self.runtime_info["scf_criteria"] = crit
         # WHAT EACH SCF ROW MEASURES, the engine's one declaration.
+        if self.progress is not None:
+            self.runtime_info["progress"] = dict(self.progress)
         self.runtime_info["scf_residuals"] = [dict(r) for r in
                                               _G.SCF_RESIDUALS]
         return {"steps": self.steps, "live_scf": live_scf,

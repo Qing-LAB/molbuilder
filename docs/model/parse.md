@@ -622,6 +622,7 @@ declares ([`web/trajectory.md`](?doc=web/trajectory.md) § 3.0).
 | `max_force` · `max_force_constrained` | the latest `Max` line, and whether it was the constrained one | the last step's · — |
 | `criteria` · `targets` | per phase, as `criteria()` · the `redata:` limits | — · as `targets()` |
 | `scf_cycles` · `last_cycle` · `scf_rows` | — | the last step's SCF cycles, its last cycle, all rows so far |
+| `done_pct` · `eta_s` | the engine's own estimate of how far it is: the share of its work done, in per cent, and the time it says is left — TBtrans's latest progress line, its first estimate `0` per cent done (§ 5d.5) | — |
 
 The monitor feeds each file only what it gained since its last wake and picks
 the pass by the file's ROLE (`monitor.LIVE_READERS`: `.out` → `SiestaReader`,
@@ -1491,7 +1492,8 @@ record
 │   ├── launch           mode · command · job_id · launched_at · placed_on ·
 │   │                    continued_from · ranks_asked · threads · ranks · threads_engine
 │   ├── time             run_start_local · run_end_local · engine_elapsed_s · s_per_iter ·
-│   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase>
+│   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase> ·
+│   │                    done_pct · eta_s · estimated_at
 │   ├── memory           mem_peak_gb · mem_peak_from · util_basis · cpu_mean_pct ·
 │   │                    gpu_sm_mean_pct · mem_basis · mem_limit_gb
 │   └── exit             code · at · note (what the wrapper added: a failed finish, a finish that cannot load)
@@ -1521,7 +1523,7 @@ is rows, not a code path.
 
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
-| `siesta-out` | `<base>-runN.out`, head and tail | the grammar's line readers (§ 5d.5) | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local`; `setup.pseudopotentials` |
+| `siesta-out` | `<base>-runN.out`, head and tail | the grammar's line readers (§ 5d.5); its tail through the reading pass | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.done_pct` · `time.eta_s` · `time.estimated_at` — the engine's own progress, as the pass's `now()` states it, and when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged`; `earlier` |
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
@@ -1692,6 +1694,7 @@ case-blind throughout (user, 2026-05-28).
 | TranSIESTA once per run: the `ts:` start-up echo, the charge distribution at the switch, the electrode checks | `TS_ECHO*`, `TS_CHARGE_START`, `TS_CHARGE_ROW`, `TS_PRINCIPAL_CELL`, `TS_GF_*` | the reading pass | `runtime_info["transiesta"]`: `options`, `electrodes`, `contours` (one segment per chemical potential or contour part), `charge_at_switch` |
 | `siesta: Emadel`, SIESTA's own Makov–Payne term (`write_subs.F`) | `EMADEL` | the reading pass | `runtime_info["emadel_ev"]` |
 | TBtrans: the k-points, each spin pass's `tbt: Completed in`, the `V [V] / I [A]` and `V [V] / P [W]` lines, the transmission files per channel (`Util/TS/TBtrans/`) | `TBT_KPOINTS`, `TBT_KMETHOD`, `TBT_COMPLETED`, `TBT_CURRENT`, `TBT_POWER`, `TBT_CHANNELS` | `tbtrans.read_tbtrans_out`, `tbtrans.transmission_files` | `k_points`, `k_method`, `completed_s` per pass, `currents` [{`from`, `to`, `voltage_v`, `current_a`, `power_w`, `channel`}]; `{channel: [AVTRANS files]}` |
+| TBtrans's progress: `tbt: Initial ETA in S s` once its first k-point and energy are done, then `tbt: Calculated N %, ETA in S s` each time another `TBT.Progress` per cent of its k-point × energy loop is (5 by default; `m_tbt_trik.F90`, `m_tbt_options.F90`) | `TBT_INITIAL_ETA`, `TBT_PROGRESS` | the reading pass | `now()`'s `done_pct` (`0` after the first estimate) and `eta_s`; `finish()`'s `runtime_info["progress"]` = `{done_pct, eta_s}`, the last the output states — each line written at the start of an energy point, so the last is short of 100 %; a time that is not a number states none (`eta_s` `null`: TBtrans divides by the share done, and at `TBT.Progress 0` its line at 0 % says `Infinity`) |
 
 `tbtrans.py` is not a registered viewer file: its reader is the transport
 record (`engines/transport.md` § 2a.12).

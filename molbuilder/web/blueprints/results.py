@@ -150,7 +150,9 @@ def api_results_dir():
     (``null`` when nothing claims it — the browser must not offer it), and
     ``about``: the catalogue's line for a file molbuilder writes, or *not
     written by molbuilder* (`web/results.md` § 3b).  ``openable`` is the
-    door's own pick, the run the folder speaks for.
+    door's own pick, the path of the result of the run the folder speaks for
+    -- for a transmission run its calculation's report, sent whole as
+    ``report`` with the ``point`` it opens at.
     """
     from pathlib import Path
 
@@ -216,7 +218,12 @@ def api_results_dir():
         "ok":       True,
         "run_dir":  str(directory),
         "engine":   got["engine"],
-        "openable": (Path(got["openable"]).name if got["openable"] else None),
+        "openable": got["openable"],
+        # THE FILE THE FOLDER OPENS WHEN IT LIES OUTSIDE IT, its row with its
+        # path, and the point it opens at -- a transmission run's
+        # calculation report (§ 2); `null` elsewhere.
+        "report":   got["report"],
+        "point":    got["point"],
         "attempts": attempts,
         # WHAT THIS DIRECTORY IS, and what it belongs to -- `null` when it
         # does not say, which the page shows as *read alone* rather than

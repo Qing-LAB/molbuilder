@@ -219,7 +219,8 @@ _PAD = {
     "negf_neq_eta_ev": 23, "ts_elecs_eta_ev": 23, "tbt_elecs_eta_ev": 23,
     "tbt_contours_eta_ev": 23, "tbt_spin": 23, "tbt_dos_gf": 23,
     "tbt_dos_a": 23, "tbt_dos_elecs": 23, "tbt_t_eig": 23, "tbt_t_bulk": 23,
-    "tbt_t_all": 23, "tbt_verbosity": 23, "negf_neq_fermi_cutoff_kt": 30,
+    "tbt_t_all": 23, "tbt_verbosity": 23, "tbt_progress": 23,
+    "negf_neq_fermi_cutoff_kt": 30,
     "ts_solution_method": 23, "ts_hartree_fix": 23, "tbt_solution_method": 23,
     "ts_scf_dq_converge": 23, "ts_scf_dq_tolerance": 23,
 }

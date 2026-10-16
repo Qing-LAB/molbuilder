@@ -1066,6 +1066,16 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
+    tbt_progress: float = field(default=5.0, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "How often tbtrans states its progress, in per cent",
+        "engine_key":  "TBT.Progress",
+        "range":       (0.0, 100.0),
+        "tier":        "advanced",
+    })
+
     negf_eq_pole_ev: float = field(default=10.0, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",

@@ -444,6 +444,9 @@
         let lastLadder      = null;   // the root's ladder (results.md § 2.4)
         let lastRecord      = null;   // the run's record (results.md § 3a)
         let lastFiles       = [];     // every file, with what it is (§ 3b)
+        let lastReport      = "";     // the report it opens outside it (§ 2)
+        let lastPoint       = null;   // ...and the point it opens it at
+        let lastRunDir      = "";     // the folder the menu's paths are in
         let cachedResults   = [];  // last successful scan -- flat, newest first
         let cachedGroups    = [];  // same data bucketed via groupResultFiles;
                                    // ``_populate`` consumes this so we don't
@@ -559,6 +562,9 @@
             lastLadder = null;
             lastRecord = null;
             lastFiles = [];
+            lastReport = "";
+            lastPoint = null;
+            lastRunDir = "";
             if (!dir) {
                 // No directory selected (sidebar cleared).  Show
                 // the picker bar in its placeholder state so the
@@ -626,21 +632,35 @@
                     // Filter to result-class files, then let a run's master
                     // absorb its working files so the menu lists the RUN, not
                     // its parts (results.md § 2.3).
-                    const results = absorbSatellites(
+                    lastRunDir = body.run_dir || dir;
+                    const here = absorbSatellites(
                         filterToResultFiles(body.files || [],
-                                            body.run_dir || dir,
+                                            lastRunDir,
                                             body.engine,
                                             inspReg.pickResult),
                         inspReg.pickResult
                     );
+                    /* THE FILE THE FOLDER OPENS, WHEN IT LIES OUTSIDE IT --
+                     * a transmission run's calculation report (results.md
+                     * § 2): listed FIRST, under its own heading, and opened
+                     * at the folder's `point`; the folder's own files below
+                     * it.  The server sends its row whole, with its path. */
+                    const report = body.report
+                        ? filterToResultFiles([body.report],
+                                              parseDir(body.report.path).dir,
+                                              body.engine,
+                                              inspReg.pickResult)
+                        : [];
+                    const results = report.concat(here);
+                    lastReport = report.length ? report[0].path : "";
+                    lastPoint = report.length ? (body.point || null) : null;
                     lastPlace = body.place || null;
                     lastLadder = body.ladder || null;
                     lastRecord = body.record || null;
                     lastFiles = body.files || [];
                     cachedResults = results;
-                    cachedGroups = results.length
-                        ? groupResultFiles(results, inspReg.pickResult)
-                        : [];
+                    cachedGroups = groupResultFiles(report, inspReg.pickResult)
+                        .concat(groupResultFiles(here, inspReg.pickResult));
                     barEl.hidden = false;
 
                     /* ---- ONE DECISION ------------------------------- //
@@ -651,10 +671,11 @@
                      *
                      * KEEP what is already showing if this directory still
                      * offers it; otherwise take THE DOOR'S PICK -- `openable`
-                     * is `parse.dirs.openable_in`'s answer, the file this
-                     * CALCULATION produced, the same file during the run and
-                     * after it.  Taking `results[0]` instead differed from
-                     * the door on 18 of 96 real run directories.
+                     * is the run door's answer (`runs.openable`), the path of
+                     * the file this CALCULATION produced, the same file
+                     * during the run and after it.  Taking `results[0]`
+                     * instead differed from the door on 18 of 96 real run
+                     * directories.
                      *
                      * AND NOTHING IS AN ANSWER.  When the door offers no
                      * pick, nothing here is this directory's product, so a
@@ -672,7 +693,7 @@
                     const keepCurrent =
                         currentFile && results.some(r => r.path === currentFile);
                     const byDoor = body.openable
-                        ? results.find(r => r.name === body.openable)
+                        ? results.find(r => r.path === body.openable)
                         : null;
                     const chosen = keepCurrent ? currentFile
                                  : (byDoor ? byDoor.path : null);
@@ -752,6 +773,9 @@
          */
         function _mirrorToSidebar(dir, path) {
             if (_divergedFromSidebar()) return true;
+            // A FILE OUTSIDE THE FOLDER -- the report a transmission run's
+            // folder opens (§ 2) -- has no row in it to highlight.
+            if (dir !== lastRunDir) return true;
             const r = proj.setShared(dir, path);
             if (r && r.ok === false) {
                 console.warn(
@@ -890,7 +914,12 @@
                      * the folder, each with what it is (`about`) -- rides for
                      * the file card (§ 3b), which explains a file the menu
                      * does not list as readily as one it does. */
+                    /* `point` rides with the report a transmission run's
+                     * folder opens (§ 2): the viewer selects it, as the
+                     * ladder row's *open* does. */
                     { detail: { file: file || "", meta: _metaFor(file),
+                                point: (file && file === lastReport)
+                                    ? lastPoint : null,
                                 place: lastPlace, ladder: lastLadder,
                                 record: lastRecord, files: lastFiles,
                                 record_dir: boundDir,

@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +29,7 @@ import pytest
 from _road import conda_hook, env_available
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
+from support.replay import output_lines, replay, statuses
 
 pytestmark = [
     pytest.mark.engine,
@@ -77,8 +77,7 @@ class _Output:
     geometry moves SIESTA began (``Begin <kind> opt. move = N``)."""
 
     def __init__(self, run: Path):
-        self.lines = _ran(run).stdout.read_text(
-            errors="replace").splitlines(keepends=True)
+        self.lines = output_lines(run)
         self.rows = [i for i, ln in enumerate(self.lines)
                      if ln.lstrip().startswith("scf:")]
         self.moves = [i for i, ln in enumerate(self.lines)
@@ -118,33 +117,6 @@ class _Output:
         raise AssertionError(f"no redata line states the {name} tolerance")
 
 
-def _replay(run: Path, tmp_path: Path, upto: int):
-    """The run's folder with its output written to ``upto``, and a
-    ``grow(to)`` that writes on, as SIESTA would.  What the monitor itself
-    writes -- its log and its samples -- and the timing tee, which grows with
-    the output, are left for the replay to write."""
-    ran = _ran(run)
-    there = tmp_path / run.name
-    shutil.copytree(run, there, ignore=shutil.ignore_patterns(
-        ran.stdout.name, "*.monitor.log", "*.util.csv", "*.scf-timing.log"))
-    lines = _Output(run).lines
-    out = there / ran.stdout.name
-    out.write_text("".join(lines[:upto]))
-    at = {"n": upto}
-
-    def grow(to: int) -> None:
-        with out.open("a") as fh:
-            fh.write("".join(lines[at["n"]:to]))
-        at["n"] = to
-    return there, monitor.WatchedRun(names=ran.names, run=ran.run,
-                                     directory=there), grow
-
-
-def _statuses(watched):
-    return [ln for ln in watched.path(".monitor.log").read_text().splitlines()
-            if "[STATUS]" in ln]
-
-
 def _whole(run: Path) -> int:
     return len(_Output(run).lines)
 
@@ -159,7 +131,7 @@ def test_a_completion_marker_does_not_stop_the_sampling(run, tmp_path):
     process -- certainly alive -- is the watched PID (`job-contracts.md`: the
     monitor follows the launcher's PID rather than guessing from output
     markers)."""
-    _, watched, _grow = _replay(run, tmp_path, _whole(run))
+    _, watched, _grow = replay(run, tmp_path, _whole(run))
     slept = []
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=os.getpid(), max_ticks=3,
@@ -175,7 +147,7 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(run, tmp_path):
     convergence, the process's goodbye, and whether the geometry converged
     as the output states it."""
     from molbuilder.parse.dirs import run_status
-    there, watched, _grow = _replay(run, tmp_path, _whole(run))
+    there, watched, _grow = replay(run, tmp_path, _whole(run))
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
@@ -184,7 +156,7 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(run, tmp_path):
         "finished", "job_completed")
     assert final.converged == {"periodic": True}
     assert final.exit and final.exit.startswith("rc=0")
-    closing = _statuses(watched)[-1]
+    closing = statuses(watched)[-1]
     assert "finished (job_completed)" in closing
     assert "converged: periodic yes" in closing
     assert final.relaxed is True and "geometry relaxed" in closing, closing
@@ -205,13 +177,13 @@ def test_each_advance_is_a_status_line_stating_where_the_run_is(run,
     assert len(o.moves) >= 3, "the relaxation made fewer than three moves"
     first = o.rows_of(0)
     k = min(7, len(first))
-    there, watched, grow = _replay(run, tmp_path, o.through(first[0]))
+    there, watched, grow = replay(run, tmp_path, o.through(first[0]))
     chunks = iter([o.through(first[k - 1]), o.end_of_move(1),
                    o.end_of_move(2)])
     monitor.run_monitor(watched, interval=1, watch_pid=0,
                         sleep=lambda _: grow(next(chunks)), max_ticks=3,
                         clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0]))
-    lines = _statuses(watched)
+    lines = statuses(watched)
     assert len(lines) == 3, lines
     assert f"periodic SCF iteration {k}" in lines[0], lines[0]
     dm = o.criterion("DM")
@@ -230,7 +202,7 @@ def test_a_run_that_does_not_advance_writes_and_sends_nothing(run, tmp_path):
     SCF step does -- adds no status line and tells no channel anything: the
     monitor judges no stall (`run-reports.md` § 2)."""
     o = _Output(run)
-    there, watched, _grow = _replay(run, tmp_path,
+    there, watched, _grow = replay(run, tmp_path,
                                     o.through(o.rows_of(0)[1]))
     seen = []
     monitor.register_notifier(lambda st, ev: seen.append(ev))
@@ -248,7 +220,7 @@ def test_util_sampling_is_change_gated_and_summarised(run, tmp_path):
     keepalive passes), and a [UTIL-SUMMARY] verdict lands at the end.  The
     samples are scripted -- the SAMPLER is the monitor's own, and what it
     reads is the machine, not a file."""
-    there, watched, _grow = _replay(run, tmp_path, _whole(run))
+    there, watched, _grow = replay(run, tmp_path, _whole(run))
     seq = [
         monitor.UtilSample(0.0, 50.0, 100.0, [(0, 95.0, 40.0, 20.0)]),
         monitor.UtilSample(0.0, 51.0, 100.0, [(0, 94.0, 40.0, 20.0)]),
@@ -278,7 +250,7 @@ def test_util_sampling_is_change_gated_and_summarised(run, tmp_path):
 
 def test_a_failing_notifier_does_not_break_the_loop(run, tmp_path):
     """Ends on the WATCHED PID, the only stop signal."""
-    _, watched, _grow = _replay(run, tmp_path, _whole(run))
+    _, watched, _grow = replay(run, tmp_path, _whole(run))
 
     def _boom(st, ev):
         raise RuntimeError("notifier blew up")
@@ -301,7 +273,7 @@ def _events(run, tmp_path, *, upto, chunks=(), notify_on_scf=False,
             notify_every_hours=0.0, **kw):
     """The monitor over the replayed run -- ``chunks`` are where the output
     has grown to at each wake -- and the events its notifiers saw."""
-    _, watched, grow = _replay(run, tmp_path, upto)
+    _, watched, grow = replay(run, tmp_path, upto)
     it = iter(chunks)
 
     def _sleep(_):
@@ -414,7 +386,7 @@ def _clock():
 def test_the_machine_is_the_logs_first_line(run, tmp_path):
     """Written at START, not in the terminal block: a monitor killed with
     its allocation must still have said where it died."""
-    _, watched, _grow = _replay(run, tmp_path, _whole(run))
+    _, watched, _grow = replay(run, tmp_path, _whole(run))
     monitor.run_monitor(watched, interval=1, watch_pid=999_999_999,
                         sleep=lambda s: None, clock=_clock())
     first = watched.path(".monitor.log").read_text(
@@ -432,7 +404,7 @@ def test_a_monitor_missing_its_companion_still_monitors(run, tmp_path,
         raise ModuleNotFoundError("config_dir")
     monkeypatch.setattr(monitor, "_secrets_dir", _no_companion)
     monkeypatch.delenv("MOLBUILDER_NOTIFY_FILE", raising=False)
-    _, watched, _grow = _replay(run, tmp_path, _whole(run))
+    _, watched, _grow = replay(run, tmp_path, _whole(run))
     monitor.run_monitor(watched, interval=1, watch_pid=999_999_999,
                         sleep=lambda s: None, clock=_clock())
     text = watched.path(".monitor.log").read_text(encoding="utf-8")
@@ -453,7 +425,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
     answers how it ended as the package's own `run_status` does."""
     from molbuilder.parse.dirs import run_status
     from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
-    there, _watched, _grow = _replay(run, tmp_path, _whole(run))
+    there, _watched, _grow = replay(run, tmp_path, _whole(run))
     ran = _ran(run)
     (there / MONITOR_BUNDLE).write_bytes(monitor_bundle())
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}

@@ -1016,6 +1016,16 @@ TBT_KMETHOD = re.compile(r"^\s*tbt:\s*Method\s*=\s*(.+?)\.?\s*$",
                          re.IGNORECASE)
 TBT_COMPLETED = re.compile(r"^\s*tbt:\s*Completed in\s+(\S+)\s*s",
                            re.IGNORECASE)
+#: TBtrans's progress (``m_tbt_trik.F90``): ``tbt: Initial ETA in S s`` once
+#: its first k-point and energy are done, then ``tbt: Calculated N %, ETA in
+#: S s`` each time another ``TBT.Progress`` per cent of its k-point × energy
+#: loop is (``m_tbt_options.F90``, 5 by default) -- its own estimate of the
+#: time left, as of that line.
+TBT_INITIAL_ETA = re.compile(
+    r"^\s*tbt:\s*Initial ETA in\s+(\S+)\s*s", re.IGNORECASE)
+TBT_PROGRESS = re.compile(
+    r"^\s*tbt:\s*Calculated\s+(\S+)\s*%,\s*ETA in\s+(\S+)\s*s",
+    re.IGNORECASE)
 #: ``L -> R, V [V] / I [A]: 0.400000     V / 0.309835E-04 A`` and the ``P [W]``
 #: line beside it (``m_tbt_save.F90``, one pair per electrode pair per pass):
 #: the bias TBtrans itself applied -- the electrodes' chemical-potential

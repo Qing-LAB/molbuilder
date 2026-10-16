@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -1803,3 +1804,193 @@ def test_a_points_current_is_the_junctions_total(junction):
     assert biased and all(p["current_a_printed"] for p in biased), points
     for p in points:
         assert np.isclose(p["current_a"], 2.0 * p["current_a_printed"]), p
+
+
+# --------------------------------------------------------------------- #
+#  A transmission in the Results tab, and how far it is (`web/results.md` #
+#  § 2, § 2.5, § 3a; `execution/run-reports.md` § 2.2)                    #
+# --------------------------------------------------------------------- #
+
+#: Every transmission point: ``(calculation, frame, voltage)`` -- the sweep's
+#: voltages, and the frame set's frames at each.
+_TRANSMISSION_POINTS = ([("T", None, v) for v in _BIAS]
+                        + [("F", f, v) for f in range(_N_FRAMES)
+                           for v in _BIAS])
+
+#: TBtrans's two progress lines as `m_tbt_trik.F90` writes them --
+#: ``'tbt: Initial ETA in ', f20.1, ' s'`` once, then ``'tbt: Calculated ',
+#: f7.2, ' %, ETA in ', f20.1, ' s'`` -- read here off the run's output, for
+#: where they fall and what each states.
+_TBT_INITIAL = re.compile(r"tbt: Initial ETA in\s+(\S+) s$")
+_TBT_CALCULATED = re.compile(r"tbt: Calculated\s+(\S+) %, ETA in\s+(\S+) s$")
+
+
+def _progress_stated(line: str):
+    """``(per cent done, seconds left)`` a TBtrans progress line states, or
+    ``None`` for any other line."""
+    m = _TBT_CALCULATED.match(line.strip())
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    m = _TBT_INITIAL.match(line.strip())
+    return (0.0, float(m.group(1))) if m else None
+
+
+def _transmission_point(junction, row):
+    """``(calculation, folder, point)`` of a `_TRANSMISSION_POINTS` row --
+    the point as its wire form names it, ``{frame, of, bias_v}``."""
+    name, f, v = row
+    if name == "T":
+        return (junction.bundle, _point(junction, "05_transmission", 0, v),
+                {"frame": None, "of": None, "bias_v": v})
+    return (junction.from_pair.bundle,
+            _frame_point(junction.from_pair, "05_transmission", f, v),
+            {"frame": f, "of": _N_FRAMES, "bias_v": v})
+
+
+def _results_dir(junction, monkeypatch, folder):
+    """The Results tab's answer for ``folder`` (`/api/results/dir`), the one
+    door pointed at the junction's tree."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.web.app import create_app
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    got = create_app(config={}).test_client().get(
+        f"/api/results/dir?path={folder}")
+    assert got.status_code == 200, got.get_json()
+    return got.get_json()
+
+
+@pytest.mark.parametrize("row", _TRANSMISSION_POINTS,
+                         ids=lambda r: f"{r[0]}-f{r[1]}-v{r[2]:g}")
+def test_a_transmission_runs_folder_opens_its_report_at_its_point(
+        junction, monkeypatch, row):
+    """TBtrans writes no file a viewer reads on its own, so a transmission
+    run's folder opens its calculation's report -- the description at the
+    root, `task.json`, the registry's `transport-task` -- at the folder's
+    point, its row sent whole for the menu to list first (`web/results.md`
+    § 2).  The silent failure, measured on a real run 2026-10-16: the folder
+    opened the progress log the wrapper writes at launch -- one preview
+    frame, never updated by TBtrans -- and a transmission running for days
+    showed a structure and no plot."""
+    calc, folder, point = _transmission_point(junction, row)
+    said = _results_dir(junction, monkeypatch, folder)
+    assert Path(said["openable"]).resolve() == (calc / "task.json").resolve(), (
+        said["openable"], said["attempts"])
+    assert said["report"]["path"] == said["openable"], said["report"]
+    assert said["report"]["parser"] == "transport-task", said["report"]
+    assert said["point"] == point, said["point"]
+
+
+@pytest.mark.parametrize("row", _TRANSMISSION_POINTS,
+                         ids=lambda r: f"{r[0]}-f{r[1]}-v{r[2]:g}")
+def test_a_transmissions_record_states_how_far_tbtrans_last_said_it_was(
+        junction, monkeypatch, row):
+    """How far a transmission is, is TBtrans's own estimate -- a line every
+    `TBT.Progress` per cent of its k-point x energy loop, 5 by default,
+    written in the deck -- and the run's record states the last one its
+    output states, with when the output last changed, as the Run panel shows
+    it (`model/parse.md` § 5d.1b, § 5d.5; `web/results.md` § 3a).  The silent
+    failure: a transmission whose record says nothing of how far it is while
+    its output says it every few per cent."""
+    from datetime import datetime
+
+    from molbuilder.runs import run_of
+    from support.replay import output_lines
+    _calc, folder, _point_ = _transmission_point(junction, row)
+    stated = [p for p in map(_progress_stated, output_lines(folder)) if p]
+    assert stated, f"{folder}: TBtrans stated no progress"
+    time = _results_dir(junction, monkeypatch,
+                        folder)["record"]["computation"]["time"]
+    assert (time["done_pct"], time["eta_s"]) == stated[-1], time
+    at = datetime.fromisoformat(time["estimated_at"].replace("Z", "+00:00"))
+    assert at.timestamp() == pytest.approx(
+        run_of(folder).stdout.stat().st_mtime, abs=1e-3), time
+
+
+def test_the_monitor_says_how_far_a_transmission_is_as_it_grows(junction,
+                                                                tmp_path):
+    """A transmission states no SCF row and no step: where it is, is
+    TBtrans's own line.  The monitor, shown the run's output as it grew --
+    from its first progress line, a line more at each wake -- writes a
+    [STATUS] line on each advance, the line every channel is sent, stating
+    the share done and the time left the output last states
+    (`execution/run-reports.md` § 2.2, § 4.1a).  The silent failure: a run going on for days whose monitor log
+    and messages say nothing after it began."""
+    from molbuilder import monitor
+    from support.replay import output_lines, replay, statuses
+    folder = _point(junction, "05_transmission", 0, _BIAS[0])
+    lines = output_lines(folder)
+    at = [i for i, ln in enumerate(lines) if _progress_stated(ln)]
+    assert len(at) >= 4, f"TBtrans stated {len(at)} progress lines"
+    _there, watched, grow = replay(folder, tmp_path, at[0] + 1)
+    chunks = iter([at[1] + 1, at[2] + 1, at[3] + 1])
+    monitor.run_monitor(watched, interval=1, watch_pid=0, max_ticks=3,
+                        sleep=lambda _: grow(next(chunks)))
+    said = statuses(watched)
+    assert len(said) == 3, said
+    for line, i in zip(said, at[1:]):
+        done, _left = _progress_stated(lines[i])
+        assert f"{done:.2f} % done" in line, line
+        assert "left (its estimate)" in line, line
+
+
+def test_the_results_tab_opens_a_transmission_folder_at_its_point(
+        junction, page, monkeypatch):
+    """`web/results.md` § 2, § 3a: pointed at a transmission run's folder --
+    the frame set's frame 1 at the second voltage -- the Results tab's menu
+    lists the calculation's report first, chooses it, and opens it with the
+    folder's point selected, its frame and its voltage (the I–V table's
+    row); the header says the report is the folder's result; the Run panel
+    states TBtrans's progress; and a point you pick in the report stays
+    picked when a return to the tab reads the folder again.  The silent
+    failures: the report opened at its first point -- frame 0, 0 V -- under a
+    folder that ran another; your pick undone each time you came back."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    folder = _frame_point(junction.from_pair, "05_transmission", 1, _BIAS[1])
+    task = (junction.from_pair.bundle / "task.json").resolve()
+    with serve() as base:
+        page.goto(f"{base}/molbuilder")
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.projects"
+            "      && typeof window.molbuilder.projects.setShared"
+            "         === 'function'")
+        page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
+                      str(folder))
+        page.goto(f"{base}/results")
+        page.wait_for_function(
+            "() => document.getElementById('results-file-picker-select')"
+            "      .value !== ''", timeout=30000)
+        menu = page.evaluate("""() => {
+            const s = document.getElementById('results-file-picker-select');
+            return {chosen: s.value, first: s.options[0].value}; }""")
+        assert Path(menu["first"]).resolve() == task, menu
+        assert menu["chosen"] == menu["first"], menu
+        page.wait_for_function(
+            """([f, v]) => [...document.querySelectorAll(
+                   '.transport-iv-row.is-selected')]
+                 .some((r) => r.dataset.frame === f && r.dataset.bias === v)""",
+            arg=["1", f"{_BIAS[1]:g}"], timeout=60000)
+        header = page.inner_text("#results-current-file")
+        assert "its result is its calculation's report" in header, header
+        page.click("#results-run-panel .rp-toggle")
+        panel = page.inner_text("#results-run-panel .rp-body")
+        assert "Done, by the engine's estimate" in panel, panel
+        # YOUR PICK, then a return to the tab: the folder read again, its
+        # answer announced -- and the point you picked still the one shown.
+        page.click('.transport-curves-card .panel-tab[data-tab="iv"]')
+        page.click('.transport-iv-row[data-frame="0"][data-bias="0"]'
+                   ' .transport-iv-pick')
+        mine = """() => [...document.querySelectorAll(
+            '.transport-iv-row.is-selected')]
+            .some((r) => r.dataset.frame === '0' && r.dataset.bias === '0')"""
+        page.wait_for_function(mine, timeout=30000)
+        page.evaluate("""() => {
+            window.__announced = 0;
+            document.addEventListener(
+                window.molbuilder.constants.EVENT_FILE_SELECTED,
+                () => { window.__announced += 1; });
+            document.dispatchEvent(new Event('visibilitychange')); }""")
+        page.wait_for_function("() => window.__announced >= 1",
+                               timeout=30000)
+        assert page.evaluate(mine), "the rescan undid the point you picked"

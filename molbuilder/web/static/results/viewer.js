@@ -62,6 +62,10 @@
     //: it: it says something is mounted, not which file it is showing.
     let mountedFile = "";
     let mountedName = "";
+    //: The point the report was last opened at by an announcement -- a
+    //: re-announce of the same file at the same point (a tab re-entry's
+    //: rescan) leaves the point you picked since in place.
+    let announcedPoint = "";
 
     //: The scope last announced, so a caller that does not know it cannot
     //: erase it.  See `_renderStatus`.
@@ -188,6 +192,12 @@
                 text = dir + " / (nothing selected)";
             } else if (_dirOf(file) === dir) {
                 text = dir + " / " + _basename(file);
+            } else if (sc.point) {
+                /* THE FOLDER'S OWN ANSWER, outside it by design: a
+                 * transmission run's result is its calculation's report at
+                 * its point (results.md § 2). */
+                text = dir + "  \u2014 its result is its calculation's "
+                     + "report, " + file;
             } else if (pickedRun && dir && file.startsWith(dir + "/")) {
                 /* A RUN PICKED OFF THE ROOT'S LADDER (results.md § 2.4):
                  * its folder under the calculation, by design -- not the
@@ -210,6 +220,7 @@
             els.fileReadout.classList.toggle(
                 "is-diverged",
                 !!sc.diverged || (!!file && !!dir && _dirOf(file) !== dir
+                                  && !sc.point
                                   && !(pickedRun && file.startsWith(dir + "/"))));
             // the whole line, warning included -- the ellipsis may hide it
             els.fileReadout.title = text;
@@ -506,7 +517,8 @@
         const place = (sel && sel.place) || null;
         const ladder = (sel && sel.ladder) || null;
         const scope = { dir: (sel && sel.dir) || "",
-                        diverged: !!(sel && sel.diverged) };
+                        diverged: !!(sel && sel.diverged),
+                        point: (sel && sel.point) || null };
         _sayOnLadder("");
         /* THE PICKER'S ANNOUNCEMENT OF A ROOT is remembered whole, so a run
          * picked off the ladder can be left again; a picked run's own
@@ -549,6 +561,7 @@
         if (file && file === mountedFile && currentHandle
                  && !(sel && sel.force)) {
             _renderStatus(file, mountedName, scope);
+            _selectPoint(scope.point, true);
             // ...and what is on screen IS the answer: say so, or the picker's
             // "Parsing <file>..." line waits out its fallback timer over a
             // view that never went away.
@@ -587,6 +600,21 @@
         mountedFile = file;
         mountedName = inspector.displayName;
         _renderStatus(file, inspector.displayName, scope);
+        _selectPoint(scope.point, false);
+    }
+
+    /* THE POINT A TRANSMISSION RUN'S FOLDER OPENS ITS REPORT AT (results.md
+     * § 2) -- `{frame, of, bias_v}`, the point's wire form -- handed to the
+     * report as its ladder row's *open* hands it (§ 2.4).  `again`: the
+     * report already on screen, where only another point is a new pick. */
+    function _selectPoint(point, again) {
+        const key = point ? JSON.stringify(point) : "";
+        if (again && key === announcedPoint) return;
+        announcedPoint = key;
+        if (!point || point.bias_v == null || !currentHandle
+                || typeof currentHandle.selectPoint !== "function") return;
+        currentHandle.selectPoint({ frame: point.frame,
+                                    bias: Number(point.bias_v) });
     }
 
     function init() {
@@ -695,8 +723,12 @@
             window.molbuilder.constants.EVENT_SCOPE_CHANGED,
             (evt) => {
                 const d = (evt && evt.detail) || {};
+                // the point stays with its folder: a Reload re-binding
+                // elsewhere leaves the report outside the new one
+                const same = !!_scope && _scope.dir === (d.dir || "");
                 _renderStatus(mountedFile, mountedName,
-                              { dir: d.dir || "", diverged: !!d.diverged });
+                              { dir: d.dir || "", diverged: !!d.diverged,
+                                point: same ? _scope.point : null });
             }
         );
 

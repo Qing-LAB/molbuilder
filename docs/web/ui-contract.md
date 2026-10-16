@@ -293,7 +293,10 @@ own `[hidden]` guard (§ 6).
   (`window.molbuilder.timeAgo`): each unit until one and a half of the next
   (90 s, 90 min, 36 h), *just now* below that, past 30 days the date itself,
   nothing when there is no moment. Two tabs had grown their own, and one said *7s ago* where the other
-  said *just now*.
+  said *just now*. A length of time in a sentence — the *6d left* an engine
+  estimates (`web/results.md` § 2.5) — is the same helper's
+  `window.molbuilder.timeSpan`, in the same units, days past 36 h
+  *(2026-10-16)*.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are
