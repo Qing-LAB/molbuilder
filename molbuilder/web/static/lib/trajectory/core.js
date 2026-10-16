@@ -293,8 +293,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // aliases route through to the bucketed canonical home so the
     // entire body of render code keeps working unchanged; the
     // contract's reset matrix is enforced at transition() and at
-    // the four documented external entry-points (loadByPath,
-    // Refresh, pollOnce result, dispose).
+    // the three documented external entry-points (loadByPath,
+    // pollOnce result, dispose).
     (function _wireBackcompatAliases() {
         // The shared inspector helper (lib/inspectors/lifecycle.js).
         function alias(key, bucket) {
@@ -931,8 +931,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * already on it (/api/watch/load). */
         /* THE HOST REPLACES WHAT ITS VIEWER SHOWS, AND SAYS SO
          * (`web/molview.md` § 9.4): the viewer is mounted read-only, which
-         * takes a second install only when its host means it -- a Refresh, a
-         * poll's rebuild (`web/trajectory.md` § 5).  Refused, the counter
+         * takes a second install only when its host means it -- a poll's
+         * rebuild (`web/trajectory.md` § 5).  Refused, the counter
          * grew while the movie kept the old frames. */
         try {
             await _mvdata().installMolecule({
@@ -2294,22 +2294,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
                   : "", null);
     }
 
-    // Refresh-button listener wiring.  Wired ONCE at mount; not
-    // re-wired on every load/transition.
-    function _wireRefreshListener() {
-        const C = (window.molbuilder || {}).constants;
-        if (!C || !C.EVENT_REFRESH_REQUESTED) return;
-        // Contract § 5: Refresh = file-switch with current path.
-        // loadByPath -> transition('LOADING') runs the full reset
-        // matrix.
-        const _onRefresh = () => {
-            const p = state.fileState.path;
-            if (!p) return;     // not yet loaded; nothing to refresh
-            loadByPath(p);
-        };
-        _on(document, C.EVENT_REFRESH_REQUESTED, _onRefresh);
-    }
-
     function startPolling() {
         // Idempotent timer-start.  Called by transition('WATCHING').
         if (state.pollTimer) clearInterval(state.pollTimer);
@@ -2353,8 +2337,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         //   * stop poll timer + clear pollInFlight
         //   * empty fileState (sets path = new path)
         //   * reset viewState (firstFit=true)
-        // Refresh button arrives here too -- same code path, same
-        // resets.  Eliminates the half-refresh class.
         transition("LOADING", { path: path });
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
@@ -2544,10 +2526,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
     if (opts.file) {
         loadByPath(opts.file);
     }
-
-    // Refresh-button listener wires here ONCE per mount.  Tears
-    // down with the inspector's dispose path, through the listener scope.
-    _wireRefreshListener();
 
     // The handle the caller uses to dispose + control the mounted
     // inspector.  Required for /results' registry-based dispatch

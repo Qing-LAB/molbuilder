@@ -9,8 +9,6 @@ state.
 * an answer is written under its own file's name or not at all, one that
   names no file is refused, and after dispose a late answer writes nothing
   (§ 4.2);
-* Refresh reloads the file on screen (§ 4: *"Reload = open the same file
-  again"*);
 * the legacy flat names and the buckets are one value, and a knob's write
   is saved (`spectra.md` § 7).
 
@@ -48,8 +46,8 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
             run=None):
     """The spectra viewer's state -- ``machine``, showing ``path`` with
     ``results`` (a mark, or none), its poll timer running when ``polling``
-    -- driven by ``script`` through the REAL `transition`, `dispose` and
-    `_wireRefreshListener`; what it then holds.
+    -- driven by ``script`` through the REAL `transition` and `dispose`;
+    what it then holds.
 
     Faked at the edge: the timers and the abort controllers (each says
     when it is used), the loader, the listener registrar, and what dispose
@@ -63,14 +61,8 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         globalThis.clearInterval = () => {{ _polling = false; }};
         const WATCH_INTERVAL_MS = 2000;
         function watchTick() {{}}
-        const _loaded = [];
-        function loadByPath(p) {{ _loaded.push(p); }}
-        const _handlers = {{}};
-        function _on(target, ev, h) {{ _handlers[ev] = h; }}
         const _listeners = {{ disposeAll() {{}} }};
         const document = {{}};
-        const window = {{ molbuilder: {{ constants:
-            {{ EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh" }} }} }};
         let chart = null, chartReady = null;
         const els = {{}};
         const root = globalThis;
@@ -89,8 +81,6 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         }};
         {lifted(MODULE, "    function transition(target, payload) {",
                 "\n    function ")}
-        {lifted(MODULE, "    function _wireRefreshListener() {",
-                "\n    function ")}
         const handle = {{
         {lifted(MODULE, "        dispose() {", "\n        },")}
         }}
@@ -107,7 +97,6 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
             prefs: state.uiPrefs,
             polling: _polling,
             aborted: _aborted.sort(),
-            loaded: _loaded,
             threw,
         }}));
     """
@@ -154,11 +143,6 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
         {"machine": "IDLE", "path": None, "results": None, "polling": False,
          "aborted": ["load", "watch"]},
         id="after dispose a late answer for the file writes nothing"),
-    pytest.param(
-        {"machine": "LOADED"},
-        '_wireRefreshListener(); _handlers["molbuilder:results:refresh"]();',
-        {"loaded": [_A]},
-        id="Refresh reloads the file on screen"),
 ])
 def test_what_the_spectra_viewer_holds_after(start, script, holds):
     """THE SILENT FAILURES: a late answer for a file you have moved off,
@@ -170,7 +154,7 @@ def test_what_the_spectra_viewer_holds_after(start, script, holds):
     MUTATIONS THIS MUST FAIL AGAINST: APPLY's path guard gone; IDLE leaving
     the path; dispose not reaching IDLE; LOADING keeping a request or
     clearing the preferences; LOADED leaving the timer; WATCHING starting
-    none; Refresh loading nothing."""
+    none."""
     out = _viewer(script, **start)
     for key, want in holds.items():
         if key == "threw":

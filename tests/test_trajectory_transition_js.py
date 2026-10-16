@@ -301,66 +301,6 @@ def test_no_frames_is_not_an_error():
 
 
 # --------------------------------------------------------------------- #
-#  Refresh — the button must reach the loader                           #
-# --------------------------------------------------------------------- #
-
-def _refresh(*, path):
-    """Wire the REAL `_wireRefreshListener`, fire the event, report what
-    it called.
-
-    Everything outside the function is faked at the edge: the constant
-    bundle it reads the event name from, the listener registrar, the
-    loader, and the observer it also installs.
-    """
-    fn = lifted(MODULE, "    function _wireRefreshListener() {",
-                "\n    function ")
-    harness = f"""
-        const _loaded = [];
-        const _handlers = {{}};
-        const window = {{ molbuilder: {{ constants:
-            {{ EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh" }} }} }};
-        const document = {{}};
-        function _on(t, ev, h) {{ _handlers[ev] = h; }}
-        function loadByPath(p) {{ _loaded.push(p); }}
-        function resizePlots() {{}}
-        class ResizeObserver {{ constructor(f) {{}} observe() {{}} }}
-        const $ = () => null;
-        // The same function also installs the plots' ResizeObserver, which
-        // reaches the card's root element.  Faked so the wiring under test
-        // runs; that observer has its own coverage.
-        const rootEl = {{ querySelector: () => null }};
-        const state = {{ fileState: {{ path: {json.dumps(path)} }} }};
-        {fn}
-        _wireRefreshListener();
-        const h = _handlers["molbuilder:results:refresh"];
-        if (h) h();
-        console.log(JSON.stringify({{ wired: !!h, loaded: _loaded }}));
-    """
-    return run_node([], harness)
-
-
-def test_refresh_reloads_the_file_on_screen():
-    """Pressing Refresh re-runs the load for the file being shown.
-
-    `results.md` § 5: Refresh is a clean reload, not a nudge — it goes
-    through `loadByPath`, so `transition('LOADING')` runs the whole reset
-    matrix.
-    """
-    out = _refresh(path="/p/run.molwatch.log")
-    assert out["wired"] is True, (
-        "nothing subscribed to the refresh event: the Refresh button is "
-        "wired to nothing and does nothing, silently")
-    assert out["loaded"] == ["/p/run.molwatch.log"], (
-        f"Refresh must reload the file on screen; it called loadByPath "
-        f"with {out['loaded']!r}")
-
-
-def test_refresh_before_anything_is_loaded_does_nothing():
-    """No file, no reload — and no crash on a null path."""
-    assert _refresh(path=None)["loaded"] == []
-
-
-# --------------------------------------------------------------------- #
 #  The state's shape, and the legacy names that read through to it      #
 # --------------------------------------------------------------------- #
 
@@ -476,10 +416,10 @@ def test_error_stops_the_poll_but_does_NOT_release_its_controller():
 def test_starting_the_poll_wires_no_listener():
     """`startPolling` is timer-only.
 
-    The Refresh listener is wired ONCE at mount: wired here, every load
-    would stack another handler and one Refresh would fire N loads. This
-    runs the real function with a spying registrar and asserts it
-    registered nothing.
+    The viewer's listeners are wired ONCE at mount: one wired here would be
+    wired again on every load, stacking handlers that each fire. This runs
+    the real function with a spying registrar and asserts it registered
+    nothing.
     """
     fn = lifted(MODULE, "    function startPolling() {",
                 "\n    function stopPolling")
@@ -490,8 +430,6 @@ def test_starting_the_poll_wires_no_listener():
         const POLL_MS = 15000;
         const state = {{ pollTimer: null }};
         const document = {{ addEventListener: (ev) => _registered.push(ev) }};
-        const window = {{ molbuilder: {{ constants:
-            {{ EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh" }} }} }};
         globalThis.setInterval = () => 1;
         globalThis.clearInterval = () => {{}};
         {fn}
@@ -502,7 +440,7 @@ def test_starting_the_poll_wires_no_listener():
     out = run_node([], harness)
     assert out["registered"] == [], (
         f"startPolling registered {out['registered']!r}. Every load would "
-        f"add another handler, so one Refresh fires N reloads.")
+        f"add another handler.")
     assert out["timer"] is not None, "startPolling must actually start a timer"
 
 

@@ -369,13 +369,15 @@ Two rules keep this from hiding anything:
 
 - **A file-selected event is the single source of truth.** When you choose from
   the dropdown, it fires a `fileSelected` event that the controller listens for.
-- **Reload re-scans the folder, and tells a live viewer to re-fetch its data
-  *now*** rather than waiting for the next poll. The panel isn't torn down and
-  rebuilt — the mounted viewer reloads in place — but that reload is a *clean*
-  one (§ 4), so a trajectory opens again at its newest frame, as a load does. The picker stays
-  visible even when a folder has zero results, so Reload is always reachable,
-  and it re-scans automatically when you return to the tab (so a file written
-  while you were away shows up).
+- **Reload re-scans the folder and opens the file on screen again**: the
+  viewer showing it is put away and mounted afresh, the clean reload a file
+  switch gives (§ 4) — every viewer the same way. So a trajectory opens again
+  at its newest frame, as a load does, and what a viewer holds only for itself
+  starts over (the movie's speed and loop, the force scale); preferences kept
+  in the workspace survive it (the spectra viewer's, `spectra.md` § 7). The
+  picker stays visible even when a folder has zero results, so Reload is
+  always reachable, and it re-scans automatically when you return to the tab
+  (so a file written while you were away shows up).
 
 ### 2.4 A calculation root shows its LADDER
 
@@ -1252,8 +1254,8 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   under a rebind whose scan fails.
 - `test_trajectory_transition_js.py` and `test_spectra_transition_js.py` —
   § 4 and § 4.2 run on each viewer's own state machine: a file switch, a
-  poll, dispose, Refresh, and an answer written under its own file's name
-  or not at all.
+  poll, dispose, and an answer written under its own file's name or not at
+  all.
 - § 4.1, the run followed by the server's answer:
   `tests/data/hand_overs.toml` (the server's answer for a run that ended --
   not followed),

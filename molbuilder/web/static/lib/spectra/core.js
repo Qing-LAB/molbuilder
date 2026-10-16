@@ -153,7 +153,7 @@
         fileState: {
             // The file on screen, written by transition('LOADING') from
             // the path loadByPath was handed -- the dropdown's pick, a
-            // Refresh, or the registry's hot swap.
+            // return to the tab, or the registry's hot swap.
             path:    null,
             // results: SpectraResults dict from /api/spectra/load.
             // Replaced atomically inside transition('APPLY').
@@ -1061,8 +1061,8 @@
         return { path: path, body: await r.json() };
     }
 
-    /** Load the file ``path`` names -- the dropdown's pick, a Refresh, a
-     *  return to the tab, or the registry's hot swap -- and FOLLOW it while
+    /** Load the file ``path`` names -- the dropdown's pick, a return to
+     *  the tab, or the registry's hot swap -- and FOLLOW it while
      *  its run is live (web/spectra.md § 7): `_settlePostLoad` starts the
      *  poll when the run the server says the file belongs to is queued or
      *  running, and `watchTick` stops it when it no longer is. */
@@ -1074,7 +1074,7 @@
         // Aborts loadAbort + watchAbort, clears watchInFlight, stops
         // the watchTimer if running, empties fileState (sets path),
         // and resets viewState -- the same reset for a new file and
-        // for a Refresh of this one (contract § 5: no partial resets).
+        // for this one again (contract § 5: no partial resets).
         transition("LOADING", { path: path });
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
@@ -1230,13 +1230,13 @@
         // that has already SETTLED:
         //
         //   watching A -> tick resolves, continuation queued
-        //   -> Refresh fires for A (a reload of the same file)
+        //   -> a return to the tab reloads A (the same file)
         //      -> transition('LOADING') aborts us, stops the timer,
         //         empties results
         //   -> our continuation runs.  myPath === fileState.path, both
         //      "A", so a path check alone lets it through: it repaints
-        //      the pre-Refresh body and _settlePostLoad restarts the
-        //      poll timer the Refresh had just stopped.
+        //      the pre-reload body and _settlePostLoad restarts the
+        //      poll timer the reload had just stopped.
         //
         // `signal.aborted` is what closes that, because the transition
         // aborted this request.  The path answers the OTHER question -- a
@@ -3388,21 +3388,6 @@
         }
     }
 
-    // Refresh-button listener wiring (contract § 5).  Mirrors
-    // trajectory's _wireRefreshListener: wired ONCE at mount; not
-    // re-wired per-load.  The Refresh button does what § 5 says:
-    // file-switch with the current path.
-    function _wireRefreshListener() {
-        const C = (window.molbuilder || {}).constants;
-        if (!C || !C.EVENT_REFRESH_REQUESTED) return;
-        // Route through the _on() helper so dispose() tears this down
-        // with every other listener registered in this module.
-        _on(document, C.EVENT_REFRESH_REQUESTED, () => {
-            const p = state.fileState.path;
-            if (!p) return;     // not yet loaded; nothing to refresh
-            loadByPath(p);
-        });
-    }
 
     // ----- Bootstrap -------------------------------------------
     function init() {
@@ -3567,10 +3552,6 @@
     // default announced during init cannot overwrite the saved value on its
     // way in.  Nothing awaits it -- a slow read must not delay the form.
     _prefsRestore();
-
-    // Contract § 5: wire Refresh ONCE at mount.  Mirrors
-    // trajectory's _wireRefreshListener pattern.
-    _wireRefreshListener();
 
     // The file the caller mounted us for -- /results passes the
     // dropdown's pick as opts.file, the one route to a file.  Guarded on

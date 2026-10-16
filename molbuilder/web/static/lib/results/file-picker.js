@@ -1091,27 +1091,11 @@
             // Brief visual ack so the click feels responsive even
             // when the listing is already up-to-date.
             _showTransientStatus("Reloading…");
+            // RELOAD OPENS THE FILE AGAIN (web/results.md § 2): the scan's
+            // announcement is forced, so the viewer on screen is put away and
+            // mounted afresh -- the clean reload a file switch gives (§ 4).
             forceNextAnnounce = true;
             _alignToSidebar();
-            // Tell any currently-mounted inspector to re-fetch its
-            // underlying data NOW instead of waiting for its next
-            // polling tick (which the trajectory inspector sets at
-            // 60 s -- way too slow for a deliberate user refresh).
-            // Fired separately from EVENT_FILE_SELECTED because
-            // the file path didn't change -- re-emitting that would
-            // remount + lose camera/playback state.  The trajectory and
-            // spectra inspectors reload their file on it (spectra
-            // follows a running result on its own, every 2 s, but a
-            // deliberate refresh should not wait for a tick); the
-            // structure inspector ignores it.
-            try {
-                document.dispatchEvent(new CustomEvent(
-                    C.EVENT_REFRESH_REQUESTED));
-            } catch (_) {
-                // CustomEvent unavailable -- belt + braces for older
-                // headless test runners; the picker's rescan still
-                // gives the user the dir listing update.
-            }
         }
         if (refreshBtn) {
             refreshBtn.addEventListener("click", _onRefreshClick);
