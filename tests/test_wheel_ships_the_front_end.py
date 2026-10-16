@@ -1,137 +1,102 @@
-"""**A built wheel must carry every file the served pages ask for.**
+"""**An installed copy has its whole front end**: a built wheel carries every
+file of the package, and every asset a served page names is there.
 
-The failure this guards is silent in the only place anyone looks: the repo
-works, because Flask serves `molbuilder/web/static/` off disk.  An INSTALLED
-copy serves what the wheel packaged, and on 2026-09-03 a wheel built from this
-tree was measured carrying **90 of the 141** static files — the whole MolView
-module (13 files), the structure page (9), VibrationView (5), and the
-Task-setup, Documents, Transport and This-machine tabs' own assets.  Every
-directory added after the hand-kept glob list was last edited was missing, and
-nothing said so.
+molbuilder is not pip-installed to be run today, and PyPI is planned (the
+user, 2026-10-15), so its package-data list is kept correct
+(`pyproject.toml`): it has been wrong twice in ways only an installed copy
+showed -- no `.toml` pattern until 2026-08-14, so the
+parameter catalogue and the warm-file rules never shipped; and on 2026-09-03
+a wheel carrying 90 of the 141 static files, every directory added after
+the hand-kept glob list was last edited missing.  The repo worked both
+times, because Flask serves `web/static/` off disk.
 
-It had happened before, on the other side of the same list: no `.toml` pattern
-existed until 2026-08-14, so neither the parameter catalogue nor the warm-file
-rules shipped — *"it worked from the repo and would have failed on an installed
-copy"* (`pyproject.toml`'s own note).
-
-So the rule is not "keep the list current".  It is:
-
-> **Every file under `web/static/` is matched by a package-data pattern, and
-> every static asset a template names exists on disk.**
-
-The first half is what a recursive glob buys and this test keeps honest.  The
-second is its mirror: a pattern that ships everything is no help if a template
-points at a file nobody wrote.
-
-**Matched the way setuptools matches, not with `fnmatch` alone.**  `fnmatch`'s
-`*` crosses `/`, so `web/static/vendor/*/*` "covers" `lib/molview/model.js`
-under it and the first measurement of this defect came back **zero missing**.
-Per-segment matching is what setuptools' `glob` actually does, and it is what
-makes the count here real.
+Both halves are asked of the artifact: the wheel, built from the tree as it
+stands, and the pages, as the server answers them.
 """
 from __future__ import annotations
 
-import fnmatch
-import re
-import tomllib
+from html.parser import HTMLParser
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parents[1]
-PKG = REPO / "molbuilder"
-STATIC = PKG / "web" / "static"
-TEMPLATES = PKG / "web" / "templates"
 
 
-def _package_data_patterns() -> list[str]:
-    with open(REPO / "pyproject.toml", "rb") as fh:
-        cfg = tomllib.load(fh)
-    return cfg["tool"]["setuptools"]["package-data"]["molbuilder"]
+def test_a_built_wheel_carries_every_file_of_the_package(tmp_path):
+    """Every file git tracks under `molbuilder/` is in the wheel built from
+    it -- the scripts, styles, templates and data files an installed copy
+    reads as well as its modules.
 
+    Built from a copy of those files as they stand on disk, with the
+    environment's own setuptools (`pip wheel --no-build-isolation`):
+    nothing is installed, and the checkout is left as it was.
 
-def _matches(rel: str, pattern: str) -> bool:
-    """One path against one pattern, the way a filesystem glob works.
-
-    ``**`` spans directories; every other segment matches within one.
-    """
-    parts = rel.split("/")
-    pats = pattern.split("/")
-    if "**" in pats:
-        head = pats[: pats.index("**")]
-        tail = pats[pats.index("**") + 1:]
-        if len(parts) < len(head) + len(tail):
-            return False
-        if not all(fnmatch.fnmatch(a, b) for a, b in zip(parts, head)):
-            return False
-        if tail and not all(fnmatch.fnmatch(a, b)
-                            for a, b in zip(parts[len(parts) - len(tail):], tail)):
-            return False
-        return True
-    if len(parts) != len(pats):
-        return False
-    return all(fnmatch.fnmatch(a, b) for a, b in zip(parts, pats))
-
-
-def test_every_static_file_is_packaged():
-    """No file the server can hand out is left out of the wheel."""
-    pats = _package_data_patterns()
-    missing = sorted(
-        str(f.relative_to(PKG))
-        for f in STATIC.rglob("*")
-        if f.is_file() and not any(_matches(str(f.relative_to(PKG)), p)
-                                   for p in pats)
-    )
+    MUTATION THIS MUST FAIL AGAINST: the static tree's pattern one level
+    deep again, as the hand-kept list was."""
+    import shutil
+    import subprocess
+    import sys
+    import zipfile
+    files = subprocess.run(["git", "ls-files", "molbuilder"], cwd=REPO,
+                           capture_output=True, text=True,
+                           check=True).stdout.split()
+    src = tmp_path / "src"
+    for rel in files + ["pyproject.toml", "README.md", "LICENSE"]:
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / rel, src / rel)
+    built = subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", str(src), "--no-deps",
+         "--no-build-isolation", "-q", "-w", str(tmp_path / "dist")],
+        capture_output=True, text=True, timeout=300)
+    assert built.returncode == 0, built.stderr[-2000:]
+    wheel = next((tmp_path / "dist").glob("molbuilder-*.whl"))
+    shipped = set(zipfile.ZipFile(wheel).namelist())
+    missing = [f for f in files if f not in shipped]
     assert not missing, (
-        f"{len(missing)} static file(s) match no package-data pattern, so a "
-        "built wheel does not carry them and an installed copy serves a "
-        "broken page:\n  " + "\n  ".join(missing[:40])
-        + "\n\nDo not add another per-directory glob -- that list is what "
-          "failed.  The tree is covered recursively; a file outside it needs "
-          "a pattern that cannot go stale."
-    )
+        f"{len(missing)} of the package's {len(files)} files are not in the "
+        "wheel -- an installed copy lacks them:\n  "
+        + "\n  ".join(missing[:40]))
 
 
-def test_the_recursive_pattern_is_actually_recursive():
-    """The mutation guard for the matcher above.
+class _Assets(HTMLParser):
+    """The assets a page names as the browser reads them: every script's
+    ``src``, every stylesheet or icon ``href``, every image's ``src``."""
 
-    A matcher that answered ``True`` for everything would make the first test
-    vacuously green -- which is exactly what `fnmatch` alone did.  So: a file
-    two directories deep must NOT be matched by a one-level pattern.
-    """
-    assert not _matches("web/static/lib/molview/model.js", "web/static/lib/*.js")
-    assert not _matches("web/static/lib/molview/model.js", "web/static/vendor/*/*")
-    assert _matches("web/static/lib/molview/model.js", "web/static/**/*")
-    assert _matches("web/static/style.css", "web/static/**/*")
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.urls = []
 
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        url = (a.get("src") if tag in ("script", "img")
+               else a.get("href") if tag == "link" else None)
+        if url and url.startswith("/") and not url.startswith("//"):
+            self.urls.append(url)
 
-#: ``url_for('static', filename='…')`` — the only way a template names an asset.
-_URL_FOR = re.compile(
-    r"url_for\(\s*['\"]static['\"]\s*,\s*filename\s*=\s*['\"]([^'\"]+)['\"]")
-
-
-def test_every_asset_a_template_names_exists():
-    """The mirror: shipping everything does not help if a page asks for a
-    file nobody wrote.  A missing one is a 404 in the browser console and a
-    feature that silently does nothing."""
-    dangling = []
-    for tpl in sorted(TEMPLATES.rglob("*.html")):
-        text = tpl.read_text(encoding="utf-8")
-        for m in _URL_FOR.finditer(text):
-            rel = m.group(1)
-            if not (STATIC / rel).is_file():
-                line = text.count("\n", 0, m.start()) + 1
-                dangling.append(f"{tpl.relative_to(REPO)}:{line}: {rel}")
-    assert not dangling, (
-        "templates name static files that do not exist:\n  "
-        + "\n  ".join(sorted(dangling))
-    )
+    handle_startendtag = handle_starttag
 
 
-def test_the_template_scan_sees_the_templates():
-    """A path filter that matched nothing would make the test above pass by
-    checking nothing -- the shape this suite exists to catch elsewhere."""
-    tpls = list(TEMPLATES.rglob("*.html"))
-    assert len(tpls) >= 8, f"only {len(tpls)} templates found under {TEMPLATES}"
-    named = sum(len(_URL_FOR.findall(t.read_text(encoding="utf-8"))) for t in tpls)
-    assert named >= 40, f"only {named} url_for('static') references parsed"
+def test_every_asset_a_served_page_names_answers(isolated_projects_root):
+    """THE SILENT FAILURE: a page that names a file nobody wrote, or one moved
+    -- a 404 in the browser's console and a feature that does nothing.
+
+    Every page the app serves, parsed as the browser parses it, and each
+    asset it names asked of the server.
+
+    MUTATION THIS MUST FAIL AGAINST: a stylesheet a page links, gone."""
+    from molbuilder.web.app import create_app
+    from support.pages import every_served_page
+    web = create_app(config={"rate_limit": {"enabled": False}}).test_client()
+    named = {}
+    for path, html in every_served_page().items():
+        parsed = _Assets()
+        parsed.feed(html)
+        parsed.close()
+        for url in parsed.urls:
+            named.setdefault(url.split("?")[0], path)
+    assert any(u.startswith("/static/") for u in named), sorted(named)
+    dangling = {}
+    for url, page in sorted(named.items()):
+        status = web.get(url).status_code
+        if status != 200:
+            dangling[url] = f"{status}, named by {page}"
+    assert not dangling, dangling

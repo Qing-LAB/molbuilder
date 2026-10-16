@@ -60,20 +60,6 @@ class _InlineJavaScript(HTMLParser):
     handle_startendtag = handle_starttag
 
 
-def _served_pages(app):
-    """Every page ``app`` serves: each GET route with no URL argument,
-    outside ``/api/`` and ``/static/``, that answers 200 with HTML."""
-    web = app.test_client()
-    for rule in app.url_map.iter_rules():
-        path = str(rule)
-        if (path.startswith(("/api/", "/static/")) or rule.arguments
-                or "GET" not in rule.methods):
-            continue
-        r = web.get(path)
-        if r.status_code == 200 and r.mimetype == "text/html":
-            yield path, r.get_data(as_text=True)
-
-
 def test_no_page_served_carries_inline_javascript(isolated_projects_root):
     """`script-src 'self'` blocks inline JavaScript, and blocks it in
     silence: the browser logs one violation and the wiring never runs
@@ -88,15 +74,8 @@ def test_no_page_served_carries_inline_javascript(isolated_projects_root):
     MUTATIONS THIS MUST FAIL AGAINST: a script block in a page's template,
     an ``onclick`` in a partial a page includes, a script in the sign-in
     page."""
-    from molbuilder.web.app import create_app
-    quiet = {"rate_limit": {"enabled": False}}
-    sign_in = {"id": "cas", "label": "Sign in", "kind": "cas",
-               "allowed_users": ["user@example.com"],
-               "login_url": "https://cas.example.com/cas/login",
-               "email_domain": "example.com"}
-    pages = dict(_served_pages(create_app(config=quiet)))
-    pages.update(_served_pages(create_app(
-        config={**quiet, "auth": {"providers": [sign_in]}})))
+    from support.pages import every_served_page
+    pages = every_served_page()
     assert {"/results", "/login"} <= set(pages), sorted(pages)
     found = {}
     for path, html in sorted(pages.items()):
