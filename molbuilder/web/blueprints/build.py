@@ -1308,6 +1308,12 @@ def api_task_setup_prep():
                         "error": "no calculation folder given"}), 400
     try:
         dest = _resolve_within_roots(dest_raw)
+        # ...AND THE RUN `from` NAMES, a folder below it: fenced as every
+        # path the browser sends (`web/web-api.md` § 2.1), the folder it
+        # resolves to -- a link below the calculation followed -- inside
+        # the tree.
+        if from_attempt:
+            _resolve_within_roots(str(dest / from_attempt))
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     if not dest.is_dir():

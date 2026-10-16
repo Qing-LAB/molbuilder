@@ -1,0 +1,647 @@
+# THE PATH FENCE, ASKED OF EVERY /api/ ROUTE (`web/web-api.md` § 2.1) -- run
+# by `tests/test_the_path_fence.py`.
+#
+# One [[route]] per rule and method the app serves: either `takes_no_path`,
+# what it takes instead, or one [[route.path]] per place a filesystem path
+# enters, `request` the whole request that reaches the fence, the path there
+# OUTSIDE the projects tree.  `only_when` marks a route the app registers
+# only on a machine set up for it.  A probe is refused in the fence's words,
+# "is outside", unless it names its own (`refusal`: the docs routes fence
+# against docs/, not the projects tree), with a 4xx unless it states the
+# `status` its route answers a refusal with (the preflight answers what it
+# found, its refusal a finding).
+#
+# PLACEHOLDERS the runner fills:
+#   {outside_file} {outside_xyz} {outside_dir}  beside the projects tree
+#   {inside_file} {inside_xyz} {inside_dir}     inside it
+#   {outside_by_climbing}    a tree-relative name whose `..` climbs out of it
+#   {link_out}               a link inside {inside_dir} to {outside_dir}
+#   {outside_from_docs_img}  {outside_file}, relative to the docs' images
+
+[[route]]
+rule = "/api/<route>"
+method = "POST"
+only_when = "this machine's notify key file names a route"
+takes_no_path = "A secret route segment, two signed headers and a JSON run report; the log it appends to is reports_dir()/<user>.jsonl, the user resolved from the key file, never from the request."
+
+[[route]]
+rule = "/api/admin/rate_limit/clear"
+method = "POST"
+takes_no_path = "An IP address string, or all = true, naming rate-limiter state to clear."
+
+[[route]]
+rule = "/api/admin/rate_limit/status"
+method = "GET"
+takes_no_path = "Nothing; it reports the rate limiter's in-memory state."
+
+[[route]]
+rule = "/api/admin/reload"
+method = "POST"
+only_when = "the server runs under its supervisor (serve start)"
+takes_no_path = "Nothing; it exits so the supervisor starts a fresh server."
+
+[[route]]
+rule = "/api/admin/reload/available"
+method = "GET"
+takes_no_path = "Nothing; it answers whether a supervisor runs and the session is an admin."
+
+[[route]]
+rule = "/api/backends"
+method = "GET"
+takes_no_path = "Nothing; it lists the builder backends this machine has."
+
+[[route]]
+rule = "/api/bench/summary"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/build/load"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/build/molecule"
+method = "POST"
+takes_no_path = "A build kind (peptide / dna / rna / smiles / name) and its input text; `name` asks PubChem over the network, nothing reads a file."
+
+[[route]]
+rule = "/api/build/preflight"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "params.psml_lib"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
+status = 200
+
+[[route]]
+rule = "/api/build/schema/<engine>"
+method = "GET"
+takes_no_path = "An engine name in the URL (siesta / pyscf) and a calculation kind in the query; the schema comes from the shipped catalogue."
+
+[[route]]
+rule = "/api/checkpoint/init"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/checkpoint/list"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/checkpoint/restore"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}", state = "probe" } }
+
+[[route]]
+rule = "/api/checkpoint/save"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}", note = "probe" } }
+
+[[route]]
+rule = "/api/checkpoint/state"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/checkpoint/tag"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}", name = "probe", note = "probe" } }
+
+[[route]]
+rule = "/api/docs/img/<path:img_path>"
+method = "GET"
+writes = false
+[[route.path]]
+where = "url"
+name = "img_path"
+request = { url = "/api/docs/img/{outside_from_docs_img}" }
+refusal = ["invalid path"]
+
+[[route]]
+rule = "/api/docs/read"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+refusal = ["escapes docs/"]
+
+[[route]]
+rule = "/api/docs/toc"
+method = "GET"
+takes_no_path = "Nothing; it reads the repo's own docs/toc.json (`root_readme` is a key of that file, not a parameter)."
+
+[[route]]
+rule = "/api/files/copy"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}", dest_dir = "{inside_dir}" } }
+[[route.path]]
+where = "json"
+name = "dest_dir"
+request = { json = { path = "{inside_file}", dest_dir = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/files/delete"
+method = "DELETE"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/files/download"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/files/download_zip"
+method = "GET"
+takes_no_path = "A token minted by /api/files/zip_prepare; the archive it streams is a server-held temp file, never named by the request."
+
+[[route]]
+rule = "/api/files/list"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/files/mkdir"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "parent"
+request = { json = { parent = "{outside_dir}", name = "probe" } }
+
+[[route]]
+rule = "/api/files/move"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}", dest_dir = "{inside_dir}" } }
+[[route.path]]
+where = "json"
+name = "dest_dir"
+request = { json = { path = "{inside_file}", dest_dir = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/files/read"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/files/read_range"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/files/rename"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}", new_name = "probe-renamed.txt" } }
+
+[[route]]
+rule = "/api/files/roots"
+method = "GET"
+takes_no_path = "Nothing; it lists the picker roots (today the one projects root)."
+
+[[route]]
+rule = "/api/files/stat"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/files/upload"
+method = "POST"
+writes = true
+[[route.path]]
+where = "multipart"
+name = "target_dir"
+request = { form = { target_dir = "{outside_dir}" }, files = { file = { filename = "probe.txt", content = "probe" } } }
+
+[[route]]
+rule = "/api/files/write"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}/probe.txt", text = "probe" } }
+
+[[route]]
+rule = "/api/files/zip_prepare"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/health"
+method = "GET"
+takes_no_path = "Nothing; it answers the version."
+
+[[route]]
+rule = "/api/jupyter/start"
+method = "POST"
+takes_no_path = "Nothing; it signals this server's supervisor to start the notebook."
+
+[[route]]
+rule = "/api/jupyter/status"
+method = "GET"
+takes_no_path = "Nothing; it reports the notebook's state from the pidfile and the env registry."
+
+[[route]]
+rule = "/api/jupyter/stop"
+method = "POST"
+takes_no_path = "Nothing; it signals this server's supervisor to stop the notebook."
+
+[[route]]
+rule = "/api/modify/add_atom"
+method = "POST"
+takes_no_path = "A structure envelope plus the element, anchor index and offset of the atom to add."
+
+[[route]]
+rule = "/api/modify/append"
+method = "POST"
+takes_no_path = "Two structure envelopes, `structure` and `addition`."
+
+[[route]]
+rule = "/api/modify/delete"
+method = "POST"
+takes_no_path = "A structure envelope and the atom indices to delete."
+
+[[route]]
+rule = "/api/modify/lattice-from-run"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/modify/meta"
+method = "GET"
+takes_no_path = "Nothing; it serves the builder's element / plane enums and the lattice table."
+
+[[route]]
+rule = "/api/modify/orient"
+method = "POST"
+takes_no_path = "A structure envelope plus anchor indices, an axis, a centre and an angle."
+
+[[route]]
+rule = "/api/modify/rotate"
+method = "POST"
+takes_no_path = "A structure envelope plus an axis, an angle, a centre and optional indices."
+
+[[route]]
+rule = "/api/modify/slab"
+method = "POST"
+takes_no_path = "A structure envelope plus the slab's element, plane, layers, lattice constant and placement numbers."
+
+[[route]]
+rule = "/api/modify/spacings"
+method = "GET"
+takes_no_path = "An element, a surface plane and a lattice reference (a word or a number)."
+
+[[route]]
+rule = "/api/modify/translate"
+method = "POST"
+takes_no_path = "A structure envelope plus a displacement (or recenter) and optional indices."
+
+[[route]]
+rule = "/api/notify/channels"
+method = "GET"
+takes_no_path = "Nothing; it lists the configured channels, masked."
+
+[[route]]
+rule = "/api/notify/channels/<name>"
+method = "PUT"
+takes_no_path = "A channel name (config_dir.is_channel_name) in the URL and a url / key / kind body, merged into the monitor's own channel file at a server-chosen path."
+
+[[route]]
+rule = "/api/notify/channels/<name>"
+method = "DELETE"
+takes_no_path = "A channel name in the URL, removed from the monitor's channel file as a dictionary key."
+
+[[route]]
+rule = "/api/notify/channels/<name>/test"
+method = "POST"
+takes_no_path = "A channel name in the URL; it posts a test report to that channel's stored address."
+
+[[route]]
+rule = "/api/notify/listener"
+method = "GET"
+takes_no_path = "Nothing; it reports the listener's key file state, user ids only."
+
+[[route]]
+rule = "/api/notify/listener/keys/<user>"
+method = "POST"
+takes_no_path = "A user id in the URL (monitor.is_notify_user regex) and a replace flag; the key file's path is the server's."
+
+[[route]]
+rule = "/api/notify/report-fields"
+method = "GET"
+takes_no_path = "An engine and a calculation kind narrowing the declared report fields."
+
+[[route]]
+rule = "/api/projects/create"
+method = "POST"
+takes_no_path = "A project name (projects.validate_name: letters, digits, '_', '-'), created directly under the first picker root."
+
+[[route]]
+rule = "/api/results/contract"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/results/dir"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/selection/eval"
+method = "POST"
+takes_no_path = "The atoms the browser holds and a selection rule; nothing reads a file (selection._load_structure no longer exists)."
+
+[[route]]
+rule = "/api/spectra/load"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/structure/analyze"
+method = "POST"
+takes_no_path = "A structure envelope, a calculation kind and per-engine form items, answered in memory."
+
+[[route]]
+rule = "/api/structure/export"
+method = "POST"
+takes_no_path = "A structure envelope and a download stem flattened to its last component; the files are built in memory and returned."
+
+[[route]]
+rule = "/api/structure/periodicity"
+method = "POST"
+takes_no_path = "A structure envelope, a periodicity op and its payload."
+
+[[route]]
+rule = "/api/structure/save"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_dir}/probe.xyz", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} } } }
+
+[[route]]
+rule = "/api/system/load"
+method = "GET"
+takes_no_path = "Nothing; it snapshots CPU / GPU load."
+
+[[route]]
+rule = "/api/task-setup/bench-grid"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { dest = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/task-setup/columns"
+method = "GET"
+takes_no_path = "An engine and a calculation kind; the columns come from the shipped catalogue."
+
+[[route]]
+rule = "/api/task-setup/commands"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { dest = "{outside_dir}", kind = "task", groups = [1] } }
+
+[[route]]
+rule = "/api/task-setup/folder"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "dir"
+request = { query = { dir = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/task-setup/handover"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = {}, dest = "{outside_dir}" } }
+[[route.path]]
+where = "json"
+name = "params.psml_lib"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
+
+[[route]]
+rule = "/api/task-setup/machines"
+method = "GET"
+takes_no_path = "Nothing; it lists the machine records this server knows."
+
+[[route]]
+rule = "/api/task-setup/prep"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { dest = "{outside_dir}", kind = "task", groups = [1], plan_id = "probe" } }
+[[route.path]]
+where = "json"
+name = "from"
+request = { json = { dest = "{inside_dir}", kind = "task", groups = [1], plan = true, from = "{link_out}" } }
+
+[[route]]
+rule = "/api/task-setup/prep-plan"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { dest = "{outside_dir}", task = { schema = "molbuilder/task@1", engine = { name = "siesta" }, calculation = "optimization", shape = "hierarchical", run = { name = "r", id = "r_H2" }, structure = { source = "a.xyz", formula = "H2", atoms = 2 }, varies = [], stages = [{ name = "coarse", group = 1, overrides = {} }] } } }
+
+[[route]]
+rule = "/api/task-setup/presets"
+method = "GET"
+takes_no_path = "An engine and a calculation kind; the presets are the shipped tier tables."
+
+[[route]]
+rule = "/api/task-setup/save"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { dest = "{outside_dir}", text = "{}" } }
+
+[[route]]
+rule = "/api/task-setup/sweepable"
+method = "GET"
+takes_no_path = "An engine and a calculation kind; the items come from the shipped catalogue."
+
+[[route]]
+rule = "/api/transport/describe"
+method = "POST"
+writes = true
+[[route.path]]
+where = "json"
+name = "junction"
+request = { json = { engine = "siesta", junction = "{outside_dir}", dest = "{inside_dir}" } }
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { engine = "siesta", junction = "{inside_file}", dest = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/transport/describe_attempt"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/transport/pdos"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/transport/record"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/transport/schema"
+method = "GET"
+writes = false
+[[route.path]]
+where = "query"
+name = "junction"
+request = { query = { engine = "siesta", junction = "{outside_dir}" } }
+
+[[route]]
+rule = "/api/watch/data"
+method = "GET"
+takes_no_path = "An optional mtime number; it re-reads the file the last /api/watch/load chose (server-held state), never a path from this request."
+
+[[route]]
+rule = "/api/watch/load"
+method = "POST"
+writes = false
+[[route.path]]
+where = "json"
+name = "path"
+request = { json = { path = "{outside_file}" } }
+
+[[route]]
+rule = "/api/workspace-storage/prune"
+method = "POST"
+takes_no_path = "A workspace_id ([A-Za-z0-9_-]+) and an index; the files are composed under <projects_root>/.molbuilder_workspace/states/."
+
+[[route]]
+rule = "/api/workspace-storage/read"
+method = "POST"
+takes_no_path = "A workspace_id ([A-Za-z0-9_-]+) and a state index; the file is composed under <projects_root>/.molbuilder_workspace/states/."
+
+[[route]]
+rule = "/api/workspace-storage/write"
+method = "POST"
+takes_no_path = "A workspace_id ([A-Za-z0-9_-]+), a state index and opaque JSON; the file is composed under <projects_root>/.molbuilder_workspace/states/."

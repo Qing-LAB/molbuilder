@@ -488,23 +488,29 @@ fence (its own 2026-06-18 fix, after a logged-in user could POST
 skipping it. Neither rule was here to cite. **An exception is legitimate, but
 it is named here with its reason — not decided per blueprint.**
 
-**Auditing it — the fence is reached under four names**, which is why a grep
-for one of them reads as a clean bill of health when it is not:
+**Where each route reaches it.** One primitive, `projects.contain`, reached
+through these entry points:
 
 | entry point | who uses it |
 |---|---|
-| `files._resolve_within_roots` | `files`, `results`, `watch`, `docs`, `bench`, `spectra`, `checkpoint` |
-| `build._resolve_path_within_roots` | `build`, `transport` — a `require="file"/"dir"` wrapper |
-| `selection._load_structure` | `selection` — resolves, then loads |
+| `files._resolve_within_roots` | `files`, `results`, `watch`, `bench`, `spectra`, `modify`, `build` (Task setup's routes and the structure's load and save), `transport`'s record and PDOS |
 | `checkpoint._resolve_path` | `checkpoint` — resolves, then requires a directory |
+| `projects.contain` itself | `transport`'s describe, its citation and its schema (`transport.compose.resolve_citation`, the route's `_fence`) |
+| `pseudos.resolve_psml_lib` | a template's `psml_lib`, wherever it is read — the browser's preflight and hand-over, and every prep: a path inside the projects tree, either spelling (`job-contracts.md` § 2.5a) |
 
-And the parameter is not always called `path`: `structure_path`, `run_dir`,
-`target_dir`, `dest`, `dir` and `filename` all carry one somewhere. An audit
-that greps `get("path")` alone misses three blueprints.
+And the parameter is not always called `path`: `dest`, `dest_dir`, `dir`,
+`parent`, `target_dir`, `junction`, `from` and `params.psml_lib` all carry one
+somewhere. **The one exception, named with its reason**: the documentation's
+own routes (`/api/docs/read`, `/api/docs/img/…`) fence against `docs/`, the
+tree they serve, through `projects.contain` with that root — they read
+molbuilder's documents, never the projects tree.
 
-*Current exceptions: none.* Every route that takes a filesystem path from the
-browser goes through one of the four above — checked 2026-08-25, which is when
-`/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
+**Checked by asking every route** (`tests/test_the_path_fence.py`, its cases
+`tests/data/path_fence.toml`): the table is the app's route map, so a route
+added without its row fails by name, and each place a path enters is given one
+outside the projects tree — refused in the fence's words, a file beside the
+tree untouched *(2026-10-15; it found a relative `psml_lib` climbing out of the
+tree with `..`, and Prep's `from` reaching no fence — both fixed)*.
 
 ## 3. Endpoint index — all 99 routes
 

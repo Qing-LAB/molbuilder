@@ -137,7 +137,8 @@ def resolve_psml_lib(raw: str, *,
         ``projects_root()`` when there is no calculation yet (``base``
         overrides it, for tests and other trees);
       * an ABSOLUTE path is accepted as a convenience spelling of the
-        same fact -- it must lie INSIDE that tree, and is refused
+        same fact; either spelling must lie INSIDE that tree -- a relative
+        one with a ``..`` inside it may not climb out -- and is refused
         otherwise;
       * the ``./`` / ``../`` spellings are refused: pseudopotentials
         already beside the calculation are used without this field (prep
@@ -167,17 +168,19 @@ def resolve_psml_lib(raw: str, *,
     if tree is None:
         tree = base if base is not None else projects_root()
 
-    if p.is_absolute():
-        try:
-            contain(p, tree)
-        except OutsideRoot as exc:
-            raise PsmlLibError(
-                f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree "
-                f"({tree}).  `psml_lib` always lives inside the tree -- "
-                f"copy the library in (e.g. {tree}/pseudopotential) and "
-                f"write the tree-relative name.") from exc
-        return p
-    return tree / p
+    # INSIDE THE TREE, either spelling -- an absolute one, or a relative one
+    # measured from the root, which a `..` inside it may still climb out of:
+    # the one fence decides (`projects.contain`).
+    named = p if p.is_absolute() else tree / p
+    try:
+        contain(named, tree)
+    except OutsideRoot as exc:
+        raise PsmlLibError(
+            f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree "
+            f"({tree}).  `psml_lib` always lives inside the tree -- "
+            f"copy the library in (e.g. {tree}/pseudopotential) and "
+            f"write the tree-relative name.") from exc
+    return named
 
 
 def describe_psml_anchor(raw: str, *, dest_dir: Optional[Path] = None) -> str:

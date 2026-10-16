@@ -453,19 +453,8 @@ def api_transport_describe() -> Any:
                         "error": "shared must be an object"}), 400
     typed = str(body.get("name") or "") or "transport"
 
-    try:
-        _, cited = resolve_citation(citation, projects_root())
-    except ComposeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # THE FOLDER, and the two refusals every door that describes asks
-    # (`engines/transport.md` § 3.8.2a; user, 2026-10-11): one calculation
-    # per folder -- Describe is one act, and a described calculation is
-    # changed on Task setup -- and never inside its citation (§ 3.1).
-    from molbuilder.describe import (Description, DescribeError,
-                                     refuse_described, write_description)
+    # THE FOLDER, fenced before anything else (`web/web-api.md` § 2.1).
     from molbuilder.projects import OutsideRoot, contain
-    from molbuilder.transport.compose import refuse_inside_citation
     from pathlib import Path
     root = Path(projects_root()).resolve()
     dest_raw = str(body.get("dest") or "")
@@ -478,6 +467,19 @@ def api_transport_describe() -> Any:
         dest = contain(Path(dest_raw), root)
     except OutsideRoot as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    try:
+        _, cited = resolve_citation(citation, projects_root())
+    except ComposeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # THE FOLDER'S two refusals every door that describes asks
+    # (`engines/transport.md` § 3.8.2a; user, 2026-10-11): one calculation
+    # per folder -- Describe is one act, and a described calculation is
+    # changed on Task setup -- and never inside its citation (§ 3.1).
+    from molbuilder.describe import (Description, DescribeError,
+                                     refuse_described, write_description)
+    from molbuilder.transport.compose import refuse_inside_citation
     if not dest.is_dir():
         return jsonify({"ok": False,
                         "error": f"{dest_raw} is not a folder"}), 400

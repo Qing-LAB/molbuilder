@@ -795,7 +795,7 @@ disagree about what a path means.)*
 
 | You wrote | It means | Refused when |
 |---|---|---|
-| `pseudopotential` (any relative path) | **that folder under the tree root** — the tree the calculation lives in, walked up from the calculation folder; the server's own `projects_root()` when validating before any folder exists | the folder is not there (the refusal names the tree it searched) |
+| `pseudopotential` (any relative path) | **that folder under the tree root** — the tree the calculation lives in, walked up from the calculation folder; the server's own `projects_root()` when validating before any folder exists | the folder is not there (the refusal names the tree it searched); or a `..` inside it climbs **outside** the tree (`pseudopotential/../../tmp`), refused by the one fence as an absolute spelling outside is |
 | `/home/you/molbuilder/projects/pseudopotential` (absolute) | itself — a convenience spelling of the same fact | it lies **outside** the tree: there is no folder that spelling can honestly name under this rule |
 | `./psml`, `../psml` | nothing — **retired** | always, with the reason: pseudopotentials already beside the calculation are used *without* this field (prep adopts them), so the dotted anchor had no remaining job |
 
