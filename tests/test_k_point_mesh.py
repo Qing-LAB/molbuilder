@@ -94,12 +94,16 @@ def test_a_transport_meshs_start_and_its_one_point_warning():
       transmission's own on the transmission when the person set it -- and
       never on a direction that does not repeat, nor on a count above one;
       a transmission mesh the person set coarser than the SCF's, above one,
-      is warned too (`kmesh.check`).
+      is warned too; and a transmission mesh the person set above the Gamma
+      point while the SCF's is the Gamma point alone -- where tbtrans stops
+      in its set-up, the device's Hamiltonian carrying no supercell -- is
+      warned, never refused: tbtrans says it (`kmesh.check`).
 
     MUTATIONS THIS MUST FAIL AGAINST: the transmission starting at the SCF's
     counts; a one kept multiplied; a blank mesh not following the SCF's (or
     left at Gamma); the warnings dropped, or said on an isolated direction;
-    the coarser warning said of a blank mesh or beside the one-point one."""
+    the coarser warning said of a blank mesh or beside the one-point one;
+    the Gamma device's warning dropped, or said of a transmission at Gamma."""
     from types import SimpleNamespace
 
     from molbuilder import kmesh
@@ -132,6 +136,13 @@ def test_a_transport_meshs_start_and_its_one_point_warning():
     assert said((4, 4, 1), (3, 3, 1), slab, "transmission") == \
         [("warn", "config.tbt_k_grid")] * 2
     assert said((4, 4, 1), (4, 4, 1), slab, "transmission") == []
+    # A GAMMA DEVICE, the transmission asked for k-points: the SCF's own
+    # one-point finding, x then y, and the Gamma device's -- once; with the
+    # transmission at Gamma too, the two grids' one-point findings alone.
+    assert said((1, 1, 1), (4, 4, 1), slab, "transmission") == \
+        [("warn", "config.kgrid")] * 2 + [("warn", "config.tbt_k_grid")]
+    assert said((1, 1, 1), (1, 1, 1), slab, "transmission") == \
+        [("warn", "config.kgrid")] * 2 + [("warn", "config.tbt_k_grid")] * 2
     # BLANK IS THE RULE'S: three times the SCF's mesh, following it, never
     # the person's -- so neither warning names it; the SCF's own one-point
     # finding speaks for a Gamma SCF mesh.

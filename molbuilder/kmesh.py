@@ -375,6 +375,26 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     for tbt in (m for m in judged if m.program == "tbtrans" and not m.derived):
         if scf is None:
             break
+        # A GAMMA DEVICE AND A TRANSMISSION ASKED FOR K-POINTS: a SIESTA run
+        # at the one point k = 0 writes its Hamiltonian with no supercell,
+        # and tbtrans then stops in its set-up (`tbt_init.F90`, the check
+        # after `setup_kpoint_grid`).  Warned, never refused: tbtrans says
+        # it, and what to do is the person's (user, 2026-10-17).
+        if (all(a.count == 1 and a.shift % 1.0 == 0.0 for a in scf.axes)
+                and any(a.count > 1 or a.shift % 1.0 != 0.0
+                        for a in tbt.axes)):
+            out.append(Issue(
+                "warn",
+                f"tbt_k_grid = {' '.join(str(a.count) for a in tbt.axes)} "
+                f"asks the transmission for k-points, while the shared "
+                f"k-point grid is the Gamma point alone (kgrid = 1 1 1): the "
+                f"device's Hamiltonian then carries no supercell, and tbtrans "
+                f"stops in its set-up -- \"Transiesta calculation was a Gamma "
+                f"calculation while you request transmission k-points\" "
+                f"(tbt_init.F90).  Sample the shared grid in the electrode "
+                f"plane (x, y) and run the device again, or leave this grid "
+                f"at 1 1 1 (engines/transport.md 0.3b)",
+                "config.tbt_k_grid"))
         for i, (t, s) in enumerate(zip(tbt.axes, scf.axes)):
             # ONE POINT IS THE ONE-POINT WARNING'S to say (above), never
             # twice about one number.
