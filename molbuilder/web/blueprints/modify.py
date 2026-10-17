@@ -707,8 +707,10 @@ def _seam_notice(level: str, verdict: str, message: str):
     return _notice(level, message, f"slab.seam_{verdict}")
 
 
-def _seam_notices(struct, element: str, plane: str):
-    """What the periodic boundary does to the crystal, as a note.
+def _seam_notices(struct, element: str, plane: Optional[str]):
+    """What the periodic boundary does to the crystal, as a note -- the
+    crystal's verdict (:func:`_crystal_seam_notices`) and the box's
+    (:func:`_box_collision_notices`).
 
     A WARNING, NEVER A REFUSAL (bench-and-junction-plan.md § 2.4): an eclipsed
     seam is wrong for a periodic crystal and harmless in a relaxation whose
@@ -730,6 +732,30 @@ def _seam_notices(struct, element: str, plane: str):
     (`model-jobs.js`: "the structure AND what the server found true of it, in
     one handoff") and needs no display code of its own.
     """
+    return (_crystal_seam_notices(struct, element, plane)
+            + _box_collision_notices(struct, [element]))
+
+
+def box_seam_notices(struct) -> list:
+    """The seam verdict on a box the Cell page committed
+    (`science/junction-cell.md` § 6.1, *what the tab owes you*): for each
+    fcc metal the slab builder makes (`modify.SUPPORTED_FCC_ELEMENTS`) that
+    the structure holds, what the periodic boundary does to its crystal,
+    and the box's own collision once -- the slab build's verdict, the same
+    ids and words, on the box that now exists.  The plane is not known
+    here, so the too-thin note is the build's alone."""
+    metals = [el for el in SUPPORTED_FCC_ELEMENTS
+              if list(struct.elements).count(el) >= 2]
+    return ([n for el in metals
+             for n in _crystal_seam_notices(struct, el, None)]
+            + _box_collision_notices(struct, metals))
+
+
+def _crystal_seam_notices(struct, element: str,
+                          plane: Optional[str]) -> list:
+    """What the periodic boundary does to ``element``'s crystal -- measured
+    on its atoms alone (`cell.classify_seam`); with ``plane`` known, a
+    repeat thinner than its stacking period says so."""
     cell = getattr(struct, "cell", None)
     if cell is None:
         return []
@@ -741,7 +767,7 @@ def _seam_notices(struct, element: str, plane: str):
     seam = _classify_seam(metal, cell)
 
     if seam.verdict == "continues":
-        want = STACKING_PERIOD.get(plane)
+        want = STACKING_PERIOD.get(plane) if plane else None
         if want and seam.period and seam.period != want:
             # Thin enough that it does not determine its own stacking: two
             # layers of (111) are A,B, which is fcc and hcp alike.
@@ -760,10 +786,20 @@ def _seam_notices(struct, element: str, plane: str):
     else:
         out = [_seam_notice("warn", seam.verdict,
                             f"{seam.verdict}: {seam.message}")]
+    return out
+
+
+def _box_collision_notices(struct, metals) -> list:
+    """The box's own answer, when it is not the crystal's -- one note, said
+    once whatever the metals."""
+    cell = getattr(struct, "cell", None)
+    if cell is None or not metals:
+        return []
 
     # AND THE BOX HAS ITS OWN ANSWER, which is not the crystal's.
     #
-    # `seam` above is measured on the METAL atoms alone, and has to be: the
+    # The crystal's verdict (`_crystal_seam_notices`) is measured on the
+    # METAL atoms alone, and has to be: the
     # registry question is "which layer does the imaged one land on", and
     # `detect_layers` would read a molecule's atoms as extra layers and make
     # it meaningless.  But the CELL was sized around EVERY atom
@@ -777,14 +813,17 @@ def _seam_notices(struct, element: str, plane: str):
     #
     # A NOTICE, NEVER A REFUSAL -- the box is the user's to set, and a
     # collision is legitimate in a relaxation whose outer layers are frozen.
-    if len(metal) != len(struct.positions):
+    n_metal = sum(1 for sym in struct.elements if sym in metals)
+    out = []
+    if 2 <= n_metal != len(struct.positions):
         whole = _classify_seam(
             np.asarray(struct.positions, dtype=float), cell)
         if whole.verdict == "collision":
             out.append(_seam_notice("warn", "box_collision", (
                 f"the box leaves {whole.z_room:.2f} Å at the periodic "
                 f"boundary once every atom is counted, not just the "
-                f"{element}: nearest atoms across it {whole.gap:.3f} Å.  "
+                f"{', '.join(metals)}: nearest atoms across it "
+                f"{whole.gap:.3f} Å.  "
                 f"The cell was measured around the whole structure, so "
                 f"this is the gap the calculation will actually see -- set "
                 f"c on the Cell tab if that is not what you want")))

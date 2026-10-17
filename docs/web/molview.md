@@ -1087,7 +1087,7 @@ them can. They reach it through three doors:
 | Door | What it validates | When |
 |---|---|---|
 | `/api/build/load` | the structure as read from disk | every load |
-| `/api/structure/periodicity` | the structure as it arrived, then the edit | every cell edit |
+| `/api/structure/periodicity` | the structure as it arrived, then the edit — and what the boundary does to an fcc metal's crystal, the slab build's seam verdict (`science/junction-cell.md` § 6.1) | every cell edit |
 | `/api/modify/*` | the structure the op produced | every edit, all seven ops |
 
 The third door is not many doors. Every `/api/modify/*` route returns through

@@ -440,8 +440,13 @@ def api_periodicity():
         # The CONDITIONS are re-derived on the RESULT, so "the box does not
         # contain the structure" is answered about the box that now exists.
         new_struct, conditions = validate_periodicity(new_struct)
-        # Receipts first (what the edit did), then conditions (what is now true).
-        notices = list(receipts) + list(conditions)
+        # Receipts first (what the edit did), then conditions (what is now
+        # true), then WHAT THE BOUNDARY DOES TO THE CRYSTAL -- the verdict the
+        # slab build gives, on the box just set (`science/junction-cell.md`
+        # § 6.1: the loop closes where `c` is set).
+        from .modify import box_seam_notices
+        notices = (list(receipts) + list(conditions)
+                   + box_seam_notices(new_struct))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- malformed envelope -> 400

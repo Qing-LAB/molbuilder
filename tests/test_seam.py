@@ -177,6 +177,44 @@ class TestTheWarningReachesTheUser:
         body.update(kw)
         return client.post("/api/modify/slab", json=body).get_json()
 
+    @pytest.mark.parametrize("gap, said", [
+        (0.0, "slab.seam_collision"),
+        (None, "slab.seam_continues"),          # one layer spacing
+        (10.0, "slab.seam_vacuum")],
+        ids=["c at the extent", "c one spacing more", "c with vacuum"])
+    def test_the_cell_page_answers_the_box_it_sets(self, client, gap, said):
+        """`junction-cell.md` § 6.1: the junction walk -- build the slab, see
+        `collision`, set `c` on the Cell page -- is answered where `c` is set,
+        with the slab build's own verdict on the box that now exists: the
+        extent collides, one layer spacing more continues the crystal, and a
+        wide gap is an open face.  The silent failure (plan X3): the Cell page
+        committed the box and said nothing about the boundary, at the one
+        moment the geometry is complete."""
+        slab = self._slab(client, layers=6)["structure"]
+        z = [p[2] for p in slab["positions"]]
+        layers = sorted({round(v, 4) for v in z})
+        cell = [list(row) for row in slab["metadata"]["cell"]]
+        cell[2] = [0.0, 0.0, (max(z) - min(z))
+                   + ((layers[1] - layers[0]) if gap is None else gap)]
+        r = client.post("/api/structure/periodicity", json={
+            "structure": slab, "op": "cell", "payload": cell})
+        assert r.status_code == 200, r.get_json()
+        notices = r.get_json()["notices"]
+        assert [n["where"] for n in notices
+                if n["where"].startswith("slab.seam_")] == [said], notices
+
+    def test_the_cell_page_says_no_seam_with_no_fcc_metal(self, client):
+        """A box committed around no metal the slab builder makes has no
+        crystal to continue: nothing is said about a seam."""
+        from support.envelope import from_xyz
+        mol = from_xyz("3\nm\nS 0 0 -1\nC 0 0 0\nS 0 0 1\n")
+        r = client.post("/api/structure/periodicity", json={
+            "structure": mol, "op": "cell",
+            "payload": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 10.0]]})
+        assert r.status_code == 200, r.get_json()
+        assert not [n for n in r.get_json()["notices"]
+                    if n["where"].startswith("slab.seam_")], r.get_json()
+
     def test_a_fresh_slab_reports_the_c_nobody_has_set_yet(self, client):
         """`junction-cell.md` § 6: the builder leaves `c` as the extent, so a
         fresh slab collides with its own image -- and is TOLD SO, on the build,

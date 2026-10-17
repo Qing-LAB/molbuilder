@@ -399,8 +399,9 @@ periodic run along z — and that cell is already derived correctly (§ 5).
 
 ### 4.1 And the tab says which of these you have
 
-Every slab edit is answered with a seam verdict, carried back in the response's
-receipts slot and shown as a panel notice. It is not a distance check: § 3.1's
+Every slab edit — and every box committed on the Cell page (§ 6.1) — is
+answered with a seam verdict, carried back in the response's notices and shown
+as a panel notice. It is not a distance check: § 3.1's
 point is that a twin has the correct bond length, so only the **registry**
 separates a continuation from a twin. The question with an answer is *which
 layer of this slab does the imaged bottom layer land on*, and in a crystal of
@@ -590,11 +591,15 @@ two measurements cheap, not to make the decision:
 **Nothing checks that you typed the spacing rather than something else**, and
 nothing should: a slab calculation wants vacuum there, and only you know which
 you are running. What the program owes you is a verdict on what you set, and
-`classify_seam` gives one on every build — `collision` if `c` is too small,
-`vacuum` if it is much larger than a layer, `continues` if the crystal joins
-(§ 3). That closes the loop without anyone guessing. *(Not built for the Cell
-page — plan § 2, X3: committing `c` there, `POST /api/structure/periodicity`,
-answers no seam verdict; only the slab build does.)*
+`classify_seam` gives one on every build and on every box the Cell page
+commits — `collision` if `c` is too small, `vacuum` if it is much larger than
+a layer, `continues` if the crystal joins (§ 3). That closes the loop without
+anyone guessing. The Cell page's verdict is the slab build's, the same ids and
+words (`blueprints/modify.box_seam_notices`), measured on each fcc metal the
+builder makes that the structure holds, with the box's own collision said once;
+the plane is not known there, so the too-thin note (§ 4.1) is the build's alone
+*(built 2026-10-17, plan X3: until then committing `c` there,
+`POST /api/structure/periodicity`, answered no seam verdict)*.
 
 ### 6.2 Why the switch went
 
