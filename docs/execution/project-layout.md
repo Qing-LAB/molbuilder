@@ -686,13 +686,17 @@ a compatibility path that every reader would carry forever. Sweeps recorded
 before this change stop being readable by `summarize`; their files stay on
 disk, because molbuilder never deletes results.
 
-**What still needs deciding, and is not decided here:** with two runs of one
-point, `summarize` reports the **latest** (the trial's run, through the run door
-— its newest run index, every file at that one index, `runs.run_of`), so
-the earlier measurement becomes invisible while remaining on disk. That is
-tolerable only if the summary *says* how many runs a trial has — otherwise
-re-running silently supersedes, and comparing two measurements of one point was
-the reason to re-run at all.
+**A trial has one run, so `summarize` reads the one it has.** A trial's
+retry budget is pinned at 0 (`prep_inputs`, the measurement pins:
+*"`continue_retries: 0` is what makes the trial run ONCE"* — its capped SCF
+would otherwise read as a failure and run again, timed on its second run while
+the others were timed on their first), and a trial already launched is refused
+when named again, the way to measure it again a restore and a prep anew
+(`submit._plan_trial`; `job-system.md` § 3.1, *a SWEEP's tree*). So two runs of
+one point are not something molbuilder makes, and the run door's newest run
+(`runs.run_of`) is the trial's only one *(re-derived 2026-10-17, plan PL-R:
+this paragraph asked how a summary should say a second run, and the road has
+none)*.
 
 #### Where a run happens
 
