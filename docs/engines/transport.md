@@ -455,6 +455,35 @@ finding on the transmission grid on the transmission's tab.
 | **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell, and tbtrans then stops in its set-up: *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16). Warned, never refused — tbtrans says it, and what to do is the person's *(user, 2026-10-17: "We should let tbtrans handle it. Prep can detect and warn but user decide what to do")*: the words name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
 | **the leads' k-points along z below 50** | below the item's recommended range — a floor, not a proof of convergence: only raising the count and seeing the lead's Fermi level stay put shows it has settled | "at least >50 should easily be reachable" [`SiestaManual542`] |
 
+**The Γ-device warning, by example.** Two settings meet here: `kgrid`, the
+shared k-point grid of the seed, the leads and the device (the shared panel),
+and `tbt_k_grid`, the transmission's (its tab; left blank, three times
+`kgrid` along each direction `kgrid` samples with more than one point, a 1
+staying 1). With `kgrid = 1 1 1` the device is computed at one k-point only,
+and SIESTA saves its Hamiltonian in a compact form that is exact there and
+works nowhere else; a `tbt_k_grid` above 1 asks tbtrans for T(E) at several
+k-points, which that form cannot give — so tbtrans stops as it starts,
+before it computes anything, and only the transmission's launch fails:
+
+| `kgrid` | `tbt_k_grid` | what happens |
+|---|---|---|
+| `4 4 1` | blank | runs; tbtrans uses `12 12 1` |
+| `4 4 1` | `12 12 1` | runs |
+| `1 1 1` | blank, or `1 1 1` | runs, at one k-point (the one-point warning) |
+| `1 4 1` | `4 4 1` | runs: the device samples more than one k-point, so its Hamiltonian is saved whole |
+| **`1 1 1`** | **above 1, e.g. `4 4 1`** | **prep warns; tbtrans stops as it starts** |
+
+So it is said only of a transmission grid set by hand above 1 on a
+calculation whose shared grid is `1 1 1` — a quick test on a small junction,
+or a grid copied from a larger calculation; a blank `tbt_k_grid` never meets
+it. **The two ways on, the person's:** raise `kgrid` in the electrode plane
+(x, y) — it re-runs the seed, both leads and the device, then the
+transmission — or leave `tbt_k_grid` blank or `1 1 1`. *(tbtrans's own
+message points at SIESTA's `ForceAuxCell`, which keeps the whole form even
+at one k-point; molbuilder does not offer it — a device converged at one
+k-point is a weak start for a transmission sampled on many, § 0.2, and
+neither way needs it.)*
+
 **Where each lives:** `electrode_kz`'s value and range in the catalogue; the
 three-times rule in `kmesh.transmission_start`, applied by `kmesh.mesh_for`
 to a blank `tbt_k_grid` and named in the deck's provenance block

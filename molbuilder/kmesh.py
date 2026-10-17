@@ -386,14 +386,14 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
             out.append(Issue(
                 "warn",
                 f"tbt_k_grid = {' '.join(str(a.count) for a in tbt.axes)} "
-                f"asks the transmission for k-points, while the shared "
-                f"k-point grid is the Gamma point alone (kgrid = 1 1 1): the "
-                f"device's Hamiltonian then carries no supercell, and tbtrans "
-                f"stops in its set-up -- \"Transiesta calculation was a Gamma "
-                f"calculation while you request transmission k-points\" "
-                f"(tbt_init.F90).  Sample the shared grid in the electrode "
-                f"plane (x, y) and run the device again, or leave this grid "
-                f"at 1 1 1 (engines/transport.md 0.3b)",
+                f"asks tbtrans for T(E) at several k-points, but kgrid = "
+                f"1 1 1 computes the device at one k-point only, so SIESTA "
+                f"saves its Hamiltonian in a form that works at that one "
+                f"point: tbtrans stops as it starts (\"Transiesta calculation "
+                f"was a Gamma calculation while you request transmission "
+                f"k-points\").  Raise kgrid in the electrode plane (x, y) -- "
+                f"it re-runs the seed, the leads and the device -- or leave "
+                f"tbt_k_grid blank or 1 1 1 (engines/transport.md 0.3b)",
                 "config.tbt_k_grid"))
         for i, (t, s) in enumerate(zip(tbt.axes, scf.axes)):
             # ONE POINT IS THE ONE-POINT WARNING'S to say (above), never
