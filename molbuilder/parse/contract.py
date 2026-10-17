@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 def contract_of(deck) -> Optional[Dict[str, Any]]:
@@ -66,7 +66,8 @@ STATE_RECORD_KEYS = ("net_charge", "spin_treatment", "unpaired_electrons")
 #: The k-point mesh's recorded keys -- the run's counts and offset, carried
 #: APART from the list above: a citation takes them through the mesh's own
 #: rule (`transport/citation_defaults._apply_kgrid`, the transport axis laid
-#: on), never verbatim, and nothing compares them field by field.
+#: on), never verbatim; a comparison takes them as the grid the run about to
+#: run writes (:func:`contract_fields_of`, ``axis_kind``).
 K_MESH_RECORD_KEYS = ("kgrid", "kgrid_displacement")
 
 #: HOW THE RUN'S SCF CONVERGED -- the mixer and the criteria, by their
@@ -79,7 +80,8 @@ SCF_RECORD_KEYS = ("mixing_weight", "pulay_history", "dm_tolerance",
                    "scf_energy_converge")
 
 
-def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
+def contract_fields_of(cfg, *, state=None, axis_kind=None,
+                       kind: str = "optimization") -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the names the
     recorded contract uses -- the catalogue's (:data:`RECORDED_FIELDS`), the
     other half of :func:`_siesta_contract`.  A consumer comparing a
@@ -92,6 +94,12 @@ def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
     or spin is the instruction "work it out", so the raw field would compare
     nothing where the run will carry a value (ES7: a vibration at a geometry
     relaxed for another state is warned).  Without a state they are left out.
+
+    **The k-point grid is the one this run's deck writes**
+    (:data:`K_MESH_RECORD_KEYS`, from `kmesh.mesh_for` on the structure's
+    ``axis_kind`` and the calculation's ``kind``) -- the counts and offset a
+    record keeps from its own deck, so the two compare like with like.
+    Without the axes it is left out.
     """
     out: Dict[str, Any] = {}
     for key in RECORDED_FIELDS:
@@ -99,6 +107,12 @@ def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
             continue
         if getattr(cfg, key, None) is not None:
             out[key] = getattr(cfg, key)
+    if axis_kind is not None and out:
+        from ..kmesh import mesh_for
+        mesh = mesh_for(cfg, axis_kind, kind=kind)
+        if mesh is not None:
+            out["kgrid"] = list(mesh.counts)
+            out["kgrid_displacement"] = list(mesh.shifts)
     if state is not None and out:
         out["net_charge"] = state.net_charge.value
         out["spin_treatment"] = state.spin_treatment.value
@@ -175,6 +189,21 @@ def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
         # reader is not caught.
         return None
     return relaxation_of_output(path, traj, engine=engine_of(path.parent))
+
+
+def held_atoms_of(struct, rec) -> Optional[List[int]]:
+    """The atoms of ``struct``, as indices in its own order, that the
+    relaxation record ``rec`` held -- its ``held_atom_keys`` matched to the
+    structure's :meth:`~molbuilder.structure.Structure.geometry_lines`
+    (§ 5b.1: a record names atoms by their lines, never by an index) -- or
+    ``None`` when the record keeps no held set.  Whether the record is about
+    these coordinates is the caller's question (``geometry_sha256``)."""
+    keys = rec.get("held_atom_keys") if isinstance(rec, dict) else None
+    if not isinstance(keys, list):
+        return None
+    then = set(keys)
+    return [i for i, line in enumerate(struct.geometry_lines())
+            if line in then]
 
 
 def relaxation_of_output(path, traj, *,

@@ -8,7 +8,6 @@ its records -- for the framework to render, write and check
 Public API:
     spec_for(...)               -- the deck's spec
     copy_pseudopotentials(...)  -- copy the PSML files a deck names
-    find_psml(...)              -- find one in a library
 """
 
 from __future__ import annotations
@@ -220,36 +219,25 @@ def _block_size_bounds(n_atoms: int,
     return (lo, hi)
 
 
-def find_psml(element: str, lib: Path) -> Optional[Path]:
-    """Locate a pseudopotential file for `element` in a flat lib folder."""
-    for name in (f"{element}.psml", f"{element.lower()}.psml",
-                 f"{element.upper()}.psml"):
-        p = lib / name
-        if p.is_file():
-            return p
-    matches = sorted(lib.glob(f"{element}*.psml"))
-    if matches:
-        if len(matches) > 1:
-            print(f"  note: {len(matches)} variants of {element}.psml in "
-                  f"{lib}; using {matches[0].name}", file=sys.stderr)
-        return matches[0]
-    return None
-
-
 def copy_pseudopotentials(species: Sequence[str], lib: Path,
                           dest_dir: Path, *, plan=None) -> List[str]:
     """Copy psml files for each species. Returns list of missing species.
 
+    WHICH FILE is `pseudos.psml_sources`' rule, the one every check asks:
+    ``<label>.psml`` in ``lib``, verbatim -- SIESTA opens that name and no
+    other (`science/pseudopotentials.md` § C1a).
+
     ``plan`` (`jobset.planned.Plan`) receives the copies instead of the
     disk."""
+    from ..pseudos import psml_sources
+    found = psml_sources(species, library=lib)
     missing: List[str] = []
     for s in species:
-        src = find_psml(s, lib)
-        if src is None:
+        if found[str(s).strip()] is None:
             missing.append(s)
-            print(f"  WARN: no psml file found for {s!r} in {lib}",
-                  file=sys.stderr)
+            print(f"  WARN: no {s}.psml in {lib}", file=sys.stderr)
             continue
+        src = found[str(s).strip()] / f"{str(s).strip()}.psml"
         dst = dest_dir / f"{s}.psml"
         if src.resolve() == dst.resolve():
             print(f"  ok:   {dst.name} (already present)", file=sys.stderr)
@@ -417,8 +405,8 @@ def _parallel_facts(cfg, mesh) -> dict:
     ``BlockSize`` is said as such where its line would be, so the layout
     cannot be read until they exist (`script-preparation.md` § 4.1).
 
-    ``over_k``'s automatic answer is *more than one point* on ``mesh``,
-    the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
+    ``over_k``'s automatic answer is *more than one point* on ``mesh`` and
+    a solver other than ELPA, the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
     § 6.1): an electrode's ``kx ky 100``, never the template's ``kx ky 1``.
     """
     # ---- Parallel execution (MPI) -------------------------------
@@ -441,11 +429,6 @@ def _parallel_facts(cfg, mesh) -> dict:
         # Honoured verbatim -- hand-set, or a benched result.
         block_size = int(cfg.block_size)
 
-    if cfg.parallel_over_k is None:
-        over_k = mesh is not None and mesh.n_points > 1
-    else:
-        over_k = bool(cfg.parallel_over_k)
-
     # Diagonalizer (engines/siesta.md § 7).  The solver choice
     # (``diag_algorithm``) is INDEPENDENT of the GPU toggle; ELPA runs on
     # CPU and GPU alike, and ``use_gpu`` only moves an ELPA solve onto
@@ -458,6 +441,15 @@ def _parallel_facts(cfg, mesh) -> dict:
     #     crashed on Sol, job 57852378).
     _algo = (cfg.diag_algorithm or "ScaLAPACK").strip()
     _is_elpa = _algo.upper().startswith("ELPA")
+
+    # THE K-POINT SPLIT, automatic: on when the mesh holds more than one
+    # point -- but never with ELPA, which SIESTA's manual calls not
+    # compatible with it; the deck says what runs.  Set on with ELPA, it is
+    # written as set and the item's own check warns.
+    if cfg.parallel_over_k is None:
+        over_k = mesh is not None and mesh.n_points > 1 and not _is_elpa
+    else:
+        over_k = bool(cfg.parallel_over_k)
     if cfg.use_gpu and not _is_elpa:
         raise ValueError(
             "use_gpu requires an ELPA diagonalizer (diag_algorithm = "
@@ -466,7 +458,8 @@ def _parallel_facts(cfg, mesh) -> dict:
             "(engines/siesta.md § 7).")
     # THE FOUR MPI VALUES go through the one door.  They are not all config
     # fields read straight through -- ParallelOverK defaults from whether the
-    # k-mesh is more than Gamma, the algorithm is normalised -- so they reach the door
+    # k-mesh is more than Gamma and the solver is not ELPA, the algorithm is
+    # normalised -- so they reach the door
     # through ``parameter(..., value=)`` and a DERIVED number still arrives
     # with its declaration, its range and its note.
     return {"block_size": block_size, "over_k": over_k,

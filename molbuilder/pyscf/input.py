@@ -45,7 +45,6 @@ ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
 ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
-ROLE_GEOM_LOG    = "_geom.log"           # geomeTRIC's log, under the same prefix
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
 #: `end_lines`, which the reader imports and which travels beside the job
@@ -58,13 +57,10 @@ from .end_lines import END_MARKER   # noqa: E402
 #: place a PERSON is told the filename.
 PYSCF_STDOUT_ROLE = _stdout_roles("pyscf")[0]
 
-#: geomeTRIC does not take a filename -- it takes a PREFIX and appends this.
-#: Naming the tail is what lets the prefix be DERIVED from the role rather than
-#: assembled next to it.
+#: geomeTRIC does not take a filename -- it takes a PREFIX and appends this
+#: for its trajectory.  Naming the tail is what lets the prefix be DERIVED
+#: from the role rather than assembled next to it.
 GEOMETRIC_APPENDS = "_optim.xyz"
-#: ...and this, for its log -- the catalogue's row for the prefix's files
-#: (``_geom.log``, numbered where the stage's runs share a folder).
-GEOMETRIC_LOG_APPENDS = ".log"
 
 
 def run_file_expr(names, role: str) -> str:
@@ -79,10 +75,11 @@ def run_file_expr(names, role: str) -> str:
 
 
 def geometric_prefix_expr(names) -> str:
-    """The expression for geomeTRIC's PREFIX -- its log's name, as the
-    stage's names give it, less the tail geomeTRIC appends: its log and its
-    trajectory then land under the run's own names."""
-    tail = names.tail(ROLE_GEOM_LOG)[:-len(GEOMETRIC_LOG_APPENDS)]
+    """The expression for geomeTRIC's PREFIX -- its trajectory's name, as
+    the stage's names give it (numbered where the stage's runs share a
+    folder), less the tail geomeTRIC appends: the trajectory then lands
+    under the run's own name."""
+    tail = names.tail(ROLE_GEOM_TRAJ)[:-len(GEOMETRIC_APPENDS)]
     return f"JOB + {tail!r}.format(run=_MB_RUN)"
 
 
@@ -181,8 +178,8 @@ def spec_for(struct: Structure,
     writing into the same calculation -- and anything they both name would
     collide.  So the stage's token is in every name the script itself
     chooses: PySCF's own log (``<JOB>_<NN>_<stage>.log``), geomeTRIC's
-    trajectory and opt log (``<JOB>_<NN>_<stage>_geom_optim.xyz``,
-    ``..._<NN>_<stage>_geom.log``) and the molwatch trajectory log
+    trajectory (``<JOB>_<NN>_<stage>_geom_optim.xyz``) and the molwatch
+    trajectory log
     (``<JOB>_<NN>_<stage>.molwatch.log``) -- the same three names SIESTA
     suffixes (§ 1.1a, consequence 1) -- and, where the stage's runs share a
     folder, the run's number after it, filled when the script runs
@@ -1499,11 +1496,8 @@ def emit_outputs_block(names, *,
         out.append(f"    {_rf(label, ROLE_OPTIMIZED)} + .molstruct.json   -- the "
                    f"relaxed coordinates, as a pair")
     if trajectory:
-        _geom_log = _shown(names, ROLE_GEOM_LOG)
-        out.append(f"    {_geom_log[:-len(GEOMETRIC_LOG_APPENDS)]}"
-                   f"{GEOMETRIC_APPENDS}   -- this rung's trajectory "
-                   f"(multi-frame XYZ)")
-        out.append(f"    {_geom_log}   -- geomeTRIC's log for this rung")
+        out.append(f"    {_shown(names, ROLE_GEOM_TRAJ)}   -- this rung's "
+                   f"trajectory (multi-frame XYZ)")
     if held:
         out.append(f"    {_shown(names, ROLE_CONSTRAINTS)}   -- the held atoms, "
                    f"in geomeTRIC's format")

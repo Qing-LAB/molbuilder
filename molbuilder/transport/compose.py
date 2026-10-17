@@ -525,7 +525,7 @@ def _run_geometry(cited: CitedRun, kinds):
 
 
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
-                                 ion_dir=None):
+                                 held_by_relaxation=None, ion_dir=None):
     """Extract both leads from the sorted device, then measure the one
     § 3 condition that needs files from outside the structure.
 
@@ -548,7 +548,9 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     *prior_positions* is the geometry the cited relaxation STARTED from,
     in your order, or ``None`` when there is none to compare against — the
     recompose-from-record path, where the comparison was made when the
-    record was written.
+    record was written.  *held_by_relaxation* is the atoms the cited
+    junction's relaxation record held, in your order
+    (:func:`_held_by_its_relaxation`), or ``None`` the same way.
 
     A refusal names atoms in the person's own order, the device's own
     answer (`Structure.your_indices`), never by their place in TranSIESTA's
@@ -561,7 +563,8 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     for region in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
         try:
             models.append(extract_electrode_model(
-                dev, region, prior_positions=prior_positions))
+                dev, region, prior_positions=prior_positions,
+                held_by_relaxation=held_by_relaxation))
         except ValueError as exc:
             refusals.append(str(exc))
     if len(refusals) == 1:
@@ -724,6 +727,19 @@ def refuse_inside_citation(dest, cited: "CitedRun | CitedPair", *,
             f"(engines/transport.md 3.1).")
 
 
+def _held_by_its_relaxation(relaxed: Structure):
+    """The atoms the cited junction's relaxation held, in your order, as its
+    record says (`parse.contract.held_atoms_of`) -- read from the junction
+    as cited, before it enters the calculation, because the record is about
+    those coordinates; ``None`` when it carries no record about them."""
+    from ..parse.contract import held_atoms_of
+    rec = (getattr(relaxed, "info", None) or {}).get("relaxation")
+    if (not isinstance(rec, dict)
+            or rec.get("geometry_sha256") != relaxed.geometry_fingerprint()):
+        return None
+    return held_atoms_of(relaxed, rec)
+
+
 def compose_junction(citation: str, *, tree_root,
                      swap_electrodes: bool = False) -> ComposedJunction:
     """The whole § 4.1–4.2 compose: citation → sorted, gated, extracted --
@@ -741,6 +757,7 @@ def compose_junction(citation: str, *, tree_root,
              if isinstance(cited, CitedPair)
              else _run_parts(cited, citation, swap_electrodes))
     relaxed, start, ion_dir, deck_text, files, said = parts
+    held = _held_by_its_relaxation(relaxed)
     # THE JUNCTION ENTERS THIS CALCULATION (`structure-periodicity.md` § 6.0):
     # the engine's origin of a cited run's coordinates is not carried into
     # it, so the one rule centres it for every rung; a person's assigned
@@ -760,7 +777,7 @@ def compose_junction(citation: str, *, tree_root,
     # the sorted device with itself there, through the device's own answer
     # (`Structure.your_indices`).
     elec_l, elec_r = _extract_and_gate_electrodes(
-        dev, prior_positions=start, ion_dir=ion_dir)
+        dev, prior_positions=start, held_by_relaxation=held, ion_dir=ion_dir)
 
     provenance = {
         # WHICH KIND was cited (§ 3.1): it decides which files the record

@@ -650,11 +650,13 @@ calculation holds; what the junction's relaxation held is its
 not change ([`model/parse.md`](?doc=model/parse.md) § 5b.1). A transport
 calculation runs no relaxation, so it holds nothing itself: the held set
 matters to it only as the promise that the leads are the bulk they stand for
-— which is a fact about the relaxation. The check reads the label; a cited
-run's electrodes are also measured unmoved against where its relaxation
-started (`prior_positions`, 10⁻³ Å), and a cited pair's are not, so a pair
-whose relaxation left an electrode free and whose label holds it now passes
-(plan V1.43).
+— which is a fact about the relaxation. So the check reads the label, and
+then the relaxation: **an electrode atom its relaxation record did not hold
+is refused**, naming it, whatever the label says now — the record's
+`held_atom_keys`, read from the junction as cited when the record is about
+those coordinates (`parse.contract.held_atoms_of`; *the user, 2026-10-17*);
+and a cited run's electrodes are also measured unmoved against where its
+relaxation started (`prior_positions`, 10⁻³ Å).
 
 What this run decides for every rung after it: the geometry, and — as defaults
 the person may change, one value for all five rungs — the basis, the

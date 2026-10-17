@@ -633,7 +633,9 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         design if design is not None else struct, engine="siesta",
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         force_tolerance_ev_ang=(float(_tol) if _tol is not None else None),
-        level=contract_fields_of(cfg, state=_state)))
+        level=contract_fields_of(cfg, state=_state,
+                                 axis_kind=struct.axis_kind,
+                                 kind="vibration")))
     return issues
 
 

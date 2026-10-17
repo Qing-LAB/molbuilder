@@ -1165,7 +1165,9 @@ TD6's starting values for every transport SCF stage, `transport.md` § 3.1) —
 in the catalogue's unit, so every reader takes it as it stands: the vibration
 check (`contract_fields_of(cfg)` gives the level of theory about to run in the
 same names, so a difference reads *"mesh_cutoff: relaxed with 300, this run
-400"*; the SCF settings are not a level of theory and are not compared) and
+400"* — the k-point grid as the run's own deck will write it, `kmesh.mesh_for`
+on the structure's axes, *"kgrid: relaxed with [1, 1, 1], this run [4, 4,
+1]"*; the SCF settings are not a level of theory and are not compared) and
 the transport citation (`transport/citation_defaults.py`), which reads a cited
 run's deck through this door and a cited pair's record as this door wrote it.
 A deck that states no level of theory has no record, whatever its SCF

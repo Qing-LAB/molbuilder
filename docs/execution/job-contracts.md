@@ -407,9 +407,8 @@ is.
 > **Drift corrected (2026-07-27):** the old catalogue listed engine stdout as
 > a static `my-job.out` / `my-job.log`. The wrapper now writes a **run-indexed**
 > `my-job-runN.out` (SIESTA) and `my-job-runN.pyscf.log` (PySCF); `my-job.log`
-> is PySCF's own logger (`mol.output`, `model/parse.md` § 5.5) and
-> geomeTRIC's is `_geom.log`. *(This note said "the `.log` family is
-> geomeTRIC's own logging" until 2026-10-04.)*
+> is PySCF's own logger (`mol.output`, `model/parse.md` § 5.5); geomeTRIC
+> writes no log file of its own (`engines/pyscf.md` § 2).
 
 **Why PySCF's stdout is `.pyscf.log` and not `.out`.** It used to be `.out`, and
 that collided with SIESTA's `.out` — which is not stdout at all, but a structured
@@ -482,7 +481,7 @@ the same three segments one level down, and returns None against `bdt`. The
 same measurement is why the name carries no **engine** segment either — the two
 engines' roles are already disjoint, in both what they leave behind (`.XV` /
 `.DM` against `.chk` / `_optimized.xyz`) and what molbuilder writes for them
-(`.fdf` against `.py` / `.pyscf.log` / `_geom.log`), so a segment would restate
+(`.fdf` against `.py` / `.pyscf.log` / `_geom_optim.xyz`), so a segment would restate
 what the suffix says; and the files that are genuinely shared belong to the one
 wrapper that runs both engines, so a token on `.run.sh` would be a claim about
 the file that is not true of it. A carried file settles it: it is found *by
@@ -635,7 +634,7 @@ and **there is one convention for it**:
   > no second grammar**: a reader that cuts the token out of a name its own
   > way reads no stage from `<base>-run0.scf-timing.log`,
   > `<base>.runwrap-<stamp>.log` or `<base>-run0.continued-from`, and a stage
-  > `coarse_geom` from geomeTRIC's log *(measured 2026-10-04; none reads a
+  > `coarse_geom` from a `_geom`-prefixed file *(measured 2026-10-04; none reads a
   > name its own way now -- `runstatus._label_of` went with plan W56 3b.3, the
   > PySCF parser's `_resolve_job_token` with 4d)*. *(This
   > named `identity.parse_stage_token` as the reader until 2026-10-04.)*

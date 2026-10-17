@@ -927,10 +927,10 @@ type = "bool"
 group = "budget"
 label = "ParallelOverK"
 optional = true
-not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point grid before the deck is written"
+not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point grid and the solver before the deck is written"
 help = """
-How the MPI ranks split the diagonalisation: over k-points (on) or over orbitals (off).  Left blank it is chosen automatically from your k-point grid -- off for a Gamma-only run, on when the mesh holds more than one k-point.
-Splitting over k-points when there is only one leaves the other ranks nothing to do.
+How the MPI ranks split the diagonalisation: over k-points (on) or over orbitals (off).  Left blank it is chosen automatically from your k-point grid -- off for a Gamma-only run, on when the mesh holds more than one k-point, and off with an ELPA solver, which SIESTA's manual calls not compatible with it.
+Splitting over k-points when there is only one leaves the other ranks nothing to do.  On with ELPA is written as you set it, with a warning; SIESTA's output says which split it used.
 """
 
 [item.omp_threads]

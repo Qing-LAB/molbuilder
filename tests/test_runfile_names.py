@@ -47,7 +47,7 @@ STAGES = [None, "01_coarse", "02_medium", "02_electrode_L",
           "100_final"]
 RUNS = [None, 0, 2, 17]
 ROLES = [".chk", ".out", ".py", ".run.sh", ".molwatch.log", ".pyscf.log",
-         "_optimized.xyz", "_initial.xyz", "_geom_optim.xyz", "_geom.log",
+         "_optimized.xyz", "_initial.xyz", "_geom_optim.xyz",
          ".XV", ".DM", ".BASIS_ENTHALPY"]
 
 
@@ -295,7 +295,7 @@ def test_the_role_is_what_says_which_engine_wrote_a_file():
     It already does, wherever a file is an engine's at all: the two engines'
     roles are DISJOINT, both for what they leave behind (`.XV`/`.DM` against
     `.chk`/`_optimized.xyz`) and for what molbuilder writes for them (`.fdf`
-    against `.py` / `.pyscf.log` / `_geom.log`).  A fifth segment would restate
+    against `.py` / `.pyscf.log` / `_geom_optim.xyz`).  A fifth segment would restate
     what the suffix already says, and a name with two sources of truth for one
     fact is what § 2.2a exists to stop.
 

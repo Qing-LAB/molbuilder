@@ -218,18 +218,33 @@ def _held_sets_compared(struct: Structure, rec: Mapping[str, Any]
     every atom the relaxation held and more -- a partial Hessian over fewer
     atoms, every one of which the relaxation moved and balanced
     (`engines/vibration.md` § 2.3a)."""
-    keys_then = rec.get("held_atom_keys")
-    if not isinstance(keys_then, list):
+    from ..parse.contract import held_atoms_of
+    then = held_atoms_of(struct, rec)
+    if then is None:
         return None
+    keys_then = rec["held_atom_keys"]
     lines = struct.geometry_lines()
     held_now = {int(i) for i in (struct.frozen_atoms or [])
                 if 0 <= int(i) < len(lines)}
     if sorted(keys_then) == sorted(lines[i] for i in held_now):
         return None
-    then = set(keys_then)
-    freed = [i for i, line in enumerate(lines)
-             if line in then and i not in held_now]
+    freed = [i for i in then if i not in held_now]
     return len(keys_then), len(held_now), freed
+
+
+def _same_setting(theirs, mine) -> bool:
+    """One recorded setting against the one about to run: a word as typed,
+    case aside; a number within round-off; a list of numbers -- the k-point
+    grid's counts or offset -- each against its own."""
+    if isinstance(theirs, (list, tuple)) or isinstance(mine, (list, tuple)):
+        return (isinstance(theirs, (list, tuple))
+                and isinstance(mine, (list, tuple))
+                and len(theirs) == len(mine)
+                and all(_same_setting(a, b) for a, b in zip(theirs, mine)))
+    if isinstance(theirs, str) or isinstance(mine, str):
+        return str(theirs).strip().lower() == str(mine).strip().lower()
+    return abs(float(theirs) - float(mine)) <= 1e-9 * max(1.0,
+                                                           abs(float(mine)))
 
 
 def _first_relaxation(engine: str) -> str:
@@ -383,11 +398,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
             theirs = recorded.get(key)
             if theirs is None or mine is None:
                 continue
-            same = (str(theirs).strip().lower() == str(mine).strip().lower()
-                    if isinstance(theirs, str) or isinstance(mine, str)
-                    else abs(float(theirs) - float(mine)) <= 1e-9 * max(
-                        1.0, abs(float(mine))))
-            if not same:
+            if not _same_setting(theirs, mine):
                 differing.append(f"{key}: relaxed with {theirs}, this run {mine}")
         if differing:
             disagreed = True

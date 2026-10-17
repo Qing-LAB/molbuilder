@@ -53,11 +53,11 @@ from typing import Optional
 _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 
 #: The underscore-introduced roles of the files an ENGINE itself writes: what
-#: it warm-starts from (``_optimized.xyz``, `pyscf/warm-files.toml`) and what
-#: geomeTRIC writes under the prefix the deck hands it -- its trajectory and
-#: its scratch, which are not warm state (`engines/stages.md` § 1.1a,
-#: consequence 4) and are named here all the same, because a reader still
-#: has to tell them apart from a stage.
+#: it warm-starts from (``_optimized.xyz``, `pyscf/warm-files.toml`) and
+#: geomeTRIC's scratch under the prefix the deck hands it, which is not warm
+#: state (`engines/stages.md` § 1.1a, consequence 4) and is named here all the
+#: same, because a reader still has to tell it apart from a stage.
+#: geomeTRIC's trajectory under that prefix is a row of :data:`WRITTEN`.
 #:
 #: **Why `parse` needs a vocabulary at all.** A stage name may contain ``_``
 #: (`02_electrode_L`) and so may a role (`_geom_optim.xyz`), so the separator
@@ -69,7 +69,7 @@ _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 #: engines' vocabularies are read by modules this one may not import -- L1
 #: grammar reaching an L1 TOML reader would put a file read behind every
 #: filename.  A caller holding the real vocabulary passes it as ``roles``.
-_ENGINE_ROLES = ("_optimized.xyz", "_geom_optim.xyz", "_geom.tmp")
+_ENGINE_ROLES = ("_optimized.xyz", "_geom.tmp")
 
 #: The basename rule, restated from `config/siesta.py::_validate_basename`
 #: (job-contracts.md § 2.1: "a single token matching [A-Za-z0-9_-]+").  It is
@@ -1036,12 +1036,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".log", "PySCF's own log", attempt="shared", engine="pyscf",
              kind="result", writer="the PySCF deck",
              door="parse.dirs.record.run_record"),
-    # GEOMETRIC'S OPT LOG, `<label>_<stage>_geom.log`.
-    # A FLAT RUN'S OWN with the prefix that names it, which carries the run's
-    # number there: otherwise geomeTRIC moves the last run's aside as
-    # `<prefix>_1.log`, a name nothing declares.
-    Artifact("_geom.log", "geomeTRIC's optimizer log", attempt="shared",
-             engine="pyscf", kind="result",
+    # GEOMETRIC'S TRAJECTORY, `<label>_<stage>_geom_optim.xyz` -- the row the
+    # deck's prefix for geomeTRIC is derived from (`pyscf.input.
+    # geometric_prefix_expr`).  A FLAT RUN'S OWN with the prefix that names
+    # it, which carries the run's number there, so a flat stage's runs do not
+    # write one file.  geomeTRIC writes no log file here: PySCF hands it a
+    # logging setup that prints to the screen (`pyscf/geomopt/log.ini`).
+    Artifact("_geom_optim.xyz", "geomeTRIC's trajectory: each accepted "
+                                "step's geometry, multi-frame XYZ",
+             attempt="shared", engine="pyscf", kind="result",
              writer="geomeTRIC, under the prefix the deck hands it"),
     # A TEMPLATE, NOT A GLOB.  The stamp is a FIELD: the file it names is real and
     # concrete, and what varies is a value the name carries (§ 5l.1).

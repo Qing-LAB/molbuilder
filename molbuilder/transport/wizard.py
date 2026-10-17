@@ -52,7 +52,7 @@ deck.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -256,6 +256,7 @@ def _refuse_unless_frozen_bulk(
     label: str,
     idxs,
     prior_positions: Optional[np.ndarray],
+    held_by_relaxation: Optional[Sequence[int]] = None,
 ) -> None:
     """The lead must be frozen, and must have stayed where it was.
 
@@ -276,6 +277,23 @@ def _refuse_unless_frozen_bulk(
             f"again.  Freezing them now does not make the geometry they are "
             f"already in bulk -- nothing held them while the bridge relaxed, "
             f"so whether they moved was never constrained")
+
+    # HELD BY THE RELAXATION TOO, when its record says which atoms it held:
+    # the label is the person's to change, the record is what the relaxation
+    # did (`engines/transport.md` § 1.1, Step 0).  In your order, each atom
+    # here named there through the device's own answer (`your_indices`).
+    if held_by_relaxation is not None:
+        held = set(int(i) for i in held_by_relaxation)
+        free_then = [i for i, j in zip(idxs, device.your_indices(idxs))
+                     if j not in held]
+        if free_then:
+            raise ValueError(
+                f"{len(free_then)} atom(s) in {label!r} were NOT HELD by "
+                f"the relaxation that left this geometry, as its record "
+                f"says: {device.atoms_named(free_then, limit=6)}.  A lead is "
+                f"the pristine bulk the self-energy attaches to, and holding "
+                f"them now does not undo what the relaxation did to them -- "
+                f"hold every electrode atom, then relax and cite again")
 
     if prior_positions is None:
         return
@@ -310,6 +328,7 @@ def extract_electrode_model(
     label: str,
     *,
     prior_positions: Optional[np.ndarray] = None,
+    held_by_relaxation: Optional[Sequence[int]] = None,
     z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
@@ -326,7 +345,10 @@ def extract_electrode_model(
 
     1. **Declared frozen** -- every atom of the region is in
        ``frozen_atoms`` (``engines/transport.md`` § 4: the lead atoms
-       are frozen bulk by construction).
+       are frozen bulk by construction) -- and, when
+       *held_by_relaxation* is given, held by the relaxation that left the
+       geometry: the atoms its record held, in your order
+       (`parse.contract.held_atoms_of`).
     2. **Actually unmoved**, when *prior_positions* is given -- the
        geometry the relaxation started from, in your order
        (`model/overview.md` § 2.2a, I1), each atom of this structure
@@ -351,7 +373,8 @@ def extract_electrode_model(
     block_name, idxs = electrodes[label]
     idxs = sorted(idxs)
 
-    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions)
+    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions,
+                               held_by_relaxation)
 
     pos = np.asarray(device.positions, dtype=float)[idxs]
     elems = [device.elements[i] for i in idxs]

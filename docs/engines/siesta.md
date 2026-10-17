@@ -79,8 +79,9 @@ flowchart LR
   deck's `script_emit.DeckSpec` — its layout, how each setting is spelled, the
   values its record carries and the rules the finished deck must satisfy — and
   the framework renders it (`script_emit.render_deck`). The public surface is
-  `spec_for` and `SiestaConfig`; `molbuilder.siesta` exports `SiestaConfig`,
-  `copy_pseudopotentials` and `find_psml`. A deck reaches disk one way —
+  `spec_for` and `SiestaConfig`; `molbuilder.siesta` exports `SiestaConfig`
+  and `copy_pseudopotentials`, which copies `<label>.psml` by the name SIESTA
+  opens and no other (`pseudos.psml_sources`, the rule every check asks). A deck reaches disk one way —
   `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
   → render → write → check) on the machine that will run it, and writes the
   siblings the deck's own text promises
@@ -177,8 +178,7 @@ class SiestaConfig: ...                                             # config/sie
 spec_for(struct, config=None, *, names, cell=None,
          calculation="optimization", vibration=None,
          relaxed_by=None, state=None, trial=None) -> DeckSpec          # siesta/input.py
-copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the elements whose .psml was MISSING
-find_psml(element, lib) -> Path | None                               # siesta/input.py
+copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the elements whose <label>.psml was MISSING
 ```
 
 A deck is made on the road: `init` describes the calculation, and `prep`
@@ -460,7 +460,9 @@ absent — kept as the deck keeps the other shared settings (TD12,
 [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md)).
 
 **What reads the k-point grid.** `Diag.ParallelOverK`'s automatic answer —
-*more than one k-point* — is counted on the grid the deck writes: a lead's
+*more than one k-point, and a solver other than ELPA* (SIESTA's manual: ELPA
+*"is not compatible with Diag.ParallelOverK"*; set on with ELPA, it is written
+as set and prep warns) — is counted on the grid the deck writes: a lead's
 `kx ky 100`, not the template's `kx ky 1`. The dipole advisory reads no grid:
 it asks the axes SIESTA computes on, a box of vacuum on every one
 ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1;

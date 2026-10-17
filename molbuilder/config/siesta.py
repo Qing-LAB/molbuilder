@@ -97,6 +97,24 @@ def _validate_block_size(value):
     return []
 
 
+def _validate_parallel_over_k(value, cfg):
+    """``Diag.ParallelOverK`` on with an ELPA solver: SIESTA's manual says
+    ELPA *"is not compatible with Diag.ParallelOverK"* (§ Diagonalization
+    options), so prep says so -- a warning: the value is written as set and
+    SIESTA decides what runs, which its output states.  Unset, the automatic
+    answer is off for ELPA (`siesta.input`)."""
+    algo = str(getattr(cfg, "diag_algorithm", None) or "").strip().upper()
+    if value is True and algo.startswith("ELPA"):
+        return [Issue("warn",
+                      f"parallel_over_k = true with diag_algorithm = "
+                      f"{cfg.diag_algorithm!r}: SIESTA's manual says ELPA "
+                      f"is not compatible with Diag.ParallelOverK.  It is "
+                      f"written as you set it; SIESTA's output says which "
+                      f"split it used.",
+                      "config.parallel_over_k")]
+    return []
+
+
 def _validate_kgrid_displacement(value):
     """``kgrid_displacement``'s SHAPE: three numbers, the block's fourth
     column (SIESTA's ``displ(3)``, the k-grid origin in grid-vector
@@ -741,6 +759,7 @@ class SiestaConfig:
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
         "category": ("execution",),
+        "validate": _validate_parallel_over_k,
         "workflow_group": "budget",
         "label": "ParallelOverK",
         "engine_key":  'Diag.ParallelOverK',

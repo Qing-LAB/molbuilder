@@ -63,6 +63,8 @@ def test_pyscf_cold_block_sweeps_by_name_not_by_inventory():
     assert '"$_warm_label".*' in block
     assert '"${_warm_label}"_*' in block
     assert "myjob.*" in block and "myjob_*" in block
-    for retired in ("_optimized.xyz", "_geom_optim", ".chk\""):
+    # The warm state the engine reads is swept, never kept (geomeTRIC's
+    # trajectory is a declared run file, kept as its run's history).
+    for retired in ("_optimized.xyz", ".chk\""):
         assert retired not in block, (
             f"a suffix enumeration crept back in: {retired}")

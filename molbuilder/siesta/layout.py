@@ -141,11 +141,10 @@ def mpi_section(*, algorithm) -> Section:
         "#",
         "# Diag.ParallelOverK: parallelise the diagonaliser over",
         "# k-points (.true.) or over orbitals (.false.).  Auto-",
-        "# selected here from the kgrid above: .false. for 1x1x1",
-        "# (molecule / vacuum), .true. for multi-k periodic runs.",
-        "# NOTE with ELPA (CPU or GPU): SIESTA sets ParallelOverK",
-        "# .false. itself (Src/diag_option.F90), so an ELPA run",
-        "# always splits over orbitals whatever this line says.",
+        "# selected here from the kgrid above and the solver:",
+        "# .false. for 1x1x1 (molecule / vacuum) and with ELPA (CPU",
+        "# or GPU), which SIESTA's manual calls not compatible with",
+        "# it; .true. for a multi-k periodic run on ScaLAPACK.",
         "",
     ))
 

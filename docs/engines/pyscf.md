@@ -134,7 +134,6 @@ by the config flag in column 2):
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization — in the engine's frame, as a pair carrying no run record of the input's either: its coordinates are the engine's, so the input's record's fingerprint does not describe them |
 | `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's relaxation record (`info.relaxation`) is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b) — the deck writes no copy of it (V1.31, closed 2026-09-29: one reader, one record). **Its level of theory is recorded by no door yet**: `info.calculation` (the charge, spin, basis and functional a run carried) is read from a SIESTA deck only (`parse.contract.contract_of`), so neither this pair nor the Results tab's export of a PySCF run carries one, and a later calculation with a blank charge or spin works them out from the structure (`science/chemistry-correctness.md` § 2a) — state them when the molecule is charged or open-shell. The PySCF half of that reader is planned ([`plan.md`](?doc=plans/plan.md) § 5w K18). *(They were copied onto every pair until 2026-09-29, so a PySCF-relaxed geometry carried a SIESTA run's tolerance, force and level of theory — the M11 review, PS-C10.)* |
 | `<job>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
-| `<job>_<stage>_geom.log` | same | geomeTRIC's own per-stage log |
 | `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
 > **The stage token sits immediately after the label, never inside the role**
@@ -146,9 +145,12 @@ by the config flag in column 2):
 > it writes the placeholder as `<stage>` rather than the `*` that sweep
 > searched for. Build the name with `runfiles.compose`, never by hand.
 
-**In the flat shape the four per-run files carry the run's number** after the
+**In the flat shape the three per-run files carry the run's number** after the
 stage token — `<job>_<NN>_<stage>-run<N>.log`, `…-run<N>_geom_optim.xyz`,
-`…-run<N>_geom.log`, `…-run<N>.molwatch.log`. Prep renders each name from the
+`…-run<N>.molwatch.log`. geomeTRIC writes no log file of its own: PySCF hands
+it a logging setup that prints to the screen (`pyscf/geomopt/log.ini`, used
+when geomeTRIC's own is absent), and the deck's prefix for it is derived from
+the trajectory's name. Prep renders each name from the
 stage's names (`runfiles.RunNames`) as a template, `{run}` where the number
 goes, and the script fills it with the number its run script gives it,
 `python <script>.py --run N` — every PySCF script takes `--run N`, and in the

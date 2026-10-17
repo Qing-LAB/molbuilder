@@ -9,12 +9,8 @@ re-exported here, so ``from molbuilder.siesta import SiestaConfig`` reads it.
 """
 
 from ..config.siesta import SiestaConfig
-from .input import (
-    copy_pseudopotentials,
-    find_psml,
-)
+from .input import copy_pseudopotentials
 __all__ = [
     "SiestaConfig",
     "copy_pseudopotentials",
-    "find_psml",
 ]

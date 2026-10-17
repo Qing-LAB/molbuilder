@@ -313,6 +313,15 @@ def test_a_record_at_another_level_of_theory_warns(relaxed):
     assert len(found) == 1, found
     assert f"basis_size: relaxed with {ran}, this run {other}" \
         in found[0].message
+    # THE K-POINT GRID, as this run's deck will write it (`model/parse.md`
+    # § 5b): the silent failure, the 2026-10-10 walk's slab relaxed at one
+    # k-point and its vibration read at its own grid unsaid.
+    grid = contract_of(_deck(relaxed))["contract"]["kgrid"]
+    more = [n + 1 for n in grid]
+    found = [i for i in _record_findings(
+        s, _cfg(already_relaxed=True, kgrid=more)) if i.severity == "warn"]
+    assert len(found) == 1, found
+    assert f"kgrid: relaxed with {grid}, this run {more}" in found[0].message
     pfound = _record_findings(s, PySCFConfig(job_name="co2",
                                              already_relaxed=True))
     assert any(i.severity == "warn"

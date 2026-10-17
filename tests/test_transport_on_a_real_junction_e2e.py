@@ -1011,6 +1011,41 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
         (severity, True)], found
 
 
+def test_a_pair_whose_relaxation_left_an_electrode_atom_free_is_refused(
+        junction):
+    """`engines/transport.md` § 1.1, Step 0: a lead is the bulk its
+    relaxation held still, and the record says which atoms that was -- so a
+    pair saved from the relaxation whose electrode label is then widened by
+    the wire's two atoms beside it, the one the relaxation moved held now
+    too, is refused at the citation, naming that atom.  The silent failure
+    (plan V1.43): the label alone was read, and the pair composed a lead out
+    of an atom nothing held while the bridge relaxed."""
+    import shutil
+
+    from molbuilder.transport.compose import ComposeError, compose_junction
+    from molbuilder.workingcopy_structure import StructureCodec
+    s = StructureCodec().load(junction.tree / junction.pair)
+    moved, beside = _at(_LEAD + 1), _at(_LEAD)
+    assert moved not in s.frozen_atoms and beside in s.frozen_atoms, (
+        sorted(s.frozen_atoms))
+    s.regions["L-electrode"] = sorted(
+        set(s.regions["L-electrode"]) | {beside, moved})
+    s.regions["bridge"] = [i for i in s.regions["bridge"]
+                           if i not in (beside, moved)]
+    s.frozen_atoms = sorted(set(s.frozen_atoms) | {moved})
+    where = junction.tree / "P" / "relabelled"
+    try:
+        StructureCodec().write(s, where / "relabelled.xyz")
+        with pytest.raises(ComposeError) as refused:
+            compose_junction("P/relabelled/relabelled.xyz",
+                             tree_root=junction.tree)
+    finally:
+        shutil.rmtree(where, ignore_errors=True)
+    said = str(refused.value)
+    assert "NOT HELD by the relaxation" in said, said
+    assert f"atom index {moved} (H)" in said, said
+
+
 def _prepared_decks(run, stage):
     """The decks ``stage`` prepared: its one deck in the stage's folder, or
     each point's (`transport.stages.point_folders`) -- named by the run's

@@ -2723,7 +2723,7 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<base>-run<N>.ANI` *(SIESTA)* — only: the deck turns on `WriteMDXmol` -- a relaxation's does, unless set off | every step's coordinates, an animation VMD, xcrysden and OVITO open | SIESTA, through its own name, which the run script points at this file while the engine runs | none | result |
 | `<base>-run<N>.pyscf.log` *(PySCF)* | the same, for PySCF — it writes here and not to .out | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
 | `<base>.log` *(hierarchical)* · `<base>-run<N>.log` *(flat)* *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
-| `<base>_geom.log` *(hierarchical)* · `<base>-run<N>_geom.log` *(flat)* *(PySCF)* | geomeTRIC's optimizer log | geomeTRIC, under the prefix the deck hands it | none | result |
+| `<base>_geom_optim.xyz` *(hierarchical)* · `<base>-run<N>_geom_optim.xyz` *(flat)* *(PySCF)* | geomeTRIC's trajectory: each accepted step's geometry, multi-frame XYZ — the name the deck's prefix for geomeTRIC is derived from; geomeTRIC writes no log file of its own here, PySCF handing it a logging setup that prints to the screen | geomeTRIC, under the prefix the deck hands it | none | result |
 | `<base>.runwrap-<stamp>.log` | the wrapper's own session log — one per launch, stamped with the clock | the run script, at each start | `wrapper_log.log_of_run` | record |
 | `<base>-run<N>.monitor.log` | the monitor's rolling status | the monitor | `parse.instruments.monitor.MonitorLogFileParser` | record |
 | `<base>-run<N>.util.csv` | processor and memory samples taken while it ran | the monitor | `parse.instruments.util_csv.UtilCsvFileParser` | record |

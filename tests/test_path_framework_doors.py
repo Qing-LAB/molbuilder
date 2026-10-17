@@ -65,7 +65,7 @@ def test_canonical_role_maps_a_name_back_to_its_TEMPLATE():
     """
     assert canonical_role(".runwrap-20260908-120000.log") == (
         ".runwrap-{stamp}.log", {"stamp": "20260908-120000"})
-    for plain in (".out", ".pyscf.log", ".log", "_geom.log"):
+    for plain in (".out", ".pyscf.log", ".log", "_geom_optim.xyz"):
         assert canonical_role(plain) == (plain, {}), plain
     # a stamp-shaped thing that is not in the right place stays foreign
     assert canonical_role(".runwrap-nope.log") == (".runwrap-nope.log", {})
