@@ -43,14 +43,14 @@ this file is it.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-10-14)*
+## ▶ HANDOVER — where we are, and where to start *(2026-10-17)*
 
 *(user, 2026-10-09: "consolidate the plan and make sure we have all the
 discussions persistent and ready so that when i come back here we can
 continue without losing any context/details")* Read this first; each line
 points at the row or section that holds the detail.
 
-**In progress — 2.10.0, committed locally, not pushed.** **RMP**
+**Pushed — 2.10.0** (origin `d2f137a2`, 2026-10-17). **RMP**
 (`model/overview.md` § 2.2a, § 5ab): R0–R6 built 2026-10-14, R4 dropped, with
 T-CO2's move of the SIESTA vibration road to CO2; R5–R6 reviewed in two rounds
 2026-10-15. **UPG** (§ 2's row, a calculation carried across a molbuilder
@@ -133,7 +133,7 @@ once, then dropped; `molbuilder jobs status|stop`)*: § 2's row. **TBK built
 the free atoms'; the stress recorded). **Next**: the wrong-data rows of § 0a's
 step 1.
 
-**Pushed — 2.9.6** (origin `a74f1085`): T1, F-MDNC, F19b; the pin of V1.9
+**Before that, pushed — 2.9.6** (origin `a74f1085`): T1, F-MDNC, F19b; the pin of V1.9
 (M2m, sidecar v13); A1.11, A1.5 / A1.13's `.pdb` name, A1.4; the held-set rule
 of `engines/vibration.md` § 2.3a (holding more for the spectrum is
 information; the clarification written for transport too, `transport.md`
@@ -309,8 +309,7 @@ on 2.10.0, its job environments repaired for `netcdf4` (V1.39) — the user's.
    then does the next step start.
 
 A full test batch (`tools/testrun.py`) runs at the end of each step, with
-nothing changing under it; the last non-e2e batch ran 2026-10-14 on V1.9 (7,212 passed, 2 skipped, 6 expected failures); the e2e batch last ran whole 2026-10-13 (the non-e2e suite then 7,218
-tests, and the e2e batch, 302, all passing).
+nothing changing under it; the last non-e2e batch ran 2026-10-17 (6,710 passed, 8 skipped); the e2e batch last ran whole 2026-10-16 (396, all passing).
 
 **The Q19 row** — the three passes, its phase 1 done and its later phases
 listed — stays here as step 3's detail:
