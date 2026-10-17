@@ -39,22 +39,25 @@ launch_mode = "direct"
 launch_refused = "--time: what a scheduler is asked for"
 launch_writes_nothing = true
 
-# ---- A RUN HERE, LEFT IN THE BACKGROUND (job-system.md § 6.0, *A run here,
-# left in the background*): planned, shown and asked as any run here; what it
-# runs once started is read off real runs.
+# ---- A RUN HERE, IN THE BACKGROUND UNLESS SAID (job-system.md § 6.0, *A run
+# here starts in the background, unless said*): planned, shown and asked as
+# any run here; what it runs once started is read off real runs.
 [[case]]
-name = "a background launch is planned, shown and asked as a run here is -- a dry run, which writes nothing"
-launch = ["--background"]
+name = "a run here waited on is planned, shown and asked as one left in the background is -- a dry run, which writes nothing"
+launch = ["--foreground"]
 launch_mode = "direct"
-listing = ["WOULD start", "bash H2_01_coarse.run.sh"]
+listing = ["WOULD run", "bash H2_01_coarse.run.sh"]
 launch_writes_nothing = true
 
 [[case]]
-name = "a background launch on a queue is refused, naming why: nothing runs here to leave"
-launch = ["--background"]
+name = "a launch waited on, on a queue, is refused, naming why: nothing runs here to wait for -- with the launch as typed for each mode, a queue's line without it"
+machine = "this"
+queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
+allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
+launch = ["--foreground"]
 launch_mode = "submit"
 launch_sends = true
-launch_refused = "--background starts a run HERE"
+launch_refused = ["--foreground: waits for a run here", "--stage coarse --foreground --mode direct", "--stage coarse --mode submit"]
 after_launch = { ledger_holds = ["refused"] }
 
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)
@@ -62,11 +65,11 @@ after_launch = { ledger_holds = ["refused"] }
 # THE DRY RUN SHOWS THE PLAN THE LAUNCH WOULD SEND (`job-system.md` § 6.0):
 # what a launch writes as its run starts is read off real runs (plan § 5y).
 [[case]]
-name = "a launch naming no stage plans the one stage prepared and not launched -- a dry run, which writes nothing"
+name = "a launch naming no stage plans the one stage prepared and not launched, started in the background -- a dry run, which writes nothing"
 launch = []
 launch_stage = ""
 launch_mode = "direct"
-listing = ["WOULD run", "bash H2_01_coarse.run.sh"]
+listing = ["WOULD start", "bash H2_01_coarse.run.sh"]
 launch_writes_nothing = true
 
 [[case]]

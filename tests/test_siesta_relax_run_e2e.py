@@ -336,17 +336,10 @@ def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(relaxed):
 #
 # The run's deck is written in the engine's held-first order: the held
 # carbon, then the oxygens as listed (`engines/vibration.md` § 5.2).  Every
-# door that shows, writes or builds from the run is asked of two runs:
-#
-# * the run itself -- the silent failure: a run in its engine's order shown,
-#   saved or converted as if it were in yours, the carbon taken for the
-#   first oxygen, with nothing to say so;
-# * a copy, its decks as molbuilder 2.9.6 wrote them -- their stamp, and the
-#   ATOM-METADATA block at schema 13 with no order record (I9) -- the silent
-#   failure: a run of a kind that reorders, its deck's block written before
-#   the order record, shown or built from as if its atoms were in your
-#   order.  A door that builds
-#   refuses it by name, a door that shows it says so -- once.
+# door that shows, writes or builds from the run is asked of it -- the silent
+# failure: a run in its engine's order shown, saved or converted as if it
+# were in yours, the carbon taken for the first oxygen, with nothing to say
+# so.
 
 #: The viewer's mark of a structure in this order (`web/molview.md` § 6.2).
 _SAID = "in the engine's order (held atoms first)"
@@ -354,15 +347,6 @@ _SAID = "in the engine's order (held atoms first)"
 #: The notices a row reads, of all a route says (`model/overview.md`
 #: § 2.2a, I8, I9).
 _ORDER_NOTICES = ("structure.restored", "structure.order_unstated")
-
-
-def _says_unstated(got, row) -> None:
-    """I9's one sentence, said once: what the deck's block states, that it
-    was written before the field, and the way out
-    (`support/real_runs.DECK_STATES_NO_ORDER`)."""
-    from support.real_runs import DECK_STATES_NO_ORDER
-    assert all(part in got.text for part in DECK_STATES_NO_ORDER), got.text
-    assert got.text.count(DECK_STATES_NO_ORDER[1]) == 1, got.text
 
 
 def _says_restored(got, row) -> None:
@@ -388,8 +372,7 @@ def _says_cite_the_run(got, row) -> None:
         got.text)
 
 
-_SAYS = {"unstated": _says_unstated,
-         "restored": _says_restored, "engine order": _says_engine_order,
+_SAYS = {"restored": _says_restored, "engine order": _says_engine_order,
          "cite the run": _says_cite_the_run}
 
 
@@ -413,72 +396,42 @@ def _in_your_order(struct) -> None:
 
 _STRUCTURES = {"engine": _in_the_engines_order, "yours": _in_your_order}
 
-#: Each row: the run it asks (``calc``, a fixture -- the run, or its copy
-#: from before 2.10.0), the door (:func:`_ask`) and what the door is given (``file``, a file
-#: of the run a person names; ``from_run``; ``restore``, an editor's open),
+#: Each row: the door (:func:`_ask`) asked of the run and what the door is
+#: given (``file``, a file of the run a person names; ``from_run``;
+#: ``restore``, an editor's open),
 #: and what it answers -- ``ok``, and where stated: ``says``, the contract's
 #: check of what it said (:data:`_SAYS`); ``notices``, the route's notices
 #: of :data:`_ORDER_NOTICES`, by name and level; ``structure``, the order it
 #: answered or wrote (:data:`_STRUCTURES`); ``marked``, the viewer's mark;
 #: ``wrote``, whether a file was written.
 _ROWS = [
-    # The run itself.
     dict(name="the deck is written in the engine's order and states it; "
-              "the run door reads it", calc="relaxed", door="deck", ok=True,
+              "the run door reads it", door="deck", ok=True,
          structure="engine"),
     dict(name="the Results tab's load answers the run in the engine's "
               "order, its labels and order record on it, and the viewer "
-              "marks it", calc="relaxed", door="watch_load", ok=True,
+              "marks it", door="watch_load", ok=True,
          notices=[], structure="engine", marked=True),
     dict(name="SIESTA's own CO2.xyz opens through its run's view, in the "
-              "engine's order, marked", calc="relaxed", door="build_load",
+              "engine's order, marked", door="build_load",
          file="CO2.xyz", ok=True, notices=[], structure="engine",
          marked=True),
     dict(name="...and in your order when an editor opens it, saying so",
-         calc="relaxed", door="build_load", file="CO2.xyz", restore=True,
+         door="build_load", file="CO2.xyz", restore=True,
          ok=True, notices=[("structure.restored", "info")], says="restored",
          structure="yours", marked=False),
     dict(name="a bare xv2xyz of the run's .XV is refused, naming "
-              "--from-run", calc="relaxed", door="xv2xyz", file="CO2.XV",
+              "--from-run", door="xv2xyz", file="CO2.XV",
          ok=False, says="engine order", wrote=False),
     dict(name="xv2xyz --from-run writes the pair in your order, and says so",
-         calc="relaxed", door="xv2xyz", file="CO2.XV", from_run=True,
+         door="xv2xyz", file="CO2.XV", from_run=True,
          ok=True, says="restored", structure="yours", wrote=True),
     dict(name="a bare file reader reads the run's output as the engine wrote "
-              "it, and says so", calc="relaxed", door="watch_parse",
+              "it, and says so", door="watch_parse",
          ok=True, says="engine order"),
     dict(name="SIESTA's own CO2.xyz is not a pair a transport calculation "
-              "cites: refused by name -- cite the run", calc="relaxed",
+              "cites: refused by name -- cite the run",
          door="cite", file="CO2.xyz", ok=False, says="cite the run"),
-    # A deck written before the order was recorded (I9).
-    dict(name="xv2xyz --from-run refuses a run prepared before 2.10.0 by "
-              "name", calc="before_the_rule", door="xv2xyz", file="CO2.XV",
-         from_run=True, ok=False, says="unstated", wrote=False),
-    dict(name="a bare xv2xyz refuses it too", calc="before_the_rule",
-         door="xv2xyz", file="CO2.XV", ok=False, says="unstated",
-         wrote=False),
-    dict(name="the Results tab's load says so", calc="before_the_rule",
-         door="watch_load", ok=True,
-         notices=[("structure.order_unstated", "warn")], says="unstated"),
-    dict(name="SIESTA's own CO2.xyz opens saying so", calc="before_the_rule",
-         door="build_load", file="CO2.xyz", ok=True,
-         notices=[("structure.order_unstated", "warn")], says="unstated"),
-    dict(name="a bare file reader says so", calc="before_the_rule",
-         door="watch_parse", ok=True, says="unstated"),
-    dict(name="jobset init refuses to build a calculation from its CO2.xyz",
-         calc="before_the_rule", door="init", file="CO2.xyz", ok=False,
-         says="unstated", wrote=False),
-    dict(name="an editor's open refuses it -- an editor holds only your "
-              "order", calc="before_the_rule", door="build_load",
-         file="CO2.xyz", restore=True, ok=False, says="unstated"),
-    dict(name="molbuilder modify refuses it", calc="before_the_rule",
-         door="modify", file="CO2.xyz", ok=False, says="unstated",
-         wrote=False),
-    dict(name="prep refuses to write the force-constant stage at its "
-              "geometry", calc="before_the_rule_prepped", door="prep",
-         ok=False, says="unstated"),
-    dict(name="a transport calculation citing its relaxation is refused",
-         calc="before_the_rule", door="cite", ok=False, says="unstated"),
 ]
 
 
@@ -506,7 +459,7 @@ def _at_the_runs_tree(calc, monkeypatch) -> None:
 
 def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:
     """THE ONE RUNNER: the row's door asked of ``calc``, as a person asks it
-    -- the run door, the CLI, a route, prep on the road, the citation."""
+    -- the run door, the CLI, a route, the citation."""
     from click.testing import CliRunner
 
     from molbuilder import cli
@@ -519,9 +472,6 @@ def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:
     answered = functools.partial(_Answer, named.name)
     if door == "deck":
         return answered(ok=True, structure=_as_its_deck_states(run))
-    if door == "prep":
-        said = calc.said["prep freq"]
-        return answered(ok=said.exit_code == 0, text=said.output)
     if door == "cite":
         from molbuilder.transport.compose import ComposeError, compose_junction
         try:
@@ -531,20 +481,9 @@ def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:
             return answered(ok=False, text=str(exc))
         return answered(ok=True)
     _at_the_runs_tree(calc, monkeypatch)
-    if door == "init":
-        from support.road import jobset
-        again = calc.tree / "P" / "init-refused"
-        said = jobset("init", "--structure", str(named), "--bundle",
-                      str(again), "--shape", "hierarchical", "--engine",
-                      "siesta", "--calculation", "optimization", "--name",
-                      "CO2", "--psml-lib", "pseudopotential")
-        return answered(ok=said.exit_code == 0, text=said.output,
-                        wrote=(again / "task.json").exists())
-    if door in ("xv2xyz", "modify", "validate", "watch_parse"):
+    if door in ("xv2xyz", "watch_parse"):
         words = {"xv2xyz": ["xv2xyz", named, out]
                  + (["--from-run"] if row.get("from_run") else []),
-                 "modify": ["modify", named, out, "--rotate", "z:90"],
-                 "validate": ["validate", named],
                  "watch_parse": ["watch", "parse", named,
                                  "--frames-only"]}[door]
         said = CliRunner().invoke(cli.cli, [str(w) for w in words])
@@ -577,33 +516,10 @@ def _ask(row, calc, client, tmp_path, monkeypatch) -> _Answer:
                     structure=Structure.from_dict(env), mark=mark)
 
 
-@pytest.fixture(scope="module")
-def before_the_rule(relaxed):
-    """A copy of the run's calculation, every deck of its `relax` stage as
-    2.9.6 wrote it (`support/real_runs.as_prepared_by_2_9_6`)."""
-    from support.real_runs import as_prepared_by_2_9_6
-    return as_prepared_by_2_9_6(relaxed)
-
-
-@pytest.fixture(scope="module")
-def before_the_rule_prepped(relaxed, tmp_path_factory):
-    """Another such copy, its `freq` stage prepared on the road
-    (`support/real_runs.freq_prepared_on`)."""
-    from support.real_runs import as_2_9_6_wrote_it, freq_prepared_on
-    return freq_prepared_on(relaxed, "before-2.10.0-freq", as_2_9_6_wrote_it,
-                            tmp_path_factory)
-
-
 @pytest.mark.parametrize("row", _ROWS, ids=[r["name"] for r in _ROWS])
 def test_every_door_asked_of_the_run_says_its_order(
-        row, relaxed, before_the_rule, before_the_rule_prepped, web_client,
-        tmp_path, monkeypatch):
-    # THE RUNS ARE THE TEST'S ARGUMENTS, made before its own fixtures: a run
-    # made on the road needs this machine's engine, which a test's isolation
-    # hides from anything it calls.
-    calc = {"relaxed": relaxed, "before_the_rule": before_the_rule,
-            "before_the_rule_prepped": before_the_rule_prepped}[row["calc"]]
-    got = _ask(row, calc, web_client, tmp_path, monkeypatch)
+        row, relaxed, web_client, tmp_path, monkeypatch):
+    got = _ask(row, relaxed, web_client, tmp_path, monkeypatch)
     assert got.ok is row["ok"], (row["name"], got)
     if "says" in row:
         _SAYS[row["says"]](got, row)

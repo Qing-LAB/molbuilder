@@ -67,10 +67,88 @@ def _decided(bundle):
 
 def test_a_run_here_is_shown_and_asked_and_written_down(real_h2_layered):
     """A run on this machine is shown and asked as a submission is, then
-    run, and the ledger holds the launch."""
-    _said(real_h2_layered, "launch coarse", "about to run here:",
-          "bash H2_01_coarse.run.sh", "(--yes)", "[ran]")
-    assert "launched" in _decided(real_h2_layered.bundle)
+    run -- waited on, under `--foreground`, saying where its output is as a
+    run left in the background does -- and the ledger holds the question as
+    asked, its answer and the launch (`job-system.md` § 6.0)."""
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    _said(real_h2_layered, "launch coarse", "about to run here, waited on:",
+          "bash H2_01_coarse.run.sh", "its output: 01_coarse/run-0/",
+          "(--yes)", "[ran]")
+    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
+             .read_text().splitlines() if x.strip()]
+    first = [e for e in lines if e.get("verb") == "launch"
+             and e["decision"] in ("question", "launched")]
+    assert (first[0].get("about"), first[0].get("answer")) == (
+        "run here, in the foreground", "yes (--yes)"), first[:2]
+    assert first[1]["decision"] == "launched" \
+        and "background" not in first[1], first[:2]
+
+
+def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
+        real_h2_layered):
+    """A run here starts in the background unless said (`job-system.md`
+    § 6.0): the launch shows it, takes `--yes` as the answer, starts it and
+    returns, saying where its output is and naming its process in the
+    ledger -- its own session, so closing the terminal does not end it, and
+    not waited for: still this test's to wait for once the launch returned
+    -- and nothing the run prints is lost: the run script's own lines are in
+    its runwrap log, read by that log's reader through the engine's end
+    (the engine's wall, which it prints once the engine has ended), the
+    engine's own output is the run's `.out`, read by its parser to its end,
+    and the run finished, by the one status door.  The silent failures: a
+    launch that waits anyway, a run its terminal's closing ends, and a run
+    whose terminal was gone with its account of how it ended printed to
+    nowhere."""
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.parse import detect
+    from molbuilder.runs import folder_answer, openable, run_answer
+    _said(real_h2_layered, "launch naming no stage",
+          "about to start here, in the background:", "(--yes)",
+          "its output: 02_medium/run-0/", "[started in the background]")
+    medium = real_h2_layered.bundle / "02_medium" / "run-0"
+    said = run_answer(medium)
+    assert (said["state"], said["detail"]) == ("finished",
+                                               "job_completed"), said
+    comp = folder_answer(medium)["record"]["computation"]
+    assert comp["host"]["hostname"], comp
+    assert comp["time"]["engine_elapsed_s"] > 0, comp
+    out, trail = openable(medium)
+    assert out is not None, trail
+    traj = detect(out).parse(str(out))
+    assert traj.run_state == "ended" and traj.frames, traj.run_state
+    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
+             .read_text().splitlines() if x.strip()]
+    asked = [e for e in lines if e["decision"] == "question"
+             and e.get("about") == "run here, in the background"]
+    assert asked and asked[-1]["answer"] == "yes (--yes)", asked
+    went = [e for e in lines if e["decision"] == "launched"
+            and e.get("background")]
+    assert len(went) == 1 and isinstance(went[0]["pid"], int), went
+    left = real_h2_layered.left
+    assert left["sid"] == left["pid"] and left["waited_here"], left
+
+
+def test_a_run_here_asked_at_a_terminal_goes_the_way_answered(
+        real_h2_layered):
+    """At a terminal a run here is asked *launch in the background?
+    [Y/n/foreground(F)]*, and typed ``f`` it runs in the foreground: waited
+    on, its line saying it ran, and the ledger holding the question as asked
+    with the answer given and the launch with no background
+    (`job-system.md` § 6.0).  The silent failure: a person typing ``f`` and
+    the run left in the background, or the ledger saying what was not
+    asked."""
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    _said(real_h2_layered, "launch coarse again cold",
+          "launch in the background? [Y/n/foreground(F)]", "[ran]")
+    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
+             .read_text().splitlines() if x.strip()]
+    cold = [e for e in lines if e.get("verb") == "launch"
+            and e["decision"] in ("question", "launched")
+            and e.get("flags") == [["--cold", True]]]
+    assert [(e["decision"], e.get("about"), e.get("answer"),
+             e.get("background")) for e in cold] == [
+        ("question", "run here, in the background", "foreground", None),
+        ("launched", None, None, None)], cold
 
 
 def test_a_dry_run_of_launching_again_writes_nothing(real_h2_layered):

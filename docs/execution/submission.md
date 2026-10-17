@@ -146,7 +146,7 @@ was asked.*
 |---|---|
 | `Ask` | the question, and the answer to it |
 | `queue_table` | the queues this machine offers, and which can take the job |
-| `confirm` | the one interface — approve, or don't |
+| `confirm` | the one interface — approve, or don't; for a run here, also approve the other way, in the foreground or in the background (`Said.other`, `job-system.md` § 6.0) |
 
 *The one output is the launch entry's **plan** — the exact `sbatch` command
 of every submission, made once and then sent as it was shown

@@ -56,8 +56,8 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 | part | module | what it does |
 |---|---|---|
-| the folder's answer | `runs.py` — the run door's `folder_answer` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2), served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
-| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder` and `record` |
+| the folder's answer | `runs.py` — the run door's `folder_answer` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2), served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`) — a transmission run's, its calculation's report, with that report's own row (`report`) and the point it opens at (`point`, § 2); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
+| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder`, `record`, the folder's `files` and, for a transmission run's folder, its `point` |
 | the file card | `lib/results/file-card.js` (§ 3b) | what the file in hand is — the dropdown's, or one clicked in the sidebar inside the folder whose files the card holds (after a run is picked off the ladder, that run's folder): what it holds and who wrote it, or *not written by molbuilder* |
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
@@ -125,15 +125,24 @@ file floats to the top). **The opened file is the server's answer, not the
 newest** — `openable`, from the run door (`runs.folder_answer`), which opens
 the run the folder speaks for at what its *calculation* produces, and looks at
 no date (`model/parse.md` § 5.1–§ 5.2). The picker mirrors your pick to
-the sidebar so the highlight matches.
+the sidebar so the highlight matches — a file inside the folder; a report
+outside it is not mirrored, and the sidebar highlights nothing.
 
 **A transmission run's folder answers its calculation's report.** TBtrans
 writes no file a viewer reads on its own — its result is the report at its
 point (§ 0.1) — so the run door answers such a folder with the calculation's
-`task.json` and the point, `{frame, of, bias_v}` (`runs.openable`, the one
-rule the ladder's run rows read too, § 2.4). The menu lists the report first,
-under its heading, and opens it with that point selected, as the ladder row's
-*open* does; the folder's own files stay listed below it. *(Until 2026-10-16
+`task.json` and the point, `{frame, of, bias_v}` (`runs.openable` for the file,
+`runs.transmission_point` for the point — the one rule the ladder's run rows
+read too, § 2.4). The menu lists the report first, under its heading, and
+opens it with that point selected, as the ladder row's *open* does; the
+folder's own files stay listed below it, and the meta line gives the report
+its age alone, counting the folder's own files. The header says so —
+*<folder> — its result is its calculation's report, <the report>* — and does
+not flag it as a file outside the folder. A return to the tab, reading the
+folder again, keeps the point you picked since. The Run panel above it is the
+transmission run's record — TBtrans's loop among it (§ 3a) — and the file
+card knows the report: its row rides with the folder's files (§ 3b).
+*(Until 2026-10-16
 the folder opened the progress log the wrapper writes at launch — one preview
 frame, never updated by TBtrans — and a running transmission showed a
 structure and no plot.)*
@@ -219,7 +228,7 @@ file is current" twice, by two different routes.**
 
 ```mermaid
 flowchart TD
-  T["opening the tab (its initial bind) · Reload (bind to the sidebar) ·<br/>tab re-entry (re-read) — each ONE scan"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
+  T["opening the tab (its initial bind) · Reload (bind to the sidebar) ·<br/>tab re-entry (re-read) — each ONE scan"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first —<br/>a report outside it, a transmission run's, first"]
   S --> E{"any results?"}
   E -->|"none"| N["say so in the menu AND announce<br/>'nothing selected' — the panel clears"]
   E -->|"some"| K{"is the file we were<br/>already showing one of them?"}
@@ -447,7 +456,7 @@ result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`) —, `opens` relative
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it, where another run-once rung carries all three `null` —, `opens` relative
 to the root — the run door's answer for that folder (`runs.openable`), so
 **a transmission run's is the root's `task.json`, with its
 `point`** (§ 2): its result is the report at that bias (§ 0.1), and its row's *open*
@@ -462,7 +471,9 @@ folder (`/api/results/dir`) and announces its file with the root's ladder kept
 own folder (`record_dir`, whose file names the Run panel's **View** joins to);
 a folder that does not answer is said under the ladder, and a pick overtaken
 by a later one or by a new selection is dropped; *back to the calculation*
-re-announces the root. A calculation's
+re-announces the root. A transmission row's *open* re-announces the
+calculation at its point instead, with no Run panel — that run's record,
+TBtrans's loop among it, is shown in the run's own folder (§ 2). A calculation's
 own product — a transport I–V, a displacement sweep — is shown **with** the
 ladder, never instead of it, and its rows name the attempt and the point each
 fact came from. A flat calculation's root lists its stages' runs the same way,
@@ -596,7 +607,8 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ iterations, charge; each residual's tolerance; how the run ended (chip) │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │
 │ ┌ Rungs and provenance ──────────────────────────────────────────────────┐ │
-│ │ one row per rung: state chip, detail (a running transmission's progress)│ │
+│ │ one row per rung: state chip, detail (the transmission's loop at its    │ │
+│ │ running point, the points after it, a finished point's loop)            │ │
 │ │ E_F, energy, iterations,                                                │ │
 │ │ converged, the attempt it came from; the leads' E_F agreement; the      │ │
 │ │ chain — relaxation → seed, leads → device → transmission, read from     │ │
@@ -615,7 +627,7 @@ exists or is named here; nothing worked out in the browser:
 | part | data | door |
 |---|---|---|
 | ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
-| a running transmission's progress | the point's run record, `computation.time.done_pct` · `eta_s` · `estimated_at` (`model/parse.md` § 5d.1a) — TBtrans's own estimate, as its output last stated it, every `TBT.Progress` per cent | `/api/transport/record`: each pending point's `progress`, and the transmission rung's — its first point not finished — drawn in the rung's row and the point's pending line: *TBtrans: 5 % done, about 6d left (its estimate 2h ago)* — the times said as every page says them (`lib/time-ago.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 4) |
+| a transmission's loop | each point's TBtrans output through the reading pass, in its one sentence (`tbtrans.loop_words`, `model/parse.md` § 5d.5) — what the point's run record states as `computation.time.progress` · `estimated_at` (§ 5d.1b) | `/api/transport/record`: each point not finished whose run wrote its output — running, or stopped — carries `progress` `{said, estimated_at}`, `estimated_at` only while an estimate stands; the transmission rung carries its running point's, with that point (`frame`, `of`, `bias_v`), how many points are still to come after it (`after`) and the last finished point in the ladder's order with its loop (`measured`: its point and `loop_elapsed_s`, its passes' loops summed, `model/parse.md` § 5c.1). The rung's row: *at 0.2 V: unpolarized (1 of 1): 40 % done, about 3h left (TBtrans's estimate) · estimated 10m ago — 3 more points after it; the loop at 0 V took 6h*; the point's line: its `said` and the age. A point named as every page names one (`lib/results/point-words.js`), a time and an age as every page says them (`lib/time-ago.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 4) |
 | device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) — opened in your order (`openMolecule(…, {restore: true})`, the load route's `restore`), its notice saying so; `junction.xyz` itself stays the engine's record ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record — per spin channel, `(T↑ + T↓)/2` for a polarized point — each channel kept in `channels` and their sum in `transmission_total` (`record.point_transmission`) |
 | DOS and PDOS | from the transmission run's `<label>.TBT.nc` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`, written per device orbital, energy and k); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F; the **left** lead's spectral DOS (`TBT.DOS.A` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`) | **new**: read on the server with sisl's TBtrans reader (sisl 0.16 and netCDF4 are in the `molbuilder` env), k-averaged, added per point to the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on T(E)'s energy grid, E − E_F |
@@ -832,7 +844,8 @@ calculation root, or an unmarked folder holding a run's output, read alone
 `/api/results/dir` carries its `record` (`model/parse.md` § 5d), and
 the panel sits between the picker and the viewer: the same panel for an
 optimization, a vibration, each transport rung and a PySCF run, whichever of
-the run's files is open. It is not a presenter — no file picks it — and it is
+the run's files is open — or, in a transmission run's folder, its
+calculation's report (§ 2). It is not a presenter — no file picks it — and it is
 hidden where there is no record: a container (a stage directory, or a
 hierarchical calculation root, whose ladder is § 2.4's), and a folder with no
 run in it.
@@ -859,7 +872,7 @@ four sections**, in the order a person asks them when a number looks wrong:
 |---|---|---|
 | **Verdict** | how the run ended, each phase's convergence, each finding as a sentence with its number; the earlier runs of the attempt and how each ended | `verdict`, `earlier` |
 | **Setup** | one table — parameter · default · asked · used — the rows where asked ≠ used first and marked; an item the deck does not set reads *engine default*; a key read to several values shows them all, and the engine's own echo beside them; then, folded with its count, the keys the engine read that no catalogue item names; then the pseudopotentials | `setup` |
-| **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on; start, end, engine wall time, seconds per iteration by phase; the engine's own progress and the time it says is left, with when it last said so (a transmission); peak memory against its limit; the exit | `computation` |
+| **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on; start, end, engine wall time, seconds per iteration by phase; TBtrans's account of its loop and, while its estimate stands, when it was made (a transmission); peak memory against its limit; the exit | `computation` |
 | **Deck** | its path and sha256; whether it is still the stage's current deck; for a gathered rung, what was taken from which attempt; **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
 
 **Generic, so a new fact is a label.** The panel does not know engines or
@@ -920,7 +933,8 @@ rows are also the contract's manifest
 ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 5) and the
 Task setup card. A file is the catalogue's only when its name reads back with
 its run's label, so SIESTA's `fdf.<stamp>.log` is not taken for a log of ours
-by its suffix.
+by its suffix. In a transmission run's folder, the report the menu lists
+first rides with the folder's files, so the card says what `task.json` is.
 
 *Module:* `lib/results/file-card.js` renders into `#results-file-card`, listens
 to the picker's selection event and to `projects.onChange`, reads the `about`
@@ -1269,6 +1283,12 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
 - `test_results_blueprint.py` — the page + the registered presenter set + script
   order.
 - `test_inspector_pageshow_refresh_e2e.py` — the re-scan on tab return.
+- § 2, a transmission run's folder:
+  `test_transport_on_a_real_junction_e2e.py::test_a_transmission_runs_folder_opens_its_report_at_its_point`
+  (the run door's answer, every point of the road's two calculations) and
+  `::test_the_results_tab_opens_a_transmission_folder_at_its_point` (the
+  menu, the point selected, the header, the Run panel's loop, your pick kept
+  on a rescan).
 - `test_results_file_picker_e2e.py` — the picker: one scan per visit (§ 2.2),
   the re-read on a restore and on tab return, Reload, and the folder it owns
   (§ 2.1).

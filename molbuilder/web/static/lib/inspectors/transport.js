@@ -51,18 +51,34 @@ const WORKSPACE_TAG = "results:transport";
         return root.molbuilder.stateChip(state);
     }
 
-    /* HOW FAR THE ENGINE SAYS IT IS -- TBtrans's own estimate as its output
-     * last stated it, a running point's `progress` `{done_pct, eta_s,
-     * estimated_at}` (results.md § 2.5); its times said as every page says
-     * them (`lib/time-ago.js`).  "" where the record states none. */
-    function _progressWords(pr) {
-        if (!pr || pr.done_pct === undefined || pr.done_pct === null) return "";
-        const m = root.molbuilder;
-        const left = m.timeSpan(pr.eta_s);
+    /* TBTRANS'S LOOP, in the one sentence a point's run record states it in
+     * (`progress.said`, `tbtrans.loop_words`, model/parse.md § 5d.5) -- and,
+     * while its estimate stands, how long ago it was made, as every page
+     * says an age (`lib/time-ago.js`).  "" where the record states none. */
+    function _loopWords(pr) {
+        if (!pr || !pr.said) return "";
         const at = pr.estimated_at ? Date.parse(pr.estimated_at) / 1000 : NaN;
-        return "TBtrans: " + (+Number(pr.done_pct).toFixed(2)) + " % done"
-            + (left ? ", about " + left + " left" : "")
-            + (isFinite(at) ? " (its estimate " + m.timeAgo(at) + ")" : "");
+        return pr.said + (isFinite(at)
+            ? " · estimated " + root.molbuilder.timeAgo(at) : "");
+    }
+
+    /* THE RUNG'S ROW (results.md § 2.5): its running point, named as every
+     * page names one; that point's loop; how many points are still to come
+     * after it; and the last finished point's loop, the only time a point
+     * still to come is judged by -- said as every page says a time. */
+    function _rungLoopWords(pr) {
+        const said = _loopWords(pr);
+        if (!said) return "";
+        const after = Number(pr.after) || 0;
+        const m = pr.measured;
+        const tail = [
+            after ? after + " more point" + (after === 1 ? "" : "s")
+                    + " after it" : "",
+            m ? "the loop at " + pointWords(m.frame, m.of, m.bias_v)
+                + " took " + root.molbuilder.timeSpan(m.loop_elapsed_s) : "",
+        ].filter(Boolean).join("; ");
+        return "at " + pointWords(pr.frame, pr.of, pr.bias_v) + ": " + said
+            + (tail ? " — " + tail : "");
     }
 
     function _dirOf(file) {
@@ -348,7 +364,7 @@ const WORKSPACE_TAG = "results:transport";
         pending.concat(failed).forEach((p) => {
             const st = _el("td");
             st.appendChild(_chip(p.state));
-            const why = _el("td", null, [p.why, _progressWords(p.progress)]
+            const why = _el("td", null, [p.why, _loopWords(p.progress)]
                 .filter(Boolean).join(" · "));
             why.setAttribute("colspan", "2");
             pickRow(_pf(p), p.bias_v, [st, why],
@@ -467,7 +483,7 @@ const WORKSPACE_TAG = "results:transport";
                 s.textContent = "not in this description";
             } else {
                 s.appendChild(_chip(st.state));
-                const said = [st.detail, _progressWords(st.progress)]
+                const said = [st.detail, _rungLoopWords(st.progress)]
                     .filter(Boolean).join(" · ");
                 if (said) s.appendChild(_el("span", "transport-stage-detail",
                                             " " + said));

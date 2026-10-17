@@ -1,85 +1,117 @@
-"""TBtrans's own output -- the transmission rung's account of itself.
+"""TBtrans's loop, in words -- and the transmission files it wrote.
 
-`model/parse.md` § 5d.2 and § 5d.5: its build, its ranks, its k-points,
-how long each spin pass took, the voltage it applied and the current and
-power it reports -- and which transmission files it wrote, per spin channel.
+`model/parse.md` § 5d.5.  TBtrans's output is read by the SIESTA family's one
+reading pass (`siesta_reader.SiestaReader`, whose ``now()["tbtrans"]`` is its
+account of its k-point × energy loop: its size, the spin passes it makes,
+each pass's estimate while it runs and its time once it completed, its
+currents); this module says that loop in the one sentence the monitor's
+summary line, the run record and the transport report give
+(:func:`loop_words`), and finds the transmission files per spin channel
+(:func:`transmission_files`).
 
-The patterns are ``siesta_grammar``'s, the family's one table.  Not a
-registered viewer file: the transmission rung's result is the transport
-record (`engines/transport.md` § 2a.12), whose builder moves onto these
-readers in W35's P3 -- until then `transport/record.py` reads the
-transmission itself.
+Not a registered viewer file: the transmission rung's result is the transport
+record (`engines/transport.md` § 2a.12).
+
+**Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`),
+for the monitor's summary line: imported from the package here, from its copy
+there.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from . import siesta_grammar as _G
+try:                                        # inside molbuilder
+    from . import siesta_grammar as _G
+    from ...report_fields import pct_words, span_words
+except ImportError:                         # beside a job, as the monitor's
+    import siesta_grammar as _G
+    from report_fields import pct_words, span_words
 
 
-def read_tbtrans_out(text: str) -> Dict[str, Any]:
-    """The facts a TBtrans ``.out`` states, keyed as the record names them:
-    ``build`` (the header SIESTA prints too), ``n_mpi_processes``,
-    ``run_start_local`` / ``run_end_local``, ``k_points``, ``k_method``,
-    ``completed_s`` -- one per spin pass, since TBtrans runs its whole loop
-    once per channel -- and ``currents``: one row per electrode pair and pass,
-    the bias TBtrans applied with the current and power it reports.  A row
-    names its ``channel`` (``up`` / ``down``) when the run made two passes;
-    one pass states no channel of its own.  A key is absent when the file
-    does not state it."""
-    facts: Dict[str, Any] = {}
-    build: Dict[str, Any] = {}
-    passes: List[float] = []
-    currents: List[Dict[str, Any]] = []
-    for line in text.splitlines():
-        if (_G.read_build_line(line, build)
-                or _G.read_launch_line(line, facts)):
-            continue
-        for key, pat, cast in (("k_points", _G.TBT_KPOINTS, int),
-                               ("k_method", _G.TBT_KMETHOD, str)):
-            m = pat.match(line)
-            if m:
-                try:
-                    facts.setdefault(key, cast(m.group(1)))
-                except ValueError:
-                    pass
-        m = _G.TBT_COMPLETED.match(line)
-        if m:
-            try:
-                passes.append(float(m.group(1)))
-            except ValueError:
-                pass
-            continue
-        for pat, field in ((_G.TBT_CURRENT, "current_a"),
-                           (_G.TBT_POWER, "power_w")):
-            m = pat.match(line)
-            if not m:
-                continue
-            try:
-                bias, value = float(m.group(3)), float(m.group(4))
-            except ValueError:
-                continue
-            # A pass prints its currents after its own "Completed in".
-            key = (m.group(1), m.group(2), bias, len(passes))
-            row = next((c for c in currents if c["_key"] == key), None)
-            if row is None:
-                row = {"_key": key, "from": key[0], "to": key[1],
-                       "voltage_v": bias}
-                currents.append(row)
-            row[field] = value
-    channels = ("up", "down") if len(passes) == 2 else ()
-    for row in currents:
-        n = row.pop("_key")[3]
-        if 1 <= n <= len(channels):
-            row["channel"] = channels[n - 1]
-    if build:
-        facts["build"] = build
-    if passes:
-        facts["completed_s"] = passes
-    if currents:
-        facts["currents"] = currents
-    return facts
+#: A pass's channel, in words -- one for each of `siesta_grammar.TBT_CHANNELS`'
+#: names, which this module refuses to load without.
+CHANNEL_WORDS: Dict[str, str] = {"up": "spin up", "down": "spin down",
+                                 "unpolarized": "unpolarized"}
+if set(CHANNEL_WORDS) != {ch for ch, _tag in _G.TBT_CHANNELS}:
+    raise ValueError(
+        f"tbtrans.CHANNEL_WORDS names {sorted(CHANNEL_WORDS)}, and "
+        f"siesta_grammar.TBT_CHANNELS "
+        f"{sorted(ch for ch, _tag in _G.TBT_CHANNELS)}: a channel each")
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def loop_words(loop: Optional[Dict[str, Any]], *, over: bool = False) -> str:
+    """TBtrans's loop -- the reading pass's ``now()["tbtrans"]`` -- in the
+    one sentence every surface says it in (`model/parse.md` § 5d.5); ``""``
+    when the output states none of it.  ``over``: the run is over, by the
+    run door's state -- a pass still underway then stopped, and an estimate
+    is said only while it stands.
+
+    Each pass is named by its channel and its place among the passes the
+    set-up names -- *spin up (1 of 2)*; a time by the span rule
+    (`report_fields.span_words`).  A pass still to come is named, never
+    timed: TBtrans's estimate covers the pass underway, and only a pass
+    already done is measured."""
+    if not loop:
+        return ""
+    planned = list(loop.get("channels") or [])
+    passes = list(loop.get("passes") or [])
+
+    def name(i: int, channel: Optional[str]) -> str:
+        word = CHANNEL_WORDS.get(channel or "", "pass")
+        return (f"{word} ({i} of {len(planned)})" if planned
+                else f"{word} (pass {i})")
+
+    done = [(i, p) for i, p in enumerate(passes, start=1)
+            if "loop_elapsed_s" in p]
+    underway = (len(passes), passes[-1]) if (
+        passes and "loop_elapsed_s" not in passes[-1]) else None
+    to_come = planned[len(passes):]
+    completed = "; ".join(f"{name(i, p.get('channel'))} completed in "
+                          f"{span_words(p['loop_elapsed_s'])}" for i, p in done)
+
+    if not passes:
+        size = [f"{_count(loop['k_points'], 'k-point', 'k-points')} × "
+                f"{_count(loop['energy_points'], 'energy', 'energies')}"
+                if "k_points" in loop and "energy_points" in loop else "",
+                (f"{_count(len(planned), 'pass', 'passes')} ("
+                 + ", ".join(CHANNEL_WORDS.get(c, c) for c in planned) + ")")
+                if planned else ""]
+        size = ", ".join(s for s in size if s)
+        if over:
+            return "stopped while setting up its loop" + (
+                f" of {size}" if size else "")
+        return "setting up its loop" + (f": {size}" if size else "")
+
+    if underway is not None:
+        i, p = underway
+        if over:
+            said = (f"stopped during {name(i, p.get('channel'))} at "
+                    f"{pct_words(p['done_pct'])} %" if "done_pct" in p else
+                    f"stopped during {name(i, p.get('channel'))}, before "
+                    f"its first estimate")
+        else:
+            said = (f"{name(i, p.get('channel'))}: "
+                    + (f"{pct_words(p['done_pct'])} % done"
+                       + (f", about {span_words(p['eta_s'])} left "
+                          f"(TBtrans's estimate)" if "eta_s" in p else "")
+                       if "done_pct" in p else "begun, no estimate yet")
+                    + ("" if not to_come else ", then "
+                       + ", then ".join(CHANNEL_WORDS.get(c, c)
+                                        for c in to_come)))
+        return said + (f"; {completed}" if completed else "")
+
+    if to_come:
+        nxt = name(len(passes) + 1, to_come[0])
+        return completed + (f"; stopped before {nxt}" if over
+                            else f"; {nxt} next")
+    return "completed: " + ", ".join(
+        f"{name(i, p.get('channel'))} in {span_words(p['loop_elapsed_s'])}"
+        for i, p in done)
 
 
 def transmission_files(directory, label: str) -> Dict[str, List[Path]]:

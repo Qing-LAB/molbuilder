@@ -863,13 +863,6 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)',
         "null_label": "(none)",
     })
-    copy_psml: bool = field(default=True, metadata={
-        "workflow_group": "output",
-        "category": ("procedure",),
-        "label": "Stage pseudopotential files",
-            "engine_key":  '(molbuilder: triggers .psml staging step)',
-        "item_kind": "produce",
-    })
     # ``List``: the template grammar names ``strlist`` for ``List[str]``,
     # and this field is an ITEM -- it orders the ChemicalSpeciesLabel block,
     # which run-identity § 6a calls identity-sensitive.

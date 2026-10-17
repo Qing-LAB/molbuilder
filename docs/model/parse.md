@@ -196,6 +196,11 @@ time-valued field on a parse result ends in one of two suffixes, and the suffix
 | `wall_clock_s` | absolute Unix epoch seconds | *at what time?* | a date |
 | `elapsed_s` | seconds since the run began | *how far in?* | a duration |
 
+One more is an engine's own word, not a clock this rule names: `eta_s`, the
+time an engine says is left, as of its line — TBtrans's *ETA in S s*; only an
+engine's estimate fills it, and it is said as an estimate wherever it is shown
+(`run-reports.md` § 4.1a).
+
 Only a parser that read a real clock reading out of the file may fill
 `wall_clock_s`.
 
@@ -212,13 +217,15 @@ wearing a date's name — and plain `elapsed_s` would have been wrong the other
 way. The reasoning lived only in `util_csv.py`'s docstring, so a second
 windowed duration had no rule to follow.)*
 
-**What is NOT pinned: the rendered format.** P-T4 fixes the KIND — an epoch
-renders as a date, a duration as a duration — and deliberately stops there,
-because a terminal column and a browser badge have different room. The two
-duration formatters differ today and neither is wrong under this contract:
-`jobset/summarize.py::_fmt_duration` writes `4m05s`, `core.js::fmtElapsed`
-writes `4m 5s`. Pin a format only if a reader is ever asked to compare the
-two surfaces' output directly.
+**What is pinned of the rendered format, and what is not.** P-T4 fixes the
+KIND — an epoch renders as a date, a duration as a duration. **A length of
+time a run says of itself is said by one rule** — its wall time on the Run
+panel, a transmission's loop, the monitor's elapsed time, an engine's time
+left and the trajectory badge's *total*: `web/ui-contract.md` § 4, written in
+JS (`lib/time-ago.js`'s `timeSpan`) and in Python
+(`report_fields.span_words`), each asked the same rows (*2026-10-16*). A
+benchmark's measured times keep the second (`jobset/summarize.py::
+_fmt_duration`, `4m05s`): a measurement compared across trials.
 
 **P-T2 — `None` means "this engine cannot say", and is a correct final answer.**
 A parser never converts one kind to fill the other's hole, and never substitutes
@@ -508,7 +515,7 @@ molbuilder/parse/
 │   ├── molwatch_reader.py     # MolwatchReader — the progress-log pass       │ mb_monitor.pyz
 │   ├── _section_rules.py      # the line-rule engine both passes run on      │ (§ 4a)
 │   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role (§ 2b) ─┘
-│   ├── tbtrans.py             # TBtrans's .out and transmission files — not registered
+│   ├── tbtrans.py             # TBtrans's loop in words · its transmission files — not registered; travels
 │   ├── siesta_fc.py           # SIESTA's .FC force constants, for the vibration kind
 │   └── _helpers.py            # Trajectory → TrajectoryResult adapters
 │
@@ -567,6 +574,7 @@ flowchart LR
     SR -->|"finish()"| PA["the registered parsers → TrajectoryResult"]
     MR -->|"finish()"| PA
     SR -->|"now(), fed as the file grows"| MON["the monitor"]
+    SR -->|"now(): TBtrans's loop, said by tbtrans.loop_words"| REC
     MR -->|"now()"| MON
     TR --> MON
     RE --> RS["run_status"]
@@ -580,8 +588,10 @@ flowchart LR
   it the whole file and builds Frames from `finish()`. So the Results tab and a
   report sent at 3 a.m. cannot say different things about one file.
 * **Stdlib only, and it travels.** The grammars, the passes, `_section_rules`,
-  `scf_timing_rows`, `_run_ending`, `wrapper_log` and `dirs/job.py` import
-  nothing of ours but each other, `runfiles`, `identity` and `pyscf/end_lines`. They ship inside
+  `scf_timing_rows`, `_run_ending`, `tbtrans` (TBtrans's loop in words, § 5d.5),
+  `wrapper_log` and `dirs/job.py` import
+  nothing of ours but each other, `runfiles`, `identity`, `report_fields` (the
+  span rule's words) and `pyscf/end_lines`. They ship inside
   `mb_monitor.pyz` beside every job (`runwrap.MONITOR_COMPANIONS`), each
   importing the next from the package or from the bundle; what the monitor
   reads through them is [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3's.
@@ -622,7 +632,8 @@ declares ([`web/trajectory.md`](?doc=web/trajectory.md) § 3.0).
 | `max_force` · `max_force_constrained` | the latest `Max` line, and whether it was the constrained one | the last step's · — |
 | `criteria` · `targets` | per phase, as `criteria()` · the `redata:` limits | — · as `targets()` |
 | `scf_cycles` · `last_cycle` · `scf_rows` | — | the last step's SCF cycles, its last cycle, all rows so far |
-| `done_pct` · `eta_s` | the engine's own estimate of how far it is: the share of its work done, in per cent, and the time it says is left — TBtrans's latest progress line, its first estimate `0` per cent done (§ 5d.5) | — |
+| `tbtrans` | TBtrans's account of its k-point × energy loop: its size, the spin passes it says it will make, and each pass begun — its channel, TBtrans's estimate while it runs, its measured time once it completed, its currents (§ 5d.5) | — |
+| `done_pct` · `eta_s` | the pass underway's: TBtrans's share of that pass done, in per cent, and the time it says that pass has left — its latest progress line, its first estimate `0` per cent done; absent when no pass is underway, a completed pass's estimate ending with it | — |
 
 The monitor feeds each file only what it gained since its last wake and picks
 the pass by the file's ROLE (`monitor.LIVE_READERS`: `.out` → `SiestaReader`,
@@ -720,6 +731,7 @@ goes there; one that does not, does not**: `run_status` for one run,
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
 | `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
 | `files` | per file its role, label, stage — read back with the run's label — whether a parser reads it, and what it is (`about`, the catalogue's line or *not written by molbuilder*) | the picker; the file card (`web/results.md` § 3b) |
+| `report` · `point` | the file the folder opens when it lies outside it — a transmission run's calculation report, `task.json` — as a `files` row with its `path`, and the point it opens it at, `{frame, of, bias_v}` (`runs.transmission_point`); `null` for every other folder | the picker, which lists the report first and announces the point; the viewer, which selects it; the file card (`web/results.md` § 2, § 3b) |
 
 **What the directory IS decides what is asked of it** (`project-layout.md`
 § 1.4a). A container is not a run: no `status` and no `record`, though its own
@@ -729,10 +741,11 @@ its files are listed, the registry says what it can open, and nothing is
 claimed or asked of it.
 
 **`status["active_source"]` is a bare filename and `openable` is a path,
-deliberately.** The status is serialized to the browser, where a server-side
-path has no business, and the directory it is relative to is `run_dir`, right
-beside it; `openable` is handed to a reader that opens it. They answer
-different questions (§ 5.1).
+deliberately.** The status names which of the folder's outputs spoke — a name
+in the folder it describes, `run_dir`, right beside it; `openable` is what a
+reader opens — the Results viewer through the file door, `/api/results/dir`
+sending it, and a report row's `path`, as they are. They answer different
+questions (§ 5.1).
 
 **No field is added without naming its reader in this table.**
 
@@ -747,7 +760,9 @@ exists to mark.
   `*.molwatch.log` **whose footer concludes the run** — a seeded log without a
   conclusion would otherwise outvote a real result (§ 5.5).
 - **`openable`** is *what should a person see*: the calculation's product, then
-  the engine's own output, then the progress log (§ 5.5).
+  the engine's own output, then the progress log (§ 5.5) — and for a
+  transmission run, its calculation's report at its point (§ 5.0's `report` ·
+  `point`).
 
 So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
@@ -792,7 +807,9 @@ the rule; this is where it is applied.)*
 
 The run door's `openable` asks **four** questions of four owners, and the first
 one decides whether the other three apply at all — a folder of ours is opened
-at its run's own result, read back with the run's label (`runs.folder_answer`);
+at its run's own result, read back with the run's label — a transmission
+run's being its calculation's report, the root's `task.json`, at its point
+(`runs.transmission_point`) — (`runs.folder_answer`);
 `parse/dirs/rundir.py::openable_in` answers a folder read without its run, by
 dotted role alone:
 
@@ -834,7 +851,9 @@ always answerable without help.
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json` (on SIESTA written by the job's finish, `engines/vibration.md`
 § 5.5); an optimization for its trajectory; a transport calculation for its
-`.transport.json`. The same file is the live view during the run and the
+report, opened through its description, `task.json` (the record is composed on
+read; `<label>.transport.json` is `summarize task`'s copy). The same file is the
+live view during the run and the
 result after it, so nothing switches at conclusion — the old rung 1,
 *"any `.molwatch.log`, newest wins"*, was an optimization-shaped rule applied
 to every kind, and it sent every spectrum run's viewer to a progress log
@@ -1391,6 +1410,7 @@ window from its own input:
 | `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
 | `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
 | `run_start_local` · `run_end_local` | the run's two ends, as the node's local time of day | the `.out`'s `>> Start of run` / `>> End of run` | `siesta_grammar.read_launch_line` | the run record (§ 5d.2) |
+| `loop_elapsed_s` | one spin pass of TBtrans's k-point × energy **loop** — not the engine's wall: its set-up before the loop is outside it | the `.out`'s `tbt: Completed in S s`, one per pass | the reading pass, `now()["tbtrans"]["passes"][i]["loop_elapsed_s"]` (§ 5d.5) | the progress words (`tbtrans.loop_words`); summed over a point's passes, the transport record's point `loop_elapsed_s` and the rung's `measured.loop_elapsed_s` — the rung row's time a finished point's loop took (`engines/transport.md` § 2a.12) |
 
 `[UTIL-SUMMARY]` carries no duration — CPU and per-GPU means and a bound
 verdict, nothing else (`monitor.py::UtilAccumulator.summary`) — so no window
@@ -1437,7 +1457,9 @@ by `parse/dirs/record.py::run_record` for the run the folder speaks for -- its
 label, stage and stage deck named by the run door — never written as a second store,
 so it cannot drift from its sources. **Cheap reads only**: it is composed on
 every folder scan, so it never builds a trajectory. It reads the `.out`'s head
-and tail through the grammar (§ 5d.5), the endings `run_status` already scanned
+and tail through the grammar (§ 5d.5) — a TBtrans output whole, through the
+reading pass: its loop's own account, a line every `TBT.Progress` per cent —
+the endings `run_status` already scanned
 (§ 2b), SIESTA's `fdf` log, the wrapper log, the instruments (§ 5c), the deck,
 `run.json`, `.gathered-from` and `.concluded`.
 
@@ -1493,7 +1515,7 @@ record
 │   │                    continued_from · ranks_asked · threads · ranks · threads_engine
 │   ├── time             run_start_local · run_end_local · engine_elapsed_s · s_per_iter ·
 │   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase> ·
-│   │                    done_pct · eta_s · estimated_at
+│   │                    progress · estimated_at
 │   ├── memory           mem_peak_gb · mem_peak_from · util_basis · cpu_mean_pct ·
 │   │                    gpu_sm_mean_pct · mem_basis · mem_limit_gb
 │   └── exit             code · at · note (what the wrapper added: a failed finish, a finish that cannot load)
@@ -1523,7 +1545,7 @@ is rows, not a code path.
 
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
-| `siesta-out` | `<base>-runN.out`, head and tail | the grammar's line readers (§ 5d.5); its tail through the reading pass | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.done_pct` · `time.eta_s` · `time.estimated_at` — the engine's own progress, as the pass's `now()` states it, and when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
+| `siesta-out` | `<base>-runN.out`, head and tail; a TBtrans output whole | the grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and `tbtrans.loop_words` | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged`; `earlier` |
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
@@ -1559,7 +1581,7 @@ reason:
 
 | quantity | why that source |
 |---|---|
-| engine · version · build | the `.out`'s build header, which SIESTA and TBtrans both print — its `Executable` line says which of the two ran |
+| engine · version · build | the `.out`'s build header, which SIESTA and TBtrans both print — its `Executable` line says which of the two ran (`siesta_grammar.program_of`) |
 | solver | the `.out`'s `diag:` lines — `Src/diag_option.F90`'s `print_diag` prints what SIESTA resolved after reading its options, not what the deck asked |
 | ranks asked · ranks run | the wrapper's `ranks / omp` line is written BEFORE the launch, so it is what was asked; the `.out`'s `* Running on N nodes` is what the engine ran on (serial mode is one) |
 | start · end | the `.out`'s `>> Start of run` / `>> End of run`: the node's local time, with no zone (§ 2a) |
@@ -1671,8 +1693,10 @@ from `.gathered-from` (`runrecord.read_gathered_from`, beside its writer
 `parse/engines/siesta_grammar.py`, stdlib, every pattern read off SIESTA
 5.4.2's own writer and named beside it — **and each line's ONE reader**. Every
 reader of the family's output takes its lines from here (§ 4a): the reading
-pass, the ending scan, the timing rows, the TBtrans reader, the benchmark's
-rank count, and the wrapper's SCF-timing tee, whose awk pattern is rendered
+pass, the ending scan, the timing rows, the benchmark's
+rank count, the SIESTA parser's `can_parse` and the run record (which program
+wrote an output, `program_of`), and the wrapper's SCF-timing tee, whose awk
+pattern is rendered
 from `SCF_ROW_ERE` (a POSIX ERE that is also a Python regex). Matching is
 case-blind throughout (user, 2026-05-28).
 
@@ -1687,17 +1711,46 @@ case-blind throughout (user, 2026-05-28).
 | the forces' closing `Max` / `Max … constrained` (`write_subs.F`) | `MAX_FORCE` | the reading pass | `max_force` |
 | how a run ends: the fatal markers, `>> End of run`, the relaxation's `outcoor:` heading | `FATAL_MARKERS`, `PROPOR_MARKER`, `RUN_END`, `RELAXED_MARKER`, `UNRELAXED_MARKER` | the reading pass, which `_run_ending.ending_of` asks | § 2b |
 | the deck's echo, `*** Dump of input data file ***` … `*** End of input data file ***` (`reinit_m.F90`) | `INPUT_ECHO_BEGIN`, `INPUT_ECHO_END` | `input_echo_edge` | lines skipped |
-| the build header, SIESTA's and TBtrans's (`version-info-template.inc`) | `EXECUTABLE`, `BUILD_*` | `read_build_line` | `{executable, version, architecture, compiler, parallelisations, <feature>: True}` |
-| launch lines: `* Running on N nodes` or serial, `ProcessorY, Blocksize`, `>> Start of run`, `>> End of run` (`runinfo_m.F90`, `timestamp.f90`) | `RUNNING_ON`, `RUNNING_SERIAL`, `PROCESS_GRID`, `RUN_START`, `RUN_END` | `read_launch_line`, `mpi_ranks`, `local_time` | `n_mpi_processes`, `processor_y`, `blocksize`, `run_start_local`, `run_end_local` — naive ISO |
+| the build header, SIESTA's and TBtrans's (`version-info-template.inc`) | `EXECUTABLE`, `BUILD_*`, `PROGRAMS` | `read_build_line`; `program_of` — which of the two wrote it, by its first `Executable` line | `{executable, version, architecture, compiler, parallelisations, <feature>: True}` |
+| launch lines: `* Running on N nodes` or serial, `ProcessorY, Blocksize`, `>> Start of run`, `>> End of run` (`runinfo_m.F90`, `timestamp.f90`) | `RUNNING_ON`, `RUNNING_SERIAL`, `PROCESS_GRID`, `RUN_START`, `RUN_END` | `read_launch_line`, `local_time` | `n_mpi_processes`, `processor_y`, `blocksize`, `run_start_local`, `run_end_local` — naive ISO |
 | the solver, `diag: <label> = <value>` (`diag_option.F90`) | `DIAG_LINE`, `DIAG_FACTS` | `read_diag_line` | `{algorithm, elpa_gpu, diag_blocksize, distribution, parallel_over_k}` |
 | the pseudopotentials: `Processing specs for species`, `Reading pseudopotential information in PSML from:`, `PSML uuid` | `PSML_SPECIES`, `PSML_FROM`, `PSML_UUID` | `read_psml_lines` | `[{species, file, uuid}]` |
 | TranSIESTA once per run: the `ts:` start-up echo, the charge distribution at the switch, the electrode checks | `TS_ECHO*`, `TS_CHARGE_START`, `TS_CHARGE_ROW`, `TS_PRINCIPAL_CELL`, `TS_GF_*` | the reading pass | `runtime_info["transiesta"]`: `options`, `electrodes`, `contours` (one segment per chemical potential or contour part), `charge_at_switch` |
 | `siesta: Emadel`, SIESTA's own Makov–Payne term (`write_subs.F`) | `EMADEL` | the reading pass | `runtime_info["emadel_ev"]` |
-| TBtrans: the k-points, each spin pass's `tbt: Completed in`, the `V [V] / I [A]` and `V [V] / P [W]` lines, the transmission files per channel (`Util/TS/TBtrans/`) | `TBT_KPOINTS`, `TBT_KMETHOD`, `TBT_COMPLETED`, `TBT_CURRENT`, `TBT_POWER`, `TBT_CHANNELS` | `tbtrans.read_tbtrans_out`, `tbtrans.transmission_files` | `k_points`, `k_method`, `completed_s` per pass, `currents` [{`from`, `to`, `voltage_v`, `current_a`, `power_w`, `channel`}]; `{channel: [AVTRANS files]}` |
-| TBtrans's progress: `tbt: Initial ETA in S s` once its first k-point and energy are done, then `tbt: Calculated N %, ETA in S s` each time another `TBT.Progress` per cent of its k-point × energy loop is (5 by default; `m_tbt_trik.F90`, `m_tbt_options.F90`) | `TBT_INITIAL_ETA`, `TBT_PROGRESS` | the reading pass | `now()`'s `done_pct` (`0` after the first estimate) and `eta_s`; `finish()`'s `runtime_info["progress"]` = `{done_pct, eta_s}`, the last the output states — each line written at the start of an energy point, so the last is short of 100 %; a time that is not a number states none (`eta_s` `null`: TBtrans divides by the share done, and at `TBT.Progress 0` its line at 0 % says `Infinity`) |
+| TBtrans set up (`Util/TS/TBtrans/`): the transverse k-points and how they were chosen (`m_tbt_kpoint.F90`); the passes it says it will make — `tbt: Calculate spin UP and DOWN`, `tbt: Calculate spin = UP` or `DOWN`, `tbt: Non-polarized Hamiltonian` (`m_tbt_options.F90` 757–769), its whole loop once per channel (`m_tbtrans.F90`); its energies, `ts: <part> contour points = N` under `ts: >> TBtrans contour <<` (`m_tbt_contour.F90` 551–564) — TranSIESTA prints the same words for its own contours, so only that section's are TBtrans's | `TBT_KPOINTS`, `TBT_KMETHOD`, `TBT_SPIN`, `TBT_CONTOUR_BEGIN`, `TBT_CONTOUR_POINTS` | `tbt_channels`; the reading pass | `now()["tbtrans"]`: `k_points`, `k_method`, `channels` — the passes, in `TBT_CHANNELS`' names — and `energy_points`, summed over its contours |
+| TBtrans, each pass: its data file opened, `tbt: Initializing data file: <label>.TBT_UP.nc` (`m_tbt_save.F90` 513, a NetCDF-4 build), the name carrying the channel's tag; `tbt: Initial ETA in S s` once its first k-point and energy are done, then `tbt: Calculated N %, ETA in S s` each time another `TBT.Progress` per cent of the pass's loop is (5 by default; `m_tbt_trik.F90` 883–900, 1554; `m_tbt_options.F90` 486–487); `tbt: Completed in S s` (`m_tbt_trik.F90` 1646); then its currents, the `V [V] / I [A]` and `V [V] / P [W]` lines (`m_tbt_save.F90`) | `TBT_DATA_FILE`, `TBT_INITIAL_ETA`, `TBT_PROGRESS`, `TBT_COMPLETED`, `TBT_CURRENT`, `TBT_POWER` | `tbt_channel_of`; the reading pass | `now()["tbtrans"]["passes"]`, one per pass begun — at its data file, or at its first estimate in a build that writes none: its `channel` (its file's tag, else the next the set-up names); `done_pct` (`0` at the first estimate) and `eta_s` while it runs — each line is written at the start of an energy point, so the last is short of 100 % — gone at its `Completed in`, which states `loop_elapsed_s`; its `currents` [{`from`, `to`, `voltage_v`, `current_a`, `power_w`}]. A time that is not a number is not stated (no `eta_s`: TBtrans divides by the share done, and at `TBT.Progress 0` its line at 0 % says `Infinity`). `now()`'s own `done_pct` · `eta_s` are the pass underway's |
+| the transmission files, per channel (`m_tbt_save.F90` `name_save`) | `TBT_CHANNELS` | `tbtrans.transmission_files` | `{channel: [AVTRANS files]}` |
 
-`tbtrans.py` is not a registered viewer file: its reader is the transport
-record (`engines/transport.md` § 2a.12).
+**TBtrans's loop, in words** — `tbtrans.loop_words(now()["tbtrans"], over=…)`,
+the one sentence the monitor's summary line, the run record and the transport
+report say it in (`over`: the run is over, its state the run door's). Each pass
+is named by its channel and its place among the passes the set-up names; a
+time is said by the span rule (`report_fields.span_words`, `web/ui-contract.md`
+§ 4); a percentage as TBtrans printed it, its trailing zeros dropped:
+
+| the loop | live | over |
+|---|---|---|
+| set up, no pass begun | *setting up its loop: 1 k-point × 401 energies, 2 passes (spin up, spin down)* — its size once its k-points and its energies are both stated, its passes once they are | *stopped while setting up its loop of 1 k-point × 401 energies, 2 passes (spin up, spin down)* |
+| a pass begun, before its first estimate (its data file opened; its first energy point can take long) | *spin up (1 of 2): begun, no estimate yet, then spin down* | *stopped during spin up (1 of 2), before its first estimate* |
+| a pass underway | *spin up (1 of 2): 40 % done, about 3h left (TBtrans's estimate), then spin down* — and once one completed, *spin down (2 of 2): 40 % done, about 3h left (TBtrans's estimate); spin up (1 of 2) completed in 6h* | *stopped during spin down (2 of 2) at 40 %; spin up (1 of 2) completed in 6h* |
+| between passes | *spin up (1 of 2) completed in 6h; spin down (2 of 2) next* | *spin up (1 of 2) completed in 6h; stopped before spin down (2 of 2)* |
+| every pass completed | *completed: spin up (1 of 2) in 6h, spin down (2 of 2) in 6h* | the same |
+
+A pass is named by its channel's words — `spin up`, `spin down`, `unpolarized`,
+one for each of `TBT_CHANNELS`' names — and its place among the passes the
+set-up names; where the output names no passes, by its channel and its place
+alone — *spin up (pass 1)*, or *pass (pass 1)* with no channel named either.
+
+**A pass still to come is named, never timed**: TBtrans's estimate covers the
+pass underway, and only a pass already done is measured. *(Until 2026-10-16
+the pass read the latest progress line alone: a finished run's record still
+said 98 % done with 0 s left, a polarized run's second pass began again at 0 %
+with nothing saying which pass it was, and `read_tbtrans_out` walked the
+same output a second time for the passes and the currents.)*
+
+`tbtrans.py` is not a registered viewer file: it says TBtrans's loop and finds
+its transmission files; the output's lines are the reading pass's. It travels
+beside every job (§ 4a), for the monitor's summary line.
 
 **The phases, as the reading pass keeps them** (what they mean is § 4b):
 

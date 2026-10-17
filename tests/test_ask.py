@@ -65,6 +65,24 @@ def test_without_yes_the_answer_is_the_persons():
     assert said[0] == "x", "the request must be shown before it is answered"
 
 
+@pytest.mark.parametrize("typed, said", [
+    ("y", (True, "yes", False)),                # Enter gives the default, y
+    ("n", (False, "no", False)),
+    ("f", (True, "foreground", True)),          # the other way, its letter
+    ("foreground", (True, "foreground", True)),  # or its word
+])
+def test_a_run_here_is_asked_which_way_too(typed, said):
+    """A run here is asked with the other way of running it as a third
+    answer (`job-system.md` § 6.0): ``y`` -- Enter's default -- goes as shown, ``n``
+    sends nothing, the other way's letter or word goes that way -- its word
+    what the ledger keeps.  The silent failure: a person typing ``f`` for
+    the foreground, and the run left in the background."""
+    got = confirm("x", echo=lambda _s: None, prompt=lambda: typed,
+                  question="launch in the background?",
+                  other=("f", "foreground"))
+    assert (got.yes, got.words, got.other) == said, got
+
+
 def test_yes_is_a_decision_to_trust_not_an_absence_of_one():
     """`--yes` says *I have decided*; its absence is not permission."""
     said = []

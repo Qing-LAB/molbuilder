@@ -163,7 +163,7 @@ running.)* It carries a detail line beneath it with two different facts:
 | detail | reads | where it comes from |
 |---|---|---|
 | **when** — "ended 14:32" | a *time of day* | for a run that has stopped moving, the end its output states — SIESTA's `>> End of run`, `run_end_local` — else the run's own per-step clock, else the file's modification time |
-| **total** — "total 2h 15m" | a *duration* | how far into the run the last step was |
+| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | how far into the run the last step was |
 
 **Those are two separate readings and neither substitutes for the other.** A
 PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
@@ -277,7 +277,10 @@ header. The header's source-path line has the username redacted.
 
 - Two endpoints: `POST /api/watch/load` (parse a run) and
   `GET /api/watch/data?mtime=…` (poll for growth) — see
-  [`web-api.md`](?doc=web/web-api.md).
+  [`web-api.md`](?doc=web/web-api.md). A folder handed to the load opens the
+  file the run door picks (`runs.openable`); a folder whose result is no
+  trajectory — a transmission run's, its calculation's report — is refused
+  naming that file and the Results tab, which shows it.
 - **A parse is cached by (path, mtime, size), and a just-written file is not
   cached at all.** A snapshot taken within 200 ms of the file's own mtime is
   read but not stored, because a growing log is often replaced atomically and a

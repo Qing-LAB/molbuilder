@@ -290,12 +290,13 @@ thing at different sizes**, so there is one way in and one vocabulary:
 
 ```
 describe it   →  molbuilder jobset init --structure <structure> --bundle <calculation> --engine siesta|pyscf --calculation <kind> --shape flat|hierarchical [--stage-strategy …]
-set it up     →  molbuilder jobset prep     run <stage> [--from <run>]
-run it        →  molbuilder jobset launch   run <stage> [--mode direct|submit]
+set it up     →  molbuilder jobset prep     task [--group N]
+run it        →  molbuilder jobset launch   task [--group N | --stage <stage>] [--mode direct|submit]
 look at it    →  molbuilder jobset status
 ```
 
-`--mode direct` runs it here and you wait; `--mode submit` queues it. **That is
+`--mode direct` runs it here, in the background unless you wait for it
+(`--foreground`, or the question's answer); `--mode submit` queues it. **That is
 the only difference between a workstation and a cluster at this level**
 ([`architecture.md`](?doc=execution/architecture.md) § 9).
 

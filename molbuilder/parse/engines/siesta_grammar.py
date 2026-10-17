@@ -1,8 +1,8 @@
 """The SIESTA family's output lines -- ONE table, every reader.
 
 `model/parse.md` § 5d.5.  The parser reads these patterns and each line's one
-reader; so do the cheap ending scan (`_run_ending`), the benchmark reader, the
-TBtrans reader and the monitor, which imports this module from beside the job
+reader; so do the cheap ending scan (`_run_ending`), the benchmark reader and
+the monitor, which imports this module from beside the job
 (`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3); the
 wrapper's SCF-timing tee, being shell, gets its pattern rendered from here.
 
@@ -13,8 +13,10 @@ Stdlib only, and nothing of ours: it travels beside every job.
 """
 from __future__ import annotations
 
+import os
 import re
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import (Any, Dict, Iterable, List, NamedTuple, Optional,
+                    Tuple)
 
 # ---- The SCF row, both phases ------------------------------------------------
 #: SIESTA's periodic SCF and TranSIESTA's NEGF loop print one row per
@@ -673,6 +675,25 @@ BUILD_ELPA_GPU = re.compile(r"^\s*-+\s*ELPA GPU support:\s*(\S+)",
                             re.IGNORECASE)
 
 
+#: The family's two programs, as the build header's ``Executable`` line
+#: names them: the path it was invoked by, whose name begins with the
+#: program's.
+PROGRAMS = ("siesta", "tbtrans")
+
+
+def program_of(lines: Iterable[str]) -> Optional[str]:
+    """Which of the family's programs wrote an output -- ``siesta`` or
+    ``tbtrans`` -- by the first ``Executable`` line among ``lines`` (its head;
+    `model/parse.md` § 5d.2); ``None`` when they state none, or name
+    another."""
+    for line in lines:
+        m = EXECUTABLE.match(line)
+        if m:
+            name = os.path.basename(m.group(1)).lower()
+            return next((p for p in PROGRAMS if name.startswith(p)), None)
+    return None
+
+
 def read_build_line(line: str, build: dict) -> Optional[str]:
     """Record one build-header line into ``build``; return the key it set,
     or ``None`` when the line is not one.  The header states each fact once,
@@ -1016,11 +1037,34 @@ TBT_KMETHOD = re.compile(r"^\s*tbt:\s*Method\s*=\s*(.+?)\.?\s*$",
                          re.IGNORECASE)
 TBT_COMPLETED = re.compile(r"^\s*tbt:\s*Completed in\s+(\S+)\s*s",
                            re.IGNORECASE)
+#: THE PASSES TBtrans SAYS IT WILL MAKE (``m_tbt_options.F90`` 757-769):
+#: ``tbt: Calculate spin UP and DOWN``, one of them --
+#: ``tbt: Calculate spin <col 53>=    UP`` -- or ``tbt: Non-polarized
+#: Hamiltonian``; one pass of its loop per channel (``m_tbtrans.F90``).
+TBT_SPIN = re.compile(
+    r"^\s*tbt:\s*(?:Calculate spin\s+(UP and DOWN)\b"
+    r"|Calculate spin\s*=\s*(UP|DOWN)\b|(Non-polarized Hamiltonian))",
+    re.IGNORECASE)
+#: Each pass opens its data file first (``m_tbt_save.F90`` 513, in a build
+#: with NetCDF-4): ``tbt: Initializing data file: <label>.TBT_UP.nc`` -- its
+#: name carrying the channel's tag, :data:`TBT_CHANNELS`.  Not the
+#: projection or self-energy files, which say so.
+TBT_DATA_FILE = re.compile(r"^\s*tbt:\s*Initializing data file:\s*(\S+)",
+                           re.IGNORECASE)
+#: TBtrans's energies (``m_tbt_contour.F90`` 551-564): under
+#: ``ts:              >> TBtrans contour <<``, each contour's
+#: ``ts:   <part> contour points = N``.  TranSIESTA prints the same words for
+#: its own contours (``Src/m_ts_contour_neq.f90``), so only that section's
+#: are TBtrans's.
+TBT_CONTOUR_BEGIN = re.compile(r"^\s*ts:\s*>>\s*TBtrans contour\s*<<",
+                               re.IGNORECASE)
+TBT_CONTOUR_POINTS = re.compile(
+    r"^\s*ts:\s*\S+\s+contour points\s*=\s*(\d+)", re.IGNORECASE)
 #: TBtrans's progress (``m_tbt_trik.F90``): ``tbt: Initial ETA in S s`` once
-#: its first k-point and energy are done, then ``tbt: Calculated N %, ETA in
-#: S s`` each time another ``TBT.Progress`` per cent of its k-point × energy
-#: loop is (``m_tbt_options.F90``, 5 by default) -- its own estimate of the
-#: time left, as of that line.
+#: a pass's first k-point and energy are done, then ``tbt: Calculated N %,
+#: ETA in S s`` each time another ``TBT.Progress`` per cent of that pass's
+#: k-point × energy loop is (``m_tbt_options.F90``, 5 by default) -- its own
+#: estimate of the pass's time left, as of that line.
 TBT_INITIAL_ETA = re.compile(
     r"^\s*tbt:\s*Initial ETA in\s+(\S+)\s*s", re.IGNORECASE)
 TBT_PROGRESS = re.compile(
@@ -1045,4 +1089,24 @@ TBT_POWER = re.compile(
 #: ``TBT.Directory`` would move them; molbuilder's decks set none.
 TBT_CHANNELS = (("unpolarized", ".TBT."), ("up", ".TBT_UP."),
                 ("down", ".TBT_DN."))
+
+
+def tbt_channels(line: str) -> Optional[Tuple[str, ...]]:
+    """The passes a :data:`TBT_SPIN` line says TBtrans will make, in
+    :data:`TBT_CHANNELS`' names and its order -- ``("up", "down")``, one of
+    them, or ``("unpolarized",)`` -- or ``None`` when the line is not one."""
+    m = TBT_SPIN.match(line)
+    if m is None:
+        return None
+    if m.group(1):
+        return ("up", "down")
+    if m.group(2):
+        return ("up",) if m.group(2).upper() == "UP" else ("down",)
+    return ("unpolarized",)
+
+
+def tbt_channel_of(name: str) -> Optional[str]:
+    """The channel a TBtrans file's name carries (:data:`TBT_CHANNELS`'
+    tags), or ``None``."""
+    return next((ch for ch, tag in TBT_CHANNELS if tag in name), None)
 

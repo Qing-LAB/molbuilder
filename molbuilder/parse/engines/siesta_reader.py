@@ -20,6 +20,7 @@ transport rung are each read as what they are, with nothing told.
 """
 from __future__ import annotations
 
+import copy
 import math
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -120,10 +121,11 @@ class SiestaReader:
         # Runtime facts, from SIESTA's own startup lines and the echoed
         # `# runtime.<k>:` comments of the .fdf.
         self.runtime_info: Dict[str, Any] = {}
-        # THE ENGINE'S OWN PROGRESS, as its latest line states it: TBtrans's
-        # share of its k-point x energy loop done, in per cent, and the time
-        # it says is left -- ``None`` until the output states one.
-        self.progress: Optional[Dict[str, float]] = None
+        # TBTRANS'S ACCOUNT OF ITS LOOP (`model/parse.md` § 5d.5): its size,
+        # the spin passes it says it will make, and each pass begun -- its
+        # channel, TBtrans's estimate while it runs, its time once it
+        # completed, its currents.  Empty for an output that is not TBtrans's.
+        self.tbtrans: Dict[str, Any] = {}
         # SCF iteration history of the current step, and the latest column
         # header the rows are mapped by.
         self._current_scf: List[Dict[str, Any]] = []
@@ -763,12 +765,57 @@ class SiestaReader:
             el["gf_iterations_min"] = int(m.group(1))
             el["gf_iterations_max"] = int(m.group(2))
 
+    # ---- TBtrans's loop -------------------------------------------------------
+
+    def _tbt_pass(self, channel: Optional[str] = None) -> Dict[str, Any]:
+        """The pass underway -- begun now when none is: at its data file, or
+        at its first estimate in a build that writes none.  Its channel is
+        the one its file names, else the next the set-up names."""
+        passes = self.tbtrans.setdefault("passes", [])
+        if passes and "loop_elapsed_s" not in passes[-1]:
+            return passes[-1]
+        planned = self.tbtrans.get("channels") or ()
+        if channel is None and len(passes) < len(planned):
+            channel = planned[len(passes)]
+        passes.append({"channel": channel} if channel else {})
+        return passes[-1]
+
+    def _on_tbt_setup(self, line: str, line_no: int) -> None:
+        """The loop's size and the passes TBtrans says it will make."""
+        for key, pat, cast in (("k_points", _G.TBT_KPOINTS, int),
+                               ("k_method", _G.TBT_KMETHOD, str)):
+            m = pat.match(line)
+            if m:
+                self.tbtrans.setdefault(key, cast(m.group(1)))
+                return
+        channels = _G.tbt_channels(line)
+        if channels:
+            self.tbtrans.setdefault("channels", list(channels))
+
+    def _consume_tbt_contour(self, line: str, line_no: int) -> str:
+        """``ts: >> TBtrans contour <<``'s lines: each contour's points,
+        summed -- the section ends at its first line that is not ``ts:``."""
+        if not _G.TS_ECHO.match(line):
+            return END_BUBBLE
+        m = _G.TBT_CONTOUR_POINTS.match(line)
+        if m:
+            self.tbtrans["energy_points"] = (
+                self.tbtrans.get("energy_points", 0) + int(m.group(1)))
+        return CONTINUE
+
+    def _on_tbt_data_file(self, line: str, line_no: int) -> None:
+        m = _G.TBT_DATA_FILE.match(line)
+        channel = _G.tbt_channel_of(m.group(1)) if m else None
+        p = self._tbt_pass(channel)
+        if channel:
+            p["channel"] = channel
+
     def _on_tbt_progress(self, line: str, line_no: int) -> None:
-        """TBtrans's estimate: its first, ``Initial ETA`` -- nothing done
-        yet -- and each ``Calculated N %, ETA in S s`` after it.  A time that
-        is not a number states none: TBtrans divides by the share done, so
-        at ``TBT.Progress 0`` its line at 0 % says ``Infinity`` or ``NaN``
-        (`m_tbt_trik.F90`)."""
+        """TBtrans's estimate for the pass underway: its first, ``Initial
+        ETA`` -- nothing done yet -- and each ``Calculated N %, ETA in S s``
+        after it.  A time that is not a number states none: TBtrans divides
+        by the share done, so at ``TBT.Progress 0`` its line at 0 % says
+        ``Infinity`` or ``NaN`` (`m_tbt_trik.F90`)."""
         m = _G.TBT_PROGRESS.match(line)
         if m:
             done, eta = m.group(1), m.group(2)
@@ -781,9 +828,54 @@ class SiestaReader:
             done_pct, eta_s = _G.fortran_float(done), _G.fortran_float(eta)
         except ValueError:
             return
-        if math.isfinite(done_pct):
-            self.progress = {"done_pct": done_pct,
-                             "eta_s": eta_s if math.isfinite(eta_s) else None}
+        if not math.isfinite(done_pct):
+            return
+        p = self._tbt_pass()
+        p["done_pct"] = done_pct
+        if math.isfinite(eta_s):
+            p["eta_s"] = eta_s
+        else:
+            p.pop("eta_s", None)
+
+    def _on_tbt_completed(self, line: str, line_no: int) -> None:
+        """A pass's end, with the time its loop took: its estimate ends
+        with it."""
+        m = _G.TBT_COMPLETED.match(line)
+        try:
+            took = _G.fortran_float(m.group(1)) if m else None
+        except ValueError:
+            took = None
+        if took is None or not math.isfinite(took):
+            return
+        p = self._tbt_pass()
+        p["loop_elapsed_s"] = took
+        p.pop("done_pct", None)
+        p.pop("eta_s", None)
+
+    def _on_tbt_current(self, line: str, line_no: int) -> None:
+        """A pass's currents, printed after its ``Completed in``: per
+        electrode pair, the bias TBtrans applied with the current and the
+        power it reports."""
+        for pat, field in ((_G.TBT_CURRENT, "current_a"),
+                           (_G.TBT_POWER, "power_w")):
+            m = pat.match(line)
+            if m is None:
+                continue
+            try:
+                bias, value = (_G.fortran_float(m.group(3)),
+                               _G.fortran_float(m.group(4)))
+            except ValueError:
+                return
+            passes = self.tbtrans.get("passes") or [self._tbt_pass()]
+            rows = passes[-1].setdefault("currents", [])
+            row = next((r for r in rows if (r["from"], r["to"], r["voltage_v"])
+                        == (m.group(1), m.group(2), bias)), None)
+            if row is None:
+                row = {"from": m.group(1), "to": m.group(2),
+                       "voltage_v": bias}
+                rows.append(row)
+            row[field] = value
+            return
 
     def _on_emadel(self, line: str, line_no: int) -> None:
         m = _G.EMADEL.match(line)
@@ -874,6 +966,12 @@ class SiestaReader:
             SectionRule(name="ts_vha", aliases=["ts-Vha: ... eV"],
                         start=matches_regex_ci(_G.TS_VHA.pattern),
                         on_start=self._on_ts_vha),
+            # TBtrans's energies: its contour section, which the general
+            # ``ts:`` echo rule below would take and set aside.
+            SectionRule(name="tbt_contour",
+                        aliases=["ts: >> TBtrans contour <<"],
+                        start=matches_regex_ci(_G.TBT_CONTOUR_BEGIN.pattern),
+                        consume=self._consume_tbt_contour),
             SectionRule(name="ts_echo", aliases=["ts: ..."],
                         start=matches_regex_ci(_G.TS_ECHO.pattern),
                         on_start=self._on_ts_echo),
@@ -898,6 +996,21 @@ class SiestaReader:
             SectionRule(name="emadel", aliases=["siesta: Emadel = ..."],
                         start=matches_regex_ci(_G.EMADEL.pattern),
                         on_start=self._on_emadel),
+            # TBtrans's loop (`model/parse.md` § 5d.5).
+            SectionRule(name="tbt_setup",
+                        aliases=["tbt: Number of transport k-points = N",
+                                 "tbt: Method = ...",
+                                 "tbt: Calculate spin ...",
+                                 "tbt: Non-polarized Hamiltonian"],
+                        start=any_of(
+                            matches_regex_ci(_G.TBT_KPOINTS.pattern),
+                            matches_regex_ci(_G.TBT_KMETHOD.pattern),
+                            matches_regex_ci(_G.TBT_SPIN.pattern)),
+                        on_start=self._on_tbt_setup),
+            SectionRule(name="tbt_data_file",
+                        aliases=["tbt: Initializing data file: ..."],
+                        start=matches_regex_ci(_G.TBT_DATA_FILE.pattern),
+                        on_start=self._on_tbt_data_file),
             SectionRule(name="tbt_progress",
                         aliases=["tbt: Initial ETA in ...",
                                  "tbt: Calculated N %, ETA in ..."],
@@ -905,6 +1018,16 @@ class SiestaReader:
                             matches_regex_ci(_G.TBT_INITIAL_ETA.pattern),
                             matches_regex_ci(_G.TBT_PROGRESS.pattern)),
                         on_start=self._on_tbt_progress),
+            SectionRule(name="tbt_completed", aliases=["tbt: Completed in ..."],
+                        start=matches_regex_ci(_G.TBT_COMPLETED.pattern),
+                        on_start=self._on_tbt_completed),
+            SectionRule(name="tbt_current",
+                        aliases=["L -> R, V [V] / I [A]: ...",
+                                 "L -> R, V [V] / P [W]: ..."],
+                        start=any_of(
+                            matches_regex_ci(_G.TBT_CURRENT.pattern),
+                            matches_regex_ci(_G.TBT_POWER.pattern)),
+                        on_start=self._on_tbt_current),
             SectionRule(name="run_start", aliases=[">> Start of run"],
                         start=matches_regex_ci(_G.RUN_START.pattern),
                         on_start=self._on_run_start),
@@ -1011,14 +1134,15 @@ class SiestaReader:
 
         ``{phase, cycle, energy, dDmax, dHmax, dq, residuals, step,
         step_kind, steps_done, max_force, max_force_constrained, criteria,
-        targets, done_pct, eta_s}``, each present only when the output
-        states it: the
+        targets, tbtrans, done_pct, eta_s}``, each present only when the
+        output states it: the
         current SCF row's values (a NEGF row's charge among them), and as
         ``residuals`` each beside the criterion its phase states --
         ``{name: (value, tolerance or None, unit)}``; the step SIESTA last
         began, its number and its words for what a step is, and so how many
         steps are done; the latest largest force, and what each must reach;
-        the engine's own estimate of how far it is (TBtrans's).
+        TBtrans's account of its loop, a copy, and the pass underway's share
+        done and the time TBtrans says it has left.
         """
         out: Dict[str, Any] = {}
         cycle = (self._current_scf[-1] if self._current_scf else
@@ -1059,8 +1183,13 @@ class SiestaReader:
                    if k != "source"}
         if targets:
             out["targets"] = targets
-        if self.progress is not None:
-            out.update(self.progress)
+        if self.tbtrans:
+            out["tbtrans"] = copy.deepcopy(self.tbtrans)
+            # THE PASS UNDERWAY'S estimate -- a completed pass states none.
+            passes = self.tbtrans.get("passes") or []
+            if passes:
+                out.update({k: passes[-1][k] for k in ("done_pct", "eta_s")
+                            if k in passes[-1]})
         return out
 
     def finish(self) -> Dict[str, Any]:
@@ -1145,8 +1274,6 @@ class SiestaReader:
         if crit:
             self.runtime_info["scf_criteria"] = crit
         # WHAT EACH SCF ROW MEASURES, the engine's one declaration.
-        if self.progress is not None:
-            self.runtime_info["progress"] = dict(self.progress)
         self.runtime_info["scf_residuals"] = [dict(r) for r in
                                               _G.SCF_RESIDUALS]
         return {"steps": self.steps, "live_scf": live_scf,

@@ -49,7 +49,11 @@ def replay(run: Path, tmp_path: Path, upto: int
                                      directory=there), grow
 
 
+def status_lines(log: Path) -> List[str]:
+    """The [STATUS] lines a monitor wrote to its log."""
+    return [ln for ln in log.read_text().splitlines() if "[STATUS]" in ln]
+
+
 def statuses(watched) -> List[str]:
     """The [STATUS] lines the monitor wrote to the run's monitor log."""
-    return [ln for ln in watched.path(".monitor.log").read_text().splitlines()
-            if "[STATUS]" in ln]
+    return status_lines(watched.path(".monitor.log"))

@@ -536,7 +536,7 @@ flowchart TD
     FN --> PL
     PL -- refused --> R19["R-L16 · R-L18 – R-L20 · R-L29 · R-L31 – R-L34"]
     PL --> SH["shown: each member, what it takes and from which run;<br/>the exact line"]
-    SH --> ASK{"yes? (--yes answers it)"}
+    SH --> ASK{"yes? — a run here: in the background,<br/>or the other way (--yes answers it)"}
     ASK -- no --> NO["nothing sent — the question and its no recorded"]
     ASK -- "nobody to ask" --> R23["R-L23"]
     ASK -- yes --> SF{"the folder as it was planned?"}
@@ -585,7 +585,7 @@ group's number — are said where they are typed, and written down too.
 | **R-L1** | nothing is prepared | `prep task` for the first group | `_cli._load` (no `job-set.json`), `_cli._launch_unit` (none of the description's stages prepared) |
 | **R-L2** | no prepared group can go, and no stage was launched | each group says what it waits for | `_cli._launch_unit` |
 | **R-L3** | nobody to ask which — several groups could go, or none can and stages launched before are offered | one line for each | `_cli._launch_unit` |
-| **R-L4** | no `--mode` and no `launch.mode`; a flag the mode does not take (`--background` with a queue, `--domain` here) | the launch with each mode | `_cli._launch` |
+| **R-L4** | no `--mode` and no `launch.mode`; a flag the mode does not take (`--foreground` with a queue, `--domain` here) | the launch with each mode | `_cli._launch` (`_refuse_flags_without_effect`) |
 | **R-L5** | the stage named is described and not prepared | its group's prep, then its launch | `_cli._refuse_unprepared` |
 | **R-L6** | a stage never launched named alone while its group holds others | the group's launch | `submit._the_group` |
 | **R-L7** | a launched group whose members the description changed | a member launched again alone; the members put back; or the restore | `submit._the_group` |
@@ -1808,8 +1808,8 @@ meaning.
 > So `--mode submit` hands the scheduler few, deliberate jobs — for a TASK,
 > one job per invocation (a stage, or a group of stages); for a BENCH, one grouped
 > job per resource shelf (`generator.md § 4.3a`) — never a queue flood. **`--mode direct` is untouched**: it
-> runs each job here, in order, waiting for each, which is not submission at
-> all. The rule lives in the launch entry (`submit.plan_launch`), not in the
+> runs each job here, one after another — in the background unless
+> `--foreground` (§ 6.0) — which is not submission at all. The rule lives in the launch entry (`submit.plan_launch`), not in the
 > CLI — a whole ladder is refused there, and a sweep sent to a scheduler
 > planned by shelf — so any other caller meets it too.
 >
@@ -1949,8 +1949,8 @@ A two-stage relaxation on a **workstation**, `shape: hierarchical`, its groups
 ```bash
 molbuilder jobset prep   task --group 1 --group 2             # both: 01_coarse/run-0, 02_tight/run-0
 #   tight: at launch, takes coarse's newest run, which must have finished
-molbuilder jobset launch task --group 1 --mode direct         # coarse runs here, locally
-molbuilder jobset status                                      # look before deciding
+molbuilder jobset launch task --group 1 --mode direct         # coarse runs here, in the background
+molbuilder jobset status                                      # follow it; look before deciding
 
 molbuilder jobset launch task --group 2 --mode direct         # the state saved first, then:
 #   tight continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at …; converged): copied <label>.XV, <label>.DM
@@ -2054,8 +2054,9 @@ reads *nothing -- it started from the structure*, from the launch record's
   `launch.mode`; unset in both is a refusal, § 5.3):
   - **`submit`** hands that one job to SLURM — shown first, and asked (S4). One
     `sbatch`, one invocation, no dependency flag, nothing queued behind it.
-  - **`direct`** runs that one job **locally** (`bash …run.sh`) and waits for
-    it. This is the workstation path.
+  - **`direct`** runs that one job **locally** (`bash …run.sh`), in the
+    background unless `--foreground` or the question's answer waits for it
+    (§ 6.0). This is the workstation path.
   - `--dry-run` prints the exact command it *would* run — or the refusal the
     launch would meet — without launching and writing nothing: the safe way to
     see what will happen (§ 6.0).
@@ -2317,22 +2318,43 @@ anything is sent, and the send decides nothing.**
 | 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it takes (launched again, how the run it continues ended), every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. **A group's first launch then saves the folder's state** — when and with which note is [`checkpointing.md`](?doc=execution/checkpointing.md) § 9's; the launch's questions and their answers are written after it, so it holds no line of this launch. Then the plan's writes are carried out — each run opened or filled through the one opener, a run opened and not launched emptied whole first ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2–1.6.3), with its `.continued-from` / `.gathered-from` (the one hand-over, § 5.4; a flat run's written with its `run.json`); a submission with several members gets its walk script; every script is on disk before anything goes — and each submission goes out, `sbatch` or the process here, through one function, each member's `run.json` written by the one writer |
 | 5 | **the record** | the ledger: every refusal, the question and its answer, the save before a group's first launch, what each member took (`continues`, `gathers`), each submission sent and its job id — a run here when it starts — with what the verb was told on each line (the kind, the stage, the mode and where it came from, the queue's source, which config files answered). The entry writes them (`submit.plan_launch`, `send_launch`, `ask_launch`, [`architecture.md`](?doc=execution/architecture.md) § 2.1); the verb writes the refusals it says before it calls the entry — a flag that means nothing for the mode, a stage not prepared |
 
-**A run here, left in the background** *(user, 2026-10-09: "add a run in
-background option for the launch when it is in a direct run … let it run in the
-background instead of having to wait for it … check the log and output later
-on")*. `launch … --mode direct --background` is the same launch — planned,
-shown, asked, sent and written down by the five steps above — whose process is
-**started and left**: its own session, so closing the terminal does not end it,
-and nothing attached to it; the send returns once the process exists, the
-ledger's `launched` line carrying `background` and its pid. **Nothing it prints
-is lost**, because nothing reaches a terminal that is not also in a file: the
-run script copies everything it prints — standard output and error — into its
+**A run here starts in the background, unless said** *(user, 2026-10-09:
+"add a run in background option for the launch when it is in a direct run …
+let it run in the background instead of having to wait for it … check the log
+and output later on"; 2026-10-16: "make it default but also explicitly
+changable in the question")*. `launch … --mode direct` is planned, shown, asked,
+sent and written down by the five steps above, and its process is **started
+and left**: its own session, so closing the terminal does not end it, and
+nothing attached to it; the send returns once the process exists, the ledger's
+`launched` line carrying `background` and its pid. **The question offers the
+other way**: *launch in the background? [Y/n/foreground(F)]* — Enter, `y` or
+`yes` goes as shown, `n` or `no` sends nothing, `f` or `foreground` runs it in
+the foreground and waits for it; under `--foreground` the plan is the
+waited-on run and the question
+*launch in the foreground? [Y/n/background(B)]*. `--yes` takes the plan as
+shown, without the question. The ledger keeps the question as asked — `run
+here, in the background` or `in the foreground` — and its answer: `yes`, `no`,
+the other way's word, or `yes (--yes)` when `--yes` gave it. **What it says**: shown, *about to start here, in
+the background:* or *about to run here, waited on:*; a dry run's line *WOULD
+start in the background* or *WOULD run*; sent, the run's line *started in the
+background*, its pid, and **how to stop it** — `kill -- -<pid>`: the run is
+the leader of its own process group, and a signal to that group reaches the
+engine; to the run script alone it would wait for the engine to end, since
+bash runs a trap only after the command it waits on. **Nothing it prints is
+lost**, because nothing reaches a terminal that is not also in a file: the run
+script copies everything it prints — standard output and error — into its
 `.runwrap-<time>.log` as its first act, the engine's own output is the run's
-`.out`, and a walk appends each member's output to its log under `launch/`
-(`runwrap.py`, `submit._walk_script`). The launch prints the folder to read and
-`jobset status`, which follows the run as for any other. With `--mode submit`
-or `ask` the flag is refused, naming why: a scheduler's job already runs
-without anyone waiting on it.
+`.out`, and a walk sends its own standard error and each member's output to
+its log under `launch/` (`runwrap.py`, `submit._walk_script`). The launch
+prints, for a run here either way, the folder to read — or the walk's log —
+and the way to follow it: the next step of every group (*The task*, *The
+next step*), the run's among them; for a benchmark, the `summarize bench`
+that reads its trials once they have run. `--foreground` on a queue is
+refused, naming why — under `submit` a scheduler's job runs without anyone
+waiting on it, under `ask` nothing is sent — and a queue's flag on a run here
+(`--domain`, `--time`, `--mem`, `--gpu-domain`) likewise, each with the launch
+as typed for each mode this machine takes (R-L4; `commands.launch_with`, a run
+here's line without a queue's flags, a queue's without `--foreground`).
 
 **A run here, waited on, ends the launch with how it ended** *(user,
 2026-10-13: "if you already know a job fails why … do you not report
@@ -2355,7 +2377,8 @@ the benchmark's own script (`launch/<name>.run.sh`, written by
 own counts, timed, under the per-trial bound when one is given
 (`--trial-timeout`, here as on a queue); a trial that fails leaves the rest to
 run, and the walk exits nonzero when any failed. Stopped by the person —
-Ctrl-C, a lost terminal, a cancel — it starts no further trial (one under a
+Ctrl-C at a launch waited on, a lost terminal, `kill -- -<pid>` of one left in
+the background, a cancel — it starts no further trial (one under a
 per-trial bound ends at it); what it did not reach is measured again from the
 state saved before the benchmark's prep.
 **A transport bias sweep is not a benchmark** *(user, 2026-10-05: "bias scan is

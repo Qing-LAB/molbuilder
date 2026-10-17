@@ -42,6 +42,9 @@ from ..errors import ParseError
 _HEAD = 512 * 1024
 #: The tail, for ``>> End of run``.
 _TAIL = 16 * 1024
+#: The build header opens every output of the family
+#: (``version-info-template.inc``): which program wrote it.
+_BUILD_HEADER = 4 * 1024
 
 
 # --------------------------------------------------------------------------- #
@@ -234,33 +237,53 @@ class Contributor:
     read: Callable[[RunFiles], Dict[str, Any]]
 
 
-def engine_progress(out: Optional[Path],
-                    tail: Optional[str] = None) -> Dict[str, Any]:
-    """The engine's own estimate of how far a run is, as its output last
-    states it -- ``{done_pct, eta_s, estimated_at}`` -- read by the SIESTA
-    family's reading pass over the output's tail (`model/parse.md` § 5d.1b);
-    ``{}`` when the output states none.  ``estimated_at`` is when the output
-    last changed: TBtrans writes a progress line, then nothing until the
-    next.  ``tail`` is the tail already read, when the caller has it."""
-    from ..engines.siesta_reader import SiestaReader
+def tbtrans_loop(out: Optional[Path], *, over: bool,
+                    head: Optional[str] = None) -> Dict[str, Any]:
+    """TBtrans's account of its loop, as its output states it --
+    ``{progress, estimated_at}`` (`model/parse.md` § 5d.1b, § 5d.5): the loop
+    in its one sentence (`tbtrans.loop_words`), said as over or not by the
+    run's state, ``over``; and, while a pass's estimate stands, when the
+    output last changed -- TBtrans writes a progress line, then nothing until
+    the next.  ``{}`` for an output that is not TBtrans's
+    (`siesta_grammar.program_of`, over ``head``, its head -- the caller's
+    when it holds it) or that states none of it.
+
+    Read whole, through the family's one read (`siesta_reader.read_output`):
+    a TBtrans output is its loop's own account, a line every
+    ``TBT.Progress`` per cent, and a tail could miss a pass's start or its
+    end."""
+    from ..engines import siesta_grammar as _G
+    from ..engines.siesta_reader import read_output
+    from ..engines.tbtrans import loop_words
     from .job import _iso_z
     if out is None:
         return {}
-    reader = SiestaReader()
-    reader.feed_text(tail if tail is not None else _read(out, tail=_TAIL))
-    if reader.progress is None:
+    if head is None:
+        head = _read(out, head=_BUILD_HEADER)
+    if _G.program_of(head.splitlines()) != "tbtrans":
         return {}
     try:
-        at = {"estimated_at": _iso_z(Path(out).stat().st_mtime)}
+        now = read_output(out).now()
     except OSError:
-        at = {}
-    return {**reader.progress, **at}
+        return {}
+    said = loop_words(now.get("tbtrans"), over=over)
+    if not said:
+        return {}
+    got: Dict[str, Any] = {"progress": said}
+    if not over and "done_pct" in now:
+        try:
+            got["estimated_at"] = _iso_z(Path(out).stat().st_mtime)
+        except OSError:
+            pass
+    return got
 
 
 def _siesta_out(f: RunFiles) -> Dict[str, Any]:
     """The ``.out``'s build, launch, solver and pseudopotential lines, through
-    the SIESTA family's table (`siesta_grammar`), and the engine's own
-    progress through its reading pass (:func:`engine_progress`)."""
+    the SIESTA family's table (`siesta_grammar`), and TBtrans's loop through
+    its reading pass (:func:`tbtrans_loop`), said with the run's state --
+    over once it is no longer live (`job.LIVE_STATES`)."""
+    from .job import LIVE_STATES
     from ..engines import siesta_grammar as _G
     head = f.out_head
     if not head:
@@ -290,7 +313,9 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
         comp["launch"] = {"ranks": launch["n_mpi_processes"]}
     time = {k: launch[k] for k in ("run_start_local", "run_end_local")
             if k in launch}
-    time.update(engine_progress(f.out, tail))
+    time.update(tbtrans_loop(
+        f.out, head=head,
+        over=f.status is not None and f.status.state not in LIVE_STATES))
     if time:
         comp["time"] = time
     pseudos = []
@@ -543,8 +568,8 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                 ("computation.engine.program", "computation.engine.version",
                  "computation.engine.build", "computation.solver",
                  "computation.launch.ranks", "computation.time.run_start_local",
-                 "computation.time.run_end_local", "computation.time.done_pct",
-                 "computation.time.eta_s", "computation.time.estimated_at",
+                 "computation.time.run_end_local", "computation.time.progress",
+                 "computation.time.estimated_at",
                  "setup.pseudopotentials"),
                 ("siesta",), _siesta_out),
     Contributor("ending", ("verdict.ended", "verdict.state",

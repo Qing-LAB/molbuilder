@@ -29,14 +29,10 @@ const C = NS.constants || {};
 
 const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
 
+/** A length of time, as every page says one (`lib/time-ago.js`,
+ *  `ui-contract.md` § 4). */
 function duration(v) {
-    const n = num(v);
-    if (!isFinite(n)) return String(v);
-    if (n < 60) return (n < 10 ? String(+n.toFixed(1)) : String(Math.round(n))) + " s";
-    const t = Math.round(n);
-    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
-    const two = (x) => String(x).padStart(2, "0");
-    return h ? `${h} h ${two(m)} min` : `${m} min ${two(s)} s`;
+    return NS.timeSpan(v) || String(v);
 }
 
 function seconds(v) {
@@ -179,9 +175,9 @@ const FIELDS = {
     s_per_iter:       { label: "Seconds per SCF iteration", fmt: seconds },
     iters_measured:   { label: "SCF iterations timed" },
     rows:             { label: "SCF iterations logged" },
-    // the engine's own estimate, as its output last stated it (a transmission)
-    done_pct:         { label: "Done, by the engine's estimate", fmt: pct },
-    eta_s:            { label: "Left, by the engine's estimate", fmt: duration },
+    // TBtrans's loop in its one sentence (a transmission), and when its
+    // estimate was made while one stands (model/parse.md § 5d.1b, § 5d.5)
+    progress:         { label: "TBtrans's loop" },
     estimated_at:     { label: "Estimated at", fmt: utc },
     // memory
     mem_peak_gb:     { label: "Peak memory", fmt: gb },

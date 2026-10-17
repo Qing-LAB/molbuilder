@@ -91,8 +91,9 @@ occasions: the two it ticks, which combine, and its start and its end.
 
 Every message carries the same report (§ 4.1a): the state and where the run is
 — SCF phase and iteration, energy, each residual against its criterion, the
-largest force against its tolerance, the step, the rate — and at the end how
-each SCF phase converged and how the process exited.
+largest force against its tolerance, the step, the rate, TBtrans's account
+of its loop (a transmission's, [`model/parse.md`](?doc=model/parse.md) § 5d.5)
+— and at the end how each SCF phase converged and how the process exited.
 
 - **Nothing else is sent.** Between the start and the end a message goes out
   only on the two occasions the calculation ticked. Every wake's reading is in
@@ -119,7 +120,7 @@ are **change-gated**, so a fast wake costs no volume:
 
 | record | a line is written when |
 |---|---|
-| the monitor log's `[STATUS]` | the run advanced — a new SCF row, the row's iteration, the phase or the step moved, or the engine's own progress (a transmission's per cent done) — or its energy or state changed |
+| the monitor log's `[STATUS]` | the run advanced — a new SCF row, the row's iteration, the phase or the step moved, or TBtrans's account of its loop moved (its set-up stated, a progress line, a pass begun or completed, its currents) — or its energy or state changed |
 | a `util.csv` row | CPU %, memory, or a GPU's use or memory moved by ≥ 10 % of its last written value, or 300 s passed since the last row (`--util-keepalive`), so the plotted series keeps anchor points |
 
 **Notifying is separate and rare**: § 2's four occasions, never one per wake.
@@ -177,7 +178,7 @@ the finished steps and sends `scf_converged` when the count grows.
 | SIESTA relaxation | a geometry move | `Begin CG opt. move = N` (or `Broyden`, `FIRE`; `Src/state_init.F`, `siesta_grammar.STEP_BEGIN`) — N moves are done | one per finished move |
 | SIESTA force constants | a displacement | `Begin FC step = N` | one per finished displacement |
 | SIESTA single point — every SIESTA rung of a transport calculation is one | none: it prints `Single-point calculation` | — | none; the `finish` message is the whole report |
-| TBtrans | none: it runs no SCF — what it states instead is its progress, every `TBT.Progress` per cent of its k-point × energy loop, which every message carries (`done_pct`, `eta_s`, § 4.1a) | — | none |
+| TBtrans | none: it runs no SCF — what it states instead is its k-point × energy loop, run once per spin channel: each pass begun, its progress every `TBT.Progress` per cent, the time it completed in — which every message says in words (`model/parse.md` § 5d.5: *unpolarized (1 of 1): 10.01 % done, about 6d left (TBtrans's estimate)*), its pass underway's `done_pct` and `eta_s` among the fields (§ 4.1a) | — | none |
 | PySCF optimization | a geometry step | a step block in the progress log (`.molwatch.log`), written when the step ends | one per finished step, the first included |
 | PySCF vibration | a geometry step of the relaxation it runs first — none when the geometry is stated relaxed; the Hessian after it states no step | a step block in the progress log | one per finished relaxation step |
 
@@ -214,10 +215,10 @@ directory of decks.
 | it reports | read by | travels as |
 |---|---|---|
 | which files are this run's | `runfiles` — the stem, each file's role, the run index | `runfiles.py` · `identity.py` |
-| where the run is now: the SCF phase and iteration, the energy, each residual beside the criterion the run states, a NEGF loop's charge, the step the engine began in its own words and how many are done, the largest force beside its tolerance, and the engine's own estimate of how far it is — TBtrans's per cent done and the time it says is left | the output's ONE parser's reading pass, fed the file as it grows and chosen by the file's role: a SIESTA-family `.out` by `SiestaReader`, a PySCF run's progress log by `MolwatchReader` ([`model/parse.md`](?doc=model/parse.md) § 5d.5); the Results tab builds its frames from the same pass | `siesta_reader.py` · `siesta_grammar.py` · `molwatch_reader.py` · `molwatch_grammar.py` · `_section_rules.py` · `constants.py` (the Hartree and force factors a residual is converted with) |
+| where the run is now: the SCF phase and iteration, the energy, each residual beside the criterion the run states, a NEGF loop's charge, the step the engine began in its own words and how many are done, the largest force beside its tolerance, and TBtrans's account of its loop — the passes it makes, the one underway's per cent done and the time TBtrans says it has left, each completed pass's time | the output's ONE parser's reading pass, fed the file as it grows and chosen by the file's role: a SIESTA-family `.out` — SIESTA's, TranSIESTA's or TBtrans's — by `SiestaReader`, a PySCF run's progress log by `MolwatchReader` ([`model/parse.md`](?doc=model/parse.md) § 5d.5); the Results tab builds its frames from the same pass; TBtrans's loop said in words by `tbtrans.loop_words`, the run record's and the transport report's sentence too | `siesta_reader.py` · `siesta_grammar.py` · `molwatch_reader.py` · `molwatch_grammar.py` · `_section_rules.py` · `constants.py` (the Hartree and force factors a residual is converted with) · `tbtrans.py` |
 | SCF iterations so far, and seconds per iteration, in the current SCF phase | the timing rule, `scf_timing_rows.timing_of`, over the run's stamped SCF rows: a SIESTA run's `.scf-timing.log`, a PySCF run's progress log, whose deck stamps each `scf_history` row ([`model/parse.md`](?doc=model/parse.md) § 5c) — the rule the Results tab states them by | `scf_timing_rows.py` · `molwatch_grammar.py` |
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, with its own order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), built on the one door that says whether the run ended on its own (`runrecord.ending`); a SIESTA run's stderr from the session log whose first section is the run (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` · `runrecord.py` |
-| which fields a report may carry | the one declaration, `report_fields` (§ 4.1a) | `report_fields.py` |
+| which fields a report may carry, and how a card says each | the one declaration, `report_fields` (§ 4.1a): `ReportField.said`, the span rule's `span_words` and a share's `pct_words` | `report_fields.py` |
 | *not a report — what the run script records through it*: a flat run's warm retry, its own launch record (`mb_monitor.pyz retried`) | the one writer, `runrecord.record_retry` → `write_launch`, through `persist` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
 
@@ -328,14 +329,14 @@ A relaxation's log, shortened:
 
 ```text
 [2026-09-26T10:00:01-0700] [MACHINE] node=sg013 cores=128 mem_gb=503.2 gpu=none
-[2026-09-26T10:00:01-0700] [MONITOR] start (interval=10s watch_pid=41822) running | elapsed 0 s
-[2026-09-26T10:00:01-0700] [NOTIFY] (stub) start: running | elapsed 0 s
-[2026-09-26T10:25:41-0700] [STATUS] running | periodic SCF iteration 14 | 14 SCF rows | E -1740.201113 eV | dDmax 0.00231 (tol 0.0001) | dHmax 0.0412 eV (tol 0.001) | CG opt. move 0 | 12.80 s/iter | elapsed 1540 s
+[2026-09-26T10:00:01-0700] [MONITOR] start (interval=10s watch_pid=41822) running | elapsed 0s
+[2026-09-26T10:00:01-0700] [NOTIFY] (stub) start: running | elapsed 0s
+[2026-09-26T10:25:41-0700] [STATUS] running | periodic SCF iteration 14 | 14 SCF rows | E -1740.201113 eV | dDmax 0.00231 (tol 0.0001) | dHmax 0.0412 eV (tol 0.001) | CG opt. move 0 | 12.80 s/iter | elapsed 26m
 [2026-09-26T16:02:17-0700] [MONITOR] job ended (stopped by SIGTERM); final notify + exit
-[2026-09-26T16:02:17-0700] [STATUS] finished (job_completed) | periodic SCF iteration 9 | 1203 SCF rows | E -1740.213457 eV | dDmax 7.9e-05 (tol 0.0001) | dHmax 0.00088 eV (tol 0.001) | max force 0.0381 eV/Ang (tol 0.04) | CG opt. move 41 | 12.60 s/iter | converged: periodic yes | geometry relaxed | exit rc=0 | elapsed 21736 s
+[2026-09-26T16:02:17-0700] [STATUS] finished (job_completed) | periodic SCF iteration 9 | 1203 SCF rows | E -1740.213457 eV | dDmax 7.9e-05 (tol 0.0001) | dHmax 0.00088 eV (tol 0.001) | max force 0.0381 eV/Ang (tol 0.04) | CG opt. move 41 | 12.60 s/iter | converged: periodic yes | geometry relaxed | exit rc=0 | elapsed 6h
 [2026-09-26T16:02:17-0700] [UTIL-SUMMARY] cpu mean=86% (12-99)
 [2026-09-26T16:02:17-0700] [UTIL-BASIS] cpu% of 48 core(s) [affinity]; cpu time [cgroup-v2]; mem [cgroup-v2]; limit 180 GB
-[2026-09-26T16:02:18-0700] [NOTIFY] (stub) finish: finished (job_completed) | … | exit rc=0 | elapsed 21736 s
+[2026-09-26T16:02:18-0700] [NOTIFY] (stub) finish: finished (job_completed) | … | exit rc=0 | elapsed 6h
 ```
 
 ### 2.6 The command line, the environment and the signals
@@ -651,7 +652,7 @@ when — because somebody parses it later with no session to ask:
 ```json
 {"run": "bdt_au_01_coarse", "job": "62238108", "host": "sg013",
  "sent_at": 1790449541.2, "event": "scf_converged",
- "text": "running | periodic SCF iteration 17 | 212 SCF rows | E -1740.209935 eV | dDmax 8.1e-05 (tol 0.0001) | dHmax 0.00094 eV (tol 0.001) | max force 0.1234 eV/Ang (tol 0.04) | CG opt. move 3 | 12.80 s/iter | elapsed 5400 s",
+ "text": "running | periodic SCF iteration 17 | 212 SCF rows | E -1740.209935 eV | dDmax 8.1e-05 (tol 0.0001) | dHmax 0.00094 eV (tol 0.001) | max force 0.1234 eV/Ang (tol 0.04) | CG opt. move 3 | 12.80 s/iter | elapsed 2h",
  "state": "running", "elapsed_s": 5400.0, "n_iters": 212,
  "energy": -1740.209935, "geom_step": 3, "max_force": 0.1234, "per_iter_s": 12.8,
  "v": 1, "user": "jdoe@asu.edu", "received_at": 1790449541.6}
@@ -666,7 +667,7 @@ when — because somebody parses it later with no session to ask:
 | `event` | the monitor | `start`, `scf_converged`, `periodic` or `finish` (§ 2) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
-| `elapsed_s` … `per_iter_s` | the monitor | the report fields, below |
+| `elapsed_s` … `eta_s` | the monitor | the report fields, below |
 | `v` | the listener | the record's shape, `1`, so a reader a year from now does not infer it from which keys happen to be present |
 | `user` | the listener | **stamped from the key that verified**, never read from the payload — there is no user field to send |
 | `received_at` | the listener | our clock. **Both** clocks, because when they disagree that is itself worth seeing |
@@ -677,14 +678,14 @@ card all read; each is read by § 2.3's readers:
 
 | field | unit | what it is | runs that state it |
 |---|---|---|---|
-| `elapsed_s` | s | wall time since this run's monitor started | every run |
+| `elapsed_s` | s — a length of time, said in words on a card (`6h`, `ui-contract.md` § 4) | wall time since this run's monitor started | every run |
 | `n_iters` | — | SCF iterations so far in the current phase: SIESTA's timing rows, a PySCF run's SCF history across its finished steps | every run |
 | `energy` | eV | the latest SCF energy: E_KS of SIESTA's last SCF row, or a PySCF step's energy | every run |
 | `geom_step` | — | the step the engine began, in its own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` |
 | `max_force` | eV/Å | the largest force on an atom; its tolerance is in `text` | every run |
 | `per_iter_s` | s | seconds per SCF iteration in the current phase, a step's boundary excluded | every run whose SCF rows are stamped: SIESTA's wrapper tee, a PySCF deck's progress log |
-| `done_pct` | % | the share of its work the engine says is done — TBtrans's `Calculated N %`, its first estimate `0` | `transport`: the transmission rung |
-| `eta_s` | s | the time the engine says is left, as of its latest progress line — TBtrans's `ETA in S s` | `transport`: the transmission rung |
+| `done_pct` | % — a share as the engine printed it, said `40 %` on a card | the share of the spin pass underway the engine says is done — TBtrans's `Calculated N %`, its first estimate `0`; absent between passes and once the last completed — which pass it is, `text` says | `transport`: the transmission rung |
+| `eta_s` | s — a length of time, said in words on a card (`6d`) | the time the engine says the pass underway has left, as of its latest progress line — TBtrans's `ETA in S s` | `transport`: the transmission rung |
 
 **A field the run has not stated is never a value**: it is `null` on the wire,
 and absent from the stored line and from a chat card — so a reader can tell
@@ -709,7 +710,9 @@ title is the run, its job id and its state — `bdt_au_01_coarse · 62238108 —
 running`; the summary line is its text; its colour is the state's — running
 blue, finished green, failed red; and its fields are the report fields
 `notify.report` selected ([`stages.md`](?doc=engines/stages.md) § 6.9), each
-with its unit, an unstated one left out. **Discord ignores a bare `text`**:
+as its declaration says it (`ReportField.said`) — with its unit; a length of
+time in words (`6h`, `span_words`); a share as the engine printed it, its
+trailing zeros dropped (`10.01 %`, `pct_words`) — an unstated one left out. **Discord ignores a bare `text`**:
 Execute Webhook refuses (`400`) a body carrying none of `content`, `embeds`,
 `components`, `file` or `poll`, so its card is an embed.
 

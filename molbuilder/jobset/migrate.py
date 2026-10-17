@@ -1,7 +1,8 @@
 """Rewrite a calculation an older molbuilder wrote: its records written whole
 (2026-10-06), its stages' groups (2026-10-11), a flat calculation's run files
 numbered (2026-10-06), its template's electronic-state items (2026-09-28),
-and its template's zeros that meant *not set* (2.1.0).
+its template's zeros that meant *not set* (2.1.0), and the template items a
+release retired (2.10.0).
 
 **The run files** (`_migrate_run_numbers`): in the flat shape each run's
 files -- every row the catalogue numbers where a stage's runs share a
@@ -67,6 +68,23 @@ what it meant: a rung's override is taken out too, since each item is read
 by one rung alone -- says so, and keeps each old file as
 ``<name>.pre-2.1.0`` (``.pre-m6`` / ``.pre-w57`` when an earlier step
 rewrites it too).
+
+**The items a release retired** (`template.RETIRED_ITEMS`, the reader's
+refusal naming this command), and **an item renamed**
+(`template.RENAMED_ITEMS`): a retired item is taken out -- of the template,
+of a stage's own values and of `varies` -- when its value runs as before
+without it (`Retired.runs`: `copy_psml`, which nothing read; PySCF's
+`optimizer = "geometric"`), each said with its value and why it went; any
+other value is refused by name, since taking it out would change the
+calculation.  A renamed item keeps its value, or its blank, under its new
+name.  Each old file is kept as ``<name>.pre-<the release or day that
+retired or renamed it>`` when no earlier step rewrites it.
+
+**What the rewrite carries is the old file's, whole**: every value, every
+blank, and each item's source as the file records it -- none where it
+records none, *not recorded* (`engines/template.md` § 5) -- and what it
+cannot carry is said: a value of an item no longer of this kind, the
+comments a person wrote inside the file.
 """
 from __future__ import annotations
 
@@ -100,6 +118,15 @@ _SIESTA_TREATMENT = {
 #: current items: an OLD VALUE in one is rewritten, a current value is the
 #: file's own statement and is kept.
 _OLD_NAMES = ("spin", "spin_total")
+
+
+def _renamed_conflict(old: str, old_value: Any, new: str, new_value: Any,
+                      where: str = "the template") -> MigrateError:
+    return MigrateError(
+        f"{where} says {old} = {old_value!r} and {new} = {new_value!r}: one "
+        f"item, renamed (`template.RENAMED_ITEMS`), at two values.  Decide "
+        f"which the calculation carries, delete the other, and run the "
+        f"migration again; nothing was written.")
 
 
 def _conflict(old: str, old_value: Any, new: str, new_value: Any) -> MigrateError:
@@ -497,7 +524,8 @@ def migrate_state(base) -> List[str]:
     written before they were whole), a flat calculation's run files numbered
     (:func:`_migrate_run_numbers`) and its last run recorded
     (:func:`_migrate_last_run`), its template's electronic-state
-    items and its zeros, and its stages', that meant *not set* before 2.1.0
+    items, its zeros, and its stages', that meant *not set* before 2.1.0,
+    an item renamed and the items a release retired
     (:func:`_migrate_template`), all decided before any is written.  Each old file rewritten is
     kept beside its new one; a renamed one is its new one.
 
@@ -511,18 +539,20 @@ def migrate_state(base) -> List[str]:
     n_said, moves = _migrate_run_numbers(base, task)
     l_said, l_write = _migrate_last_run(base, task, moves)
     try:
-        t_said, t_writes, t_task = _migrate_template(base, task)
+        t_said, t_writes, t_task, t_keep = _migrate_template(base, task)
     except _NothingInTheTemplate:
         if not said and not moves and l_write is None:
             raise MigrateError(
                 f"{base} holds nothing an older molbuilder wrote -- its "
                 f"records are whole, its run files carry their run's "
                 f"number, and its template carries no item an older "
-                f"molbuilder meant otherwise.") from None
-        t_said, t_writes, t_task = [], [], task
+                f"molbuilder meant otherwise, renamed or a release "
+                f"retired.") from None
+        t_said, t_writes, t_task, t_keep = [], [], task, None
     if t_task is not task:
-        # ONE WRITE OF task.json: the stages' old zeros taken out, on top of
-        # whatever the records step gave it; the old file kept once.
+        # ONE WRITE OF task.json: the stages' old zeros and retired items
+        # taken out, on top of whatever the records step gave it; the old
+        # file kept once, as the earliest rule it was written before.
         from ..persist import json_text
         from ..task import FILENAME as TASK_FILENAME
         task_path, text = base / TASK_FILENAME, json_text(t_task.to_dict())
@@ -530,9 +560,7 @@ def migrate_state(base) -> List[str]:
             writes = [(p, text if p == task_path else x, k)
                       for p, x, k in writes]
         else:
-            from ..template import ZERO_MEANING_CHANGED_AT
-            t_writes.append((task_path, text,
-                             f".pre-{ZERO_MEANING_CHANGED_AT}"))
+            t_writes.append((task_path, text, t_keep))
     taken = [new for _old, new in moves if new.exists()]
     if taken:
         raise MigrateError(
@@ -567,17 +595,23 @@ def migrate_state(base) -> List[str]:
 
 
 class _NothingInTheTemplate(MigrateError):
-    """The template carries no item written before the electronic state's,
-    and the calculation no 0 written before 2.1.0 that meant *not set*."""
+    """The template carries no item written before the electronic state's
+    and no item a release retired, and the calculation no 0 written before
+    2.1.0 that meant *not set*."""
 
 
 def _migrate_template(base: Path, task):
     """The template's charge and spin items, rewritten into the electronic
-    state's -- this module's first migration (2026-09-28) -- and its zeros,
-    and its stages', that meant *not set* (2.1.0).  ``task`` is the
+    state's -- this module's first migration (2026-09-28) -- its zeros, and
+    its stages', that meant *not set* (2.1.0), an item renamed, kept under
+    its new name, and the items a release retired, taken out of the template
+    and of the description (`template.RETIRED_ITEMS`).  ``task`` is the
     description as the records step left it.  Nothing is written here:
-    returns what changed, the write (``(path, text, kept-as suffix)``) and
-    the description, its stages' old zeros taken out."""
+    returns what changed, the template's write (``(path, text, kept-as
+    suffix)``), the description -- its stages' old zeros and retired items
+    taken out -- and the suffix ``task.json`` is kept as when they were."""
+    import dataclasses
+
     from .. import template as _T
     from ..config.pyscf import PySCFConfig
     from ..config.siesta import SiestaConfig
@@ -589,26 +623,117 @@ def _migrate_template(base: Path, task):
     except ValueError as exc:
         raise MigrateError(str(exc)) from exc
     if tmpl is None:
-        raise MigrateError(f"{base} holds no template to migrate.")
+        raise _NothingInTheTemplate(f"{base} holds no template.")
     text = tmpl.read_text(encoding="utf-8")
-    parsed = _T.read_template(text)       # read against its OWN declarations
-    mine = (_T.select(parsed, engine=engine) if parsed.engines
-            else parsed.items)
+    try:
+        parsed = _T.read_template(text)   # read against its OWN declarations
+        mine = (_T.select(parsed, engine=engine) if parsed.engines
+                else parsed.items)
+    except ValueError as exc:
+        raise MigrateError(f"{tmpl.name} does not read, so nothing was "
+                           f"written: {exc}") from exc
     vals = {it.name: it.value for it in mine if it.is_set}
-    # A RENAMED ITEM KEEPS ITS VALUE, under its new name and said as such --
-    # the table the template reader refuses the old name by
-    # (`template.RENAMED_ITEMS`).  Filtering on today's schema alone would
-    # drop it and write the default in its place: what the run was is kept.
+    # A RENAMED ITEM KEEPS WHAT IT HELD, under its new name and said as such
+    # -- its value, or its blank (`template.RENAMED_ITEMS`, the table the
+    # reader refuses the old name by).  Filtering on today's schema alone
+    # would drop it and write the default in its place.
+    renamed_to = {old: new for old, (new, _why, _at)
+                  in _T.RENAMED_ITEMS.items()}
     renamed: List[str] = []
-    for old_name, (new_name, _why) in _T.RENAMED_ITEMS.items():
-        if old_name in vals and new_name not in vals:
-            vals[new_name] = vals.pop(old_name)
-            renamed.append(f"{old_name} = {vals[new_name]!r} -> {new_name} "
-                           f"(renamed)")
+    renamed_blank: List[str] = []
+    renamed_at: List[str] = []
+    for it in mine:
+        new_name = renamed_to.get(it.name)
+        if new_name is None:
+            continue
+        renamed_at.append(_T.RENAMED_ITEMS[it.name][2])
+        if not it.is_set:
+            renamed_blank.append(new_name)
+            renamed.append(f"{it.name} (blank) -> {new_name} (renamed)")
+            continue
+        if new_name in vals and vals[new_name] != vals[it.name]:
+            raise _renamed_conflict(it.name, vals[it.name], new_name,
+                                    vals[new_name])
+        vals[new_name] = vals.pop(it.name)
+        renamed.append(f"{it.name} = {vals[new_name]!r} -> {new_name} "
+                       f"(renamed)")
+    # AND IN task.json: a stage's own value, and `varies`, under the new name
+    # -- a stage holding both names at two values is refused, as the
+    # template is.
+    stage_renamed = [(st.name, k, v) for st in (task.stages or ())
+                     for k, v in (st.overrides or {}).items()
+                     if k in renamed_to]
+    varies_renamed = [k for k in (task.varies or ()) if k in renamed_to]
+    for st in (task.stages or ()):
+        for k, v in (st.overrides or {}).items():
+            new_name = renamed_to.get(k)
+            if new_name is not None and new_name in st.overrides \
+                    and st.overrides[new_name] != v:
+                raise _renamed_conflict(k, v, new_name, st.overrides[new_name],
+                                        f"stage {st.name!r} in task.json")
+    if stage_renamed or varies_renamed:
+        task = dataclasses.replace(
+            task, varies=tuple(dict.fromkeys(
+                renamed_to.get(k, k) for k in (task.varies or ()))),
+            stages=tuple(dataclasses.replace(st, overrides={
+                renamed_to.get(k, k): v
+                for k, v in (st.overrides or {}).items()})
+                for st in task.stages))
+        renamed_at += [_T.RENAMED_ITEMS[k][2] for _s, k, _v in stage_renamed]
+        renamed_at += [_T.RENAMED_ITEMS[k][2] for k in varies_renamed]
+        renamed += ([f"stage {st!r} {k} = {v!r} -> {renamed_to[k]} in "
+                     f"task.json (renamed)" for st, k, v in stage_renamed]
+                    + [f"{k} -> {renamed_to[k]} in task.json's varies "
+                       f"(renamed)" for k in varies_renamed])
+    # AN ITEM A RELEASE RETIRED is taken out -- of the template, and of a
+    # stage's own values and `varies` -- when its value runs as before
+    # without it, and refused by name otherwise: what the calculation was is
+    # kept, never rounded (`template.Retired.runs`).
+    retired = [it for it in mine if it.name in _T.RETIRED_ITEMS]
+    stage_retired = [(st.name, k, v) for st in (task.stages or ())
+                     for k, v in (st.overrides or {}).items()
+                     if k in _T.RETIRED_ITEMS]
+    varies_retired = [k for k in (task.varies or ())
+                      if k in _T.RETIRED_ITEMS]
+    stuck = ([(f"the template says {it.name} = {it.value!r}", it.name)
+              for it in retired
+              if it.is_set and it.value not in _T.RETIRED_ITEMS[it.name].runs]
+             + [(f"stage {st!r} overrides {k} = {v!r}", k)
+                for st, k, v in stage_retired
+                if v not in _T.RETIRED_ITEMS[k].runs])
+    if stuck:
+        said_of, name = stuck[0]
+        raise MigrateError(
+            f"{said_of}, and {name} was retired at a value that no longer "
+            f"runs ({_T.RETIRED_ITEMS[name].why}).  Taking it out would "
+            f"change the calculation, so nothing was written: delete it to "
+            f"accept what runs now, then run the migration again.")
+    if stage_retired or varies_retired:
+        task = dataclasses.replace(
+            task, varies=tuple(k for k in (task.varies or ())
+                               if k not in _T.RETIRED_ITEMS),
+            stages=tuple(dataclasses.replace(st, overrides={
+                k: v for k, v in (st.overrides or {}).items()
+                if k not in _T.RETIRED_ITEMS}) for st in task.stages))
+    retired_said = (
+        [(f"{it.name} = {it.value!r}" if it.is_set else f"{it.name} (blank)")
+         + f" removed ({_T.RETIRED_ITEMS[it.name].why})" for it in retired]
+        + [f"stage {st!r} {k} = {v!r} removed from task.json "
+           f"({_T.RETIRED_ITEMS[k].why})" for st, k, v in stage_retired]
+        + [f"{k} removed from task.json's varies "
+           f"({_T.RETIRED_ITEMS[k].why})" for k in varies_retired])
+    retired_at = [_T.RETIRED_ITEMS[n].at for n in _T.RETIRED_ITEMS
+                  if any(it.name == n for it in retired)
+                  or n in varies_retired
+                  or any(k == n for _s, k, _v in stage_retired)]
     old_items = set(_OLD_NAMES) & set(vals)
+    # AN OLD VALUE is one whose spelling the electronic state changed -- a
+    # value it keeps (`spin-orbit`) is today's, and the file's own word.
     old_values = {k for k in ("method", "spin_treatment")
-                  if k in vals and vals[k] in (_PYSCF_CLASS if k == "method"
-                                               else _SIESTA_TREATMENT)}
+                  if k in vals and (vals[k] in _PYSCF_CLASS if k == "method"
+                                    else _SIESTA_TREATMENT.get(vals[k],
+                                                               vals[k])
+                                    != vals[k])}
     # A 0 WRITTEN BEFORE 2.1.0 on the two NEGF broadenings meant *not set*
     # (`template.ZERO_WAS_NOT_SET`): written blank, what it meant.  On a
     # stage it is the override taken out and the item written blank: each
@@ -622,7 +747,6 @@ def _migrate_template(base: Path, task):
                                  engine, kind, st.name)]
                    if _T.written_before_zero_changed(parsed) else [])
     if stage_zeros:
-        import dataclasses
         task = dataclasses.replace(task, stages=tuple(
             dataclasses.replace(st, overrides={
                 k: v for k, v in (st.overrides or {}).items()
@@ -634,11 +758,26 @@ def _migrate_template(base: Path, task):
                     f"written blank, since only that rung reads it)"
                     for st, name in stage_zeros])
     zeros = list(dict.fromkeys(zeros + [name for _st, name in stage_zeros]))
-    if not old_items and not old_values and not zeros:
+    # AN ITEM NO RELEASE HELD is refused by name, as the reader refuses it
+    # (`template.config_from_template`): a misspelling, or a value written
+    # on a machine fact -- carried by no item, it would be dropped unsaid.
+    known = _T.template_fields(PySCFConfig if engine == "pyscf"
+                               else SiestaConfig)
+    unknown = sorted(k for k in vals if k not in known
+                     and k not in _OLD_NAMES and k not in _T.RETIRED_ITEMS)
+    if unknown:
+        raise MigrateError(
+            f"{tmpl.name} names {', '.join(map(repr, unknown))}, which no "
+            f"item holds -- a misspelling, or a value written on a machine "
+            f"fact (engines/template.md § 7); prep refuses it too.  Correct "
+            f"it, then run the migration again; nothing was written.")
+    if not (old_items or old_values or zeros or renamed or retired
+            or stage_retired or varies_retired):
         raise _NothingInTheTemplate(
             f"{tmpl.name} carries no item written before the electronic "
-            f"state's, and no 0 written before "
-            f"{_T.ZERO_MEANING_CHANGED_AT} that meant 'not set'.")
+            f"state's, no 0 written before {_T.ZERO_MEANING_CHANGED_AT} "
+            f"that meant 'not set', no item renamed and no item a release "
+            f"retired.")
     state_said = bool(old_items or old_values)
 
     staged = [(st.name, k) for st in (task.stages or ())
@@ -659,9 +798,8 @@ def _migrate_template(base: Path, task):
     said = renamed + said + [
         f"{line} (before {_T.ZERO_MEANING_CHANGED_AT} a 0 meant the "
         f"program's own rule; since, it means no broadening)"
-        for line in zero_said]
+        for line in zero_said] + retired_said
     config_cls = PySCFConfig if engine == "pyscf" else SiestaConfig
-    known = _T.template_fields(config_cls)
     kept = {k: v for k, v in vals.items()
             if k in known and k not in _OLD_NAMES and k not in zeros}
     kept.update(state)
@@ -670,33 +808,66 @@ def _migrate_template(base: Path, task):
     except (TypeError, ValueError) as exc:
         raise MigrateError(f"{tmpl.name} cannot be rewritten: {exc}") from exc
     # Unset stays unset: an item the old file left valueless is written
-    # valueless again, so a row nobody answered is not given a default.
+    # valueless again -- under its new name when it was renamed -- so a row
+    # nobody answered is not given a default.
     valueless = [it.name for it in mine
                  if (not it.is_set or it.name in zeros) and it.name in known
-                 and it.name not in _T.STATE_ITEMS]
-    # WHERE EACH VALUE CAME FROM, as the old file says it (§ 6.6 obligation
-    # 2): a file written before sources were recorded says nothing, so every
-    # value carried out of it -- renamed or mapped into the electronic state
-    # included -- is *not recorded*, never *not chosen*.  An item
-    # the old file never had is nobody's choice.
-    recorded = {it.name: it.source for it in mine if it.source}
+                 and it.name not in _T.STATE_ITEMS] + renamed_blank
+    # WHERE EACH ITEM'S VALUE CAME FROM, as the old file says it (§ 6.6
+    # obligation 2; `engines/template.md` § 5, the `source` row): its source,
+    # a blank item's too -- a cited run's `psml_lib` is blank because the run
+    # brings its pseudopotentials, and *cited* says so -- and none where the
+    # file records none, *not recorded*, never *not chosen*: what a file
+    # written before sources were recorded says of every item, and of a value
+    # mapped into the electronic state.  An item the old file never had is
+    # nobody's choice.
+    sources = {renamed_to.get(it.name, it.name): it.source for it in mine
+               if renamed_to.get(it.name, it.name) in known}
+    sources.update({k: sources.get(k) for k in kept})
     new_text = _T.template_with_values(cfg, engine=engine, calculation=kind,
                                        title=_leading_comment(text),
                                        valueless=valueless,
-                                       sources={k: recorded.get(k)
-                                                for k in kept})
+                                       sources=sources)
     # The new file must be one prep accepts -- checked before anything is
     # written, so a failure leaves the calculation as it was, and is said
     # as the migration's refusal rather than a traceback.
     try:
         _T.config_from_template(new_text, config_cls)
+        written = {it.name for it in _T.read_template(new_text).items}
     except ValueError as exc:
         raise MigrateError(
             f"{tmpl.name} rewritten would still be refused, so nothing was "
             f"written: {exc}") from exc
-    keep = ".pre-m6" if state_said else f".pre-{_T.ZERO_MEANING_CHANGED_AT}"
+    # WHAT THE NEW FILE DOES NOT CARRY IS SAID: a value of an item no
+    # longer one of this kind's, and the comments a person wrote inside the
+    # file -- molbuilder's writer puts none there -- which the old file
+    # keeps.
+    said += [f"{k} = {v!r} not carried: no longer an item of a {kind} "
+             f"calculation" for k, v in kept.items() if k not in written]
+    inner = _inner_comments(text)
+    if inner:
+        said.append(f"{inner} comment line(s) written inside "
+                    f"{tmpl.name} are not carried -- the old file keeps "
+                    f"them")
+    keep = (".pre-m6" if state_said
+            else f".pre-{_T.ZERO_MEANING_CHANGED_AT}" if zeros
+            else f".pre-{renamed_at[-1]}" if renamed and not retired_at
+            else f".pre-{retired_at[-1]}")
+    task_keep = (f".pre-{_T.ZERO_MEANING_CHANGED_AT}" if stage_zeros
+                 else f".pre-{retired_at[-1]}" if retired_at
+                 else f".pre-{renamed_at[-1]}"
+                 if stage_renamed or varies_renamed else None)
     return (said + [f"the old template is kept as {tmpl.name}{keep}"],
-            [(tmpl, new_text, keep)], task)
+            [(tmpl, new_text, keep)], task, task_keep)
+
+
+def _inner_comments(text: str) -> int:
+    """How many comment lines a template holds below its header -- a
+    person's own: molbuilder's writer puts none there."""
+    lines = text.splitlines()
+    head = next((i for i, ln in enumerate(lines) if not ln.startswith("#")),
+                len(lines))
+    return sum(1 for ln in lines[head:] if ln.lstrip().startswith("#"))
 
 
 def _leading_comment(text: str) -> str:
@@ -706,5 +877,5 @@ def _leading_comment(text: str) -> str:
     for ln in text.splitlines():
         if not ln.startswith("#"):
             break
-        lines.append(ln[1:].lstrip() if ln.startswith("# ") else ln[1:])
+        lines.append(ln[2:] if ln.startswith("# ") else ln[1:])
     return "\n".join(lines)

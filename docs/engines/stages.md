@@ -330,15 +330,18 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 | group | meaning | SIESTA | PySCF |
 |---|---|---|---|
 | `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | *(2)* `system_label`, `psml_lib` | *(1)* `job_name` |
-| `profile` | set once for the calculation | *(14)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(23)* `method`, `basis`, `functional`, `dispersion`, `solvent`, … |
-| **`stage`** | **the settings that typically vary across a sequence** | *(11)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ` | *(3)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level` |
-| `budget` | what it is allowed to spend | *(5)* `max_scf_iter`, `relax_steps`, `block_size`, `diag_algorithm`, `parallel_over_k` | *(1)* `scf_max_cycle` |
-| `output` | what the run writes | *(7)* the `write_*` set, plus `copy_psml` | *(6)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory` |
-| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | *(5)* `mpi_np`, `omp_threads`, `use_gpu`, `restart`, `continue_retries` | *(3)* `threads`, `use_gpu`, `stage` |
+| `profile` | set once for the calculation | *(18)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(29)* `method`, `basis`, `functional`, `dispersion`, `solvent`, … |
+| **`stage`** | **the settings that typically vary across a sequence** | *(28)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ`, the transport rungs' own, … | *(12)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level`, … |
+| `budget` | what it is allowed to spend | *(7)* `max_scf_iter`, `scf_must_converge`, `relax_steps`, `block_size`, `parallel_over_k`, `diag_algorithm`, `ts_solution_method` | *(1)* `scf_max_cycle` |
+| `output` | what the run writes | *(17)* the `write_*` set, `verbose_comments`, the transmission's `tbt_*` outputs and `tbt_progress`, `ts_hs_save` | *(10)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory`, `verbose_comments`, `write_molwatch_log`, `es_n_*` |
+| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | *(7)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart`, `continue_retries` | *(5)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart` |
 
-The counts are the whole group, the names a readable sample where the group is
-long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
-the three items that declare no `engines` list and therefore apply everywhere
+The counts are the whole group — an item the engine shares with the other
+counted in both *(recounted 2026-10-16, `copy_psml` retired)* — the names a
+readable sample where the group is long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
+the five items that declare no `engines` list and therefore apply everywhere
+(`verbose_comments`, `write_molwatch_log`, `gpu_count`, `max_memory_mb`,
+`use_gpu`)
 ([`template.md`](?doc=engines/template.md) § 4.2).
 
 > *(This table read three groups until 2026-08-16, sourced them from the config
@@ -450,7 +453,8 @@ limited to.
 > fields *"are not in the form and there are no findings to route"*.
 >
 > Both of those are now false, and the second was never a safe inference.
-> `species_order` and `copy_psml` are on the form today, along with thirteen
+> `species_order` and `copy_psml` were on the form by then (`copy_psml`
+> retired at 2.10.0: nothing read it), along with thirteen
 > others that `section` had been hiding — ordinary parameters that reach the
 > generated file, invisible because a presentation tag had become an opt-in
 > gate. The original finding was right: they were half-integrated. It was

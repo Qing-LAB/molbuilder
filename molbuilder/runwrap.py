@@ -3698,7 +3698,8 @@ def render_run_wrapper(script_path: Path, *,
 #: engine they run on, and the physical constants a grammar converts a
 #: residual with, `constants`), the timing instrument's rows, how a run ended (the
 #: PySCF end lines, `_run_ending`, and the run's own records whose door
-#: `run_status` builds its state on, `runrecord`), `run_status` itself, and
+#: `run_status` builds its state on, `runrecord`), `run_status` itself,
+#: TBtrans's loop in words (`tbtrans`), and
 #: what a report may carry (`report_fields`) -- `execution/run-reports.md`
 #: § 2.3 -- and the one JSON writer, `persist`, with which a warm retry
 #: writes its own launch record beside the job (`runrecord.record_retry`,
@@ -3722,6 +3723,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "identity.py":         "molbuilder.identity",
     "siesta_reader.py":    "molbuilder.parse.engines.siesta_reader",
     "siesta_grammar.py":   "molbuilder.parse.engines.siesta_grammar",
+    "tbtrans.py":          "molbuilder.parse.engines.tbtrans",
     "molwatch_reader.py":  "molbuilder.parse.engines.molwatch_reader",
     "molwatch_grammar.py": "molbuilder.parse.engines.molwatch_grammar",
     "_section_rules.py":   "molbuilder.parse.engines._section_rules",

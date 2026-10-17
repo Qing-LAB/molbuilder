@@ -751,7 +751,15 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   that fakes output is kept only with its reason stated to the user first**
   — and none is kept: the synthetic runtime-header lines, the parser's own
   output saved as its expectation, an output cut to its first steps and the
-  templates edited back into an older shape went 2026-10-06.
+  templates edited back into an older shape went 2026-10-06. **No test
+  builds an older release's files** — a calculation, deck, template or
+  sidecar as an older molbuilder left it *(user, 2026-10-16: "you keep
+  working with old files … very soon we won't have anything to migrate.
+  Having it or not doesn't impact our work. This is design")*: `jobset
+  migrate` and the readers of an older release's records stay as they are,
+  and no work goes into them. The road runs turned back into 2.8.0's and
+  2.9.6's files — a calculation carried across the upgrade, a template
+  migrated, a deck stating no order — went that day.
 - **API tests check what molbuilder prepares; end-to-end tests make the run**
   *(user, 2026-10-04: "you have to rely on more api and framework test rather
   than fucking e2e test. e2e test is only necessary when i say so";
@@ -831,7 +839,12 @@ tests are collected:
 
 1. **A file runs whole, in order, in one worker.** Its module fixtures are built
    once and its tests meet each other exactly as in one process, so spreading a
-   run changes *when* a file runs, never *how*.
+   run changes *when* a file runs, never *how*. pytest itself moves the tests
+   of a session-scoped parametrized fixture together across files — every
+   browser test, by pytest-playwright's `browser_name` — so the collection
+   hook puts each file back together after it, in the order pytest gave its
+   tests *(found 2026-10-16: the e2e batch ran the junction's file in two
+   pieces and made its real runs twice; ten files of the suite were split)*.
 2. **A file that runs a real engine runs alone among those that do.** A test
    that starts SIESTA, TranSIESTA or PySCF — itself or through a fixture —
    carries `@pytest.mark.engine` (§ 1), on itself or on its module, and every

@@ -293,10 +293,22 @@ own `[hidden]` guard (§ 6).
   (`window.molbuilder.timeAgo`): each unit until one and a half of the next
   (90 s, 90 min, 36 h), *just now* below that, past 30 days the date itself,
   nothing when there is no moment. Two tabs had grown their own, and one said *7s ago* where the other
-  said *just now*. A length of time in a sentence — the *6d left* an engine
-  estimates (`web/results.md` § 2.5) — is the same helper's
-  `window.molbuilder.timeSpan`, in the same units, days past 36 h
-  *(2026-10-16)*.
+  said *just now*. **A length of time a run says of itself is said one
+  way** *(user, 2026-10-16)* — the *6d left* an engine estimates, a run's
+  wall time in the Run panel, a transmission's loop, the elapsed time and the
+  time left in the monitor's status line and its messages: the same helper's
+  `window.molbuilder.timeSpan`, each unit until one and a half of the next
+  (90 s, 90 min, 36 h), then days, the nearest whole one, a half rounded up
+  (`12s`, `5m`, `6h`, `6d`). The same rule is written once more in Python,
+  in the module that declares what a report says (`report_fields.span_words`)
+  — the monitor's, beside a job where the page's helper cannot reach, and
+  every sentence the server composes for a page (`tbtrans.loop_words`); a
+  report field that is a length of time is marked `span` — two languages, one
+  rule, stated here, each asked the same rows (`tests/test_span_rule.py`). The
+  trajectory badge's *total* and *sim time* are a run's own length too, and
+  take it. **A benchmark's measured times keep the second** — its wall on the
+  page, its monitored window in `summarize bench`'s table (*4m05s*): a
+  measurement compared across trials, which a rounded length would hide.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are

@@ -22,13 +22,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
 from molbuilder.paths import (attempt_index, flat_bench_token, trial_label,
                               trial_point)
+
+if TYPE_CHECKING:
+    from molbuilder.transport.stages import Point
 
 
 # --------------------------------------------------------------------- #
@@ -719,10 +722,10 @@ def transmission_point(folder) -> Optional["Point"]:
     -- a frame, a voltage, or the one point of a rung that runs once -- or
     ``None`` for any other folder.  TBtrans writes no file a viewer reads on
     its own, so such a folder's result is its calculation's report at that
-    point (`web/results.md` § 0.1, § 2): the one rule :func:`openable`,
-    :func:`folder_answer` and the ladder's run rows answer by."""
-    from .jobset.errors import PrepError
-    from .jobset.materialize import stage_home
+    point (`web/results.md` § 0.1, § 2): the one rule :func:`openable` and
+    the ladder's run rows answer by.  Read off the folder's own tokens --
+    ``<NN>_transmission/run-<n>/<point>`` (`engines/transport.md` § 2a.11)
+    -- against the rung's points (`transport.stages.points_in`)."""
     from .transport.stages import Point, points_in
     d = Path(folder)
     place = place_of(d)
@@ -731,28 +734,25 @@ def transmission_point(folder) -> Optional["Point"]:
         return None
     root = Path(place.root)
     try:
-        stage_dir = stage_home(root, place.task, "transmission").dir
-    except PrepError:
-        return None
-    if stage_dir is None:
-        return None
-    try:
-        rel = d.resolve().relative_to(Path(stage_dir).resolve()).parts
+        parts = d.resolve().relative_to(root.resolve()).parts
     except ValueError:
         return None
-    if not rel or attempt_index(rel[0]) is None:
+    if (len(parts) < 2 or (parse_token(parts[0]) or (None, None))[1]
+            != "transmission" or attempt_index(parts[1]) is None):
         return None
-    points = points_in(Path(stage_dir) / rel[0], place.task, "transmission",
-                       base=root)
+    rel = parts[2:]
+    points = points_in(root / parts[0] / parts[1], place.task,
+                       "transmission", base=root)
     if not points:
-        return Point() if len(rel) == 1 else None
-    return next((pt for at, pt in points
-                 if at.resolve() == d.resolve()), None)
+        return Point() if not rel else None
+    return next((pt for _at, pt in points if Path(pt.rel).parts == rel),
+                None)
 
 
 def _the_report(place: Place, attempts: List[str]) -> str:
-    """A transmission run's result: its calculation's report, opened
-    through the description at the root (:func:`_container_product`)."""
+    """A transmission run's result: its calculation's report -- the
+    description at the root, the file the root opens
+    (:func:`_container_product`)."""
     attempts.append("a transmission run's result is its calculation's "
                     "report at its point -- TBtrans writes no file a viewer "
                     "reads on its own (web/results.md 0.1)")
@@ -761,10 +761,11 @@ def _the_report(place: Place, attempts: List[str]) -> str:
 
 def openable(directory) -> Tuple[Optional[str], List[str]]:
     """``(path, trail)`` -- the file a viewer should load in ``directory``:
-    the run it speaks for's result in a folder of ours, the calculation's
-    product at a container's root, and in a folder no calculation claims the
-    newest file of a role a run writes that a parser claims
-    (`parse.dirs.openable_in`)."""
+    the run it speaks for's result in a folder of ours -- a transmission
+    run's, its calculation's report at its point (:func:`transmission_point`,
+    `web/results.md` § 2) -- the calculation's product at a container's root,
+    and in a folder no calculation claims the newest file of a role a run
+    writes that a parser claims (`parse.dirs.openable_in`)."""
     from molbuilder.parse.dirs.rundir import openable_in
     d = Path(directory)
     place = place_of(d)
@@ -876,8 +877,9 @@ def folder_answer(directory) -> Dict[str, Any]:
         if place.role == calcdirs.RUN:
             run = run_of(d)
             point = transmission_point(d)
-            chosen = (_the_report(place, attempts) if point is not None
-                      else _openable(d, run.label, run.stage, calc, attempts))
+            # THE ONE RULE for what a folder opens (:func:`openable`).
+            chosen, trail = openable(d)
+            attempts += trail[1:]
             if run.stage is not None:
                 st = run_state_of(run.folder, run.names, run.run)
                 status = {"state": st.state, "detail": st.detail,

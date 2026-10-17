@@ -105,7 +105,7 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
         r = _jobset("launch", "task", "--stage", spelling, "--bundle", bundle,
                     "--mode", "direct", "--dry-run")
         assert r.exit_code == 0, (spelling, r.output)
-        assert re.search(rf"WOULD run\s+{stage}\s+bash H2_{token}\.run\.sh",
+        assert re.search(rf"WOULD start in the background\s+{stage}\s+bash H2_{token}\.run\.sh",
                          r.output), (spelling, r.output)
     ledger = bundle / LEDGER_FILE
     r = _jobset("launch", "task", "--stage", typed.upper(), "--bundle", bundle,

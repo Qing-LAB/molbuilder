@@ -947,7 +947,7 @@ def test_a_one_stage_calculation_is_one_named_stage(tree):
     res = r.invoke(jobset_group, ["launch", "task", "--stage", "coarse", "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run", "--yes"])
     assert res.exit_code == 0, res.output
-    assert res.output.count("WOULD run") == 1
+    assert res.output.count("WOULD start") == 1
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
 
@@ -1060,7 +1060,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     res = r.invoke(jobset_group, ["launch", "bench", "coarse", t1, "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run", "--yes"])
     assert res.exit_code == 0, res.output
-    would = [l for l in res.output.splitlines() if "WOULD run" in l]
+    would = [l for l in res.output.splitlines() if "WOULD start" in l]
     assert len(would) == 1, res.output
     assert t1 in would[0] and t0 not in would[0], res.output
     # an unknown stage is refused with the ladder listed, not ignored

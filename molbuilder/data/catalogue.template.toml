@@ -1053,20 +1053,6 @@ SIESTA pseudos are NOT bundled with molbuilder -- you have to download them.  RE
 Download recipe for hemeC-like systems: grab the 'PBE-SR / standard / PSML' set for {C, H, N, O, S, Fe}, unzip into one directory, point this field at it.
 """
 
-[item.copy_psml]
-kind = "produce"
-category = ["procedure"]
-engines = ["siesta"]
-engine_key = "(molbuilder: triggers .psml staging step)"
-type = "bool"
-value = true
-default = true
-group = "output"
-label = "Stage pseudopotential files"
-help = """
-Copy the psml pseudopotential files into the output directory, alongside the generated FDF.  SIESTA needs one pseudopotential per species at run time, so without them the deck is not self-contained -- turn this off only when the run will pick them up from somewhere else.
-"""
-
 [item.species_order]
 kind = "produce"
 category = ["system"]
@@ -2223,7 +2209,7 @@ calculations = ["transport"]
 anchor = "%block TBT.Contour.window"
 engine_key = "%block TBT.Contour.window"
 expands = ["%block TBT.Contour.window"]
-manual = "SIESTA 5.4.2 TBtrans §'Contour definition'"
+manual = "SIESTA 5.4.2 TBtrans §'Energy grid'"
 type = "float"
 value = -2.0
 default = -2.0
@@ -2246,7 +2232,7 @@ calculations = ["transport"]
 anchor = "%block TBT.Contour.window"
 engine_key = "%block TBT.Contour.window"
 expands = ["%block TBT.Contour.window"]
-manual = "SIESTA 5.4.2 TBtrans §'Contour definition'"
+manual = "SIESTA 5.4.2 TBtrans §'Energy grid'"
 type = "float"
 value = 2.0
 default = 2.0
@@ -2268,7 +2254,7 @@ calculations = ["transport"]
 anchor = "%block TBT.Contour.window"
 engine_key = "%block TBT.Contour.window"
 expands = ["%block TBT.Contour.window"]
-manual = "SIESTA 5.4.2 TBtrans §'Contour definition'"
+manual = "SIESTA 5.4.2 TBtrans §'Energy grid'"
 type = "int"
 value = 401
 default = 401
@@ -2289,7 +2275,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.k"
 engine_key = "TBT.k"
-manual = "SIESTA 5.4.2 TBtrans §'k-point sampling'"
+manual = "SIESTA 5.4.2 TBtrans §'Brillouin zone'"
 type = "int3"
 range = [1, 64]
 above = { value = 0, why = "each number is the k-point count along its axis -- how many k-points the grid takes there -- and 0 would sample nothing" }
@@ -2320,7 +2306,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.Spin"
 engine_key = "TBT.Spin"
-manual = "SIESTA 5.4.2 TBtrans §'Spin'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "int"
 value = 0
 default = 0
@@ -2340,7 +2326,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.Elecs.Eta"
 engine_key = "TBT.Elecs.Eta"
-manual = "SIESTA 5.4.2 TBtrans §'Electrode options'"
+manual = "SIESTA 5.4.2 TBtrans §'Electrode configuration'"
 type = "float"
 value = 0.001
 default = 0.001
@@ -2362,7 +2348,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.Contours.Eta"
 engine_key = "TBT.Contours.Eta"
-manual = "SIESTA 5.4.2 TBtrans §'Contour options'"
+manual = "SIESTA 5.4.2 TBtrans §'Energy grid'"
 type = "float"
 optional = true
 unit = "eV"
@@ -2388,7 +2374,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.DOS.Gf"
 engine_key = "TBT.DOS.Gf"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
@@ -2408,7 +2394,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.DOS.A"
 engine_key = "TBT.DOS.A"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
@@ -2428,7 +2414,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.DOS.Elecs"
 engine_key = "TBT.DOS.Elecs"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
@@ -2448,7 +2434,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.T.Eig"
 engine_key = "TBT.T.Eig"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "int"
 value = 4
 default = 4
@@ -2469,7 +2455,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.T.Bulk"
 engine_key = "TBT.T.Bulk"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
@@ -2489,7 +2475,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.T.All"
 engine_key = "TBT.T.All"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = false
 default = false
@@ -2509,7 +2495,7 @@ engines = ["siesta"]
 calculations = ["transport"]
 anchor = "TBT.Verbosity"
 engine_key = "TBT.Verbosity"
-manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+manual = "SIESTA 5.4.2 TBtrans §'fdf-flags'"
 type = "int"
 value = 5
 default = 5
@@ -2533,14 +2519,13 @@ manual = "SIESTA 5.4.2 TBtrans §'fdf-flags'"
 type = "float"
 value = 5.0
 default = 5.0
-engine_default = { value = 5.0, source = "SIESTA 5.4.2 Util/TS/TBtrans/m_tbt_options.F90: percent_tracker = fdf_get('TBT.Progress', 5.)" }
 range = [0.0, 100.0]
 group = "output"
 label = "How often tbtrans states its progress, in per cent"
 tier = "advanced"
 help = """
 How often tbtrans writes how far it is and its estimate of the time left -- every so many per cent of its k-point x energy loop.  It changes the log, never the transmission.
-5 is tbtrans's own default (`Util/TS/TBtrans/m_tbt_options.F90`: `fdf_get('TBT.Progress', 5.)`), so the deck states the default rather than moving anything.  A long transmission is followed more closely at 1; 0 writes a line after every energy point.  The Results tab shows the latest line on the transmission's row.
+5 is tbtrans's own default (`Util/TS/TBtrans/m_tbt_options.F90`: `fdf_get('TBT.Progress', 5.)`), so the deck states the default rather than moving anything.  A long transmission is followed more closely at 1; 0 writes a line at every step of the energy loop -- one energy point per MPI rank -- and its first line, at 0 %, states no time (`m_tbt_trik.F90`).  The monitor's messages, the Run panel and the transport report say the loop in one sentence: the spin pass underway, its share done and tbtrans's estimate of its time left, each completed pass's time.
 """
 
 [item.negf_eq_pole_ev]

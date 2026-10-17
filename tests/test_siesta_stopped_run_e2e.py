@@ -140,7 +140,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         # exit and its words are asserted below, beside what it left.
         _LAUNCH["coarse"] = _jobset("launch", "task", "--stage", "coarse",
                                     "--bundle", str(bundle),
-                                    "--mode", "direct", "--yes")
+                                    "--mode", "direct", "--foreground", "--yes")
         assert (attempt / "H2_01_coarse-run0.out").is_file(), \
             sorted(p.name for p in attempt.iterdir())
         yield attempt

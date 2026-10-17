@@ -1523,7 +1523,8 @@ again (§ 1.5a).
 > small (every solver × block combination shares its shape's shelf).*
 
 `--mode direct` on a workstation is not submission and is exempt as ever:
-it runs the trials sequentially, in-shell, waiting for each. When the
+it runs the trials as one walk, in order — in the background unless
+`--foreground` ([`job-system.md`](?doc=execution/job-system.md) § 6.0). When the
 sweep has finished,
 `jobset summarize bench tight` reads the timings and writes
 `bench-result.json` — a recommendation, not a decision:

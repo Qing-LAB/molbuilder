@@ -156,7 +156,7 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
                "--mode", "direct", "--dry-run")
     assert r.exit_code == 0, r.output
     run = next(ln.split() for ln in r.output.splitlines()
-               if "WOULD run" in ln)
+               if "WOULD start" in ln)
     assert run[run.index("bash") + 1] == "H2_01_coarse.run.sh", run
     assert (_flag(run, "-np"), _flag(run, "-omp")) == ("4", "2"), run
     for flag, value in (("--domain", "htc"), ("--mem", "8G"),

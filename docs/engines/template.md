@@ -462,6 +462,35 @@ which rewrites it blank — what it meant (`template.ZERO_WAS_NOT_SET`,
 `task.json` beside such a template is refused at `prep` the same way
 (`template.zeros_written_before`, asked by `resolve`).
 
+**An item a release retired, holding a value, is refused by name, never
+dropped** — with why it was retired (`template.RETIRED_ITEMS`): `copy_psml`,
+the pseudopotential staging switch, retired at 2.10.0 — nothing read it, and
+prep always copies a calculation's pseudopotentials beside its decks, without
+which SIESTA cannot run *(user, 2026-10-16)*; PySCF's `es_top_n`,
+`es_threshold` and `optimizer`, retired 2026-09-28/29. A blank one,
+retired or renamed, asks nothing and is read as absent. **An item a release
+renamed** is refused under its old name, naming the new and `jobset migrate`
+(`template.RENAMED_ITEMS`). Every door that
+reads a name — the template reader, the description's check, a stage's
+overrides — says it in one sentence (`template.why_not_an_item`).
+**`molbuilder jobset migrate` takes a retired item out** — of the template,
+of a stage's own values and of `varies`, blank or set — **when its value
+runs as before without it** (each item's `runs`: any value of `copy_psml`,
+`optimizer = "geometric"`), and **renames a renamed one** in the same three
+places, keeping its value or its blank; it says each, and keeps the old file
+as `<name>.pre-<the release or day that retired or renamed it>` — `.pre-m6`
+or `.pre-2.1.0` when an earlier step of the same migration rewrites it too. A
+retired value
+that no longer runs is refused by name, since taking it out would change the
+calculation, and deleting it is the person's; so is one item at two values
+under its two names. **A migration carries the rest of the file whole** —
+every value, every blank, each item's `source` as the file records it, *not
+recorded* where it records none — and says what it cannot carry: a value of
+an item no longer of this kind, comments a person wrote inside the file
+*(2026-10-16, after a migration that wrote a cited run's blank `psml_lib` as
+nobody's choice)*. A name no release ever held — a misspelling, a value
+written on a machine fact — is refused, as the reader refuses it.
+
 **On every item — four required keys**, and each earns *required* by a goal:
 
 | key | required because |
@@ -744,7 +773,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `kind` | which layer owns this item — § 6's closed vocabulary |
 | `value` | the value in force. Absent means **explicitly unset** |
 | `type` | the **validation** type — `int` · `float` · `str` · `bool` · `enum` · `pow2` · `int3` · `float3` · `strlist` · `intlist` · `text`. An `enum`'s members are strings **or whole numbers**, and a value must be one of them with its own type: `unpaired_electrons` is `0`–`10` or `"free"`, so `2` is a member and `"2"` or `true` is not *(2026-09-28, M6 — a count that also has a named state is a list, not a number with a magic value)* |
-| `source` | **where `value` came from** — `cited` · `person` · `default` (§ 6.6 obligation 2, K7; decision 7 retired `record`, the structure's saved record): a cited run, the person, or nobody. Absent beside a value is *not recorded*: a file written before the key existed, or a value a migration carried out of one — never a guess |
+| `source` | **where `value` came from** — `cited` · `person` · `default` (§ 6.6 obligation 2, K7; decision 7 retired `record`, the structure's saved record): a cited run, the person, or nobody — a blank item's too (a cited run's blank `psml_lib` is *cited*: the run brings its pseudopotentials). Absent beside a value is *not recorded*: a file written before the key existed, or a value a migration carried out of one — never a guess |
 | `default` | what untouched means — the value a field nobody chose is written at, and the hint a surface shows beside a blank field. Whose a value is, `source` says |
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence — it is what a **deck writer** matches on |
 | `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
@@ -768,7 +797,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
-| `engine_default` | **the engine's own value for this keyword, and the line of its source that sets it** — `engine_default = { value = 0.001, source = "SIESTA 5.4.2 read_options.F90: fdf_get('SCF.H.Tolerance', 1.e-3_dp*eV, 'Ry')" }` on `h_tolerance` (`SCF.H.Tolerance`, eV), a keyword one of molbuilder's decks states and an older one left to the engine *(decided with the user 2026-10-15, plan UPG)*; and on `tbt_progress` (`TBT.Progress`, 5 per cent), stated by the transmission's deck since 2026-10-16. The value passes the item's own `type` at parse time, as `value` and `default` do; the source is required. Read by the gather's *same engine input* ([`engines/transport.md`](?doc=engines/transport.md) § 6.1): a keyword one deck states at this value and the other leaves out is the same input. Not `default`, which is molbuilder's own and differs from the engine's where § 5.2 says why; absent, a keyword one deck leaves out is a difference. A catalogue key: it does not travel into a calculation's template |
+| `engine_default` | **the engine's own value for this keyword, and the line of its source that sets it** — `engine_default = { value = 0.001, source = "SIESTA 5.4.2 read_options.F90: fdf_get('SCF.H.Tolerance', 1.e-3_dp*eV, 'Ry')" }` on `h_tolerance` (`SCF.H.Tolerance`, eV), a keyword one of molbuilder's decks states and an older one left to the engine *(decided with the user 2026-10-15, plan UPG)*. The value passes the item's own `type` at parse time, as `value` and `default` do; the source is required. Read by the gather's *same engine input* ([`engines/transport.md`](?doc=engines/transport.md) § 6.1): a keyword one deck states at this value and the other leaves out is the same input. Not `default`, which is molbuilder's own and differs from the engine's where § 5.2 says why; absent, a keyword one deck leaves out is a difference. A catalogue key: it does not travel into a calculation's template |
 | `not_set` | **what the engine does when this item writes nothing**, in one sentence read from the engine's source — *"SIESTA works out its own block size from the ranks and the orbital count (`initparallel.F`, `set_blocksizedefault`)"*. Where an item's line would be and the engine's own default applies — an `optional` item at no value — the deck writes `# <keyword> not written: <not_set>` in its place, so no value reaches the engine by omission (§ 6.6 obligation 4). **Required on every `optional` item of kind `engine` or `deck` that the scheduler does not answer**, checked when the catalogue is read; an item in that state with none is refused where the deck is written. `null_label` names the same state on a form in a few words; this is the deck's sentence *(named `not_set`, not `unset`, because unset reads as removed by a person — the user, 2026-10-11)* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members. `unit` is also the **deck's unit word**: the SIESTA renderer writes it beside the number (`siesta/layout.unit_word`, one source — plan F27), spelling Å as fdf's `Ang`; the bias, held in volts, is written `eV`, the one declared exception. `range` is a **recommendation**: a value outside it is warned on every surface and refused on none (§ 5.3) |
 | `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |

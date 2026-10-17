@@ -978,9 +978,12 @@ else ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a run
 script refuses to start without one, naming this door. The single-stage door
 asks too *(ruled 2026-10-01)*: a launch flag may still change the queue, the
 wall or the memory after `prep`'s printout, so the line as sent is seen only
-here. A flag the launch would
-not read is refused by name — `--time`/`--mem`/`--domain` under
-`--mode direct`, a bench's flags on `launch task`.
+here. **A run here starts in the background**, its question offering the
+foreground, `--foreground` the waited-on run
+([`job-system.md`](?doc=execution/job-system.md) § 6.0). A flag the launch
+would not read is refused by name, with the launch as typed for each mode —
+`--time`/`--mem`/`--domain`/`--gpu-domain` under `--mode direct`,
+`--foreground` under `submit` or `ask`, a bench's flags on `launch task`.
 
 > **`--mode ask` submits nothing and tells you when it would start.** It walks
 > the identical path `--mode submit` walks and inserts one flag,

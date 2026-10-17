@@ -455,6 +455,14 @@ def api_load():
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     refusal = _refuse_if_not_a_trajectory(parser_cls)
+    if refusal is not None and resolved_from_dir is not None:
+        # A FOLDER WHOSE RESULT IS NO TRAJECTORY -- a transmission run's, its
+        # calculation's report at its point (`runs.openable`) -- is said so,
+        # with where it opens, never sent to a log the run does not write.
+        refusal = {"ok": False, "error": (
+            f"{raw_path} opens {path} -- {parser_cls.label}, which the "
+            f"Results tab shows; this viewer shows a run's frames over "
+            f"time.")}
     if refusal is not None:
         return jsonify(refusal), 400
 

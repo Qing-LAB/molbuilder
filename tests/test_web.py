@@ -1226,7 +1226,7 @@ def test_siesta_form_schema_matches_documented_layout():
         # every SIESTA kind (`engines/template.md` § 6.4) and shown
         # read-only at that answer (`locked`, § 6.6 obligation 3; plan § 5w
         # K7) -- never a control.
-        ("procedure",  15),
+        ("procedure",  14),
         # mpi_np, omp_threads, max_memory_mb and use_gpu are on the staging
         # surface: bench axes measured on the machine, not parameters typed
         # beside the physics.

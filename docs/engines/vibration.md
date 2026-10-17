@@ -201,8 +201,9 @@ molbuilder jobset prep task --bundle P/frequency/F --target this
 molbuilder jobset launch task --bundle P/frequency/F --mode direct --yes
 ```
 
-The launch ends with `<label>.spectra.json` in the attempt on both engines
-(§ 5.5 for SIESTA); there is no step after it.
+The run ends with `<label>.spectra.json` in the attempt on both engines
+(§ 5.5 for SIESTA) — the launch, started in the background, returns at once,
+and `jobset status` follows it; there is no step after it.
 
 `init` refuses `--stage-strategy` for this kind (a *ladder* is a
 description's list of stages, each a *rung* with its own parameter set; a
@@ -966,7 +967,9 @@ computes no strengths they were undefined rather than empty. The window is the
 cost control, and `all` is cheap where it matters (8 SCFs for CO₂). A template
 written before the removal that still answers `es_top_n` or `es_threshold` is
 refused at `prep` with the two named as retired (`template.RETIRED_ITEMS`) —
-delete them; one that still selects `top_n` or `threshold` is refused as a
+delete them: no value of theirs runs as before, so `molbuilder jobset migrate`
+refuses one too, and takes out only a blank one, which asks nothing; one that
+still selects `top_n` or `threshold` is refused as a
 choice the item does not have. A run probes every mode its selection
 names: it starts its `.spectra.json` afresh and takes nothing from an earlier
 run's file *(a resume that skipped the modes already probed was written here
@@ -2552,7 +2555,7 @@ flowchart TB
 | `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |
 | `POST /api/task-setup/save` · `/prep` | write `task.json`; run `prep` for one stage on a named machine |
 | `POST /api/spectra/load` | parse an existing `.spectra.json` into display data; typed errors |
-| `molbuilder jobset init / prep / launch` | the same road from a terminal (§ 2.1); the launch ends with the result |
+| `molbuilder jobset init / prep / launch` | the same road from a terminal (§ 2.1); the run ends with the result |
 | `molbuilder jobset summarize task [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |
 
 ---

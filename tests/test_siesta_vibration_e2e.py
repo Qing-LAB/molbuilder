@@ -92,7 +92,7 @@ def ticked(tmp_path_factory):
         _taken(run, "prep freq", "prep", "task",
                *group_words(run.bundle, "freq"), "--target", "this")
         _taken(run, "launch freq", "launch", "task", "--stage", "freq",
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
     return run
 
 
@@ -115,13 +115,13 @@ def sweep(tmp_path_factory):
             _taken(run, f"prep {stage}", "prep", "task",
                    *group_words(run.bundle, stage), "--target", "this")
             _taken(run, f"launch {stage}", "launch", "task", "--stage",
-                   stage, "--mode", "direct", "--yes")
+                   stage, "--mode", "direct", "--foreground", "--yes")
         _taken(run, "prep freq_half", "prep", "task",
                *group_words(run.bundle, "freq_half"), "--target", "this")
         _taken(run, "summarize early", "summarize", "task")
         run.early = json.loads(record.read_text())
         _taken(run, "launch freq_half", "launch", "task", "--stage",
-               "freq_half", "--mode", "direct", "--yes")
+               "freq_half", "--mode", "direct", "--foreground", "--yes")
         _taken(run, "summarize", "summarize", "task")
         run.record = json.loads(record.read_text())
         _taken(run, "summarize with a tolerance", "summarize", "task",

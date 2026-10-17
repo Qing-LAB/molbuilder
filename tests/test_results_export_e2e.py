@@ -78,7 +78,7 @@ def _ran(bundle, run_dir, *prep_args):
                 "--target", "this", *prep_args)
     assert r.exit_code == 0, r.output
     r = _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-                "--mode", "direct", "--yes")
+                "--mode", "direct", "--foreground", "--yes")
     st = run_status(run_dir, "H2_01_coarse")    # the run's stem
     assert st.state == "finished", (st.state, st.detail, r.output[-2000:])
 

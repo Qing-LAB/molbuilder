@@ -28,7 +28,7 @@ def _keyword_suffix(meta) -> str:
     full spelling belongs on the form's badge, where there is room for it.
 
     **Nothing is added for a setting that is not an engine keyword** — the
-    molbuilder-side ones (``psml_lib``, ``copy_psml``, ``mpi_np``) whose
+    molbuilder-side ones (``psml_lib``, ``mpi_np``) whose
     ``engine_key`` is a parenthesised note.  There is no word to offer, and
     inventing one would make a search fail rather than merely not help.
     """

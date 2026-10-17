@@ -112,7 +112,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
                 z.writestr(name, text)
 
     _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-            "--mode", "direct", "--yes")
+            "--mode", "direct", "--foreground", "--yes")
     logs = sorted(ran_in.glob("*.runwrap-*.log"))
     assert logs, sorted(p.name for p in ran_in.iterdir())
     said = "\n".join(p.read_text(errors="replace") for p in logs)

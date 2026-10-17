@@ -31,7 +31,7 @@ def _run_cycle_clock(expr: str):
         pytest.skip("node not available")
     src = MODULE.read_text()
     ix  = src.index("function badgeClocks")
-    end = src.index("function fmtElapsed", ix)
+    end = src.index("function fmtTimestamp", ix)
     fn  = src[ix:end].rstrip()
     full = fn + "\nconsole.log(JSON.stringify(" + expr + "));"
     proc = subprocess.run([node, "--input-type=commonjs", "-e", full],

@@ -8,7 +8,7 @@ integral — parsed, never recomputed).  Both formats were pinned against
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@7``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@8``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the mode's
 average over a frame set (`average.mode_average`), the junction's TOTAL
 current, with the
@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 #: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
 #: beside it.  An older record is refused by its version, and `summarize
 #: task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@7"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@8"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -218,29 +218,37 @@ def point_currents(where, token: str, spin: str) -> Dict:
     (:data:`CURRENT_MEANS`): ``current_a_printed``, the first figure it
     printed (one spin channel's); ``current_a``, the junction's total --
     twice it for a non-polarized run, the two channels' sum for a polarized
-    one -- and the run's ``k_points`` / ``k_method``.  Read from the point's
-    newest output through the family's reader
-    (`parse.engines.tbtrans.read_tbtrans_out`); ``None`` where the run
-    printed none."""
-    from ..parse.engines.tbtrans import read_tbtrans_out
+    one -- and the run's ``k_points`` / ``k_method`` and its
+    ``loop_elapsed_s``, its passes' loops summed as TBtrans measured them
+    (`model/parse.md` § 5c.1).  Read from the point's newest
+    output through the family's one read and its account of TBtrans's loop
+    (`siesta_reader.read_output`, ``now()["tbtrans"]``, `model/parse.md`
+    § 5d.5): each pass's currents beside its channel; ``None`` where the
+    run printed none."""
+    from ..parse.engines.siesta_reader import read_output
     out: Dict = {"current_a": None, "current_a_printed": None}
     for path in _outs_newest_first(where, token):
-        facts = read_tbtrans_out(path.read_text(errors="replace"))
-        rows = facts.get("currents") or []
+        loop = read_output(path).now().get("tbtrans") or {}
         for k in ("k_points", "k_method"):
-            if k in facts:
-                out[k] = facts[k]
+            if k in loop:
+                out[k] = loop[k]
+        passes = loop.get("passes") or []
+        took = [p["loop_elapsed_s"] for p in passes if "loop_elapsed_s" in p]
+        if took:
+            out["loop_elapsed_s"] = sum(took)
+        rows = [(p.get("channel"), r) for p in passes
+                for r in p.get("currents") or []]
         if not rows:
             continue
         # ONE ELECTRODE PAIR -- the first printed; a channel per pass.
-        pair = (rows[0]["from"], rows[0]["to"])
-        mine = [r for r in rows if (r["from"], r["to"]) == pair
+        pair = (rows[0][1]["from"], rows[0][1]["to"])
+        mine = [(ch, r) for ch, r in rows if (r["from"], r["to"]) == pair
                 and r.get("current_a") is not None]
         if not mine:
             continue
-        out["current_a_printed"] = mine[0]["current_a"]
+        out["current_a_printed"] = mine[0][1]["current_a"]
         if spin == "polarized":
-            by = {r.get("channel"): r["current_a"] for r in mine}
+            by = {ch: r["current_a"] for ch, r in mine}
             if "up" in by and "down" in by:
                 out["current_a"] = by["up"] + by["down"]
                 # EACH SPIN'S, as TBtrans printed it -- the I-V draws them
@@ -248,7 +256,7 @@ def point_currents(where, token: str, spin: str) -> Dict:
                 out["current_by_spin_a"] = {"up": by["up"],
                                             "down": by["down"]}
         else:
-            out["current_a"] = 2.0 * mine[0]["current_a"]
+            out["current_a"] = 2.0 * mine[0][1]["current_a"]
         break
     return out
 
@@ -728,7 +736,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     """
     from ..jobset.materialize import stage_home
     from ..parse.dirs import run_status
-    from ..parse.dirs.record import engine_progress
+    from ..parse.dirs.job import LIVE_STATES
+    from ..parse.dirs.record import tbtrans_loop
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
     from ..frameset import FrameSetError, read as read_frame_set
@@ -780,14 +789,18 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         if st.state != "finished":
             entry = {**at, "attempt": rel, "state": st.state,
                      "why": st.detail}
-            # HOW FAR A RUNNING POINT IS, in TBtrans's own words -- the
-            # reading the point's run record states it by (`engine_progress`,
-            # `model/parse.md` § 5d.1b).
-            if st.state == "running":
-                outs = _outs_newest_first(where, token)
-                progress = engine_progress(outs[0] if outs else None)
-                if progress:
-                    entry["progress"] = progress
+            # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
+            # one sentence the point's run record states it in
+            # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
+            outs = _outs_newest_first(where, token)
+            progress = tbtrans_loop(
+                outs[0] if outs else None,
+                over=st.state not in LIVE_STATES)
+            if progress:
+                entry["progress"] = {
+                    "said": progress["progress"],
+                    **({"estimated_at": progress["estimated_at"]}
+                       if "estimated_at" in progress else {})}
             (pending if st.state in ("pending", "queued", "running")
              else failed).append(entry)
             continue
@@ -939,11 +952,24 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     }
     # EVERY KEY, EVERY RECORD: an empty list where there is none.
     record["pending"] = pending
-    # THE RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED (`_stage_facts`), so
-    # its progress is that point's.
-    first = next((p for p in pending if p.get("progress")), None)
-    if first is not None:
-        rung["progress"] = first["progress"]
+    # THE RUNG SAYS ITS RUNNING POINT'S LOOP, naming the point, how many
+    # points are still to come after it, and the last finished point's
+    # loop -- what a point still to come is judged by; nothing projects it
+    # (`engines/transport.md` § 2a.12).
+    at_i = next((i for i, p in enumerate(pending)
+                 if p.get("state") == "running" and p.get("progress")), None)
+    if at_i is not None:
+        running = pending[at_i]
+        rung["progress"] = {
+            **running["progress"],
+            **{k: running.get(k) for k in ("frame", "of", "bias_v")},
+            "after": len(pending) - at_i - 1}
+        measured = next((p for p in reversed(points_out)
+                         if p.get("loop_elapsed_s")), None)
+        if measured is not None:
+            rung["progress"]["measured"] = {
+                k: measured.get(k)
+                for k in ("frame", "of", "bias_v", "loop_elapsed_s")}
     record["failed"] = failed
     return record
 

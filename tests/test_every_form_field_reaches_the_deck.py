@@ -30,6 +30,7 @@ from molbuilder.structure import Structure
 from molbuilder.web.blueprints._shared import catalogue_to_form_schema
 import molbuilder.template as T
 from molbuilder.runfiles import RunNames
+from support.form_fields import NOT_IN_THE_DECK, another_value
 
 
 def _names(cfg):
@@ -45,29 +46,6 @@ def _struct() -> Structure:
                                          [-0.24, 0.927, 0.]]),
                      vacuum=(8., 8., 8.))
 
-
-#: Fields whose effect is real but is NOT on the deck's text, with the reason.
-#: Anything added here needs one — "it does nothing" is not a reason, it is the
-#: bug this file is looking for.
-_NOT_IN_THE_DECK = {
-    ("siesta", "copy_psml"):
-        "acts on the data-files step (3.2) -- which files are put into the "
-        "calculation, not what the deck says",
-    ("siesta", "psml_lib"):
-        "names WHERE pseudopotentials are found; a deck never carries a host path",
-    ("siesta", "verbose_comments"):
-        "it is about the deck's COMMENTS -- what a person reads beside each "
-        "keyword -- and this file compares what SIESTA reads",
-    ("pyscf", "verbose_comments"):
-        "it is about the deck's COMMENTS -- what a person reads beside each "
-        "setting -- and this file compares what PySCF runs",
-    ("siesta", "write_molwatch_log"):
-        "SIESTA honours it at the PROMISES sub-step (3.12), not in the deck: "
-        "`prep._seed_trajectory_log` skips seeding "
-        "`<label>.molwatch.log` when it is off.  Exempt for SIESTA ONLY -- "
-        "PySCF's script builds the emitter, so its deck does change, and this "
-        "file checks that it does",
-}
 
 #: Contexts that switch a conditional field on.  Tried in order.
 _ENABLING = {
@@ -109,24 +87,11 @@ def _engine_read(text) -> str:
 
 
 def _alternative(item, current):
-    """A different, legal value for this item, or None if none can be built."""
+    """A different, legal value for this item (`support.form_fields`), the
+    probe's where water needs one; None if none can be built."""
     if item.name in _PROBE and _PROBE[item.name] != current:
         return _PROBE[item.name]
-    choices = getattr(item, "choices", None)
-    if choices:
-        return next((c for c in choices if c != current), None)
-    rng = getattr(item, "range", None)
-    if item.type == "bool":
-        return not bool(current)
-    if item.type == "int":
-        v = (current or 0) + 1
-        return rng[0] if rng and not (rng[0] <= v <= rng[1]) else v
-    if item.type == "float":
-        v = current * 1.5 if isinstance(current, (int, float)) and current else 1.0
-        return (rng[0] + rng[1]) / 2 if rng and not (rng[0] <= v <= rng[1]) else v
-    if item.type == "str":
-        return "mb-probe"
-    return None
+    return another_value(item, current)
 
 
 def _form_fields(engine, prefix):
@@ -171,7 +136,7 @@ def test_every_field_the_form_offers_changes_the_generated_deck(
 
     dead, unprobed = [], []
     for name, item in sorted(_form_fields(engine, prefix).items()):
-        if (engine, name) in _NOT_IN_THE_DECK:
+        if (engine, name) in NOT_IN_THE_DECK:
             continue
         contexts = _ENABLING.get(name, [{}]) + ([{}] if name in _ENABLING else [])
         changed = False
@@ -201,6 +166,6 @@ def test_every_field_the_form_offers_changes_the_generated_deck(
     assert not dead, (
         f"{engine}: {len(dead)} field(s) the form offers change NOTHING in the "
         f"generated deck: {dead}.\n"
-        f"Either wire the value up, or add it to _NOT_IN_THE_DECK with the "
+        f"Either wire the value up, or add it to NOT_IN_THE_DECK with the "
         f"reason its effect is elsewhere. A control a person can set that "
         f"nothing obeys is the 'present but not honoured' defect.")

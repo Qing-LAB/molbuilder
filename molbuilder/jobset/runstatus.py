@@ -305,7 +305,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     the run door's answer (`runs.openable`) -- the root's `task.json` for a
     transmission run, whose result is the report at its point (§ 0.1).
     ``[]`` for a stage nothing has prepared."""
-    from ..runs import openable, run_of
+    from ..runs import openable, run_of, transmission_point
     from ..parse.dirs.rundir import run_state_of
     if not st.dir:
         return []
@@ -327,6 +327,9 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             if run is None or run.stage is None:
                 continue
             got = run_state_of(run.folder, run.names, run.run)
+            # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
+            # report at -- its one point too, when the rung runs once.
+            pt = transmission_point(folder) or pt
             # THE FILE THE RUN'S FOLDER OPENS, the run door's answer -- a
             # transmission run's is its calculation's report, at the root
             # (`runs.transmission_point`, results.md § 0.1).

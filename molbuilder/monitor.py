@@ -113,18 +113,20 @@ try:                                        # inside molbuilder
     from . import report_fields as _fields
     from . import runfiles as _rf
     from . import runrecord as _rr
-    from .parse.dirs.job import MONITOR_ENDED, run_status
+    from .parse.dirs.job import LIVE_STATES, MONITOR_ENDED, run_status
     from .parse.engines.molwatch_reader import MolwatchReader
     from .parse.engines.siesta_reader import SiestaReader
+    from .parse.engines.tbtrans import loop_words
     from .parse.instruments.scf_timing_rows import timing_of
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_fields as _fields
     import runfiles as _rf
     import runrecord as _rr
-    from job import MONITOR_ENDED, run_status
+    from job import LIVE_STATES, MONITOR_ENDED, run_status
     from molwatch_reader import MolwatchReader
     from siesta_reader import SiestaReader
+    from tbtrans import loop_words
     from scf_timing_rows import timing_of
 
 
@@ -167,9 +169,13 @@ class JobStatus:
         default_factory=dict)
     max_force: Optional[float] = None
     max_force_tol: Optional[float] = None
-    #: The engine's own estimate of how far it is, as its latest line states
-    #: it: the share of its work done, in per cent, and the time it says is
-    #: left -- TBtrans's (`run-reports.md` § 4.1a).
+    #: TBtrans's account of its loop, as the output's reading pass states it
+    #: (`model/parse.md` § 5d.5) -- not a report field: the summary line
+    #: says it in words (`tbtrans.loop_words`).
+    tbtrans: Optional[Dict[str, Any]] = None
+    #: The pass underway's share done, in per cent, and the time TBtrans
+    #: says it has left, as its latest progress line states them
+    #: (`run-reports.md` § 4.1a); ``None`` when no pass is underway.
     done_pct: Optional[float] = None
     eta_s: Optional[float] = None
     #: At the end: each SCF phase's convergence, and the process's goodbye.
@@ -183,8 +189,9 @@ class JobStatus:
     def as_text(self) -> str:
         """The summary line every channel shows: the state, then where the
         run is -- phase, iteration, energy, each residual against its
-        criterion, the force against its tolerance, the step, the rate --
-        and at the end how each phase converged and the exit."""
+        criterion, the force against its tolerance, the step, the rate,
+        TBtrans's loop -- and at the end how each phase converged and the
+        exit."""
         head = self.state + (f" ({self.detail})" if self.detail else "")
         bits = [head]
         if self.phase or self.cycle is not None:
@@ -207,10 +214,9 @@ class JobStatus:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
         if self.per_iter_s is not None:
             bits.append(f"{self.per_iter_s:.2f} s/iter")
-        if self.done_pct is not None:
-            bits.append(f"{self.done_pct:.2f} % done"
-                        + (f", about {_in_words(self.eta_s)} left (its "
-                           f"estimate)" if self.eta_s is not None else ""))
+        loop = loop_words(self.tbtrans, over=self.state not in LIVE_STATES)
+        if loop:
+            bits.append(loop)
         if self.converged:
             bits.append("converged: " + ", ".join(
                 f"{ph} {'yes' if ok else 'no' if ok is False else '?'}"
@@ -220,7 +226,7 @@ class JobStatus:
                         else "geometry did not converge within its moves")
         if self.exit:
             bits.append(f"exit {self.exit.split(' at ')[0]}")
-        bits.append(f"elapsed {self.elapsed_s:.0f} s")
+        bits.append(f"elapsed {_fields.span_words(self.elapsed_s)}")
         return " | ".join(bits)
 
 
@@ -244,8 +250,8 @@ LIVE_READERS: Dict[str, Callable[[Optional[str]], Any]] = {
 }
 
 #: What a live reading must state to say where the run IS -- an SCF row, a
-#: step, or the engine's own progress (TBtrans states no SCF).
-_POSITION = ("cycle", "step", "energy", "done_pct")
+#: step, or TBtrans's loop (TBtrans states no SCF).
+_POSITION = ("cycle", "step", "energy", "tbtrans")
 
 
 #: How much of a file's beginning, and of what was last read, identifies it
@@ -399,6 +405,7 @@ class WatchedRun:
             st.max_force = state["max_force"]
             st.max_force_tol = (state.get("targets") or {}).get(
                 "max_force_tol_eV_per_A")
+        st.tbtrans = state.get("tbtrans")
         st.done_pct = state.get("done_pct")
         st.eta_s = state.get("eta_s")
 
@@ -1327,7 +1334,7 @@ def _card(report: Dict[str, Any],
         val = report.get(f.name)
         if val is None or val == "":
             continue                 # absent stays absent -- unknown is not 0
-        fields.append((f.card, f"{val}{f.unit}"))
+        fields.append((f.card, f.said(val)))
     return {"title": title[:256],
             "text": str(report.get("text") or "") or "(no summary)",
             "color": _STATE_COLOR.get(state, _COLOR_FALLBACK),
@@ -1798,24 +1805,15 @@ def _append(log_path: Path, line: str) -> None:
 
 def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
     """Did real work advance between two ticks?  True iff the SCF row count,
-    the row's own iteration, the phase or the step moved -- or the engine's
-    own progress did."""
+    the row's own iteration, the phase or the step moved -- or TBtrans's
+    loop did: a progress line, a pass begun or completed."""
     if (curr.n_iters or 0) > (prev.n_iters or 0):
         return True
     if (curr.phase, curr.cycle) != (prev.phase, prev.cycle):
         return curr.cycle is not None
-    if (curr.done_pct, curr.eta_s) != (prev.done_pct, prev.eta_s):
-        return curr.done_pct is not None
+    if curr.tbtrans != prev.tbtrans:
+        return curr.tbtrans is not None
     return (curr.geom_step or 0) > (prev.geom_step or 0)
-
-
-def _in_words(seconds: float) -> str:
-    """A span of time as a person reads it: seconds, minutes, hours or
-    days, the largest unit that is at least one."""
-    for unit, size in (("days", 86400.0), ("h", 3600.0), ("min", 60.0)):
-        if seconds >= size:
-            return f"{seconds / size:.1f} {unit}"
-    return f"{seconds:.0f} s"
 
 
 def run_monitor(watched: "WatchedRun", *,
@@ -1852,8 +1850,9 @@ def run_monitor(watched: "WatchedRun", *,
     (`execution/run-reports.md` § 2).
 
     Wakes every ``interval`` seconds but is QUIET when nothing changed: a
-    ``[STATUS]`` line is written only when the job advanced (SCF iteration
-    or geometry move) or its energy/state changed.  **It judges no stall**
+    ``[STATUS]`` line is written only when the job advanced (SCF iteration,
+    geometry move, or TBtrans's loop) or its energy/state
+    changed.  **It judges no stall**
     (`run-reports.md` § 2): a step can take hours, and nothing in the output
     tells a slow one from a stuck one.
     """

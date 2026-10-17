@@ -1706,18 +1706,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         };
     }
 
-    // Compact "1h 23m" / "12m 5s" / "45s" formatter for elapsed seconds.
-    // Hours-and-minutes for long runs; minutes-and-seconds for medium;
-    // bare seconds for short.  Negative inputs (clock skew between
-    // server and the file's clock) are clamped to 0.
-    function fmtElapsed(secs) {
-        if (!Number.isFinite(secs) || secs < 0) secs = 0;
-        secs = Math.floor(secs);
-        if (secs < 60)   return secs + "s";
-        if (secs < 3600) return Math.floor(secs/60) + "m " + (secs%60) + "s";
-        return Math.floor(secs/3600) + "h " + Math.floor((secs%3600)/60) + "m";
-    }
-
     /* Wall-clock formatter for the run-state badge's "last result at"
      * detail.  Today's results show just HH:MM:SS so the badge stays
      * compact; older results prepend MMM DD so the user can tell the
@@ -1997,8 +1985,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // its output states one (badgeClocks); the fallback is the
             // "last result" time.
             const endedTs = endedLocal ? fmtNodeClock(endedLocal) : lastResultTs;
+            // A RUN'S OWN LENGTH, said as every page says one
+            // (`lib/time-ago.js`, `ui-contract.md` § 4).
             const elapsedTxt = (elapsed != null)
-                ? fmtElapsed(elapsed)
+                ? window.molbuilder.timeSpan(elapsed)
                 : "";
             const joinParts = (...parts) =>
                 parts.filter(s => s && s.length).join(" \u00b7 ");

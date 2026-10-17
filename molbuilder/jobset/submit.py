@@ -597,7 +597,8 @@ class Submission:
     command: List[str]
     #: Where the line is run.
     cwd: Path
-    #: Run here (``bash``, waited for), or handed to the scheduler.
+    #: Run here (``bash``, left in the background or waited for,
+    #: `LaunchPlan.background`), or handed to the scheduler.
     direct: bool
     members: List[_Member]
     #: The `Placement` it was admitted on -- ``None`` for a run here, or on a
@@ -617,8 +618,9 @@ class Submission:
     ask_script: Optional[str] = None
     #: What a refusal by the scheduler adds to the scheduler's own words.
     refusal_hint: str = ""
-    #: Where a walk's trials write their output -- the one path its script
-    #: writes and the plan shows (:func:`_walk_script`).
+    #: Where a walk's members write their output -- a benchmark's trials, a
+    #: group's stages, a sweep's points: the one path its script writes and
+    #: the plan shows (:func:`_walk_script`).
     log: Optional[Path] = None
 
     @property
@@ -664,10 +666,11 @@ class LaunchPlan:
     #: or the queue its prep recorded (:func:`_the_queue`); ``(None,
     #: None)`` for a run here or a machine with no queues.
     queue: Tuple[Optional[str], Optional[str]] = (None, None)
-    #: A run here started and left to run (``launch --background``,
-    #: `job-system.md` § 6.0): the send returns once the process exists;
-    #: its output is in the files its scripts write (the run's runwrap log,
-    #: a walk's log), and `status` follows it.
+    #: A run here started and left to run -- a run here's default; waited
+    #: on under ``launch --foreground``, and the question's third answer
+    #: takes the other way (`job-system.md` § 6.0): the send returns once
+    #: the process exists; its output is in the files its scripts write
+    #: (the run's runwrap log, a walk's log), and `status` follows it.
     background: bool = False
     #: A GROUP'S FIRST LAUNCH saves the folder's state at the send, before
     #: anything is written (`job-system.md` § 6.0, step 4): what the save's
@@ -697,7 +700,9 @@ class LaunchPlan:
             self.record("question", **facts)
         self.held = []
         self.record("question",
-                    about=("submit" if self.mode == "submit" else "run here"),
+                    about=("submit" if self.mode == "submit" else
+                           "run here, in the background" if self.background
+                           else "run here, in the foreground"),
                     answer=said.words)
 
     def made_from(self) -> List[str]:
@@ -1393,7 +1398,9 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
 
     ``mode`` is ``"submit"`` (``sbatch``, its resources as flags over the
     rendered header), ``"ask"`` (the same line, asked with ``--test-only``)
-    or ``"direct"`` (``bash`` here, in order, waiting for each).  ``only``
+    or ``"direct"`` (``bash`` here, the members in order; ``background``
+    leaves it running, the default of the verb's run here, and otherwise the
+    send waits for it -- `job-system.md` § 6.0).  ``only``
     names ONE job -- a ladder's stage (the only case: stages do not chain,
     `project-layout.md` § 1.6) or a sweep's trial -- by its name or ``#N``.
     ``domain`` names the queue, and ``gpu_domain`` the one a sweep's GPU
@@ -1681,7 +1688,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
     ``--yes`` the answer given in advance).  The question is written down
     as what was asked, with its answer, a *no* too, and a *no* sends
     nothing; with nobody to ask (``said.asked`` false) nothing goes and the
-    launch is refused, written down (`project-layout.md` § 1.6.4).  Then
+    launch is refused, written down (`submission.md` S4).  Then
     the folder is checked against the one the plan was made from
     (:func:`_same_folder`); the plan's writes are carried out -- every
     attempt opened and every script on disk before anything goes, so a
@@ -1732,6 +1739,10 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
                     new=kept.new)
     else:
         plan.asked(said)
+    # THE OTHER WAY, ANSWERED: a run here goes as the person said --
+    # waited on, or left in the background (`job-system.md` § 6.0).
+    if said.other:
+        plan.background = not plan.background
     plan.writes.carry_out()
     # WHAT EACH STAGE TAKES, recorded where it lands (`job-system.md`
     # § 5.4): the run it continues from and what came across (`continues`),
@@ -1843,9 +1854,15 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
                **({"background": True, "pid": proc.pid} if background
                   else {}))
         if background:
+            # HOW TO STOP IT, said with it: the run leads its own process
+            # group, and a signal to the group reaches the engine -- to the
+            # run script alone it would wait for the engine to end, bash
+            # running a trap only after the command it waits on
+            # (`job-system.md` § 6.0).
             return ([JobResult(s.name, s.command, "started",
                                said="started in the background",
-                               detail=f"pid {proc.pid}")]
+                               detail=f"pid {proc.pid}; to stop it: "
+                                      f"kill -- -{proc.pid}")]
                     + ([JobResult(m.name, [], "rides", said=s.rides)
                         for m in s.members] if s.rides else []))
         rc = proc.wait()
@@ -2222,8 +2239,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     one would start from it), when the members after it IN ITS CHAIN are not
     run -- ``chains`` names each step's chain (a device point's frame,
     `engines/transport.md` § 2a.9), one chain when none is named -- and the
-    walk goes on with the other chains.  Stopped by the
-    person (Ctrl-C, a lost terminal, a cancel), it starts no further member.
+    walk goes on with the other chains.  Stopped by the person (Ctrl-C at a
+    launch waited on, a lost terminal, ``kill -- -<pid>`` of one left in the
+    background, a cancel), it starts no further member.
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
@@ -2239,6 +2257,10 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "# activate.",
         "set -u",
         f'LOG="{log}"',
+        # EVERYTHING IT SAYS IS IN ITS LOG -- bash's own errors and a start
+        # that could not be copied among them -- so a walk left in the
+        # background loses nothing (`job-system.md` § 6.0).
+        'exec 2>> "$LOG"',
         f'echo "[group] {when} start {member_word}s={len(steps)} per-{member_word}-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
         'job=${SLURM_JOB_ID:-none} node=$(hostname) '
@@ -2663,9 +2685,10 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
                                  walk=walk)
     gn = GroupNames.of_points(names.stem)
     launch_dir = stage_dir / LAUNCH_DIR
+    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
-        member_word="point", log=f"{LAUNCH_DIR}/{gn.name('.log')}",
+        member_word="point", log=log,
         stop_on_failure=bool(hand), chains=chains)
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
@@ -2673,7 +2696,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     if mode == "direct":
         plan.submissions.append(Submission(
             gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"],
-            stage_dir, True, [member], rides="rides the sweep"))
+            stage_dir, True, [member], rides="rides the sweep",
+            log=stage_dir / log))
         return
     # ---- submit / ask: one scheduler job walking the points ------------ #
     # ONE ALLOCATION WALKING THE POINTS asks what a group asks: the wall the
@@ -2878,6 +2902,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     # THE ONE WALK SCRIPT: the members in order, each its own run in its own
     # run folder; one that fails does not stop the others -- none builds on
     # another.
+    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
     script = _walk_script(
         gn.stem,
         [(m.name, str(m.run_dir.relative_to(base)),
@@ -2886,8 +2911,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                                 cold=m.cold and not m.has_attempt)), ())
          for m in members],
         where="a group's one job: " + ", ".join(names),
-        member_word="stage",
-        log=f"{LAUNCH_DIR}/{gn.name('.log')}")
+        member_word="stage", log=log)
     launch_dir = base / LAUNCH_DIR
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
@@ -2895,7 +2919,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     if mode == "direct":
         plan.submissions.append(Submission(
             gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], base,
-            True, members, rides="rides the group"))
+            True, members, rides="rides the group", log=base / log))
         return plan
     header = launch_dir / gn.name(".sbatch")
     if not header.is_file():

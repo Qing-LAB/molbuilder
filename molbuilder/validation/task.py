@@ -399,7 +399,8 @@ def _names_exist(task, cls, fields) -> List[Issue]:
         for key in st.overrides:
             if key not in fields:
                 out.append(Issue("error", _no_such_field(
-                    key, fields, cls, f"stage {st.name!r} overrides"),
+                    key, fields, cls, f"stage {st.name!r} overrides",
+                    value=st.overrides[key], is_set=True),
                     where="task.stages.overrides", stage=st.name))
             elif key in on_the_card:
                 out.append(Issue(
@@ -409,8 +410,15 @@ def _names_exist(task, cls, fields) -> List[Issue]:
     return out
 
 
-def _no_such_field(name, fields, cls, lead) -> str:
+def _no_such_field(name, fields, cls, lead, *, value=None,
+                   is_set: bool = False) -> str:
     import difflib
+    from ..template import why_not_an_item
+    gone = why_not_an_item(name, value=value, is_set=is_set)
+    if gone is not None:
+        # A RETIRED OR RENAMED ITEM is named as such, with the way on -- not
+        # sent looking for a misspelling (`engines/template.md` § 3).
+        return f"{lead} {name!r}: {gone}"
     near = difflib.get_close_matches(name, list(fields), n=1, cutoff=0.75)
     hint = f" -- did you mean {near[0]!r}?" if near else ""
     return (f"{lead} {name!r}, which is not a field of "

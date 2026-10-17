@@ -100,7 +100,7 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
                 "--target", "this")
     assert r.exit_code == 0, r.output
     _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,
-            "--mode", "direct", "--yes")
+            "--mode", "direct", "--foreground", "--yes")
     row = next(iter(jobset_status(JobSet.load(bundle / FILENAME),
                                   bundle).stages))
     said = "\n".join(p.read_text(errors="replace")

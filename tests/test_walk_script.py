@@ -12,8 +12,11 @@ def test_a_point_whose_start_cannot_be_copied_is_not_run(tmp_path):
     written with the plan).  A point before it that ended without leaving
     that file leaves nothing to start from: the point is not run -- run from
     its deck, its record would name a start it never had -- it counts as
-    failed, and the points after it in its chain are not run either.  Run as
-    bash, since what runs is the shell's answer, not the text's.
+    failed, and the points after it in its chain are not run either -- and
+    why the copy failed, the shell's own words, is in the walk's log, not on
+    a terminal a walk left in the background no longer has (`job-system.md`
+    § 6.0).  Run as bash, since what runs is the shell's answer, not the
+    text's.
 
     API-LEVEL: the generated walk, run on stub members that only record
     that they ran."""
@@ -36,3 +39,4 @@ def test_a_point_whose_start_cannot_be_copied_is_not_run(tmp_path):
     assert r.returncode != 0, log
     assert "dev@p1 not run -- its start could not be copied" in log, log
     assert "dev@p2 not run -- its chain stopped" in log, log
+    assert "p0/H2.TSDE" in log and r.stderr == "", (log, r.stderr)

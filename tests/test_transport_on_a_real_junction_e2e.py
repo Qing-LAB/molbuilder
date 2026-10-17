@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 import tomllib
 from pathlib import Path
 
@@ -60,6 +59,8 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
+from molbuilder.parse.engines import siesta_grammar as _G
+from molbuilder.transport.stages import TRANSPORT_STAGES
 
 pytestmark = [
     pytest.mark.engine,
@@ -348,17 +349,12 @@ def _files(d: Path) -> dict:
 #: as a person changes it; its transmission prepared now and its launch asked
 #: dry is refused naming the keyword (`engines/transport.md` § 6.1, *the
 #: same engine input*): a number, a block -- the k-points' offset, which
-#: changes the grid's rows and nothing derived from its size -- and, on the
-#: copy as 2.8.0 left it, whose decks left `SCF.H.Tolerance` to SIESTA, that
-#: keyword stated at a value SIESTA does not default to.
+#: changes the grid's rows and nothing derived from its size.
 _ANOTHER_INPUT = [
     dict(name="a number", copy="mesh-changed", item="mesh_cutoff",
          value=160.0, names="MeshCutoff"),
     dict(name="a block", copy="k-offset-changed", item="kgrid_displacement",
          value=(0.5, 0.5, 0.0), names="kgrid_Monkhorst_Pack"),
-    dict(name="a default stated otherwise", copy="h-tolerance-on-2-8-0",
-         item="h_tolerance", value=1e-4, names="SCF.H.Tolerance",
-         as_left_by_2_8_0=True),
 ]
 
 
@@ -417,7 +413,7 @@ def junction(tmp_path_factory):
         _taken(relax, "prep", "prep", "task",
                *group_words(relax.bundle, "coarse"), "--target", "this")
         _taken(relax, "launch", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
         cite = "P/opt/J/01_coarse/run-0"
         cited_before = _files(tree / cite)
 
@@ -501,22 +497,24 @@ def junction(tmp_path_factory):
         _taken(run, "prep seed and leads", "prep", "task",
                *seed_and_leads(run), "--target", "this")
         _taken(run, "launch seed and leads", "launch", "task",
-               *seed_and_leads(run), "--mode", "direct", "--yes")
+               *seed_and_leads(run), "--mode", "direct", "--foreground", "--yes")
         _taken(run, "prep device", "prep", "task",
                *group_words(run.bundle, "device"), "--target", "this")
         _taken(run, "launch device", "launch", "task", "--stage", "device",
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
         _taken(run, "status device", "status", "device")
         _typed(run, "launch device again", "launch", "task", "--stage",
-               "device", "--mode", "direct", "--yes")
+               "device", "--mode", "direct", "--foreground", "--yes")
         _taken(run, "launch device cold", "launch", "task", "--stage",
-               "device", "--mode", "direct", "--yes", "--cold")
+               "device", "--mode", "direct", "--foreground", "--yes", "--cold")
         _taken(run, "status device after cold", "status", "device")
         _taken(run, "prep transmission", "prep", "task",
                *group_words(run.bundle, "transmission"), "--target", "this")
         _taken(run, "launch transmission", "launch", "task", "--stage",
-               "transmission", "--mode", "direct", "--yes")
+               "transmission", "--mode", "direct", "--foreground", "--yes")
         _taken(run, "summarize", "summarize", "task")
+
+        run.probe = _the_decks_a_person_sets(tree, cite, client)
 
         # THE MODE -- a SIESTA vibration of the relaxed pair, on the road:
         # its free atoms the bridge's middle two, held as the relaxation held
@@ -536,7 +534,7 @@ def junction(tmp_path_factory):
         _taken(vib, "prep freq", "prep", "task",
                *group_words(vib.bundle, "freq"), "--target", "this")
         _taken(vib, "launch freq", "launch", "task", "--stage", "freq",
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
         vibration = "P/frequency/V/01_freq/run-0"
 
         # THE FRAME SET, written from that mode by a script through the
@@ -563,17 +561,17 @@ def junction(tmp_path_factory):
         _taken(from_pair, "prep seed and leads", "prep", "task",
                *seed_and_leads(from_pair), "--target", "this")
         _taken(from_pair, "launch seed and leads", "launch", "task",
-               *seed_and_leads(from_pair), "--mode", "direct", "--yes")
+               *seed_and_leads(from_pair), "--mode", "direct", "--foreground", "--yes")
         _taken(from_pair, "prep device", "prep", "task",
                *group_words(from_pair.bundle, "device"), "--target", "this")
         _taken(from_pair, "launch device", "launch", "task", "--stage",
-               "device", "--mode", "direct", "--yes")
+               "device", "--mode", "direct", "--foreground", "--yes")
         _taken(from_pair, "status device", "status", "device")
         _taken(from_pair, "prep transmission", "prep", "task",
                *group_words(from_pair.bundle, "transmission"),
                "--target", "this")
         _taken(from_pair, "launch transmission", "launch", "task", "--stage",
-               "transmission", "--mode", "direct", "--yes")
+               "transmission", "--mode", "direct", "--foreground", "--yes")
         _taken(from_pair, "summarize", "summarize", "task")
 
         # ONE VOLTAGE -- a device that runs once, no points: launched, then
@@ -590,51 +588,23 @@ def junction(tmp_path_factory):
         _taken(single, "prep seed and leads", "prep", "task",
                *seed_and_leads(single), "--target", "this")
         _taken(single, "launch seed and leads", "launch", "task",
-               *seed_and_leads(single), "--mode", "direct", "--yes")
+               *seed_and_leads(single), "--mode", "direct", "--foreground", "--yes")
         _taken(single, "prep device", "prep", "task",
                *group_words(single.bundle, "device"), "--target", "this")
         for step, extra in (("launch device", ()),
                             ("launch device again", ()),
                             ("launch device cold", ("--cold",))):
             _taken(single, step, "launch", "task", "--stage", "device",
-                   "--mode", "direct", "--yes", *extra)
+                   "--mode", "direct", "--foreground", "--yes", *extra)
         run.single = single
 
-        # A CALCULATION CARRIED ACROSS AN UPGRADE (`engines/transport.md`
-        # § 1.1, *The first prep*; § 6.1, *the same engine input*; plan UPG):
-        # the single voltage's copy as molbuilder 2.8.0 left it -- every
-        # group prepared, its transmission never launched, as
-        # `AuBDTAu/transport/lowbias_local` was -- its junction's order
-        # recorded by `prep task` with no group left to prepare, its
-        # transmission prepared again and its launch asked dry.
-        from molbuilder.runfiles import JUNCTION_FILE
-        from support.real_runs import _files as every_file
-        from support.real_runs import as_2_8_0_left_it, copy_of
-
-        def left_by_2_8_0(c):
-            _taken(c, "prep transmission as 2.8.0 did", "prep", "task",
-                   *group_words(c.bundle, "transmission"), "--target",
-                   "this")
-            as_2_8_0_left_it(c)
-        older = copy_of(single, "as-left-by-2-8-0", left_by_2_8_0)
-        run.junction_as_left = StructureCodec().load(
-            older.bundle / JUNCTION_FILE, frames=True)
-        run.files_as_left = every_file(older.bundle)
-        _typed(older, "record order", "prep", "task")
-        run.files_recorded = every_file(older.bundle)
-        _typed(older, "prep transmission", "prep", "task",
-               *group_words(older.bundle, "transmission"), "--target", "this")
-        _typed(older, "launch transmission dry", "launch", "task", "--stage",
-               "transmission", "--mode", "direct", "--dry-run", "--yes")
-        run.older = older
-        # ...AND WHAT THE DEVICE RAN, CHANGED SINCE (`_ANOTHER_INPUT`): each
-        # a copy, changed as a person changes it, its transmission prepared
-        # now and its launch asked dry.
+        # WHAT THE DEVICE RAN, CHANGED SINCE (`_ANOTHER_INPUT`): each a
+        # copy, changed as a person changes it, its transmission prepared now
+        # and its launch asked dry.
+        from support.real_runs import copy_of
         run.another = {}
         for row in _ANOTHER_INPUT:
             def changed_since(c, row=row):
-                if row.get("as_left_by_2_8_0"):
-                    left_by_2_8_0(c)
                 _set_by_the_person(c.bundle / "S.template.toml", row["item"],
                                    row["value"])
                 _taken(c, "prep transmission", "prep", "task",
@@ -645,6 +615,37 @@ def junction(tmp_path_factory):
                 changed, "launch transmission dry", "launch", "task",
                 "--stage", "transmission", "--mode", "direct", "--dry-run",
                 "--yes")
+
+        # A TRANSMISSION STOPPED IN ITS LOOP (`model/parse.md` § 5d.5;
+        # `run-reports.md` § 2.2): a copy of the single voltage, its loop
+        # made long -- the most energy points the item takes, fifty times
+        # the default's; its device ran at the Gamma point, so a finer
+        # k-point grid is refused by TBtrans -- launched in the background,
+        # stopped with the line its launch printed once TBtrans states a
+        # share done, and let end.
+        from support.real_runs import _stopped_by_its_line
+        from support.replay import output_lines
+
+        def stopped_in_its_loop(c):
+            template = c.bundle / "S.template.toml"
+            _set_by_the_person(template, "transmission_n_points", 20001)
+            _taken(c, "prep transmission", "prep", "task",
+                   *group_words(c.bundle, "transmission"), "--target",
+                   "this")
+            launched = _taken(c, "launch transmission", "launch", "task",
+                              "--stage", "transmission", "--mode", "direct",
+                              "--yes")
+
+            def underway():
+                try:
+                    lines = output_lines(c.attempt("transmission"))
+                except (OSError, AttributeError):
+                    return False
+                return any((_progress_stated(ln) or (0.0,))[0] > 0
+                           for ln in lines)
+            _stopped_by_its_line(c, launched, underway, within=600)
+        run.stopped = copy_of(single, "stopped-in-its-loop",
+                              stopped_in_its_loop)
 
         # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
         # the good set with one change each, cited at `jobset init`, the door
@@ -778,16 +779,7 @@ def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_untouched(
 def test_the_record_answers_for_the_citation_it_was_composed_from(
         junction, tmp_path, monkeypatch):
     """`load_compose_record`'s "no record" is said in words: nothing
-    composed here, or a record composed from another citation.  And a
-    calculation whose junction's sidecar states no order record (written
-    before the field, as 2.8.0 left it) is refused by name by the doors that
-    name the junction's atoms in your order until a prep records it --
-    `summarize task`'s data file and the report's PDOS -- and the record the
-    report draws by carries the sentence, each naming `prep task`, which
-    records it (`model/overview.md` § 2.2a, I9; `engines/transport.md`
-    § 1.1).  The silent failure: an older calculation's data file and PDOS
-    naming TranSIESTA's atoms as yours, or a refusal that sends the person
-    to a step that cannot record the order."""
+    composed here, or a record composed from another citation."""
     from molbuilder.transport.compose import (compose_junction,
                                               load_compose_record,
                                               write_compose_record)
@@ -806,30 +798,6 @@ def test_the_record_answers_for_the_citation_it_was_composed_from(
     assert junction.cite in why[0] and other in why[0]
     assert load_compose_record(rec, citation=junction.cite,
                                tree_root=junction.tree) is not None
-    # ...AND THE DOORS A PERSON ASKS of a calculation whose junction states
-    # no order -- a copy of the one run here as 2.8.0 left it:
-    # `summarize task`, whose data file names atoms in your order, and the
-    # report's PDOS, refused by name; the report's record carries the
-    # sentence for its drawing.
-    from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.web.app import create_app
-    from support.real_runs import as_2_8_0_left_it, copy_of
-    from support.road import jobset
-    stated = "states no order record"
-    way_on = "molbuilder jobset prep task --bundle"
-    old = copy_of(junction, "as-left-by-2-8-0", as_2_8_0_left_it)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
-    r = jobset("summarize", "task", "--bundle", old.bundle)
-    assert r.exit_code != 0, r.output
-    assert stated in r.output and way_on in r.output, r.output
-    client = create_app(config={}).test_client()
-    got = client.get(f"/api/transport/pdos?path={old.bundle}&point=0"
-                     f"&atoms=0&orbitals=all")
-    error = got.get_json()["error"]
-    assert got.status_code == 400 and stated in error and way_on in error
-    rec_said = client.get(f"/api/transport/record?path={old.bundle}")
-    said = rec_said.get_json()["record"]["order_unstated"]
-    assert stated in said and way_on in said, said
 
 
 def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
@@ -1052,12 +1020,266 @@ def _prepared_decks(run, stage):
     return [f / names.name(".fdf") for f in (folders or [home.dir])]
 
 
+#: The ladder's rungs, a tab each (`engines/transport.md` § 3.8.2a).
+_RUNGS = TRANSPORT_STAGES
+
+
+def _tab_rows():
+    """``(rung, item)`` of every value a rung's tab offers as a control,
+    asked of the tab's own schema (`catalogue_to_form_schema`, the rung
+    surface) -- so an item added tomorrow is a row the day it appears -- but
+    those whose effect is real and elsewhere
+    (`support.form_fields.NOT_IN_THE_DECK`, each with its reason)."""
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
+    from support.form_fields import NOT_IN_THE_DECK
+    rows = []
+    for rung in _RUNGS:
+        schema = catalogue_to_form_schema(
+            "siesta", f"t-{rung}", calculation="transport", surface="rung",
+            rung=rung)
+        rows += [(rung, field["name"])
+                 for section in schema["sections"]
+                 for field in section["fields"]
+                 if not field.get("locked")
+                 and ("siesta", field["name"]) not in NOT_IN_THE_DECK]
+    return rows
+
+
+def _the_decks_a_person_sets(tree, cite: str, client):
+    """THE DECKS A PERSON'S VALUES ARE ASKED OF -- a calculation described
+    citing the relaxation ``cite``, its spin restricted as the others',
+    every group prepared and none launched; each rung's decks as they render
+    with nothing set, prepared again with nothing set, with each value a
+    rung's tab offers set alone on it, and with each value the shared panel
+    offers set alone in the template (the rows below)."""
+    from support.real_runs import RealRun, _taken
+    from support.road import group_words, jobset
+    r = jobset("init", "--calculation", "transport", "--engine", "siesta",
+               "--shape", "hierarchical", "--bundle", "P/transport/D",
+               "--slot", f"junction={cite}", "--bias", "0.0")
+    assert r.exit_code == 0, r.output
+    probe = RealRun(tree=tree, bundle=tree / "P" / "transport" / "D")
+    _run_card(probe.bundle)
+    _set_by_the_person(probe.bundle / "D.template.toml",
+                       "spin_treatment", "restricted")
+    _taken(probe, "prep", "prep", "task",
+           *group_words(probe.bundle, *_RUNGS), "--target", "this")
+    probe.unset = {rung: [d.read_text()
+                          for d in _prepared_decks(probe, rung)]
+                   for rung in _RUNGS}
+    # ...PREPARED AGAIN WITH NOTHING SET, every group...
+    _taken(probe, "again", "prep", "task",
+           *group_words(probe.bundle, *_RUNGS), "--target", "this")
+    probe.again = {rung: [d.read_text()
+                          for d in _prepared_decks(probe, rung)]
+                   for rung in _RUNGS}
+    # ...EACH VALUE A RUNG'S TAB OFFERS, set alone on that rung, its
+    # group prepared again (`_tab_rows`)...
+    unset = (probe.bundle / "task.json").read_text()
+    probe.set = {(rung, name): _set_on_its_tab(probe, client, unset,
+                                               rung, name)
+                 for rung, name in _tab_rows()}
+    (probe.bundle / "task.json").write_text(unset)
+    # ...AND EACH VALUE THE SHARED PANEL OFFERS, set alone in the
+    # template, every group prepared again (`_shared_rows`).
+    template = (probe.bundle / "D.template.toml").read_text()
+    probe.shared = {name: _set_in_the_template(probe, template, name)
+                    for name in _shared_rows()}
+    (probe.bundle / "D.template.toml").write_text(template)
+    return probe
+
+
+def _another_than_runs(probe, rung: str, name: str, task: dict):
+    """``(item, was, value)``: what ``rung`` runs for ``name`` with nothing
+    set on it, and a value one step from it among what a transport
+    calculation offers (`support.form_fields`, `template.offered`).  WHAT
+    RUNS for a blank item is what answers it: a rule's answer the rung's
+    deck states (`resolve.BLANK_ANSWERED_BY` -- a lead's many k-points turn
+    `parallel_over_k` on), read by the one fdf reader; else the engine's
+    own default the catalogue states (`engine_default`); else the item's
+    documented default."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.parse.fdf import fdf_key, fdf_true, read_fdf
+    from molbuilder.resolve import BLANK_ANSWERED_BY, resolved_ladder
+    from molbuilder.task import Task
+    from molbuilder.template import catalogue, offered, one
+    from support.form_fields import another_value
+    template = (probe.bundle / "D.template.toml").read_text()
+    item = one(catalogue(), name, engine="siesta")
+    was = getattr(dict(resolved_ladder(template, Task.from_dict(task),
+                                       SiestaConfig))[rung], name)
+    if was is None and item.type == "bool" and name in BLANK_ANSWERED_BY:
+        stated = read_fdf(probe.unset[rung][0])[0].get(
+            fdf_key(item.engine_key))
+        was = fdf_true(stated) if stated else None
+    if was is None:
+        was = item.engine_default[0] if item.engine_default else item.default
+    return item, was, another_value(
+        item, was, choices=offered(item, "siesta", "transport") or None)
+
+
+def _set_on_its_tab(probe, client, unset: str, rung: str, name: str):
+    """``name`` set alone on ``rung`` of the calculation described as
+    ``unset`` (its ``task.json``), as the tab writes it -- through Task
+    setup's save, a value one step from what the rung runs now
+    (:func:`_another_than_runs`): a run setting on the rung's run card, any
+    other value among the rung's own (`engines/stages.md` § 6.8d) -- and
+    the rung's group prepared again: ``{was, value, saved, said, decks}``,
+    the decks' texts as prep wrote them."""
+    from molbuilder.template import run_settings
+    from support.real_runs import _typed
+    from support.road import group_words
+    task = json.loads(unset)
+    _item, was, value = _another_than_runs(probe, rung, name, task)
+    stage = next(s for s in task["stages"] if s["name"] == rung)
+    if name in run_settings("siesta"):
+        stage["execution"] = {**stage.get("execution", {}), name: value}
+    else:
+        stage["overrides"] = {name: value}
+        task["varies"] = [name]
+    saved = client.post("/api/task-setup/save",
+                        json={"dest": str(probe.bundle),
+                              "text": json.dumps(task)})
+    said = _typed(probe, f"{rung} {name}", "prep", "task",
+                  *group_words(probe.bundle, rung), "--target", "this")
+    return {"was": was, "value": value,
+            "saved": (saved.status_code, saved.get_json()), "said": said,
+            "decks": [d.read_text() for d in _prepared_decks(probe, rung)]}
+
+
+@pytest.mark.parametrize("rung, name", _tab_rows(),
+                         ids=lambda v: str(v))
+def test_every_value_a_rungs_tab_offers_reaches_its_deck(junction, rung,
+                                                         name):
+    """A value set on a rung's tab changes what that rung's engine reads
+    (`engines/transport.md` § 3.8.2a: a tab offers the items its rung owns
+    and the items any rung may set; § 3.8.9: the deck writes each rung its
+    own).  Each row is one value set alone on one rung, as the tab writes it,
+    one step from what the rung runs with nothing set, and that rung's group
+    prepared again (`_set_on_its_tab`); its deck, where
+    prep wrote it, is asked whether the engine now reads another input than
+    with nothing set, by the gather's own question
+    (`siesta.engine_input.engine_input_difference`, § 6.1).
+    THE SILENT FAILURE: a rung's layout is a hand list of items in
+    `transport/deck.py` beside the catalogue's `stages`, so an item the tab
+    offers and the layout leaves out is set, stored, and never written --
+    the run takes the engine's default and nothing says so (§ 3.4.2: an item
+    absent from a stage's layout is not written).  Found 2026-10-16:
+    `TBT.Progress` taken out of the transmission's section turned no test
+    red."""
+    from molbuilder.siesta.engine_input import engine_input_difference
+    row = junction.probe.set[(rung, name)]
+    assert row["value"] is not None and row["value"] != row["was"], row
+    assert row["saved"][0] == 200, row["saved"]
+    assert row["said"].exit_code == 0, row["said"].output
+    unset = junction.probe.unset[rung]
+    assert len(row["decks"]) == len(unset), row["decks"]
+    for before, deck in zip(unset, row["decks"]):
+        assert engine_input_difference(before, deck) is not None, (
+            f"{rung}: {name} set to {row['value']!r} (it ran "
+            f"{row['was']!r}) -- the deck gives the engine the same input")
+
+
+#: Shared values this junction admits no other value for, each with why.
+_NO_OTHER_VALUE_HERE = {
+    "species_order":
+        "the junction holds one element, H: there is no other order",
+    "unpaired_electrons":
+        "on a transport calculation the spin treatment decides it -- 0 "
+        "restricted, floating unrestricted, a stated count refused "
+        "(`engines/transport.md` § 3.1's spin note) -- so no value of its "
+        "own changes a deck",
+}
+
+
+def _shared_rows():
+    """Every value the shared panel offers as a control
+    (`catalogue_to_form_schema`, the shared surface), but those whose
+    effect is real and elsewhere (`support.form_fields.NOT_IN_THE_DECK`)
+    and those this junction admits no other value for
+    (`_NO_OTHER_VALUE_HERE`)."""
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
+    from support.form_fields import NOT_IN_THE_DECK
+    schema = catalogue_to_form_schema("siesta", "t-shared",
+                                      calculation="transport",
+                                      surface="shared")
+    return [field["name"] for section in schema["sections"]
+            for field in section["fields"]
+            if not field.get("locked")
+            and ("siesta", field["name"]) not in NOT_IN_THE_DECK
+            and field["name"] not in _NO_OTHER_VALUE_HERE]
+
+
+def _set_in_the_template(probe, unset: str, name: str):
+    """``name`` set alone in the calculation's template, its text as
+    described being ``unset``, as a person sets it there (the shared panel
+    edits the template, `engines/transport.md` § 3.8.2), every group
+    prepared again: ``{was, value, said, decks}``, the decks of every rung
+    that reads the item (`template.reads`)."""
+    from molbuilder.template import catalogue, one, reads
+    from support.real_runs import _typed
+    from support.road import group_words
+    template = probe.bundle / "D.template.toml"
+    template.write_text(unset)
+    task = json.loads((probe.bundle / "task.json").read_text())
+    item = one(catalogue(), name, engine="siesta")
+    readers = [r for r in _RUNGS if reads(item, "siesta", "transport", r)]
+    _item, was, value = _another_than_runs(probe, readers[0], name, task)
+    _set_by_the_person(template, name, value)
+    said = _typed(probe, f"shared {name}", "prep", "task",
+                  *group_words(probe.bundle, *_RUNGS), "--target", "this")
+    return {"was": was, "value": value, "said": said,
+            "decks": {r: [d.read_text() for d in _prepared_decks(probe, r)]
+                      for r in readers}}
+
+
+@pytest.mark.parametrize("name", _shared_rows())
+def test_every_shared_value_reaches_every_deck_that_reads_it(junction,
+                                                             name):
+    """A value set on the shared panel -- in the calculation's template --
+    changes what every rung that reads it gives its engine
+    (`engines/transport.md` § 3.8.9: one value, every rung; § 2a.13 Class
+    A).  Each row is one value set alone in the template and every group
+    prepared again (`_set_in_the_template`); each reading rung's deck is
+    asked, as the rung rows ask theirs.  THE SILENT FAILURE: a rung's
+    layout leaves out a shared item it reads -- `electronic_temperature`
+    out of the transmission's section, `electrodes_bulk` out of the TBtrans
+    or TranSIESTA section -- and that rung runs on the engine's own value
+    while every other rung runs on yours."""
+    from molbuilder.siesta.engine_input import engine_input_difference
+    row = junction.probe.shared[name]
+    assert row["value"] is not None and row["value"] != row["was"], row
+    assert row["said"].exit_code == 0, row["said"].output
+    for rung, decks in row["decks"].items():
+        unset = junction.probe.unset[rung]
+        assert len(decks) == len(unset), (rung, decks)
+        for before, deck in zip(unset, decks):
+            assert engine_input_difference(before, deck) is not None, (
+                f"{rung}: {name} set to {row['value']!r} (it ran "
+                f"{row['was']!r}) -- the deck gives the engine the same "
+                f"input")
+
+
+def test_preparing_again_with_nothing_set_changes_no_deck(junction):
+    """Every group prepared again with nothing changed gives every rung's
+    engine the same input -- the premise each row above stands on: a
+    difference a row finds is its value's, not one a second prep makes on
+    its own (`engines/transport.md` § 6.1, *the same engine input*)."""
+    from molbuilder.siesta.engine_input import engine_input_difference
+    probe = junction.probe
+    for rung in _RUNGS:
+        for before, again in zip(probe.unset[rung], probe.again[rung]):
+            assert engine_input_difference(before, again) is None, rung
+
+
 def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
         junction):
-    """SCF-RUNG (`engines/transport.md` § 2a.13 Class C, § 3.8.2a; TD12): a
-    mixing weight set on one stage's tab reaches that stage's decks alone; a
-    stage that sets none writes the template's -- the cited run's 0.1, TD6;
-    and the transmission, which runs no SCF, writes none.  Each deck is read
+    """SCF-RUNG (`engines/transport.md` § 2a.13 Class C, § 3.8.2a; TD12):
+    with several stages' own mixing weights set at once, each stage's decks
+    state its own value exactly and no other's; a stage that sets none
+    writes the template's -- the cited run's 0.1, TD6; and the transmission,
+    which runs no SCF, writes none -- what the rows above, one value at a
+    time and asking only that the input changed, do not ask.  Each deck is read
     through the one fdf reader (`parse.fdf.parse_fdf_params`).  The
     mechanism once sent the T(E) window to the device's deck."""
     from molbuilder.parse.fdf import parse_fdf_params
@@ -1092,74 +1314,15 @@ def test_every_rung_of_the_junction_states_its_order(junction):
         assert (None if got is None else got.to_dict()) == want, where
 
 
-def test_a_calculation_left_by_an_older_molbuilder_goes_on(junction):
-    """`engines/transport.md` § 1.1 *The first prep* and § 6.1 *the same
-    engine input* (plan UPG): a transport calculation as molbuilder 2.8.0
-    left it -- its seed, leads and device launched, its transmission
-    prepared; its decks without the engine default later releases state and
-    without the order record, its junction's sidecar without the field --
-    goes on.  `prep task` with no group left to prepare finds the junction's
-    order by composing it again in memory and comparing it atom for atom,
-    and records it: `junction.xyz` as it was, the order record stated in its
-    sidecar, the provenance at `@2`, no run folder touched.  The
-    transmission, prepared again, launches taking the device's newest run,
-    which ran what the device renders now in everything the engine reads.
-    The silent failures it guards: a launched calculation refused for
-    comments and a stated default, a launched junction or its runs
-    rewritten, or one whose order nothing states going on as yours."""
-    from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME, JobSet
-    from molbuilder.runfiles import JUNCTION_FILE, LEDGER_FILE
-    from molbuilder.transport.compose import read_provenance, record_files
-    from molbuilder.workingcopy_structure import StructureCodec
-    older, was = junction.older, junction.junction_as_left
-    said = older.said["record order"]
-    assert said.exit_code == 0, said.output
-    assert "order recorded" in said.output, said.output
-    kept = StructureCodec().load(older.bundle / JUNCTION_FILE, frames=True)
-    assert kept.elements == was.elements
-    assert np.array_equal(kept.frames if kept.frames is not None
-                          else kept.positions,
-                          was.frames if was.frames is not None
-                          else was.positions)
-    assert np.array_equal(kept.cell, was.cell) and kept.regions == was.regions
-    assert kept.atom_order is not None and kept.atom_order.to_dict() == _CHAIN
-    assert read_provenance(older.bundle)["schema"] == \
-        "molbuilder/slot-provenance@2"
-    # ...THE STATE SAVED FIRST, NOTHING ELSE WRITTEN: the record's files, the
-    # decision log and the checkpoint store -- its `.git/` and the
-    # `.gitignore` it manages (`checkpoint.write_gitignore`) -- and no file of
-    # any run.
-    changed = sorted(f for f in set(junction.files_as_left)
-                     | set(junction.files_recorded)
-                     if junction.files_as_left.get(f)
-                     != junction.files_recorded.get(f))
-    saved = {f for f in changed if f.startswith(".git/") or f == ".gitignore"}
-    assert saved, changed
-    assert set(changed) - saved <= {
-        *record_files(read_provenance(older.bundle)["kind"]), LEDGER_FILE}, \
-        changed
-    for step in ("prep transmission", "launch transmission dry"):
-        said = older.said[step]
-        assert said.exit_code == 0, f"{step}: {said.output}"
-    newest = older.attempt("device", 2).relative_to(older.bundle)
-    assert str(newest) in said.output, said.output
-    # ...AND A FILE MOLBUILDER NO LONGER WRITES IS NOT CARRIED into the runs
-    # prepared now: the plan's shared files are the engine's answer.
-    assert "atom-permutation.json" not in JobSet.load(
-        older.bundle / JOBSET_FILENAME).shared
-
-
 @pytest.mark.parametrize("row", _ANOTHER_INPUT, ids=lambda r: r["name"])
 def test_a_run_of_another_engine_input_is_not_taken(junction, row):
     """`engines/transport.md` § 6.1, *the same engine input*: a transport
     rung's launch takes an upstream run only when it ran what the upstream
-    renders now.  Each row of `_ANOTHER_INPUT` -- a number, a block, a
-    keyword an older deck left to SIESTA now stated at another value --
+    renders now.  Each row of `_ANOTHER_INPUT` -- a number, a block --
     changed after the device ran: the transmission's dry launch is refused,
     naming the keyword and the device's run.  The silent failure: the
-    transmission integrating a device Hamiltonian computed on another mesh,
-    k-grid or criterion -- which the upgrade's own test, where every
-    comparison comes out the same, cannot see."""
+    transmission integrating a device Hamiltonian computed on another mesh
+    or k-grid."""
     said = junction.another[row["name"]]
     assert said.exit_code != 0, said.output
     assert row["names"] in said.output, said.output
@@ -1260,6 +1423,23 @@ def test_a_sweep_is_one_run_its_points_inside(junction):
                 if role_of(f.name) in progress]
         assert left == [], (prepared, left)
     _said(junction, "status device", "2 of 2 points done")
+
+
+@pytest.mark.parametrize("step, under", [
+    ("launch seed and leads", "launch/"),          # a group's walk
+    ("launch device", "04_device/launch/"),        # a sweep's points
+])
+def test_a_walk_run_here_names_its_log(junction, step, under):
+    """A group's walk and a sweep's say where their members' output goes --
+    the walk's log under `launch/`, which the walk writes, its own errors
+    among it (`execution/job-system.md` § 6.0).  The silent failure: a walk
+    left in the background, its output's place unsaid."""
+    said = junction.said[step].output
+    log = next((ln.split("the walk's output: ", 1)[1].strip()
+                for ln in said.splitlines() if "the walk's output: " in ln),
+               None)
+    assert log is not None and log.startswith(under), said
+    assert (junction.bundle / log).is_file(), log
 
 
 def test_launched_again_warm_with_every_point_done_it_is_refused(junction):
@@ -1817,22 +1997,44 @@ _TRANSMISSION_POINTS = ([("T", None, v) for v in _BIAS]
                         + [("F", f, v) for f in range(_N_FRAMES)
                            for v in _BIAS])
 
-#: TBtrans's two progress lines as `m_tbt_trik.F90` writes them --
-#: ``'tbt: Initial ETA in ', f20.1, ' s'`` once, then ``'tbt: Calculated ',
-#: f7.2, ' %, ETA in ', f20.1, ' s'`` -- read here off the run's output, for
-#: where they fall and what each states.
-_TBT_INITIAL = re.compile(r"tbt: Initial ETA in\s+(\S+) s$")
-_TBT_CALCULATED = re.compile(r"tbt: Calculated\s+(\S+) %, ETA in\s+(\S+) s$")
+#: TBtrans's own lines for its loop are found through the family's one
+#: table (`siesta_grammar` as `_G`, `model/parse.md` § 5d.5): where each falls
+#: in the run's output and what it states.  The expected words are the
+#: contract's.
+#: A pass's words, as the contract names a pass (`model/parse.md` § 5d.5).
+_PASS_WORDS = {"up": "spin up", "down": "spin down",
+               "unpolarized": "unpolarized"}
 
 
 def _progress_stated(line: str):
     """``(per cent done, seconds left)`` a TBtrans progress line states, or
     ``None`` for any other line."""
-    m = _TBT_CALCULATED.match(line.strip())
+    m = _G.TBT_PROGRESS.match(line)
     if m:
-        return float(m.group(1)), float(m.group(2))
-    m = _TBT_INITIAL.match(line.strip())
-    return (0.0, float(m.group(1))) if m else None
+        return _G.fortran_float(m.group(1)), _G.fortran_float(m.group(2))
+    m = _G.TBT_INITIAL_ETA.match(line)
+    return (0.0, _G.fortran_float(m.group(1))) if m else None
+
+
+def _completed_in(line: str):
+    """The seconds a pass's ``tbt: Completed in`` states, or ``None``."""
+    m = _G.TBT_COMPLETED.match(line)
+    return _G.fortran_float(m.group(1)) if m else None
+
+
+def _passes_planned(lines):
+    """The passes a TBtrans output says it will make, in the contract's
+    words."""
+    return [_PASS_WORDS[ch] for ch in next(filter(None, map(
+        _G.tbt_channels, lines)))]
+
+
+def _span(seconds: float) -> str:
+    """A length of time under 90 s, as every page says one -- whole seconds
+    (`web/ui-contract.md` § 4); this junction's TBtrans takes a fraction of
+    one."""
+    assert seconds < 90, seconds
+    return f"{int(seconds + 0.5)}s"
 
 
 def _transmission_point(junction, row):
@@ -1882,55 +2084,164 @@ def test_a_transmission_runs_folder_opens_its_report_at_its_point(
 
 @pytest.mark.parametrize("row", _TRANSMISSION_POINTS,
                          ids=lambda r: f"{r[0]}-f{r[1]}-v{r[2]:g}")
-def test_a_transmissions_record_states_how_far_tbtrans_last_said_it_was(
+def test_a_transmissions_records_say_its_loop_as_tbtrans_measured_it(
         junction, monkeypatch, row):
-    """How far a transmission is, is TBtrans's own estimate -- a line every
-    `TBT.Progress` per cent of its k-point x energy loop, 5 by default,
-    written in the deck -- and the run's record states the last one its
-    output states, with when the output last changed, as the Run panel shows
-    it (`model/parse.md` § 5d.1b, § 5d.5; `web/results.md` § 3a).  The silent
-    failure: a transmission whose record says nothing of how far it is while
-    its output says it every few per cent."""
-    from datetime import datetime
-
-    from molbuilder.runs import run_of
+    """A finished transmission's run record says its loop as TBtrans measured
+    it -- each pass named, with the time its ``Completed in`` states -- and
+    no estimate: the estimate ends with its pass (`model/parse.md` § 5d.1b,
+    § 5d.5; `web/results.md` § 3a).  The calculation's record keeps its
+    passes' loop time on the point, summed -- the time a point still to come
+    is judged by (`engines/transport.md` § 2a.12).  The silent failures, measured on the
+    junction's own runs 2026-10-16: a finished run's record still said it
+    was 98 % done with 0 s left, and the points' loop times were read and
+    dropped."""
     from support.replay import output_lines
-    _calc, folder, _point_ = _transmission_point(junction, row)
-    stated = [p for p in map(_progress_stated, output_lines(folder)) if p]
-    assert stated, f"{folder}: TBtrans stated no progress"
+    _calc, folder, point = _transmission_point(junction, row)
+    lines = output_lines(folder)
+    names = _passes_planned(lines)
+    took = [s for s in map(_completed_in, lines) if s is not None]
+    assert names and len(took) == len(names), (names, took)
     time = _results_dir(junction, monkeypatch,
                         folder)["record"]["computation"]["time"]
-    assert (time["done_pct"], time["eta_s"]) == stated[-1], time
-    at = datetime.fromisoformat(time["estimated_at"].replace("Z", "+00:00"))
-    assert at.timestamp() == pytest.approx(
-        run_of(folder).stdout.stat().st_mtime, abs=1e-3), time
+    assert time["progress"] == "completed: " + ", ".join(
+        f"{w} ({i} of {len(names)}) in {_span(s)}"
+        for i, (w, s) in enumerate(zip(names, took), start=1)), time
+    assert "estimated_at" not in time, time
+    calc = junction if row[0] == "T" else junction.from_pair
+    mine = next(p for p in _record(calc)["points"]
+                if (p["frame"], p["bias_v"]) == (point["frame"],
+                                                 point["bias_v"]))
+    assert mine["loop_elapsed_s"] == pytest.approx(sum(took)), mine
 
 
-def test_the_monitor_says_how_far_a_transmission_is_as_it_grows(junction,
-                                                                tmp_path):
+def test_a_transmission_stopped_in_its_loop_says_where_it_stopped(
+        junction, monkeypatch):
+    """A transmission stopped part way through its loop -- left in the
+    background and stopped with the line its launch printed -- is failed,
+    stopped before its end (`running-a-job.md` § 4.2), and says where its
+    loop stopped, in the one sentence: its run record, its monitor's last
+    [STATUS] line and the calculation's record of the point
+    (`model/parse.md` § 5d.5; `run-reports.md` § 2.2;
+    `engines/transport.md` § 2a.12).  The silent failures: a stopped run
+    still quoting its last estimate as if it went on, or said as
+    finished."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.report_fields import pct_words
+    from molbuilder.runs import run_of
+    from molbuilder.web.app import create_app
+    from support.replay import output_lines, status_lines
+    stopped = junction.stopped
+    folder = stopped.attempt("transmission")
+    lines = output_lines(folder)
+    assert not any(_completed_in(ln) is not None for ln in lines), (
+        "TBtrans finished its loop before it was stopped")
+    names = _passes_planned(lines)
+    pct = [p for p, _s in filter(None, map(_progress_stated, lines))][-1]
+    said = (f"stopped during {names[0]} (1 of {len(names)}) at "
+            f"{pct_words(pct)} %")
+    time = _results_dir(junction, monkeypatch,
+                        folder)["record"]["computation"]["time"]
+    assert time["progress"] == said, time
+    assert "estimated_at" not in time, time
+    last = status_lines(run_of(folder).file(".monitor.log"))[-1]
+    assert "failed" in last and said in last, last
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    record = create_app(config={}).test_client().get(
+        f"/api/transport/record?path={stopped.bundle}").get_json()["record"]
+    point = next(p for p in record["failed"]
+                 if p["attempt"] == str(folder.relative_to(stopped.bundle)))
+    assert point["state"] == "failed", point
+    assert "stopped before its end" in point["why"], point
+    assert point["progress"] == {"said": said}, point
+
+
+def test_the_monitor_says_a_transmissions_loop_as_it_grows(junction,
+                                                         tmp_path):
     """A transmission states no SCF row and no step: where it is, is
-    TBtrans's own line.  The monitor, shown the run's output as it grew --
-    from its first progress line, a line more at each wake -- writes a
-    [STATUS] line on each advance, the line every channel is sent, stating
-    the share done and the time left the output last states
-    (`execution/run-reports.md` § 2.2, § 4.1a).  The silent failure: a run going on for days whose monitor log
-    and messages say nothing after it began."""
+    TBtrans's account of its loop.  The monitor, shown the run's output as
+    it grew -- from before its pass began, then a wake at each row's line --
+    says it on its start line and on a [STATUS] line at each advance, the
+    line every channel is sent, with the pass underway's share done and time
+    left in the report's fields; and at the end, its process gone, how it
+    ended beside it (`execution/run-reports.md` § 2.2, § 4.1a;
+    `model/parse.md` § 5d.5).  The silent failures: a run going on for days
+    whose monitor log says nothing after it began, a pass begun whose first
+    estimate is hours away said as nothing, and one that ended still
+    quoting the last estimate of its loop."""
     from molbuilder import monitor
     from support.replay import output_lines, replay, statuses
     folder = _point(junction, "05_transmission", 0, _BIAS[0])
     lines = output_lines(folder)
-    at = [i for i, ln in enumerate(lines) if _progress_stated(ln)]
-    assert len(at) >= 4, f"TBtrans stated {len(at)} progress lines"
-    _there, watched, grow = replay(folder, tmp_path, at[0] + 1)
-    chunks = iter([at[1] + 1, at[2] + 1, at[3] + 1])
-    monitor.run_monitor(watched, interval=1, watch_pid=0, max_ticks=3,
-                        sleep=lambda _: grow(next(chunks)))
-    said = statuses(watched)
-    assert len(said) == 3, said
-    for line, i in zip(said, at[1:]):
-        done, _left = _progress_stated(lines[i])
-        assert f"{done:.2f} % done" in line, line
-        assert "left (its estimate)" in line, line
+    s = lines
+    names = _passes_planned(s)
+    data = next(i for i, ln in enumerate(s) if _G.TBT_DATA_FILE.match(ln))
+    at = [i for i, ln in enumerate(s) if _progress_stated(ln)]
+    done = next(i for i, ln in enumerate(s) if _completed_in(ln) is not None)
+    k = int(next(filter(None, map(_G.TBT_KPOINTS.match, s))).group(1))
+    # A TBtrans output holds its own contours alone.
+    e = sum(int(m.group(1)) for m in map(_G.TBT_CONTOUR_POINTS.match, s) if m)
+    # THE JUNCTION IS RESTRICTED (its setup): one pass.
+    assert names == ["unpolarized"] and len(at) >= 2, (names, at)
+    one = f"{names[0]} (1 of 1)"
+
+    def estimate(i):
+        pct, left = _progress_stated(s[i])
+        return (f"{one}: {round(pct, 2):g} % done, about {_span(left)} left "
+                f"(TBtrans's estimate)")
+
+    completed = f"completed: {one} in {_span(_completed_in(s[done]))}"
+    # THE ROWS, a wake each: the line the output reaches, what the summary
+    # line says there, and the report's (done_pct, eta_s) -- the pass
+    # underway's, none once it completed.
+    rows = [(data + 1, f"{one}: begun, no estimate yet", (None, None)),
+            (at[0] + 1, estimate(at[0]), _progress_stated(s[at[0]])),
+            (at[1] + 1, estimate(at[1]), _progress_stated(s[at[1]])),
+            (done + 1, completed, (None, None))]
+    _there, watched, grow = replay(folder, tmp_path, data)
+    for n, (to, words, fields) in enumerate(rows):
+        st = monitor.run_monitor(watched, interval=1, watch_pid=0,
+                                 max_ticks=1, sleep=lambda _, to=to: grow(to))
+        if n == 0:
+            start = next(ln for ln in watched.path(".monitor.log")
+                         .read_text().splitlines() if "[MONITOR] start" in ln)
+            assert (f"setting up its loop: {k} k-point"
+                    f"{'' if k == 1 else 's'} × {e} energies, 1 pass "
+                    f"({names[0]})") in start, start
+        said = statuses(watched)
+        assert len(said) == n + 1 and words in said[-1], said
+        assert (st.done_pct, st.eta_s) == fields, (st.done_pct, st.eta_s)
+    # THE END: the whole output, its process gone -- how it ended, as the
+    # Results tab reads its files, beside its loop.
+    grow(len(lines))
+    monitor.run_monitor(watched, interval=1, watch_pid=999_999_999,
+                        max_ticks=1, sleep=lambda _: None)
+    end = statuses(watched)[-1]
+    assert end.split("] [STATUS] ", 1)[1].startswith("finished"), end
+    assert completed in end, end
+
+
+def test_a_devices_own_contours_are_no_transmission_loop(junction, tmp_path):
+    """A biased device prints its own contours in the words TBtrans prints
+    its energies in -- ``ts:   line contour points = N`` -- and they are
+    TranSIESTA's, never read as a transmission's loop (`model/parse.md`
+    § 5d.5: only the ``>> TBtrans contour <<`` section's are TBtrans's).  The
+    monitor, shown the junction's biased device point's output whole, says
+    no loop on its start line.  The silent failure: every biased device's
+    status line and messages saying it is setting up a transmission's
+    loop."""
+    from molbuilder import monitor
+    from support.replay import output_lines, replay
+    folder = _point(junction, "04_device", 0, _BIAS[-1])
+    lines = output_lines(folder)
+    assert any(_G.TBT_CONTOUR_POINTS.match(ln) for ln in lines), (
+        f"{folder}: the device states no contour points -- the row asks "
+        f"nothing")
+    _there, watched, _grow = replay(folder, tmp_path, len(lines))
+    monitor.run_monitor(watched, interval=1, watch_pid=0, max_ticks=1,
+                        sleep=lambda _: None)
+    start = next(ln for ln in watched.path(".monitor.log").read_text()
+                 .splitlines() if "[MONITOR] start" in ln)
+    assert "its loop" not in start and "(1 of" not in start, start
 
 
 def test_the_results_tab_opens_a_transmission_folder_at_its_point(
@@ -1939,11 +2250,14 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
     the frame set's frame 1 at the second voltage -- the Results tab's menu
     lists the calculation's report first, chooses it, and opens it with the
     folder's point selected, its frame and its voltage (the I–V table's
-    row); the header says the report is the folder's result; the Run panel
-    states TBtrans's progress; and a point you pick in the report stays
-    picked when a return to the tab reads the folder again.  The silent
-    failures: the report opened at its first point -- frame 0, 0 V -- under a
-    folder that ran another; your pick undone each time you came back."""
+    row); the header says it is the folder's result, its calculation's
+    report, and does not flag it as a file outside the folder; the Run
+    panel says the run's loop as its record states it (§ 3a, `model/parse.md`
+    § 5d.5); and a point you pick in the report stays picked when a return
+    to the tab reads the folder again.  The silent failures: the report
+    opened at its first point -- frame 0, 0 V -- under a folder that ran
+    another; the header saying the report is not in the folder; your pick
+    undone each time you came back."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from support.live_server import serve
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
@@ -1971,11 +2285,18 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
                    '.transport-iv-row.is-selected')]
                  .some((r) => r.dataset.frame === f && r.dataset.bias === v)""",
             arg=["1", f"{_BIAS[1]:g}"], timeout=60000)
+        # THE REPORT IS THE FOLDER'S OWN ANSWER, never flagged as a file
+        # that is not in it (`results.md` § 2).
+        flagged = page.evaluate("""() => document.getElementById(
+            'results-current-file').classList.contains('is-diverged')""")
         header = page.inner_text("#results-current-file")
-        assert "its result is its calculation's report" in header, header
+        assert not flagged and "its result is its calculation's report" \
+            in header, header
+        # THE RUN PANEL, opened: the run's loop in its record's words.
         page.click("#results-run-panel .rp-toggle")
-        panel = page.inner_text("#results-run-panel .rp-body")
-        assert "Done, by the engine's estimate" in panel, panel
+        panel = page.inner_text("#results-run-panel")
+        assert "TBtrans's loop" in panel \
+            and "completed: unpolarized (1 of 1) in " in panel, panel
         # YOUR PICK, then a return to the tab: the folder read again, its
         # answer announced -- and the point you picked still the one shown.
         page.click('.transport-curves-card .panel-tab[data-tab="iv"]')

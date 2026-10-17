@@ -24,8 +24,9 @@
  *
  * One scan, one choice, one announcement (results.md § 2.2): a scan
  * keeps the file already showing if this directory still offers it and
- * otherwise takes the newest, then labels the menu with that one value
- * AND announces it.  Labelling without announcing -- or the reverse --
+ * otherwise opens the one the server names as the folder's result -- or
+ * none, saying so -- then labels the menu with that one value AND
+ * announces it.  Labelling without announcing -- or the reverse --
  * would let the menu name one file while displaying another.
  *
  * Status line: the meta row doubles as a status surface.  Shows
@@ -445,6 +446,7 @@
         let lastRecord      = null;   // the run's record (results.md § 3a)
         let lastFiles       = [];     // every file, with what it is (§ 3b)
         let lastReport      = "";     // the report it opens outside it (§ 2)
+        let lastReportRow   = null;   // ...the server's row for it (§ 3b)
         let lastPoint       = null;   // ...and the point it opens it at
         let lastRunDir      = "";     // the folder the menu's paths are in
         let cachedResults   = [];  // last successful scan -- flat, newest first
@@ -500,7 +502,17 @@
         function _showIdleMeta(file) {
             if (!metaEl) return;
             metaEl.classList.remove("is-busy");
-            _renderMeta(metaEl, cachedResults, file);
+            /* THE REPORT A TRANSMISSION RUN'S FOLDER OPENS (results.md
+             * § 2) is not one of the folder's files: the "N of M" counts
+             * the folder's own, and the report says only its age. */
+            if (file && file === lastReport) {
+                const hit = cachedResults.find(r => r.path === file);
+                metaEl.textContent = (hit && root.molbuilder.timeAgo(hit.mtime))
+                    || "";
+                return;
+            }
+            _renderMeta(metaEl,
+                        cachedResults.filter(r => r.path !== lastReport), file);
         }
 
         function _clearParseTimer() {
@@ -563,6 +575,7 @@
             lastRecord = null;
             lastFiles = [];
             lastReport = "";
+            lastReportRow = null;
             lastPoint = null;
             lastRunDir = "";
             if (!dir) {
@@ -653,6 +666,7 @@
                         : [];
                     const results = report.concat(here);
                     lastReport = report.length ? report[0].path : "";
+                    lastReportRow = report.length ? body.report : null;
                     lastPoint = report.length ? (body.point || null) : null;
                     lastPlace = body.place || null;
                     lastLadder = body.ladder || null;
@@ -911,7 +925,8 @@
                      * folder with no run in it -- with `record_dir`, the
                      * folder it was read from, whose file names it gives.
                      * `files` -- EVERY file of
-                     * the folder, each with what it is (`about`) -- rides for
+                     * the folder, each with what it is (`about`), and the
+                     * report the menu lists first beside them -- rides for
                      * the file card (§ 3b), which explains a file the menu
                      * does not list as readily as one it does. */
                     /* `point` rides with the report a transmission run's
@@ -921,7 +936,9 @@
                                 point: (file && file === lastReport)
                                     ? lastPoint : null,
                                 place: lastPlace, ladder: lastLadder,
-                                record: lastRecord, files: lastFiles,
+                                record: lastRecord,
+                                files: lastFiles.concat(lastReportRow
+                                                        ? [lastReportRow] : []),
                                 record_dir: boundDir,
                                 dir: boundDir,
                                 diverged: _divergedFromSidebar(),

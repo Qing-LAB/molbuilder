@@ -94,7 +94,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
                    "--bundle", flat, "--target", "this")
         assert r.exit_code == 0, r.output
         r = jobset("launch", "task", "--stage", "coarse", "--bundle", flat,
-                   "--mode", "direct", "--yes")
+                   "--mode", "direct", "--foreground", "--yes")
         assert r.exit_code == 0, r.output
         assert ">> End of run" in (flat / "H2_01_coarse-run0.out").read_text(
             errors="replace"), "the coarse run did not reach its end"
@@ -121,7 +121,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
                    "--bundle", capped, "--target", "this")
         assert r.exit_code == 0, r.output
         jobset("launch", "task", "--stage", "coarse", "--bundle", capped,
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
         assert (capped / "H2_01_coarse-run0.out").is_file(), \
             sorted(p.name for p in capped.iterdir())
         # LAUNCHED AGAIN, as its run 1 -- and run 0's own files as they were
@@ -129,7 +129,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
         run0 = {p.name: p.read_bytes()
                 for p in capped.glob("H2_01_coarse-run0*") if p.is_file()}
         again = jobset("launch", "task", "--stage", "coarse", "--bundle",
-                       capped, "--mode", "direct", "--yes")
+                       capped, "--mode", "direct", "--foreground", "--yes")
         assert (capped / "H2_01_coarse-run1.out").is_file(), again.output
         run0_after = {n: (capped / n).read_bytes()
                       if (capped / n).is_file() else None for n in run0}
@@ -157,7 +157,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
         assert r.exit_code == 0, r.output
         for stage in ("coarse", "medium"):
             r = jobset("launch", "task", "--stage", stage, "--bundle", chain,
-                       "--mode", "direct", "--yes")
+                       "--mode", "direct", "--foreground", "--yes")
             assert r.exit_code == 0, r.output
         # THE LAST RUN, as the folder records it, before and after.
         from molbuilder.runrecord import last_run
@@ -165,7 +165,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
         # `coarse` LAUNCHED AGAIN WARM after `medium` ran: the folder's
         # restart files are `medium`'s, and its record says so.
         chain_again = jobset("launch", "task", "--stage", "coarse",
-                             "--bundle", chain, "--mode", "direct", "--yes")
+                             "--bundle", chain, "--mode", "direct", "--foreground", "--yes")
         assert chain_again.exit_code == 0, chain_again.output
         last_after = str(last_run(chain, "H2"))
         yield {"flat": flat, "capped": capped, "again": again.output,

@@ -32,7 +32,6 @@ Tolerant to in-progress + malformed files (Level 3 contract):
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import List, Set
@@ -250,18 +249,14 @@ class SiestaParser:
         # with the rule-table case-insensitivity policy (#171).
         head_lower = "".join(head_lines).lower()
         head_lines_lower = [ln.lower() for ln in head_lines]
-        # 0. A v5 build header NAMES the program (`siesta_grammar.EXECUTABLE`,
-        #    the path it was invoked by): SIESTA's is ours, and TBtrans's --
-        #    the same header, the transmission rung's -- is not.
-        for ln in head_lines:
-            m = _G.EXECUTABLE.match(ln)
-            if m:
-                prog = os.path.basename(m.group(1)).lower()
-                if prog.startswith("siesta"):
-                    return True
-                if prog.startswith("tbtrans"):
-                    return False
-                break
+        # 0. A v5 build header NAMES the program (`siesta_grammar.program_of`):
+        #    SIESTA's is ours, and TBtrans's -- the same header, the
+        #    transmission rung's -- is not.
+        prog = _G.program_of(head_lines)
+        if prog == "siesta":
+            return True
+        if prog == "tbtrans":
+            return False
         # 1. Any strong content marker wins immediately.
         if any(m in head_lower for m in cls._STRONG_MARKERS):
             return True

@@ -293,10 +293,13 @@ class Said:
     each question and its answer is written down, a *no* too (`job-system.md`
     § 5.0, agreement 6).  True when the answer is yes.  ``asked`` is false
     when there was nobody to ask -- no terminal and no ``--yes`` -- which
-    the launch refuses (`project-layout.md` § 1.6.4)."""
+    the launch refuses (`submission.md` S4)."""
     yes: bool
     words: str
     asked: bool = True
+    #: The question's third answer was given -- its ``other`` (:func:`confirm`):
+    #: yes, the other way.
+    other: bool = False
 
     def __bool__(self) -> bool:
         return self.yes
@@ -304,7 +307,7 @@ class Said:
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
             prompt=None, question: str = "submit this?",
-            err: bool = False) -> Said:
+            err: bool = False, other=None) -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
@@ -312,7 +315,12 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     function serves a terminal, a test, and anything else that can show a
     string and read a yes — the browser included.  ``question`` is what is asked: a run here is asked as a submission is
     (`submission.md` S4).  ``err`` asks on stderr, for a command whose stdout
-    is its output (`molbuilder modify ... -`).
+    is its output (`molbuilder modify ... -`).  ``other`` -- ``(letter,
+    word)`` -- is a third answer, yes the other way (a run here: in the
+    foreground, or in the background, `job-system.md` § 6.0): asked
+    ``[Y/n/<word>(<LETTER>)]``, Enter yes; given, the answer is
+    :attr:`Said.other` and its words ``word``.  ``prompt`` then returns what
+    was typed.
     """
     import click
     # THROUGH THE GUARDED DOOR: a bare `sys.stdin.isatty()` raises on exactly
@@ -329,12 +337,24 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
         # NO TERMINAL TO ASK.  S4 says the absence of `--yes` is not
         # permission: nothing goes, and the launch REFUSES -- naming the
         # flag -- so a script reading the exit code is not told it went
-        # (`project-layout.md` § 1.6.4: "Non-interactive: refused").
+        # (`submission.md` S4; `job-system.md` § 6.0, step 3).
         return Said(False, "no answer (not a terminal): nothing sent",
                     asked=False)
-    prompt = prompt or (lambda: click.confirm(f"  {question}",
-                                              default=True, err=err))
-    yes = bool(prompt())
+    if other is None:
+        prompt = prompt or (lambda: click.confirm(f"  {question}",
+                                                  default=True, err=err))
+        yes = bool(prompt())
+        return Said(yes, "yes" if yes else "no")
+    letter, word = other
+    prompt = prompt or (lambda: click.prompt(
+        f"  {question} [Y/n/{word}({letter.upper()})]", default="y",
+        type=click.Choice(["y", "yes", "n", "no", letter, word],
+                          case_sensitive=False),
+        show_choices=False, show_default=False, err=err))
+    got = str(prompt()).strip().lower()
+    if got in (letter, word):
+        return Said(True, word, other=True)
+    yes = got in ("y", "yes")
     return Said(yes, "yes" if yes else "no")
 
 

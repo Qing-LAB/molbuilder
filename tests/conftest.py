@@ -916,7 +916,7 @@ def _worker_group(item, engine_files) -> str:
     return "engine" if file in engine_files else file
 
 
-@pytest.hookimpl(tryfirst=True)
+@pytest.hookimpl(hookwrapper=True)
 def pytest_collection_modifyitems(config, items):
     """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` and
     ``smoke`` to ``*_smoke*`` files.
@@ -931,8 +931,11 @@ def pytest_collection_modifyitems(config, items):
     (:func:`_worker_group`).  xdist's own hook in the worker turns that
     group into a suffix on the test's id, which is what the scheduler
     groups by -- and that hook is registered after this file, so this one
-    is ``tryfirst``: run after it, it would find no group, and every test
-    would be scheduled on its own.
+    marks them before it, as the wrapper's first half: run after it, it
+    would find no group, and every test would be scheduled on its own.
+
+    Its second half, once every other hook has ordered the tests, keeps
+    each file whole and in order (`testing.md` § 6.1a, rule 1).
     """
     import importlib.util as _ilu
     import pytest as _pt
@@ -966,6 +969,19 @@ def pytest_collection_modifyitems(config, items):
         if in_worker:
             item.add_marker(
                 _pt.mark.xdist_group(_worker_group(item, engine_files)))
+    yield
+    # A FILE RUNS WHOLE, IN ORDER (`testing.md` § 6.1a, rule 1).  pytest
+    # moves the tests a session-scoped parametrized fixture holds next to
+    # each other -- every browser test, by pytest-playwright's
+    # `browser_name` -- across files, and a file split so has its module
+    # fixtures torn down and built again: the e2e batch of 2026-10-16 ran
+    # the junction's file in two pieces and made its real runs twice.  Each
+    # file put back together, in the order pytest gave its tests, the files
+    # in the order each first came.
+    first: dict = {}
+    for i, item in enumerate(items):
+        first.setdefault(item.nodeid.split("::", 1)[0], i)
+    items.sort(key=lambda item: first[item.nodeid.split("::", 1)[0]])
 
 
 @pytest.hookimpl(tryfirst=True)

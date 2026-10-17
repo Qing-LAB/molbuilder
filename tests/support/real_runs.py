@@ -31,10 +31,8 @@ Each is the session fixture of its name in `tests/conftest.py`:
   carbon held, so its decks are in the engine's held-first order
   (`support.road.CO2`; plan T-CO2).
 
-A run with one thing changed is a copy of it beside it (:func:`copy_of`): its
-decks as an older molbuilder wrote them, its next stage prepared on the road
-(:func:`freq_prepared_on`), or prepared and launched
-(:func:`freq_launched_on`).
+A run with one thing changed is a copy of it beside it (:func:`copy_of`):
+its next stage prepared and launched (:func:`freq_launched_on`).
 """
 from __future__ import annotations
 
@@ -133,6 +131,89 @@ def _taken(run: RealRun, step: str, *words) -> Said:
     return said
 
 
+def _launched_here(run: RealRun) -> int:
+    """The pid of the run here a launch left in the background -- its
+    ledger's ``launched`` line (`job-system.md` § 6.0)."""
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    lines = [json.loads(x) for x in
+             (run.bundle / LEDGER_FILE).read_text().splitlines() if x.strip()]
+    return next(e["pid"] for e in reversed(lines)
+                if e["decision"] == "launched" and e.get("background"))
+
+
+def _stopped_by_its_line(run: RealRun, launched: Said, underway, *,
+                         within: float) -> None:
+    """A run here a launch left in the background, stopped as that launch
+    said to stop it -- its *to stop it:* line, typed in a shell -- once
+    ``underway()`` holds, within ``within`` seconds; then waited for until
+    no process of its group is left: the run script, the engine and the
+    monitor, whose closing record is the stop's last word
+    (`job-system.md` § 6.0)."""
+    import time
+    end = time.monotonic() + within
+    while not underway():
+        assert time.monotonic() < end, f"not underway within {within} s"
+        time.sleep(0.5)
+    line = next(ln.split("to stop it:", 1)[1].strip()
+                for ln in launched.output.splitlines() if "to stop it:" in ln)
+    subprocess.run(["bash", "-c", line], check=True, timeout=30)
+    pid = _launched_here(run)
+    _left_to_end(run)
+    end = time.monotonic() + 120
+    while True:
+        try:
+            os.killpg(pid, 0)
+        except ProcessLookupError:
+            return
+        assert time.monotonic() < end, f"{line}: its processes went on"
+        time.sleep(0.5)
+
+
+def _left_to_end(run: RealRun) -> None:
+    """A run here the launch left in the background, waited for to its end:
+    the process its ledger's ``launched`` line names (`job-system.md`
+    § 6.0) -- a child of this process, which the launch started.  What it
+    was as the launch returned is kept in ``run.left``: its pid, its session
+    (``sid``), and whether it was still this process's to wait for
+    (``waited_here``) -- a launch that waited for it would have reaped it."""
+    pid = _launched_here(run)
+    run.left = {"pid": pid, "sid": None, "waited_here": False}
+    try:
+        run.left["sid"] = os.getsid(pid)
+        os.waitpid(pid, 0)
+        run.left["waited_here"] = True
+    except (ChildProcessError, ProcessLookupError):
+        pass        # reaped already -- by the launch, or `subprocess`'s own
+                    # cleanup of an ended child: it ended
+
+
+def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
+    """``molbuilder jobset <words> --bundle <the calculation>`` at a
+    terminal, its question answered ``answer`` as a person types it: the real
+    command in a process of its own, a pseudo-terminal its input
+    (`job-system.md` § 6.0), started from the repository's root as every
+    test that runs the command in its own process starts it -- the package
+    is run from its source, never installed -- the road's settings reaching
+    it in its environment; written down under ``step``; it must succeed."""
+    import pty
+    import sys
+    lead, follow = pty.openpty()
+    try:
+        os.write(lead, f"{answer}\n".encode())
+        done = subprocess.run(
+            [sys.executable, "-m", "molbuilder.cli", "jobset",
+             *map(str, words), "--bundle", str(run.bundle)],
+            stdin=follow, capture_output=True, text=True, timeout=3600,
+            cwd=Path(__file__).resolve().parents[2])
+    finally:
+        os.close(follow)
+        os.close(lead)
+    said = Said(done.returncode, done.stdout + done.stderr)
+    run.said[step] = said
+    assert said.exit_code == 0, f"{step}: {said.output}"
+    return said
+
+
 def _described(tree: Path, where: str, *, structure: dict, name: str,
                calculation: str, stage_strategy: str = "",
                **blocks) -> Path:
@@ -213,19 +294,23 @@ def layered(tmp_path_factory) -> RealRun:
         _script_dry_runs(run, bundle / "01_coarse" / "run-0",
                          tmp_path_factory.mktemp("dry-run"))
         _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
         run.files_before = _files(bundle)
         _taken(run, "dry run of launching coarse again", "launch", "task",
                "--stage", "coarse", "--mode", "direct", "--dry-run", "--yes")
         run.files_after = _files(bundle)
         _taken(run, "launch coarse again", "launch", "task", "--stage",
-               "coarse", "--mode", "direct", "--yes")
-        _taken(run, "launch coarse again cold", "launch", "task", "--stage",
-               "coarse", "--mode", "direct", "--yes", "--cold")
+               "coarse", "--mode", "direct", "--foreground", "--yes")
+        # ASKED AT A TERMINAL, AND ANSWERED THE OTHER WAY: the foreground.
+        _answered(run, "launch coarse again cold", "f", "launch", "task",
+                  "--stage", "coarse", "--mode", "direct", "--cold")
         _taken(run, "prep medium", "prep", "task", "--group", "2",
                "--target", "this")
+        # A RUN HERE, LEFT IN THE BACKGROUND -- a launch's default
+        # (`job-system.md` § 6.0) -- and waited for.
         _taken(run, "launch naming no stage", "launch", "task", "--mode",
                "direct", "--yes")
+        _left_to_end(run)
         _taken(run, "status", "status")
     return run
 
@@ -240,9 +325,9 @@ def bench(tmp_path_factory) -> RealRun:
         _taken(run, "prep bench", "prep", "bench", "coarse",
                "--target", "this")
         _taken(run, "launch one trial", "launch", "bench", "coarse",
-               "G0K1C1", "--mode", "direct", "--yes")
+               "G0K1C1", "--mode", "direct", "--foreground", "--yes")
         _taken(run, "launch the benchmark", "launch", "bench", "coarse",
-               "--mode", "direct", "--yes", "--trial-timeout", "5")
+               "--mode", "direct", "--foreground", "--yes", "--trial-timeout", "5")
     return run
 
 
@@ -267,7 +352,7 @@ def relaxed_for_vibration(tmp_path_factory) -> RealRun:
         _taken(run, "prep relax", "prep", "task", "--group", "1",
                "--target", "this")
         _taken(run, "launch relax", "launch", "task", "--stage", "relax",
-               "--mode", "direct", "--yes")
+               "--mode", "direct", "--foreground", "--yes")
     # IT REACHED ITS END, by the one status door: every reader of the run
     # reads a relaxation that finished.
     said = run_answer(run.attempt("relax"))
@@ -296,212 +381,6 @@ def copy_of(run: RealRun, name: str, alter) -> RealRun:
     return _MADE[bundle]
 
 
-def _typed_on_the_road(run: RealRun, tmp_path_factory, step: str,
-                       *words) -> Said:
-    """One more command typed on ``run`` -- a copy (:func:`copy_of`) -- on
-    the road with the real SIESTA, in the tree it was made in
-    (:func:`_road_at`), written down under ``step``."""
-    with _road_at(run.tree.parent, tmp_path_factory):
-        return _typed(run, step, *words)
-
-
-def relax_decks(run: RealRun):
-    """The decks of the `relax` stage's run -- the one it read and the
-    stage's own copy (`runs.Run.deck`, `stage_deck`)."""
-    from molbuilder.runs import run_of
-    ran = run_of(run.attempt("relax"))
-    return sorted({ran.deck, ran.stage_deck})
-
-
-def _fenced(deck: Path, name: str, change) -> None:
-    """``deck`` with its molbuilder block ``name`` replaced by
-    ``change(block)`` -- the block's text between its own fences
-    (`deck_record.begin_marker`, `end_marker`), fences included."""
-    from molbuilder.deck_record import begin_marker, end_marker
-    text = deck.read_text()
-    head, rest = text.split(begin_marker(name), 1)
-    block, tail = rest.split(end_marker(name), 1)
-    deck.write_text(head + change(begin_marker(name) + block
-                                  + end_marker(name)) + tail)
-
-
-def with_atom_metadata(deck: Path, change) -> None:
-    """``deck``'s ATOM-METADATA block read by its reader
-    (`deck_record.extract_atom_metadata`), ``change(payload)`` applied,
-    and written back through the block's own framing
-    (`script_emit.atom_metadata_block`) -- as an older molbuilder stated it,
-    or as a damaged deck does, the way the pin table rewrites a sidecar."""
-    from molbuilder.deck_record import (BLOCK_ATOM_METADATA,
-                                        extract_atom_metadata)
-    from molbuilder.script_emit import atom_metadata_block
-    payload = extract_atom_metadata(deck.read_text())
-    change(payload)
-    _fenced(deck, BLOCK_ATOM_METADATA, lambda _old: atom_metadata_block(
-        payload))
-
-
-def with_generator_version(deck: Path, version: str) -> None:
-    """``deck``'s PROVENANCE block naming ``version`` as the molbuilder that
-    wrote it -- its one ``generator-version`` line, within the block's
-    fences -- read back by its reader (`script_emit.written_by`)."""
-    import re
-
-    from molbuilder.deck_record import BLOCK_PROVENANCE
-    from molbuilder.script_emit import written_by
-    _fenced(deck, BLOCK_PROVENANCE, lambda block: re.sub(
-        r"(?m)^(#[ \t]*generator-version[ \t]+)\S+", rf"\g<1>{version}",
-        block, count=1))
-    assert written_by(deck.read_text()) == version, deck
-
-
-#: WHAT A DECK WHOSE BLOCK STATES NO ORDER RECORD IS SAID TO BE
-#: (`model/overview.md` § 2.2a, I9) -- known by what the block states, and
-#: its way out.
-DECK_STATES_NO_ORDER = ("atom-metadata block states no order record",
-                        "written before the field",
-                        "prepare its group again",
-                        "once launched, go back to the state saved before "
-                        "its group's first launch")
-
-
-def decks_as_written_by(decks, version: str, block_schema: int, *,
-                        without=()) -> None:
-    """Each of ``decks`` as molbuilder ``version`` wrote it: its
-    ATOM-METADATA block, where it has one, at ``block_schema`` with no order
-    record, and its channels and named values only where they hold
-    something (`AuBDTAu/transport/lowbias_local`'s 2.8.0 decks, the pushed
-    2.9.6); the keyword lines ``without`` names absent -- what a later
-    release states and that one left to the engine, asked of each deck as
-    fdf reads it -- gone from every deck, and stated by at least one before;
-    its PROVENANCE block stamped ``version``."""
-    import re
-
-    from molbuilder.deck_record import extract_atom_metadata
-    from molbuilder.parse.fdf import fdf_key, read_fdf
-
-    def as_then(block):
-        block.pop("atom_order")
-        for key in ("annotations", "customized"):
-            if not block.get(key):
-                block.pop(key, None)
-        block.update(schema_version=block_schema)
-
-    stripped = {keyword: 0 for keyword in without}
-    for deck in sorted(decks):
-        text = deck.read_text()
-        for keyword in without:
-            stated = fdf_key(keyword) in read_fdf(text)[0]
-            text = re.sub(rf"(?m)^{re.escape(keyword)}\b.*\n", "", text)
-            assert fdf_key(keyword) not in read_fdf(text)[0], (deck, keyword)
-            stripped[keyword] += stated
-        deck.write_text(text)
-        if extract_atom_metadata(text) is not None:
-            with_atom_metadata(deck, as_then)
-        with_generator_version(deck, version)
-    # A KEYWORD NO DECK STATED stripped nothing: the copy would not be what
-    # that release left.
-    assert all(stripped.values()), stripped
-
-
-def every_deck(copy: RealRun) -> set:
-    """Every deck of ``copy`` -- a transport calculation -- each stage's own
-    and each of its runs', a run's at each of its points
-    (`transport.stages.points_in`), asked of the run door (`runs.run_of`)."""
-    from molbuilder.jobset.materialize import stage_home
-    from molbuilder.paths import attempt_dir, attempts_in
-    from molbuilder.runfiles import TASK_FILE
-    from molbuilder.runs import run_of
-    from molbuilder.task import read_task
-    from molbuilder.transport.stages import points_in
-    task = read_task(copy.bundle / TASK_FILE)
-    decks = set()
-    for st in task.stages:
-        home = stage_home(copy.bundle, task, st.name)
-        for n in attempts_in(home.dir):
-            run = attempt_dir(home.dir, n)
-            for place in ([p for p, _pt in points_in(run, task, st.name,
-                                                      base=copy.bundle)]
-                          or [run]):
-                ran = run_of(place, stage=home.token)
-                if ran is not None:
-                    decks |= {d for d in (ran.deck, ran.stage_deck)
-                              if d is not None}
-    return decks
-
-
-def as_2_9_6_wrote_it(copy: RealRun) -> None:
-    """Every deck of ``copy``'s `relax` stage as molbuilder 2.9.6 wrote it
-    (:func:`decks_as_written_by`): its ATOM-METADATA block at schema 13, with
-    no order record (`model/overview.md` § 2.2a, I9)."""
-    decks_as_written_by(relax_decks(copy), "2.9.6", 13)
-
-
-def as_prepared_by_2_9_6(run: RealRun) -> RealRun:
-    """A copy of the calculation (:func:`copy_of`) as molbuilder 2.9.6 wrote
-    its `relax` decks (:func:`as_2_9_6_wrote_it`)."""
-    return copy_of(run, "before-2.10.0", as_2_9_6_wrote_it)
-
-
-def as_2_8_0_left_it(copy: RealRun) -> None:
-    """``copy`` -- a transport calculation -- as molbuilder 2.8.0 left it
-    (`AuBDTAu/transport/lowbias_local`, read 2026-10-15): every deck
-    (:func:`every_deck`) without the engine default later releases state
-    (`SCF.H.Tolerance`), its ATOM-METADATA block at schema 12 with no order
-    record, stamped 2.8.0 (:func:`decks_as_written_by`); its composed
-    junction's sidecar at schema 12 -- no order record, and the file's
-    `structure_hash` where later ones pin `geometry_hash`; the order record
-    in `atom-permutation.json` at the root, in every stage's folder and every
-    run's, and named among the plan's shared files; its composition record
-    at `slot-provenance@1`.  Its decks' coordinates are 2.8.0's own: both
-    render from the one record, which 2.8.0 wrote in this release's text."""
-    import hashlib
-
-    from molbuilder.jobset.materialize import stage_home
-    from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME, JobSet
-    from molbuilder.paths import attempt_dir, attempts_in
-    from molbuilder.persist import write_json
-    from molbuilder.runfiles import (JUNCTION_FILE, SLOT_PROVENANCE_FILE,
-                                     TASK_FILE)
-    from molbuilder.sidecars.molstruct import dumps, load, sidecar_path_for
-    from molbuilder.task import read_task
-    from molbuilder.transport.compose import read_provenance
-    decks_as_written_by(every_deck(copy), "2.8.0", 12,
-                        without=("SCF.H.Tolerance",))
-    junction = copy.bundle / JUNCTION_FILE
-    side = sidecar_path_for(junction)
-    payload = load(side)
-    order = payload.pop("atom_order")
-    payload.pop("geometry_hash")
-    side.write_text(dumps({
-        **payload, "schema_version": 12,
-        "structure_hash": hashlib.sha256(junction.read_bytes()).hexdigest()}))
-    permutation = "atom-permutation.json"
-    task = read_task(copy.bundle / TASK_FILE)
-    homes = [stage_home(copy.bundle, task, st.name).dir for st in task.stages]
-    for where in [copy.bundle] + homes + [
-            attempt_dir(h, n) for h in homes for n in attempts_in(h)]:
-        write_json(where / permutation,
-                   {"schema": "molbuilder/atom-permutation@1", **order})
-    plan = JobSet.load(copy.bundle / JOBSET_FILENAME)
-    plan.shared = sorted({*plan.shared, permutation})
-    plan.write(copy.bundle / JOBSET_FILENAME)
-    write_json(copy.bundle / SLOT_PROVENANCE_FILE,
-               {**read_provenance(copy.bundle),
-                "schema": "molbuilder/slot-provenance@1"})
-
-
-def freq_prepared_on(run: RealRun, name: str, alter,
-                     tmp_path_factory) -> RealRun:
-    """A copy of the calculation (:func:`copy_of`), altered by
-    ``alter(copy)``, and its `freq` stage prepared on the road -- what prep
-    answered written down, ``said["prep freq"]``, refused or not."""
-    def alter_and_prepare(copy):
-        alter(copy)
-        _typed_on_the_road(copy, tmp_path_factory, "prep freq", "prep",
-                           "task", "--group", "2", "--target", "this")
-    return copy_of(run, name, alter_and_prepare)
-
-
 def freq_launched_on(run: RealRun, tmp_path_factory) -> RealRun:
     """A copy of the calculation (:func:`copy_of`) with its `freq` stage
     prepared and launched on the road, `summarize` asked of it, and `freq`
@@ -513,8 +392,8 @@ def freq_launched_on(run: RealRun, tmp_path_factory) -> RealRun:
             _taken(copy, "prep freq", "prep", "task", "--group", "2",
                    "--target", "this")
             _taken(copy, "launch freq", "launch", "task", "--stage", "freq",
-                   "--mode", "direct", "--yes")
+                   "--mode", "direct", "--foreground", "--yes")
             _typed(copy, "summarize", "summarize", "task")
             _taken(copy, "launch freq again", "launch", "task", "--stage",
-                   "freq", "--mode", "direct", "--yes")
+                   "freq", "--mode", "direct", "--foreground", "--yes")
     return copy_of(run, "freq-launched", launched)

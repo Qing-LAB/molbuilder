@@ -1617,12 +1617,17 @@ def summarize_cmd(kind: str, words, bundle: str,
 
 def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
                                  domain, time_text, mem_text, gpu_domain,
-                                 trial_timeout_min, only_side) -> None:
+                                 trial_timeout_min, only_side,
+                                 foreground: bool = False,
+                                 each_mode=lambda: "") -> None:
     """A launch flag that would not be read is REFUSED by name, never
-    ignored."""
+    ignored -- a queue's flag on a run here, a run here's on a queue, each
+    with the launch as typed for each mode (``each_mode``, R-L4)."""
+    from .commands import HERE_FLAGS, QUEUE_FLAGS
     flags = {"--domain": domain, "--time": time_text, "--mem": mem_text,
              "--gpu-domain": gpu_domain,
-             "--trial-timeout": trial_timeout_min, "--only": only_side}
+             "--trial-timeout": trial_timeout_min, "--only": only_side,
+             "--foreground": True if foreground else None}
 
     def said(*names):
         return [n for n in names if flags[n] is not None]
@@ -1632,17 +1637,28 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
         # (`job-system.md` § 6.0, *A benchmark's walk*) -- the rest are what a
         # scheduler is asked (`commands.QUEUE_FLAGS`, whose `--only` is
         # said apart below).
-        from .commands import QUEUE_FLAGS
         got = said(*(f for f in QUEUE_FLAGS if f != "--only"))
         if got:
             raise click.ClickException(
                 f"{', '.join(got)}: what a scheduler is asked for -- "
                 f"`--mode direct` runs it here, where "
-                f"{'it means' if len(got) == 1 else 'they mean'} nothing.")
+                f"{'it means' if len(got) == 1 else 'they mean'} nothing.\n"
+                + each_mode())
         if said("--only") and kind == "bench" and trial is None:
             raise click.ClickException(
                 "--only: sends one side of a benchmark to a queue -- a "
                 "walk here runs every unlaunched trial.")
+    else:
+        # A RUN HERE'S FLAG ON A QUEUE: a scheduler's job runs without
+        # anyone waiting on it (`commands.HERE_FLAGS`).
+        got = said(*HERE_FLAGS)
+        if got:
+            raise click.ClickException(
+                f"{', '.join(got)}: waits for a run here (`--mode direct`) "
+                f"-- with `--mode {mode}` nothing runs here to wait for; "
+                + ("a scheduler's job runs without you."
+                   if mode == "submit" else "the scheduler is only asked.")
+                + "\n" + each_mode())
     if kind != "bench":
         got = said("--gpu-domain", "--trial-timeout", "--only")
         if got:
@@ -1670,12 +1686,15 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     follow, so only what the plan alone carries is said here, and nothing
     is asked: ``None``.  Otherwise the answer (`ask.Said`).  ``--yes``
     skips the question, never the output.  A run ``here`` is shown and
-    asked as a submission is (user, 2026-10-05)."""
+    asked as a submission is (user, 2026-10-05), the question offering the
+    other way of running it -- in the foreground, or in the background
+    (user, 2026-10-16; `job-system.md` § 6.0)."""
     from .ask import confirm, gpu_share_notes
     from ..scheduler.quantities import parse_gres_flag
     planned = [r for r in plan if r.status == "planned"]
     lines = [("about to start here, in the background:" if background
-              else "about to run here:") if here else "about to submit:"]
+              else "about to run here, waited on:") if here
+             else "about to submit:"]
     for r in plan:
         if r.status == "planned":
             # NAME THE DOMAIN, not only the flags: where several domains
@@ -1709,10 +1728,14 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
         for line in warn + list(footer):
             click.echo(line)
         return None
+    if not here:
+        return confirm("\n".join(lines), auto_yes=auto_yes,
+                       question="submit this?")
     return confirm("\n".join(lines), auto_yes=auto_yes,
-                   question=(("start this here, in the background?"
-                              if background else "run this here?")
-                             if here else "submit this?"))
+                   question=("launch in the background?" if background
+                             else "launch in the foreground?"),
+                   other=(("f", "foreground") if background
+                          else ("b", "background")))
 
 
 @jobset_group.command("launch", short_help="launch what is prepared")
@@ -1792,14 +1815,17 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "trial reads incomplete.  Unstated, no per-trial bound "
                    "exists -- each trial runs until it ends, or the job's "
                    "wall.")
-@click.option("--background", is_flag=True,
-              help="--mode direct: start the run here and return at once, "
+@click.option("--foreground", is_flag=True,
+              help="--mode direct: run it here and wait for it, the launch "
+                   "ending with how the run ended.  Without it a run here "
+                   "starts in the background and the launch returns at once, "
                    "leaving it running -- closing the terminal does not end "
-                   "it.  Nothing is lost: the run script copies everything "
-                   "it prints into its .runwrap log in the run folder, a "
-                   "walk appends each member's into its log under launch/, "
-                   "and `jobset status` follows the run (job-system.md "
-                   "6.0).")
+                   "it, `kill -- -<pid>` does -- and nothing is lost: the "
+                   "run script copies everything it prints into its "
+                   ".runwrap log in the run folder, a walk appends each "
+                   "member's output to its log under launch/, and `jobset "
+                   "status` follows the run.  Either way the question "
+                   "offers the other one (job-system.md 6.0).")
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
               help="a grouped bench: send just this side of a sweep that "
@@ -1808,12 +1834,14 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
                domain, dry_run: bool, time_text, mem_text, gpu_domain,
-               auto_yes, cold, from_attempt, gather, background,
+               auto_yes, cold, from_attempt, gather, foreground,
                trial_timeout_min, only_side) -> None:
-    """Launch a prepared group, or a stage again: run it here (direct),
-    hand it to the machine's scheduler (submit), or ask the scheduler when
-    it would start (ask).  Run ``prep`` first.  Before anything is sent the exact ``sbatch`` line is
-    shown and you are asked; ``--dry-run`` shows it and sends nothing.
+    """Launch a prepared group, or a stage again: run it here (direct) --
+    in the background, unless ``--foreground`` or your answer waits for it
+    -- hand it to the machine's scheduler (submit), or ask the scheduler
+    when it would start (ask).  Run ``prep`` first.  Before anything is sent
+    the exact line is shown and you are asked; ``--dry-run`` shows it and
+    sends nothing.
 
     ``--mode`` falls back to ``launch.mode`` (`running-a-job.md` § 5.4).
     """
@@ -1846,7 +1874,7 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
         _launch(said, kind, stage, trial, bundle, mode, domain, dry_run,
                 time_text, mem_text, gpu_domain, auto_yes, trial_timeout_min,
                 only_side, cold, group, from_attempt=from_attempt,
-                gather=gather, background=background)
+                gather=gather, foreground=foreground)
     except SubmitError as e:
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
@@ -1906,7 +1934,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             domain, dry_run: bool, time_text, mem_text, gpu_domain,
             auto_yes, trial_timeout_min, only_side, cold: bool,
             group=None, *, from_attempt=None, gather: bool = False,
-            background: bool = False) -> None:
+            foreground: bool = False) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
     refusal it raises).  ``said`` is what that line names, filled in as the
     body learns it: the mode and where it came from, the stage as the
@@ -1922,7 +1950,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         ("--trial-timeout", trial_timeout_min), ("--only", only_side),
         ("--cold", True if cold else None), ("--from", from_attempt),
         ("--gather", True if gather else None),
-        ("--background", True if background else None))
+        ("--foreground", True if foreground else None))
         if v is not None]
 
     # ------------------------------------------------------------------ #
@@ -1971,18 +1999,20 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                          for m in modes]))
         mode_source = "launch.mode (config)"
     said.update(mode=mode, mode_source=mode_source)
-    if background and mode != "direct":
-        # A FLAG THAT WOULD CHANGE NOTHING IS REFUSED, never dropped: a
-        # scheduler's job already runs without anyone waiting on it.
-        raise click.ClickException(
-            f"--background starts a run HERE and returns (--mode direct); "
-            f"with --mode {mode} nothing runs here to leave -- "
-            + ("the scheduler's job already runs without you."
-               if mode == "submit" else "the scheduler is only asked."))
+    def each_mode() -> str:
+        # THE LAUNCH AS TYPED, with each mode this machine takes -- a run
+        # here's line without a queue's flags, a queue's without a run
+        # here's (`commands.launch_with`).
+        from .commands import block, launch_with, takes_a_queue
+        return block([launch_with(kind, *words, base=base, mode=m,
+                                  typed=typed, groups=groups)
+                      for m in (("direct", "submit") if takes_a_queue(base)
+                                else ("direct",))])
     _refuse_flags_without_effect(
         kind=kind, mode=mode, trial=trial, domain=domain,
         time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
-        trial_timeout_min=trial_timeout_min, only_side=only_side)
+        trial_timeout_min=trial_timeout_min, only_side=only_side,
+        foreground=foreground, each_mode=each_mode)
     mem = _memory(mem_text)
     time_s = _duration(time_text)
     if kind == "bench":
@@ -2055,7 +2085,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                            time_s=time_s, trial_timeout_s=_bound_s,
                            told=told, record=not dry_run, cold=cold,
                            group=group, from_attempt=from_attempt,
-                           gather=gather, background=background)
+                           gather=gather, background=not foreground)
     except SubmitError:
         # A REFUSED PLAN saves nothing: what was asked is written now.
         if held_q is not None:
@@ -2125,20 +2155,20 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # 2 · SHOWN, and 3 · ASKED -- once, for the whole plan.  A dry run stops
     # here and writes nothing, the ledger included (§ 6.0, step 3).
     shown = plan.shown()
-    # WHERE A WALK'S OUTPUT GOES: each trial's into the walk's log, so the
+    # WHERE A WALK'S OUTPUT GOES: each member's into the walk's log -- a
+    # benchmark's trials, a group's stages, a sweep's points -- so the
     # terminal shows nothing while it runs (the unit 11 review)
     from .ledger import rel_to
     walks = ["  the walk's output: " + rel_to(base, s.log)
              for s in plan.submissions if s.direct and s.log]
-    if plan.background:
-        # WHERE A RUN LEFT IN THE BACKGROUND IS READ: its own folder -- the
-        # run script's .runwrap log holds everything it prints, the
-        # engine's .out its own output.
-        walks += ["  its output: " + rel_to(base, m.run_dir) + "/ -- the "
-                  ".runwrap log holds everything the run script prints, "
-                  "the .out the engine's own"
-                  for s in plan.submissions if s.direct and not s.log
-                  for m in s.members]
+    # WHERE A RUN HERE IS READ, in the background or not -- the question
+    # may choose either: its own folder, the run script's .runwrap log
+    # holding everything it prints, the engine's .out its own output.
+    walks += ["  its output: " + rel_to(base, m.run_dir) + "/ -- the "
+              ".runwrap log holds everything the run script prints, "
+              "the .out the engine's own"
+              for s in plan.submissions if s.direct and not s.log
+              for m in s.members]
     footer = walks + (["  per-trial bound: "
                + (f"{_bound_s // 60} min" if _bound_s else
                   "none -- each trial runs until it ends"
@@ -2151,7 +2181,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # EVERY LAUNCH IS SHOWN AND ASKED, a run here as a submission is
         # (user, 2026-10-05) -- `--yes` the answer given in advance.  With
         # nobody to ask the entry refuses it, written down, so a script is
-        # never told it went (`project-layout.md` § 1.6.4).
+        # never told it went (`submission.md` S4).
         said = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
                              footer=footer, here=(mode == "direct"),
                              background=plan.background)
@@ -2173,7 +2203,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         if not plan.background:
             results = _how_runs_ended(results, plan, js, base)
 
-    verb = (("WOULD start" if plan.background else "WOULD run") if dry_run
+    verb = (("WOULD start in the background" if plan.background
+             else "WOULD run") if dry_run
             else "result")
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else
@@ -2377,7 +2408,8 @@ def _probe_consent_merge(before, probed, *, yes: bool):
                                  "wrote: its records whole, its stages' "
                                  "groups, a flat one's run files numbered, "
                                  "its charge and spin items, its zeros that "
-                                 "meant not set")
+                                 "meant not set, its retired and renamed "
+                                 "items")
 @_bundle_option()
 def migrate_cmd(bundle: str) -> None:
     """Rewrite a calculation an older molbuilder wrote.
@@ -2402,13 +2434,24 @@ def migrate_cmd(bundle: str) -> None:
     removed -- the junction enters its calculation centred.  Its STAGES'
     GROUPS (2026-10-11): each stage states the job it runs in -- a prepared
     stage its job's, the rest the number above where the ladder allows it
-    and the run cards share one allocation, else one more.
+    and the run cards share one allocation, else one more.  Its template's
+    RETIRED ITEMS (SIESTA's `copy_psml`, 2.10.0; PySCF's `optimizer`,
+    `es_top_n` and `es_threshold`, 2026-09-28/29) -- taken out of the
+    template, a stage's own values and `varies` when their value runs as
+    before without them (any `copy_psml`, `optimizer = "geometric"`, a
+    blank one), refused by name otherwise -- and an item RENAMED, kept under
+    its new name in the same three places.  Refused, writing nothing: one
+    item at two values under its old name and its new, and a name no
+    release held.
 
     What the calculation was is KEPT -- every old value becomes a stated
-    one -- and each change is printed.  Each old file rewritten stays beside
-    the new one (`<name>.pre-w57`, `<name>.pre-m6`, `<name>.pre-2.1.0`,
-    `<name>.pre-2.6.0`, `<name>.pre-2.7.0`); a renamed one keeps every
-    byte.  The readers refuse such a file, naming this command."""
+    one, every blank stays blank, every item's source stays the file's --
+    and each change is printed, with what the new file does not carry.
+    Each old file rewritten stays beside the new one (`<name>.pre-w57`,
+    `<name>.pre-m6`, `<name>.pre-2.1.0`, `<name>.pre-2.6.0`,
+    `<name>.pre-2.7.0`, `<name>.pre-<the release or day that retired or
+    renamed an item>`); a renamed one keeps every byte.  The readers refuse
+    such a file, naming this command."""
     from .migrate import MigrateError, migrate_state
     try:
         said = migrate_state(bundle)

@@ -268,11 +268,11 @@ def test_a_bool_is_refused_for_a_number():
 
 
 def test_a_number_is_refused_for_a_boolean_field():
-    assert _errors(preflight(_staged({"copy_psml": 1})))
+    assert _errors(preflight(_staged({"write_hs": 1})))
 
 
 def test_a_legal_boolean_is_accepted():
-    assert preflight(_staged({"copy_psml": True})) == []
+    assert preflight(_staged({"write_hs": True})) == []
 
 
 

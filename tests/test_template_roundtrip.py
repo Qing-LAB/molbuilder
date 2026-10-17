@@ -71,7 +71,7 @@ def test_the_round_trip_preserves_types_not_just_content(cfg):
     decides the shape.  This caught a real bug on the day it was written.
     """
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
-    assert back.copy_psml is True                 # a real bool stays a bool
+    assert back.write_hs is True                  # a real bool stays a bool
     assert back.spin_treatment == "unrestricted"  # an enum stays its own string
     assert isinstance(back.relax_steps, int)
     assert isinstance(back.mesh_cutoff, float)
@@ -246,10 +246,10 @@ def test_the_five_ungated_fields_round_trip_through_a_template():
     is what 'the template describes the deck' means."""
     cfg = SiestaConfig(system_label="JOB",
                        species_order=["C", "H", "S", "Au"],
-                       copy_psml=False)
+                       write_hs=False)
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
     assert list(back.species_order) == ["C", "H", "S", "Au"]
-    assert back.copy_psml is False
+    assert back.write_hs is False
 
 
 def test_a_per_name_table_survives_the_writer():

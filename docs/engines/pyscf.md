@@ -276,8 +276,11 @@ neither this rung's criteria (its own are `gradientmax` / `gradientrms` / `stepm
 / `steprms`, with no energy criterion), nor a constraints file, nor a trajectory
 prefix — so it could not honour the rung, the held atoms or the trajectory. (It
 does take a step callback, `berny_solver.kernel(…, callback=…)`.) With one choice left the
-`optimizer` item retired with it: a template that still names it is refused with
-the reason, and the line is deleted (`template.RETIRED_ITEMS`).*
+`optimizer` item retired with it: a template that still names it is refused,
+naming `molbuilder jobset migrate`, which takes out `optimizer = "geometric"` —
+the one value that runs as before — and a blank one; any other value is
+refused, the person's to delete (`template.RETIRED_ITEMS`,
+`engines/template.md` § 3).*
 
 **molbuilder's own code travels beside the script, in one file — `mb_pyscf.pyz`**
 *(since 2026-10-05)*. The script runs under `molbuilder-pySCF`, where molbuilder

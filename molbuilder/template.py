@@ -49,8 +49,8 @@ import types
 import typing
 from pathlib import Path as _Path
 from dataclasses import dataclass
-from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
-                    Tuple, Union)
+from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
+                    Optional, Sequence, Tuple, Union)
 
 from .identity import stage_key
 from .paths import KIND_ROLES, ROLE_SETS
@@ -2529,11 +2529,10 @@ def config_from_template(text: str, config_cls):
         # retired item is named as retired, so a template written before
         # the retirement is not sent looking for a misspelling.
         migrated = [k for k in unknown if k in MIGRATED_ITEMS]
-        retired = [k for k in unknown if k in RETIRED_ITEMS]
-        renamed = [k for k in unknown if k in RENAMED_ITEMS]
+        gone = [k for k in unknown if k not in MIGRATED_ITEMS
+                and why_not_an_item(k) is not None]
         other = [k for k in unknown
-                 if k not in RETIRED_ITEMS and k not in MIGRATED_ITEMS
-                 and k not in RENAMED_ITEMS]
+                 if k not in MIGRATED_ITEMS and k not in gone]
         why = []
         if migrated:
             why.append(
@@ -2541,18 +2540,14 @@ def config_from_template(text: str, config_cls):
                 "2026-09-28 (science/chemistry-correctness.md § 2a): "
                 + ", ".join(f"{k!r} ({MIGRATED_ITEMS[k]})" for k in migrated)
                 + ".  " + MIGRATE_HINT)
-        if retired:
-            why.append(
-                "template names item(s) retired from the schema -- delete "
-                "them: " + ", ".join(f"{k!r} ({RETIRED_ITEMS[k]})"
-                                     for k in retired) + ".")
-        if renamed:
-            why.append(
-                "template names item(s) under a name the schema no longer "
-                "uses -- rename the line, keeping its value: "
-                + ", ".join(f"{k!r} is now {RENAMED_ITEMS[k][0]!r} "
-                            f"({RENAMED_ITEMS[k][1]})" for k in renamed)
-                + ".")
+        # A RETIRED OR RENAMED ITEM is named as such, in the one sentence
+        # every door says (:func:`why_not_an_item`): migrate takes out what
+        # runs as before without it and renames what was renamed; any other
+        # value is the person's to drop, since the run would change.
+        if gone:
+            why.append("template: " + "; ".join(
+                why_not_an_item(k, value=vals[k], is_set=True)
+                for k in gone) + ".")
         if other:
             why.append(
                 f"template names item(s) the {config_cls.__name__} schema "
@@ -2596,20 +2591,46 @@ MIGRATE_HINT = ("Run `molbuilder jobset migrate` in this calculation's "
                 "the run was.")
 
 
-#: Items a schema once declared and no longer does, each with where its
-#: retirement is recorded -- read by the refusal above so a template written
-#: before the retirement is told to delete the item, not to fix a spelling.
-RETIRED_ITEMS = {
-    "es_top_n": "the top_n selector, retired 2026-09-28 -- "
-                "engines/vibration.md § 4.8",
-    "es_threshold": "the threshold selector, retired 2026-09-28 -- "
-                    "engines/vibration.md § 4.8",
-    "optimizer": "geomeTRIC is the one PySCF optimizer; berny and with it "
-                 "the choice were retired 2026-09-29 -- engines/pyscf.md § 3",
+class Retired(NamedTuple):
+    """An item a schema once declared and no longer does."""
+    #: Why it went, and where the retirement is recorded.
+    why: str
+    #: The release -- or, before releases were numbered, the day -- that
+    #: retired it: a file `jobset migrate` rewrites without it is kept as
+    #: ``<name>.pre-<at>``.
+    at: str
+    #: The values that run as before without it: `jobset migrate` removes
+    #: the item holding one of these (or none), and refuses any other by
+    #: name -- what the calculation was is kept, never rounded.
+    runs: Tuple[Any, ...] = ()
+
+
+#: Items a schema once declared and no longer does -- read by the refusal
+#: above, so a template written before the retirement is told why, and by
+#: `jobset migrate`, which removes one whose value runs as before
+#: (`engines/template.md` § 3).
+RETIRED_ITEMS: Dict[str, Retired] = {
+    "es_top_n": Retired(
+        "the top_n selector, retired 2026-09-28 -- engines/vibration.md "
+        "§ 4.8", "2026-09-28"),
+    "es_threshold": Retired(
+        "the threshold selector, retired 2026-09-28 -- engines/vibration.md "
+        "§ 4.8", "2026-09-28"),
+    "optimizer": Retired(
+        "geomeTRIC is the one PySCF optimizer; berny and with it the choice "
+        "were retired 2026-09-29 -- engines/pyscf.md § 3", "2026-09-29",
+        runs=("geometric",)),
+    "copy_psml": Retired(
+        "the pseudopotential staging switch, retired at 2.10.0: nothing read "
+        "it, and prep always copies the calculation's pseudopotentials "
+        "beside its decks -- engines/template.md § 3", "2.10.0",
+        runs=(True, False)),
 }
 
 
-#: Items renamed, each with its new name and where the rename is recorded --
+#: Items renamed, each with its new name, where the rename is recorded and
+#: the day it was (a file `jobset migrate` renames in is kept as
+#: ``<name>.pre-<day>``) --
 #: read by the refusal above, so a template written before the rename is told
 #: the new spelling rather than to check it.  The old name is REFUSED, never
 #: read as the new one: a template is a file people edit, and a quiet alias
@@ -2617,8 +2638,34 @@ RETIRED_ITEMS = {
 RENAMED_ITEMS = {
     "elecs_bulk": ("electrodes_bulk",
                    "renamed 2026-09-29, and shared by the device and the "
-                   "transmission -- engines/transport.md 6.1b"),
+                   "transmission -- engines/transport.md 6.1b",
+                   "2026-09-29"),
 }
+
+
+def why_not_an_item(name: str, *, value: Any = None,
+                    is_set: bool = False) -> Optional[str]:
+    """Why ``name`` names no item when a release made it so -- retired, and
+    the way on: `jobset migrate` when its value runs as before without it,
+    else deleting it; renamed, and its new name -- or ``None`` for a name no
+    release ever held (`engines/template.md` § 3).  The one sentence the
+    template reader, the description's check and a stage's overrides say,
+    ``value`` the one the name was given (``is_set``)."""
+    if name in RETIRED_ITEMS:
+        r = RETIRED_ITEMS[name]
+        if is_set and value not in r.runs:
+            return (f"{name} = {value!r} was retired from the schema "
+                    f"({r.why}) at a value that no longer runs -- delete it "
+                    f"to accept what runs now; the calculation it described "
+                    f"cannot be run again")
+        return (f"{name} was retired from the schema ({r.why}) -- "
+                f"`molbuilder jobset migrate` in this calculation's folder "
+                f"takes it out")
+    if name in RENAMED_ITEMS:
+        new, why, _at = RENAMED_ITEMS[name]
+        return (f"{name} is now {new} ({why}) -- `molbuilder jobset migrate` "
+                f"in this calculation's folder renames it, keeping its value")
+    return None
 
 
 #: The module's public surface.
@@ -2635,4 +2682,4 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "a_kind", "as_declared", "why_not"]
+           "a_kind", "as_declared", "why_not", "why_not_an_item"]
