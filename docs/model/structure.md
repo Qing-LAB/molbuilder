@@ -882,12 +882,13 @@ copy of any of them:
    structure with nothing to say about its atoms included, because the
    sidecar carries the pin *(v13, 2026-10-14; until then a structure with
    nothing to say was written as the geometry alone, so a plain molecule had
-   no pin)*; both-or-neither atomicity on write *(each half is atomic on its own today,
-   the geometry replaced before the sidecar is written, so a sidecar that
-   fails to write leaves the new geometry beside the old sidecar —
-   both-or-neither not built, plan § 2, V1.10; since v13 that state is no
-   longer silent: the old sidecar's pin does not match the new geometry, so a
-   door that builds refuses the pair and the browser's load door says so)*; and on read, a geometry with
+   no pin)*; **both or neither on write** — both halves rendered first, so a
+   sidecar its serialiser refuses (a NaN recorded in `info`) stops the write
+   with the pair on disk as it was; then both staged to temp siblings, then
+   both put in place, the geometry first *(built 2026-10-17, plan V1.10;
+   until then the geometry was put in place before the sidecar was even
+   serialised, and such a sidecar left the new coordinates beside the old
+   one)*; and on read, a geometry with
    no sidecar beside it is one molbuilder did not write as a pair — read as
    its atoms and coordinates (§ 2.3, *a lone file says what was read*). **An engine's own structure file** — SIESTA's `<label>.xyz`,
    written with no sidecar, read where its run is recorded — **is read
@@ -934,14 +935,15 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         target names unless `fmt` says (the export door's is XYZ). What
         `write` writes, without writing it."""
 
-    def write(self, struct, target, *, atomic=True, fmt=None) -> Path:
+    def write(self, struct, target, *, fmt=None) -> Path:
         """TO DISK. The pair as one unit: geometry to `target`, and the
         sidecar, its geometry hash made over that geometry, to
         sidecar_path_for(target).
-        Atomic: each half staged to a temp sibling + os.replace'd; geometry
-        swapped FIRST, then sidecar, so the only visible interleaving is
-        OLD-sidecar + NEW-geometry for a tiny window -- never a torn file.
-        Owns both-or-neither (not built -- plan § 2, V1.10)."""
+        Both or neither: both halves rendered, then both staged to temp
+        siblings, then both os.replace'd, geometry first -- a sidecar that
+        cannot be written stops the write before anything is on disk; the
+        only visible interleaving is OLD-sidecar + NEW-geometry between the
+        two renames, never a torn file."""
 
     def write_moved(self, target, elements, positions, sidecar, *,
                     comment) -> Path:
@@ -977,9 +979,9 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > periodicity gate that **was deliberately removed on 2026-08-03**; a reader
 > comparing this contract against the code would have concluded the guard was
 > missing and restored it, re-creating the unopenable-and-unfixable file that
-> removal was for. Both now describe what the code does. *(The write ORDER
-> itself is scheduled to change -- `plans/plan.md` V1.10: both halves rendered
-> and staged before either rename.)*
+> removal was for. Both now describe what the code does. *(The write order
+> changed 2026-10-17 -- `plans/plan.md` V1.10: both halves rendered and staged
+> before either rename.)*
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes
 > translation goes through the codec, and every adapter has exactly one door.*

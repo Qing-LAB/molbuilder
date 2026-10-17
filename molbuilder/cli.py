@@ -352,7 +352,8 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
 @click.option("--engine", default=None,
               type=click.Choice(["siesta", "pyscf"]),
               help="run engine-specific config checks too (default: "
-                   "structure-only geometry checks)")
+                   "the structure's own checks, its box's and its "
+                   "geometry's)")
 @click.option("--exit-on-error", is_flag=True,
               help="exit 2 when any error-severity Issue is found "
                    "(useful in CI / shell preflight loops)")
@@ -362,10 +363,12 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
 def cmd_validate(input_path, engine, exit_on_error, pretty):
     """Run molbuilder's validation suite on a structure file.
 
-    Reads an XYZ or PDB (or `-` for stdin), runs the geometry checks
-    (min atom distance, h_ratio, polymer orientation, image distance,
-    cell volume) plus optional engine-specific config checks, and
-    emits the resulting Issue list as JSON to stdout.
+    Reads an XYZ or PDB (or `-` for stdin), runs the structure's own
+    checks -- its box's (a cell with no volume or a mirrored one is an
+    error) and its geometry's (min atom distance, h_ratio, polymer
+    orientation, image distance, cell volume) -- plus optional
+    engine-specific config checks, and emits the resulting Issue list as
+    JSON to stdout.
 
     Exit code with --exit-on-error: 0 if no errors, 2 if any error.
     Without the flag: always 0 (warnings don't stop the run).
@@ -377,7 +380,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
             && molbuilder jobset init --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --calculation optimization --shape flat
     """
-    from .validation import validate, validate_geometry
+    from .validation import structure_findings, validate
 
     with _resolve_input_path(input_path) as resolved:
         struct, _cell, _said = _struct_for_validate(resolved)
@@ -389,8 +392,10 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         from .config.pyscf import PySCFConfig
         issues = validate(struct, PySCFConfig())
     else:
-        # Default: geometry-only.  No config to validate against.
-        issues = validate_geometry(struct, cell=_cell)
+        # NO ENGINE: the structure's own findings, its box's included -- a
+        # box that is no box is an error whatever runs on it
+        # (`science/validation.md` § 4.1).
+        issues = structure_findings(struct, cell=_cell)
 
     payload = {
         "input": input_path,

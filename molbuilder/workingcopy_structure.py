@@ -483,7 +483,7 @@ class StructureCodec:
         return self.files(struct, compose(label, ".source.xyz"))
 
     # ---- write the pair to disk, atomically -------------------------- #
-    def write(self, struct: Structure, target, *, atomic: bool = True,
+    def write(self, struct: Structure, target, *,
               fmt: "str | None" = None,
               engine_record: bool = False) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
@@ -497,10 +497,9 @@ class StructureCodec:
         exact path, chosen through a picker and cleared by an overwrite gate,
         and silently writing somewhere else would make that gate a lie.
 
-        Atomicity: each half is staged to a temp sibling and ``os.replace``-d
-        (per-file atomic).  The geometry is swapped first, then the sidecar, so
-        the only visible interleaving is OLD-sidecar + NEW-geometry for a tiny
-        window -- never a torn file.
+        Both or neither (:meth:`_write_pair`): both halves rendered, then
+        both staged, then both put in place -- a sidecar that cannot be
+        written stops the write before anything is on disk.
 
         ``engine_record``: THE ONE DOOR for an engine's record in its own
         order -- the transport calculation's composed junction, written by
@@ -514,8 +513,7 @@ class StructureCodec:
         fmt = fmt or self.format_named(target)
         made = (self._pair(struct, fmt=fmt) if engine_record
                 else self.pair(struct, fmt=fmt))
-        return self._write_pair(target, made.document, made.sidecar,
-                                atomic=atomic)
+        return self._write_pair(target, made.document, made.sidecar)
 
     def write_moved(self, target, elements: Sequence[str], positions,
                     sidecar: dict, *, comment: str) -> Path:
@@ -549,37 +547,39 @@ class StructureCodec:
         return self._write_pair(Path(target), document, payload)
 
     @staticmethod
-    def _write_pair(target: Path, document: str, sidecar: dict, *,
-                    atomic: bool = True) -> Path:
-        """Both halves to disk, in :meth:`write`'s order: the document first,
-        then the sidecar."""
-        target.parent.mkdir(parents=True, exist_ok=True)
-        sidecar_path = molstruct.sidecar_path_for(target)
+    def _write_pair(target: Path, document: str, sidecar: dict) -> Path:
+        """Both halves to disk as one unit (`model/structure.md` § 2.4).
 
-        if atomic:
-            # THE SIDECAR'S RULE (`molstruct.save`), for both halves: fsync
-            # where the filesystem takes it -- tmpfs on some kernels refuses,
-            # and the bytes still land before the rename -- and no temp file
-            # left behind when the write fails.  This path runs inside jobs
-            # too (`write_moved`, the PySCF script's every saved geometry).
-            tmp = target.with_suffix(target.suffix + ".tmp")
-            try:
+        BOTH RENDERED FIRST: the sidecar is serialised by its one
+        serialiser (`molstruct.dumps`) before anything is written, so one
+        that cannot be -- a NaN in ``info`` -- stops the write with the pair
+        on disk as it was.  THEN BOTH STAGED, each to a temp sibling, synced
+        where the filesystem takes it -- tmpfs on some kernels refuses, and
+        the bytes still land before the rename -- and only then both put in
+        place, the document first, then the sidecar: a failure staging
+        either leaves the old pair, and no temp file is left behind.  This
+        path runs inside jobs too (`write_moved`, the PySCF script's every
+        saved geometry)."""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        halves = [(target, document),
+                  (molstruct.sidecar_path_for(target), molstruct.dumps(sidecar))]
+        staged = [(path.with_suffix(path.suffix + ".tmp"), path, text)
+                  for path, text in halves]
+        try:
+            for tmp, _path, text in staged:
                 with open(tmp, "w", encoding="utf-8") as fh:
-                    fh.write(document)
+                    fh.write(text)
                     fh.flush()
                     try:
                         os.fsync(fh.fileno())
                     except OSError:
                         pass
-                os.replace(tmp, target)
-            finally:
+            for tmp, path, _text in staged:
+                os.replace(tmp, path)
+        finally:
+            for tmp, _path, _text in staged:
                 if tmp.exists():
                     tmp.unlink()
-        else:
-            with open(target, "w", encoding="utf-8") as fh:
-                fh.write(document)
-
-        molstruct.save(sidecar_path, sidecar)  # tempfile + os.replace
         return target
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #

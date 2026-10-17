@@ -93,6 +93,67 @@ def _structure_declares_a_box(struct: Structure) -> bool:
     return any(k != "isolated" for k in (struct.axis_kind or ()))
 
 
+def structure_findings(struct: Structure, *,
+                       cell: Optional[np.ndarray] = None,
+                       engine: Optional[str] = None) -> List[Issue]:
+    """THE STRUCTURE'S OWN FINDINGS -- its box's facts (`cell.check`) and its
+    geometry's (:func:`validate_geometry`) -- the structural half of
+    :func:`validate`, which asks it first.  ``engine`` names who will
+    compute on it, and so which of the box's findings it hears
+    (`cell.box_findings_for`); ``None`` -- `molbuilder validate` with no
+    engine -- is whatever will be run on it, every fact of the box: a box
+    that is no box (`cell.no_volume`, `cell.left_handed`) is an error on
+    every road (`science/validation.md` § 4.1, *representability is
+    blocking*).  ``cell`` as :func:`validate` takes it (F4: omitted, the
+    structure's own, when it declares one)."""
+    issues: List[Issue] = []
+    # WHETHER THE ENGINE COMPUTES IN THE BOX (`model/structure-periodicity.md`
+    # § 2.1, plan § 5w K8): PySCF builds a molecule in free space, so the
+    # box's advice about a calculation in it -- vacuum, images, faces -- is
+    # not its.
+    # What binds every engine it still hears (`cell.box_findings_for`).
+    from ..cell import box_findings_for, computes_in_cell
+    in_cell = computes_in_cell(engine)
+    # F4: resolve the structure's own box when the caller passed none, so the
+    # cell-dependent checks cannot go silent on an omitted argument.  A
+    # structure that cannot resolve a cell (a periodic axis with no explicit
+    # lattice, an empty structure) says so as `info` rather than skipping in
+    # silence -- the contract forbids a check disappearing without a trace.
+    if cell is None and _structure_declares_a_box(struct):
+        try:
+            cell = struct.resolve_cell()
+        except Exception as exc:              # noqa: BLE001 -- reported, not raised
+            cell = None
+            issues.append(Issue(
+                "info",
+                f"cell-dependent checks (volume, determinant, image distance) "
+                f"were skipped: this structure has no resolvable cell ({exc})",
+                "cell.unresolved"))
+
+    # THE STRUCTURAL CELL FACTS, from the one checker.  As Issues they reach
+    # the preflight panel and the CLI alike, and `report()` turns the
+    # error-severity ones into the refusal the emit doors already promise.
+    #
+    # Only when the structure DECLARES a box, for the same reason the block
+    # above is gated: `resolve_cell` hands back a bounding box for a gas-phase
+    # molecule that never asked for one, and judging that box would invent
+    # findings about a cell the calculation does not have.
+    # ``cell`` here is the box that will actually be EMITTED -- a generator may
+    # have chosen one that differs from the structure's, and judging the
+    # structure's instead would answer about a box nobody runs.
+    if cell is not None or _structure_declares_a_box(struct):
+        from ..cell import check as _check_cell, resolve as _resolve_cell
+        issues += box_findings_for(
+            engine, _check_cell(_resolve_cell(struct, box=cell)))
+
+    # ...and the geometry's own measurements of the box (images, volume) are
+    # a calculation in a cell's too.
+    if not in_cell:
+        cell = None
+    issues += validate_geometry(struct, cell)
+    return issues
+
+
 def validate(struct: Structure, cfg, *,
              cell: Optional[np.ndarray] = None,
              dest_dir: "Optional[object]" = None,
@@ -164,53 +225,9 @@ def validate(struct: Structure, cfg, *,
     concatenating a separate engine ``preflight()`` (the cross-tab
     silent-skip class the backend-architecture review flagged; V1/V2).
     """
-    issues: List[Issue] = []
-    # WHETHER THE ENGINE COMPUTES IN THE BOX (`model/structure-periodicity.md`
-    # § 2.1, plan § 5w K8): PySCF builds a molecule in free space, so the
-    # box's advice about a calculation in it -- vacuum, images, faces -- is
-    # not its.
-    # What binds every engine it still hears (`cell.box_findings_for`).
-    from ..cell import box_findings_for, computes_in_cell
     from ..template import engine_name
     engine = engine_name(type(cfg))
-    in_cell = computes_in_cell(engine)
-    # F4: resolve the structure's own box when the caller passed none, so the
-    # cell-dependent checks cannot go silent on an omitted argument.  A
-    # structure that cannot resolve a cell (a periodic axis with no explicit
-    # lattice, an empty structure) says so as `info` rather than skipping in
-    # silence -- the contract forbids a check disappearing without a trace.
-    if cell is None and _structure_declares_a_box(struct):
-        try:
-            cell = struct.resolve_cell()
-        except Exception as exc:              # noqa: BLE001 -- reported, not raised
-            cell = None
-            issues.append(Issue(
-                "info",
-                f"cell-dependent checks (volume, determinant, image distance) "
-                f"were skipped: this structure has no resolvable cell ({exc})",
-                "cell.unresolved"))
-
-    # THE STRUCTURAL CELL FACTS, from the one checker.  As Issues they reach
-    # the preflight panel and the CLI alike, and `report()` turns the
-    # error-severity ones into the refusal the emit doors already promise.
-    #
-    # Only when the structure DECLARES a box, for the same reason the block
-    # above is gated: `resolve_cell` hands back a bounding box for a gas-phase
-    # molecule that never asked for one, and judging that box would invent
-    # findings about a cell the calculation does not have.
-    # ``cell`` here is the box that will actually be EMITTED -- a generator may
-    # have chosen one that differs from the structure's, and judging the
-    # structure's instead would answer about a box nobody runs.
-    if cell is not None or _structure_declares_a_box(struct):
-        from ..cell import check as _check_cell, resolve as _resolve_cell
-        issues += box_findings_for(
-            engine, _check_cell(_resolve_cell(struct, box=cell)))
-
-    # ...and the geometry's own measurements of the box (images, volume) are
-    # a calculation in a cell's too.
-    if not in_cell:
-        cell = None
-    issues += validate_geometry(struct, cell)
+    issues = structure_findings(struct, cell=cell, engine=engine)
     # WHAT MAY STAND FOR EACH ITEM ON THIS KIND, asked first so a refused
     # value's range warning can stand aside (`engines/template.md` § 5.3):
     # a component the kind fixes, a choice it does not offer -- a relaxer a
@@ -546,4 +563,4 @@ def _register_default_engines() -> None:
 _register_default_engines()
 
 
-__all__ = ["validate", "report"]
+__all__ = ["validate", "report", "structure_findings"]

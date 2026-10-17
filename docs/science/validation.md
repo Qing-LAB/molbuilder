@@ -371,7 +371,12 @@ either nagging or dangerous:
   the rule, wrongly-isolated axes under `k = 2` earn two warnings.)*
 
 * **Can this cell exist at all?** — `cell.no_volume` and `cell.left_handed`,
-  both **errors**, from the one checker (`molbuilder/cell.py`). Upstream of
+  both **errors**, from the one checker (`molbuilder/cell.py`), asked with
+  the geometry's own checks by `validation.structure_findings` — the
+  structural half of `validate()`, which `molbuilder validate` asks with no
+  engine named, every finding of the box heard *(2026-10-17, plan A1.1: with
+  no `--engine` the box went unchecked, a mirrored cell exit 0 while
+  `--engine siesta` refused it)*. Upstream of
   them the gate refuses the edit outright (§ 6.1). Not a judgement about
   quality: a zero-volume lattice makes SIESTA fail when it builds reciprocal
   vectors, so emitting it with a warning would hand the user a

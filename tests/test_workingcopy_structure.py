@@ -121,3 +121,23 @@ def test_it_writes_utf8_regardless_of_the_platform_locale(tmp_path):
 
     assert "Ångström" in path.read_text(encoding="utf-8")
     assert StructureCodec().load(path).title == "wasser — Ångström"
+
+
+def test_a_sidecar_that_cannot_be_written_leaves_the_pair_as_it_was(tmp_path):
+    """`model/structure.md` § 2.4, both or neither: the codec renders both
+    halves before it writes either, so a sidecar its serialiser refuses -- a
+    NaN recorded in `info` (a divergent run's energy), which `set_info`
+    takes and no JSON file holds -- stops the write with the pair on disk
+    byte for byte as it was, and no temp file beside it.  The silent
+    failure (plan V1.10): the new geometry put in place, then the sidecar
+    refused, the new coordinates left beside the old sidecar."""
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]))
+    target = tmp_path / "h2.xyz"
+    CODEC.write(s, target)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    moved = s.replace(positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.80]]))
+    moved.set_info("relaxation", {"energy_ev": float("nan")})
+    with pytest.raises(ValueError):
+        CODEC.write(moved, target)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before

@@ -710,3 +710,31 @@ def test_electrode_registry_is_per_slab_and_reaches_the_builder(tmp_path):
     assert step > 1.0, (
         f"the registry never reached the builder: the starting layer moved "
         f"{step:.4f} Å")
+
+
+@pytest.mark.parametrize("engine", [None, "siesta"])
+def test_validate_refuses_a_mirrored_cell_with_or_without_an_engine(
+        capsys, tmp_path, engine):
+    """`science/validation.md` § 4.1: a box that is no box -- a mirrored,
+    left-handed lattice -- is an error whatever will be run on it
+    (*representability is blocking*), so `molbuilder validate` says
+    `cell.left_handed` and exits 2 under --exit-on-error with no engine named
+    as with one.  The silent failure (plan A1.1): with no --engine the
+    structure's box was never checked -- n_errors 0, exit 0 -- while
+    --engine siesta refused the same file."""
+    import json
+
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    mirrored = np.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, -10.0]])
+    path = StructureCodec().write(
+        Structure(elements=["H", "H"],
+                  positions=np.array([[1.0, 1.0, 1.0], [1.0, 1.0, 1.74]]),
+                  cell=mirrored), tmp_path / "h2.xyz")
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["validate", str(path), "--exit-on-error",
+                  *(["--engine", engine] if engine else [])])
+    assert exc.value.code == 2
+    body = json.loads(capsys.readouterr().out)
+    assert [i["where"] for i in body["issues"]
+            if i["severity"] == "error"] == ["cell.left_handed"], body
