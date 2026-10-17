@@ -9,8 +9,8 @@ folder, its output written up to a line and grown on, under its own names
 (`process/testing.md` § 6) -- with the clock and the wakes the test's own, so
 its policy is asked of a real output stream.  Where the run's lines fall, and
 what it states at each, is read off the run's own output here: the SCF rows,
-the moves SIESTA began, the ``Max`` force it printed, the criteria its
-``redata:`` lines state.
+the moves SIESTA began, the criteria its ``redata:`` lines state; the forces
+it stated, through its parser.
 
 The run is made, never saved (user, 2026-10-06: "when a test need siesta's
 output why is it not part of a e2e test?").
@@ -96,16 +96,6 @@ class _Output:
     def end_of_move(self, k: int) -> int:
         return self.through(self.rows_of(k)[-1])
 
-    def last_free_force(self, upto: int) -> float:
-        """The largest force on a free atom, as SIESTA last printed it before
-        ``upto`` -- with atoms held, its ``Max <v> constrained`` line: what
-        a relaxation's tolerance is judged against (`run-reports.md` § 2)."""
-        found = [float(m.group(1)) for ln in self.lines[:upto]
-                 for m in [re.match(r"\s*Max\s+(\S+)\s+constrained", ln)]
-                 if m]
-        assert found, "no constrained Max force printed before that line"
-        return found[-1]
-
     def criterion(self, name: str) -> float:
         """A criterion as the run's own ``redata:`` line states it --
         ``name`` a pattern for SIESTA's words before ``tolerance``."""
@@ -115,6 +105,18 @@ class _Output:
             if m:
                 return float(m.group(1))
         raise AssertionError(f"no redata line states the {name} tolerance")
+
+
+def _forces_stated(out: Path):
+    """``(free, every)``: the largest force on the free atoms -- those the run does not hold,
+    what a relaxation's tolerance is judged against (`run-reports.md`
+    § 2.7) -- and over every atom, the held ones included, as the output's
+    last step that stated them gives them, read through its parser."""
+    from molbuilder.parse import detect
+    stated = [f for f in detect(out).parse(out).frames
+              if f.max_force is not None]
+    assert stated, f"{out} states no forces"
+    return stated[-1].max_force_constrained, stated[-1].max_force
 
 
 def _whole(run: Path) -> int:
@@ -172,7 +174,8 @@ def test_each_advance_is_a_status_line_stating_where_the_run_is(run,
     """A progressing run logs a [STATUS] line on each advance, saying what is
     going on: the phase and iteration, each residual beside the criterion the
     run states for it, the step SIESTA began in its own words and number,
-    and the force against its tolerance."""
+    and the force against its tolerance -- and the held carbon's after it,
+    being the larger."""
     o = _Output(run)
     assert len(o.moves) >= 3, "the relaxation made fewer than three moves"
     first = o.rows_of(0)
@@ -191,10 +194,13 @@ def test_each_advance_is_a_status_line_stating_where_the_run_is(run,
     assert "dDmax" in lines[0] and f"(tol {dm:g})" in lines[0], lines[0]
     assert "dHmax" in lines[0] and f"(tol {h:g})" in lines[0], lines[0]
     assert re.search(r"\w+ opt\. move 2\b", lines[-1]), lines[-1]
-    force = o.last_free_force(o.end_of_move(2))
+    free, every = _forces_stated(there / _ran(run).stdout.name)
+    assert every > free, (
+        "the held carbon carries no larger force at move 2: the line's held "
+        "part goes unasked")
     tol = o.criterion("Force")
-    assert f"max force {force:.4g} eV/Ang (tol {tol:g})" in lines[-1], (
-        lines[-1])
+    assert (f"max force {free:.4g} eV/Ang (tol {tol:g}); "
+            f"{every:.4g} eV/Ang on the held atoms") in lines[-1], lines[-1]
 
 
 def test_a_run_that_does_not_advance_writes_and_sends_nothing(run, tmp_path):

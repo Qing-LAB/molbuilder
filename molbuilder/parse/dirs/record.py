@@ -356,6 +356,7 @@ def _ending(f: RunFiles) -> Dict[str, Any]:
         # does not speak for its NEGF loop, so there is no one flag to give.
         if end.phases:
             verdict["converged"] = dict(end.phases)
+        verdict.update(_forces_of(end))
     # AN EARLIER RUN STATES AN ENDING OR NOTHING.  A later run exists, so
     # one with no ending marker is not running -- it was cut off, which its
     # own file cannot say (§ 2b) -- and "running" is what the scan answers
@@ -371,6 +372,24 @@ def _ending(f: RunFiles) -> Dict[str, Any]:
     out: Dict[str, Any] = {"verdict": verdict}
     if earlier:
         out["earlier"] = earlier
+    return out
+
+
+def _forces_of(end) -> Dict[str, Any]:
+    """What the run's last step stated of its forces and stress, as the
+    verdict says it (`model/parse.md` § 5d.6): the free atoms' largest
+    force; every atom's, only when it is the larger -- a held atom carries
+    it; the stress tensor raw -- or, for a run that computes none, the
+    sentence in their place.  Each stated only when its output states it."""
+    if end.forces_not_computed:
+        return {"forces_not_computed": end.forces_not_computed}
+    out: Dict[str, Any] = {}
+    if end.max_force is not None:
+        out["max_force_free_ev_ang"] = end.max_force
+        if end.max_force_all is not None and end.max_force_all > end.max_force:
+            out["max_force_held_ev_ang"] = end.max_force_all
+    if end.stress_voigt_kbar:
+        out["stress_voigt_kbar"] = list(end.stress_voigt_kbar)
     return out
 
 
@@ -573,7 +592,11 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "setup.pseudopotentials"),
                 ("siesta",), _siesta_out),
     Contributor("ending", ("verdict.ended", "verdict.state",
-                           "verdict.detail", "verdict.converged", "earlier"),
+                           "verdict.detail", "verdict.converged",
+                           "verdict.max_force_free_ev_ang",
+                           "verdict.max_force_held_ev_ang",
+                           "verdict.stress_voigt_kbar",
+                           "verdict.forces_not_computed", "earlier"),
                 (), _ending),
     Contributor("wrapper-log",
                 ("computation.host.hostname", "computation.host.user",

@@ -114,7 +114,8 @@ def trajectory_result_to_legacy_dict(
     Top-level collapses (size + signal optimisation):
       * ``scf_history`` collapses to ``[]`` when no frame had SCF data.
       * ``max_forces_constrained`` collapses to ``[]`` when no frame
-        had a constrained value (typical: no frozen atoms in run).
+        had a constrained value (a PySCF run that holds no atoms; SIESTA
+        states it after every step).
       * ``in_progress`` collapses to ``[]`` when no frame is mid-write.
     """
     out_frames:     List[List[List[Any]]] = []
@@ -177,7 +178,7 @@ def trajectory_result_to_legacy_dict(
 
     # ``max_forces_constrained`` collapses to a single
     # top-level empty list when NO frame had a constrained value
-    # (the typical case: no frozen atoms anywhere in the run).
+    # (a PySCF run that holds no atoms; a TranSIESTA device's).
     if all(v is None for v in out_max_forces_constrained):
         out_max_forces_constrained = []
 

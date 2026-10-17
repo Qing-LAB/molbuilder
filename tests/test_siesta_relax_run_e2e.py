@@ -142,6 +142,30 @@ def test_a_finished_relaxation_answers_its_record(relaxed):
     assert swapped.geometry_fingerprint() == rec["geometry_sha256"]
 
 
+def test_the_run_record_states_the_forces_the_relaxation_judged(
+        relaxed, monkeypatch):
+    """The run record's verdict states the last step's largest force on the
+    moved atoms and -- the held carbon's being the larger -- on the held
+    atoms (`model/parse.md` § 5d.6): the two the relaxation record judged
+    from that step's per-atom forces (§ 5b.1); and the stress, SIESTA's six
+    numbers.  The silent failure: the held atoms' force read and dropped,
+    a run whose held atoms carry the larger force showing the moved one's
+    alone."""
+    from molbuilder.parse.contract import relaxation_of
+    from molbuilder.runs import folder_answer
+    _at_the_runs_tree(relaxed, monkeypatch)
+    rec = relaxation_of(_out(relaxed))
+    assert rec["max_force_ev_ang"] > rec["max_force_free_ev_ang"], (
+        "the held carbon carries no larger force: the held part goes "
+        "unasked", rec)
+    verdict = folder_answer(_run(relaxed))["record"]["verdict"]
+    assert verdict["max_force_free_ev_ang"] == pytest.approx(
+        rec["max_force_free_ev_ang"]), verdict
+    assert verdict["max_force_held_ev_ang"] == pytest.approx(
+        rec["max_force_ev_ang"]), verdict
+    assert len(verdict["stress_voigt_kbar"]) == 6, verdict
+
+
 def test_both_doors_answer_one_record_of_the_run(relaxed, web_client,
                                                  monkeypatch):
     """The trajectory load, of the file it opened in the run's folder

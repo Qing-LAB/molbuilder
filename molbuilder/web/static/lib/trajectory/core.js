@@ -1346,21 +1346,29 @@ import { molviewFiles } from "../projects/molview-doors.js";
                                    nticks: 5 }, window.molbuilder.energyAxis),
         }, theme), { displayModeBar: false });
 
+        // A TRANSIESTA DEVICE COMPUTES NO FORCES, and says so: the reading
+        // pass's sentence stands in the plot's place (web/trajectory.md § 2).
+        const rtForces = state.data.runtime_info || {};
+        if (rtForces.forces_not_computed) {
+            window.molbuilder.plotBox.say($("force-plot"),
+                                          rtForces.forces_not_computed);
+            renderScfProgress();
+            return;
+        }
+
         // Two traces when the engine reports both.
         //
-        //   * ``max_forces``             — across ALL atoms,
-        //                                  including frozen ones.
-        //                                  Informational.
-        //   * ``max_forces_constrained`` — excluding frozen atoms.
-        //                                  When the run has frozen
-        //                                  atoms, this is what
-        //                                  SIESTA actually compares
-        //                                  against MD.MaxForceTol
-        //                                  for convergence.
+        //   * ``max_forces``             — across ALL atoms, the held
+        //                                  ones included.  Informational.
+        //   * ``max_forces_constrained`` — over the free atoms, those the run
+        //                                  does not hold:
+        //                                  what SIESTA compares against
+        //                                  MD.MaxForceTol.  SIESTA states
+        //                                  it after every step.
         //
         // ``max_forces_constrained`` is an empty list when no frame
-        // in the run carried a constrained value (no frozen atoms);
-        // in that case we render the single trace.
+        // carried it (a PySCF run that holds no atoms); in that case we
+        // render the single trace.
         //
         // The curve SIESTA compares against the target comes FIRST, so
         // it takes the series palette's first colour in both cases; the

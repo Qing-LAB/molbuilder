@@ -70,10 +70,15 @@ FIELDS: Tuple[ReportField, ...] = (
     # and states none.
     ReportField("geom_step", "Which step it is on", "step",
                 calculations=("optimization", "vibration")),
-    # The largest force on an atom, as the run states it -- what a
-    # relaxation converges on; a force-constant run's displaced geometries
-    # and a transport rung's single points state one too.
+    # The largest force on a free atom -- one the run does not hold -- as the
+    # run states it --
+    # what a relaxation converges on; a force-constant run's displaced
+    # geometries and a transport rung's single points state one too, but a
+    # TranSIESTA device, which computes none (`run-reports.md` § 2.7).
     ReportField("max_force", "The largest force", "max force", " eV/Ang"),
+    # Every atom's, only when it is the larger -- a held atom carries it.
+    ReportField("max_force_held", "The largest force on a held atom",
+                "held atoms' force", " eV/Ang", engines=("siesta",)),
     # Each engine's stamped SCF rows, timed by one rule (`run-reports.md`
     # § 2.3, `scf_timing_rows.timing_of`): the SIESTA wrapper's tee, a PySCF
     # deck's progress log.

@@ -167,8 +167,16 @@ class JobStatus:
     #: NEGF loop's dQ, each beside the criterion the run states for it.
     residuals: Dict[str, Tuple[float, Optional[float], str]] = field(
         default_factory=dict)
+    #: The largest force component on the free atoms -- those the run does
+    #: not hold -- and its
+    #: tolerance; and every atom's, only when it is the larger -- a held atom
+    #: carries it (`run-reports.md` § 2.7).
     max_force: Optional[float] = None
     max_force_tol: Optional[float] = None
+    max_force_held: Optional[float] = None
+    #: A TranSIESTA run that computes no forces: the sentence said in their
+    #: place, the reading pass's (`model/parse.md` § 4a).
+    forces_not_computed: Optional[str] = None
     #: TBtrans's account of its loop, as the output's reading pass states it
     #: (`model/parse.md` § 5d.5) -- not a report field: the summary line
     #: says it in words (`tbtrans.loop_words`).
@@ -206,10 +214,15 @@ class JobStatus:
         for name, (value, tol, unit) in self.residuals.items():
             bits.append(f"{name} {value:.3g}{(' ' + unit) if unit else ''}"
                         + (f" (tol {tol:g})" if tol is not None else ""))
-        if self.max_force is not None:
+        if self.forces_not_computed:
+            bits.append(self.forces_not_computed)
+        elif self.max_force is not None:
             bits.append(f"max force {self.max_force:.4g} eV/Ang"
                         + (f" (tol {self.max_force_tol:g})"
-                           if self.max_force_tol is not None else ""))
+                           if self.max_force_tol is not None else "")
+                        + (f"; {self.max_force_held:.4g} eV/Ang on the held "
+                           f"atoms" if self.max_force_held is not None
+                           else ""))
         if self.geom_step is not None:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
         if self.per_iter_s is not None:
@@ -401,10 +414,15 @@ class WatchedRun:
         if "scf_rows" in state:
             st.n_iters = state["scf_rows"]
         st.residuals.update(state.get("residuals") or {})
+        st.forces_not_computed = state.get("forces_not_computed")
         if state.get("max_force") is not None:
             st.max_force = state["max_force"]
             st.max_force_tol = (state.get("targets") or {}).get(
                 "max_force_tol_eV_per_A")
+            every = state.get("max_force_all")
+            # THE HELD ATOMS' FORCE, said only when it is the larger.
+            st.max_force_held = (every if every is not None
+                                 and every > st.max_force else None)
         st.tbtrans = state.get("tbtrans")
         st.done_pct = state.get("done_pct")
         st.eta_s = state.get("eta_s")

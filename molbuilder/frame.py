@@ -75,23 +75,23 @@ class Frame:
                       engine hasn't reported one yet for this step.
       forces       -- per-atom force array, shape (N, 3), eV/A;
                       None when the parser couldn't extract forces
-                      (e.g. geomeTRIC trajectories carry no forces).
-      max_force    -- max per-atom force magnitude in eV/A across
-                      ALL atoms (including any frozen ones), or
-                      None.  Spec convention: max_i |F_i| (NOT
-                      max(|F_component|)).
+                      (e.g. geomeTRIC trajectories carry no forces)
+                      or the engine computed none (a TranSIESTA
+                      device: `model/parse.md` § 5d.5).
+      max_force    -- the largest force in eV/A over ALL atoms (the
+                      held ones included), as the engine states it --
+                      SIESTA's ``Max``, its largest Cartesian
+                      component (`write_subs.F`, analyze_force); a
+                      PySCF run's largest per-atom magnitude -- or
+                      None.
       max_force_constrained
-                   -- max per-atom force magnitude in eV/A EXCLUDING
-                      atoms that are constrained / frozen.  None
-                      when the run has no constraints (SIESTA only
-                      emits the line when at least one atom is
-                      constrained) OR the parser couldn't extract
-                      it.  This is the value SIESTA compares
-                      against ``MD.MaxForceTol`` for relaxation
-                      convergence — when constraints exist, this
-                      is the meaningful "did we converge?" signal,
-                      not ``max_force`` (which can stay high on a
-                      frozen atom forever).
+                   -- the same over the FREE atoms, those the run does not hold: SIESTA's
+                      ``Max ... constrained``, stated after every
+                      step, the value it compares against
+                      ``MD.MaxForceTol`` (equal to ``max_force`` when
+                      nothing is held); a PySCF run's when it holds
+                      atoms.  None when the parser couldn't extract
+                      it.
       lattice      -- (3, 3) Ang lattice vectors *for this frame*, or
                       None.  Today every parser sets None here and
                       puts the (constant) cell on Trajectory.lattice

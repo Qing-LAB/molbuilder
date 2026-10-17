@@ -112,6 +112,17 @@ function gathered(v) {
                          ? `${g.file} from ${g.from}` : String(g))).join("\n");
 }
 
+function force(v) {
+    const n = num(v);
+    return isFinite(n) ? `${+n.toPrecision(4)} eV/Å` : String(v);
+}
+
+/** The stress in the (x, y) plane from SIESTA's Voigt order
+ *  [xx, yy, zz, yz, xz, xy], as it printed them, in kbar. */
+function inPlane(voigt) {
+    return `xx ${voigt[0]} · yy ${voigt[1]} · xy ${voigt[5]} kbar`;
+}
+
 const MONO = "mono";
 
 /* ---- the one table ---------------------------------------------------- *
@@ -334,6 +345,16 @@ function verdictSection(rec) {
     };
     if (v.ended) line("Latest run", rec.run !== undefined ? `run ${rec.run}: ${v.ended}` : v.ended);
     Object.keys(v.converged || {}).forEach((p) => line("Converged", phaseWords(p, v.converged[p])));
+    // THE LAST STEP'S FORCES AND STRESS, or why a TranSIESTA device has
+    // none (`model/parse.md` § 5d.6).
+    if (v.forces_not_computed) line("Forces", v.forces_not_computed);
+    if (v.max_force_free_ev_ang !== undefined) {
+        line("Max force", [`${force(v.max_force_free_ev_ang)} on the free atoms`,
+                           v.max_force_held_ev_ang !== undefined
+                               ? `${force(v.max_force_held_ev_ang)} on the held atoms` : ""]
+            .filter(Boolean).join("; "));
+    }
+    if (Array.isArray(v.stress_voigt_kbar)) line("Stress in the (x, y) plane", inPlane(v.stress_voigt_kbar));
     (v.findings || []).forEach((f) => line("Finding", f.text || words(f), "rp-finding"));
     (rec.earlier || []).forEach((e) => line(
         "Earlier run",

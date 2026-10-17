@@ -2294,6 +2294,122 @@ def test_a_devices_own_contours_are_no_transmission_loop(junction, tmp_path):
     assert "its loop" not in start and "(1 of" not in start, start
 
 
+#: What every surface says in a TranSIESTA device's force's place
+#: (`model/parse.md` § 5d.6).
+_NO_FORCES = ("TranSIESTA does not compute forces in this run (it says they "
+              "are wrong), and so not the stress either")
+
+
+def test_a_device_says_it_computes_no_forces_where_the_force_would_be(
+        junction, monkeypatch, tmp_path):
+    """TranSIESTA computes no forces on molbuilder's device -- its
+    continued-fraction equilibrium contour switches them off whatever the
+    deck asks -- and says so, *ALL FORCES AFTER TRANSIESTA HAS RUN ARE
+    WRONG*; the stress is built from what it then zeroes.  So the device's
+    run record and its monitor's closing line say it where the force would
+    be, with no force and no stress (`model/parse.md` § 5d.6;
+    `execution/run-reports.md` § 2.7).  The silent failure, the junction's
+    own device 2026-10-16: *max force 0.0896 eV/Ang*, a number TranSIESTA
+    says is wrong."""
+    from molbuilder import monitor
+    from support.replay import output_lines, replay, statuses
+    folder = _point(junction, "04_device", 0, _BIAS[0])
+    verdict = _results_dir(junction, monkeypatch, folder)["record"]["verdict"]
+    assert verdict.get("forces_not_computed") == _NO_FORCES, verdict
+    assert not {"max_force_free_ev_ang", "max_force_held_ev_ang",
+                "stress_voigt_kbar"} & set(verdict), verdict
+    _there, watched, _grow = replay(folder, tmp_path,
+                                    len(output_lines(folder)))
+    st = monitor.run_monitor(watched, interval=1, watch_pid=999_999_999,
+                             max_ticks=1, sleep=lambda _: None)
+    closing = statuses(watched)[-1]
+    assert _NO_FORCES in closing and "max force" not in closing, closing
+    assert (st.max_force, st.max_force_held) == (None, None), st
+
+
+def _on_the_results_tab(page, base, folder):
+    """The Results tab, its folder ``folder`` -- the folder the sidebar
+    shares -- once its file menu has chosen."""
+    page.goto(f"{base}/molbuilder")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.projects"
+        "      && typeof window.molbuilder.projects.setShared"
+        "         === 'function'")
+    page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
+                  str(folder))
+    page.goto(f"{base}/results")
+    page.wait_for_function(
+        "() => document.getElementById('results-file-picker-select')"
+        "      .value !== ''", timeout=30000)
+
+
+def _run_panel_rows(page) -> dict:
+    """The Run panel's rows, label -> value."""
+    return page.evaluate("""() => Object.fromEntries(
+        [...document.querySelectorAll('#results-run-panel .rp-row')].map(
+            (r) => [r.querySelector('.rp-key').textContent,
+                    r.querySelector('.rp-val').textContent]))""")
+
+
+def _as_js(n: float) -> str:
+    """A number as the page prints it: JavaScript's, so ``-0`` is ``0``."""
+    return "0" if n == 0 else f"{n:g}"
+
+
+def test_the_results_tab_says_a_devices_forces_and_a_leads_stress(
+        junction, page, monkeypatch):
+    """`web/trajectory.md` § 2, `web/results.md` § 3a: opened on the device's
+    point, the max-force plot's place holds the sentence that TranSIESTA
+    computes no forces, and the Run panel's verdict says it where the force
+    would be, with no force and no stress; opened on a lead, the Run panel
+    states the lead's largest force and its stress in the (x, y) plane --
+    xx, yy and xy of the tensor its record keeps in SIESTA's Voigt order
+    (xx, yy, zz, yz, xz, xy; `model/parse.md` § 5d.6).  The silent
+    failures: the device's plot drawing forces TranSIESTA says are wrong;
+    the stress read and shown nowhere."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from support.live_server import serve
+    device = _point(junction, "04_device", 0, _BIAS[0])
+    lead = junction.bundle / "02_electrode_L" / "run-0"
+    verdict = _results_dir(junction, monkeypatch, lead)["record"]["verdict"]
+    stress = verdict["stress_voigt_kbar"]
+    assert len(stress) == 6 and "max_force_held_ev_ang" not in verdict, (
+        verdict)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(junction.tree))
+    with serve() as base:
+        _on_the_results_tab(page, base, device)
+        # THE PLOT'S BOX comes with the trajectory viewer, mounted once the
+        # menu has chosen the device's output.
+        page.wait_for_function(
+            """(s) => { const box = document.getElementById('force-plot');
+                        return !!box && box.textContent === s; }""",
+            arg=_NO_FORCES, timeout=60000)
+        page.click("#results-run-panel .rp-toggle")
+        rows = _run_panel_rows(page)
+        assert rows.get("Forces") == _NO_FORCES, rows
+        assert not {"Max force", "Stress in the (x, y) plane"} & set(rows), (
+            rows)
+        # THE LEAD, the tab re-pointed as a person does it -- the sidebar at
+        # its folder, then Refresh (`results.md` § 2.1: the tab keeps its own
+        # folder); the panel stays open over its new record.
+        page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
+                      str(lead))
+        page.click("#results-file-picker-refresh")
+        page.wait_for_function(
+            """() => [...document.querySelectorAll('#results-run-panel .rp-key')]
+                .some((k) => k.textContent === 'Stress in the (x, y) plane')""",
+            timeout=30000)
+        rows = _run_panel_rows(page)
+        # THE PAGE'S FOUR FIGURES (`run-panel.js`, `toPrecision(4)`).
+        free = verdict["max_force_free_ev_ang"]
+        force = _as_js(float(f"{free:.4g}"))
+        assert rows.get("Max force") == f"{force} eV/Å on the free atoms", (
+            rows)
+        assert rows.get("Stress in the (x, y) plane") == (
+            f"xx {_as_js(stress[0])} · yy {_as_js(stress[1])} · "
+            f"xy {_as_js(stress[5])} kbar"), rows
+
+
 def test_the_results_tab_opens_a_transmission_folder_at_its_point(
         junction, page, monkeypatch):
     """`web/results.md` § 2, § 3a: pointed at a transmission run's folder --
@@ -2314,17 +2430,7 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
     folder = _frame_point(junction.from_pair, "05_transmission", 1, _BIAS[1])
     task = (junction.from_pair.bundle / "task.json").resolve()
     with serve() as base:
-        page.goto(f"{base}/molbuilder")
-        page.wait_for_function(
-            "() => window.molbuilder && window.molbuilder.projects"
-            "      && typeof window.molbuilder.projects.setShared"
-            "         === 'function'")
-        page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
-                      str(folder))
-        page.goto(f"{base}/results")
-        page.wait_for_function(
-            "() => document.getElementById('results-file-picker-select')"
-            "      .value !== ''", timeout=30000)
+        _on_the_results_tab(page, base, folder)
         menu = page.evaluate("""() => {
             const s = document.getElementById('results-file-picker-select');
             return {chosen: s.value, first: s.options[0].value}; }""")

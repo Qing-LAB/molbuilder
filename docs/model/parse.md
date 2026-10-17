@@ -353,6 +353,7 @@ dispatch; its answer is one frozen record:
 | `relaxed` | `True` on `outcoor: Relaxed …`, `False` on `outcoor: Final (unrelaxed) …`, `None` for a run that relaxes nothing |
 | `cause` | what stopped it: the FIRST fatal line's marker — the lines after it are SIESTA's `die` cascade, and an out-of-memory marker outranks the rest — or `scf_not_conv` when SIESTA states the SCF's failure fatal, `(required)` |
 | `error_message` | the sentence a person reads: the `SCF_NOT_CONV:` line when it came before the stop — it names the cause, the fatal lines after it are `die`'s cascade — else the first fatal line; for PySCF, the exception line |
+| `max_force` · `max_force_all` · `stress_voigt_kbar` · `forces_not_computed` | what the run's last step stated of its forces and stress — the reading pass's `now()` keys of those names (§ 4a), read with the ending in the one pass; `None` for an output that states none (a PySCF output, a progress log) |
 
 `_run_ending.CONCLUDED` — `ended`, `stopped`, `out_of_memory` — is *the run is
 over*.
@@ -609,7 +610,7 @@ flowchart LR
 | reads | a SIESTA-family `.out` | a `.molwatch.log`; `stage` picks a staged header's targets |
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
-| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` — `runtime_info.scf_criteria` and `.scf_residuals` among them | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
+| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` — `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar` | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
 | also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
 
 **What each SCF row measures is declared once an engine** — `siesta_grammar.
@@ -629,7 +630,9 @@ declares ([`web/trajectory.md`](?doc=web/trajectory.md) § 3.0).
 | `dDmax` · `dHmax` · `dq` | the latest row's residuals, `dq` in the NEGF phase | — |
 | `residuals` | {`dDmax`, `dHmax`, `dQ`: (value, tolerance, unit)}, each beside the tolerance its phase states | {`dE`, \|g\|, `ddm`: (value, tolerance, unit)}: dE and \|g\| beside PySCF's tolerances, in eV like the values; `ddm` has none |
 | `step` · `step_kind` · `steps_done` | from `Begin <kind> = N`: step N begins once N are done | the block's index · — · the finished blocks, the preview excluded |
-| `max_force` · `max_force_constrained` | the latest `Max` line, and whether it was the constrained one | the last step's · — |
+| `max_force` · `max_force_all` | the latest step's — the one in flight once it has printed them, else the last that did, its stress with them — largest force component on the free atoms — those the run does not hold — SIESTA's `Max … constrained` — and over every atom, its plain `Max`; SIESTA prints both after every step's forces (`write_subs.F`), the two the same when nothing is held | the last step's · — |
+| `forces_not_computed` | a TranSIESTA run that says it computes no forces (`ALL FORCES AFTER TRANSIESTA HAS RUN ARE WRONG`, below): the sentence every surface says in their place — and then no `max_force`, `max_force_all` or `stress_voigt_kbar`, nor any step's forces | — |
+| `stress_voigt_kbar` | the latest step's stress tensor as SIESTA prints it — `Stress tensor Voigt[x,y,z,yz,xz,xy] (kbar)`, six numbers in that order | — |
 | `criteria` · `targets` | per phase, as `criteria()` · the `redata:` limits | — · as `targets()` |
 | `scf_cycles` · `last_cycle` · `scf_rows` | — | the last step's SCF cycles, its last cycle, all rows so far |
 | `tbtrans` | TBtrans's account of its k-point × energy loop: its size, the spin passes it says it will make, and each pass begun — its channel, TBtrans's estimate while it runs, its measured time once it completed, its currents (§ 5d.5) | — |
@@ -1524,7 +1527,9 @@ record
 │   ├── engine_only      [{key, value | readings, in_deck}]
 │   └── pseudopotentials [{species, file, uuid, sha256, xc_family, xc_authors, relativistic, generator}]
 ├── deck                 path · sha256 · current · gathered_from
-└── verdict              state · detail · ended · converged{phase} · findings [{id, text}]
+└── verdict              state · detail · ended · converged{phase} · max_force_free_ev_ang ·
+                         max_force_held_ev_ang · stress_voigt_kbar · forces_not_computed ·
+                         findings [{id, text}]
 ```
 
 `verdict.state` and `detail` are `run_status`'s words for the directory
@@ -1546,7 +1551,7 @@ is rows, not a code path.
 | row | the file | its reader, beside its format (§ 1a) | engines | answers |
 |---|---|---|---|---|
 | `siesta-out` | `<base>-runN.out`, head and tail; a TBtrans output whole | the grammar's line readers (§ 5d.5); a TBtrans output through the reading pass and `tbtrans.loop_words` | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local` · `time.progress` · `time.estimated_at` — a TBtrans output's account of its loop in words (`tbtrans.loop_words`, § 5d.5), the output read whole through the pass — it is the loop's own account, a line every `TBT.Progress` per cent — and said with the run's state, the `ending` row's door (`RunFiles.status`): over, the loop completed or where it stopped; and, while a pass's estimate stands, when the output last spoke (its modification time: TBtrans writes a progress line and then nothing until the next); `setup.pseudopotentials` |
-| `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged`; `earlier` |
+| `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged` · `max_force_free_ev_ang` · `max_force_held_ev_ang` · `stress_voigt_kbar` · `forces_not_computed` (§ 5d.6); `earlier` |
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
@@ -1708,7 +1713,10 @@ case-blind throughout (user, 2026-05-28).
 | criteria: `redata: Require … convergence for SCF`, `redata: … tolerance for SCF`, TranSIESTA's echoed tolerances (`read_options.F90`, `m_ts_options.F90`) | `SCF_REQUIRE`, `SCF_TOLERANCE`, `SCF_CRITERION_OF`, `TS_CRITERIA` | `read_criterion_line`, `negf_criteria` | `{phase: {column: {tolerance, unit, required}}}` |
 | limits: `redata: Force tolerance`, `Max. number of SCF Iter`, … | `TARGET_LINES` | `read_target_line` | `convergence_targets` |
 | a step: `Begin Broyden opt. move = N` (or CG, FIRE), `Begin FC step = N`, `Begin MD step = N` (`state_init.F`); a single point prints none | `STEP_BEGIN` | the reading pass | `step_kind`, `step` |
-| the forces' closing `Max` / `Max … constrained` (`write_subs.F`) | `MAX_FORCE` | the reading pass | `max_force` |
+| a step's forces, `Atomic forces (eV/Ang):` and its rows — and again, after the step's `Max` lines, each row prefixed `siesta:`, the same forces (`write_subs.F`) | `FORCES_BEGIN` | the reading pass | the step's `forces` |
+| the forces' closing `Max` / `Max … constrained` (`write_subs.F`, printed both, always: every atom's largest component, then the free atoms') | `MAX_FORCE` | the reading pass | `max_force_all`, `max_force` |
+| TranSIESTA computing no forces: `ts: *** ALL FORCES AFTER TRANSIESTA HAS RUN ARE WRONG ***` (`m_ts_options.F90`), printed when it does not update forces — every molbuilder device, whose continued-fraction equilibrium contour switches them off whatever the deck asks (`m_ts_options.F90`, *"the forces are not updated, dispite the user requests"*); it then sets the energy-density matrix to zero (`m_transiesta.F90`), which the stress is built from too (`overfsm.f90`) | `TS_FORCES_WRONG` | the reading pass, before the `ts:` echo rule | `forces_not_computed` |
+| the stress after each step's forces: `Stress tensor Voigt[x,y,z,yz,xz,xy] (kbar):` and six numbers (`write_subs.F`) | `STRESS_VOIGT` | the reading pass | `stress_voigt_kbar` |
 | how a run ends: the fatal markers, `>> End of run`, the relaxation's `outcoor:` heading | `FATAL_MARKERS`, `PROPOR_MARKER`, `RUN_END`, `RELAXED_MARKER`, `UNRELAXED_MARKER` | the reading pass, which `_run_ending.ending_of` asks | § 2b |
 | the deck's echo, `*** Dump of input data file ***` … `*** End of input data file ***` (`reinit_m.F90`) | `INPUT_ECHO_BEGIN`, `INPUT_ECHO_END` | `input_echo_edge` | lines skipped |
 | the build header, SIESTA's and TBtrans's (`version-info-template.inc`) | `EXECUTABLE`, `BUILD_*`, `PROGRAMS` | `read_build_line`; `program_of` — which of the two wrote it, by its first `Executable` line | `{executable, version, architecture, compiler, parallelisations, <feature>: True}` |
@@ -1798,6 +1806,17 @@ mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
   ending was cut off, which its own file cannot say.
 * **Converged** — `verdict.converged`, per phase (§ 2b, § 4b). A TranSIESTA
   device's convergence is its NEGF phase's.
+* **Forces and stress** *(the user, 2026-10-17; plan F14)* — the run's last
+  step, from its `RunEnding` (§ 2b): `verdict.max_force_free_ev_ang`, the largest
+  force component on its free atoms, those it does not hold; `verdict.max_force_held_ev_ang`, the
+  largest over every atom, **stated only when it is the larger** — a held atom
+  carries it; `verdict.stress_voigt_kbar`, the stress tensor as SIESTA prints
+  it, raw, Voigt order (xx, yy, zz, yz, xz, xy) in kbar — the Run panel shows
+  its components in the (x, y) plane, a transport run's electrode plane: xx,
+  yy, xy. **A TranSIESTA run
+  that computes no forces states none of them**: `verdict.forces_not_computed`
+  is the sentence in their place, *TranSIESTA does not compute forces in this
+  run (it says they are wrong), and so not the stress either*.
 * **Findings** — each `{id, text}`, the sentence with its number in it:
   `asked-not-used` (§ 5d.3), and the symptoms:
 

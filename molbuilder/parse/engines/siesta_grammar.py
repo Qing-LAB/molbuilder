@@ -457,8 +457,12 @@ def cycle_positional(
 COORDS_BEGIN = "outcoor:"
 #: ``outcell: Unit cell vectors (Ang):`` opens the cell block.
 CELL_BEGIN = "outcell: Unit cell vectors"
-#: ``siesta: Atomic forces (eV/Ang):`` opens the forces block.
+#: ``siesta: Atomic forces (eV/Ang):`` opens the forces block -- and opens it
+#: again after the step's ``Max`` lines, each row then prefixed ``siesta:``,
+#: the same forces (``Src/write_subs.F``).
 FORCES_BEGIN = "siesta: Atomic forces"
+#: The prefix a force row carries in that second block.
+FORCE_ROW_PREFIX = re.compile(r"^\s*siesta:\s+(?=\d)", re.IGNORECASE)
 #: A step's Kohn-Sham energy, ``siesta: E_KS(eV) = ...`` -- it sits mid-line.
 E_KS_LINE = "siesta: E_KS(eV)"
 #: The bare ``siesta: Etot = ...`` of the energy decomposition, never
@@ -906,12 +910,22 @@ def read_target_line(line: str) -> Optional[Tuple[str, Any]]:
 
 
 #: The forces block's closing lines (``Src/write_subs.F``: ``'Max', fmax`` as
-#: ``a6, f12.6``, and -- when an atom is constrained -- ``'Max', cfmax,
-#: '    constrained'``, which is what SIESTA compares against
-#: ``MD.MaxForceTol``).  Group 1 the value, group 2 the constrained mark.  A
-#: reader asks it after a forces block: ``Max`` opens other lines too.
+#: ``a6, f12.6`` -- the largest component over EVERY atom -- then ``'Max',
+#: cfmax, '    constrained'``, over the free atoms -- those the run does not
+#: hold -- which is what
+#: SIESTA compares against ``MD.MaxForceTol``).  Both are printed always, the
+#: same when nothing is held.  Group 1 the value, group 2 the constrained
+#: mark.  A reader asks it after a forces block: ``Max`` opens other lines
+#: too.
 MAX_FORCE = re.compile(r"^\s*Max\s+(\S+)(\s+constrained)?\s*$",
                        re.IGNORECASE)
+
+#: The stress after each step's forces (``Src/write_subs.F``): ``Stress
+#: tensor Voigt[x,y,z,yz,xz,xy] (kbar):`` and six numbers, ``f12.2``, in that
+#: order -- the total stress, its kinetic part included.
+STRESS_VOIGT = re.compile(
+    r"^\s*Stress tensor Voigt\[x,y,z,yz,xz,xy\]\s*\(kbar\):\s*(.+?)\s*$",
+    re.IGNORECASE)
 
 
 # ---- TranSIESTA's lines --------------------------------------------------------
@@ -930,6 +944,18 @@ TS_Q_TOTALS = ("dQ", "Qup-Qdn")
 #: too (*"We require that even the SIESTA potential is 'fixed'"*), so a
 #: device's periodic rows carry it as well.
 TS_VHA = re.compile(r"^\s*ts-Vha:\s*(\S+)\s*eV", re.IGNORECASE)
+
+#: TRANSIESTA COMPUTING NO FORCES (``Src/m_ts_options.F90``, printed when it
+#: does not update them -- every molbuilder device: its continued-fraction
+#: equilibrium contour switches them off, *"dispite the user requests"*).
+#: It then sets the energy-density matrix to zero (``Src/m_transiesta.F90``),
+#: which the stress is built from too (``Src/overfsm.f90``).
+TS_FORCES_WRONG = re.compile(
+    r"^\s*ts:\s*\*+\s*ALL FORCES AFTER TRANSIESTA HAS RUN ARE WRONG",
+    re.IGNORECASE)
+#: What every surface says in a force's place, for such a run.
+FORCES_NOT_COMPUTED = ("TranSIESTA does not compute forces in this run (it "
+                       "says they are wrong), and so not the stress either")
 
 #: The start-up echo's frame and its lines (``Src/m_ts_options.F90``; the
 #: contour part is ``Src/m_ts_contour_eq.f90``'s): a row of stars opens and

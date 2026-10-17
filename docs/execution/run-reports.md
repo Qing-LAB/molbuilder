@@ -458,7 +458,15 @@ iteration, so an average over both predicts neither phase's remaining time.
 
 **The force against its tolerance.** A relaxation stops when the largest force
 on any free atom falls below `redata: Force tolerance` (eV/Å); the report
-states both.
+states both. **And the held atoms' when it is the larger** *(the user,
+2026-10-17; plan F14)*: SIESTA states the largest force over every atom beside
+the free atoms' after every step, and when the held atoms carry the larger
+the status line says it after the tolerance, *max force 0.0028 eV/Ang (tol
+0.01); 0.015 eV/Ang on the held atoms*, and the report carries it,
+`max_force_held`. **A TranSIESTA device computes no forces**: it says so in its
+output (`model/parse.md` § 5d.5), and its status line says *TranSIESTA does not
+compute forces in this run (it says they are wrong), and so not the stress
+either* where the force would be, with no number.
 
 ---
 
@@ -682,7 +690,8 @@ card all read; each is read by § 2.3's readers:
 | `n_iters` | — | SCF iterations so far in the current phase: SIESTA's timing rows, a PySCF run's SCF history across its finished steps | every run |
 | `energy` | eV | the latest SCF energy: E_KS of SIESTA's last SCF row, or a PySCF step's energy | every run |
 | `geom_step` | — | the step the engine began, in its own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` |
-| `max_force` | eV/Å | the largest force on an atom; its tolerance is in `text` | every run |
+| `max_force` | eV/Å | the largest force component on a free atom — one the run does not hold (SIESTA's `Max … constrained`); its tolerance is in `text`; absent for a TranSIESTA device, which computes none — `text` says so | every run |
+| `max_force_held` | eV/Å | the largest force component over every atom, stated only when it is larger than `max_force` — a held atom carries it | SIESTA |
 | `per_iter_s` | s | seconds per SCF iteration in the current phase, a step's boundary excluded | every run whose SCF rows are stamped: SIESTA's wrapper tee, a PySCF deck's progress log |
 | `done_pct` | % — a share as the engine printed it, said `40 %` on a card | the share of the spin pass underway the engine says is done — TBtrans's `Calculated N %`, its first estimate `0`; absent between passes and once the last completed — which pass it is, `text` says | `transport`: the transmission rung |
 | `eta_s` | s — a length of time, said in words on a card (`6d`) | the time the engine says the pass underway has left, as of its latest progress line — TBtrans's `ETA in S s` | `transport`: the transmission rung |

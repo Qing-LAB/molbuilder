@@ -56,10 +56,17 @@ a chart is judged against is a dashed line labelled on itself at its right end,
 on a linear axis or a log one (`thresholdMark` — Plotly places a label on a log
 axis by its log10, a line by its value).
 
-**The max-force plot has two lines when the run has frozen atoms** — a thin
-dashed line for *all atoms* (informational, includes the fixed ones) and a solid
-line for the *free atoms* (the real convergence signal, since fixed atoms carry
-forces that don't matter). With no frozen atoms it collapses to a single line.
+**A SIESTA run's max-force plot has two lines** — a thin dashed line for *all
+atoms* (informational, the held ones included) and a solid line for the *free
+atoms* (the convergence signal): SIESTA states both after every step, and with
+nothing held the two lie on each other. A PySCF run that holds no atoms states
+the one, and its plot has one line. **A TranSIESTA
+device computes no forces** (`model/parse.md` § 5d.5): its run carries none, so
+there is no max-force line and no force arrow, and the plot's place says
+*TranSIESTA does not compute forces in this run (it says they are wrong),
+and so not the stress either* —
+the reading pass's sentence, `runtime_info.forces_not_computed` *(the user,
+2026-10-17; plan F14)*.
 
 **A cycle carries its `phase`, and the SCF plots draw the phases apart.** A
 TranSIESTA device converges a periodic SCF for its starting density, then runs

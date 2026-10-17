@@ -5,9 +5,13 @@ For each completed CG/MD step the parser extracts:
   * coordinates      -- from ``outcoor: Atomic coordinates (Ang):`` blocks
   * total energy     -- from ``siesta: E_KS(eV) = ...``  (eV)
   * per-atom forces  -- from ``siesta: Atomic forces (eV/Ang):`` blocks
-  * max force        -- from the ``Max <value>`` line that appears after
-                        the per-atom force block (skipping the duplicate
-                        line ending with ``constrained``)
+  * max force        -- from the two ``Max <value>`` lines after the
+                        per-atom force block: over every atom, and the
+                        one ending ``constrained``, over the free atoms
+
+A TranSIESTA device computes no forces and says so (``ALL FORCES AFTER
+TRANSIESTA HAS RUN ARE WRONG``): its frames carry none
+(``runtime_info["forces_not_computed"]``, `model/parse.md` § 5d.5).
 
 Also captures the most recent unit-cell vectors from
 ``outcell: Unit cell vectors (Ang):`` blocks so the viewer can draw the

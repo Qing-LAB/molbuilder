@@ -85,6 +85,15 @@ class RunEnding:
     #: -- or ``siesta_grammar.SCF_NOT_CONV_MARKER`` when SIESTA stated the
     #: SCF's failure fatal.
     cause:         Optional[str] = None
+    #: WHAT ITS LAST STEP STATED of its forces and stress
+    #: (`model/parse.md` § 2b, § 5d.6): the free atoms' largest force
+    #: component, every atom's, the stress tensor as SIESTA prints it --
+    #: or the sentence for a run that computes none.  ``None`` for an
+    #: output that states none.
+    max_force:           Optional[float] = None
+    max_force_all:       Optional[float] = None
+    stress_voigt_kbar:   Optional[Tuple[float, ...]] = None
+    forces_not_computed: Optional[str] = None
 
 
 def _read(path) -> str:
@@ -136,9 +145,14 @@ def _siesta_reading(path, stderr=None) -> "Tuple[RunEnding, bool]":
 def _ending_of_reading(read: Dict[str, Any]) -> RunEnding:
     """A SIESTA reading's ending -- the one constructor, for the ending
     reader and for a parse's reading handed over (:func:`keep_reading`)."""
+    stress = read.get("stress_voigt_kbar")
     return RunEnding(read["run_state"], read["scf_converged"],
                      read["error_message"], read["phases"],
-                     relaxed=read["relaxed"], cause=read["cause"])
+                     relaxed=read["relaxed"], cause=read["cause"],
+                     max_force=read.get("max_force"),
+                     max_force_all=read.get("max_force_all"),
+                     stress_voigt_kbar=(tuple(stress) if stress else None),
+                     forces_not_computed=read.get("forces_not_computed"))
 
 
 # ---- PySCF: our own decks' end lines, and Python's own failure shape ---- #

@@ -159,11 +159,19 @@ class SiestaReader:
         # starts, or at the end of the output.
         self._step_frame: Optional[List[List[Any]]] = None
         self._step_energy: Optional[float] = None
+        # SIESTA's two closing lines of a step's forces, printed both, always:
+        # ``Max <val>`` over every atom, then ``Max <val> constrained`` over
+        # the free atoms, those the run does not hold -- the one it compares against
+        # ``MD.MaxForceTol`` (`siesta_grammar.MAX_FORCE`).
         self._step_max_force: Optional[float] = None
-        # SIESTA also emits "Max <val> constrained" when at least one atom is
-        # constrained -- the value it compares against ``MD.MaxForceTol``.
         self._step_max_force_constrained: Optional[float] = None
         self._step_forces: List[List[float]] = []
+        # The step's stress, ``Stress tensor Voigt[...] (kbar)``, as printed.
+        self._step_stress: Optional[List[float]] = None
+        # TRANSIESTA COMPUTING NO FORCES (`siesta_grammar.TS_FORCES_WRONG`):
+        # the sentence every surface says in their place; then no step keeps
+        # a force or a stress.
+        self.forces_not_computed: Optional[str] = None
         # The ``siesta: Etot`` of the energy decomposition SIESTA prints after
         # the initial DM and before the first SCF cycle of each step: where
         # the SCF started, kept for display (``runtime_info["initial_etot"]``),
@@ -284,6 +292,7 @@ class SiestaReader:
             self._step_max_force = None
             self._step_max_force_constrained = None
             self._step_forces = []
+            self._step_stress = None
             return
         energy = self._step_energy
         if energy is None and self._current_scf:
@@ -308,12 +317,17 @@ class SiestaReader:
             cum = self._current_scf[-1].get("elapsed_s")
             if isinstance(cum, (int, float)) and math.isfinite(cum):
                 elapsed_s = float(cum)
+        # A RUN THAT COMPUTES NO FORCES keeps none -- nor the stress, built
+        # from the same energy-density matrix TranSIESTA set to zero.
+        computed = self.forces_not_computed is None
         self.steps.append({
             "coords": self._step_frame,
-            "forces": self._step_forces or None,
+            "forces": (self._step_forces or None) if computed else None,
             "energy": energy,
-            "max_force": self._step_max_force,
-            "max_force_constrained": self._step_max_force_constrained,
+            "max_force": self._step_max_force if computed else None,
+            "max_force_constrained": (self._step_max_force_constrained
+                                      if computed else None),
+            "stress_voigt_kbar": self._step_stress if computed else None,
             "scf_history": list(self._current_scf) or None,
             "elapsed_s": elapsed_s,
             "in_progress": in_progress,
@@ -329,6 +343,7 @@ class SiestaReader:
         self._step_max_force = None
         self._step_max_force_constrained = None
         self._step_forces = []
+        self._step_stress = None
         self._step_initial_etot = None
         self._current_scf = []
         self._prev_E_KS = None
@@ -473,7 +488,9 @@ class SiestaReader:
         self._step_forces = []
 
     def _consume_forces(self, line: str, line_no: int) -> str:
-        parts = line.strip().split()
+        # THE SECOND BLOCK'S ROWS carry ``siesta:`` before the atom's index:
+        # the same forces (`siesta_grammar.FORCE_ROW_PREFIX`).
+        parts = _G.FORCE_ROW_PREFIX.sub("", line).strip().split()
         if len(parts) < 4:
             # The line that ends the forces block is often the "Max <value>"
             # line or the next section's header: re-feed it.
@@ -487,6 +504,24 @@ class SiestaReader:
             return END_BUBBLE
         self._step_forces.append([fx, fy, fz])
         return CONTINUE
+
+    def _on_stress(self, line: str, line_no: int) -> None:
+        """``Stress tensor Voigt[x,y,z,yz,xz,xy] (kbar):`` and six numbers."""
+        try:
+            values = [_G.fortran_float(v) for v in
+                      _G.STRESS_VOIGT.match(line).group(1).split()]
+        except (ValueError, AttributeError) as exc:
+            self._warn(line_no, line, f"stress line: malformed value: {exc}",
+                       category="forces")
+            return
+        if len(values) == 6:
+            self._step_stress = values
+
+    def _on_ts_forces_wrong(self, line: str, line_no: int) -> None:
+        """TranSIESTA says it computes no forces (`siesta_grammar.
+        TS_FORCES_WRONG`)."""
+        self.forces_not_computed = _G.FORCES_NOT_COMPUTED
+        self.runtime_info["forces_not_computed"] = _G.FORCES_NOT_COMPUTED
 
     def _on_e_ks(self, line: str, line_no: int) -> None:
         """``siesta: E_KS(eV) =       -1234.567``"""
@@ -966,6 +1001,14 @@ class SiestaReader:
             SectionRule(name="ts_vha", aliases=["ts-Vha: ... eV"],
                         start=matches_regex_ci(_G.TS_VHA.pattern),
                         on_start=self._on_ts_vha),
+            # TRANSIESTA COMPUTING NO FORCES, printed after the echo's frame
+            # closes -- which the general ``ts:`` echo rule below would take
+            # and set aside.
+            SectionRule(name="ts_forces_wrong",
+                        aliases=["ts: *** ALL FORCES AFTER TRANSIESTA HAS "
+                                 "RUN ARE WRONG ***"],
+                        start=matches_regex_ci(_G.TS_FORCES_WRONG.pattern),
+                        on_start=self._on_ts_forces_wrong),
             # TBtrans's energies: its contour section, which the general
             # ``ts:`` echo rule below would take and set aside.
             SectionRule(name="tbt_contour",
@@ -1044,6 +1087,10 @@ class SiestaReader:
                         aliases=["Max <value> constrained"],
                         start=self._max_force_constrained_match,
                         on_start=self._on_max_force_constrained),
+            SectionRule(name="stress_voigt",
+                        aliases=["Stress tensor Voigt[x,y,z,yz,xz,xy] (kbar):"],
+                        start=matches_regex_ci(_G.STRESS_VOIGT.pattern),
+                        on_start=self._on_stress),
         ]
 
     # ---- the runtime facts -------------------------------------------------------
@@ -1133,14 +1180,18 @@ class SiestaReader:
         output grow.  Commits nothing and judges nothing.
 
         ``{phase, cycle, energy, dDmax, dHmax, dq, residuals, step,
-        step_kind, steps_done, max_force, max_force_constrained, criteria,
-        targets, tbtrans, done_pct, eta_s}``, each present only when the
+        step_kind, steps_done, max_force, max_force_all, stress_voigt_kbar,
+        forces_not_computed, criteria, targets, tbtrans, done_pct, eta_s}``,
+        each present only when the
         output states it: the
         current SCF row's values (a NEGF row's charge among them), and as
         ``residuals`` each beside the criterion its phase states --
         ``{name: (value, tolerance or None, unit)}``; the step SIESTA last
         began, its number and its words for what a step is, and so how many
-        steps are done; the latest largest force, and what each must reach;
+        steps are done; the latest largest force on the free atoms
+        and over every atom, and the latest stress -- or, for a run that
+        computes no forces, the sentence in their place -- and what each
+        must reach;
         TBtrans's account of its loop, a copy, and the pass underway's share
         done and the time TBtrans says it has left.
         """
@@ -1160,14 +1211,7 @@ class SiestaReader:
             out["step_kind"], out["step"] = self.step_begun
             # SIESTA begins step N once steps 0..N-1 are done.
             out["steps_done"] = self.step_begun[1]
-        force = (self._step_max_force_constrained, self._step_max_force)
-        if force == (None, None) and self.steps:
-            force = (self.steps[-1]["max_force_constrained"],
-                     self.steps[-1]["max_force"])
-        if force[0] is not None:
-            out["max_force"], out["max_force_constrained"] = force[0], True
-        elif force[1] is not None:
-            out["max_force"] = force[1]
+        out.update(self._forces_now())
         crit = self.criteria()
         if crit:
             out["criteria"] = crit
@@ -1190,6 +1234,40 @@ class SiestaReader:
             if passes:
                 out.update({k: passes[-1][k] for k in ("done_pct", "eta_s")
                             if k in passes[-1]})
+        return out
+
+    def _forces_now(self) -> Dict[str, Any]:
+        """The latest forces and stress the output states -- the step in
+        flight's, else the last step that stated them: ``max_force``, the
+        free atoms' largest component, ``max_force_all`` every atom's
+        beside it, ``stress_voigt_kbar``; or, for a run that computes none,
+        ``forces_not_computed``, the sentence in their place
+        (`model/parse.md` § 4a).  :meth:`now` and :meth:`finish` both
+        answer with it."""
+        if self.forces_not_computed is not None:
+            return {"forces_not_computed": self.forces_not_computed}
+        # ONE STEP'S, all three: a step in flight that has printed its forces
+        # and not yet its stress states no stress.
+        free, every, stress = (self._step_max_force_constrained,
+                                 self._step_max_force, self._step_stress)
+        if (free, every, stress) == (None, None, None):
+            stated = next((s for s in reversed(self.steps)
+                           if s["max_force"] is not None
+                           or s["max_force_constrained"] is not None
+                           or s["stress_voigt_kbar"]), None)
+            if stated is not None:
+                free = stated["max_force_constrained"]
+                every = stated["max_force"]
+                stress = stated["stress_voigt_kbar"]
+        out: Dict[str, Any] = {}
+        if free is not None:
+            out["max_force"] = free
+            if every is not None:
+                out["max_force_all"] = every
+        elif every is not None:
+            out["max_force"] = every
+        if stress is not None:
+            out["stress_voigt_kbar"] = list(stress)
         return out
 
     def finish(self) -> Dict[str, Any]:
@@ -1283,7 +1361,7 @@ class SiestaReader:
                 "relaxed": self.relaxed, "cause": self.cause,
                 "error_message": self.error_message,
                 "runtime_info": self.runtime_info,
-                "warnings": self.warnings}
+                "warnings": self.warnings, **self._forces_now()}
 
 
 def read_output(path, *, warn: Optional[Callable[[int, str, str, str], None]]
