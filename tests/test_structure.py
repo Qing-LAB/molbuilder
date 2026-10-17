@@ -415,3 +415,25 @@ class TestElementCaseCanonicalization:
         text = "2\nuppercase test\nFE 0.0 0.0 0.0\nZN 1.5 0.0 0.0\n"
         s = Structure.from_xyz(text)
         assert s.elements == ["Fe", "Zn"]
+
+
+@pytest.mark.parametrize("title", [
+    "water",
+    "x" * 70,
+    " ".join(["benzene-1,4-dithiol between two Au(111) slabs"] * 4),
+], ids=["one record", "seventy characters", "several records"])
+def test_a_pdb_title_keeps_to_its_columns_and_reads_back(title):
+    """`model/structure.md` § 2.2c: a TITLE record holds seventy characters,
+    columns 11-80; a longer title continues on further records, numbered in
+    columns 9-10 and broken between words -- every line of the document
+    within column 80 -- and `from_pdb` reads the title back as it was
+    written.  The silent failure (plan PDB-T): a long title written past
+    column 80, an invalid record."""
+    s = Structure(elements=["H", "H"],
+                  positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], title=title)
+    pdb = s.to_pdb()
+    records = [ln for ln in pdb.splitlines() if ln.startswith("TITLE")]
+    assert all(len(ln) <= 80 for ln in pdb.splitlines()), pdb
+    assert [ln[8:10].strip() for ln in records] == (
+        [""] + [str(k) for k in range(2, len(records) + 1)]), records
+    assert Structure.from_pdb(pdb).title == title

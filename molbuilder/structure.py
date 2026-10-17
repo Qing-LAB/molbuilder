@@ -591,6 +591,23 @@ def merge_annotations(base: "dict[str, AtomChannel]",
     return out
 
 
+def _pdb_title_records(title: str) -> List[str]:
+    """The TITLE records ``title`` takes (PDB 3.3, *TITLE*): its text in
+    columns 11-80, seventy characters a record.  A longer title CONTINUES on
+    further records, numbered in columns 9-10, each continuation's text from
+    column 12 -- broken between words, which `from_pdb` joins with one
+    space, so the title reads back as it was written; never cut, and never
+    past column 80 (`model/structure.md` § 2.2c)."""
+    if len(title) <= 70:
+        return [f"TITLE     {title:<70s}"]
+    import textwrap
+    lines = textwrap.wrap(title, width=70, subsequent_indent=" ",
+                          break_on_hyphens=False)
+    return ([f"TITLE     {lines[0]:<70s}"]
+            + [f"TITLE   {k:>2d}{line:<70s}"
+               for k, line in enumerate(lines[1:], start=2)])
+
+
 @dataclass
 class Structure:
     """All-atom 3D structure of a (poly)molecule.
@@ -2218,7 +2235,8 @@ class Structure:
         :meth:`to_xyz` records why there is no ``path`` argument."""
         buf = StringIO()
         if self.title:
-            buf.write(f"TITLE     {self.title:<70s}\n")
+            for record in _pdb_title_records(self.title):
+                buf.write(record + "\n")
         for i in range(self.n_atoms):
             el   = self.elements[i]
             name = self.atom_names[i]

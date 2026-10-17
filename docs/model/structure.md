@@ -371,7 +371,7 @@ no rule anywhere.
 |---|---|
 | `to_xyz:1958` | the comment line — `(comment or self.title or "Built by molbuilder")` |
 | ~~`to_extxyz`~~ | **retired** 2026-10-09 with the extended-XYZ writer (§ 2.3, *the comment line is never metadata*) |
-| `to_pdb:1978` | `TITLE     {self.title:<70s}` — padded to 70 characters, never cut: a longer title runs past the record's column 80 |
+| `to_pdb` | the TITLE record, columns 11–80 — seventy characters a record; a longer title continues on further TITLE records, numbered in columns 9–10, broken between words, which `from_pdb` joins with one space — never cut, never past column 80 *(2026-10-17, plan PDB-T; it ran past column 80 until then)* |
 | ~~`identity_to_dict`~~ | **retired** — it no longer emits the title, so the sidecar never carries the comment line |
 
 #### It is not carried by the door that carries the others
@@ -406,9 +406,11 @@ forgets.
    `.xyz` in an editor, reload, and the old title comes back with no word
    said. This is § 1.13's condition — stated state overwritten by stored
    state — on the one line of a structure file a person can obviously edit.
-6. **`to_pdb` writes the TITLE record padded to 70 characters, never cut**
+6. **`to_pdb` wrote the TITLE record padded to 70 characters, never cut**
    (`{self.title:<70s}`), so a contaminated title (90+ chars) ran past the
-   record's column 80.
+   record's column 80. *(The rule cleaned the title; the record itself
+   continues a long one onto numbered TITLE records since 2026-10-17, plan
+   PDB-T.)*
 
 #### Everything that would be affected by a change
 
@@ -690,7 +692,7 @@ alone; it never asks what made the frames.
 | Method | Format | Guarantees |
 |---|---|---|
 | `to_xyz(*, comment="")` | xmol XYZ **text** | one block per frame the structure holds (§ 2.2e): line 1 = `N`; line 2 = comment-or-title, and nothing else; then `El x y z` per atom |
-| `to_pdb()` | PDB ATOM records, as **text** | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
+| `to_pdb()` | PDB ATOM records, as **text** | TITLE if set, continued onto numbered records past seventy characters (§ 2.2c); serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
 | `to_pyscf(*, as_string=False)` (`:2007`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
 | `to_ase()` (`:2034`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
 | `from_xyz(text, *, title=None)` (`:1646`) | XYZ **text** | every frame of the document, one structure (§ 2.2e); see requirements below |
