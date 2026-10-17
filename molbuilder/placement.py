@@ -30,7 +30,7 @@ from typing import Callable, List, Optional, Tuple
 
 from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, SECRETS_DIRNAME,
                          client_secret, config_dir,
-                         jupyter_lab_home, logs_dir,
+                         jobs_dir, jupyter_lab_home, logs_dir,
                          reports_dir, runtime_dir, secrets_dir, session_key,
                          state_dir)
 
@@ -133,6 +133,12 @@ def places() -> Tuple[Place, ...]:
         Place("reports/", reports_dir, True, None,
               "per-run measurements, kept and grepped; a scientific report, "
               "with nothing in it to guard"),
+        Place("jobs/", jobs_dir, True, PRIVATE_DIR_MODE,
+              "each file names a calculation's folder and a process of this "
+              "account, which `molbuilder jobs stop` signals"),
+        Place("a job's address", jobs_dir, False, None,
+              "an address, not a secret -- the folder around it is what is "
+              "private", "*.json"),
         Place("the runtime directory", runtime_dir, True, PRIVATE_DIR_MODE,
               "ours, and when $XDG_RUNTIME_DIR is absent it falls back inside "
               "the state root, where the default umask is not good enough"),

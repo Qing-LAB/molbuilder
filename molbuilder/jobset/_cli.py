@@ -1820,8 +1820,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "ending with how the run ended.  Without it a run here "
                    "starts in the background and the launch returns at once, "
                    "leaving it running -- closing the terminal does not end "
-                   "it, `kill -- -<pid>` does -- and nothing is lost: the "
-                   "run script copies everything it prints into its "
+                   "it, `molbuilder jobs stop` does -- and nothing is lost: "
+                   "the run script copies everything it prints into its "
                    ".runwrap log in the run folder, a walk appends each "
                    "member's output to its log under launch/, and `jobset "
                    "status` follows the run.  Either way the question "
@@ -2207,7 +2207,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
              else "WOULD run") if dry_run
             else "result")
     for r in results:
-        tail = (f"job {r.job_id}" if r.job_id else
+        tail = (f"job {r.job_id}" + (f" -- {r.detail}" if r.detail else "")
+                if r.job_id else
                 (f"rc={r.returncode}"
                  + (f" -- {r.detail}" if r.status == "failed" and r.detail
                     else "")

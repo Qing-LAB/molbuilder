@@ -307,7 +307,7 @@ class Said:
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
             prompt=None, question: str = "submit this?",
-            err: bool = False, other=None) -> Said:
+            err: bool = False, other=None, default: bool = True) -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
@@ -320,7 +320,8 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     foreground, or in the background, `job-system.md` § 6.0): asked
     ``[Y/n/<word>(<LETTER>)]``, Enter yes; given, the answer is
     :attr:`Said.other` and its words ``word``.  ``prompt`` then returns what
-    was typed.
+    was typed.  ``default`` is what Enter answers: yes, but for a question
+    whose yes cannot be taken back (`molbuilder jobs stop`, ``[y/N]``).
     """
     import click
     # THROUGH THE GUARDED DOOR: a bare `sys.stdin.isatty()` raises on exactly
@@ -342,7 +343,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
                     asked=False)
     if other is None:
         prompt = prompt or (lambda: click.confirm(f"  {question}",
-                                                  default=True, err=err))
+                                                  default=default, err=err))
         yes = bool(prompt())
         return Said(yes, "yes" if yes else "no")
     letter, word = other

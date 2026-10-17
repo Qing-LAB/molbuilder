@@ -60,8 +60,9 @@ def set_template_value(template: Path, name: str, value: str) -> None:
 @contextmanager
 def live_siesta(tree: Path, tmp_path_factory):
     """A module's road with the real SIESTA: no read of the developer's
-    config directory (`conftest.config_root_is_never_the_developers`, which
-    a module fixture does not get), this box probed with the conda the
+    config directory, nor a write into their state folder
+    (`conftest.config_root_is_never_the_developers`, which a module fixture
+    does not get), this box probed with the conda the
     wrapper sources (`configuration.md` § 4), the env's own ``bin`` ahead of
     the suite's stub toolchain, the working folder beside the tree, and the
     checked-in pseudopotentials -- H, C, O -- in the tree's library.  Yields
@@ -74,8 +75,9 @@ def live_siesta(tree: Path, tmp_path_factory):
     from conftest import write_machine_record
     mp = pytest.MonkeyPatch()
     try:
-        mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
-        mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+        from conftest import outside_the_developers_folders
+        outside_the_developers_folders(mp.setenv, mp.delenv,
+                                       tmp_path_factory)
         write_machine_record(env_init={
             "activation": "conda activate",
             "preamble": f"source {conda_hook()}"})

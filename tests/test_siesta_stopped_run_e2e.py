@@ -95,11 +95,9 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
 
     mp = pytest.MonkeyPatch()
     try:
-        # THE SUITE'S CONFIG RULE, which its autouse fixture applies per test
-        # and so not to a module's fixture: no read of the developer's
-        # config directory (`conftest.config_root_is_never_the_developers`).
-        mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
-        mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+        from conftest import outside_the_developers_folders
+        outside_the_developers_folders(mp.setenv, mp.delenv,
+                                       tmp_path_factory)
         # ...and the box probed, as a real one is before its first prep.
         # ...its record saying how a shell enters conda here -- the
         # activation the generator reads (`configuration.md` § 4).

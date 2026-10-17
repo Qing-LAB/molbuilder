@@ -164,7 +164,7 @@ the floor plan had no room for.
 flowchart TB
     subgraph F7["<b>7 · surfaces</b> — ask the person, show the answer"]
       direction LR
-      S1["cli.py"]; S2["jobset/_cli.py"]; S3["web/"]
+      S1["cli.py"]; S2["jobset/_cli.py"]; S3["web/"]; S4["jobs_cli.py"]
     end
     subgraph F6["<b>6 · observe</b> — roll up what happened"]
       direction LR
@@ -195,7 +195,7 @@ flowchart TB
       N5["paths.py"]; N6["runfiles.py"]
       N8["calcdirs.py"]; N9["runrecord.py"]; N10["parse/"]
       N11["jobset/ledger.py"]; N12["jobset/errors.py"]; N13["jobset/machine.py"]
-      N14["jobset/planned.py"]
+      N14["jobset/planned.py"]; N15["joblist.py"]
     end
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
     F5 -.-> F1
@@ -218,13 +218,13 @@ note records the deletion.)*
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers | know what a calculation is — a stage, a ladder, a plan |
+| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission; a queue job's cluster, whether the queue lists it, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, `job-system.md` § 6.0a) | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `queue.cluster` / `lists` / `cancel` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` | know what a calculation is — a stage, a ladder, a plan |
 | **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template` · `jobset/migrate` · `runs` | `read_task` · `write_task` · `find_template` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `openable` · `transmission_point` · `folder_answer` | `task.json` · the template | **name a machine** |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/transport_rung` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
 | **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` | `stage_home` · `open_run` · `hand_over` · `job_dir_names` · `paths.attempts_in` · `latest_attempt` · `continuation_answer` · `usable` · `gather_sources` · `task_state` · `readiness` · `job_of` · `first_launch_takes` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `launch_agreement` · `check_launch_matches_deck` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
-| **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `summarize` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s and `launch`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
+| **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `job_members` · `summarize` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobs_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · `molbuilder jobs {status,stop}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s and `launch`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
 **Every `jobset` module has a floor** *(W55 B7, 2026-10-03)*. Five of them had
 none — `plan`, `commands`, `continuation`, `ask`, `migrate` — so an import into

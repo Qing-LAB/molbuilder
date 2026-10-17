@@ -127,6 +127,18 @@ def isolated_projects_root_module(tmp_path_factory):
         mp.undo()
 
 
+def outside_the_developers_folders(setenv, delenv, tmp_path_factory) -> None:
+    """THE SUITE'S RULE FOR A MODULE'S OWN SETUP, which the autouse fixture
+    (`config_root_is_never_the_developers`) applies per test and so not to a
+    module-scoped fixture: no read of the developer's config directory, and
+    no write into their state folder -- a launch leaves its address there
+    (`config_dir.jobs_dir`).  ``setenv`` / ``delenv`` are the caller's
+    monkeypatch's, undone with it."""
+    delenv("MOLBUILDER_CONFIG_DIR", raising=False)
+    setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+    setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("xdg-state")))
+
+
 @pytest.fixture
 def isolated_projects_root(tmp_path, monkeypatch):
     """Point the ONE door at a per-test tree — **opt in, not autouse**.
@@ -522,6 +534,14 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     # -- the same reasoning as the HOME line above.
     monkeypatch.setenv("XDG_RUNTIME_DIR",
                        str(tmp_path_factory.mktemp("xdg-runtime")))
+
+    # AND THE STATE ROOT, which a set `$XDG_STATE_HOME` keeps away from the
+    # HOME redirected above.  It holds the addresses of the jobs launched
+    # from this machine (`config_dir.jobs_dir`): a launch under test would
+    # leave one among the developer's own, and `molbuilder jobs status`
+    # would read theirs.  CLEARED, so the state root is HOME's -- the one
+    # above, or a test's own, which still wins.
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
 
 
 @pytest.fixture(scope="session", autouse=True)

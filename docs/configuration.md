@@ -664,7 +664,9 @@ $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 │   ├── user-settings/          what a person changes inside Lab — SHARED, never wiped
 │   ├── workspaces/<port>/      which documents were open — PER SERVER, emptied at each start
 │   └── jupyter_server_config.py  copied from data/ — suppresses .ipynb_checkpoints
-└── reports/               per-run measurements — KEPT              config_dir.reports_dir()
+├── reports/               per-run measurements — KEPT              config_dir.reports_dir()
+└── jobs/                  the jobs launched from here, an address each  0700  config_dir.jobs_dir()
+    └── <id>.json               written at the launch, dropped once its end is said   joblist.write()
 
 $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 │                                             config_dir.runtime_dir()

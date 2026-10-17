@@ -2337,9 +2337,9 @@ here, in the background` or `in the foreground` — and its answer: `yes`, `no`,
 the other way's word, or `yes (--yes)` when `--yes` gave it. **What it says**: shown, *about to start here, in
 the background:* or *about to run here, waited on:*; a dry run's line *WOULD
 start in the background* or *WOULD run*; sent, the run's line *started in the
-background*, its pid, and **how to stop it** — `kill -- -<pid>`: the run is
-the leader of its own process group, and a signal to that group reaches the
-engine; to the run script alone it would wait for the engine to end, since
+background*, its pid, and **how to stop it** — `molbuilder jobs stop <id>`
+(§ 6.0a): the run is the leader of its own process group, and a signal to
+that group reaches the engine; to the run script alone it would wait for the engine to end, since
 bash runs a trap only after the command it waits on. **Nothing it prints is
 lost**, because nothing reaches a terminal that is not also in a file: the run
 script copies everything it prints — standard output and error — into its
@@ -2377,8 +2377,8 @@ the benchmark's own script (`launch/<name>.run.sh`, written by
 own counts, timed, under the per-trial bound when one is given
 (`--trial-timeout`, here as on a queue); a trial that fails leaves the rest to
 run, and the walk exits nonzero when any failed. Stopped by the person —
-Ctrl-C at a launch waited on, a lost terminal, `kill -- -<pid>` of one left in
-the background, a cancel — it starts no further trial (one under a
+Ctrl-C at a launch waited on, a lost terminal, `molbuilder jobs stop` of one
+left in the background, a cancel — it starts no further trial (one under a
 per-trial bound ends at it); what it did not reach is measured again from the
 state saved before the benchmark's prep.
 **A transport bias sweep is not a benchmark** *(user, 2026-10-05: "bias scan is
@@ -2417,6 +2417,102 @@ flags as typed. **A benchmark's queue
 is its launch's**: its shelves' headers are written at launch, and its sides
 are named there (`--domain`, `--gpu-domain`) and admitted there, as what it
 sends (`scheduler.md` R9).
+
+### 6.0a The jobs launched from this machine — `molbuilder jobs` *(user, 2026-10-16: "can we keep the status of running jobs the same way as we keep status of running server? … a similar way to check jobs submitted/directly launched etc? and we can use similar verb to stop a task if we need to")*
+
+**Every launch leaves an address, the way a server leaves its pidfile**
+(`molbuilder serve status`, [`ops/deployment.md`](?doc=ops/deployment.md)).
+The one sender (`submit._go`) writes it the moment a submission goes — a run
+here once its process exists, a queue job once the scheduler gives its id (a
+job whose id `sbatch` did not print gets none) — one file per submission in
+molbuilder's state folder, `<state dir>/jobs/`
+([`configuration.md`](?doc=configuration.md), the tree), kept there past a
+logout as the run is; the ledger's `launched` line names it (`job`). A file
+that could not be written is said on the launch's line — beside a queue job's
+id, or beside a run left in the background, which is then named by its pid,
+`kill -- -<pid>`. **It holds an address, never a state:**
+
+| key | what it is |
+|---|---|
+| `schema` | `molbuilder/job@1` |
+| `id` | what `jobs stop` names: `<host>-<pid>` for a run here; for a queue job its job id, as `squeue` lists it |
+| `how` | `here` — waited on or left in the background (`background`) — or `queue` |
+| `host` | the node it was launched on: a pid means something only there, and a home folder a cluster's login nodes share holds every node's files |
+| `pid` · `started` | a run here: its process, and when the kernel started it with the boot it belongs to (Linux's `/proc`) — together what tells the run from a later process given the same pid. A warm retry re-execs in the same process, so the file stays true |
+| `job_id` · `cluster` | a queue job: the scheduler's id, and the cluster it was sent to as the scheduler names it (`ClusterName`) — a home folder two clusters share holds both clusters' jobs |
+| `calculation` | the calculation's folder — printed, as every line names it, by its address from the projects root |
+| `members` | each member's stage → its run, as a record names a run (`runrecord.RunRef`: its folder, or where its stage's runs share one, its own name), and that run's launch record, which its state is asked through |
+| `launched_at` | when it went |
+
+**What it is doing is read fresh, each time** — one fact, one source: a run
+here is going while its process is (the same host, pid and start — a machine
+with no `/proc` says it cannot tell); a queue job while the scheduler lists
+it (`squeue`, asked on its own cluster — another cluster's job is said *sent
+to cluster C: ask there*, and a machine with no `squeue` says it cannot ask;
+both keep the file); each member's own state is its run's, read through its
+launch record by the run door — that run, never its stage's newest; where a
+stage's runs share a folder, the run its warm retries reached, each retry a
+run of its own (`runrecord.retried_to`, [`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 3.5) — and for a run of points, a container no one run speaks for, its
+stage's row of `jobset status` (`runstatus.job_members`); a run no longer on
+disk — a restore went back past it — is said so. Where the two
+disagree — the process gone while its run still reads *queued*, stopped
+before its monitor began; a queue job the scheduler no longer lists, its run
+still *running* — both are said, and neither overrules the other.
+
+**`molbuilder jobs status`** lists every file: its id, how it went, when, the
+calculation, and each member with its state in the status door's words —
+here, a transmission left in the background, then once it was stopped:
+
+```text
+qlabsrv-312877  run here on qlabsrv, in the background, pid 312877 -- its process is going
+  launched 2026-10-16T22:06:45+00:00; its calculation:
+  molbuilder jobset status --bundle P/transport/S
+    transmission  05_transmission/run-0  running
+```
+
+```text
+qlabsrv-312877  run here on qlabsrv, in the background, pid 312877 -- its process has ended
+  launched 2026-10-16T22:06:45+00:00; its calculation:
+  molbuilder jobset status --bundle P/transport/S
+    transmission  05_transmission/run-0  failed -- stopped before its end: …
+  ended -- said once; its address is removed
+```
+
+**A job that has ended is shown once — how each member ended — and its file
+removed**; its run's folder and the calculation's ledger keep its history. A
+run waited on is shown by its own launch, which says how it ended — or,
+stopped at its terminal, its stop — and removes its file then. A run here
+launched on another host is said so — *on HOST: ask there* — and never
+removed or signalled here; a file that does not read is said, with its
+path, and kept.
+
+**`molbuilder jobs stop <id>`** — the line a launch prints beside a run it
+left in the background — shows what it will stop — the calculation,
+its members, the pid or the job id — and asks *stop it? [y/N]*; `--yes`
+answers in advance, and with nobody to ask nothing is stopped
+([`submission.md`](?doc=execution/submission.md) S4); the question and its
+answer are written in the calculation's ledger, a *no* too, as a launch's are.
+A run here is checked to be the process launched (host, pid, start), and
+checked again once the answer is given: a run left in the
+background leads its own process group, and SIGTERM goes to the group, so it
+reaches the engine — to the run script alone it would wait for the engine to
+end; a run waited on is stopped at its terminal, with Ctrl-C, and `jobs
+stop` says so. A queue job: `scancel <job id>`. The calculation's ledger
+records the stop (`stopped`, and how), and the verb says it: *stopped:
+SIGTERM to its process group, <pid>* — or *scancel <job id>*. The run then
+reads *failed — stopped before its
+end* by its own files ([`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 4.2); one stopped before its monitor began reads *queued*, and `jobs
+status` says its process is gone. A trial under a benchmark's per-trial bound
+ends at its bound.
+
+The address is floor 1's (`molbuilder/joblist.py`, beside `runrecord`: its
+writer, its reader, and the signal to a run here, checked first); the
+cluster, whether the scheduler lists a job and its cancel are the
+scheduler's floor 1 too (`scheduler/queue.py`); the verbs are a surface,
+floor 7
+([`architecture.md`](?doc=execution/architecture.md) § 2).
 
 ### 6.1 On a cluster — SLURM
 
@@ -2999,6 +3095,7 @@ For someone extending the framework:
 | The sweep's reader — trials' artifacts → `bench-result.json` (the pure timing parsers are `molbuilder/bench/result.py`) | `molbuilder/jobset/summarize.py` |
 | The decision ledger (`jobset-decisions.log`, one JSON object per decision) | `molbuilder/jobset/ledger.py` |
 | The CLI verbs (`molbuilder jobset …`) | `molbuilder/jobset/_cli.py` |
+| The jobs launched from this machine — each launch's address, written by the one sender, read fresh (§ 6.0a) | `molbuilder/joblist.py`; the verbs, `molbuilder/jobs_cli.py`; a queue job asked of the scheduler, `molbuilder/scheduler/queue.py`; each member's state, `runstatus.job_members` |
 | The `.sbatch` header emission (shared with single-job) | `molbuilder/runwrap.py::render_sbatch` |
 
 **To add a new engine to the job system**, you write **one engine seam** — the

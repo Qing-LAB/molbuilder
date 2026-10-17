@@ -173,6 +173,11 @@ cli.add_command(envs_group)
 from .jobset._cli import jobset_group
 cli.add_command(jobset_group)
 
+# `molbuilder jobs ...`  (status / stop): the jobs launched from this
+# machine, kept the way a server is (docs/execution/job-system.md 6.0a).
+from .jobs_cli import jobs_group
+cli.add_command(jobs_group)
+
 # NO CALCULATION KIND HAS A VERB: there is no `spectra`, no `optimization`, no
 # `vibration`.  A kind is described in `task.json` and run through `jobset` --
 # decision 7, "everything is a job set", and a second way in is a second way to

@@ -21,8 +21,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`layered` (``real_h2_layered``) -- an H2 optimization, layered
   folders, the `publishable` ladder: `coarse` launched, a dry run of
   launching it again, launched again warm and then cold, `medium` prepared
-  on it and sent by a launch that names no stage; and the run script's own
-  dry runs, on a copy of `coarse`'s prepared folder;
+  on it and sent by a launch that names no stage, left in the background,
+  and the jobs launched from here asked twice once it ended; and the run
+  script's own dry runs, on a copy of `coarse`'s prepared folder;
 * :func:`bench` (``real_h2_bench``) -- a two-trial benchmark of the same
   H2's `coarse`: one trial launched by name, then the rest by a launch of
   the benchmark under a per-trial bound;
@@ -60,10 +61,13 @@ class RealRun:
     """A calculation made on the road with the engine, and what every
     command typed on it answered, in the order typed (``said``, by a name
     the fixture gives each step).  ``files_before`` / ``files_after`` hold
-    the calculation's files around the one step that must write nothing."""
+    the calculation's files around the one step that must write nothing;
+    ``jobs`` what `molbuilder jobs status` answered, by when it was asked
+    (`job-system.md` § 6.0a)."""
     tree: Path
     bundle: Path
     said: Dict[str, Said] = field(default_factory=dict)
+    jobs: Dict[str, object] = field(default_factory=dict)
     files_before: Dict[str, tuple] = field(default_factory=dict)
     files_after: Dict[str, tuple] = field(default_factory=dict)
 
@@ -141,22 +145,32 @@ def _launched_here(run: RealRun) -> int:
                 if e["decision"] == "launched" and e.get("background"))
 
 
-def _stopped_by_its_line(run: RealRun, launched: Said, underway, *,
-                         within: float) -> None:
-    """A run here a launch left in the background, stopped as that launch
-    said to stop it -- its *to stop it:* line, typed in a shell -- once
-    ``underway()`` holds, within ``within`` seconds; then waited for until
-    no process of its group is left: the run script, the engine and the
-    monitor, whose closing record is the stop's last word
-    (`job-system.md` § 6.0)."""
+def _until(holds, *, within: float, what: str) -> None:
+    """``holds()``, within ``within`` seconds -- a run's own files read as
+    it goes."""
     import time
     end = time.monotonic() + within
-    while not underway():
-        assert time.monotonic() < end, f"not underway within {within} s"
+    while not holds():
+        assert time.monotonic() < end, f"{what}: not within {within} s"
         time.sleep(0.5)
+
+
+def _stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
+    """A run here a launch left in the background, stopped as that launch
+    said to stop it -- its *to stop it:* line, typed at a terminal and its
+    question answered yes, written down under ``step`` -- then waited for
+    until no process of its group is left: the run script, the engine and
+    the monitor, whose closing record is the stop's last word
+    (`job-system.md` § 6.0, § 6.0a)."""
+    import shlex
+    import time
     line = next(ln.split("to stop it:", 1)[1].strip()
                 for ln in launched.output.splitlines() if "to stop it:" in ln)
-    subprocess.run(["bash", "-c", line], check=True, timeout=30)
+    words = shlex.split(line)
+    assert words[0] == "molbuilder", line
+    said = _at_a_terminal(words[1:], "y")
+    run.said[step] = said
+    assert said.exit_code == 0, f"{step}: {said.output}"
     pid = _launched_here(run)
     _left_to_end(run)
     end = time.monotonic() + 120
@@ -187,28 +201,33 @@ def _left_to_end(run: RealRun) -> None:
                     # cleanup of an ended child: it ended
 
 
-def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
-    """``molbuilder jobset <words> --bundle <the calculation>`` at a
-    terminal, its question answered ``answer`` as a person types it: the real
-    command in a process of its own, a pseudo-terminal its input
-    (`job-system.md` § 6.0), started from the repository's root as every
-    test that runs the command in its own process starts it -- the package
-    is run from its source, never installed -- the road's settings reaching
-    it in its environment; written down under ``step``; it must succeed."""
+def _at_a_terminal(words, answer: str) -> Said:
+    """``molbuilder <words>`` at a terminal, its question answered
+    ``answer`` as a person types it: the real command in a process of its
+    own, a pseudo-terminal its input (`job-system.md` § 6.0), started from
+    the repository's root as every test that runs the command in its own
+    process starts it -- the package is run from its source, never
+    installed -- the road's settings reaching it in its environment."""
     import pty
     import sys
     lead, follow = pty.openpty()
     try:
         os.write(lead, f"{answer}\n".encode())
         done = subprocess.run(
-            [sys.executable, "-m", "molbuilder.cli", "jobset",
-             *map(str, words), "--bundle", str(run.bundle)],
+            [sys.executable, "-m", "molbuilder.cli", *map(str, words)],
             stdin=follow, capture_output=True, text=True, timeout=3600,
             cwd=Path(__file__).resolve().parents[2])
     finally:
         os.close(follow)
         os.close(lead)
-    said = Said(done.returncode, done.stdout + done.stderr)
+    return Said(done.returncode, done.stdout + done.stderr)
+
+
+def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
+    """``molbuilder jobset <words> --bundle <the calculation>`` at a
+    terminal, its question answered ``answer`` (:func:`_at_a_terminal`);
+    written down under ``step``; it must succeed."""
+    said = _at_a_terminal(["jobset", *words, "--bundle", run.bundle], answer)
     run.said[step] = said
     assert said.exit_code == 0, f"{step}: {said.output}"
     return said
@@ -311,6 +330,11 @@ def layered(tmp_path_factory) -> RealRun:
         _taken(run, "launch naming no stage", "launch", "task", "--mode",
                "direct", "--yes")
         _left_to_end(run)
+        # ...AND THE JOBS LAUNCHED FROM HERE, asked once it ended, and again
+        # (`job-system.md` § 6.0a).
+        from support.road import molbuilder
+        run.jobs["after it ended"] = molbuilder("jobs", "status")
+        run.jobs["again"] = molbuilder("jobs", "status")
         _taken(run, "status", "status")
     return run
 

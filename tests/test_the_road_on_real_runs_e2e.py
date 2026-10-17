@@ -128,6 +128,39 @@ def test_a_run_here_left_in_the_background_loses_nothing_it_prints(
     assert left["sid"] == left["pid"] and left["waited_here"], left
 
 
+def test_a_run_here_that_ended_is_said_once_by_the_jobs_list(real_h2_layered):
+    """Every launch here leaves its address, named on its ledger line
+    (`job-system.md` § 6.0a): a run waited on is told by its own launch and
+    leaves none behind; a run left in the background, once it has ended, is
+    said by `molbuilder jobs status` once -- its process ended, its member's
+    run in the status door's words -- and then dropped.  The silent
+    failures: a list that holds every run that ever went, and a run that
+    ended said as going."""
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    from support.road import job_lines
+    lines = [json.loads(x) for x in (real_h2_layered.bundle / LEDGER_FILE)
+             .read_text().splitlines() if x.strip()]
+    went = [e for e in lines if e["decision"] == "launched"]
+    left = [e["job"] for e in went if e.get("background")]
+    waited = [e["job"] for e in went if not e.get("background")]
+    assert len(left) == 1 and waited, went
+    after = real_h2_layered.jobs["after it ended"]
+    assert after.exit_code == 0, after.output
+    host, pid = left[0].rsplit("-", 1)
+    mine = job_lines(after.output, left[0])
+    assert mine and mine[0] == (f"{left[0]}  run here on {host}, in the "
+                                f"background, pid {pid} -- its process has "
+                                f"ended"), after.output
+    assert any(ln.startswith("    medium  02_medium/run-0  finished")
+               for ln in mine), mine
+    assert mine[-1] == "  ended -- said once; its address is removed", mine
+    assert not any(job_lines(after.output, job) for job in waited), \
+        after.output
+    again = real_h2_layered.jobs["again"]
+    assert again.output.strip() == ("no job launched from this machine is "
+                                    "on file."), again.output
+
+
 def test_a_run_here_asked_at_a_terminal_goes_the_way_answered(
         real_h2_layered):
     """At a terminal a run here is asked *launch in the background?

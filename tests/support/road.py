@@ -34,6 +34,28 @@ import numpy as np
 import pytest
 
 
+def molbuilder(*args, input=None):
+    """`molbuilder <args>`, as typed -- ``input`` what the person types at
+    its questions."""
+    from click.testing import CliRunner
+
+    from molbuilder.cli import cli
+    return CliRunner().invoke(cli, [str(a) for a in args], input=input)
+
+
+def job_lines(output: str, job: str) -> list:
+    """The lines `molbuilder jobs status` says of ``job``: its own line and
+    the lines under it, up to the next job's (`job-system.md` § 6.0a)."""
+    lines = output.splitlines()
+    at = next((i for i, ln in enumerate(lines)
+               if ln.startswith(f"{job}  ")), None)
+    if at is None:
+        return []
+    end = next((i for i in range(at + 1, len(lines))
+                if lines[i] and not lines[i].startswith(" ")), len(lines))
+    return lines[at:end]
+
+
 def jobset(*args, input=None):
     """`molbuilder jobset <args>`, as typed -- with ``input`` as what the
     person types at its questions, when it asks any."""

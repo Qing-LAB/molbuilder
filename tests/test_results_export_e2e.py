@@ -93,10 +93,9 @@ def road(isolated_projects_root_module, tmp_path_factory):
     tree = isolated_projects_root_module
     mp = pytest.MonkeyPatch()
     try:
-        # The suite's config rule, which its autouse fixture applies per test
-        # and so not to a module's fixture (`conftest`).
-        mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
-        mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+        from conftest import outside_the_developers_folders
+        outside_the_developers_folders(mp.setenv, mp.delenv,
+                                       tmp_path_factory)
         from conftest import write_machine_record
         write_machine_record()
         mp.chdir(tree.parent)

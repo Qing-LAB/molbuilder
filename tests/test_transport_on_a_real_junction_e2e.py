@@ -620,11 +620,13 @@ def junction(tmp_path_factory):
         # `run-reports.md` § 2.2): a copy of the single voltage, its loop
         # made long -- the most energy points the item takes, fifty times
         # the default's; its device ran at the Gamma point, so a finer
-        # k-point grid is refused by TBtrans -- launched in the background,
-        # stopped with the line its launch printed once TBtrans states a
-        # share done, and let end.
-        from support.real_runs import _stopped_by_its_line
+        # k-point grid is refused by TBtrans -- launched in the background;
+        # once TBtrans states a share done, the jobs launched from here
+        # asked (`job-system.md` § 6.0a), the run stopped with the line its
+        # launch printed and let end, and the jobs asked twice more.
+        from support.real_runs import _stopped_by_its_line, _until
         from support.replay import output_lines
+        from support.road import molbuilder
 
         def stopped_in_its_loop(c):
             template = c.bundle / "S.template.toml"
@@ -643,7 +645,11 @@ def junction(tmp_path_factory):
                     return False
                 return any((_progress_stated(ln) or (0.0,))[0] > 0
                            for ln in lines)
-            _stopped_by_its_line(c, launched, underway, within=600)
+            _until(underway, within=600, what="its loop underway")
+            c.jobs["while it runs"] = molbuilder("jobs", "status")
+            _stopped_by_its_line(c, "stop as its launch said", launched)
+            c.jobs["after its stop"] = molbuilder("jobs", "status")
+            c.jobs["again"] = molbuilder("jobs", "status")
         run.stopped = copy_of(single, "stopped-in-its-loop",
                               stopped_in_its_loop)
 
@@ -2153,6 +2159,50 @@ def test_a_transmission_stopped_in_its_loop_says_where_it_stopped(
     assert point["state"] == "failed", point
     assert "stopped before its end" in point["why"], point
     assert point["progress"] == {"said": said}, point
+
+
+def test_a_job_left_running_is_listed_stopped_by_its_line_and_said_once(
+        junction):
+    """`job-system.md` § 6.0a: a run left in the background is listed by
+    `molbuilder jobs status` while it goes -- its id, its process going, its
+    member's run in the status door's words; the line its launch printed,
+    `molbuilder jobs stop <id>`, typed at a terminal and answered yes, stops
+    it, and the calculation's ledger says so; the next status says how it
+    ended, once, and the one after lists it no more.  The silent failures:
+    a run going for days that nothing on the machine lists, a stop that
+    leaves the engine running, a job said running after its process went,
+    and a list that grows with every job that ever ran."""
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    from support.road import job_lines
+    stopped = junction.stopped
+    job = next(ln.split("molbuilder jobs stop", 1)[1].strip()
+               for ln in stopped.said["launch transmission"].output
+               .splitlines() if "molbuilder jobs stop" in ln)
+    host, pid = job.rsplit("-", 1)
+    left = f"{job}  run here on {host}, in the background, pid {pid} -- "
+    run = "05_transmission/run-0"
+    going = stopped.jobs["while it runs"]
+    assert going.exit_code == 0, going.output
+    mine = job_lines(going.output, job)
+    assert mine and mine[0] == left + "its process is going", going.output
+    assert any(ln.startswith(f"    transmission  {run}  running")
+               for ln in mine), mine
+    said = stopped.said["stop as its launch said"]
+    assert "stop it? [y/N]" in said.output, said.output
+    assert "stopped: SIGTERM to its process group" in said.output, said.output
+    after = stopped.jobs["after its stop"]
+    mine = job_lines(after.output, job)
+    assert mine and mine[0] == left + "its process has ended", after.output
+    assert any(ln.startswith(f"    transmission  {run}  failed -- stopped "
+                             f"before its end") for ln in mine), mine
+    assert mine[-1] == "  ended -- said once; its address is removed", mine
+    assert not job_lines(stopped.jobs["again"].output, job), \
+        stopped.jobs["again"].output
+    lines = [json.loads(x) for x in (stopped.bundle / LEDGER_FILE)
+             .read_text().splitlines() if x.strip()]
+    stop = [e for e in lines if e["verb"] == "jobs stop" and e["job"] == job]
+    assert [(e["decision"], e.get("answer")) for e in stop] == [
+        ("question", "yes"), ("stopped", None)], stop
 
 
 def test_the_monitor_says_a_transmissions_loop_as_it_grows(junction,

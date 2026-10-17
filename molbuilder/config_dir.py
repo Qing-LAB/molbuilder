@@ -36,6 +36,7 @@ __all__ = [
     # The directories.  A format owner asks for one of these and joins its
     # own filename; nobody else joins at all.
     "config_dir", "state_dir", "runtime_dir", "logs_dir", "reports_dir",
+    "jobs_dir",
     # The files with no format to own them -- spelled here and nowhere else.
     "session_key", "client_secret", "secrets_dir",
     "relative_home",
@@ -294,6 +295,15 @@ def reports_dir() -> Path:
     ``jq`` and ``pandas`` read it with no parser of ours in the middle.
     """
     return state_dir() / "reports"
+
+
+def jobs_dir() -> Path:
+    """The jobs launched from this machine -- one address each
+    (`joblist`, `execution/job-system.md` § 6.0a), the way `serve_pidfile`
+    is a server's.  In the STATE root, not the runtime one: a run left in
+    the background outlives a logout, and so must the address that finds it.
+    """
+    return state_dir() / "jobs"
 
 
 def serve_pidfile(port: int) -> Path:

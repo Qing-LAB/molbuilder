@@ -1849,23 +1849,36 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         # START records nothing -- Popen raising means no process exists.
         for m in s.members:
             _record_launch(m, mode="direct", command=s.command)
+        from .. import joblist
+        job, unkept = _keep(joblist.run_here(
+            pid=proc.pid, background=background,
+            calculation=s.members[0].base, members=_job_members(s)))
         record("launched", submission=s.name, command=s.command,
                members=names, **_member_facts(s),
+               **({"job": job.id} if unkept is None else {}),
                **({"background": True, "pid": proc.pid} if background
                   else {}))
         if background:
-            # HOW TO STOP IT, said with it: the run leads its own process
-            # group, and a signal to the group reaches the engine -- to the
-            # run script alone it would wait for the engine to end, bash
-            # running a trap only after the command it waits on
-            # (`job-system.md` § 6.0).
+            # HOW TO STOP IT, said with it: `molbuilder jobs stop`, which
+            # signals the run's process group -- a signal to the run script
+            # alone would wait for the engine to end, bash running a trap
+            # only after the command it waits on (`job-system.md` § 6.0,
+            # § 6.0a).
             return ([JobResult(s.name, s.command, "started",
                                said="started in the background",
                                detail=f"pid {proc.pid}; to stop it: "
-                                      f"kill -- -{proc.pid}")]
+                                      + (f"molbuilder jobs stop {job.id}"
+                                         if unkept is None else
+                                         f"kill -- -{proc.pid} ({unkept})"))]
                     + ([JobResult(m.name, [], "rides", said=s.rides)
                         for m in s.members] if s.rides else []))
-        rc = proc.wait()
+        try:
+            rc = proc.wait()
+        finally:
+            # A RUN WAITED ON is shown by its own launch, which says how it
+            # ended -- or, stopped at its terminal, its stop: its address is
+            # done with (`job-system.md` § 6.0a).
+            joblist.forget(job)
         # IT RAN HERE AND ENDED -- how it ended is the status door's, read
         # by the launch verb once every submission has gone (`_cli`,
         # `job-system.md`, *A run here, waited on*).
@@ -1896,12 +1909,51 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         # reading *never launched*.
         _record_launch(m, mode="submit", command=s.command, job_id=jid,
                        placement=s.placement, sent=s.sent)
+    kept = {}
+    unkept = None
+    if jid is not None:
+        from .. import joblist
+        from ..scheduler.queue import cluster
+        job, unkept = _keep(joblist.queue_job(
+            job_id=jid, cluster=cluster(), calculation=s.members[0].base,
+            members=_job_members(s)))
+        kept = {"job": job.id} if unkept is None else {}
     record("launched", submission=s.name, command=s.command, job_id=jid,
-           domain=s.domain, members=names, **_member_facts(s))
+           domain=s.domain, members=names, **_member_facts(s), **kept)
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
-                       domain=s.domain, detail=unread)]
+                       domain=s.domain,
+                       detail="; ".join(w for w in (unread, unkept) if w)
+                       or None)]
             + ([JobResult(m.name, [], "rides", said=s.rides, job_id=jid)
                 for m in s.members] if s.rides else []))
+
+
+def _job_members(s: "Submission") -> Dict[str, Dict[str, str]]:
+    """Each member's run as a job's address names it (`joblist.Job`): as a
+    record names a run (`runrecord.RunRef`) -- its folder, or where its
+    stage's runs share one, its own name -- and its launch record's path
+    from the calculation's folder, which its state is asked through
+    (`job-system.md` § 6.0a)."""
+    from ..runrecord import RunRef, launch_record_path
+    return {m.name: {
+        "run": str(RunRef.named(m.names.run_name(m.run)) if m.names.shared
+                   else RunRef.at(m.base, m.run_dir)),
+        "launch_record": _rel(launch_record_path(m.run_dir, m.names, m.run),
+                              m.base)} for m in s.members}
+
+
+def _keep(job):
+    """``(job, None)`` -- the job's address written (`joblist.write`,
+    `job-system.md` § 6.0a) -- or ``(job, why)`` when it could not be: the
+    job has gone out already, so the send goes on, and its line says
+    why."""
+    from .. import joblist
+    try:
+        joblist.write(job)
+    except OSError as exc:
+        return job, (f"its address could not be kept, so `molbuilder jobs` "
+                     f"will not list it: {exc}")
+    return job, None
 
 
 def _group_envelope(jobs) -> "Resources":
@@ -2240,8 +2292,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     run -- ``chains`` names each step's chain (a device point's frame,
     `engines/transport.md` § 2a.9), one chain when none is named -- and the
     walk goes on with the other chains.  Stopped by the person (Ctrl-C at a
-    launch waited on, a lost terminal, ``kill -- -<pid>`` of one left in the
-    background, a cancel), it starts no further member.
+    launch waited on, a lost terminal, ``molbuilder jobs stop`` of one left
+    in the background, a cancel), it starts no further member.
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""

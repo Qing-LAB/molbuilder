@@ -940,5 +940,71 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "render_status",
-           "render_stage_status"]
+def _said(state: str, detail: Optional[str]) -> str:
+    """A state and its detail, as the status door says them -- the detail
+    only where it adds to the state."""
+    return state if not detail or detail == state else f"{state} -- {detail}"
+
+
+def job_members(calculation, members: Dict[str, Dict[str, str]]
+                ) -> List[tuple]:
+    """Each member of a job launched from this machine (`job-system.md`
+    § 6.0a): ``(stage, run, said)`` -- the stage, its run as a record names
+    it, and its state in the status door's words.  The run answers through
+    its own launch record, by the run door (`runs.run_of`,
+    `parse.dirs.run_state_of`): that run, never its stage's newest -- where
+    a stage's runs share a folder, the run its warm retries reached
+    (`runrecord.retried_to`).  A run of points, a container no one run of
+    ours speaks for, is answered by its stage's row of `jobset status`,
+    naming the newest run it reads; a run no longer on disk, and a
+    calculation that does not read, are said."""
+    from ..calcdirs import CONTAINER, read as placed
+    from ..parse.dirs.rundir import run_state_of
+    from ..runrecord import retried_to
+    from ..runs import run_of
+    from .model import FILENAME, JobSet
+    base = Path(calculation)
+    rows: Optional[Dict[str, StageStatus]] = None
+    unread: Optional[str] = None
+    out = []
+    for stage, member in members.items():
+        run = member["run"]
+        record = base / member["launch_record"]
+        ran = run_of(record) if record.exists() else None
+        if ran is not None and ran.stage is not None:
+            reached = (retried_to(ran.folder, ran.names, ran.run)
+                       if ran.run is not None else None)
+            st = run_state_of(ran.folder, ran.names, reached)
+            out.append((stage, run if reached == ran.run else
+                        f"{run}, retried to {ran.names.run_name(reached)}",
+                        _said(st.state, st.detail)))
+            continue
+        place = placed(record.parent) if record.parent.is_dir() else None
+        if place is None or place.role != CONTAINER:
+            out.append((stage, run, "its run is not on disk"
+                        if not record.exists()
+                        else "its launch record names no run of ours"))
+            continue
+        if rows is None:
+            rows = {}
+            try:
+                js = (JobSet.load(base / FILENAME)
+                      if (base / FILENAME).is_file() else None)
+                rows = {s.name.lower(): s
+                        for s in jobset_status(js, base).stages}
+            except (OSError, ValueError, KeyError) as exc:
+                unread = f"its calculation does not read: {exc}"
+        row = rows.get(stage.lower())
+        if row is None:
+            out.append((stage, run,
+                        unread or "its description no longer holds it"))
+            continue
+        newest = (f"{row.dir}/{row.attempt}" if row.dir and row.attempt
+                  else None)
+        out.append((stage, run, _said(row.state, row.detail)
+                    + (f" (its newest run, {newest})" if newest else "")))
+    return out
+
+
+__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "job_members",
+           "render_status", "render_stage_status"]

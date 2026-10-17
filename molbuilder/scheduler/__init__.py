@@ -15,6 +15,8 @@ belong together.
     on captured text.  It runs no subprocess at all.
   * :mod:`molbuilder.scheduler.admit` — can this domain take this request, and
     if not, why not.
+  * :mod:`molbuilder.scheduler.queue` — whether the scheduler still lists a
+    job, and its cancel, for `molbuilder jobs` (`job-system.md` § 6.0a).
 
 **Nothing here is shipped beside a job.**  The record is JSON and reads
 anywhere; what travels with a run is `runwrap.MONITOR_COMPANIONS`

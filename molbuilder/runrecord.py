@@ -383,6 +383,24 @@ def record_retry(where, names: "_rf.RunNames", retried: int) -> Path:
         retry_of=retried)
 
 
+def retried_to(where, names: "_rf.RunNames", run: int) -> int:
+    """The run a launch of run ``run`` has reached through its warm
+    retries, where a stage's runs share a folder -- each retry its own run,
+    its record's ``retry_of`` the run before (:func:`record_retry`) -- or
+    ``run`` itself, retried never or in a folder of its own, where the
+    folder's newest try is the run's (`running-a-job.md` § 3.5)."""
+    if not names.numbered(".run.json"):
+        return run
+    while True:
+        try:
+            nxt = launch_record(where, names, run + 1)
+        except LaunchRecordError:
+            return run
+        if nxt is None or nxt.get("retry_of") != run:
+            return run
+        run += 1
+
+
 def _refuse_unnumbered(where: Path, names: "_rf.RunNames") -> None:
     """A shared folder holding a stage's run files with no run's number --
     the names every row the catalogue numbers there (``attempt="shared"``)
@@ -527,4 +545,4 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
