@@ -1311,8 +1311,8 @@ async function readFolder(projects, dir, opts) {
         hideDescriptionCards();
         for (const [id, name] of [["ts-f-task", "task.json"],
                                   ["ts-f-tmpl", "<label>.template.toml"],
-                                  ["ts-f-struct", "<label>.xyz"],
-                                  ["ts-f-side", "<label>.molstruct.json"]]) {
+                                  ["ts-f-struct", "<label>.source.xyz"],
+                                  ["ts-f-side", "<label>.source.molstruct.json"]]) {
             markFile(id, false, "");
             const named = $(id + "-name");
             if (named) named.textContent = name;

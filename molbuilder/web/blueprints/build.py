@@ -2062,7 +2062,8 @@ def _folder_attempts(dest) -> dict:
     """How many attempts each stage has on disk -- the payload."""
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.paths import Shape, attempts_in
-    from molbuilder.runfiles import find
+    from molbuilder.runfiles import RunNames
+    from molbuilder.runrecord import newest_run
     from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import read_task
     desc = dest / TASK_FILENAME
@@ -2085,13 +2086,12 @@ def _folder_attempts(dest) -> dict:
             # § 2a.11).
             n = len(attempts_in(where))
         else:
-            # FLAT TELLS ATTEMPTS APART BY THE FILENAME'S COUNTER, not by a
-            # directory (§ 1.5a), so the count is how many run indices this
-            # rung's files carry -- read through `runfiles`, which owns that
-            # counter, rather than by matching `-run` in a listing.
-            runs = {rf.run for _p, rf in find(where, task.label, stage=token)
-                    if rf.run is not None}
-            n = len(runs)
+            # FLAT: the runs LAUNCHED, by their launch records -- the one
+            # rule (`runrecord.newest_run`); a run index on a file is not a
+            # launch: prep seeds the first run's progress log before any.
+            newest = newest_run(where, RunNames.of(task.label, token,
+                                                   task.shape))
+            n = 0 if newest is None else newest + 1
         stages[st.name] = {"token": token, "dir": sd, "attempts": n}
     return {"ok": True, "shape": task.shape, "stages": stages}
 
