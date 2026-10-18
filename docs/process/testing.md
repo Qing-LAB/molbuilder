@@ -720,7 +720,7 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   basic tests send nothing to one. A rule changes; its rows change — never a function
   per case, and never a test of an internal step a row already reaches. The
   first is the GPU contract's (`tests/data/gpu_contract.toml`,
-  `tests/test_gpu_contract.py`; `execution/gpu.md` § 7).
+  `tests/test_gpu_contract.py`; `execution/gpu.md` § 4).
 - **A run is made on the road, or not at all** *(user, 2026-10-03: "why would
   any fucker copy an .out to some fucking other directory and call it the
   result"; "retire all")*. A test that asserts what a run ended as, produced,

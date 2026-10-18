@@ -1497,12 +1497,22 @@ calculation's solver and its thread count:
 "stages": [{ "name": "tight", "execution": { "mpi_np": 16 } }]
 ```
 
+**A calculation-wide value reaches the rungs that read it** — the item's
+`stages`, by role, asked of `template.reads` ([`template.md`](?doc=engines/template.md)
+§ 6.4) as for an override. A rung whose role does not read an item takes
+nothing of it from the calculation's block: a transport ladder's
+transmission takes no `use_gpu` or `gpu_count`, its `tbtrans` having no GPU
+path, while the seed, the leads and the device take them. A rung's own block
+naming an item it does not read is refused, as its override is. `time` and
+`domain`, which are not catalogue items (§ 6.8e), reach every rung.
+
 **And nowhere else** *(plan § 5w K5, 2026-09-30)*. A run setting is stated
 in this block — the calculation's or the rung's own — and in no other part of
 the description: not as a stage column (§ 6.2), and not by a `bench` row,
 which sets only the trials it declares (§ 6.8). So every reader takes one
-answer, the template's value with the calculation's block over it and the
-rung's over that — the deck, the scheduler's device ask, the wrapper and the
+answer, the template's value with the calculation's block over it where the
+rung reads the item, and the rung's over that — the deck, the scheduler's
+device ask, the wrapper and the
 Task setup tab's cards and hints alike — and a transport rung takes its run
 card as every other rung does.
 

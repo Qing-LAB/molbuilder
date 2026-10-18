@@ -830,6 +830,23 @@ whether or not you ever benchmarked, and a run never requires one
 After a benchmark, a run that does not name the winner in `execution` does
 **not** use the winner — prep refuses it until a shape is written.
 
+**A choice travels from the person to the machine in four moves, each with
+one owner.** The person states it — whether a run uses a GPU and how many,
+its ranks and cores, whether its cores are bound to its GPUs. Prep checks it
+and writes it: a value stated nowhere, or two statements that disagree — a GPU
+run with no count ([`gpu.md`](?doc=execution/gpu.md) G5) — are refused, and so
+is what the target's record says its hardware cannot take — a GPU on a queue
+that lists none, more GPUs or cores than a node holds, a wall past the
+queue's. Launch sends what prep wrote. At run time the run script places it on
+what the job was given: the ranks spread over the GPUs the job holds, MPS
+where ranks share one; off a scheduler each rank bound to cores of its own,
+under one the ranks inside the cores it gave the job. **A placement that costs
+is warned about, never refused** *(the user, 2026-10-17: a rank whose cores
+sit on another socket than its GPU pays in traffic, and the job goes on)*. A
+rung takes a calculation-wide choice only where it reads the item
+([`stages.md`](?doc=engines/stages.md) § 6.8d). The GPU's case, whole,
+is [`gpu.md`](?doc=execution/gpu.md).
+
 **Where the UI enters, and it is only two places** — which is § 5's *"the
 browser lives in rows 3–5 only"*, restated as values: it **edits floor 2**,
 and it **presses prep with an empty ask**, having no flags. Everything between

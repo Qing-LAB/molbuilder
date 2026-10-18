@@ -693,8 +693,11 @@ def resolve(template_text: str, task, config_cls, *,
         # the values' answer, never an allocation's: it is what
         # the deck renders, and the job's GPU request is read off it
         # (`jobset.model.gpu_request`) -- an allocation stating its own would
-        # be a second answer, and nothing states one.
-        wants_gpu = getattr(values, "use_gpu", None)
+        # be a second answer, and nothing states one.  A RUNG THAT DOES NOT
+        # READ IT runs no GPU, whatever the template says (`stages.md`
+        # § 6.8d): a transport ladder's transmission.
+        wants_gpu = (getattr(values, "use_gpu", None)
+                     if "use_gpu" in deck_items else False)
         if wants_gpu is not None:
             resources = dataclasses.replace(resources,
                                             use_gpu=bool(wants_gpu))

@@ -144,7 +144,7 @@
         },
         {
           "path": "execution/gpu.md",
-          "label": "How a GPU decision travels — one question, ten names"
+          "label": "How a GPU decision travels — one question, every name it is read under"
         },
         {
           "path": "execution/submission.md",

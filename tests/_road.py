@@ -39,6 +39,17 @@ def env_bin(name: str) -> Path:
     return Path(prefix) / "bin" if prefix else Path("/nonexistent")
 
 
+def gpu_visible() -> bool:
+    """Whether an NVIDIA GPU is visible here -- ``nvidia-smi -L`` lists one:
+    the machine fact a GPU run is skipped on."""
+    import shutil
+    import subprocess
+    if shutil.which("nvidia-smi") is None:
+        return False
+    r = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
+    return r.returncode == 0 and "GPU" in r.stdout
+
+
 #: The pseudopotentials a live run needs -- H, C and O, one PseudoDojo
 #: release: inputs, checked in (`tests/fixtures/psml/README.md`).
 PSML_DIR = Path(__file__).resolve().parent / "fixtures" / "psml"

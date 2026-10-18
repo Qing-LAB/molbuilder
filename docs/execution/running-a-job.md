@@ -415,41 +415,41 @@ sources recommend, and how to design a benchmark matrix around it — is
 - **Load-balance.** Counts allocated GPUs (preferring `CUDA_VISIBLE_DEVICES`
   over `nvidia-smi -L`), sets `ranks_per_gpu = mpi_np / ngpu` (≥ 1), and prints a
   `GPU load-balance` line. **The rank and thread counts are the stated ones**,
-  as on CPU (§ 3.1, § 3.2). The GPU policy that worked out its own until
-  2026-10-02 — about `physical_cores / 4` ranks with MPS, 2 or 1 without, and
-  the core budget divided among them as threads, re-derived again by
-  `--mps`/`--no-mps` — is gone with the other defaults; it overwrote even a
-  stated, baked rank count when `--mps` was given. What to state for a GPU run
-  is [`engines/tuning.md § 2.12`](?doc=engines/tuning.md)'s subject.
-  `--mps`/`--no-mps` switch the MPS daemon and nothing else.
+  as on CPU (§ 3.1, § 3.2); what to state for a GPU run is
+  [`engines/tuning.md § 2.12`](?doc=engines/tuning.md)'s subject.
+  `--mps`/`--no-mps` allow or forbid the MPS daemon and nothing else.
 - **NVIDIA-MPS (Hyper-Q)** — the NVIDIA Multi-Process Service, which lets two or
-  more MPI ranks share one GPU concurrently. Enabled only when (a)
+  more MPI ranks share one GPU concurrently. **One decision**: on only when (a)
   `nvidia-cuda-mps-control` is on `PATH`, (b) the user did not opt out
-  (`--no-mps` or `MOLBUILDER_USE_MPS`), and (c) there are more ranks than
-  GPUs — the moment sharing actually happens (D18a; until 2026-08-13 this
-  bullet still described the RETIRED `ranks_per_gpu ≥ 2` gate, which
-  mis-fired exactly when ranks and GPUs were equal).  Single-GPU-per-rank
-  runs need no MPS and get none. The per-job MPS daemon is torn down by a
-  single `EXIT` trap.
-- **Per-rank GPU + NUMA pinning.** A generated helper assigns each rank a GPU
-  (`CUDA_VISIBLE_DEVICES`) and, when the rank's cpuset spans more than one
-  socket, pins it with `numactl` to the NUMA node that *owns* its GPU — **the
-  helper probes that mapping itself, per rank, at run time** (nvidia-smi +
-  sysfs). Opt out of socket pinning with `MB_NO_SOCKET_PIN=1`.  Separately,
-  the **whole-job** `numactl` wrap (single-GPU, off a scheduler only — it is
-  cleared inside a scheduler's job, `MB_JOB_ID` set by its header, and for
-  multi-GPU runs, where one node cannot own
-  every rank) uses a GPU→NUMA answer probed at **generation** time (NVML +
-  sysfs), baked as a literal and overridable with `MOLBUILDER_GPU_NUMA`.
-  *(Until 2026-08-12 this bullet put the baked literal and the override
-  inside the per-rank story — the per-rank helper reads neither; the
-  override's whole reach is the whole-job wrap.)*
+  (`--no-mps` or `MOLBUILDER_USE_MPS`), and (c) the job sees at least one GPU
+  and more ranks than GPUs — the moment sharing actually happens;
+  single-GPU-per-rank runs need no MPS and get none. The banner and the dry run
+  say that decision — on where the daemon started (in a dry run, would start),
+  off otherwise, a start that timed out among them — and the run's log says
+  why it is off. The per-job MPS daemon is torn down by a single `EXIT`
+  trap.
+- **Where each rank runs.** A generated helper assigns each rank a GPU
+  (`CUDA_VISIBLE_DEVICES`), block-distributed (`rank × GPUs / ranks`), and,
+  when the rank's cpuset spans more than one socket, pins it with `numactl` to
+  the NUMA nodes of its GPU's socket that it owns — **the helper probes that
+  mapping itself, per rank, at run time** (nvidia-smi + sysfs). Opt out of
+  socket pinning with `MB_NO_SOCKET_PIN=1`. **Off a scheduler**, OpenMPI binds
+  each rank to cores of its own (`--bind-to core --map-by
+  package:PE=<cores per rank>`), the ranks spread over the sockets, and the
+  **whole-job** `numactl` wrap of a single-GPU job (from a GPU→NUMA answer
+  probed at **generation** time, NVML + sysfs, baked as a literal and
+  overridable with `MOLBUILDER_GPU_NUMA`) sets its memory on the GPU's node
+  but does not hold its ranks there: OpenMPI's map overrides it (measured
+  with OpenMPI 5.0.10), so a single GPU's second rank runs on the far socket.
+  **Under a scheduler** the wrap and that binding are cleared, and OpenMPI
+  places the ranks inside the cores the scheduler gave the job. **A rank whose
+  cores lie on another socket than its GPU is warned about, never refused** —
+  the helper says so in the run's log, and the run goes on paying the
+  traffic (the user, 2026-10-17).
 
 > **Override precedence, stated once:** the `-np` / `-omp` flags, then
 > `MB_NP` / `OMP_NUM_THREADS`, then the scheduler's echo of the header
 > (`MB_NTASKS`, `MB_CPUS_PER_TASK`), then the stated value baked at prep.
-> `MOLBUILDER_MPI_NP` / `MOLBUILDER_OMP_NUM_THREADS` changed the GPU policy's
-> defaults and went with them on 2026-10-02.
 
 ### 3.4 The flags a wrapper accepts
 
@@ -461,7 +461,7 @@ sources recommend, and how to design a benchmark matrix around it — is
 | `--cold` / `--from-scratch` | both | start the engine from the deck alone, **removing** the prior state it names first (§ `job-contracts § 4`). Names the files and **refuses**; `--force` removes them |
 | `-np` / `--np N` | both | SIESTA: override MPI ranks. PySCF: accepted, and anything but 1 is said to be ignored — PySCF is OpenMP-only |
 | `-omp` / `--omp N` | both | override OMP threads (SIESTA also takes `-t` / `--threads N`) |
-| `--mps` / `--no-mps` | SIESTA (GPU) | force MPS on / off |
+| `--mps` / `--no-mps` | SIESTA (GPU) | allow / forbid MPS; it starts only where the ranks outnumber the GPUs (§ 3.3) |
 | `--dry-run` | both | print the resolved launch command + rank→GPU/NUMA map, then exit 0 |
 | `-h` / `--help` | both | usage |
 

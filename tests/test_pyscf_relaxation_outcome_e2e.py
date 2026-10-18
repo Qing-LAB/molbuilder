@@ -218,15 +218,6 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
     assert rx["max_force_eh_bohr"] is not None, rx
 
 
-def _a_gpu_is_visible() -> bool:
-    import shutil
-    import subprocess
-    if shutil.which("nvidia-smi") is None:
-        return False
-    r = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
-    return r.returncode == 0 and "GPU" in r.stdout
-
-
 def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
         tmp_path, monkeypatch):
     """gpu4pyscf's GPU classes DECLARE no stability analysis (``stability =
@@ -239,7 +230,8 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
     raised a TypeError and every open-shell GPU run died before its first
     step.
     """
-    if not _a_gpu_is_visible():
+    from _road import gpu_visible
+    if not gpu_visible():
         pytest.skip("no NVIDIA GPU visible here")
     bundle, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",

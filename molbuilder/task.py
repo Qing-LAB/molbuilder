@@ -660,12 +660,35 @@ class Task:
         setup tab.  A stage naming only ``mpi_np`` keeps the calculation's
         solver and its thread count; whole-object precedence would drop the
         two nobody mentioned.
+
+        A CALCULATION-WIDE VALUE IS A RUNG'S WHERE THE RUNG READS IT -- the
+        item's ``stages`` (`template.reads`, `stages.md` § 6.8d), as
+        an override is: a transport ladder's transmission takes none of the
+        calculation's GPU values, its `tbtrans` having no GPU path
+        (`execution/gpu.md` § 1.3).  A rung's own card stating one it does
+        not read is refused (`validation.task`).
         """
         out = dict(self.execution or {})
+        if stage is not None and out:
+            out = {k: v for k, v in out.items()
+                   if self._rung_reads(k, stage)}
         for st in (self.stages or ()):
             if stage is not None and st.name == stage:
                 out.update(dict(st.execution or {}))
         return out
+
+    def _rung_reads(self, name: str, stage: str) -> bool:
+        """Whether the rung ``stage`` reads run-card ``name`` -- a catalogue
+        item it reads (`template.reads`), or a name no item carries, the
+        run's own scheduler asks (:data:`LANE_ASKS`)."""
+        from .template import catalogue, one, reads
+        try:
+            item = one(catalogue(), name, engine=str(self.engine))
+        except KeyError:
+            return True                  # not an item: the lane's own asks
+        # AN ITEM NOT FOR THIS ENGINE is the description check's refusal.
+        return item is None or reads(item, str(self.engine),
+                                     self.calculation, stage)
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
 

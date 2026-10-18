@@ -30,7 +30,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`relaxed_for_vibration` (``real_relaxed_for_vibration``) -- the
   vibration kind's `relax` stage of the road's CO2, listed O O C with the
   carbon held, so its decks are in the engine's held-first order
-  (`support.road.CO2`; plan T-CO2).
+  (`support.road.CO2`; plan T-CO2);
+* :func:`gpu` (``real_h2_gpu``) -- the same H2 asking this machine's GPU,
+  one rank: its run script's dry runs, then the run, waited on.
 
 A run with one thing changed is a copy of it beside it (:func:`copy_of`):
 its next stage prepared and launched (:func:`freq_launched_on`).
@@ -271,11 +273,14 @@ def _files(bundle: Path) -> Dict[str, tuple]:
             for p in sorted(bundle.rglob("*")) if p.is_file()}
 
 
-def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path) -> None:
-    """The run script's own dry run (`running-a-job.md` § 3.5), on a copy of
+def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path,
+                     **given: str) -> None:
+    """The run script's own dry run (`running-a-job.md` § 3.4), on a copy of
     a prepared folder so no run another test reads gains a log: as prepared,
     and with ``-np 2`` typed on it.  The rank and thread counts the shell
-    may carry are scrubbed, so what resolves is the script's own chain."""
+    may carry are scrubbed, so what resolves is the script's own chain;
+    ``given`` is what the job is given there -- its GPUs, as a scheduler
+    gives them (``CUDA_VISIBLE_DEVICES``)."""
     there = scratch / prepared.name
     shutil.copytree(prepared, there)
     script = next(there.glob("*.run.sh"))
@@ -284,19 +289,20 @@ def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path) -> None:
         done = subprocess.run(["bash", str(script), "--run", "0",
                                "--dry-run", *extra],
                               cwd=there, capture_output=True, text=True,
-                              timeout=120, env=_scrubbed())
+                              timeout=120, env=_scrubbed(**given))
         run.said[step] = Said(done.returncode, done.stdout + done.stderr)
 
 
 #: What a shell may carry into a run: the counts a person sets, which the run
 #: script's chains read; what a scheduler tells a job in molbuilder's names,
-#: which they read too; and in SLURM's own names (`scheduler.md` § 6a), which
-#: a header maps -- so none reaches a dry run but what a step sets.
+#: which they read too; in SLURM's own names (`scheduler.md` § 6a), which a
+#: header maps; and the GPUs a job is given -- so none reaches a dry run but
+#: what a step sets.
 _CARRIED = ("OMP_NUM_THREADS", "MB_NP", "MOLBUILDER_USE_MPS", "MB_JOB_ID",
             "MB_NTASKS", "MB_CPUS_PER_TASK", "MB_CPUS_ON_NODE", "MB_JOB_GPUS",
             "MB_JOB_NODELIST", "SLURM_JOB_ID", "SLURM_NTASKS",
             "SLURM_CPUS_PER_TASK", "SLURM_CPUS_ON_NODE", "SLURM_JOB_GPUS",
-            "SLURM_JOB_NODELIST")
+            "SLURM_JOB_NODELIST", "CUDA_VISIBLE_DEVICES")
 
 
 def _scrubbed(**more) -> Dict[str, str]:
@@ -396,6 +402,34 @@ def layered(tmp_path_factory) -> RealRun:
         run.jobs["after it ended"] = molbuilder("jobs", "status")
         run.jobs["again"] = molbuilder("jobs", "status")
         _taken(run, "status", "status")
+    return run
+
+
+def gpu(tmp_path_factory) -> RealRun:
+    """A SIESTA relaxation on this machine's GPU (`execution/gpu.md`): the
+    road's H2 asking one GPU, one rank -- this machine's record stating one
+    GPU and how its shell enters an environment, the run entering the
+    source-built `molbuilder-siesta-gpu`.  Its run script's own dry run as
+    prepared, and with ``-np 2`` -- each given GPU 0, as a job asking one GPU
+    is given one -- then the run, waited on."""
+    with _on_the_road(tmp_path_factory, "gpu") as tree:
+        from conftest import write_machine_record
+        from molbuilder.scheduler import Topology
+        from _road import conda_hook
+        write_machine_record(
+            topology=Topology(sockets=2, cores_per_socket=8, gpus_per_node=1),
+            env_init={"activation": "conda activate",
+                      "preamble": f"source {conda_hook()}"})
+        bundle = _h2_optimization(tree, "P/opt/H2gpu", execution={
+            "mpi_np": 1, "omp_threads": 1, "use_gpu": True, "gpu_count": 1})
+        run = RealRun(tree=tree, bundle=bundle)
+        _taken(run, "prep coarse", "prep", "task", "--group", "1",
+               "--target", "this")
+        _script_dry_runs(run, bundle / "01_coarse" / "run-0",
+                         tmp_path_factory.mktemp("gpu-dry-run"),
+                         CUDA_VISIBLE_DEVICES="0")
+        _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+               "--mode", "direct", "--foreground", "--yes")
     return run
 
 

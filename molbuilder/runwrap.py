@@ -1053,9 +1053,10 @@ def _bash_numa_from_gpu(gpu_expr: str, out_var: str,
 def _gpu_loadbalance_block() -> str:
     """Bash that derives the rank<->GPU load balance at RUN time.
 
-    GOAL: turn the resolved rank count into a ranks-per-GPU figure so the
-    rest of the wrapper can (a) gate MPS on actual GPU sharing and (b)
-    let the per-rank launcher block-distribute ranks across GPUs.
+    GOAL: count the GPUs the job was given (``$_ngpu``, which the MPS
+    decision reads) and turn the resolved rank count into a ranks-per-GPU
+    figure, which the banner and the dry run report; the per-rank launcher
+    block-distributes the ranks over the GPUs itself.
 
     READS  ``$_mpi_np``  (rank count; set by the args block).
     SETS   ``$_ngpu``           -- visible GPU count (0 if none),
@@ -1070,7 +1071,7 @@ def _gpu_loadbalance_block() -> str:
     existing single-GPU behavior) with no code fork.
 
     ORDERING: emit AFTER ``$_mpi_np`` resolves and BEFORE the MPS block
-    (which reads ``$_ranks_per_gpu``).  running-a-job.md § 3.3
+    (which reads ``$_ngpu``).  running-a-job.md § 3.3
     """
     return (
         "# --- GPU load-balance: rank <-> GPU matching "
@@ -1202,8 +1203,7 @@ def _gpu_socket_affinity_block() -> str:
         '        echo "molbuilder[rank ${_lr}/${_ls}]: WARN cross-socket '
         '-- GPU numa=$_numa is on socket $_gpu_sock but this rank owns '
         'cores only on socket(s) $_my_socks; host<->device + ELPA OpenMP '
-        'pay a remote hop -- this machine\'s scheduler did not keep the '
-        'job\'s cores beside its GPU (running-a-job.md § 3.3)." >&2\n'
+        'pay a remote hop; the run goes on (running-a-job.md § 3.3)." >&2\n'
         '        ;;\n'
         '    esac\n'
         'fi\n'
@@ -1291,19 +1291,17 @@ def _gpu_per_rank_launcher_block() -> str:
         '    echo "molbuilder: under the scheduler (job $MB_JOB_ID) -- '
         'trusting scheduler cpuset for CPU/mem binding '
         '(no manual numactl)" >&2\n'
-        # Off a scheduler with >1 GPU in play, the whole-job wrap is WRONG by
-        # construction: it binds every rank to GPU0\'s node, and the
-        # per-rank helper\'s own finer numactl (each rank pinned beside
-        # ITS GPU) cannot escape the outer cpuset -- half the ranks would
-        # be locked cross-socket from the very GPU they serve (R9/F7).
-        # The helper owns
-        # placement whenever ranks span GPUs; the whole-job wrap stays
-        # only for the single-GPU case it was designed for.
+        # Off a scheduler with >1 GPU in play, the whole-job wrap would set
+        # every rank\'s memory on GPU0\'s node, and its cpuset is not what
+        # places the ranks (OpenMPI\'s map overrides it -- measured,
+        # running-a-job.md § 3.3).  The per-rank helper pins each rank
+        # beside ITS GPU whenever ranks span GPUs; the whole-job wrap
+        # stays only for the single-GPU case.
         'elif [ "${_ngpu:-0}" -ge 2 ] && [ -n "$_numa_wrap_gpu" ]; then\n'
         '    _numa_wrap_gpu=""\n'
         '    echo "molbuilder: $_ngpu GPUs in play -- per-rank NUMA '
-        'binding via the rank helper (whole-job numactl would pin '
-        'every rank to GPU0\'s socket)" >&2\n'
+        'binding via the rank helper (the whole-job wrap would set '
+        'every rank\'s memory on GPU0\'s node)" >&2\n'
         'fi\n'
     )
 
@@ -1536,15 +1534,17 @@ def _gpu_runtime_block() -> str:
     Outputs, consumed by the rest of the SIESTA wrapper:
 
       * ``_have_mps`` / ``_use_mps_default``: NVIDIA's Multi-Process Service
-        is on PATH, and whether this run starts it (``--mps`` / ``--no-mps``
-        and ``MOLBUILDER_USE_MPS`` decide; the MPS block below gates it on
-        ranks sharing a GPU).
+        is on PATH, and whether the run may start it (``--mps`` /
+        ``--no-mps`` and ``MOLBUILDER_USE_MPS`` say; unsaid, allowed).  The
+        MPS block below decides from both and from ranks sharing a GPU.
       * ``_gpu_numa``: the NUMA node GPU 0 is attached to, baked at
         script-generation time by :func:`_probe_gpu0_numa` (nvidia-smi +
         kernel sysfs); overridable at run time via ``MOLBUILDER_GPU_NUMA``.  An
         integer string, or ``"unknown"``.
-      * ``_numa_wrap_gpu``: the ``numactl`` prefix that keeps a single-GPU
-        run on its GPU's socket, where the box has two and numactl is there.
+      * ``_numa_wrap_gpu``: the ``numactl`` prefix that sets a single-GPU
+        run's memory on its GPU's node, where the box has two sockets and
+        numactl is there -- it does not hold the ranks there: OpenMPI's map
+        overrides its cpuset (measured, `running-a-job.md` § 3.3).
     """
     return (
         "# --- GPU mode: placement (MPS, NUMA) -- the counts are stated ---\n"
@@ -1556,10 +1556,11 @@ def _gpu_runtime_block() -> str:
         '_have_mps=0\n'
         'if command -v nvidia-cuda-mps-control >/dev/null 2>&1; '
         'then _have_mps=1; fi\n'
-        # --mps / --no-mps win (the args block); the env var second; on when
-        # MPS is available.  The MPS block starts it only when ranks share
-        # a GPU -- single-rank MPS is overhead with no concurrency benefit.
-        '_use_mps_default="${MOLBUILDER_USE_MPS:-$_have_mps}"\n'
+        # WHETHER MPS IS ALLOWED: --mps / --no-mps win (the args block);
+        # the env var second; allowed when nothing says.  Whether it STARTS
+        # is the MPS block's one decision -- allowed, on PATH, and ranks
+        # sharing a GPU.
+        '_use_mps_default="${MOLBUILDER_USE_MPS:-1}"\n'
         '_have_mps_str="no"; '
         '[ "$_have_mps" = "1" ] && _have_mps_str="yes"\n'
         'echo "molbuilder: mps_available=$_have_mps_str" >&2\n'
@@ -1579,9 +1580,10 @@ def _gpu_runtime_block() -> str:
         '    ""|*[!0-9]*) _gpu_numa="unknown" ;;\n'
         'esac\n'
         # ---- numactl availability + NUMA-pin decision ----
-        # We wrap mpirun (not each rank) so the cpuset is inherited
-        # uniformly by every rank OpenMPI forks.  Three conditions:
-        # dual-socket+ box, GPU NUMA known, numactl on PATH.
+        # mpirun is wrapped whole: its memory policy is inherited by every
+        # rank OpenMPI forks, while the ranks' cores are OpenMPI's map's
+        # (it overrides the wrap's cpuset).  Three conditions: dual-socket+
+        # box, GPU NUMA known, numactl on PATH.
         '_numa_wrap_gpu=""\n'
         'if [ "$_gpu_numa" != "unknown" ] && '
         '[ "$_n_sockets" -ge 2 ] && '
@@ -1589,10 +1591,6 @@ def _gpu_runtime_block() -> str:
         '    _numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa '
         '--membind=$_gpu_numa"\n'
         'fi\n'
-        # ``mps=on`` / ``mps=off`` reads unambiguously next to the numeric
-        # counts in the --dry-run banner (one daemon per GPU; no count).
-        '_use_mps_str="off"; '
-        '[ "$_use_mps_default" = "1" ] && _use_mps_str="on"\n'
         "\n"
     )
 
@@ -2282,13 +2280,11 @@ def render_run_wrapper(script_path: Path, *,
             "            # read the log to confirm the command matches\n"
             "            # the allocation (running-a-job.md § 3.3).\n"
             '            _dry_run=1; shift ;;\n'
-            # MPS toggle.  Default state is decided in the GPU placement
-            # block based on (a) ``nvidia-cuda-mps-control`` binary
-            # presence and (b) the MOLBUILDER_USE_MPS env var.  These flags
-            # ALWAYS win, and they switch the daemon and nothing else: the
-            # rank count is the stated one either way.  Single-rank runs auto-disable below (MPS has
-            # overhead with no concurrency benefit when only one process
-            # touches the GPU).
+            # WHETHER MPS IS ALLOWED.  Unsaid, the MOLBUILDER_USE_MPS env var
+            # says, else allowed (the GPU placement block).  These flags
+            # ALWAYS win, and they allow or forbid the daemon and nothing
+            # else: the rank count is the stated one either way, and the
+            # MPS block starts it only where the ranks outnumber the GPUs.
             + (
                 "        --mps)\n"
                 '            _use_mps_default=1; shift ;;\n'
@@ -2401,11 +2397,10 @@ def render_run_wrapper(script_path: Path, *,
             _phys_cores_probe_block()
             + (_gpu_runtime_block() if gpu_mode else "")
             + siesta_args_block
-            # GPU load-balance: derive ranks-per-GPU from the resolved
-            # rank count so MPS gates on real sharing + the per-rank
-            # launcher can block-distribute.  Must sit AFTER the args
-            # block (needs $_mpi_np) and BEFORE the MPS block (reads
-            # $_ranks_per_gpu).  See _gpu_loadbalance_block.__doc__.
+            # GPU load-balance: count the GPUs the job was given and
+            # derive ranks-per-GPU from the resolved rank count.  Must sit
+            # AFTER the args block (needs $_mpi_np) and BEFORE the MPS
+            # block (reads $_ngpu).  See _gpu_loadbalance_block.__doc__.
             + (_gpu_loadbalance_block() if gpu_mode else "")
             + "# MPI rank count: $_mpi_np (stated at prep: "
             "$_mpi_np_default)\n"
@@ -2434,26 +2429,42 @@ def render_run_wrapper(script_path: Path, *,
             )
             + ""
             "export OPENBLAS_NUM_THREADS=1\n"
-            # MPS setup: enable Hyper-Q GPU sharing when (a) the binary
-            # is on PATH, (b) the user hasn't opted out, and (c) we'll
-            # actually have multiple ranks (single-rank MPS is pure
-            # overhead).  Per-job pipe / log directories so concurrent
+            # MPS setup: enable Hyper-Q GPU sharing when (a) the user
+            # hasn't opted out, (b) the binary is on PATH, and (c) the
+            # ranks outnumber the GPUs (one rank per GPU shares nothing,
+            # and MPS is pure overhead).  Per-job pipe / log directories so concurrent
             # molbuilder runs don't trample each other's MPS daemon.
             # Trap on EXIT cleans up after siesta returns.
             + (
-                # ``_dry_run != 1`` guard: a --dry-run must not start the
-                # MPS daemon (a real GPU side-effect).  The dry-run report
-                # still shows the would-be MPS state from _use_mps_str.
-                # GATE: ranks > GPUs -- ANY shared GPU gets the funnel
+                # THE ONE MPS DECISION (`_mps_wanted`): allowed, its binary
+                # on PATH, a GPU visible, and the ranks outnumber the GPUs
+                # -- ANY shared GPU gets the funnel
                 # (user decision 2026-08-13).  A floor-division gate
                 # (`_ranks_per_gpu >= 2`) would miss the uneven split: 3
-                # ranks over 2 GPUs floors to 1, yet GPU0 hosts 2 ranks
-                # -- sharing by driver TIME-SLICING, kernels taking
-                # turns, without the concurrency MPS exists to provide.
+                # ranks over 2 GPUs floors to 1, yet GPU0 hosts 2 ranks --
+                # sharing by driver TIME-SLICING, kernels taking turns,
+                # without the concurrency MPS exists to provide.  A
+                # --dry-run starts no daemon (a real GPU side-effect) and
+                # says what the run would do; the banner and the dry run
+                # read `_use_mps_str`, set below from this decision and the
+                # start's own outcome.
                 '# --- MPS daemon (Hyper-Q GPU sharing) -------------------\n'
-                'if [ "$_use_mps_default" = "1" ] '
-                '&& [ "$_mpi_np" -gt "${_ngpu:-0}" ] '
-                '&& [ "${_ngpu:-0}" -ge 1 ] '
+                '_mps_wanted=0\n'
+                '_mps_why=""\n'
+                'if [ "$_use_mps_default" != "1" ]; then\n'
+                '    _mps_why="not allowed (--no-mps, or MOLBUILDER_USE_MPS other '
+                'than 1)"\n'
+                'elif [ "$_have_mps" != "1" ]; then\n'
+                '    _mps_why="nvidia-cuda-mps-control is not on PATH"\n'
+                'elif [ "${_ngpu:-0}" -lt 1 ]; then\n'
+                '    _mps_why="no GPU visible"\n'
+                'elif [ "$_mpi_np" -le "$_ngpu" ]; then\n'
+                '    _mps_why="no GPU is shared: $_mpi_np rank(s) over '
+                '$_ngpu GPU(s)"\n'
+                'else\n'
+                '    _mps_wanted=1\n'
+                'fi\n'
+                'if [ "$_mps_wanted" = "1" ] '
                 '&& [ "${_dry_run:-0}" != "1" ]; then\n'
                 '    export CUDA_MPS_PIPE_DIRECTORY="/tmp/mb-mps-$$"\n'
                 '    export CUDA_MPS_LOG_DIRECTORY="/tmp/mb-mps-$$-log"\n'
@@ -2517,14 +2528,17 @@ def render_run_wrapper(script_path: Path, *,
                 '        echo "molbuilder: MPS enabled '
                 '(pipe=$CUDA_MPS_PIPE_DIRECTORY)" >&2\n'
                 '    fi\n'
-                'else\n'
-                '    if [ "$_use_mps_default" = "1" ] '
-                '&& [ "$_ranks_per_gpu" -lt 2 ]; then\n'
-                '        echo "molbuilder: MPS auto-disabled '
-                '(1 rank/GPU; MPS adds overhead with no '
-                'concurrency benefit)" >&2\n'
-                '    fi\n'
+                'elif [ "$_mps_wanted" != "1" ]; then\n'
+                '    echo "molbuilder: MPS off ($_mps_why)" >&2\n'
                 'fi\n'
+                # WHAT THE BANNER AND THE DRY RUN SAY: on where the decision
+                # is on and its start bound -- a start that timed out falls
+                # back and clears `_use_mps_default`; a dry run starts
+                # nothing, so it says what the run would do.
+                '_use_mps_str="off"\n'
+                'if [ "$_mps_wanted" = "1" ] '
+                '&& [ "$_use_mps_default" = "1" ]; then '
+                '_use_mps_str="on"; fi\n'
                 if gpu_mode else ""
             )
         )
@@ -2673,10 +2687,16 @@ def render_run_wrapper(script_path: Path, *,
                 #   --map-by package:PE=$_omp_threads
                 #     map ranks across packages, PE counts physical
                 #     CORES (not PUs) by default in OpenMPI 5 without
-                #     ``--use-hwthread-cpus``.  When the cpuset
-                #     restricts to one package (numactl wrap),
-                #     OpenMPI packs all ranks onto that single
-                #     visible package -- correct.
+                #     ``--use-hwthread-cpus``.  The whole-job numactl
+                #     wrap does NOT hold the ranks to its node:
+                #     measured 2026-10-17 with OpenMPI 5.0.10 on a
+                #     two-socket box, this map overrides the wrap's
+                #     cpuset, so a single GPU's second rank lands on
+                #     the far socket -- on cores of its own, which
+                #     the rank helper then warns about (`gpu.md`
+                #     G10).  Binding nothing instead put every rank's
+                #     OpenMP threads on the same cores, which is
+                #     worse.
                 #   --bind-to core
                 #     bind each rank to its PE cores (one cpuset
                 #     per rank covering all its cores; OS scheduler
@@ -2764,14 +2784,12 @@ def render_run_wrapper(script_path: Path, *,
             + ((
                 # THE single authoritative GPU-resource summary, printed
                 # with the RESOLVED launch values ($_mpi_np / $_omp_threads
-                # / final $_use_mps_default / $_ranks_per_gpu) so it always
+                # / $_use_mps_str / $_ranks_per_gpu) so it always
                 # matches what runs.  $_gpu_numa is the generation-time GPU0
                 # NUMA probe (per-rank placement is logged per rank below).
-                '_mps_str_now="off"; '
-                '[ "$_use_mps_default" = "1" ] && _mps_str_now="on"\n'
                 'echo "  GPU resources : GPU mode (ELPA-CUDA, no NCCL) -- '
                 'chosen $_mpi_np ranks × $_omp_threads threads '
-                '($(( _mpi_np * _omp_threads )) cores); mps=$_mps_str_now; '
+                '($(( _mpi_np * _omp_threads )) cores); mps=$_use_mps_str; '
                 'ranks/GPU=${_ranks_per_gpu:-?}; GPU0 NUMA=$_gpu_numa"\n'
                 # TUNE BY MEASURING, not by asking for a guess:
                 # `jobset prep bench` measures.

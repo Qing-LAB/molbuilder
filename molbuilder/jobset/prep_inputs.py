@@ -627,7 +627,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # template that never carried the item answers "no", while ``one`` RAISES
     # on a name the file never had -- right for a caller that NEEDS the item,
     # wrong for one asking whether it exists.  One name for both engines
-    # (`execution/gpu.md` § 4).
+    # (`execution/gpu.md` G1).
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the

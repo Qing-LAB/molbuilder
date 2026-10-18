@@ -1190,6 +1190,12 @@ def real_h2_layered(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
+def real_h2_gpu(tmp_path_factory):
+    from support.real_runs import gpu
+    return gpu(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
 def real_h2_bench(tmp_path_factory):
     from support.real_runs import bench
     return bench(tmp_path_factory)
