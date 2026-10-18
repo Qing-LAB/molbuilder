@@ -1,10 +1,10 @@
-# Full code audit — main at 2.10.2, validated against the 2026-10-14 review
+# Full code audit — main at 2.11.0, validated against the 2026-10-14 review
 
 **Role:** audit report
 **Domain:** process
 **Companions:** [`code-audit.md`](?doc=process/code-audit.md) (the playbook this audit follows: § 1 principles, § 1b review rules R1–R4, § 1c.2 how to report); [`plans/plan.md`](?doc=plans/plan.md) (where open work is tracked; row **AU1** points here); [`testing.md`](?doc=process/testing.md) (the tier-1 lane run below)
 **Date:** 2026-10-18
-**Audited commit:** `origin/main` **`f3d5a4e4`**, molbuilder **2.10.2**
+**Audited commit:** `origin/main` **`0ff77d99`**, molbuilder **2.11.0** (first round at `f3d5a4e4`, 2.10.2; re-validated at `0ff77d99`, see § 0.1)
 **Baseline:** the full review of 2026-10-14 at **`83e72b2`** (2.9.4); 110 commits lie between them
 
 ---
@@ -41,7 +41,7 @@ High-severity items were re-run where the code could be run. After the area repo
 - *(read)* — confirmed by reading the code at the cited line.
 - *(unverified)* — plausible, not demonstrated.
 
-Line numbers are those of `f3d5a4e4`.
+Line numbers are those of `f3d5a4e4` unless a row says *HEAD*, which means `0ff77d99`. For a file the four 2.11.0 commits did not touch, the two are the same.
 
 **Areas:**
 
@@ -58,11 +58,34 @@ Line numbers are those of `f3d5a4e4`.
 | A9 | Front end 2: Results, inspectors, spectra, spectrum chart, VibrationView, trajectory |
 | A10 | Test suite, plan, duplicated/dead code, repository hygiene |
 
+### 0.1 Re-validation at 2.11.0 (`0ff77d99`)
+
+While this audit was being written, main moved four commits:
+
+| Commit | What it changed |
+|---|---|
+| `393c70a8` | serve start refuses a pidfile directory it cannot make, before it detaches |
+| `ebaaebb4` | **The notebook goes through molbuilder's one port** (a pass-through at `/jupyter/`); a server restart stops its notebook |
+| `e2fdb2d4` | plan update (2.10.3) |
+| `0ff77d99` | **The machine's record is shown, never a veto** (2.11.0): `scheduler/admit.py` replaced by `scheduler/fit.py` |
+
+Together they touch 84 files. Every finding was then validated against the actual code at `0ff77d99`, using this rule:
+
+- **The cited file is unchanged** (`git diff f3d5a4e4 0ff77d99 -- <file>` is empty): the code is byte-identical, so the status carries over. Each of the three reviewers spot-checked three carried-over findings on HEAD, and all held.
+- **The cited file changed:** the finding was re-checked on HEAD by one of three reviewers, split by cluster:
+  - security, notebook and serving;
+  - scheduler, jobsets and Task Setup;
+  - docs, tests and the review gates.
+
+  High items were re-run.
+
+In total 111 findings were re-checked; the rest carried over. The four 2.11.0 commits were also reviewed in full for new defects; those are numbered `B<k>-N<j>` (§ 5b). After the cluster reports, the I–V sign, the `30:00` wall time and the unchanged status of the files behind the other priority findings were re-checked independently on `0ff77d99`.
+
 ---
 
 ## 1. Results at a glance
 
-### 1.1 Status of the 2026-10-14 findings on main
+### 1.1 Status of the 2026-10-14 findings on main (first round, `f3d5a4e4`)
 
 | Area | Prior | Fixed | Partly | Still present | Moved | Not a defect | Cannot verify | **New** |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -81,9 +104,27 @@ Line numbers are those of `f3d5a4e4`.
 **Reading the table:**
 
 - **About 85 % of the baseline findings are still present.** Most of the 110 commits since 2.9.4 went to new work and test rework (the "TST" series), not to the findings.
-- **Security and ops (A6) has had no fixes at all.** `jupyter.py`, `serve_daemon.py`, `rate_limit.py`, `auth.py`, `notify_setup.py` and `install-env.sh` have no commits since the baseline.
+- **Security and ops (A6) had no fixes at all at `f3d5a4e4`.** `jupyter.py`, `serve_daemon.py`, `rate_limit.py`, `auth.py`, `notify_setup.py` and `install-env.sh` have no commits since the baseline.
 - **Three baseline findings were wrong** (§ 4); two more were narrower than stated.
 - **67 new findings**, most of them Low. Four are security- or data-relevant: A7-N1, A6-N1, A6-N2 and A5-N1/A1-N9.
+
+### 1.1b Status at 2.11.0 (`0ff77d99`)
+
+Changes from the re-validation:
+
+- **The 315 baseline findings:**
+  - Three moved to FIXED, all in `ebaaebb4`: A6-05 (Jupyter now always binds 127.0.0.1), A6-12 (no more http/https split under `--no-auth` + TLS) and A7-30 (the wildcard `frame-src` is gone).
+  - Four moved to PARTLY FIXED: A6-01, A7-01, A7-02 and A7-03. The notebook gate now checks Origin and a loopback Host, but every other route still does not, and "loopback = same account" is unchanged.
+  - The first-round findings A6-N1 and A6-N2 are also partly fixed, for the same reason.
+- **Nothing else re-checked changed status,** including everything in the scheduler/jobset cluster and the docs/tests cluster. A5-N3 (`--time 30:00`) is now *shown* in the launch question, but still sends 30 hours.
+
+| | Fixed | Partly | Still present | Moved | Not a defect | Cannot verify | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2026-10-14 findings at `0ff77d99` | **17** | **24** | **262** | 5 | 3 | 4 | 315 |
+| First-round new findings (A*-N*) at `0ff77d99` | 0 | 2 | 65 | — | — | — | 67 |
+| New in 2.11.0 (B*-N*, § 5b) | — | — | 15 | — | — | — | 15 |
+
+**Open at 2.11.0:** 262 + 24 + 5 + 67 + 15 = **373 findings** (still present, partly fixed or moved). Most are Low.
 
 ### 1.2 The test suite on main
 
@@ -110,24 +151,32 @@ About 530 fewer tests are collected, because the TST work retired tests that rea
 
 `tools/testrun.py` was not used because it writes `.test-progress/` into the repository. The checkout was confirmed unchanged before and after the run.
 
+**At 2.11.0 (`0ff77d99`), same command:** 6,581 passed · 11 failed · 4 errors · 55 skipped · 6 xfailed (6,657 collected, 198 s).
+
+- **No new failure:** every failure and error is in the list above.
+- The two seeding tests (A10-N1) passed in this run, but they are **not fixed**. A second run with `-n 6` failed one of them again, so the suite's result now depends on scheduling (B3-N1).
+- One new skip: `test_serve_verbs.py:277`, a new test that skips under root.
+
 ---
 
 ## 2. Priority findings — open on main
 
-Ordered by consequence. Every item here was verified on `f3d5a4e4`, by running code or by reading the line; the label says which.
+Ordered by consequence. Every item here was verified on `f3d5a4e4`, by running code or by reading the line; the label says which. The **2.11.0** column gives the status at `0ff77d99`.
 
 ### 2.1 Security
 
-| ID | Sev. | Finding | Location | Check |
-|---|---|---|---|---|
-| A6-01 / A7-03 | H | **No-sign-in server: "loopback = same account".** Any local account, or a cross-site page, can start the notebook (code execution as the server's account) and read its token | `web/blueprints/jupyter.py:111-118`; `docs/ops/access-control.md:121` | verified (cross-site POST → 202, signal sent) |
-| A6-N1 / A7-02 | H | **The documented CSRF defence does not exist.** `connect-src 'self'` limits molbuilder's own pages, not requests other sites send. There is no Origin or `Sec-Fetch-Site` check anywhere | `web/app.py:231-232`; `docs/web/web-api.md:442` | verified (cross-site `jupyter/start` 202, `notify/listener/keys` 200, multipart upload 200) |
-| A7-01 | H | **No Host-header check.** A DNS-rebinding page can read the API | `web/app.py` (no host validation) | verified (`Host: rebind.evil.example` → 200 with the root path) |
-| A7-N1 | H | **The file API writes inside a calculation's `.git/`.** `checkpoint.NEVER_STORED` is applied only to archive export; the server later runs `git` in that folder | `web/blueprints/files.py` write/upload/rename; `checkpoint.py:77,345` | verified write (`<calc>/.git/config` → 200); effect not demonstrated |
-| A6-02 | H | **Rate limiter takes the client-supplied leftmost `X-Forwarded-For`** | `web/rate_limit.py:219-222` | verified |
-| A6-03 / A6-N2 | M–H | **Behind the documented same-host proxy, every request is loopback.** The limiter is inert, and the notebook gate gives kernels to everyone the proxy admits | `rate_limit.py:130-131`; `jupyter.py:111-118`; `docs/ops/deployment.md:296-303` | verified (limiter); read (gate) |
-| A6-04 / A7-05 | M–H | **Notify routes have no admin gate.** `/test` is an SSRF probe; any user can rotate another user's key | `web/blueprints/notify_setup.py:302,414,531` | read |
-| A6-05 | M | **Jupyter binds to `serve`'s interface,** outside SSO and the limiter | `jupyter.py:793`; `cli.py:2450` | read |
+| ID | Sev. | Finding | Location | Check | 2.11.0 |
+|---|---|---|---|---|---|
+| A6-01 / A7-03 | H | **No-sign-in server: "loopback = same account".** Any local account, or a cross-site page, can start the notebook (code execution as the server's account) and read its token | `web/blueprints/jupyter.py:111-118`; `docs/ops/access-control.md:121` | verified (cross-site POST → 202, signal sent) | **partly fixed** (`ebaaebb4`): a cross-site POST now gets 403. A loopback request with `Host: localhost` and no Origin still gets 202, and any local account can open `/jupyter/`, where the pass-through adds the token for it. The premise is still stated at HEAD `jupyter.py:84-85`, `:126` |
+| A6-N1 / A7-02 | H | **The documented CSRF defence does not exist.** `connect-src 'self'` limits molbuilder's own pages, not requests other sites send. There is no Origin or `Sec-Fetch-Site` check anywhere | `web/app.py:231-232`; `docs/web/web-api.md:442` | verified (cross-site `jupyter/start` 202, `notify/listener/keys` 200, multipart upload 200) | **partly fixed**: the Origin check exists only for the notebook (HEAD `jupyter.py:285-295`). Re-run: a cross-site `notify/listener/keys` still returns 200 and issues a key; a cross-site multipart upload still returns 200 and writes the file. `app.py:229-230` and `web-api.md:445` still call CSP the CSRF defence |
+| A7-01 | H | **No Host-header check.** A DNS-rebinding page can read the API | `web/app.py` (no host validation) | verified (`Host: rebind.evil.example` → 200 with the root path) | **partly fixed**: Host is checked for the notebook only. Re-run: `/api/files/roots` with a foreign Host → 200 |
+| **B1-N1** | M (H on a shared host with sign-in) | **New in 2.11.0: `/jupyter/` relays whatever listens on 127.0.0.1:serve+1 onto molbuilder's own origin.** It never checks the listener is our notebook; it relays upstream `Set-Cookie`; and with no upstream CSP it sends only `frame-ancestors`. Another account can bind that port and run script as molbuilder's origin in a signed-in admin's browser | HEAD `web/blueprints/jupyter.py:357-381,437-444,473-476` | verified (stand-in upstream: page, `Set-Cookie` and the token header relayed); signed-in leg by reading | new |
+| A7-N1 | H | **The file API writes inside a calculation's `.git/`.** `checkpoint.NEVER_STORED` is applied only to archive export; the server later runs `git` in that folder | `web/blueprints/files.py` write/upload/rename; `checkpoint.py:77,345` | verified write (`<calc>/.git/config` → 200); effect not demonstrated | unchanged files: still present |
+| A6-02 | H | **Rate limiter takes the client-supplied leftmost `X-Forwarded-For`** | `web/rate_limit.py:219-222` | verified | unchanged: still present |
+| A6-03 / A6-N2 | M–H | **Behind the documented same-host proxy, every request is loopback.** The limiter is inert, and the notebook gate gives kernels to everyone the proxy admits | `rate_limit.py:130-131`; `jupyter.py:111-118`; `docs/ops/deployment.md:296-303` | verified (limiter); read (gate) | limiter still present. Gate **partly fixed**: it now also needs a loopback Host, but nginx's default `Host: $proxy_host` still passes for proxied clients that send no Origin (by reading) |
+| A6-04 / A7-05 | M–H | **Notify routes have no admin gate.** `/test` is an SSRF probe; any user can rotate another user's key | `web/blueprints/notify_setup.py:302,414,531` | read | unchanged: still present |
+| A6-05 | M | **Jupyter binds to `serve`'s interface,** outside SSO and the limiter | `jupyter.py:793`; `cli.py:2450` | read | **fixed** (`ebaaebb4`): always 127.0.0.1 (HEAD `jupyter.py:109,755`) |
+| B1-N2 / B1-N3 | L–M | **New in 2.11.0:** `deployment.md` § 2 does not say the proxy must keep `Host` and forward WebSocket upgrades, so the notebook breaks behind nginx defaults (unverified). The gate checks only Origin, so a cross-site page can probe `/jupyter/files/<path>` as a subresource (by reading) | `docs/ops/deployment.md` § 2; HEAD `jupyter.py` gate | read | new |
 
 ### 2.2 Data loss and data integrity
 
@@ -151,7 +200,7 @@ Ordered by consequence. Every item here was verified on `f3d5a4e4`, by running c
 |---|---|---|---|---|
 | A4-01 | H | **Linear-response I(V) has the wrong sign for V < 0:** I(−0.5 V) = I(+0.5 V) = +3.874 × 10⁻⁵ A. This is the default path | `transport/record.py:310` `half = abs(float(v)) / 2.0` | verified (twice) |
 | A3-01…04, A3-N1 | H | **Pseudopotential coverage check:** a WARN masks a wrong-XC ERROR; every vdW-DF run is blocked; `Au.psml` is "misnamed" beside `Au-fr.psml`; label `Au1` is "missing". Root cause: `check_coverage` matches by declared element, while the copier uses the exact `<label>.psml` | `pseudos.py:603-826`; `validation/siesta.py:135` | verified |
-| A5-07 / A5-N3 | M | **`"30:00"` is read as 30 hours** (SLURM: 30 minutes). `launch --time 30:00` sends `-t 1-06:00:00`, not re-admitted | `scheduler/quantities.py:144`; `jobset/_cli.py:1979` | verified (twice) |
+| A5-07 / A5-N3 | M | **`"30:00"` is read as 30 hours** (SLURM: 30 minutes). `launch --time 30:00` sends `-t 1-06:00:00`, not re-admitted | `scheduler/quantities.py:144`; `jobset/_cli.py:1979` | verified (twice; again at 2.11.0, where the launch question now *shows* `-t 1-06:00:00` but still sends it) |
 | A10-N2 | M | **Without openbabel, a peptide build drops 5 real hydrogens** and returns a radical. The later error blames charge and spin | `chemistry.py:1185-1211` | verified |
 | A3-08 | M | **Impossible values only warn** (`MeshCutoff = 0`, `DM.Tolerance < 0`, `conv_tol = 0`, `relax_force_tol < 0`); the catalogue's `above` limit exists but is not applied to them | `validation/metadata.py:97`; catalogue | verified |
 | A3-05/06/07/16 | M | **Missing checks:** no XC functional/authors pairing; `d3bj` with `wb97m-v`; symmetry with geomeTRIC optimisation; spin–orbit with scalar-relativistic pseudos only warns | `config/siesta.py:263-280`; `pyscf/layout.py:203-206`; `pyscf/input.py:472`; `pseudos.py:644` | verified (rendered decks) |
@@ -180,6 +229,8 @@ These matter because they are the mechanisms meant to catch the rest.
 | A1-N3 | **`tools/classify_path_finders.py --check` exits 1 on main.** It is the review tool that replaced a retired test, and `plan.md` records it as clean | `joblist.py:197` | verified |
 | A1-N1, A1-N2 | **New layering breaks in the last commits:** `task` (L1) → `template` (L2) in the HEAD commit; two new upward floor imports | `task.py:684`; `jobset/placement.py:138`; `jobset/transport_rung.py:295` | read (AST graph) |
 | A1-13 / A8-N2 / A8-09 | **41 test files and functions cited in docs do not exist,** among them three that are named as the guard of a duplicated rule | e.g. `web/molview.md:4322,3500`; `web/form-schema.md:291` | verified (sweep) |
+| **B3-N1** | **New in 2.11.0: tier-1 results depend on scheduling.** `0ff77d99` lets files without shared fixtures run on any worker, and `tests/test_describe.py:146,154,330` pops the session's `MOLBUILDER_PROJECTS` instead of restoring it. A10-N1 now fails at `-n 6` and passes at `-n 4`, and `testing.md` § 6.1a says "where it runs changes nothing" | HEAD `tests/conftest.py:925-956,1000-1016` | verified (two runs) |
+| B3-N3 | **The 2.11.0 docs still certify red gates:** `plan.md:364` calls `classify_path_finders --check` "clean"; it exits 1 at HEAD. The pyflakes hook still cannot install, and `submit.py:203` is still flagged | `docs/plans/plan.md:364` | verified |
 
 ---
 
@@ -199,8 +250,11 @@ These matter because they are the mechanisms meant to catch the rest.
 | A1-31 | `composed_junction` defined once | 74916c45 |
 | A10-11 | Source-read classifier retired | 769f8f4c |
 | A10-16, A10-17 | Plan Q13 and §5aa archived | — |
+| A6-05 | Jupyter always binds 127.0.0.1 (*2.11.0*) | ebaaebb4 |
+| A6-12 | No http/https split between server and notebook under `--no-auth` + TLS (*2.11.0*) | ebaaebb4 |
+| A7-30 | The per-port wildcard `frame-src` CSP is gone (*2.11.0*) | ebaaebb4 |
 
-**Partly fixed (20):**
+**Partly fixed (24 at 2.11.0; 20 in the first round):**
 
 - A2-04/09/27
 - A3-24
@@ -211,6 +265,13 @@ These matter because they are the mechanisms meant to catch the rest.
 - A9-20/21/22
 - A10-08/09/10/13/19
 - A1-30
+- *2.11.0, `ebaaebb4`:* A6-01, A7-01, A7-02, A7-03 — the notebook gate checks Origin and a loopback Host; nothing else does
+
+**Also reviewed sound in 2.11.0:**
+- the fit/place rewrite (`scheduler/fit.py`, 37 new tests pass);
+- `ensure_runtime_dir`;
+- the restart-stops-notebook loop;
+- the pass-through's header handling (session cookie stripped, token added, `X-Forwarded-For` and `Access-Control-*` dropped, absolute targets refused).
 
 The details are in § 6.
 
@@ -368,6 +429,30 @@ The details are in § 6.
 | A10-N11 | L | Tier-1 requirements (setuptools, authlib) unstated; missing tools ERROR instead of skip | `testing.md` tier 1 |
 
 </details>
+
+---
+
+## 5b. New findings in the 2.11.0 commits (15)
+
+Found by reviewing `393c70a8`, `ebaaebb4` and `0ff77d99` in full.
+
+| ID | Sev. | Finding | Location (HEAD) | Check |
+|---|---|---|---|---|
+| B1-N1 | M (H on a shared host with sign-in) | `/jupyter/` relays whatever listens on 127.0.0.1:serve+1, without checking it is our notebook, onto molbuilder's own origin. It relays upstream `Set-Cookie` (session fixation), and with no upstream CSP sends only `frame-ancestors`, so the page's scripts run. `jupyter.md:509` says it answers 502 "when no notebook is running", but it does so only when nothing listens. Fix: Jupyter on a Unix socket in the 0700 runtime directory, or forward only while the shepherd pidfile is ours; drop molbuilder's cookie name from upstream `Set-Cookie`; always add `script-src` | `web/blueprints/jupyter.py:357-381,437-444,473-476` | verified (stand-in upstream); signed-in leg by reading |
+| B1-N2 | L–M | `deployment.md` § 2's proxy example does not say the proxy must keep `Host` (or send `X-Forwarded-Host` with `trust_proxy`) and forward WebSocket upgrades. With nginx defaults, kernels never connect and a signed-in admin's Lab POSTs get 403 | `docs/ops/deployment.md` § 2; `jupyter.md` § 2 | unverified (no nginx) |
+| B1-N3 | L | The gate checks only Origin, and Jupyter's own Referer check is skipped for token-authenticated requests. A cross-site page can load `/jupyter/files/<path>` as an image or script to learn whether a file exists and its size | `web/blueprints/jupyter.py` gate; `jupyter.md:513-519` | read (jupyter_server source) |
+| B1-N4 | L | Two new claims are false: "molbuilder never hands it [the token] to the browser" (JupyterLab's page carries it, and token requests set Jupyter's login cookie), and "nothing but the pass-through reaches it" (any local process reaches 127.0.0.1:serve+1) | `web/blueprints/jupyter.py:181`; `jupyter.py:339`; `cli.py:2725`; `access-control.md:132`; `data/jupyter.toml:44-58` | read |
+| B1-N5 | L | molbuilder's 50 MB `MAX_CONTENT_LENGTH` caps notebook saves through the pass-through (Jupyter allows 512 MB), with an unrelated error message; bodies are buffered in memory | pass-through; `app.py` | verified (51 MB PUT → 413) |
+| B2-N1 | L | `fit` reads an unstated GPU or node count as zero, giving a false "fits no node" (contrary to `scheduler.md` R2a). It can leave out every GPU benchmark cell; reachable with hand-edited or older records | `scheduler/fit.py:181-187,279-282` | verified |
+| B2-N2 | L | The fit message truncates the asked wall: 4 h 00 min 30 s on a 4-hour queue reads "4h is over htc's wall (0-04:00:00)"; 59 s reads "0m" | `scheduler/fit.py:84-85,241` | verified |
+| B2-N3 | L | The package re-exports the function `fit` under the submodule's name, so `molbuilder.scheduler.fit` is a function, not the module | `scheduler/__init__.py:53-55` | verified |
+| B2-N4 | L | An unread `devices` field renders an unreadable count as "a100 xNone" | `scheduler/record.py:1129-1130` | verified |
+| B2-N5 | L | `gpu.md` contradicts the code (and `generator.md`) on which GPU count bounds the benchmark proposal. Two rules exist for "GPUs on a node": the per-type maximum vs the sum over cards | `docs/execution/gpu.md:104,111`; `jobset/prep_inputs.py:126-138`; `fit._gpus_on` | read |
+| B2-N6 | L | Comments cite `max_cpus`, which this commit deleted | `scheduler/probe.py:73-74,159` | verified |
+| B2-N7 | L | A comment says the tab fills time and memory asks from the queue's limits; `task-setup.md` now says it "fills neither" | `scheduler/record.py:1103-1108` | read |
+| B3-N1 | L–M | Tier-1 results depend on scheduling: new worker grouping plus `test_describe.py`'s `os.environ.pop` of `MOLBUILDER_PROJECTS` | `tests/conftest.py:925-956,1000-1016`; `tests/test_describe.py:146,154,330`; `testing.md` § 6.1a | verified |
+| B3-N2 | L | Worker grouping depends on pytest-private `item._fixtureinfo.name2fixturedefs`; if it disappears, grouping silently stops and module fixtures are rebuilt per worker | `tests/conftest.py:930-936` | unverified risk |
+| B3-N3 | L | `plan.md:364` still certifies the red `classify_path_finders` gate as clean | `docs/plans/plan.md:364` | verified |
 
 ---
 
@@ -540,10 +625,10 @@ The details are in § 6.
 | A5-20 | Writes skip persist | S | `summarize.py:338`; `script_emit.py:1988` |
 | A5-21 | Walk quoting; exit codes | S | `submit.py:2032,2059` |
 | A5-22 | Clocks | S | `runwrap.py:223,3100,3417,3447` |
-| A5-23 | Parsing | P | job id fixed (b74276bd); `quantities.py:70-82`, `admit.py:92` remain |
+| A5-23 | Parsing | P | job id fixed (b74276bd); `quantities.py:70-82` remains. *2.11.0:* `admit.py` deleted; the minutes message moved to `fit.py:241` (see B2-N2) |
 | A5-24 | Restore CLI; save message | S / CV | `cli.py:3282,3304` |
-| A6-01…30 | All 30 configuration/ops findings | S | see the 2026-10-14 review; unchanged files. A6-15 and A6-24 narrowed (§ 4) |
-| A7-01…33 | Web backend findings | S, except A7-12 F and A7-32 ND | see § 2 and the A7 notes below |
+| A6-01…30 | Configuration/ops findings | S, except at 2.11.0: A6-05 F, A6-12 F, A6-01 P | Files mostly unchanged. A6-15 and A6-24 narrowed (§ 4). A6-23 moved to `configuration.md:1107` |
+| A7-01…33 | Web backend findings | S, except A7-12 F, A7-32 ND; at 2.11.0 A7-30 F, A7-01/02/03 P | See § 2 and the A7 notes below. At HEAD, A7-N3's route count is 102 (the pass-through added 3 rules), not 99 |
 | A8-01 | Trajectory rebuild | F | 8597632f |
 | A8-02…22, 24…29, 31…33 | MolView/Task Setup findings | S | files largely unchanged since baseline |
 | A8-14 | Ruler-on logic | P | `molview.md:4262` stale |
@@ -595,7 +680,7 @@ The details are in § 6.
    - a second `TRANSPORT_AXIS` inside one module (A4-N5).
 
    Each pair already disagrees somewhere. The project's own D4 rule asks for a parity test when two implementations must agree.
-3. **Security code has not moved since the baseline.** All eight priority security items (§ 2.1) are on unchanged files. They are independent of the feature work and can be fixed as one small, separate change (Origin/Host check in one `before_request`, notebook gate, XFF, admin gate, `.git` refusal in the file fence).
+3. **Security moved only around the notebook.** At `f3d5a4e4`, all eight priority security items sat on unchanged files. In 2.11.0, `ebaaebb4` added an Origin and loopback-Host check, but only to the notebook's own gate, and its new pass-through (B1-N1) opens a fresh path. The fix is still one small, separate change: apply the same Origin/Host check in one `before_request` for every state-changing route, and harden the notebook gate, the XFF hop, the admin gate and the `.git` refusal in the file fence.
 4. **Layering keeps eroding with each feature.**
    - Upward floor imports went from about 22 to 29.
    - The HEAD commit added an L1→L2 import.
@@ -628,6 +713,7 @@ The details are in § 6.
    - the rightmost XFF hop;
    - an admin gate on `notify_setup`;
    - refuse `.git`/`NEVER_STORED` components in `_resolve_within_roots`;
+   - harden the 2.11.0 notebook pass-through (B1-N1): forward only to our live notebook, preferably over a Unix socket in the 0700 runtime directory; drop molbuilder's cookie name from upstream `Set-Cookie`; always send `script-src`;
    - correct the CSRF text in `web-api.md` and `app.py`.
 2. **Data loss:**
    - symlink-safe delete, rename and move (A7-06);
@@ -661,7 +747,8 @@ The details are in § 6.
    - gate authlib, setuptools and euid;
    - unset `$MOLBUILDER_PROJECTS` in the seeding tests;
    - key the Playwright skip on the `e2e` marker;
-   - fix the benzene planarity test.
+   - fix the benzene planarity test;
+   - restore the session's environment in `test_describe.py` (B3-N1), so results stop depending on worker count.
 7. **Docs:** fix the user-facing commands and examples, then the contradictions listed in §§ 5–6. Move dated narrative out of contract documents.
 
 ---
@@ -685,12 +772,22 @@ The details are in § 6.
   - duplicate-window scans for Python and JS;
   - pyflakes and `classify_path_finders --check`.
 
+**2.11.0 re-validation:**
+- the tier-1 suite twice (`-n 4` and `-n 6`);
+- a Flask test client with a stand-in Jupyter (a ~30-line `http.server`) and a threaded Werkzeug server for the WebSocket join;
+- cross-site POSTs, Host checks and the 51 MB body;
+- `fit()` scenarios;
+- the `--time 30:00` launch through the repository's stub `sbatch`;
+- the retry and job-address collisions;
+- pyflakes, the classifier, and the AST layering graph diffed against `f3d5a4e4`;
+- jupyter_server and JupyterLab source, read for B1-N3 and B1-N4.
+
 **What could not be seen:**
 
 - **No real engines:** no SIESTA, TBtrans or PySCF runs. PySCF and openbabel are not installed (A3-27 and A4-27 are CV).
 - **No real SLURM:** A5-N2 is unverified.
 - **No real browser (R4):** the visual and race items in the front end rest on node reproductions and reading. The reach of A6-N1 under browser private-network protections is unverified.
-- **No real supervisor or Jupyter:** the pidfile race and token exposure were checked by reading.
+- **No real supervisor or Jupyter:** the pidfile race and token exposure were checked by reading. At 2.11.0, no real JupyterLab, nginx or signed-in browser, so B1-N1's admin leg, B1-N2 and the nginx case of A6-N2 are by reading.
 - **No e2e or tier-2/3 lanes.**
 - **Unchanged code was not re-read end to end:** `task-setup/viewer.js`, the spectra core's unchanged lines, builders, `jupyter.py`, `serve_daemon.py`.
 - **Plan sampling:** only about 10 of 162 `file:line` citations and about 15 "done" claims in `plan.md` were spot-checked.
