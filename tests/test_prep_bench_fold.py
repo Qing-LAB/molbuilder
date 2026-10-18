@@ -27,6 +27,7 @@ from molbuilder.jobset.prep import prep_bench
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
+from support.machines import SLURM, WORKSTATION
 
 
 def _artifacts(calc, point, stage="01_coarse"):
@@ -116,7 +117,7 @@ def calc(tree):
     # The probe's answer, pre-seeded: machine.set_machine early-returns on an
     # existing environment.json, so the grid enumerates THIS topology.
     (dest / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
@@ -155,7 +156,7 @@ def _on_a_queue(calc):
     the machine could not take is refused, its dry run too (`job-system.md`
     § 6.0); on the workstation `calc` describes, `--mode submit` is."""
     rec = json.loads((calc / "environment.json").read_text())
-    rec["scheduler"] = "slurm"
+    rec["scheduler"] = SLURM.to_dict()
     rec["domains"] = [{"name": "gpu", "partition": "gpu", "qos": "public",
                        "max_time": "1-00:00:00", "max_cores": 4,
                        "gpu": {"a100": 1},
@@ -1002,7 +1003,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     (dest / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
@@ -1097,7 +1098,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tree):
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     (dest / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
@@ -1395,7 +1396,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
                             source=str(tree / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
     with pytest.raises(PrepError) as e:
@@ -1440,7 +1441,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
                             source=str(tree / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init=_ENTERS).to_json() + "\n")
     r = CliRunner().invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",

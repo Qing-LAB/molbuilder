@@ -89,13 +89,14 @@ def physical_core_count() -> int:
 
 
 #: WHERE A RUN'S THREAD COUNT COMES FROM when its settings state none, in
-#: order: what the run script exported, else what the scheduler allocated.
+#: order: what the run script exported, else the cores per rank the scheduler
+#: granted -- in molbuilder's name, which the job's header says once for
+#: everything it starts (`scheduler/kinds.py`, `JOB_VARIABLES`).
 #: ONE LIST, read by both chains (`execution/running-a-job.md` § 3.2): the
 #: script's own, :func:`threads_for`, which ends on the node's cores, and the
 #: run script's, which `runwrap` builds from it and ends on the count stated at
 #: prep.
-THREAD_SOURCES = ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "PBS_NCPUS",
-                  "NSLOTS")
+THREAD_SOURCES = ("OMP_NUM_THREADS", "MB_CPUS_PER_TASK")
 
 
 def threads_for(pinned: Optional[int] = None,

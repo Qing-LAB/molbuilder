@@ -29,6 +29,7 @@ from molbuilder.jobset._cli import jobset_group
 from molbuilder.scheduler import Environment, Topology
 from molbuilder.deck_record import extract_engine_offset
 from molbuilder.structure import Structure
+from support.machines import WORKSTATION
 
 #: A skewed cell, as the 2026-09-25 junction's was.
 _HEX = np.array([[8.651, 0.0, 0.0], [4.326, 7.492, 0.0], [0.0, 0.0, 14.0]])
@@ -101,7 +102,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     # environment there -- the record carries it for the generator
     # (`configuration.md` § 4).
     (dest / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init={"activation": "conda activate",
                                        "preamble": "true"}

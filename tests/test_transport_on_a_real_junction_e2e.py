@@ -61,6 +61,7 @@ import pytest
 from _road import conda_hook, env_available
 from molbuilder.parse.engines import siesta_grammar as _G
 from molbuilder.transport.stages import TRANSPORT_STAGES
+from support.machines import SLURM
 
 pytestmark = [
     pytest.mark.engine,
@@ -760,7 +761,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
     here = read_environment(machine_scope_path())
     # THE NAMED TARGET'S RECORD, copied here as one probed there is.
     ensure_private_dir(named_environment_path("cluster").parent)
-    write_environment(_dc.replace(here, scheduler="slurm", domains=[
+    write_environment(_dc.replace(here, scheduler=SLURM, domains=[
         Domain(name="short", partition="cpu", qos="short",
                max_time="01:00:00", max_cores=16,
                node_types=[{"cores": 16, "nodes": 2}]),

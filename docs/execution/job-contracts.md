@@ -48,7 +48,7 @@ actually open, and who writes them:
 |---|---|---|---|
 | `task.json` (`molbuilder/task@1`) | the description: engine, shape, stages, bench axes | `init` / Task-setup save / the transport describe door | § 2 |
 | `<label>.template.toml` | the answers, narrowed to one engine | `init` / a hand-over / the transport describe door | § 2 |
-| `environment.json` (`environment@2`) | what a machine IS: topology, domains, ceilings | `jobset probe` | § 6.1 |
+| `environment.json` (`environment@3`) | what a machine IS: its scheduler, topology, domains, ceilings | `jobset probe` | § 6.1 |
 | `job-set.json` | floor 3 — the derived work list | `prep`, on the target | § 2 |
 | `<label>.run.sh` / `.sbatch` | the wrapper + submission script, with reserved `=== molbuilder ... ===` blocks | `prep` | § 3 |
 | `run.json` (`run-launch@1`) | where an attempt was SENT (domain/partition/qos, the wall and memory it was sent with, job id) | `launch` | § 6.1 registry |
@@ -972,7 +972,7 @@ wrapper contains these and nothing else:
 | block | what it is for |
 |---|---|
 | **Per-run log file** | where this invocation's log goes — emitted FIRST, before the gate, so even a refused launch leaves a record; the output it was started with is kept, and a warm retry hands it back before it re-execs, so each start's log holds that start alone *(row order corrected 2026-08-13: it sat 8th while emitting first)* |
-| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-launch`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
+| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sent to a scheduler: on the line, its kind's `--export ALL,MB_LAUNCHED_BY=jobset-launch` for SLURM — [`scheduler.md`](?doc=execution/scheduler.md) § 6a — robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
 | **Baked preamble** | the target machine's own lines, verbatim from its record's preamble ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)) |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--run N` (the run's number, as `launch` gives it), `--continue` / `--cold` / `--force` handling |
@@ -993,7 +993,7 @@ wrapper contains these and nothing else:
 | **Geometry-cap check + warm-retry** | *(`continue_retries` > 0; SIESTA and TranSIESTA — TBtrans ends in neither way a retry answers)* bounded re-exec with `--continue` and the next run's number, `--run N+1`, on a geometry-step cap hit — in the flat shape after writing that run's launch record (`mb_monitor.pyz retried`, [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) — the retry budget the deck records; the cap is asked of `_mb_ending` (below), never grepped |
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
 | **Background job monitor** | launches `mb_monitor.pyz` beside the run at `nice 19`, watching the wrapper's own PID — the monitor and the framework readers it reads the run through, one file; the EXIT trap stops it and waits for its closing lines (`run-reports.md` §§ 2.4, 2.6). Opt out with `MB_MONITOR=0` |
-| **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
+| **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, what the scheduler granted (`MB_JOB_ID`, `MB_NTASKS`, `MB_CPUS_PER_TASK`, `MB_JOB_GPUS`, as the job's header says them) — then exit 0, nothing launched |
 | **Launch SIESTA + capture exit** | the engine, run as a child, and its exit code; its output named for the run — stdout through the tee, and SIESTA's history (§ 2.2): just before the engine starts, SIESTA's name for each history file the deck writes is pointed at the run's own file, and the pointer is removed when the engine exits (and by the EXIT trap). A name that already holds a file — SIESTA's history kept as before 2.9.6, or a SIESTA run started by hand — stops the run before the engine, naming it: the pointer never replaces a file. On a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then — after the job's finish, when it has one (the next two rows) — the conclusion marker, on the main line |
 | **Can the job finish itself?** | *(a job with a finish — a SIESTA force-constant stage, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.5)* before the engine starts, once the run index is known: the finish bundle's `loads` verb on the job's own python (`$_mb_py`, probed by the monitor block). A job env that cannot run it stops here, before the run it would throw away, and says so in the conclusion marker (`rc=1 at …; finish cannot load (<bundle>)`), which reads `failed` (`running-a-job.md` § 4.2). A dry run has already exited |
 | **The calculation's own result** | *(a job with a finish)* after the engine exits cleanly: logs `finish started:` and runs the bundle on the job's python, which derives the result beside the run. Its failure is the job's — the marker records its exit status and names the failed finish (`…; finish failed (<bundle>)`), and the wrapper exits with it; an output that ended, beside that log line and no marker yet, reads `running` (`running-a-job.md` § 4.2) |
@@ -1069,10 +1069,12 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   > [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a states in
   > general.
 
-**Two-layer SLURM.** On a cluster the `.run.sh` is the *inner* launcher. The
-same `prep` step also emits an outer `my-job.sbatch` — the `#SBATCH`
-resource header — which simply `bash`-execs the `.run.sh`. You submit the
-outer file: `sbatch my-job.sbatch`. On a workstation there is no `.sbatch`;
+**Two layers.** On a cluster the `.run.sh` is the *inner* launcher. The
+same `prep` step also emits an outer `my-job.sbatch` — the resource header,
+in the target's scheduler kind's language — which says what the scheduler
+tells the job in molbuilder's names, then `bash`-execs the `.run.sh`. It is
+sent by `jobset launch`, or by hand with the line the header's own comment
+prints. On a workstation there is no `.sbatch`;
 you run the `.run.sh` directly (`bash my-job.run.sh`, or backgrounded with
 `nohup`). This is one implementation: `runwrap.py::write_run_wrapper(…,
 emit_sbatch=True)` → `render_sbatch`. **The JobSet framework reuses this exact
@@ -2235,7 +2237,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
 | User config | `molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `launch`, `envs`, `paths`, and the server's `tls`, `auth`, `admin`, `rate_limit`, `checkpoint` — **what you want**, never a value of a job — and `env_init`, how a shell enters an environment on THIS machine, which `jobset probe` copies into the row below; every key and what it is for is [`configuration.md`](?doc=configuration.md) § 4. The `scheduler` block is refused by name since 2026-10-02, `script_generation` there was renamed `env_init`, and `execution` `launch` |
-| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains`, `env_init` (the activation and preamble, copied from that machine's `molbuilder.json`) — **what the target machine is**, in one shape whether it is a cluster or a workstation |
+| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@3` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler` (its kind and where its commands are, `configuration.md` M-2), `topology`, `site`, `domains`, `env_init` (the activation and preamble, copied from that machine's `molbuilder.json`) — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `schema`, `generated_at`, `environment`, `system`, `points`, `choice`, `tool` — *this row said `points`, `choice`, `recommend` until 2026-09-05; `recommend_resources` was deleted 2026-08-24 (user) and `to_dict()` has not emitted it since, though records written before then still carry the key on disk* |
 | Bench group | `<seq>_<stage>/bench/launch/bench-group-<side>-<cell>.run.sh` + its `.log` for a shelf sent to a queue (`bench-group-cpu-G0K4C1`, its name in full always -- `generator.md` § 4.3a), `bench-group.run.sh` + `bench-group.log` for the walk of every unlaunched trial here (flat: `bench_<seq>_<stage>/launch/`) (+ its `.sbatch`, written at the benchmark's prep, and SLURM's own `slurm.%j.out` — all four in `launch/`, roadmap 7.10 L3, so the container holds trial directories and one folder rather than the group's machinery mixed among them) — the grouped submission's sequencer and its log (user, 2026-08-20): the sequencer regenerated at each `launch bench <stage>` — sent to a queue, or run here (one walk of them all, `--mode direct`) — from the trials still unlaunched, through the benchmark's walk (`submit._walk_script`, `job-system.md` § 6.0); runs each under its per-trial time bound from the container (the parent that sees every trial), and exits nonzero when any trial failed so `squeue` prompts a look at the log. **One group per side AND resource shelf** (`generator.md` § 4.3a, 2026-08-21), named in full always (`runfiles.GroupNames.of_trials`): its side, `-cpu`/`-gpu`, and its shelf token (`-G2K16C1` = 2 GPUs, 16 ranks **per GPU**, 1 core per rank) — **the same spelling its trials carry**, read off a trial rather than derived a second way. It was `-g2n32c1` (lowercase, `n` = TOTAL ranks) until 2026-08-24, while the very directories that job launches were named `bench-G2K16C1…`: same three facts, two vocabularies, side by side in one listing — which is what § 6.3 exists to prevent. Same files per group, each an exact-fit allocation so nothing idles inside it. | *(bash + text)* | `jobset/submit.py` | one `run_member` line per pending trial |
@@ -2358,8 +2360,8 @@ within one artifact, never about ignoring which artifact.)*
 The rules that decide **which file a machine fact belongs in** — facts to
 `environment.json`, preferences to `molbuilder.json` (and `env_init`, declared
 there and copied into every record by the probe), a probe never writing a
-preference, one door reading and writing the record, the bump to
-`molbuilder/environment@2`, and the probe asking before it overwrites — are
+preference, one door reading and writing the record, its schema
+(`molbuilder/environment@3`), and the probe asking before it overwrites — are
 M-1 through M-6 of
 [`configuration.md` § 5](?doc=configuration.md).
 
@@ -2424,9 +2426,11 @@ exchange names and rides the `ParameterSet` element, and a sweep axis reaches
 fold deleted it)*. Never mix the two within
 one file. `render_sbatch` is a *consumer* — it receives `cpus_per_task`
 already translated and does not re-derive it from `omp_threads`. (In the
-wrapper these are two distinct knobs that *coincide* on SLURM, where `-c` sets
-`SLURM_CPUS_PER_TASK`, which the wrapper uses as its OMP default — the "one
-concept, one name" framing here is the SLURM mapping, not a Python rename.)
+wrapper these are two distinct knobs that *coincide* under a scheduler, where
+the header's cores per rank are granted and said to the job as
+`MB_CPUS_PER_TASK`, which the wrapper uses as its OMP default — the "one
+concept, one name" framing here is the scheduler's mapping, not a Python
+rename.)
 
 > **Two names, one delivery — and the second half is not optional.** The
 > paragraph above says the two knobs are legitimately distinct. It has been read

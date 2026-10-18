@@ -8,6 +8,7 @@ gives the same answer as the door until the day the rule moves.
 from __future__ import annotations
 
 import pytest
+from support.machines import SLURM
 
 
 def test_the_directory_is_read_at_call_time_not_captured_at_import(
@@ -226,7 +227,7 @@ def test_a_printed_remedy_names_the_resolved_directory(monkeypatch, tmp_path):
     from molbuilder.scheduler.record import Environment
 
     with _pytest.raises(PrepError) as excinfo:
-        require_activation("sol", Environment(scheduler="slurm"))
+        require_activation("sol", Environment(scheduler=SLURM))
 
     message = str(excinfo.value)
     assert str(root / "environments") in message, message

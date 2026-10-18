@@ -23,9 +23,67 @@ record_declared = ["topology"]
 name = "--scheduler declares the kind, and --name files the record under the name a machine preps it by"
 ends_at = "probe"
 probe = [["--name", "sol-x", "--scheduler", "slurm", "--set", "cores_per_socket=64"]]
-record_says = { scheduler = "slurm", topology = { cores_per_socket = 64 } }
+record_says = { scheduler = { kind = "slurm" }, topology = { cores_per_socket = 64 } }
 record_declared = ["scheduler", "topology"]
 probe_said = ["--target sol-x"]
+
+# ---- THE SCHEDULER: its kind, and where its commands are there
+# (`configuration.md` § 5 M-2, `execution/scheduler.md` § 6a).  The probe
+# looks for each kind's submit command on PATH where it runs; what it cannot
+# find is declared to it.
+
+[[case]]
+name = "where no scheduler's submit command is on PATH, the probe records a machine with no scheduler, naming no command"
+ends_at = "probe"
+probe_path_lacks = ["sbatch"]
+probe = [[]]
+record_says = { scheduler = { kind = "workstation" } }
+probe_said = ["Machine: scheduler=workstation  cores/socket="]
+
+[[case]]
+name = "--scheduler names a kind with a queue whose submit command is neither on PATH nor declared -- refused, saying how to declare where it is"
+ends_at = "probe"
+probe_path_lacks = ["sbatch"]
+probe = [["--scheduler", "slurm"]]
+probe_refused = ["names no submit command", "--set scheduler.submit=PATH"]
+
+[[case]]
+name = "where a scheduler's submit command is on PATH, the probe records its kind, and each command where PATH finds it"
+ends_at = "probe"
+probe = [[]]
+record_says = { scheduler = { kind = "slurm" } }
+record_found_on_path = { submit = "sbatch" }
+
+[[case]]
+name = "--set scheduler.submit declares where the submit command is -- a site's own wrapper -- and the record keeps it, declared"
+ends_at = "probe"
+probe = [["--set", "scheduler.submit=/opt/site/bin/submit-wrapper"]]
+record_says = { scheduler = { kind = "slurm", submit = "/opt/site/bin/submit-wrapper" } }
+record_declared = ["scheduler"]
+
+[[case]]
+name = "...and the way out, taken: a site whose only submit command is its own wrapper names the kind and where the wrapper is, and the record keeps both, declared"
+ends_at = "probe"
+probe_path_lacks = ["sbatch"]
+probe = [["--scheduler", "slurm", "--set", "scheduler.submit=/opt/site/bin/submit-wrapper"]]
+record_says = { scheduler = { kind = "slurm", submit = "/opt/site/bin/submit-wrapper" } }
+record_declared = ["scheduler"]
+
+[[case]]
+name = "over a record, a declared submit command is asked about like every other difference, and No keeps it, still declared"
+ends_at = "probe"
+probe = [["--set", "scheduler.submit=/opt/site/bin/submit-wrapper"],
+         { flags = [], answers = "n\nn\nn\nn\nn\nn\n" }]
+record_says = { scheduler = { kind = "slurm", submit = "/opt/site/bin/submit-wrapper" } }
+record_declared = ["scheduler"]
+probe_said = ["kept recorded: scheduler"]
+
+[[case]]
+name = "a command declared where no scheduler is found, and no kind named, is refused -- asking which kind it is"
+ends_at = "probe"
+probe_path_lacks = ["sbatch"]
+probe = [["--set", "scheduler.submit=/opt/site/bin/submit-wrapper"]]
+probe_refused = ["has no queue, and names commands (submit)", "--scheduler slurm"]
 
 [[case]]
 name = "over a record, each difference is asked, and No -- the default -- keeps what the record says"

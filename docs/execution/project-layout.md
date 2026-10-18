@@ -1370,7 +1370,8 @@ Naming them apart is what makes step 1 answerable.
   a queue that grants a wall clock grants no rank count
   *(split 2026-09-02; `Allocation` carried all six until then)*.
 - **D3 · The machine record** — `environment.json`
-  (`molbuilder/environment@2`), the **whole probed answer**: topology, scheduler,
+  (`molbuilder/environment@3`), the **whole probed answer**: topology, scheduler
+  (its kind and where its commands are),
   site, and the reachable domains. It exists at two scopes — written per-machine
   by `jobset probe`, snapshotted into the calculation by step 1 — and carries a
   `source` field saying where each fact came from. One shape whether the machine
@@ -1512,8 +1513,9 @@ group ran in (job id, node, granted resources), then per trial *when it started,
 when it finished, with what exit code and duration* — so both the ordering
 and any environment question are answered by the log itself. And every
 trial rides with its **own explicit `-np/-omp`** — enforced at generation —
-because inside the allocation the `SLURM_*` variables describe the
-envelope, and a flag-less wrapper falling back to them would silently
+because inside the allocation what the scheduler tells the job
+(`MB_NTASKS`, `MB_CPUS_PER_TASK`, said by its header) describes the
+envelope, and a flag-less wrapper falling back to it would silently
 measure the widest point instead of its own. Naming a
 trial (`jobset launch bench tight G1K8C2`) still launches that one alone.
 A point is **re-measured** by restoring the state saved before the
@@ -2736,8 +2738,8 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a walked point's start, a taken-over point's computing run (one hop) | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_continued_from`) -- with the files it takes; on the flat layout with the run's launch record | `runrecord.read_continued_from` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | launch, by its one hand-over (`materialize.hand_over`, through `runrecord.write_gathered_from`) -- a rung's first launch or a `--gather` (`jobset.gather.transport_inputs`), or a launch again keeping what its last run was given | `runrecord.read_gathered_from` | record |
-| `slurm.<jobid>.out` — only: launched to a queue | SLURM's own stdout for the job | SLURM, as the run's header asks (`-o`) | none | record |
-| `slurm.<jobid>.err` — only: launched to a queue | SLURM's own stderr for the job | SLURM, as the run's header asks (`-e`) | none | record |
+| `<scheduler>.<jobid>.out` — only: launched to a queue | the scheduler's own stdout for the job | the scheduler, as the run's header asks (its kind's `stdout`, `scheduler/kinds.toml`) | none | record |
+| `<scheduler>.<jobid>.err` — only: launched to a queue | the scheduler's own stderr for the job | the scheduler, as the run's header asks (its kind's `stderr`, `scheduler/kinds.toml`) | none | record |
 | `.mb-rank-launch-<pid>.sh` — only: a GPU run | the per-rank GPU launcher | the run script, removed when it exits | none | transient |
 <!-- /manifest -->
 
@@ -2833,7 +2835,7 @@ optional, and read only for the restart files it lists (§ 5.1).
 | `task.json` | ③ calculation | `molbuilder/task@1` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference, and an optional `bench` plan. **No `base` key** — what does not change is in the template, once (`stages.md` § 4) |
 | `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep` — again while the stage is never launched; a launched stage is not prepared again (its way back, `job-system.md`, *How the checkpoint supports you*) |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
-| `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@2` | the machine **as probed**: topology, scheduler, site, reachable domains, and the activation and preamble copied from that machine's `molbuilder.json` — and, in the calculation's copy, the machine it is set to (`machine`, its first prep's). Never what you want from it — that is `molbuilder.json` |
+| `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@3` | the machine **as probed**: topology, scheduler (its kind and where its commands are), site, reachable domains, and the activation and preamble copied from that machine's `molbuilder.json` — and, in the calculation's copy, the machine it is set to (`machine`, its first prep's). Never what you want from it — that is `molbuilder.json` |
 | ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
 | `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing and the winner.  **No wall and no memory** (§ 2.3.2) |
 

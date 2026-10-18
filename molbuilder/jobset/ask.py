@@ -497,6 +497,17 @@ def parse_test_only(text: str) -> Prediction:
                       nodes=nm.group(1) if nm else None)
 
 
+#: DISCOVERY, A READER PER KIND (`scheduler.md` § 6a): each kind with a queue
+#: -> the reader of its start-time answer, which no format states.
+_ANSWER_READERS = {"slurm": parse_test_only}
+
+
+def answer_of(kind, text: str) -> Prediction:
+    """The scheduler's answer to an ask (`kinds.Kind.asking`), read by its
+    kind's reader (:data:`_ANSWER_READERS`)."""
+    return _ANSWER_READERS[kind.name](text)
+
+
 def prediction_table(preds: Sequence[Prediction]) -> str:
     """What the scheduler said, one line per job asked about.
 

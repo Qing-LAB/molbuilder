@@ -29,14 +29,14 @@ name = "a refusal is written down -- one the verb says before anything is planne
 launch = ["--time", "1h"]
 launch_mode = "direct"
 launch_sends = true
-launch_refused = "--time: a submitted job's wall, restated on its sbatch line -- `--mode direct` does not read it"
+launch_refused = "--time: a submitted job's wall, restated on the line that sends it -- `--mode direct` does not read it"
 after_launch = { ledger_holds = ["refused"] }
 
 [[case]]
 name = "a refused dry run writes nothing"
 launch = ["--time", "1h"]
 launch_mode = "direct"
-launch_refused = "--time: a submitted job's wall, restated on its sbatch line -- `--mode direct` does not read it"
+launch_refused = "--time: a submitted job's wall, restated on the line that sends it -- `--mode direct` does not read it"
 launch_writes_nothing = true
 
 # ---- A RUN HERE, IN THE BACKGROUND UNLESS SAID (job-system.md § 6.0, *A run
@@ -60,17 +60,45 @@ launch_sends = true
 launch_refused = ["--foreground: waits for a run here", "--stage coarse --foreground --mode direct", "--stage coarse --mode submit"]
 after_launch = { ledger_holds = ["refused"] }
 
+# ---- THE LINE IS THE RECORD'S SCHEDULER'S (`scheduler.md` § 6a): its kind's
+# words, its submit command where the machine's record says it is -- never
+# whatever this computer's PATH finds, where the suite's own refusing
+# `sbatch` stands first and says other words.
+[[case]]
+name = "a launch sends its line with the submit command the machine's record names, where the record says it is -- not whatever PATH finds first"
+machine = "this"
+queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
+allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
+launch = []
+launch_mode = "submit"
+launch_sends = true
+launch_refused = ["refused coarse (rc=1)", "the basic tests send nothing to a scheduler"]
+after_launch = { ledger_holds = ["refused"] }
+
+# ...FROM THE CALCULATION'S OWN COPY of its machine's record (`scheduler.md`
+# § 6a; `configuration.md` M-3): a calculation prepared for another machine
+# is sent with that machine's line, whatever this one's record says.
+[[case]]
+name = "a calculation prepared for another machine shows the line its own copy of that machine's record gives -- this machine having no scheduler"
+machine = "named"
+queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
+allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
+launch = []
+launch_mode = "submit"
+line = ["-J H2/coarse", "H2_01_coarse.sbatch --run 0"]
+
 # ---- ASKED ABOUT WHERE NO SCHEDULER IS (`running-a-job.md` § 5.5: no
 # scheduler here is an answer): a group's one job answers as a stage does.
+# Whether there is one to ask is the machine's record's kind, never this
+# computer's PATH -- where the suite's `sbatch` stands (`scheduler.md` § 6a).
 [[case]]
-name = "a group asked about on a machine with no scheduler is answered, as a stage is -- nothing to wait for"
+name = "a group asked about on a machine whose record names no scheduler is answered, as a stage is -- nothing to wait for, whatever PATH holds"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
 stage = ["coarse", "medium"]
 launch = []
 launch_stage = ["coarse", "medium"]
 launch_mode = "ask"
-no_sbatch_on_path = true
 listing = ["no scheduler on this machine"]
 
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)

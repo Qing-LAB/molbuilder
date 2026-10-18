@@ -983,8 +983,9 @@ def _load_bench_set(base, stage, verb: str = "launch"):
 #: `--time` takes the same spelling (`TIME_METAVAR`).
 #:
 #: These describe the HUMAN edge only.  What the file stores and what
-#: reaches `sbatch` is SLURM's own spelling, always, and neither is any of
-#: the person's business here (`engines/stages.md` § 6.8a).
+#: reaches the scheduler is the record's one spelling (`task.py`:
+#: ``D-HH:MM:SS``), always, and neither is any of the person's business here
+#: (`engines/stages.md` § 6.8a).
 TIME_METAVAR = "DURATION"
 TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
              "number of minutes.  A run on a scheduler states one -- here, "
@@ -1048,7 +1049,8 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "(project-layout.md D2); prep renders the deck for it.  "
                    "Stated nowhere, a SIESTA run is refused.")
 @click.option("--cpus-per-task", type=int, default=None, metavar="C",
-              help="cores per rank (OMP threads). sbatch -c.  Stated "
+              help="cores per rank (OMP threads), the header's cores per "
+                   "rank.  Stated "
                    "nowhere -- here or the run card's `omp_threads` / "
                    "`threads` -- a run is refused.")
 @click.option("--gpus", "gres", default=None, metavar="N",
@@ -1298,11 +1300,11 @@ def _ask_which_groups(base, named) -> tuple:
 
 
 def _header_said(lines) -> str:
-    """A header's request in one line, as its ``#SBATCH`` lines carry it
+    """A header's request in one line, as its directive lines carry it
     (`Directives.lines_of`) -- every value of what a launch sends, said
-    where a person approves it (`submission.md` S4)."""
-    return "header: " + "  ".join(ln[len("#SBATCH"):].strip()
-                                  for ln in lines)
+    where a person approves it (`submission.md` S4): each line's directive,
+    after its kind's prefix (`scheduler/kinds.toml`)."""
+    return "header: " + "  ".join(ln.split(None, 1)[1] for ln in lines)
 
 
 def _echo_prep_answer(ans, base, *, first: bool = True,
@@ -1734,8 +1736,10 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "about the layout: 'direct' = run it here with bash; "
                    "'submit' = hand it to this machine's scheduler; "
                    "**'ask' = submit NOTHING and report when it "
-                   "would start** (`sbatch --test-only` on the line submit "
-                   "would send), so you can change the request at prep and "
+                   "would start** (the scheduler asked about the line "
+                   "submit would send, its kind's ask -- "
+                   "scheduler/kinds.toml), so you can change the request at "
+                   "prep and "
                    "ask again before committing.  'ask' needs a login "
                    "node -- there is no prediction without the cluster.  "
                    "**Defaults to `launch.mode` in molbuilder.json** "
@@ -1744,8 +1748,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               help="print the exact command each job WOULD get; launch "
                    "nothing, write nothing.")
 @click.option("--time", "time_text", default=None, metavar=TIME_METAVAR,
-              help="submit and ask: a submitted job's wall, restated on its "
-                   "sbatch line (-t) -- for a run launched again that ran "
+              help="submit and ask: a submitted job's wall, restated on the "
+                   "line that sends it -- for a run launched again that ran "
                    "out of it.  Every other value -- the queue, ranks, cores, "
                    "GPUs, memory -- is the header prep wrote, sent as it is "
                    "(job-system.md 6.0).")
@@ -2055,8 +2059,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             plan.record("question", **facts)
         results = ask_launch(plan)
         # NOTHING WAS SUBMITTED.  The line the scheduler was asked about is
-        # the line that WOULD be sent, the header its prep wrote, plus
-        # --test-only -- so what is printed here and what launch would do
+        # the line that WOULD be sent, the header its prep wrote, plus its
+        # kind's ask -- so what is printed here and what launch would do
         # cannot drift.
         from .ask import prediction_table
         import dataclasses as _dcs
@@ -2199,7 +2203,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # scheduler does not cancel the others, so the run can end with some
     # jobs queued and some not; the refused shelves' trials stay pending,
     # so re-running `launch` picks up exactly them.
-    _refused = [r for r in results if r.status == "sbatch refused"]
+    _refused = [r for r in results if r.status == "scheduler refused"]
     if _refused:
         click.echo("")
         click.echo(f"  {len(_refused)} group(s) the scheduler refused -- "
@@ -2294,10 +2298,16 @@ def _probe_consent_merge(before, probed, *, yes: bool):
     import dataclasses as _dc
 
     diffs = []                                # (name, recorded, probed, keep)
+    # THE SCHEDULER IS ONE FACT -- its kind and where its commands are,
+    # asked about as one block, said in words; kept, it keeps the note of
+    # how it arrived, as the record has it.
+    def _keep_scheduler():
+        probed.scheduler = before.scheduler
+        if "scheduler" in before.source:
+            probed.source["scheduler"] = before.source["scheduler"]
     if before.scheduler != probed.scheduler:
-        diffs.append(("scheduler", before.scheduler, probed.scheduler,
-                      lambda: setattr(probed, "scheduler",
-                                      before.scheduler)))
+        diffs.append(("scheduler", before.scheduler.said(),
+                      probed.scheduler.said(), _keep_scheduler))
     for f in _dc.fields(probed.topology):
         b = getattr(before.topology, f.name)
         pv = getattr(probed.topology, f.name)
@@ -2479,6 +2489,12 @@ def cmd_machines() -> None:
         click.echo(f"    --target {LOCAL_TARGET}   # this machine")
 
 
+def _scheduler_kinds():
+    """The kinds ``--scheduler`` may name: `scheduler/kinds.toml`'s."""
+    from ..scheduler.kinds import names
+    return names()
+
+
 @jobset_group.command("probe",
                      short_help="record a machine's capability -> "
                                 "environment.json (--name for a cluster you "
@@ -2499,15 +2515,18 @@ def cmd_machines() -> None:
                    "existing record is asked about, and silence keeps the "
                    "record.")
 @click.option("--set", "sets", multiple=True, metavar="KEY=VALUE",
-              help="declare a topology fact the probe cannot see where it "
-                   "runs (M-1's declared door -- e.g. a login node whose "
-                   "compute nodes hold the GPUs): --set gpus_per_node=4. "
-                   "Repeatable; wins over detection; the record's source "
-                   "says 'flag'.")
+              help="declare a fact the probe cannot see where it runs "
+                   "(M-1's declared door): a topology fact -- e.g. a login "
+                   "node whose compute nodes hold the GPUs: --set "
+                   "gpus_per_node=4 -- or where one of the scheduler's "
+                   "commands is, for a site's own wrapper: --set "
+                   "scheduler.submit=PATH.  Repeatable; wins over "
+                   "detection; the record's source says 'flag'.")
 @click.option("--scheduler", "scheduler_flag", default=None,
-              type=click.Choice(["slurm", "workstation"]),
-              help="force the scheduler kind instead of detecting it "
-                   "(source 'flag').")
+              type=click.Choice(list(_scheduler_kinds())),
+              help="name the scheduler's kind instead of detecting it "
+                   "(source 'flag'); its commands are still looked for on "
+                   "PATH (scheduler/kinds.toml).")
 def cmd_probe(do_write: bool, name, yes: bool,
                         sets, scheduler_flag) -> None:
     """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
@@ -2553,17 +2572,31 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # refused by name -- a silently-dropped declaration is a decision the
     # user wrote down and nobody obeyed.
     from ..scheduler import topology_field_types
+    from ..scheduler.kinds import ROLES
     types = topology_field_types()
-    overrides = {}
+    overrides, commands = {}, {}
     for s in sets:
         key, sep, raw = s.partition("=")
         if not sep:
             raise click.ClickException(
                 f"--set takes KEY=VALUE, got {s!r}")
+        if key.startswith("scheduler."):
+            # WHERE ONE OF THE SCHEDULER'S COMMANDS IS (M-2): a site's own
+            # wrapper, or a command not on PATH where the probe runs.
+            role = key[len("scheduler."):]
+            if role not in ROLES:
+                raise click.ClickException(
+                    f"--set knows no scheduler command {role!r} -- it knows "
+                    f"{', '.join(f'scheduler.{r}' for r in ROLES)}")
+            if not raw.strip():
+                raise click.ClickException(f"--set {key}: names no command")
+            commands[role] = raw.strip()
+            continue
         if key not in types:
             raise click.ClickException(
                 f"--set knows no topology field {key!r} -- it knows "
-                f"{', '.join(sorted(types))}")
+                f"{', '.join(sorted(types))}, and "
+                f"{', '.join(f'scheduler.{r}' for r in ROLES)}")
         try:
             overrides[key] = types[key](raw)
         except ValueError:
@@ -2600,8 +2633,15 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # The NODE probe first -- scheduler, topology, default partition: the one
     # node prober, the one `envs init-config` seeds this machine's record
     # through too, so the two cannot disagree about what this machine is.
-    env = resolve_environment(now_iso=now, overrides=overrides or None,
-                              scheduler_override=scheduler_flag)
+    try:
+        env = resolve_environment(now_iso=now, overrides=overrides or None,
+                                  scheduler_override=scheduler_flag,
+                                  commands=commands)
+    except ValueError as exc:
+        # A SCHEDULER THAT CANNOT BE RECORDED -- a kind with a queue whose
+        # submit command is neither found nor declared, or commands named
+        # for a kind with none (`record.Scheduler`).
+        raise click.ClickException(str(exc)) from None
 
     # THE THREE FACTS THAT TRAVEL WITH A RECORD -- how this machine enters
     # its environment, which envs exist here, and what they were built
@@ -2636,13 +2676,13 @@ def cmd_probe(do_write: bool, name, yes: bool,
     before = read_environment(target / fname)
 
     t = env.topology
-    click.echo(f"\nMachine: scheduler={env.scheduler}"
+    click.echo(f"\nMachine: scheduler={env.scheduler.said()}"
                f"  cores/socket={t.cores_per_socket}  sockets={t.sockets}"
                f"  gpus/node={t.gpus_per_node}  gpu={t.gpu_type or '-'}"
                f"  mem={t.mem_total_gb or '-'} GB")
     if env.domains:
-        click.echo("\nReachable domains (a launch names one with "
-                   "--domain):")
+        click.echo("\nReachable domains (a job names one: its "
+                   "allocation.domain, or prep --domain):")
         for d in env.domains:
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
                        f"{d.partition}/{d.qos}")
@@ -2681,12 +2721,9 @@ def cmd_probe(do_write: bool, name, yes: bool,
                 f"probe again.")
         there = dest.exists()
         if there:
-            import os as _os
-            why = ("cannot be read here (permissions)"
-                   if not _os.access(dest, _os.R_OK) else
-                   "does not read as a record this molbuilder knows")
-            click.echo(f"\n{dest} is there and {why} -- writing replaces "
-                       f"it.")
+            from ..scheduler.record import why_unread
+            click.echo(f"\n{dest} is there and does not read -- "
+                       f"{why_unread(dest)} -- writing replaces it.")
         if not yes:
             try:
                 ok = click.confirm("Replace it with this record?" if there

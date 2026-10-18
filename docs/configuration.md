@@ -1000,9 +1000,11 @@ is the clearest statement of the rule.)*
 > the activation is how Sol works, yet nothing on Sol reports it. So the
 > probe both measures and records what you declare to it on that machine —
 > `Environment.source`'s vocabulary is `scontrol` / `lscpu` / **`flag`**, and
-> `flag` *is* the declared case; `resolve_environment(overrides=…)` is its
-> door, fed by `jobset probe --set key=value` (typed by the `Topology` schema
-> itself, unknown keys refused by name) and `--scheduler`.  The activation is
+> `flag` *is* the declared case; `resolve_environment(overrides=…,
+> scheduler_override=…, commands=…)` is its door, fed by `jobset probe --set
+> key=value` (typed by the `Topology` schema itself, unknown keys refused by
+> name), `--set scheduler.<command>=PATH` (one of `kinds.ROLES`) and
+> `--scheduler`.  The activation is
 > declared once, in that machine's own `molbuilder.json`, and the probe copies
 > it into the record (§ 4).
 
@@ -1023,12 +1025,17 @@ statement (`allocation.domain`, `--domain`), never a default anywhere.
 
 `environment.json` carries its `scheduler` — the kind (`slurm`, `workstation`)
 and, for a kind with a queue, where its commands are on that machine
-(`submit`, `query`, `cancel`, `cluster`), found there by the probe or declared
-to it (`--scheduler`; `--set scheduler.submit=PATH` for a site's own wrapper);
-the kind's language — its commands' forms, its header, its files, what it tells
-a running job — is `scheduler/kinds.toml`'s, never a record's
-([`execution/scheduler.md`](?doc=execution/scheduler.md) § 6a; designed
-2026-10-17, built with plan row SK) — and the same fields either way; a field that could not be detected is `null`, kept and never
+(`submit`, `query`, `cancel`, `cluster`): each found there by the probe, on
+PATH by the name the kind gives it, or declared to it (`--scheduler` names
+the kind; `--set scheduler.submit=PATH` where a command is, a site's own
+wrapper among them). The kind's language — its commands' forms, its header,
+the placeholder its output files are named with, what it tells a running job
+— is `scheduler/kinds.toml`'s, never a record's
+([`execution/scheduler.md`](?doc=execution/scheduler.md) § 6a). **A kind with
+a queue names its submit command** — a record that cannot send is no record
+of a scheduler — **and a kind with none names no command**: the probe refuses
+either, saying the way out (`--set scheduler.submit=PATH`; `--scheduler`
+naming the kind a declared command belongs to). The same fields either way; a field that could not be detected is `null`, kept and never
 omitted, so a consumer can tell *absent* from *unknown* — **but for the three
 facts that travel with the record**, `env_init`, `conda_envs` and `env_arch`,
 which are left out when empty *(user, 2026-10-03)*, and the probe says in its
@@ -1161,7 +1168,8 @@ declared fact: a login node that sees no GPUs probes `null`, and keeping the
 recorded `4` is one keystroke. EOF keeps everything — a scripted probe
 without `--yes` changes nothing (silence is no, the standing doctrine) —
 and `--yes` takes every probed value. The reachable-domain **set** is one
-question, not one per row. `detected_at`/`source` follow the new probe: the
+question, not one per row; so is the scheduler — its kind and where its
+commands are, one fact. `detected_at`/`source` follow the new probe: the
 kept values were re-confirmed now, and the stamp says when the record was last
 looked at — but **a declared fact kept stays declared** *(user, 2026-10-03)*:
 `source` is noted per section, and a section whose kept value was declared
@@ -1176,12 +1184,14 @@ and unreadable alike, and the probe took the one for the other)*.
 
 These are rows of `tests/data/machine_record.toml`, run down the road.
 
-### The schema is `molbuilder/environment@2`
+### The schema is `molbuilder/environment@3`
 
-*(`@3` with plan row SK: the `scheduler` field becomes the block M-2 names. A
-record of an older schema is then refused by name, naming the probe that
-renews it — this machine's, a named target's (probed there and copied here),
-and a calculation's own copy alike.)*
+Its `scheduler` is the block M-2 names. A record an older molbuilder wrote is
+refused by name — *an older molbuilder wrote it* — with the probe that writes
+it again: this machine's, here; a named target's, on that machine, copied
+here. A calculation's own copy, which no probe replaces (M-3), is rewritten
+by `jobset migrate`: its scheduler word becomes the kind, each command by the
+name the kind gives it, run from PATH, the old file kept beside the new.
 
 The reachable `(name, partition, qos, max_time)` **domains** land in the
 record — the prober's `routing`, minus the preference M-1 removes. The whole
@@ -1199,11 +1209,9 @@ cluster to verify against. An unverified parse is how a probe starts reporting
 something that isn't there, so the field stays empty until there is real output
 to check it with.
 
-A major bump rather than a minor, deliberately. `from_dict` already tolerates
-missing and unknown keys, so an `@1` file would parse — and would read as *a
-cluster with no reachable domains*, indistinguishable from a real cluster where
-you hold no QoS. The bump is what makes an old record say *"I predate the
-probe"* instead of answering the question wrongly.
+A major bump whenever a field changes what it means, so a record an older
+molbuilder wrote says *an older molbuilder wrote it* instead of answering the
+question wrongly.
 
 ---
 

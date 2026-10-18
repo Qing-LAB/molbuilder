@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from support.machines import SLURM, WORKSTATION
+
 
 #: A record as `jobset probe --write` writes one.  It carries `env_init`,
 #: the probe's copy of how a shell enters an environment on that machine
@@ -25,7 +27,7 @@ import pytest
 #: It lists one queue, so a prep for it can name the queue its header asks
 #: for (`architecture.md` § 5.2: a job sent to a scheduler states its queue,
 #: and the record lists what it may name).
-_REC = {"schema": "molbuilder/environment@2",
+_REC = {"schema": "molbuilder/environment@3",
         "domains": [{"name": "q", "partition": "q", "qos": "normal",
                      "max_time": "1-00:00:00"}],
         "topology": {}, "site": {}, "source": {},
@@ -53,15 +55,15 @@ def machines(tmp_path, monkeypatch):
         "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     monkeypatch.setenv("MOLBUILDER_PROJECTS", str(tree))
 
-    def _write(name: str, body=None, *, scheduler="slurm"):
+    def _write(name: str, body=None, *, scheduler=SLURM):
         p = named_environment_path(name)
         p.write_text(body if body is not None
-                     else json.dumps({**_REC, "scheduler": scheduler}))
+                     else json.dumps({**_REC, "scheduler": scheduler.to_dict()}))
         return p
 
-    def _this_machine(scheduler="workstation"):
+    def _this_machine(scheduler=WORKSTATION):
         machine_scope_path().write_text(
-            json.dumps({**_REC, "scheduler": scheduler}))
+            json.dumps({**_REC, "scheduler": scheduler.to_dict()}))
 
     return type("M", (), {"write": staticmethod(_write),
                           "this_machine": staticmethod(_this_machine),
@@ -207,8 +209,8 @@ class TestTheUserChoosesTheMachine:
         """Pinned because reading
         `machine.set_machine` alone suggests otherwise -- it returns an existing
         snapshot before consulting `target`, and the guard is further on."""
-        machines.write("sol", scheduler="slurm")
-        machines.write("agave", scheduler="workstation")
+        machines.write("sol", scheduler=SLURM)
+        machines.write("agave", scheduler=WORKSTATION)
         machines.this_machine()
         # Prepared for one machine -- named, because two exist (C1).
         first = _prep("P/optimization/z", "--target", "agave")
@@ -221,7 +223,7 @@ class TestTheUserChoosesTheMachine:
         rec = json.loads(
             (machines.tree / "P" / "optimization" / "z" / "environment.json"
              ).read_text())
-        assert rec["scheduler"] == "workstation"
+        assert rec["scheduler"]["kind"] == "workstation"
 
 
 class TestTheCasesReadingFoundThatPokingDidNot:
@@ -274,7 +276,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         """The property all of C1/C3 protect, stated once: no spelling of
         the flags may end with a machine the user did not name."""
         machines.write("sol", '{"nonsense": true}')
-        machines.this_machine(scheduler="workstation")
+        machines.this_machine(scheduler=WORKSTATION)
         res = _prep("P/optimization/w", "--target", "sol")
         assert res.exit_code != 0
         bundle = machines.tree / "P" / "optimization" / "w"
@@ -306,7 +308,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         record into ~/.config/ here"* -- advice that means nothing for the
         box you are sitting at.
         """
-        machines.this_machine(scheduler="slurm")
+        machines.this_machine(scheduler=SLURM)
         first = _prep("P/optimization/w")
         assert first.exit_code == 0, first.output
         bundle = machines.tree / "P" / "optimization" / "w"
@@ -346,7 +348,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         check."""
         machines.write("sol", json.dumps({
             **{k: v for k, v in _REC.items() if k != "env_init"},
-            "scheduler": "slurm"}))
+            "scheduler": SLURM.to_dict()}))
         machines.this_machine()
         res = _prep("P/optimization/w", "--target", "sol")
         assert res.exit_code != 0, res.output

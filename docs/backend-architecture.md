@@ -237,10 +237,12 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 | W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`archive/2026-09-01-transport-design.md`) | *(orchestrate.py deleted)* |
 | W5 | **A module misfiled under "workflow."** `script_emit.py` is really a **data** serializer (it reaches into `parse.types`, `sidecars`, `structure`), not an execution verb — this doc files it under § 2 for that reason.  *(Its former sibling `bundle_writer.py` retired 2026-08-29 with the handoff it materialised.)* | `script_emit.py` |
 
-The scheduler vocabulary in `jobset/model.py::Resources` (`mpi_np`, `time`,
-`mem`, `gres`, `domain`) is SLURM-shaped — a *scheduler* coupling in the neutral
-core, not an *engine* one. Acceptable today (SLURM is the only real backend), but
-worth naming so a future PBS/LSF backend knows where the seam is.
+A scheduler is a kind: a block in `scheduler/kinds.toml` and its readers
+([`execution/scheduler.md`](?doc=execution/scheduler.md) § 6a). The job's own
+values in `jobset/model.py::Resources` (`mpi_np`, `time`, `mem`, `gres`,
+`domain`) are spelled as SLURM reads them — a wall `D-HH:MM:SS`, memory
+`120G`, a GPU ask `gpu:N` whose count the header takes — the one seam a kind
+that reads another spelling would meet.
 
 ---
 

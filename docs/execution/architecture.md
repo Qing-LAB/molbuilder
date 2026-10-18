@@ -691,7 +691,7 @@ flowchart TB
     DECK["<b>5 · the deck</b><br/>records the rank count it assumed"]
     SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← the stated <code>mpi_np</code>"]
     WRAP["<b>5 · the wrapper</b><br/><code>_mpi_np_default=</code> ← the same stated value"]
-    RUN["<b>6 · run time</b>, inside the wrapper<br/><code>-np flag &gt; MB_NP &gt; SLURM_NTASKS &gt; PBS_NP &gt; the baked default</code><br/><i>and SLURM_NTASKS is what step 5's header asked for</i>"]
+    RUN["<b>6 · run time</b>, inside the wrapper<br/><code>-np flag &gt; MB_NP &gt; MB_NTASKS &gt; the baked default</code><br/><i>and MB_NTASKS is what step 5's header asked for, said by it</i>"]
     CARD["<b>A13 · the preview</b><br/>shows the EMITTED lines,<br/>read back from the header and the run script it planned"]
 
     CAT --> A1
@@ -724,8 +724,8 @@ flowchart TB
   `.sbatch` header and the wrapper's baked value agree (A9): when each worked
   out its own default, the header floored
   at `-n 1` while the wrapper read this box's core count — and since step 6
-  reads `SLURM_NTASKS` *from that header*, a 64-core node ran the job on one
-  rank.
+  reads the ranks granted *from that header*, a 64-core node ran the job on
+  one rank.
 
 > **This is why nothing at prep may work out a track-B value.** A layer that
 > fills one in *"because it must be decided"* decides for the person. That is
@@ -1249,7 +1249,7 @@ flowchart LR
 | **the record must carry** | the activation | the activation **and** the queues |
 | **what each run states** | ranks and cores per rank (and a GPU count for a GPU run) | the same, **plus** its queue, wall and memory |
 | **floor 5 — how it starts** | `--mode direct`: `bash …run.sh`, in the background unless waited on (`job-system.md` § 6.0) | `--mode submit`: one `sbatch`, one job |
-| **what is emitted** | `.run.sh` | `.run.sh` **and** `.sbatch` — the outer one is a header whose body is a single line calling the inner one |
+| **what is emitted** | `.run.sh` | `.run.sh` **and** `.sbatch` — the outer one is a header whose body says what the scheduler tells the job in molbuilder's names, then one line calling the inner one |
 | **many jobs at once** | a sweep runs in order, locally | **never** — one job per invocation, by hand |
 | **floors 2, 3, 4, 6, 7** | *identical* | *identical* |
 
@@ -1261,7 +1261,9 @@ identical_on_both`; that a workstation gets no `.sbatch` at all is the
 `launch_values` case table's row *"a run on a machine with no scheduler is
 asked for no queue, wall or memory"*.)*
 
-**A workstation's record says `workstation`**, and no `.sbatch` is written —
+**A workstation's record names a scheduler with no queue** (`workstation`,
+[`scheduler.md`](?doc=execution/scheduler.md) § 6a), and no `.sbatch` is
+written —
 asking for one would be the nanny behaviour this project refuses. **A cluster's
 record lists its queues**, and a run prepared for it names one of them, with its
 wall and memory, or prep refuses: a header without them is rejected by the
@@ -1409,7 +1411,7 @@ flowchart LR
 | **0-based → 1-based** | the single conversion boundary | **prep step 3** | `model/overview.md` | ✅ one point, stated once |
 | **V2 → V6** | asked-for + machine → a list of jobs | floor 3, at `prep` | `resolve` (the `ParameterSet`); `prep` writes the `JobSet` from it | ✅ |
 | **V2 → V5** | building the job's resources | floor 3, at `prep` | `resolve` — the allocation rides the element, a sweep axis enters only through its declared `MachineTranslation` | ❌ **a maintained table** — § 6.2 |
-| **V5 → SLURM** | building the header | **prep step 4** | `render_sbatch` | ✅ from § 6.2 |
+| **V5 → the kind's header** | building the header | **prep step 4** | `scheduler.emit`, in the target's scheduler kind's language (`scheduler/kinds.toml`) | ✅ from § 6.2 |
 | **label → V7** | naming any file | every route | **`identity` and nothing else** (A1) | ✅ |
 | **run dir → V9** | reading it back | observe | `run_status` | ✅ |
 
@@ -1440,7 +1442,7 @@ against the table; it is the argument *for* keeping it in exactly one place.
 | you are adding… | what you touch |
 |---|---|
 | **a new engine** | items in V3/V4 with their `kind` and `anchor`. **No new translation** |
-| **a new scheduler** | one column in § 6.2's table, and `render_sbatch` |
+| **a new scheduler** | a block in `scheduler/kinds.toml` and its readers ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) |
 | **a new surface** | it reads V3. It never learns V4, and never speaks V5 |
 | **a new parameter** | one field's metadata. V1, V3 and BENCH-MARKS all follow from it |
 

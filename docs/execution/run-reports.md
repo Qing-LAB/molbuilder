@@ -147,8 +147,8 @@ number means:
 
 | started | whose CPU time and memory | the cores it holds | memory stated against |
 |---|---|---|---|
-| inside a scheduler's job (`SLURM_JOB_ID` set — `--mode submit`, or `direct` inside an allocation) | its cgroup | the affinity mask, else `SLURM_CPUS_ON_NODE`, else `SLURM_CPUS_PER_TASK` | the limit the kernel enforces on the job's cgroup, and the kernel's own peak where it keeps one |
-| outside one — a workstation's `--mode direct` | its process tree: the wrapper and every descendant, the monitor excepted; memory as proportional set size (PSS), so ranks mapping one library count it once | the cores its launch uses, which the wrapper passes as `--cores`: ranks × threads for a hybrid build, ranks for pure MPI, threads for OpenMP-only, 1 for serial | nothing — a process tree has no limit: *limit not stated* |
+| inside a scheduler's job (`MB_JOB_ID` set, by the job's header — `--mode submit`; [`scheduler.md`](?doc=execution/scheduler.md) § 6a) | its cgroup | the affinity mask, else `MB_CPUS_ON_NODE`, else `MB_CPUS_PER_TASK` | the limit the kernel enforces on the job's cgroup, and the kernel's own peak where it keeps one |
+| outside one — a run here, `--mode direct` | its process tree: the wrapper and every descendant, the monitor excepted; memory as proportional set size (PSS), so ranks mapping one library count it once | the cores its launch uses, which the wrapper passes as `--cores`: ranks × threads for a hybrid build, ranks for pure MPI, threads for OpenMP-only, 1 for serial | nothing — a process tree has no limit: *limit not stated* |
 
 A run started outside a scheduler has no cgroup of its own: the one its process
 sits in is the launching session's — a login scope, the web server's service —
@@ -420,8 +420,8 @@ point it at.
 | `MB_MONITOR_INTERVAL` | the wrapper | seconds between wakes |
 | `MB_NOTIFY_URL` · `MB_NOTIFY_KEY` | the monitor | report to this one URL instead of the channel file (§ 3) |
 | `MOLBUILDER_CONFIG_DIR` · `XDG_CONFIG_HOME` | the monitor | where `secrets/notify` is (§ 1) |
-| `SLURM_JOB_ID` · `SLURM_ARRAY_TASK_ID` | the monitor | inside a scheduler's job (§ 2.1a); the report's `job` and `array` |
-| `SLURM_CPUS_ON_NODE` · `SLURM_CPUS_PER_TASK` | the monitor | the cores held when no affinity mask answers |
+| `MB_JOB_ID` | the monitor | inside a scheduler's job (§ 2.1a); the report's `job` — the scheduler's id, said in molbuilder's name by the job's header ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) |
+| `MB_CPUS_ON_NODE` · `MB_CPUS_PER_TASK` | the monitor | the cores held when no affinity mask answers, as the job's header says them |
 
 | signal | sent by | the monitor |
 |---|---|---|
@@ -669,7 +669,7 @@ when — because somebody parses it later with no session to ask:
 | key | set by | meaning |
 |---|---|---|
 | `run` | the monitor | the run's stem, `<label>[_<stage>]` — the label and the stage token (`run-identity.md` § 2), as `runfiles` composes it; the run index is left out |
-| `job` · `array` | the monitor | `SLURM_JOB_ID`, `SLURM_ARRAY_TASK_ID`; absent outside a scheduler, or outside an array |
+| `job` | the monitor | `MB_JOB_ID`, the scheduler's id for the job; absent outside a scheduler |
 | `host` | the monitor | the node's own name |
 | `sent_at` | the monitor | the sender's clock, epoch seconds |
 | `event` | the monitor | `start`, `scf_converged`, `periodic` or `finish` (§ 2) |
@@ -855,7 +855,7 @@ asks, and what the wrapper then does is the wrapper's
 | which fields a report may carry | `molbuilder/report_fields.py` (§ 4.1a) |
 | what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` (§ 3) |
 | which channels one run uses | `monitor.channels_for`, from `--notify-channels` (§ 3.0) |
-| what identifies a report | `monitor.run_identity` — the stem, job id, array index, host (§ 4.1a) |
+| what identifies a report | `monitor.run_identity` — the stem, job id, host (§ 4.1a) |
 | the envelope each channel reads | `monitor.webhook_request` (§ 4.1b) |
 | how a report is signed | `monitor.sign_report`, which the listener imports and checks with — HMAC-SHA256, standard library only (§ 4.1) |
 | overriding the channels once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |

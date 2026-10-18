@@ -97,7 +97,7 @@ SCHEMA = 1
 #: not diagnostics -- somebody parses them later with no session to ask.
 #: The report's own fields are the one declaration's (`report_fields`,
 #: `stages.md` § 6.9), so a field the monitor sends is a field kept here.
-_FIELDS = ("run", "job", "array", "host", "sent_at",
+_FIELDS = ("run", "job", "host", "sent_at",
            "event", "text", "state") + NAMES
 
 #: One rotating file per user, 1 MB × 5.  A cap is not optional on a file

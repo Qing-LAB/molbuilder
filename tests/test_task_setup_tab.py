@@ -78,6 +78,7 @@ def test_the_tab_reuses_the_shipped_files_api(endpoint, web_client):
 # --------------------------------------------------------------------- #
 
 import json as _json
+from support.machines import SLURM, WORKSTATION
 
 
 def _folder(client, d):
@@ -883,10 +884,10 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         write_machine_record()
         cfg = tmp_path / "home" / ".config" / "molbuilder"
         (cfg / "environments").mkdir(parents=True)
-        rec = {"schema": "molbuilder/environment@2", "scheduler": "slurm",
+        rec = {"schema": "molbuilder/environment@3", "scheduler": SLURM.to_dict(),
                "domains": [], "topology": {}, "site": {}, "source": {}}
         (cfg / "environment.json").write_text(
-            _json.dumps({**rec, "scheduler": "workstation"}))
+            _json.dumps({**rec, "scheduler": WORKSTATION.to_dict()}))
 
         r = web_client.get("/api/task-setup/machines").get_json()
         assert r["ok"] and r["choice_required"] is False, r
@@ -947,7 +948,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
                                           write_environment)
         named = named_environment_path("sol")
         named.parent.mkdir(parents=True, exist_ok=True)
-        write_environment(Environment(scheduler="workstation"), named)
+        write_environment(Environment(scheduler=WORKSTATION), named)
         (tmp_path / "molbuilder.json").write_text(_json.dumps(
             {"launch": {"mode": "direct"}}))
         return b

@@ -1442,15 +1442,16 @@ def _takes_at_launch(task, stage: str, job, continuation, *, base, jobset,
                      template_text=template_text)
 
 
-def _launch_as_written(plan, header, script) -> dict:
+def _launch_as_written(plan, header, script, kind) -> dict:
     """What the job will be launched with, as the header its launch sends
     and its run script carry it -- A13's end point
-    (`execution/architecture.md` § 5.2): the header's ``#SBATCH`` lines and
-    the run script's stated counts, read from the text the plan holds by
-    each writer's own reader, never worked out again."""
+    (`execution/architecture.md` § 5.2): the header's directive lines --
+    ``kind`` the target's scheduler kind -- and the run script's stated
+    counts, read from the text the plan holds by each writer's own reader,
+    never worked out again."""
     from ..runwrap import stated_counts
     from ..scheduler.emit import Directives
-    return {"header": (Directives.lines_of(plan.read_text(header))
+    return {"header": (Directives.lines_of(plan.read_text(header), kind)
                        if plan.is_file(header) else []),
             "run_script": (stated_counts(plan.read_text(script))
                            if plan.is_file(script) else [])}
@@ -1865,7 +1866,7 @@ class PrepAnswer:
     sources: Optional[dict] = None
     #: A BENCHMARK'S SHELVES, each as its one header carries it -- what its
     #: launch sends to the queue (`shelves.shelves_of`): ``[{"name",
-    #: "header"}]``, the header's ``#SBATCH`` lines.
+    #: "header"}]``, the header's directive lines.
     shelves: List[dict] = dataclasses.field(default_factory=list)
 
     def as_dict(self, base) -> dict:
@@ -2191,7 +2192,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     #     an ask -- its queues are shown against ``asked``, the request the
     #     queue list and admission both check, so one can be named -- and
     #     supplies no value of it.
-    header = bool(emit_sbatch and environment.scheduler == "slurm")
+    header = bool(emit_sbatch and environment.kind.queue)
 
     def stated_or_refused(allocation, asked, *, shape: bool) -> None:
         why = launch_refusal(
@@ -2343,7 +2344,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         from ..scheduler.emit import Directives
         shelf_dir = resolved.record_dir(base) / LAUNCH_DIR
         out.shelves = [{"name": w.stem,
-                        "header": Directives.lines_of(plan.read_text(w))}
+                        "header": Directives.lines_of(plan.read_text(w),
+                                                      environment.kind)}
                        for w in plan.writes()
                        if w.parent == shelf_dir and w.suffix == ".sbatch"]
     if kind == "bench" and continuation is not None:
@@ -2401,7 +2403,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
                  / GroupNames.of_points(names.stem).name(".sbatch")
                  if out.points else Path(run_dir) / names.name(".sbatch"))
         out.launch = _launch_as_written(
-            plan, sends, Path(run_dir) / names.name(".run.sh"))
+            plan, sends, Path(run_dir) / names.name(".run.sh"),
+            environment.kind)
         from .agreement import launch_agreement
         agreement = launch_agreement(
             run_dir, job, text=plan.read_text(Path(run_dir) / out.deck))
@@ -2631,7 +2634,7 @@ def walk_header_of(where, names, request, environment, *, engine: str,
     (``jobs``), each source any member states it in.  Launch sends it as
     it is."""
     from ..runfiles import LAUNCH_DIR
-    if not (emit_sbatch and environment.scheduler == "slurm"):
+    if not (emit_sbatch and environment.kind.queue):
         return None
     from .placement import admitted, one_process
     sources: dict = {}
@@ -2863,7 +2866,8 @@ def _prep_groups(base, numbers: List[int], *, target, allocation,
                 "number": n, "members": list(members[n]),
                 "header": (str(got[0].relative_to(base))
                            if got is not None else None),
-                "launch": {"header": (Directives.lines_of(got[1])
+                "launch": {"header": (Directives.lines_of(
+                                          got[1], environment.kind)
                                       if got is not None else [])},
                 "writes": [str(w.relative_to(base))
                            for w in the_plan.writes() if w not in had]}

@@ -506,8 +506,11 @@
             if (nodeCores.length === 1) ctx.push(`${nodeCores[0]}-core node`);
             else if (nodeCores.length > 1) ctx.push(nodeCores.join("/") + "-core nodes");
         }
+        /* THE SCHEDULER'S KIND, as the machine's record names it
+         * (`configuration.md` M-2: `scheduler.kind`). */
         const env = data.environment || {};
-        if (env.scheduler) ctx.push(String(env.scheduler));
+        if (env.scheduler && env.scheduler.kind)
+            ctx.push(String(env.scheduler.kind));
         if (ctx.length) wrap.appendChild(
             el("div", "bench-context", ctx.join(" \u00b7 ")));
 

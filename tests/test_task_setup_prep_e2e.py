@@ -42,6 +42,7 @@ pytest.importorskip("flask")
 from pathlib import Path
 
 from support.task_setup_page import unfold
+from support.machines import SLURM, WORKSTATION
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -116,7 +117,7 @@ def _a_described_probe(root, execution=None):
         # of this test is the header that comes out.  A cluster is its RECORD:
         # a scheduler and the queues it lists.
         (d / "environment.json").write_text(
-            Environment(scheduler="slurm",
+            Environment(scheduler=SLURM,
                         topology=Topology(sockets=2, cores_per_socket=32),
                         domains=[Domain(name="public", partition="public",
                                         qos="public", max_time="1-00:00:00")],
@@ -456,7 +457,7 @@ def filled_dir(isolated_projects_root_module):
             d, struct=struct)
         write_pseudos(d, ["H"])
         (d / "environment.json").write_text(
-            Environment(scheduler="slurm",
+            Environment(scheduler=SLURM,
                         topology=Topology(sockets=2, cores_per_socket=32),
                         env_init={"preamble": "true",
                                            "activation": "conda activate"},
@@ -519,7 +520,7 @@ def binding_dir(isolated_projects_root_module):
         d, struct=struct)
     write_pseudos(d, ["H"])
     (d / "environment.json").write_text(
-        Environment(scheduler="slurm",
+        Environment(scheduler=SLURM,
                     topology=Topology(sockets=2, cores_per_socket=32),
                     env_init={"preamble": "true",
                                        "activation": "conda activate"},
@@ -1075,7 +1076,7 @@ def two_stage_dir(isolated_projects_root):
         # (`configuration.md` M-3): a copy here reads as a calculation
         # already set to its machine, and the choice below would be none.
         write_environment(
-            Environment(scheduler="workstation",
+            Environment(scheduler=WORKSTATION,
                         topology=Topology(sockets=2, cores_per_socket=32),
                         env_init={"preamble": "true",
                                            "activation": "conda activate"}),
@@ -1162,7 +1163,7 @@ def a_named_machine(two_stage_dir):
     d = environments_dir()
     d.mkdir(parents=True, exist_ok=True)
     write_environment(
-        Environment(scheduler="slurm",
+        Environment(scheduler=SLURM,
                     topology=Topology(sockets=2, cores_per_socket=64),
                     env_init={"preamble": "true",
                                        "activation": "conda activate"}),

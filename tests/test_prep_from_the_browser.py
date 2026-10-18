@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.scheduler.record import LOCAL_TARGET
+from support.machines import SLURM
 
 
 @pytest.fixture
@@ -57,8 +58,8 @@ def described(isolated_projects_root, web_client):
     d = environments_dir()
     d.mkdir(parents=True, exist_ok=True)
     (d / "faraway.json").write_text(json.dumps({
-        "schema": "molbuilder/environment@2",
-        "detected_at": "2026-08-01T00:00:00+00:00", "scheduler": "slurm",
+        "schema": "molbuilder/environment@3",
+        "detected_at": "2026-08-01T00:00:00+00:00", "scheduler": SLURM.to_dict(),
         "topology": {"sockets": 2, "cores_per_socket": 24,
                      "threads_per_core": 1, "numa_per_socket": None,
                      "gpus_per_node": 0, "gpu_type": None,

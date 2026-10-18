@@ -2190,9 +2190,10 @@ were written for a flat directory and would silently have lost data in a tree.
   come from the target machine's record, have **no default**, and generation of
   any wrapper refuses without them; environment *names* are configurable per
   category and must never be hard-coded; `.sbatch` is emitted unless the
-  target's record says `workstation`. Everything site-specific is baked at
-  generate/prep, and at run time the wrapper reads only the allocation and the
-  hardware.
+  target's record names a scheduler with no queue. Everything site-specific is
+  baked at generate/prep, and at run time the wrapper reads only the
+  allocation -- what the scheduler granted, in molbuilder's names, said by the
+  job's header -- and the hardware.
 - **The run id, its normalisation, and the engine's identity group** —
   [`execution/run-identity.md`](?doc=execution/run-identity.md).
 - **The run directory, filenames, reserved script blocks, warm-restart files, the

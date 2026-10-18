@@ -11,6 +11,7 @@ import pytest
 from molbuilder.jobset.model import Job, JobSet, Resources
 from molbuilder.paths import trial_name
 from molbuilder.jobset.plan import render_plan
+from support.machines import SLURM, WORKSTATION
 
 
 @pytest.fixture(autouse=True)
@@ -556,10 +557,10 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     from support.road import describe_calculation, jobset
     enters = {"activation": "conda activate",
               "preamble": "source /x/conda.sh"}
-    write_machine_record(scheduler="workstation", env_init=enters)
+    write_machine_record(scheduler=WORKSTATION, env_init=enters)
     ensure_private_dir(environments_dir())
     write_environment(Environment(
-        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),
+        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=64),
         domains=[Domain.from_row({
             "name": "cpu", "partition": "cpu", "qos": "public",
             "max_time": "1-00:00:00", "max_cores": 128,

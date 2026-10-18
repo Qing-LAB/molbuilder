@@ -11,8 +11,9 @@ PREVENTS: the queue one stage's prep baked routing every stage of the
 ladder; a direct run without the ranks and threads its prep stated; a send
 over a folder changed since its plan.
 
-The scheduler is a stub on PATH that queues nothing and writes every call
-down (`support.road`).  Nothing here launches an engine.
+The scheduler's submit command is a stub where the machine's record says it
+is, off PATH, that queues nothing and writes every call down
+(`support.road.a_machine_with_queues`).  Nothing here launches an engine.
 """
 from __future__ import annotations
 

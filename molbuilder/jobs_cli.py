@@ -3,7 +3,8 @@ running server is (`execution/job-system.md` § 6.0a): `status` reads each
 job's address and asks, fresh, what it is doing; `stop` stops one.
 
 A surface (`execution/architecture.md` § 2, floor 7): the addresses are
-`joblist`'s, the queue's answers `scheduler.queue`'s, each member's state
+`joblist`'s, the queue's answers `scheduler.queue`'s -- asked of the
+scheduler the job's calculation's record names -- each member's state
 the status door's (`jobset.runstatus.job_members`); the stop is written in
 the calculation's ledger.
 """
@@ -31,17 +32,27 @@ def jobs_group() -> None:
 
 
 class _Here:
-    """This machine's cluster, as its scheduler names it -- asked once a
-    command, and only when a queue job is asked of."""
+    """The cluster a scheduler here answers for, as it names it -- asked
+    once a command for each scheduler, and only when a queue job is asked
+    of."""
     def __init__(self):
-        self._asked, self._cluster = False, None
+        self._asked = {}
 
-    @property
-    def cluster(self):
-        if not self._asked:
+    def cluster(self, scheduler):
+        if scheduler not in self._asked:
             from .scheduler.queue import cluster
-            self._asked, self._cluster = True, cluster()
-        return self._cluster
+            self._asked[scheduler] = cluster(scheduler)
+        return self._asked[scheduler]
+
+
+def _scheduler_of(job):
+    """The scheduler a queue job was sent to: the one its calculation's copy
+    of its machine's record names (`configuration.md` M-3) -- ``None`` when
+    that copy does not read here."""
+    from .scheduler import read_environment
+    from .scheduler.record import calculation_record
+    rec = read_environment(calculation_record(job.calculation))
+    return rec.scheduler if rec is not None else None
 
 
 def _going(job, here: _Here):
@@ -57,11 +68,22 @@ def _going(job, here: _Here):
                               if job.host != this_host() else
                               "this machine cannot tell")}[going]
     from .scheduler.queue import lists
-    if job.cluster is not None and here.cluster != job.cluster:
+    scheduler = _scheduler_of(job)
+    if scheduler is None:
+        from .scheduler.record import UnknownTarget, calculation_record
+        if calculation_record(job.calculation).is_file():
+            # THERE AND NOT READ, said as the record's own refusal says it
+            # -- an older molbuilder's copy naming `jobset migrate`.
+            return None, " ".join(
+                str(UnknownTarget.unreadable_copy(job.calculation)).split())
+        return None, ("its calculation's record of its machine is not here, "
+                      "so its scheduler cannot be asked")
+    answers = here.cluster(scheduler)
+    if job.cluster is not None and answers != job.cluster:
         return None, (f"sent to cluster {job.cluster}: ask there"
-                      if here.cluster is not None else
+                      if answers is not None else
                       "the scheduler cannot be asked here")
-    going = lists(job.job_id)
+    going = lists(scheduler, job.job_id)
     return going, {True: "the scheduler lists it",
                    False: "the scheduler no longer lists it",
                    None: "the scheduler cannot be asked here"}[going]
@@ -128,7 +150,7 @@ def cmd_jobs_status() -> None:
 def cmd_jobs_stop(job_id: str, yes: bool) -> None:
     """Stop the job JOB_ID names (`molbuilder jobs status` lists them): a
     run here left in the background -- SIGTERM to its process group, which
-    reaches the engine -- or a queue job, `scancel`.  Shown and asked
+    reaches the engine -- or a queue job, its scheduler's cancel.  Shown and asked
     first; the calculation's ledger records the stop."""
     from .jobset.ask import confirm
     from .joblist import JobFileError, NotGoing, find, signal_here
@@ -175,8 +197,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
             how = f"SIGTERM to its process group, {job.pid}"
         else:
             from .scheduler.queue import cancel
-            cancel(job.job_id)
-            how = f"scancel {job.job_id}"
+            how = cancel(_scheduler_of(job), job.job_id)
     except NotGoing as exc:
         raise click.ClickException(
             f"{exc} -- `molbuilder jobs status` says how") from None

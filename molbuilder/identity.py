@@ -274,6 +274,16 @@ def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
             f"molbuilder checkpoint restore{p}")
 
 
+def migrate_as_typed(folder) -> str:
+    """The command that rewrites what an older molbuilder wrote in the
+    calculation at ``folder`` (`jobset migrate`), the calculation named by
+    its full path, which ``--bundle`` reads inside the projects tree -- the
+    spelling a layer below the command composer says (the machine record's
+    refusal of an older copy, `scheduler.record.UnknownTarget`)."""
+    import shlex
+    return f"molbuilder jobset migrate --bundle {shlex.quote(str(folder))}"
+
+
 #: The state a LAUNCHED stage goes back to (`job-system.md`, *How the
 #: checkpoint supports you*): it holds every run the group builds on, and
 #: the group as prepared, never launched.

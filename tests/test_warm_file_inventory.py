@@ -8,6 +8,7 @@ import pytest
 from molbuilder import runwrap
 from molbuilder.jobset.model import Resources
 from molbuilder.runfiles import RunNames
+from support.machines import SLURM
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +31,7 @@ def _isolated(monkeypatch, tmp_path_factory):
     # exactly as a person does:  molbuilder jobset probe --write
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (cwd / "environment.json").write_text(
-        _Env(scheduler="slurm",
+        _Env(scheduler=SLURM,
              topology=_Topo(sockets=2, cores_per_socket=32),
              env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()

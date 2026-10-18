@@ -42,10 +42,6 @@ def env():
     return got
 
 
-def test_the_record_reads_and_states_its_scheduler(env):
-    assert env.scheduler in ("slurm", "workstation")
-
-
 def test_each_machine_fact_is_a_number_or_unknown(env):
     """M-2: a fact the probe could not detect is null -- never a guess,
     never a zero standing for 'unknown'."""
@@ -60,8 +56,8 @@ def test_each_machine_fact_is_a_number_or_unknown(env):
 def test_a_cluster_lists_its_queues_each_named_whole(env):
     """A cluster's record lists the queues this account may use, each with
     its name, partition and QoS -- the three a job is sent with."""
-    if env.scheduler != "slurm":
-        pytest.skip("a workstation lists no queues")
+    if not env.kind.queue:
+        pytest.skip("a machine with no scheduler lists no queues")
     assert env.domains, "the probe found no queue this account may use"
     for d in env.domains:
         assert d.name and d.partition and d.qos, d

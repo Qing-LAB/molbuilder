@@ -1117,20 +1117,21 @@ def write_machine_record(at=None, **over):
     precondition rather than something prep arranges.
 
     ``over`` replaces fields on the modest default -- ``topology=`` for a
-    machine with more cores, ``scheduler="slurm"`` for a queue system.
+    machine with more cores, ``scheduler=`` a SLURM block for a queue system
+    (`support.machines.SLURM`).
 
     ``at`` names the config DIRECTORY to write into, for a test that hands a
     child process its own ``MOLBUILDER_CONFIG_DIR``: this process's
     ``machine_scope_path()`` is not that child's, and the child is the one
     that preps.
     """
-    from molbuilder.scheduler import (Environment, Topology,
+    from molbuilder.scheduler import (Environment, Scheduler, Topology,
                                       machine_scope_path, write_environment)
     # HOW A SHELL ENTERS AN ENVIRONMENT HERE, as a probed record carries it
     # -- the probe's copy of `env_init` (`configuration.md` § 4): `conda
     # activate`, behind a preamble that does nothing.  A test that runs a
     # real engine passes its own -- the real conda hook.
-    fields = dict(scheduler="workstation",    # no queue system
+    fields = dict(scheduler=Scheduler(kind="workstation"),   # no queue system
                   # ...and no GPU, said -- an unstated count is unknown
                   topology=Topology(sockets=2, cores_per_socket=8,
                                     gpus_per_node=0),

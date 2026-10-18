@@ -131,7 +131,8 @@ FIELDS: "dict[str, Field]" = {
         example="20260908-120000"),
     # The fields of the catalogue's FIXED-NAME families (B13, 2026-10-04):
     # files molbuilder writes that are not named on the label -- a
-    # pseudopotential is named for its element, SLURM's output for its job.
+    # pseudopotential is named for its element, a scheduler's output for its
+    # kind and its job.
     "element": Field(
         what="the chemical element a pseudopotential is for",
         shape=r"[A-Z][a-z]?",
@@ -140,6 +141,10 @@ FIELDS: "dict[str, Field]" = {
         what="the scheduler's id for the job",
         shape=r"[0-9]+",
         example="62372574"),
+    "scheduler": Field(
+        what="the scheduler's kind, by its name in `scheduler/kinds.toml`",
+        shape=r"[a-z][a-z0-9_]*",
+        example="slurm"),
     "pid": Field(
         what="the run script's own process id",
         shape=r"[0-9]+",
@@ -165,6 +170,13 @@ FIELDS: "dict[str, Field]" = {
 }
 
 _FIELD_RE = re.compile(r"\{([a-z_]+)\}")
+
+#: THE SCHEDULER'S OWN OUTPUT FILES, as a header asks for them: named for the
+#: scheduler's kind and the job's id, the id the scheduler fills in from its
+#: own placeholder (`scheduler.kinds.Kind.output_file`).  One name for every
+#: kind; the kind spells only its placeholder.
+SCHEDULER_STDOUT = "{scheduler}.{jobid}.out"
+SCHEDULER_STDERR = "{scheduler}.{jobid}.err"
 
 
 def _fields_in(role: str) -> "tuple[str, ...]":
@@ -1043,7 +1055,11 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # write one file.  geomeTRIC writes no log file here: PySCF hands it a
     # logging setup that prints to the screen (`pyscf/geomopt/log.ini`).
     Artifact("_geom_optim.xyz", "geomeTRIC's trajectory: each accepted "
-                                "step's geometry, multi-frame XYZ",
+                                "step's geometry, multi-frame XYZ — the name "
+                                "the deck's prefix for geomeTRIC is derived "
+                                "from; geomeTRIC writes no log file of its "
+                                "own here, PySCF handing it a logging setup "
+                                "that prints to the screen",
              attempt="shared", engine="pyscf", kind="result",
              writer="geomeTRIC, under the prefix the deck hands it"),
     # A TEMPLATE, NOT A GLOB.  The stamp is a FIELD: the file it names is real and
@@ -1342,13 +1358,17 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`jobset.gather.transport_inputs`), or a launch again "
                     "keeping what its last run was given",
              door="runrecord.read_gathered_from"),
-    Artifact(name="slurm.{jobid}.out", what="SLURM's own stdout for the job",
+    Artifact(name=SCHEDULER_STDOUT,
+             what="the scheduler's own stdout for the job",
              level="run", kind="record",
-             writer="SLURM, as the run's header asks (`-o`)",
+             writer="the scheduler, as the run's header asks (its kind's "
+                    "`stdout`, `scheduler/kinds.toml`)",
              only="launched to a queue"),
-    Artifact(name="slurm.{jobid}.err", what="SLURM's own stderr for the job",
+    Artifact(name=SCHEDULER_STDERR,
+             what="the scheduler's own stderr for the job",
              level="run", kind="record",
-             writer="SLURM, as the run's header asks (`-e`)",
+             writer="the scheduler, as the run's header asks (its kind's "
+                    "`stderr`, `scheduler/kinds.toml`)",
              only="launched to a queue"),
     Artifact(name=".mb-rank-launch-{pid}.sh",
              what="the per-rank GPU launcher",
@@ -1367,12 +1387,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
                     "launch"),
-    Artifact(name="{group}.sbatch", what="its queue header",
-             when="launch", level="launch", kind="derived",
-             writer="launch (`jobset/submit.py`), written again at each "
-                    "launch -- a task's group's by its prep "
-                    "(`prep.group_header`)",
-             only="launched to a queue"),
+    Artifact(name="{group}.sbatch",
+             what="its queue header — a task's group's, a run of points' "
+                  "walk's, a benchmark's shelf's",
+             when="prep", level="launch", kind="derived",
+             writer="prep (`prep.walk_header_of`), written again at each "
+                    "prep; launch sends it",
+             only="a target with a scheduler, no `--no-sbatch`"),
     Artifact(name="{group}.log", what="every member's output, in order",
              when="run", level="launch", kind="record",
              writer="the group's sequencer, as it runs"),

@@ -29,6 +29,7 @@ from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 from support.road import shelf_headers
+from support.machines import SLURM
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +83,7 @@ def sol_calc(tree):
     d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
     tj.write_text(json.dumps(d, indent=2))
     env = Environment(
-        scheduler="slurm",
+        scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64,
                           gpus_per_node=None, gpu_type=None),
         domains=[Domain(name="htc", partition="htc", qos="public",
@@ -531,7 +532,7 @@ def flat_sol_calc(tree):
     d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
     tj.write_text(json.dumps(d, indent=2))
     env = Environment(
-        scheduler="slurm",
+        scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64,
                           gpus_per_node=None, gpu_type=None),
         domains=[Domain(name="htc", partition="htc", qos="public",

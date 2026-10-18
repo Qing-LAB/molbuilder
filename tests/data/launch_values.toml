@@ -195,7 +195,8 @@ header = ["#SBATCH -J H2_01_coarse", "#SBATCH -N 1",
           "#SBATCH -p cpu", "#SBATCH -q public", "#SBATCH --mem=8G",
           "#SBATCH -o slurm.%j.out", 'bash H2_01_coarse.run.sh "$@"']
 # NO SITE SETTING AMONG ITS DIRECTIVES -- the comment above them names the
-# hand form, `sbatch --export=ALL,MB_LAUNCHED_BY=manual ...`, which is not one.
+# line to send it by hand, its `--export ALL,MB_LAUNCHED_BY=manual` among it,
+# which is not one.
 header_lacks = ["#SBATCH --mail", "#SBATCH --export", "#SBATCH --gres"]
 launch = []
 line = ["H2_01_coarse.sbatch --run 0"]
@@ -327,6 +328,16 @@ name = "asked about, each line is shown with every value of the header it sends"
 launch = []
 launch_mode = "ask"
 listing = ["would send coarse   -> domain cpu", "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
+
+# ...ASKED OF THE MACHINE'S RECORD'S SCHEDULER (`scheduler.md` § 6a): the line
+# is put once to the submit command the record names, where it says it is --
+# not whatever PATH finds first -- with SLURM's ask, `--test-only`, so nothing
+# is sent.
+[[case]]
+name = "asked about, the line is put once to the submit command the machine's record names, with SLURM's ask -- nothing is sent"
+launch = []
+launch_mode = "ask"
+scheduler_called = [["--test-only", "-J", "H2/coarse", "H2_01_coarse.sbatch"]]
 
 # A BENCHMARK STATES ITS QUEUE BEFORE ITS GRID IS ENUMERATED ON IT: one naming
 # none is refused for that first, the record's queues listed.

@@ -1,73 +1,108 @@
 """A job in the scheduler's queue -- the cluster it is sent to, whether the
 scheduler still lists it, and its cancel (`execution/job-system.md`
-§ 6.0a): SLURM's own commands, run here, asked by the one sender and by
-`molbuilder jobs`.  Floor 1: facts of this machine.
+§ 6.0a): asked of the machine record's scheduler -- its kind's words
+(`kinds.toml`, `query`), run from where the record says its commands are
+(`record.Scheduler`) -- by the one sender and by `molbuilder jobs`; each
+answer read by the kind's reader (:data:`_READERS`, `scheduler.md` § 6a).
+Floor 1: facts of a machine.
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
 from typing import Optional
 
 
-def cluster() -> Optional[str]:
-    """The cluster this machine's scheduler serves, as it names it
-    (``scontrol show config``'s ``ClusterName``) -- what tells one cluster's
-    job ids from another's where a home folder is shared -- or ``None``
-    when it cannot be read."""
-    if shutil.which("scontrol") is None:
-        return None
-    try:
-        r = subprocess.run(["scontrol", "show", "config"],
-                           capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    for line in r.stdout.splitlines() if r.returncode == 0 else []:
-        key, _eq, value = line.partition("=")
+# --------------------------------------------------------------------- #
+#  SLURM's answers -- its reader: what it prints, which no format states   #
+# --------------------------------------------------------------------- #
+
+#: The states SLURM lists a job in for a while after it has ended
+#: (`MinJobAge`), when asked for it by its id.
+_SLURM_ENDED = frozenset({
+    "BOOT_FAIL", "CANCELLED", "COMPLETED", "DEADLINE", "FAILED",
+    "NODE_FAIL", "OUT_OF_MEMORY", "PREEMPTED", "REVOKED", "TIMEOUT"})
+
+
+def _slurm_cluster(stdout: str) -> Optional[str]:
+    """``scontrol show config``'s ``ClusterName``."""
+    for ln in stdout.splitlines():
+        key, _eq, value = ln.partition("=")
         if key.strip() == "ClusterName" and value.strip():
             return value.strip()
     return None
 
 
-#: The states SLURM lists a job in for a while after it has ended
-#: (`MinJobAge`), when asked for it by its id.
-ENDED_STATES = frozenset({
-    "BOOT_FAIL", "CANCELLED", "COMPLETED", "DEADLINE", "FAILED",
-    "NODE_FAIL", "OUT_OF_MEMORY", "PREEMPTED", "REVOKED", "TIMEOUT"})
+def _slurm_listed(returncode: int, stdout: str,
+                  stderr: str) -> Optional[bool]:
+    """``squeue``'s answer for one id: a state not yet ended, ended, or --
+    an id it has forgotten, answered with an error rather than an empty
+    list, since SLURM keeps an ended job only `MinJobAge` seconds -- not
+    listed; ``None`` for an answer that says neither."""
+    if returncode == 0:
+        return any(s not in _SLURM_ENDED for s in stdout.split())
+    return False if "Invalid job id" in stderr else None
 
 
-def lists(job_id: str) -> Optional[bool]:
-    """Whether the scheduler here still lists job ``job_id`` as not yet
-    ended -- queued, running, ending -- ``False`` once it does not, and
-    ``None`` where it cannot be asked: no ``squeue`` on this machine, or an
-    answer that says neither."""
-    if shutil.which("squeue") is None:
+#: Each kind with a queue -> the readers of its answers: which cluster it
+#: serves, and whether it still lists a job.
+_READERS = {"slurm": (_slurm_cluster, _slurm_listed)}
+
+
+def _asked(scheduler, what: str, **values):
+    """``(kind, the command line)`` for query ``what``, or ``(kind, None)``
+    where the record names no command for it."""
+    from .kinds import kind
+    k = kind(scheduler.kind)
+    if not k.queue:
+        return k, None
+    return k, k.asked(what, scheduler.commands(), **values)
+
+
+def cluster(scheduler) -> Optional[str]:
+    """The cluster ``scheduler`` serves, as it names it (its kind's
+    ``cluster`` query, read by its reader) -- what tells one cluster's job
+    ids from another's where a home folder is shared -- or ``None`` when it
+    cannot be read."""
+    k, line = _asked(scheduler, "cluster")
+    if line is None:
         return None
     try:
-        r = subprocess.run(["squeue", "--noheader", f"--jobs={job_id}",
-                            "--format=%T"],
-                           capture_output=True, text=True, timeout=60)
+        r = subprocess.run(line, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
-    if r.returncode == 0:
-        return any(s not in ENDED_STATES for s in r.stdout.split())
-    # AN ID IT HAS FORGOTTEN is answered with an error, not an empty list:
-    # SLURM keeps an ended job only `MinJobAge` seconds.
-    return False if "Invalid job id" in r.stderr else None
+    return _READERS[k.name][0](r.stdout) if r.returncode == 0 else None
 
 
-def cancel(job_id: str) -> None:
-    """``scancel <job id>``; :class:`RuntimeError` in the scheduler's own
-    words when it refuses."""
+def lists(scheduler, job_id: str) -> Optional[bool]:
+    """Whether ``scheduler`` still lists job ``job_id`` as not yet ended --
+    queued, running, ending -- ``False`` once it does not, and ``None``
+    where it cannot be asked: no command for it on the record, one that does
+    not run here, or an answer that says neither."""
+    k, line = _asked(scheduler, "listed", id=job_id)
+    if line is None:
+        return None
     try:
-        r = subprocess.run(["scancel", str(job_id)], capture_output=True,
-                           text=True, timeout=60)
+        r = subprocess.run(line, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return _READERS[k.name][1](r.returncode, r.stdout, r.stderr)
+
+
+def cancel(scheduler, job_id: str) -> str:
+    """Stop job ``job_id`` (its kind's ``cancel``); returns the line run.
+    :class:`RuntimeError` in the scheduler's own words when it refuses."""
+    _k, line = _asked(scheduler, "cancel", id=job_id)
+    if line is None:
+        raise RuntimeError("the machine's record names no cancel command")
+    said = " ".join(line)
+    try:
+        r = subprocess.run(line, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError) as exc:
-        raise RuntimeError(f"scancel {job_id} could not be run ({exc})") \
-            from None
+        raise RuntimeError(f"{said} could not be run ({exc})") from None
     if r.returncode != 0:
-        raise RuntimeError(f"scancel {job_id} refused: "
+        raise RuntimeError(f"{said} refused: "
                            f"{(r.stderr or r.stdout).strip()}")
+    return said
 
 
-__all__ = ["ENDED_STATES", "cancel", "cluster", "lists"]
+__all__ = ["cancel", "cluster", "lists"]

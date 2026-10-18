@@ -28,6 +28,7 @@ import pytest
 from click.testing import CliRunner
 
 from molbuilder.jobset._cli import jobset_group
+from support.machines import SLURM
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def _write_record(home, name, *, valid=True):
     from molbuilder.scheduler import (Environment, Site, Topology,
                                         write_environment)
     env = Environment(
-        scheduler="slurm",
+        scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64),
         site=Site(partition="general", qos="public"),
         domains=[],

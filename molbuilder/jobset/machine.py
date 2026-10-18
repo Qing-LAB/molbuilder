@@ -90,8 +90,16 @@ def _no_record() -> PrepError:
     """The refusal of THIS machine with no record, naming the probe that
     writes one (`scheduler.record.probe_line`, W52).  Only this machine can
     have none: a named target's record is there, or `machine_for` refuses
-    the name itself."""
-    from ..scheduler.record import probe_line
+    the name itself.  A record there that does not read is said as that --
+    an older molbuilder's among them -- with the probe that writes it
+    again."""
+    from ..scheduler.record import machine_scope_path, probe_line, why_unread
+    here = machine_scope_path()
+    why = why_unread(here)
+    if why:
+        return PrepError(
+            f"this machine's record, {here}, does not read -- {why}.\n"
+            f"  Write it again, once:\n      {probe_line(None)}")
     return PrepError(_NO_RECORD.format(cmd=probe_line(None)))
 
 

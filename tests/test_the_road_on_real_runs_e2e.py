@@ -324,6 +324,24 @@ def test_a_flag_on_the_run_script_still_overrides_and_says_so(
           "MPI ranks    : 2   (source: -np flag)")
 
 
+def test_the_ranks_a_scheduler_grants_rule_the_run_said_by_name(
+        real_h2_layered):
+    """`scheduler.md` § 6a: what the scheduler tells a job reaches the run
+    script in molbuilder's names, said once by the header prep wrote, before
+    it starts the run script -- so the ranks SLURM granted, not the count
+    stated at prep, are the run's, and its dry run says where the count came
+    from (`running-a-job.md` § 3.1).
+
+    MUTATION THIS MUST FAIL AGAINST: the header saying none of it, mapping
+    it to another name, or saying it after it starts the run script."""
+    step = "header dry run under a SLURM grant of 2 ranks"
+    said = real_h2_layered.said[step]
+    assert said.exit_code == 0, said.output
+    _said(real_h2_layered, step,
+          "MPI ranks    : 2   (source: MB_NTASKS (the ranks the scheduler "
+          "granted))")
+
+
 # --------------------------------------------------------------------- #
 #  A benchmark run here (job-system.md § 6.0)                            #
 # --------------------------------------------------------------------- #

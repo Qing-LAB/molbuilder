@@ -96,7 +96,7 @@ machine from the one you submitted from. Under `--mode direct` it is started
 by `bash` locally. Nobody is watching either way.
 
 Both starts pass the launching shell's variables on — the whole environment
-direct, `--export ALL` under Slurm (`jobset/submit.py`). The rule agreed for
+direct, `--export ALL` under Slurm (the kind's send line, `scheduler/kinds.toml`). The rule agreed for
 them *(W36 ⑦, 2026-09-27)*: keep inheriting, guarded — a job's size comes from
 what prep wrote and `launch`'s flags, molbuilder's own override name (`MB_NP`)
 still works and the wrapper log names it when used, and a bare
@@ -141,7 +141,7 @@ five kinds, and the contract governs **when** each may be read:
 | **T** | conda **T**ool availability | is `siesta` on `PATH` in the env? |
 | **M** | HPC **M**odules | `module load mamba` |
 | **C** | **C**onfig | the target's record (`env_init`, copied from that machine's `molbuilder.json`) and `molbuilder.json`'s `envs` |
-| **A** | **A**llocation | `SLURM_NTASKS`, `CUDA_VISIBLE_DEVICES` |
+| **A** | **A**llocation | `MB_NTASKS` (what the scheduler granted, in molbuilder's name), `CUDA_VISIBLE_DEVICES` |
 | **H** | **H**ardware topology | physical core count, GPU→NUMA node |
 
 There are three moments in a job's life, and the rule is:
@@ -297,7 +297,7 @@ SIESTA is launched with `mpirun -np N` when the build probe reports MPI. The
 rank count `N` is resolved by precedence, **highest wins**:
 
 ```
--np / --np flag   >   MB_NP   >   SLURM_NTASKS   >   PBS_NP   >   the stated value, baked at prep
+-np / --np flag   >   MB_NP   >   MB_NTASKS   >   the stated value, baked at prep
 ```
 
 **The baked value is the one the run stated** — the run card's `mpi_np`, or
@@ -305,8 +305,10 @@ prep's `--np`. A run that states none is **refused at prep**, which names both
 places (`architecture.md` § 5.2, which owns the rule). The wrapper has no
 default of its own and neither has the `.sbatch` header — no target width, no
 rank per GPU *(user, 2026-10-02: "explicit job config is the only way
-allowed")*. Under `sbatch`, `SLURM_NTASKS` is the header's `-n`, which is that
-same stated value, so the two agree by construction.
+allowed")*. `MB_NTASKS` is the ranks the scheduler granted, said in
+molbuilder's name by the job's header (SLURM's `SLURM_NTASKS`,
+[`scheduler.md`](?doc=execution/scheduler.md) § 6a) — the header's own rank
+count, which is that same stated value, so the two agree by construction.
 
 **Nothing lowers it** *(user ruling, 2026-09-03)*. Until then the default was
 **clamped to the atom count**, and a user-set count above it was warned about,
@@ -354,12 +356,10 @@ notice at all** rather than one built on an invented number.
 > **The header's `-n` is the stated rank count and nothing else** (F15,
 > 2026-08-13; 2026-09-02; 2026-10-02). With no rank count stated it floored at
 > `-n 1`, later took the target's width, and on a GPU job one rank per device
-> — and inside the job `SLURM_NTASKS` **comes from that very header**, so each
-> of those outranked everything below it in the chain above: a 64-core node
-> once ran a job on **one rank**. Prep refuses the unstated count now. The
-> `--dry-run` inspection still names each value's source and warns when the
-> sibling header's `-n` disagrees with the resolved count — the case a by-hand
-> `-np` or `MB_NP` creates.
+> — and inside the job the granted ranks **come from that very header**, so
+> each of those outranked everything below it in the chain above: a 64-core
+> node once ran a job on **one rank**. Prep refuses the unstated count now. The
+> `--dry-run` inspection names each value's source.
 
 > #### What `propor: IMAX = 0` depends on — and why no rank count is refused
 >
@@ -383,17 +383,17 @@ notice at all** rather than one built on an invented number.
 ### 3.2 OMP threads and BLAS
 
 ```
--omp / -t flag   >   OMP_NUM_THREADS   >   SLURM_CPUS_PER_TASK   >   PBS_NCPUS   >   NSLOTS   >   the stated value, baked at prep
+-omp / -t flag   >   OMP_NUM_THREADS   >   MB_CPUS_PER_TASK   >   the stated value, baked at prep
 ```
 
 A run `jobset launch` starts always carries the flag, its own `-np` / `-omp`
 ([`job-system.md` § 6.1](?doc=execution/job-system.md)); the rest of the order
-is for a script run by hand. The four variables are one list,
-`runtime_info.THREAD_SOURCES`, and the run script's chain is built from it —
-as is a PySCF script's own, run without its run script, which ends on the
-node's physical cores instead ([`engines/pyscf.md`](?doc=engines/pyscf.md)
-§ 3). *(The two chains were kept in step by a comment until 2026-10-05; this
-diagram named two of the four.)*
+is for a script run by hand. The two variables are one list,
+`runtime_info.THREAD_SOURCES` — `MB_CPUS_PER_TASK` the cores per rank the
+scheduler granted, in molbuilder's name, as the job's header says it — and
+the run script's chain is built from it, as is a PySCF script's own, run
+without its run script, which ends on the node's physical cores instead
+([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3).
 
 The stated value is the run card's cores per rank — SIESTA's `omp_threads`,
 PySCF's `threads` — or prep's `--cpus-per-task`; a run that states none is **refused at
@@ -436,8 +436,9 @@ sources recommend, and how to design a benchmark matrix around it — is
   socket, pins it with `numactl` to the NUMA node that *owns* its GPU — **the
   helper probes that mapping itself, per rank, at run time** (nvidia-smi +
   sysfs). Opt out of socket pinning with `MB_NO_SOCKET_PIN=1`.  Separately,
-  the **whole-job** `numactl` wrap (single-GPU, off-SLURM only — it is
-  cleared under SLURM and for multi-GPU runs, where one node cannot own
+  the **whole-job** `numactl` wrap (single-GPU, off a scheduler only — it is
+  cleared inside a scheduler's job, `MB_JOB_ID` set by its header, and for
+  multi-GPU runs, where one node cannot own
   every rank) uses a GPU→NUMA answer probed at **generation** time (NVML +
   sysfs), baked as a literal and overridable with `MOLBUILDER_GPU_NUMA`.
   *(Until 2026-08-12 this bullet put the baked literal and the override
@@ -446,7 +447,7 @@ sources recommend, and how to design a benchmark matrix around it — is
 
 > **Override precedence, stated once:** the `-np` / `-omp` flags, then
 > `MB_NP` / `OMP_NUM_THREADS`, then the scheduler's echo of the header
-> (`SLURM_NTASKS`, `SLURM_CPUS_PER_TASK`), then the stated value baked at prep.
+> (`MB_NTASKS`, `MB_CPUS_PER_TASK`), then the stated value baked at prep.
 > `MOLBUILDER_MPI_NP` / `MOLBUILDER_OMP_NUM_THREADS` changed the GPU policy's
 > defaults and went with them on 2026-10-02.
 
@@ -477,7 +478,8 @@ sources recommend, and how to design a benchmark matrix around it — is
 
 Unrecognised arguments are **rejected** (the wrapper exits 1) — only the flags
 above are accepted, for either engine. The `.sbatch` outer file forwards
-`"$@"`, so `sbatch my-job.sbatch --cold` still reaches the inner wrapper.
+`"$@"`, so a flag on the line that sends it — `jobset launch`'s, or the one
+its own comment prints — still reaches the inner wrapper.
 
 ### 3.5 SIESTA auto-retry on non-convergence
 
@@ -899,9 +901,12 @@ the queue it names, bound on the target's record; for GPU jobs
 calculation's `allocation.gpu_binding` is `false` — `--gres-flags=enforce-binding`
 ([`gpu.md`](?doc=execution/gpu.md) G9). Where each value is stated is
 [`architecture.md`](?doc=execution/architecture.md) § 5.2, and prep refuses one
-stated nowhere. The body is a single line — `bash <basename>.run.sh "$@"` —
-because the inner wrapper owns activation and launch. It is withheld only where
-the target's record says `workstation`
+stated nowhere. The body says once what the scheduler tells the job, in
+molbuilder's names (`MB_JOB_ID`, `MB_NTASKS`, …, [`scheduler.md`](?doc=execution/scheduler.md)
+§ 6a), then a single line — `bash <basename>.run.sh "$@"` — because the inner
+wrapper owns activation and launch, and reads only those names, so it is one
+file with or without a scheduler. It is withheld only where the target's
+record names a scheduler with no queue
 ([`job-system.md`](?doc=execution/job-system.md) § 6), and then only the
 `.run.sh` is written.
 
@@ -977,9 +982,10 @@ would not read is refused by name, with the launch as typed for each mode —
 `--foreground` under `submit` or `ask`, a bench's flags on `launch task`.
 
 > **`--mode ask` submits nothing and tells you when it would start.** It walks
-> the identical path `--mode submit` walks and inserts one flag,
-> `sbatch --test-only`, so the line asked about — the header its prep wrote —
-> **is** the line that would be sent. SLURM validates the request and predicts a start time; no job is
+> the identical path `--mode submit` walks and inserts its scheduler kind's
+> ask (SLURM's `--test-only`, [`scheduler.md`](?doc=execution/scheduler.md)
+> § 6a), so the line asked about — the header its prep wrote — **is** the line
+> that would be sent. The scheduler validates the request and predicts a start time; no job is
 > created, nothing is recorded, and `status` sees nothing — because after it,
 > nothing exists.
 >
@@ -998,7 +1004,7 @@ would not read is refused by name, with the launch as typed for each mode —
 > **It is not gated one-job-at-a-time, and `submit` is.** That rule exists
 > because jobs queued together start together and contend — *"a rule about the
 > scheduler, not about doing several things"*, which is why `--mode direct` is
-> untouched too. `--test-only` enqueues nothing, so none of that is reachable.
+> untouched too. Asking enqueues nothing, so none of that is reachable.
 >
 > A sweep is where it pays: a grid's shelves ask for different shapes, `G1`
 > schedules sooner than `G4`, and seeing their waits side by side is what tells
@@ -1010,9 +1016,9 @@ would not read is refused by name, with the launch as typed for each mode —
 > not say it is partial reads as a complete one. When it launches, it stamps the claim
 `MB_LAUNCHED_BY=jobset-launch` — into the child environment for a direct
 run (inheritance survives `nohup` and backgrounding), and **explicitly on
-the command line** for a scheduler run (`sbatch
---export=ALL,MB_LAUNCHED_BY=jobset-launch`, which beats any site export
-policy).
+the line** for a scheduler run — its kind's words, SLURM's `--export
+ALL,MB_LAUNCHED_BY=jobset-launch` ([`scheduler.md`](?doc=execution/scheduler.md)
+§ 6a), which beats any site export policy.
 
 **Every `.run.sh` gates on that claim** before doing any work
 (`job-contracts.md` § 2.6, the Launch-door gate row):

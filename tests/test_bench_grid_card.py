@@ -23,6 +23,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
+from support.machines import SLURM
 
 
 #: A small Sol-SHAPED menu, written by hand so the fits list is a fact about
@@ -70,7 +71,7 @@ def bundle(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    env = Environment(scheduler="slurm",
+    env = Environment(scheduler=SLURM,
                       topology=Topology(sockets=2, cores_per_socket=32,
                                         gpus_per_node=4),
                       domains=[Domain.from_row(r) for r in _DOMAINS],
@@ -246,7 +247,7 @@ class TestPickingThisMachineIsAnAnswer:
         # snapshot's are `short` and `public`; these are `sol-short` and
         # `sol-public`.  Writing the same menu in both places makes every
         # "which record answered?" assertion pass whichever one did.
-        env = Environment(scheduler="slurm",
+        env = Environment(scheduler=SLURM,
                           topology=Topology(sockets=2, cores_per_socket=32,
                                             gpus_per_node=4),
                           domains=[Domain.from_row(

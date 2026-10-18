@@ -13,6 +13,7 @@ from molbuilder.bench.result import (
     compare_asked_to_ran,
     parse_effective_run,
 )
+from support.machines import SLURM
 
 
 # --------------------------------------------------------------------- #
@@ -50,7 +51,7 @@ def test_a_sweep_proposes_no_wall_and_no_memory():
     """
     res = build_bench_result(
         _pts(), environment={"schema": "molbuilder/environment@1",
-                             "scheduler": "slurm"}, system={})
+                             "scheduler": SLURM.to_dict()}, system={})
     assert "recommend" not in res.to_dict()
 
 
@@ -58,7 +59,7 @@ def test_build_and_round_trip():
     res = build_bench_result(
         _pts(),
         environment={"schema": "molbuilder/environment@1",
-                     "scheduler": "slurm"},
+                     "scheduler": SLURM.to_dict()},
         system={"engine": "siesta", "n_atoms": 444},
         now_iso="2026-06-27T22:00:00Z")
     d = res.to_dict()

@@ -606,7 +606,9 @@ def _alloc_cores() -> Tuple[int, str]:
             return n, "affinity"
     except (AttributeError, OSError):
         pass
-    for var in ("SLURM_CPUS_ON_NODE", "SLURM_CPUS_PER_TASK"):
+    # WHAT THE SCHEDULER GRANTED, in molbuilder's names -- the job's header
+    # says them once for everything it starts (`scheduler/kinds.py`).
+    for var in ("MB_CPUS_ON_NODE", "MB_CPUS_PER_TASK"):
         try:
             n = int(os.environ.get(var, ""))
             if n > 0:
@@ -712,8 +714,10 @@ _PROC = "/proc"
 
 
 def _in_scheduler_job() -> bool:
-    """Is this run inside a scheduler's job?  Then the job is its cgroup."""
-    return bool(os.environ.get("SLURM_JOB_ID"))
+    """Is this run inside a scheduler's job?  Then the job is its cgroup.
+    The scheduler's id for it, in molbuilder's name (`scheduler/kinds.py`),
+    says so."""
+    return bool(os.environ.get("MB_JOB_ID"))
 
 
 def _proc_stat(pid: str) -> Optional[List[str]]:
@@ -1727,10 +1731,11 @@ def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
             ident["run"] = watched.stem[:200]
         except Exception:                               # noqa: BLE001
             pass                     # an identity never stops a report
-    for key, var in (("job", "SLURM_JOB_ID"), ("array", "SLURM_ARRAY_TASK_ID")):
-        v = os.environ.get(var)
-        if v:
-            ident[key] = str(v)[:64]
+    # THE SCHEDULER'S ID FOR THE JOB, in molbuilder's name -- set only
+    # inside one (`scheduler/kinds.py`).
+    v = os.environ.get("MB_JOB_ID")
+    if v:
+        ident["job"] = str(v)[:64]
     try:
         ident["host"] = os.uname().nodename[:128]
     except (AttributeError, OSError):

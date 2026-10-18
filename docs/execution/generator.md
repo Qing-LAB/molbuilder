@@ -440,7 +440,7 @@ direct map from the catalogue's name to the `Resources` field: `omp_threads`
 **Nothing is worked out, and that is the rule.** A launch value the condition
 does not name is not a gap to fill: prep refuses the run and names where to
 state it (`architecture.md` § 5.2's track B). At run time the wrapper's chain
-(`running-a-job.md` § 3.1: `-np` > `MB_NP` > `SLURM_NTASKS` > the stated value
+(`running-a-job.md` § 3.1: `-np` > `MB_NP` > `MB_NTASKS` > the stated value
 baked at prep) only chooses among statements.
 
 A device ask is a **count** and names no card: which card a node carries is

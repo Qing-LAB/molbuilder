@@ -28,7 +28,7 @@ order § 6.0 states:
 
 2. **shown** (:meth:`LaunchPlan.shown`) and 3. **asked**, by the verb --
    ``ask`` mode asks the scheduler about each submission instead
-   (:func:`ask_launch`: ``sbatch --test-only`` on the same line), and a dry
+   (:func:`ask_launch`: its kind's ask on the same line), and a dry
    run stops there; neither writes anything;
 4. **the send** (:func:`send_launch`), deciding nothing: the folder checked
    against the one the plan was made from, the plan's writes carried out,
@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import dataclasses
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -85,7 +84,7 @@ class SubmitError(Exception):
 #: construction, so a reader matches a code and never a sentence's words.
 JOB_RESULTS: Tuple[str, ...] = (
     "submitted", "ran", "failed", "started", "planned", "asked",
-    "not asked", "sbatch refused", "stays pending", "rides", "already run",
+    "not asked", "scheduler refused", "stays pending", "rides", "already run",
     "skipped", "takes")
 
 
@@ -93,7 +92,7 @@ JOB_RESULTS: Tuple[str, ...] = (
 class JobResult:
     """What happened to one job.  ``command`` is the exact line that ran or
     would run -- empty on a line that only reports.  In ``submit`` mode
-    ``job_id`` is the SLURM id; in ``direct`` mode ``returncode`` is the
+    ``job_id`` is the scheduler's id; in ``direct`` mode ``returncode`` is the
     process exit status.  ``status`` is one of :data:`JOB_RESULTS` -- a
     code, which every reader matches -- and ``said`` the sentence shown
     beside it, when there is one:
@@ -105,7 +104,7 @@ class JobResult:
     * ``planned`` (dry-run) / ``asked`` (``--mode ask``: nothing was sent,
       and ``prediction`` carries what the scheduler said; ``command`` is the
       line that would be SENT) / ``not asked`` (past the query cap);
-    * ``sbatch refused`` (this shelf was rejected; the rest still went) /
+    * ``scheduler refused`` (this shelf was rejected; the rest still went) /
       ``stays pending`` (its shelf was refused, so it was never sent);
     * ``rides`` -- a stage of a group, a benchmark's trial or a run's point,
       launched by its group's, its shelf's or its sweep's one job (``said``:
@@ -119,13 +118,13 @@ class JobResult:
     status:     str
     job_id:     Optional[str] = None
     returncode: Optional[int] = None
-    #: What is known about this shelf's fate.  After a ``sbatch refused``,
+    #: What is known about this shelf's fate.  After a ``scheduler refused``,
     #: the scheduler's own words -- carried rather than raised, because ONE
     #: refused shelf must not cancel the shelves behind it, so the failure
     #: travels back as data (2026-08-30).
     detail:     Optional[str] = None
     #: Only in ``ask`` mode.  ``None`` everywhere else, and a ``Prediction``
-    #: whose ``start`` is ``None`` when SLURM declined to predict -- which
+    #: whose ``start`` is ``None`` when the scheduler declined to predict -- which
     #: is reported as *unknown*, never as *soon*.
     prediction: Optional[object] = None
     #: WHICH QUEUE prep placed it on, by name (2026-08-30): where several
@@ -134,7 +133,7 @@ class JobResult:
     #: public).  The name is the fact; the header's lines its rendering.
     domain:     Optional[str] = None
     #: THE REQUEST THE LINE SENDS, as the header its prep wrote carries it
-    #: -- its ``#SBATCH`` lines, read back by the header's reader
+    #: -- its directive lines, read back by the header's reader
     #: (`Directives.lines_of`): what the question and a dry run show
     #: (`submission.md` S4).  ``()`` for a run here.
     request:    Tuple[str, ...] = ()
@@ -200,16 +199,44 @@ def _run_sh_args(r: Resources, run: int, *, cold: bool = False
 #  the two execution paths                                              #
 # --------------------------------------------------------------------- #
 
-def _parse_sbatch_id(stdout: str) -> str:
-    """Extract the job id from ``Submitted batch job <id>``."""
-    for tok in stdout.split():
-        if tok.isdigit():
-            return tok
-    raise SubmitError(f"could not parse sbatch job id from: {stdout!r}")
+def _machine_of(base) -> "Environment":
+    """THE MACHINE THE CALCULATION IS SET TO -- its own copy of that
+    machine's record, prep's file and no other (`configuration.md` M-3;
+    `scheduler.md` R9), whose scheduler kind spells the line (§ 6a).  Read
+    to spell, never to decide: what is sent is prep's."""
+    from ..scheduler import read_environment
+    from ..scheduler.record import UnknownTarget, calculation_record
+    path = calculation_record(Path(base))
+    rec = read_environment(path)
+    if rec is None and path.is_file():
+        raise SubmitError(str(UnknownTarget.unreadable_copy(base)))
+    if rec is None:
+        raise SubmitError(
+            f"{base} holds no record of its machine -- a calculation is "
+            f"launched after its prep, which copies it (configuration.md "
+            f"M-3)")
+    return rec
+
+
+def _job_id_of(kind, answer: str) -> str:
+    """The id the scheduler answered a send with (its kind's ``job_id``)."""
+    jid = kind.job_id_of(answer)
+    if jid is None:
+        raise SubmitError(f"could not read the job's id from {kind.what}'s "
+                          f"answer: {answer!r}")
+    return jid
+
+
+def _needs_header(mode: str, machine) -> bool:
+    """Whether a submission's header must be there: it is sent
+    (``submit``), or asked about where the machine has a scheduler to ask
+    -- its record's kind, never this computer's PATH (`scheduler.md`
+    § 6a)."""
+    return mode == "submit" or machine.kind.queue
 
 
 def _scheduler_job_name(jobset: JobSet, name: str) -> str:
-    """What `squeue` shows: the calculation, then the job within it --
+    """What the scheduler lists: the calculation, then the job within it --
     ``bdt_au/coarse``, ``bdt_au/G1K2C4``, ``bdt_au/bench-group-cpu``
     (`job-system.md` § 6).
 
@@ -221,7 +248,7 @@ def _scheduler_job_name(jobset: JobSet, name: str) -> str:
     return f"{jobset.name}/{name}"
 
 
-#: How many `sbatch --test-only` calls one `--mode ask` will make.
+#: How many questions to the scheduler one `--mode ask` will make.
 #:
 #: Politeness, not a rule about queues: asking enqueues nothing, so the
 #: one-at-a-time submission rule does not reach it.  A benchmark grid is
@@ -229,7 +256,7 @@ def _scheduler_job_name(jobset: JobSet, name: str) -> str:
 #: rest are named as unasked rather than silently dropped.
 ASK_MAX_QUERIES = 24
 
-def _no_sbatch(what: str, name: str, *, base, told,
+def _no_sbatch(what: str, name: str, *, base, told, machine,
                redo: Optional[str] = None) -> str:
     """The one answer to *there is no scheduler header*, whichever door
     finds it missing (`job-system.md` § 6.1): prep withholds the
@@ -242,15 +269,16 @@ def _no_sbatch(what: str, name: str, *, base, told,
     THE RUN HERE AS A COMMAND -- the launch ``told`` names, with its flags
     as typed that a run here reads (`commands.launch_with`).  ``redo`` is
     how the work is prepared again (`_redo`; a benchmark's, the state saved
-    before its prep)."""
-    from .commands import block, launch_with, takes_a_queue
+    before its prep).  ``machine`` is the calculation's copy of its
+    machine's record (:func:`_machine_of`)."""
+    from .commands import block, launch_with
     here = block([launch_with(told["kind"], told["stage"], told["trial"],
                               base=base, mode="direct",
                               typed=told["flags"],
                               groups=([told["group"]]
                                       if told.get("group") is not None
                                       else ()))])
-    if takes_a_queue(base):
+    if machine.kind.queue:
         # THE MACHINE NAMES A QUEUE, so prep was told to write no header
         # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer).
         return (f"{what}: there is no scheduler header ({name}) -- it was "
@@ -259,8 +287,8 @@ def _no_sbatch(what: str, name: str, *, base, told,
                 f"--no-sbatch: "
                 + (redo or rollback("the benchmark's prep", base=base)))
     return (f"{what}: there is no scheduler header ({name}) -- the "
-            f"machine it was prepared for names no queue (its record "
-            f"says `workstation`, job-system.md § 6.1).  To run it here:\n"
+            f"machine it was prepared for names no queue (its record's "
+            f"scheduler has none, job-system.md § 6.1).  To run it here:\n"
             f"{here}\n  For a machine with a queue, prep it for that "
             f"machine (--target, its record's name) -- a calculation is "
             f"set to the machine of its first prep, so "
@@ -269,7 +297,7 @@ def _no_sbatch(what: str, name: str, *, base, told,
 
 def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
                     time_s: Optional[int], job_name: str, script: str,
-                    run_args: Sequence[str]
+                    run_args: Sequence[str], machine
                     ) -> Tuple[Resources, object, List[str]]:
     """THE ONE LINE, for every door that hands work to the scheduler -- a
     stage, a group, a grouped bench's shelf, a run of points
@@ -278,12 +306,15 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     as it is.  **Launch decides nothing** (`job-system.md` § 6.0;
     `scheduler.md` R9): the line names the job, carries what the launch
     restates (`commands.LAUNCH_FLAGS` -- a submitted job's wall,
-    ``time_s``), the launch claim and the run's arguments.
+    ``time_s``), the launch claim and the run's arguments, in the words of
+    the scheduler kind of ``machine`` -- the calculation's copy of its
+    machine's record -- from where its commands are there
+    (`kinds.Kind.line`, `scheduler.md` § 6a).
 
     Returns ``(envelope, placement, command)``: the request as sent -- its
     wall the one restated -- which ``run.json`` records beside the queue
     (:func:`_placed_on`), the placement prep recorded, and the exact
-    ``sbatch`` line.
+    line.
 
     ``run_args`` are the run script's arguments (`_run_sh_args`: ``--run
     N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
@@ -292,40 +323,47 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     none here.
     """
     from .commands import launch_flag
-    restated: List[str] = []
+    kind = machine.kind
+    row = launch_flag("--time")
     if time_s is not None:
-        row = launch_flag("--time")
         envelope = dataclasses.replace(
             envelope, **{row.restates: _slurm_time(time_s)})
-        restated = [row.sbatch, getattr(envelope, row.restates)]
-    cmd = (["sbatch", "-J", job_name] + restated
-           # The launch-door claim, EXPLICIT on the command line: environment
-           # inheritance alone is fragile (sites override SLURM's --export
-           # policy), and the flag wins over site defaults, so the claim
-           # reaches the job wherever it runs (job-contracts.md § 2.6).
-           + ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch", script]
-           + list(run_args))
+    # A MACHINE WITH NO QUEUE HAS NO LINE: asked about, it answers that
+    # there is no scheduler (:func:`_ask`); sent, its missing header is
+    # refused first (:func:`_needs_header`).
+    if not kind.queue:
+        return envelope, placement, []
+    restated = (kind.restated(row.says, getattr(envelope, row.restates))
+                if time_s is not None else [])
+    # The launch-door claim, EXPLICIT on the line: environment inheritance
+    # alone is fragile (a site may not pass a plain variable on), and the
+    # line wins over site defaults, so the claim reaches the job wherever it
+    # runs (job-contracts.md § 2.6).
+    cmd = kind.line(machine.scheduler.commands(), job=job_name,
+                    restated=restated, launched_by="jobset-launch",
+                    header=script, args=run_args)
     return envelope, placement, cmd
 
 
-def _ask(name: str, cmd: List[str], cwd: Path, *,
+def _ask(name: str, cmd: List[str], cwd: Path, *, kind,
          domain: Optional[str] = None) -> JobResult:
-    """``sbatch --test-only`` on the line that WOULD be sent -- the scheduler
-    answers instead of enqueueing.  Writes and records nothing.
+    """The line that WOULD be sent, asked about -- its kind's ``ask`` after
+    the command (`kinds.Kind.asking`): the scheduler answers instead of
+    enqueueing.  Writes and records nothing.
 
-    The result carries the line that would be SENT; ``--test-only`` goes
-    first only in what is run, so it cannot be shadowed and is never shown
-    as the line to send.  The header asked about is the one the line sends,
-    its prep's.  No scheduler here is an answer, not an error: on a
-    workstation there is nothing to queue behind.
+    The result carries the line that would be SENT; the ask goes in only
+    in what is run, so it cannot be shadowed and is never shown as the line
+    to send.  The header asked about is the one the line sends, its prep's.
+    No scheduler is an answer, not an error: on a machine whose record's
+    kind has no queue there is nothing to queue behind.
     """
-    from .ask import Prediction, parse_test_only
-    if shutil.which(cmd[0]) is None:
+    from .ask import Prediction, answer_of
+    if not kind.queue:
         return JobResult(name, cmd, "asked", domain=domain,
                          prediction=Prediction(no_scheduler=True,
                                                refused="no scheduler here"))
     try:
-        cp = subprocess.run([cmd[0], "--test-only"] + cmd[1:], cwd=str(cwd),
+        cp = subprocess.run(kind.asking(cmd), cwd=str(cwd),
                             capture_output=True, text=True)
     except OSError as exc:
         # "I could not reach the scheduler" is what the person asked about.
@@ -335,8 +373,8 @@ def _ask(name: str, cmd: List[str], cwd: Path, *,
     # A non-zero return is an answer too -- "this queue cannot take it" is
     # often the one worth reading.
     return JobResult(name, cmd, "asked", domain=domain,
-                     prediction=parse_test_only((cp.stdout or "")
-                                                + (cp.stderr or "")))
+                     prediction=answer_of(kind, (cp.stdout or "")
+                                          + (cp.stderr or "")))
 
 
 def _rel(path, base) -> str:
@@ -572,6 +610,9 @@ class Submission:
     #: group's stages, a sweep's points: the one path its script writes and
     #: the plan shows (:func:`_walk_script`).
     log: Optional[Path] = None
+    #: The calculation's copy of its machine's record, whose scheduler kind
+    #: spelled the line (:func:`_machine_of`) -- ``None`` for a run here.
+    machine: Optional[object] = None
 
     @property
     def domain(self) -> Optional[str]:
@@ -579,14 +620,14 @@ class Submission:
         return self.placement.name if self.placement else None
 
     def request(self) -> Tuple[str, ...]:
-        """The request the line sends -- its header's ``#SBATCH`` lines, as
+        """The request the line sends -- its header's directive lines, as
         its prep wrote them (`Directives.lines_of`); ``()`` for a run here,
         or a header not written."""
         from ..scheduler.emit import Directives
         if self.direct or self.header is None or not self.header.is_file():
             return ()
         return tuple(Directives.lines_of(
-            self.header.read_text(errors="replace")))
+            self.header.read_text(errors="replace"), self.machine.kind))
 
 
 @dataclass
@@ -1300,8 +1341,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     lines and every script the send will write.  A refusal can only come
     from here.
 
-    ``mode`` is ``"submit"`` (``sbatch`` of the header prep wrote),
-    ``"ask"`` (the same line, asked with ``--test-only``)
+    ``mode`` is ``"submit"`` (the header prep wrote, sent to the scheduler),
+    ``"ask"`` (the same line, asked about -- its kind's ``ask``)
     or ``"direct"`` (``bash`` here, the members in order; ``background``
     leaves it running, the default of the verb's run here, and otherwise the
     send waits for it -- `job-system.md` § 6.0).  ``only``
@@ -1337,6 +1378,10 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     """
     base = Path(base_dir).resolve()
     try:
+        # THE CALCULATION'S COPY OF ITS MACHINE'S RECORD READS, FIRST, for
+        # every door in every mode (`configuration.md` M-3): a copy that does
+        # not read is refused in its own words before any member is planned.
+        _machine_of(base)
         plan = _planned(jobset, base, mode=mode, only=only, side=side,
                         time_s=time_s, trial_timeout_s=trial_timeout_s,
                         told=told, cold=cold, group=group,
@@ -1372,7 +1417,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
         raise SubmitError(f"base dir not found (prep first): {base}")
     if mode not in ("submit", "ask", "direct"):
         raise SubmitError(
-            f"unknown mode {mode!r}: must be 'submit' (SLURM), 'ask' (submit "
+            f"unknown mode {mode!r}: must be 'submit' (the scheduler), 'ask' (submit "
             f"nothing, report when it would start) or 'direct' (local)")
     if only is not None:
         # Through the ONE resolver, so a name and a #N number reach the same
@@ -1557,8 +1602,8 @@ def _a_sweep(task, base: Path, stage: str) -> bool:
 
 def ask_launch(plan: LaunchPlan) -> List[JobResult]:
     """``--mode ask`` (`submission.md` S4): the scheduler asked about each
-    submission -- ``sbatch --test-only`` on the very line the send would
-    hand it -- in place of the question; nothing is written or sent.  Past
+    submission -- its kind's ask on the very line the send would hand it --
+    in place of the question; nothing is written or sent.  Past
     :data:`ASK_MAX_QUERIES` the rest are named, never dropped."""
     out: List[JobResult] = list(plan.skipped)
     for n, s in enumerate(plan.submissions):
@@ -1568,7 +1613,8 @@ def ask_launch(plan: LaunchPlan) -> List[JobResult]:
             out.append(JobResult(s.name, [], "not asked"))
             continue
         out.append(dataclasses.replace(
-            _ask(s.name, s.command, s.ask_in or s.cwd, domain=s.domain),
+            _ask(s.name, s.command, s.ask_in or s.cwd, kind=s.machine.kind,
+                 domain=s.domain),
             request=s.request()))
     plan.record("asked", jobs=[{"job": r.name, "status": r.status,
                                 **({"said": r.said} if r.said else {})}
@@ -1678,7 +1724,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
             if not plan.tolerant:
                 raise
             refused.append(str(exc))
-            results.append(JobResult(s.name, s.command, "sbatch refused",
+            results.append(JobResult(s.name, s.command, "scheduler refused",
                                      domain=s.domain, detail=str(exc)))
             results += [JobResult(m.name, [], "stays pending")
                         for m in s.members]
@@ -1788,18 +1834,20 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
     except OSError as exc:
         raise SubmitError(
             f"{s.name}: could not run {s.command[0]!r} ({exc})") from None
+    kind = s.machine.kind
     if cp.returncode != 0:
         raise SubmitError(
-            f"sbatch failed for {s.name} (rc={cp.returncode}):\n"
+            f"{kind.what} refused {s.name} (rc={cp.returncode}):\n"
             f"{cp.stderr.strip()}" + s.refusal_hint)
-    # SBATCH TOOK IT (rc 0): the job is queued whatever its words say, so
-    # the launch is recorded -- an id it did not print is recorded unknown,
-    # and said, so the next launch never empties a run a queued job is in.
+    # THE SCHEDULER TOOK IT (rc 0): the job is queued whatever its words
+    # say, so the launch is recorded -- an id it did not print is recorded
+    # unknown, and said, so the next launch never empties a run a queued
+    # job is in.
     try:
-        jid, unread = _parse_sbatch_id(cp.stdout), None
+        jid, unread = _job_id_of(kind, cp.stdout), None
     except SubmitError as exc:
         jid, unread = None, (f"{exc} -- the job is queued; the scheduler's "
-                             f"own list names it (`squeue --me`)")
+                             f"own list of your jobs names it")
     for m in s.members:
         # WHERE IT RUNS, not the container: `_launched` reads the attempt,
         # so a record in the container would leave every grouped trial
@@ -1812,7 +1860,8 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         from .. import joblist
         from ..scheduler.queue import cluster
         job, unkept = _keep(joblist.queue_job(
-            job_id=jid, cluster=cluster(), calculation=s.members[0].base,
+            job_id=jid, cluster=cluster(s.machine.scheduler),
+            calculation=s.members[0].base,
             members=_job_members(s)))
         kept = {"job": job.id} if unkept is None else {}
     record("launched", submission=s.name, command=s.command, job_id=jid,
@@ -1945,7 +1994,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     `engines/transport.md` § 2a.9), one chain when none is named -- and the
     walk goes on with the other chains.  Stopped by the person (Ctrl-C at a
     launch waited on, a lost terminal, ``molbuilder jobs stop`` of one left
-    in the background, a cancel), it starts no further member.
+    in the background, a cancel), it starts no further member.  What the
+    scheduler tells the job it reads in molbuilder's names, which the job's
+    header says once for everything it starts (`kinds.Kind.job_lines`).
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
@@ -1967,14 +2018,14 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         'exec 2>> "$LOG"',
         f'echo "[group] {when} start {member_word}s={len(steps)} per-{member_word}-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
-        'job=${SLURM_JOB_ID:-none} node=$(hostname) '
-        'alloc_ntasks=${SLURM_NTASKS:-unset} '
-        'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
+        'job=${MB_JOB_ID:-none} node=$(hostname) '
+        'alloc_ntasks=${MB_NTASKS:-unset} '
+        'alloc_cpus=${MB_CPUS_PER_TASK:-unset}" >> "$LOG"',
         "fails=0",
         # A CHAIN'S FLAG, where a failed member stops the ones after it.
         *([f"_chain_{i}=0" for i in range(len(dict.fromkeys(chains or [None])))]
           if stop_on_failure else []),
-        # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a scancel --
+        # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a cancel --
         # the walk starts no further member (bash runs this after the
         # running member returns; one under a per-member bound ends at it).
         f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
@@ -2062,7 +2113,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
             plan.skipped.append(m)          # measured before
             continue
         # ITS OWN COUNTS, STATED: a walk hands each trial its -np / -omp,
-        # the shield against an allocation's SLURM_* variables -- a trial
+        # the shield against what an allocation tells each run -- a trial
         # that cannot state them is refused by name, never mis-measured.
         if not (job.resources.mpi_np and job.resources.cpus_per_task):
             raise SubmitError(
@@ -2096,8 +2147,8 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
 def _walk_of(members: List[_Member], container: Path) -> list:
     """Each member as the walk runs it -- its name, the folder it runs in
     from the walk's own (its run: `project-layout.md` § 1.5a), its run
-    script, and its own counts, the shield against an allocation's SLURM_*
-    variables; no start to copy.  One answer for a benchmark's walk here,
+    script, and its own counts, the shield against what an allocation
+    tells each run; no start to copy.  One answer for a benchmark's walk here,
     a queue's shelf and a group."""
     return [(m.name, str(m.run_dir.relative_to(container)),
              m.names.name(".run.sh"),
@@ -2170,19 +2221,20 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
             f"{sorted(str(c) for c in containers)}")
     container = next(iter(containers))
     # L3 (roadmap 7.10, user 2026-08-24): the shelf's own machinery -- its
-    # walk, its header, its log, and SLURM's stdout/err -- lives in
+    # walk, its header, its log, and the scheduler's stdout/err -- lives in
     # ``launch/`` beside the trial directories, not among them.
     launch_dir = container / LAUNCH_DIR
     name = names.stem
     header = launch_dir / names.name(".sbatch")
+    machine = _machine_of(base)
     # THE HEADER PREP WROTE, or no queue to send to: a benchmark prepared
     # with --no-sbatch, or for a machine that names no queue, has none --
     # said by the one answer (`_no_sbatch`); asked about, the same.
-    if plan.mode == "submit" or shutil.which("sbatch"):
+    if _needs_header(plan.mode, machine):
         if not header.is_file():
             raise SubmitError(_no_sbatch(
                 name, f"{LAUNCH_DIR}/{names.name('.sbatch')}", base=base,
-                told=told))
+                told=told, machine=machine))
         plan.reads.append(_as_found(header, base))
     from .shelves import ShelfError, shelf_request
     try:
@@ -2192,7 +2244,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     # THE ATTEMPT, NOT THE TRIAL (`project-layout.md` § 1.5a).  Each member's
     # ``run_dir`` is the one answer to "where does this trial run", and the
     # gates asked it (:func:`_bench_trials`).  Each trial is handed its own
-    # -np / -omp: the shield against the allocation's SLURM_* variables.
+    # -np / -omp: the shield against what the allocation tells each run.
     script = _walk_script(
         name, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
@@ -2202,7 +2254,8 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     sent, placement, cmd = _sbatch_request(
         envelope=request, placement=_placed_by_prep(members),
         time_s=time_s, job_name=_scheduler_job_name(jobset, name),
-        script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=())
+        script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=(),
+        machine=machine)
     if plan.mode == "submit":
         open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / names.name(".run.sh"), script)
@@ -2215,7 +2268,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     return Submission(
         name, cmd, container, False, pending,
         placement=placement, sent=sent, rides="rides the group",
-        header=header, refusal_hint=hint)
+        header=header, refusal_hint=hint, machine=machine)
 
 
 def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
@@ -2342,6 +2395,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     gn = GroupNames.of_points(names.stem)
     launch_dir = stage_dir / LAUNCH_DIR
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
+    machine = _machine_of(base)
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
         member_word="point", log=log,
@@ -2361,20 +2415,22 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     # `prep.prep_calculation`) -- or no queue to send to, said by the one
     # answer (`_no_sbatch`); asked about, the same.
     header = launch_dir / gn.name(".sbatch")
-    if mode == "submit" or shutil.which("sbatch"):
+    if _needs_header(mode, machine):
         if not header.is_file():
             raise SubmitError(_no_sbatch(
                 gn.stem, f"{LAUNCH_DIR}/{gn.name('.sbatch')}", base=base,
-                told=told, redo=_redo(base, task, jobset, job)))
+                told=told, machine=machine,
+                redo=_redo(base, task, jobset, job)))
         plan.reads.append(_as_found(header, base))
     sent, placement, cmd = _sbatch_request(
         envelope=_walk_envelope([job] * len(m.points)),
         placement=_placed_by_prep([job]), time_s=time_s,
         job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=())
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
+        machine=machine)
     plan.submissions.append(Submission(
         gn.stem, cmd, stage_dir, False, [member], placement=placement,
-        sent=sent, rides="rides the sweep", header=header))
+        sent=sent, rides="rides the sweep", header=header, machine=machine))
 
 
 def _gathered_now(base: Path, task, stage: str, template_text):
@@ -2438,7 +2494,7 @@ def _placed_on(placement, sent=None) -> Optional[dict]:
     when there was no placement (a direct run).
 
     The QUEUE half of `scheduler.md` R12: domain, partition, qos -- known
-    the moment ``sbatch`` accepts, and reachable before this field only by
+    the moment the scheduler accepts, and reachable before this field only by
     parsing the argv the same file records.  What the job LANDED ON is the
     monitor's to record, on the node, because a queued job has no node yet.
     """
@@ -2550,6 +2606,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     # run folder; one that fails does not stop the others -- none builds on
     # another.
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
+    machine = _machine_of(base)
     script = _walk_script(
         gn.stem,
         [(m.name, str(m.run_dir.relative_to(base)),
@@ -2569,13 +2626,13 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
             True, members, rides="rides the group", log=base / log))
         return plan
     header = launch_dir / gn.name(".sbatch")
-    # THE HEADER PREP WROTE, or no queue to send to -- asked about where a
-    # scheduler is here to ask, as every door's is.
-    if mode == "submit" or shutil.which("sbatch"):
+    # THE HEADER PREP WROTE, or no queue to send to -- asked about where the
+    # machine has a scheduler to ask, as every door's is.
+    if _needs_header(mode, machine):
         if not header.is_file():
             raise SubmitError(_no_sbatch(
                 f"group {number}", f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
-                base=base, told=told,
+                base=base, told=told, machine=machine,
                 redo=_redo(base, task, jobset, jobs[0])))
     if header.is_file() and any(m.first for m in members):
         # THE HEADER IS STILL WHAT PREP WOULD WRITE (L4): the members'
@@ -2602,12 +2659,13 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     sent, placement, cmd = _sbatch_request(
         envelope=shared, placement=_placed_by_prep(jobs), time_s=time_s,
         job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=())
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
+        machine=machine)
     # `--mode ask` ASKS OVER THE LINE ITSELF: the header prep wrote is the
     # one the send passes.
     plan.submissions.append(Submission(
         gn.stem, cmd, base, False, members, placement=placement, sent=sent,
-        rides="rides the group", header=header))
+        rides="rides the group", header=header, machine=machine))
     return plan
 
 
@@ -2647,7 +2705,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
               "launched after you have looked at the one it builds on.")
 
     plan = LaunchPlan(base, mode, [])
-    sbatch_here = shutil.which("sbatch") is not None
+    machine = _machine_of(base)
     for job in jobset.jobs:
         m = (_plan_trial(jobset, base, job, mode=mode,
                          named=only is not None)
@@ -2696,13 +2754,14 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                     cold=m.cold and not m.has_attempt),
                 m.run_dir, True, [m], ask_in=m.read_from))
             continue
-        # The header is required where it is SENT -- or ASKED about, when a
-        # scheduler is here to ask: a question about a file that does not
-        # exist answers nothing.
-        if ((mode == "submit" or sbatch_here)
+        # The header is required where it is SENT -- or ASKED about, when
+        # the machine has a scheduler to ask: a question about a file that
+        # does not exist answers nothing.
+        if (_needs_header(mode, machine)
                 and not (m.read_from / sbatch_name).exists()):
             raise SubmitError(_no_sbatch(
                 f"job {job.name!r}", sbatch_name, base=base, told=told,
+                machine=machine,
                 redo=(None if jobset.kind == "sweep"
                       else _redo(base, task, jobset, job))))
         sent, placement, cmd = _sbatch_request(
@@ -2710,10 +2769,12 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             time_s=time_s, job_name=_scheduler_job_name(jobset, job.name),
             script=sbatch_name,
             run_args=_run_sh_args(job.resources, m.run,
-                                  cold=m.cold and not m.has_attempt))
+                                  cold=m.cold and not m.has_attempt),
+            machine=machine)
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,
-            sent=sent, ask_in=m.read_from, header=m.read_from / sbatch_name))
+            sent=sent, ask_in=m.read_from, header=m.read_from / sbatch_name,
+            machine=machine))
     return plan
 
 

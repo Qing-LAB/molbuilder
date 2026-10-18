@@ -18,6 +18,7 @@ from molbuilder.scheduler import (FILENAME, Domain, Environment, Site,
                                     Topology, write_environment)
 from molbuilder.runtime_config import get_routing
 from molbuilder.scheduler.quantities import parse_walltime
+from support.machines import SLURM, WORKSTATION
 
 _DOMAINS = [
     Domain(name="debug",  max_time="0-00:15:00", partition="htc", qos="debug"),
@@ -29,7 +30,7 @@ _DOMAINS = [
 
 def _write_record(where, domains=_DOMAINS, gpu_type=None):
     return write_environment(
-        Environment(scheduler="slurm",
+        Environment(scheduler=SLURM,
                     topology=Topology(cores_per_socket=64, gpu_type=gpu_type),
                     site=Site(partition="public"),
                     domains=list(domains)),
@@ -87,7 +88,7 @@ def test_get_routing_is_empty_without_a_record(tmp_path):
 def test_get_routing_is_empty_on_a_workstation(tmp_path):
     """M-2: one shape for both machines.  A workstation record is a valid
     record that simply has no domains — not a missing file, and not an error."""
-    write_environment(Environment(scheduler="workstation",
+    write_environment(Environment(scheduler=WORKSTATION,
                                   topology=Topology(cores_per_socket=10)),
                       tmp_path / FILENAME)
     assert get_routing(project_dir=tmp_path) == []
@@ -117,7 +118,7 @@ def test_an_unknown_column_survives_the_type(tmp_path):
     """
     row = {"name": "x", "partition": "p", "qos": "q", "invented_by_hand": 7}
     write_environment(
-        Environment(scheduler="slurm", topology=Topology(),
+        Environment(scheduler=SLURM, topology=Topology(),
                     domains=[Domain.from_row(row)]), tmp_path / FILENAME)
     got = get_routing(project_dir=tmp_path)[0]
     assert got.extra["invented_by_hand"] == 7
@@ -214,7 +215,7 @@ def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "molbuilder"))
     ensure_private_dir(environments_dir())
     env = Environment(
-        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=24),
+        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=24),
         domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
                                   "qos": "public",
                                   "max_tme": "1-00:00:00"})])
@@ -240,7 +241,7 @@ def test_a_record_the_reader_fully_understands_says_nothing_extra(tmp_path,
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "molbuilder"))
     ensure_private_dir(environments_dir())
     env = Environment(
-        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=24),
+        scheduler=SLURM, topology=Topology(sockets=2, cores_per_socket=24),
         domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
                                   "qos": "public",
                                   "max_time": "1-00:00:00"})])

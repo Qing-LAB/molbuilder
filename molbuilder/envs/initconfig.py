@@ -531,15 +531,20 @@ def seed_environment_record() -> Step:
     from ..runtime_config import get_env_init
     from ..scheduler import (machine_scope_path, read_environment,
                              resolve_environment, write_environment)
-    from ..scheduler.record import probe_command, probe_queues
+    from ..scheduler.record import probe_command, probe_queues, why_unread
     # Its own directory: a public function that worked only after another one
     # had made it is a trap (`_ensure_root`).
     _ensure_root()
     path = machine_scope_path()
     if path.exists():
         before = read_environment(path)
-        said = ((before.env_init if before is not None else None)
-                or {}).get("activation")
+        if before is None:
+            # THERE AND NOT READ -- an older molbuilder's among them: said
+            # as that, with the probe that writes it again.
+            return Step(path, "kept", (
+                f"does not read -- {why_unread(path)}; `{probe_command()}` "
+                f"writes it again"))
+        said = (before.env_init or {}).get("activation")
         return Step(path, "kept", (
             f'activation "{said}"; re-probe with `{probe_command()}` when '
             f'the machine changes' if said else

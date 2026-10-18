@@ -6,6 +6,7 @@ probe makes of a real scheduler's answers is the field test's
 
 from molbuilder.scheduler.probe import (derive_domains, parse_allowed_qos,
                                         parse_qos, parse_sinfo)
+from support.machines import WORKSTATION
 
 
 def test_empty_probe_is_safe():
@@ -48,11 +49,11 @@ _DESK_ENTERS = {"activation": "conda activate"}
 
 def _two_envs():
     from molbuilder.scheduler import Domain, Environment, Topology
-    before = Environment(scheduler="workstation",
+    before = Environment(scheduler=WORKSTATION,
                          topology=Topology(gpus_per_node=4, gpu_type="a100"),
                          env_init=dict(_SOL_ENTERS),
                          detected_at="2026-08-01T00:00:00+00:00")
-    probed = Environment(scheduler="workstation",
+    probed = Environment(scheduler=WORKSTATION,
                          topology=Topology(gpus_per_node=1, gpu_type="rtx"),
                          env_init=dict(_DESK_ENTERS),
                          detected_at="2026-08-19T00:00:00+00:00")

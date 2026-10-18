@@ -30,7 +30,7 @@ The rules, one line each — full statement in § 3:
 | rule | keyword | one line |
 |---|---|---|
 | **R0** | queue ≠ machine | a partition is a QUEUE holding many machine kinds; `node_types` lists them, any single figure over them is an opinion |
-| **R1** | one placement | ONE decision, made at prep, rendered once — the header; the `sbatch` line carries no resource but a wall the launch restates |
+| **R1** | one placement | ONE decision, made at prep, rendered once — the header; the line a launch sends carries no resource but a wall the launch restates |
 | **R2** | total admission | every limit the record declares is compared — a declared field nobody checks is the defect |
 | **R2a** | GPUs: there, and enough | a GPU job goes only to a queue whose record lists GPUs, where one node holds at least the number asked; molbuilder names no card — the ask is `gpu:N`, and which card a node carries is that machine's business |
 | **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked — for a GPU job, the widest that has GPUs |
@@ -45,7 +45,7 @@ The rules, one line each — full statement in § 3:
 | **R12** | sent ≠ landed | `run.json` records where it was SENT; the monitor's first `[MACHINE]` line records what it LANDED on |
 | **R13** | two ceilings | hardware (widest machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read; the smaller governs |
 | **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a benchmark that exceeds it is told **at prep** |
-| **R15** | a scheduler is a kind | every command, directive, file name and job variable a scheduler has is its kind's, in one file (`scheduler/kinds.toml`); the machine's record names the kind and where its commands are there (§ 6a) |
+| **R15** | a scheduler is a kind | every command, directive, output-file placeholder and job variable a scheduler has is its kind's, in one file (`scheduler/kinds.toml`); the machine's record names the kind and where its commands are there (§ 6a) |
 
 **How you use it:** the decision graph is § 5, the shape § 6, the scheduler
 kinds § 6a,
@@ -219,9 +219,9 @@ the range implies. The same 64-core ask lands on 94% of `general` and 72% of
 > is `--mode ask` (`running-a-job.md`), which asks the scheduler.
 
 **R1 — A placement is decided once, at prep, and rendered once.** The
-`#SBATCH` header carries it (`scheduler.emit`); the `sbatch` line sends that
-header and carries no resource of its own but a wall the launch restates
-(`commands.LAUNCH_FLAGS`, `submit._sbatch_request`). There is one rendering,
+header carries it, in the target's kind's language (`scheduler.emit`, § 6a);
+the line a launch sends carries that header and no resource of its own but a
+wall the launch restates (`commands.LAUNCH_FLAGS`, `submit._sbatch_request`). There is one rendering,
 so there is nothing to disagree about.
 
 **R2 — Admission is total over the named limits.** Every limit `Domain`
@@ -340,8 +340,10 @@ else supplied one.)*
 
 **R6 — Refuse before submitting, when the record already says so.** The
 existing `job-system.md` § 6 rule, now with somewhere to live: at prep, before
-anything is written. A machine whose record lists **no** domains has no
-scheduler to send to: prep writes no header, and the job runs directly.
+anything is written. A machine whose record's scheduler kind has no queue
+has nothing to send to: prep writes no header, and the job runs directly; a
+kind with a queue whose record lists no domains names no queue a run could
+name, and its run is refused at prep.
 
 **R7 — Callers ask what they know.** `prep` knows what a job states — its
 cores and devices, and where it writes a header the wall and memory it is
@@ -373,7 +375,9 @@ give; every launch, that a deck agrees with its launch's counts
 took, and no probe replaces it (`configuration.md` M-3): a calculation meant
 for a machine whose record has changed since goes back to the state saved
 before its first prep. The one value a launch may restate is a submitted
-job's wall (`--time`), passed to `sbatch` as typed; the scheduler answers it.
+job's wall (`--time`), passed on the line in a job's own spelling
+(`D-HH:MM:SS`, § 6a) and checked by nothing of ours; the scheduler answers
+it.
 
 **R10 — A refusal names what *would* fit.** Not *"64 cores is too many"* but
 *"this queue holds 48; the largest rank count that fits is 48"*. The graph in
@@ -573,10 +577,11 @@ already running where the answer is.
 - **Placement** — a request bound to a domain, with the reasoning that chose
   it. The single decision R1 refers to.
 - **Directives** — a placement rendered for the scheduler: the header's
-  `#SBATCH` lines, the one rendering (R1).
+  directive lines in its kind's language (SLURM's `#SBATCH`, § 6a), the one
+  rendering (R1).
 
-A **workstation** is a machine with no domains. It is not an error state: it
-yields no header at all, and the job runs directly.
+A **workstation** is a machine whose scheduler kind has no queue (§ 6a). It is
+not an error state: it yields no header at all, and the job runs directly.
 
 ---
 
@@ -632,13 +637,17 @@ group, a run of points, a benchmark's shelf — with its one request
 
 ```
 scheduler/
-  record.py   Machine · Domain · Topology · Site; read/write; scopes; named targets
-  probe.py    detection (sinfo / scontrol / lscpu) -> a record
+  record.py   Machine · Domain · Topology · Site · Scheduler; read/write;
+              scopes; named targets; discovery (_DISCOVERY) -> a record
+  probe.py    parsers of the scheduler's answers (sinfo / scontrol / sacctmgr)
   admit.py    admits(domain, request) -> [reasons]        # R2, R3, R4, R7
   place.py    place(routing, request, *, named) -> Placement  # R6
-  emit.py     Directives(...).header_lines()                    # R1, R5
+  emit.py     Directives(...).header_lines(kind)                # R1, R5
   kinds.toml  each scheduler kind: its operations, its header's language,
-              its files, what it tells a running job            # § 6a
+              its output files' placeholder, what it tells a
+              running job                                       # § 6a
+  queue.py    a sent job asked after and stopped, each answer read by
+              its kind's reader                                 # § 6a
   kinds.py    kind(name) -> Kind, the one reader of kinds.toml  # § 6a
 ```
 
@@ -661,49 +670,69 @@ else appears.
 
 ## 6a. The scheduler kinds — one file, one protocol *(the user, 2026-10-17: "we just need a configure file to say what are the parameters, what are the format we need to put in there … unified layer, unified API, unified protocol")*
 
-*(Designed with the user 2026-10-17; built with plan row SK — until then
-the SLURM row's facts are spelled in the modules this table names.)*
-
 **Everything molbuilder says to a scheduler is a kind's, and a kind is
 data**: `molbuilder/scheduler/kinds.toml`, one block per kind, read by one
 reader (`scheduler/kinds.py`, `kind(name)`). No other module spells a
-scheduler — no command, no directive, no file name, no environment variable.
+scheduler — no command, no directive, no environment variable. The files
+molbuilder names are the file catalogue's (`runfiles`), one name for every
+kind: the header's own `<name>.sbatch`, and the scheduler's output
+`{scheduler}.{jobid}.out`, its placeholder the kind's.
 
 | a kind states | SLURM's | asked by |
 |---|---|---|
 | **how a job is sent** — its name, a wall the launch restates, molbuilder's launch claim, the header, the run's arguments | `{submit} -J {job} [-t {wall}] --export ALL,MB_LAUNCHED_BY=jobset-launch {header} {args}` | `submit._sbatch_request`, the one line |
-| **how it is asked about without being sent** | the same line, `--test-only` after the command | `submit._ask` (`--mode ask`) |
+| **how it is asked about without being sent** | the same line, `--test-only` after the command | `submit._ask` (`--mode ask`); its answer read by the kind's reader (`jobset.ask._ANSWER_READERS`) |
 | **the id it answers a send with** | `Submitted batch job (\d+)` | `submit._go` |
-| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id}` · `{cancel} {id}` | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`) |
-| **which cluster answered** | `{cluster} show config`, its `ClusterName` | `scheduler.queue` (a job's address) |
-| **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={mem}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}slurm.%j.out` `-e {where}slurm.%j.err` | `scheduler.emit` (prep's header); `Directives.lines_of` (what prep and launch print of it) |
+| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T` · `{cancel} {id}` | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
+| **which cluster answers** | `{cluster} show config` | `scheduler.queue` (a job's address); read by the kind's reader |
+| **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={memory}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}{file}` `-e {where}{file}` | `scheduler.emit`, `runwrap.render_sbatch` (prep's header); `Directives.lines_of` (what prep and launch print of it) |
+| **the placeholder its output files are named with** | `%j`, the job's id: the file catalogue names them `{scheduler}.{jobid}.out` and `.err` (`runfiles.SCHEDULER_STDOUT`), one name for every kind — SLURM's `slurm.%j.out` | the header's `stdout`, `stderr` |
 | **the value a launch may restate** | the wall, `-t {wall}` | `commands.LAUNCH_FLAGS` |
-| **its own output files** | `slurm.{jobid}.out`, `slurm.{jobid}.err` | `runfiles.WRITTEN` |
-| **what it tells a running job** | `SLURM_JOB_ID`, `SLURM_NTASKS`, `SLURM_CPUS_PER_TASK`, `SLURM_CPUS_ON_NODE`, `SLURM_ARRAY_TASK_ID` | the run script, written at prep, which says each once in molbuilder's own name (`MB_JOB_ID`, …) for everything it starts — the monitor, a walk |
+| **what it tells a running job** | molbuilder's name = its variable: `MB_JOB_ID` = `SLURM_JOB_ID`, `MB_NTASKS` = `SLURM_NTASKS`, `MB_CPUS_PER_TASK` = `SLURM_CPUS_PER_TASK`, `MB_CPUS_ON_NODE` = `SLURM_CPUS_ON_NODE`, `MB_JOB_GPUS` = `SLURM_JOB_GPUS`, `MB_JOB_NODELIST` = `SLURM_JOB_NODELIST` | the header, which says each once in molbuilder's name for everything it starts — the run script, a walk, the monitor, the engine; they read only molbuilder's names, so the run script is one file with or without a scheduler (`architecture.md` § 9) |
 
-`workstation` is a kind too: no queue, nothing sent, no header. A reader asks
-the kind what it does, never compares the word.
+`workstation` is a kind too: no queue, nothing sent, no header, nothing told
+to a run — a run here has no `MB_JOB_ID`. A reader asks the kind what it
+does, never compares the word.
+
+A value is filled in a job's own spelling of it (`task.py`: a wall
+`D-HH:MM:SS`, memory `120G`), which is the spelling SLURM reads; a GPU ask
+is its count.
 
 **The machine's record names its kind and where its commands are there**
 ([`configuration.md`](?doc=configuration.md) § 5, M-2):
 `scheduler: {kind, submit, query, cancel, cluster}`, written by `jobset probe`
-on that machine — the commands found there, or declared to it (`--scheduler`;
-`--set scheduler.submit=PATH` for a site's own wrapper). **The language is
-never copied into a record**: it is the kind's, one for every machine of that
-kind, so two records cannot disagree about SLURM.
+on that machine — the first kind whose submit command is on PATH there, each
+command where PATH finds it; or declared to it (`--scheduler` names the kind,
+`--set scheduler.submit=PATH` where a command is, a site's own wrapper among
+them). A kind with a queue names its submit command, and a kind with none
+names no command; the probe refuses either, saying the way out. **The language
+is never copied into a record**: it is the kind's, one for every machine of
+that kind, so two records cannot disagree about SLURM.
 
-**Every step asks its kind through the record**: prep writing the header;
-launch writing the line; ask mode — whether there is a scheduler to ask is the
-record's kind, never this computer's `PATH`; the jobs list; the run script and
-what it starts.
+**Every step asks its kind through the record**: prep writing the header and
+reading it back; launch writing the line with the submit command as the
+calculation's copy of the record names it — a full path as the probe found
+it, a command as declared, or, in a copy `jobset migrate` rewrote, the
+kind's own name, run from PATH — never one molbuilder looks up itself; ask
+mode — whether there is a scheduler to ask is the record's kind; the jobs
+list, asking the scheduler the job's calculation's copy names.
 
-**What stays code is discovery, a reader per kind**: the probe reading a
-scheduler's queues and limits out of its own tools (`sinfo`, `scontrol`,
-`sacctmgr`), and ask mode reading its start-time answer. Each parses a tool's
-output, which no format states, and each is keyed by the kind's name.
+**What stays code is discovery and the reading of a scheduler's answers, a
+reader per kind** keyed by its name: the probe reading the machine out of the
+scheduler's own tools — a compute node's shape, the default partition,
+whether it runs inside one of its jobs, the queues and their limits (`sinfo`,
+`scontrol`, `sacctmgr`; `record._DISCOVERY`) — ask mode reading its
+start-time answer (`jobset.ask._ANSWER_READERS`), and the jobs list reading
+whether it still lists a job and which cluster it serves (`queue._READERS`).
+Each parses a tool's output, which no format states. Discovery alone looks a
+command up on PATH, and runs the record's own where it has one (`scontrol`,
+the `cluster` command). Two readers of SLURM's ways stand where this file is
+not read: the monitor, beside the job, reading a job's cgroup in SLURM's
+nesting (`monitor._job_cgroup`), and the environment builder clearing
+SLURM's variables from a build (`envs/builds.py`).
 
-**Adding a scheduler is a block in the file and its discovery reader**;
-nothing else changes.
+**Adding a scheduler is a block in the file and its readers**; nothing else
+changes.
 
 ---
 
@@ -721,9 +750,10 @@ placement = place(routing, req, named="htc")
 
 d = Directives(partition=placement.partition, qos=placement.qos,
                walltime="0-00:38:00", ntasks=64, cpus_per_task=1,
-               gres="gpu:2", mem="390G")
-d.header_lines()    # what the .sbatch carries, wall included (R5) -- at prep
-#   the one rendering (R1): launch sends this header
+               gpus=2, mem="390G")
+d.header_lines(record.kind)   # what the .sbatch carries, wall included (R5),
+#   in the target's kind's language (§ 6a) -- at prep; the one rendering
+#   (R1): launch sends this header
 ```
 
 **The job names its queue; `place` chooses none** — the

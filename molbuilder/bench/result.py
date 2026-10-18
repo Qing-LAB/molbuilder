@@ -199,7 +199,7 @@ def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
 
     ``cpus_per_task`` is the scheduler's cores-per-rank and
     ``omp_threads`` is what the wrapper set from it (``runwrap.py``
-    resolves ``OMP_NUM_THREADS`` → ``SLURM_CPUS_PER_TASK``), so they are
+    resolves ``OMP_NUM_THREADS`` → ``MB_CPUS_PER_TASK``), so they are
     the same question asked of two layers and are compared as one.
     Eigensolver names are compared case-blind because the deck shouts
     (``ELPA-1STAGE``) where SIESTA prints mixed case (``ELPA-1stage``).

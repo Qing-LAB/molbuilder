@@ -105,9 +105,9 @@ def configured_mode() -> Optional[str]:
 
 def takes_a_queue(base, target: Optional[str] = None) -> bool:
     """Whether a launch of this calculation can go to a queue: the machine
-    it launches on names one -- its record says ``slurm``, the test a
-    header is written on (`runwrap._render_sbatch_for`) -- so a launch to it
-    can be sent.  The calculation's own copy of its machine's record answers
+    it launches on names one -- its record's scheduler kind has a queue, the
+    test a header is written on (`runwrap._render_sbatch_for`) -- so a launch
+    to it can be sent.  The calculation's own copy of its machine's record answers
     once it is set to one; before that, the record of the machine named for
     its first prep (``target``).  A machine that cannot be told -- no record
     yet, or several on file and none named -- is taken to have one: the prep
@@ -117,7 +117,7 @@ def takes_a_queue(base, target: Optional[str] = None) -> bool:
         rec = machine_for(base, target=target)
     except (AmbiguousTarget, UnknownTarget):
         return True                     # the prep that sets it refuses first
-    return rec is None or rec.scheduler == "slurm"
+    return rec is None or rec.kind.queue
 
 
 def launches_here(base, target: Optional[str] = None) -> bool:
@@ -146,21 +146,23 @@ class LaunchFlag:
     what: str
     #: A benchmark's grouped walk only -- a named trial is sent alone.
     grouped: bool = False
-    #: The request field it restates, and how the `sbatch` line writes it.
+    #: The request field it restates, and the value of the scheduler's line
+    #: it is -- the kind's words for it (`scheduler/kinds.toml`, `restate`).
     restates: Optional[str] = None
-    sbatch: Optional[str] = None
+    says: Optional[str] = None
 
 
 #: EVERY FLAG A LAUNCH READS beside the work it names and how it asks
 #: (`--mode`, `--yes`, `--dry-run`, the continuation's `--cold`, `--from`,
 #: `--gather`): what the verb refuses where it would not be read
 #: (`_cli._refuse_flags_without_effect`), what a line offering the launch in
-#: another mode keeps (:func:`launch_with`), and what the `sbatch` line
-#: restates (`submit._sbatch_request`).
+#: another mode keeps (:func:`launch_with`), and what the line a launch
+#: sends restates (`submit._sbatch_request`).
 LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
     LaunchFlag("--time", modes=("submit", "ask"), kinds=(TASK, BENCH),
-               what="a submitted job's wall, restated on its sbatch line",
-               restates="time", sbatch="-t"),
+               what="a submitted job's wall, restated on the line that "
+                    "sends it",
+               restates="time", says="wall"),
     LaunchFlag("--only", modes=("submit", "ask"), kinds=(BENCH,),
                what="one side of a benchmark, sent to its queue",
                grouped=True),
@@ -170,6 +172,15 @@ LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
     LaunchFlag("--foreground", modes=("direct",), kinds=(TASK, BENCH),
                what="waits for a run here"),
 )
+
+
+# WHAT A LAUNCH RESTATES IS A VALUE EVERY KIND WITH A QUEUE STATES THE WORDS
+# OF (`scheduler.kinds.RESTATES`, checked on every kind as it is read), or
+# nothing here imports.
+from ..scheduler.kinds import RESTATES as _RESTATES  # noqa: E402
+if not {f.says for f in LAUNCH_FLAGS if f.says} <= set(_RESTATES):
+    raise ImportError("a launch flag restates a value no scheduler kind is "
+                      f"asked to state ({', '.join(_RESTATES)})")
 
 
 def launch_flag(flag: str) -> LaunchFlag:

@@ -3,7 +3,7 @@
 The first half of the benchmark workflow's pluggable seam
 (docs/execution/job-system.md, § 5): **probes** that learn the
 target's scheduler + hardware topology + site facts, and the versioned
-JSON record they produce (``environment@2`` — registry row: job-contracts
+JSON record they produce (``environment@3`` — registry row: job-contracts
 § 6.1; written by ``jobset probe --write`` ON the machine it describes, and
 copied beside a calculation at its first prep) that every later stage and any
 external tool reads.
@@ -38,9 +38,9 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from ..identity import checkpoint_words
+from ..identity import checkpoint_words, migrate_as_typed
 
-SCHEMA = "molbuilder/environment@2"
+SCHEMA = "molbuilder/environment@3"
 
 #: The record's filename, at every scope.
 from ..runfiles import MACHINE_RECORD_FILE as FILENAME  # noqa: E402 -- the catalogue's name
@@ -248,11 +248,80 @@ def _read_devices(gpu: Any) -> Tuple[Device, ...]:
                  for name, count in gpu.items())
 
 
+@dataclass(frozen=True)
+class Scheduler:
+    """THE MACHINE'S SCHEDULER: its kind (`kinds.toml`) and where each of
+    the kind's commands is on that machine (`configuration.md` § 5 M-2) --
+    found there by `jobset probe`, or declared to it (``--set
+    scheduler.submit=PATH`` for a site's own wrapper).  The kind's language
+    is never copied here: it is the kind's, one for every machine of that
+    kind (`scheduler.md` § 6a).
+
+    A command not found is ``None``.  A kind with a queue names its submit
+    command -- a record that cannot send is no record of a scheduler -- and a
+    kind with none names no command.
+    """
+    kind:    str
+    submit:  Optional[str] = None
+    query:   Optional[str] = None
+    cancel:  Optional[str] = None
+    cluster: Optional[str] = None
+
+    def __post_init__(self):
+        from .kinds import ROLES, kind, names
+        k = kind(self.kind)                          # a kind the file states
+        named = [r for r in ROLES if getattr(self, r)]
+        if k.queue and not self.submit:
+            raise ValueError(
+                f"the machine record's {self.kind} scheduler names no submit "
+                f"command -- probe where `{k.commands['submit']}` is on PATH, "
+                f"or declare it: --set scheduler.submit=PATH "
+                f"(configuration.md M-2)")
+        if not k.queue and named:
+            queues = [n for n in names() if kind(n).queue]
+            raise ValueError(
+                f"the machine record's scheduler is {self.kind}, which has no "
+                f"queue, and names commands ({', '.join(named)}) -- name the "
+                f"kind they are: "
+                + " or ".join(f"--scheduler {n}" for n in queues))
+
+    def commands(self) -> Dict[str, Optional[str]]:
+        """Each command role -> where it is on the machine (`kinds.ROLES`)."""
+        from .kinds import ROLES
+        return {r: getattr(self, r) for r in ROLES}
+
+    def said(self) -> str:
+        """The block in words, as a probe and `jobset machines` say it."""
+        found = [f"{r} {w}" for r, w in self.commands().items() if w]
+        return self.kind + (f" ({', '.join(found)})" if found else "")
+
+    def to_dict(self) -> Dict[str, Optional[str]]:
+        return {"kind": self.kind, **self.commands()}
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "Scheduler":
+        from .kinds import ROLES
+        if not isinstance(d, Mapping) or not isinstance(d.get("kind"), str):
+            raise ValueError("the machine record's scheduler states its kind "
+                             "(configuration.md M-2)")
+        return cls(kind=d["kind"], **{r: (str(d[r]) if d.get(r) else None)
+                                      for r in ROLES})
+
+
+# THE RECORD'S COMMANDS ARE THE KINDS' ROLES, one list: the block's fields
+# after its kind are `kinds.ROLES`, in order, or nothing here imports.
+from .kinds import ROLES as _ROLES  # noqa: E402
+if tuple(f.name for f in fields(Scheduler))[1:] != _ROLES:
+    raise ImportError(f"record.Scheduler's commands are not kinds.ROLES "
+                      f"({', '.join(_ROLES)})")
+
+
 @dataclass
 class Environment:
     """The portable target description.  Produced by probes,
     consumed by adapters; neither knows the other's internals."""
-    scheduler: str                                   # "slurm" | "workstation"
+    #: The scheduler: its kind, and where its commands are there.
+    scheduler: Scheduler
     topology:  Topology = field(default_factory=Topology)
     site:      Site = field(default_factory=Site)
     #: Every (partition, qos) this account may actually submit to, with its
@@ -326,12 +395,21 @@ class Environment:
     machine:   Optional[str] = None
 
     def __post_init__(self):
-        # THE SCHEDULER IS STATED -- `slurm` or `workstation`, nothing else
-        # (`configuration.md` M-2).
-        if self.scheduler not in ("slurm", "workstation"):
+        # THE SCHEDULER IS STATED -- a kind `kinds.toml` holds, and where its
+        # commands are (`configuration.md` M-2).
+        if not isinstance(self.scheduler, Scheduler):
             raise ValueError(
                 f"the machine record's scheduler is {self.scheduler!r} -- it "
-                f"states slurm or workstation (configuration.md M-2)")
+                f"states its kind and where its commands are "
+                f"(configuration.md M-2)")
+
+    @property
+    def kind(self):
+        """The scheduler's kind (`kinds.Kind`): what every step asks -- has
+        it a queue, how is a job sent, what does its header say -- never
+        the word compared (`scheduler.md` § 6a)."""
+        from .kinds import kind
+        return kind(self.scheduler.kind)
 
     # ----- JSON round-trip (the persisted contract) ----------------- #
 
@@ -339,7 +417,7 @@ class Environment:
         return {
             "schema": SCHEMA,
             "detected_at": self.detected_at,
-            "scheduler": self.scheduler,
+            "scheduler": self.scheduler.to_dict(),
             "topology": asdict(self.topology),
             "site": asdict(self.site),
             "domains": [d.to_row() for d in self.domains],
@@ -378,7 +456,7 @@ class Environment:
             # AS WRITTEN: a record states its scheduler -- a missing one is
             # a record that does not read, never a workstation; a writer it
             # does not name is not guessed.
-            scheduler=d.get("scheduler"),
+            scheduler=Scheduler.from_dict(d.get("scheduler")),
             topology=topo, site=site, domains=domains,
             env_init={
                 k: str(v) for k, v in
@@ -533,14 +611,40 @@ def topology_field_types() -> Dict[str, type]:
     return out
 
 
-def detect_scheduler() -> Tuple[str, str]:
-    """Return ``(scheduler, source)``: ``slurm`` if ``sbatch`` is on PATH
-    or a ``SLURM_*`` var is set, else ``workstation``."""
-    if shutil.which("sbatch"):
-        return "slurm", "path:sbatch"
-    if any(k.startswith("SLURM_") for k in os.environ):
-        return "slurm", "env:SLURM_*"
-    return "workstation", "no-sbatch"
+def detect_scheduler(*, declared: Optional[str] = None,
+                     commands: Optional[Mapping[str, str]] = None
+                     ) -> Tuple[Scheduler, str]:
+    """Return ``(scheduler, source)`` -- this machine's scheduler, its kind
+    and where each of its commands is here (`scheduler.md` § 6a).
+
+    The first kind of `kinds.toml` with a queue whose submit command is on
+    PATH here, each of its commands where PATH finds it (source ``path``);
+    none found, the kind with no queue.  ``declared`` names the kind instead
+    (``--scheduler``, source ``flag``).  ``commands`` are the commands
+    declared to the probe (``--set scheduler.<role>=PATH``), which win over
+    PATH and are said (``+flag``).  A kind with a queue whose submit command
+    is neither found nor declared is refused by :class:`Scheduler`."""
+    from .kinds import ROLES, kind, names
+    commands = dict(commands or {})
+    every = [kind(n) for n in names()]
+    if declared:
+        k, source = kind(declared), "flag"
+    else:
+        k = next((c for c in every
+                  if c.queue and shutil.which(c.commands["submit"])),
+                 None) or next(c for c in every if not c.queue)
+        source = "path+flag" if commands else "path"
+    # EVERY COMMAND DECLARED IS KEPT -- one for a kind with no queue among
+    # them, which `Scheduler` refuses, naming the kinds it could be.
+    found = {role: commands.get(role) or (shutil.which(k.commands[role])
+                                          if role in k.commands else None)
+             for role in ROLES}
+    return Scheduler(kind=k.name, **found), source
+
+
+# --------------------------------------------------------------------- #
+#  Discovery -- a reader per kind (`scheduler.md` § 6a)                  #
+# --------------------------------------------------------------------- #
 
 
 def _slurm_pick_node(partition: Optional[str]) -> Optional[str]:
@@ -563,30 +667,63 @@ def _slurm_pick_node(partition: Optional[str]) -> Optional[str]:
     return first
 
 
-def detect_topology(scheduler: str, *,
+def _slurm_node(scheduler: Scheduler,
+                partition: Optional[str]) -> Tuple[Topology, str]:
+    """A compute node's shape, asked of ``scontrol`` -- where the record
+    says it is (the ``cluster`` command) -- for a node ``sinfo`` lists."""
+    node = _slurm_pick_node(partition) if scheduler.cluster else None
+    out = _run([scheduler.cluster, "show", "node", node]) if node else None
+    return ((_parse_scontrol_node(out), "scontrol") if out
+            else (Topology(), "unknown"))
+
+
+def _slurm_site(scheduler: Scheduler) -> Tuple[Site, str]:
+    """The **default partition**, from ``sinfo`` (the one ``%P`` marks with
+    ``*``, else the first listed)."""
+    site = Site()
+    out = _run(["sinfo", "-h", "-o", "%P"])          # PARTITION (default=*)
+    if out:
+        names = [t for t in out.split() if t]
+        for name in names:
+            if name.endswith("*"):                   # the default partition
+                site.partition = name.rstrip("*")
+                break
+        if site.partition is None and names:         # else the first listed
+            site.partition = names[0].rstrip("*")
+    return site, ("sinfo" if site.partition else "unknown")
+
+
+def _slurm_in_a_job() -> bool:
+    """Whether this runs inside one of SLURM's jobs -- the variable its kind
+    names for the job's id is set (`kinds.toml`, ``job``)."""
+    from .kinds import kind
+    return bool(os.environ.get(kind("slurm").job["MB_JOB_ID"]))
+
+
+def detect_topology(scheduler: Scheduler, *,
                     partition: Optional[str] = None,
                     overrides: Optional[dict] = None
                     ) -> Tuple[Topology, str]:
     """Resolve the compute-node topology.  Returns
     ``(Topology, source)`` where source is ``scontrol`` | ``lscpu`` |
     ``flag`` | ``unknown``.  Overrides (declared flags) win field-by-field
-    and mark the source ``flag`` when they supplied anything."""
+    and mark the source ``flag`` when they supplied anything.
+
+    A kind with a queue asks its own discovery (:data:`_DISCOVERY`) for the
+    compute node's shape."""
+    from .kinds import kind
     topo, source = Topology(), "unknown"
+    queue = kind(scheduler.kind).queue
+    if queue:
+        topo, source = _DISCOVERY[scheduler.kind]["node"](scheduler,
+                                                          partition)
 
-    if scheduler == "slurm":
-        node = _slurm_pick_node(partition)
-        if node:
-            out = _run(["scontrol", "show", "node", node])
-            if out:
-                topo, source = _parse_scontrol_node(out), "scontrol"
-
-    # Local probe ONLY when we are physically ON the target: a workstation,
-    # or a SLURM job/allocation (``SLURM_JOB_ID`` set).  On a SLURM LOGIN
-    # node ``lscpu`` would describe the *login* node, not the compute node
-    # -- so if scontrol failed there, leave topology unknown and
+    # Local probe ONLY when we are physically ON the target: a machine with
+    # no queue, or inside one of its scheduler's jobs.  On a LOGIN node
+    # ``lscpu`` would describe the *login* node, not the compute node -- so
+    # if the scheduler could not be asked there, leave topology unknown and
     # let declared flags fill it, rather than report the wrong machine.
-    on_node = (scheduler == "workstation"
-               or bool(os.environ.get("SLURM_JOB_ID")))
+    on_node = not queue or _DISCOVERY[scheduler.kind]["in_a_job"]()
     if source == "unknown" and on_node:
         lsc = _run(["lscpu"])
         if lsc:
@@ -620,47 +757,35 @@ def _read_mem_total_gb() -> Optional[float]:
     return None
 
 
-def detect_site(scheduler: str) -> Tuple[Site, str]:
-    """SLURM **default partition** from ``sinfo`` (the one ``%P`` marks
-    with ``*``); empty on a workstation.
+def detect_site(scheduler: Scheduler) -> Tuple[Site, str]:
+    """The scheduler's **default partition**, asked of its kind's discovery
+    (:data:`_DISCOVERY`); empty on a machine with no queue.
 
-    ``qos`` is left ``None`` **here** because ``sinfo`` cannot answer it --
-    not because nothing can.
-
-    The split is by **command**, not by knowability: this function is the NODE
-    probe and asks ``sinfo``/``scontrol``; the cluster probe (`jobset probe`)
-    asks ``sacctmgr`` which QoS your account may use and writes each into its
-    ``domains`` row; ``site.qos`` is written by nothing."""
-    if scheduler != "slurm":
+    ``qos`` is left ``None`` **here** because the node probe cannot answer
+    it -- not because nothing can: the cluster probe (`jobset probe`) asks
+    which QoS your account may use and writes each into its ``domains``
+    row; ``site.qos`` is written by nothing."""
+    from .kinds import kind
+    if not kind(scheduler.kind).queue:
         return Site(), "n/a"
-    site = Site()
-    out = _run(["sinfo", "-h", "-o", "%P"])          # PARTITION (default=*)
-    if out:
-        names = [t for t in out.split() if t]
-        for name in names:
-            if name.endswith("*"):                   # the default partition
-                site.partition = name.rstrip("*")
-                break
-        if site.partition is None and names:         # else the first listed
-            site.partition = names[0].rstrip("*")
-    return site, ("sinfo" if site.partition else "unknown")
+    return _DISCOVERY[scheduler.kind]["site"](scheduler)
 
 
 def resolve_environment(*, overrides: Optional[dict] = None,
                         now_iso: Optional[str] = None,
-                        scheduler_override: Optional[str] = None
+                        scheduler_override: Optional[str] = None,
+                        commands: Optional[Mapping[str, str]] = None
                         ) -> Environment:
     """Run the probes in order and assemble the Environment.
 
     ``overrides`` is a flat dict of declared topology values (e.g.
     ``{"cores_per_socket": 24, "gpus_per_node": 4}``) that win over
-    detection.  ``scheduler_override`` forces the scheduler.  ``now_iso``
-    stamps ``detected_at`` (passed in so the module stays free of wall-
-    clock calls for deterministic tests)."""
-    if scheduler_override:
-        scheduler, sch_src = scheduler_override, "flag"
-    else:
-        scheduler, sch_src = detect_scheduler()
+    detection.  ``scheduler_override`` names the scheduler's kind, and
+    ``commands`` the scheduler's commands declared (:func:`detect_scheduler`).
+    ``now_iso`` stamps ``detected_at`` (passed in so the module stays free of
+    wall-clock calls for deterministic tests)."""
+    scheduler, sch_src = detect_scheduler(declared=scheduler_override,
+                                          commands=commands)
 
     site, site_src = detect_site(scheduler)
     topo, topo_src = detect_topology(
@@ -683,9 +808,22 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
     by `jobset probe`, or by `envs init-config` seeding its own record
     "through the same prober").
 
-    Not a refusal when there is no ``sinfo`` -- M-2: a workstation records
-    its capability in the same shape a cluster does, with no domains.
+    Not a refusal on a machine with no scheduler -- M-2: it records its
+    capability in the same shape a cluster does, with no domains.
+
+    DISCOVERY, A READER PER KIND, keyed by the kind's name (`scheduler.md`
+    § 6a): each parses its scheduler's own tools, whose output no format
+    states (:data:`_DISCOVERY`).
     """
+    if not env.kind.queue:
+        return ([f"{env.kind.what} -- so no queues: this record is the "
+                 f"machine's own (topology only)."], None)
+    return _DISCOVERY[env.scheduler.kind]["queues"](env, user)
+
+
+def _probe_slurm_queues(env: Environment, user: str
+                        ) -> Tuple[List[str], Optional[str]]:
+    """SLURM's queues, from ``sinfo``, ``sacctmgr`` and ``scontrol``."""
     from .probe import (derive_domains, parse_allowed_qos, parse_qos,
                         parse_scontrol_partitions, parse_sinfo)
     notes: List[str] = []
@@ -693,15 +831,9 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
     # (`execution/scheduler.md` § 2).
     sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c|%m"])
     if sinfo_txt is None:
-        if env.scheduler == "slurm":
-            # Slurm, and no `sinfo` here to read its queues from: saying
-            # "workstation record" would contradict the scheduler declared.
-            notes.append("no sinfo reachable here, so no queues were "
-                         "probed -- run the probe where `sinfo` answers "
-                         "(a login node).")
-        else:
-            notes.append("no sinfo, so no scheduler domains -- this is a "
-                         "workstation record (topology only).")
+        notes.append("no sinfo reachable here, so no queues were "
+                     "probed -- run the probe where `sinfo` answers "
+                     "(a login node).")
         return notes, None
     parts = parse_sinfo(sinfo_txt)
     # MaxTRES (R13): a field you did not request is not an absence the
@@ -734,7 +866,8 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
     # states no --mem.  Absent scontrol, the rows simply carry no per-core default, which
     # reads as "this machine does not say" rather than as zero (R3).
     policy = parse_scontrol_partitions(
-        _run(["scontrol", "show", "partition"]) or "")
+        (_run([env.scheduler.cluster, "show", "partition"])
+         if env.scheduler.cluster else None) or "")
     for p in parts:
         pol = policy.get(p.name)
         if pol is not None:
@@ -759,6 +892,16 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
     env.source["domains"] = "sinfo+sacctmgr"
     return notes, (f"Probed (user={user}): {len(parts)} partitions; allowed "
                    f"QoS: {', '.join(sorted(allowed)) or '(unknown)'}")
+
+
+#: DISCOVERY, A READER PER KIND (`scheduler.md` § 6a): each kind with a queue
+#: -> how its own tools are read for the machine -- a compute node's shape,
+#: the default partition, whether this runs inside one of its jobs, and its
+#: queues.  Its tools' output, which no format states.  Adding a kind adds
+#: its row here and its block in `kinds.toml`.
+_DISCOVERY = {"slurm": {"node": _slurm_node, "site": _slurm_site,
+                        "in_a_job": _slurm_in_a_job,
+                        "queues": _probe_slurm_queues}}
 
 
 # --------------------------------------------------------------------- #
@@ -863,12 +1006,15 @@ def known_machines() -> List[Dict[str, object]]:
             # machine it describes.
             fix = (f"`{probe_command(None)}` here" if kind == "local"
                    else f"`{probe_command(name)}` {probe_steps(name)}")
+            why = why_unread(path)
             return {"name": name, "kind": kind, "path": str(path),
                     "readable": False, "detected_at": "", "domains": [],
                     "mem_total_gb": None, "gpus_per_node": None,
                     "gpu_type": None,
-                    "summary": "no record here yet, or it cannot be read -- "
-                               "write one with " + fix}
+                    "summary": ((f"cannot be read -- {why} -- write it "
+                                 f"again with " if why
+                                 else "no record here yet -- write one with ")
+                                + fix)}
         # CORES: the RANGE the machines span, when the record lists them.
         #
         # `sockets x cores_per_socket` describes ONE node -- whichever
@@ -883,7 +1029,7 @@ def known_machines() -> List[Dict[str, object]]:
         sockets = getattr(env.topology, "sockets", None)
         total = (cores * sockets) if (cores and sockets) else None
         spread = _core_range(_machine_sizes(env.domains))
-        bits = [env.scheduler or "unknown scheduler"]
+        bits = [env.scheduler.kind]
         if spread:
             bits.append(f"{spread} cores")
         elif total:
@@ -1021,6 +1167,59 @@ def read_environment(path) -> Optional["Environment"]:
         return None
 
 
+def why_unread(path) -> Optional[str]:
+    """Why the record at ``path`` does not read, in words -- ``None`` when
+    it reads, or when nothing is there.
+
+    :func:`read_environment` answers absent and unreadable alike with
+    ``None``, so a caller has one thing to check; a REFUSAL says which, and
+    names an older molbuilder's record as that -- written before this one's
+    schema (`configuration.md` § 5) -- so its way out can be named.
+    """
+    return _unread(path)[0]
+
+
+def _unread(path) -> Tuple[Optional[str], bool]:
+    """``(why it does not read, whether an older molbuilder wrote it)`` --
+    :func:`why_unread`'s answer, and whether its way out is `jobset
+    migrate`, read once."""
+    from ..persist import schema_major, schema_name
+    p = Path(path)
+    if not p.exists():
+        return None, False
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except OSError:
+        return "it cannot be read here (permissions)", False
+    except ValueError:
+        return "it is not JSON", False
+    got = str(raw.get("schema", "")) if isinstance(raw, dict) else ""
+    if older_record(raw):
+        return (f"an older molbuilder wrote it ({got}; this one reads "
+                f"{SCHEMA})"), True
+    try:
+        Environment.from_dict(raw)
+    except (ValueError, TypeError, KeyError) as exc:
+        if schema_name(got) != schema_name(SCHEMA) or (
+                schema_major(got) != schema_major(SCHEMA)):
+            return (f"it is not a machine record this molbuilder reads "
+                    f"({got})"), False
+        return str(exc), False
+    return None, False
+
+
+def older_record(raw) -> bool:
+    """Whether ``raw`` (a record's JSON) is a machine record an older
+    molbuilder wrote: its schema's name, at a lower major."""
+    from ..persist import schema_major, schema_name
+    got = str(raw.get("schema", "")) if isinstance(raw, dict) else ""
+    try:
+        return (schema_name(got) == schema_name(SCHEMA)
+                and int(schema_major(got)) < int(schema_major(SCHEMA)))
+    except (ValueError, TypeError):
+        return False
+
+
 def write_environment(env: "Environment", path) -> Path:
     """The record to ONE path, atomically.  Returns the path written.
 
@@ -1058,9 +1257,9 @@ class UnknownTarget(Exception):
         exc = cls.__new__(cls)
         exc.name, exc.known = name, []
         Exception.__init__(exc, (
-            f"--target {name!r} names a record that cannot be read: {path}.\n"
-            f"  It is absent, not JSON, or a schema this molbuilder does not "
-            f"know.  Re-write it with `{probe_command(name)}` "
+            f"--target {name!r} names a record that cannot be read: {path} "
+            f"-- {why_unread(path) or 'it is not there'}.\n"
+            f"  Re-write it with `{probe_command(name)}` "
             f"{probe_steps(name)}."))
         return exc
 
@@ -1075,12 +1274,20 @@ class UnknownTarget(Exception):
         """
         exc = cls.__new__(cls)
         exc.name, exc.known = None, []
+        path = calculation_record(bundle_dir)
+        why, older = _unread(path)
+        if older:
+            # AN OLDER MOLBUILDER'S COPY is rewritten by the command that
+            # rewrites what an older molbuilder wrote (`jobset migrate`).
+            way = (f"`{migrate_as_typed(Path(bundle_dir).resolve())}` "
+                   f"rewrites it, the old file kept beside the new.")
+        else:
+            way = (f"Fix it by hand -- or go back to the state saved before "
+                   f"the calculation's first prep "
+                   f"({checkpoint_words(bundle_dir)}) and prep anew.")
         Exception.__init__(exc, (
             f"this calculation's record of its machine cannot be read: "
-            f"{calculation_record(bundle_dir)}.\n"
-            f"  Fix it by hand -- or go back to the state saved before the "
-            f"calculation's first prep ({checkpoint_words(bundle_dir)}) and "
-            f"prep anew."))
+            f"{path} -- {why}.\n  {way}"))
         return exc
 
     @classmethod
@@ -1317,7 +1524,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None
 
 __all__ = [
     "SCHEMA", "FILENAME", "calculation_record", "calculation_machine",
-    "Topology", "Site", "Domain", "Environment",
+    "Topology", "Site", "Domain", "Scheduler", "Environment",
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
@@ -1325,6 +1532,7 @@ __all__ = [
     "record_and_renewal",
     "record_scopes",
     "topology_field_types",
-    "read_environment", "write_environment", "machine_for", "UnknownTarget",
+    "read_environment", "write_environment", "why_unread", "older_record",
+    "machine_for", "UnknownTarget",
     "AmbiguousTarget",
 ]

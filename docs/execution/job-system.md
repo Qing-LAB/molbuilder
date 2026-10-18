@@ -2283,7 +2283,7 @@ anything is sent, and the send decides nothing.**
 |:--:|---|---|
 | 1 | **the plan** — nothing is written | **the work** (`submit._the_group`): a prepared group, whole at its first launch, or one stage launched again; a benchmark's pending trials. **Its submissions**, from the submission builders (§ 9.1) — each one scheduler job, or one process here, walking one or more **members**: a run is one member; a group, its stages in the ladder's order ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6); a run of points, its points; a benchmark's resource shelf, its pending trials — each sending the one header its prep wrote for it. **Each member**, from the one member planner (`submit._plan_member`): the run it runs in — prep's first run, or the next one — and what it takes (*The task*, *What a stage takes, and when*), with the gates: every upstream it takes from has finished; the prepared stage is still what the description gives — at a first launch and at one that takes inputs anew, prep's member planner run again, quietly (`prep.plan_stage`), and its deck, scripts, header and job compared with the files, stamps masked; the deck agrees with its launch; a trial starts cold. **The placement** — the job's own, recorded at prep: its queue and every value prep stated, none admitted or chosen again; a submitted job's wall is the one value a launch may restate (`--time`). The exact lines and scripts to send. Every refusal is a row of *The task*'s table |
 | 2 | **show** | the exact command of every submission and every value of the header it sends (S4, [`submission.md`](?doc=execution/submission.md)) |
-| 3 | **ask** | one question for the whole plan — a run here asked as a submission is *(user, 2026-10-05)*; `--yes` is the answer given in advance, and with nobody to ask (no terminal) nothing goes and the launch is refused, so a script is never told it went. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (`sbatch --test-only`) and writes down what it asked |
+| 3 | **ask** | one question for the whole plan — a run here asked as a submission is *(user, 2026-10-05)*; `--yes` is the answer given in advance, and with nobody to ask (no terminal) nothing goes and the launch is refused, so a script is never told it went. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (its kind's ask, [`scheduler.md`](?doc=execution/scheduler.md) § 6a) and writes down what it asked |
 | 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it takes (launched again, how the run it continues ended), every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. **A group's first launch then saves the folder's state** — when and with which note is [`checkpointing.md`](?doc=execution/checkpointing.md) § 9's; the launch's questions and their answers are written after it, so it holds no line of this launch. Then the plan's writes are carried out — each run opened or filled through the one opener, a run opened and not launched emptied whole first ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2–1.6.3), with its `.continued-from` / `.gathered-from` (the one hand-over, § 5.4; a flat run's written with its `run.json`); a submission with several members gets its walk script; every script is on disk before anything goes — and each submission goes out, `sbatch` or the process here, through one function, each member's `run.json` written by the one writer |
 | 5 | **the record** | the ledger: every refusal, the question and its answer, the save before a group's first launch, what each member took (`continues`, `gathers`), each submission sent and its job id — a run here when it starts — with what the verb was told on each line (the kind, the stage, the mode and where it came from, the queue's source, which config files answered). The entry writes them (`submit.plan_launch`, `send_launch`, `ask_launch`, [`architecture.md`](?doc=execution/architecture.md) § 2.1); the verb writes the refusals it says before it calls the entry — a flag that means nothing for the mode, a stage not prepared |
 
@@ -2400,8 +2400,9 @@ probe replaces it ([`configuration.md`](?doc=configuration.md) M-3): a
 calculation meant for a machine whose record has changed since goes back to
 the state saved before its first prep. **A submitted job's wall is the one
 value a launch may restate** — `--time`, for a run launched again that ran out
-of it — passed to `sbatch` as typed and checked by nothing of ours: the
-scheduler answers. `run.json`'s `placed_on` keeps the queue, wall and memory
+of it — passed on the line in a job's own spelling (`D-HH:MM:SS`,
+[`scheduler.md`](?doc=execution/scheduler.md) § 6a) and checked by nothing of
+ours: the scheduler answers. `run.json`'s `placed_on` keeps the queue, wall and memory
 the run was sent with, and the ledger's lines the flag as typed. **A benchmark
 measures on one queue**: the one its prep names (`prep --domain`, else
 `allocation.domain`), every trial checked against it alone and its placement
@@ -2440,9 +2441,11 @@ id, or beside a run left in the background, which is then named by its pid,
 **What it is doing is read fresh, each time** — one fact, one source: a run
 here is going while its process is (the same host, pid and start — a machine
 with no `/proc` says it cannot tell); a queue job while the scheduler lists
-it (`squeue`, asked on its own cluster — another cluster's job is said *sent
-to cluster C: ask there*, and a machine with no `squeue` says it cannot ask;
-both keep the file); each member's own state is its run's, read through its
+it (its kind's query, run where the calculation's copy of its machine's
+record says the command is, asked on its own cluster — another cluster's job
+is said *sent to cluster C: ask there*, and a record naming no query
+command, a command that does not run here, or a copy that does not read here
+says it cannot ask; each keeps the file); each member's own state is its run's, read through its
 launch record by the run door — that run, never its stage's newest; where a
 stage's runs share a folder, the run its warm retries reached, each retry a
 run of its own (`runrecord.retried_to`, [`running-a-job.md`](?doc=execution/running-a-job.md)
@@ -2491,9 +2494,10 @@ checked again once the answer is given: a run left in the
 background leads its own process group, and SIGTERM goes to the group, so it
 reaches the engine — to the run script alone it would wait for the engine to
 end; a run waited on is stopped at its terminal, with Ctrl-C, and `jobs
-stop` says so. A queue job: `scancel <job id>`. The calculation's ledger
-records the stop (`stopped`, and how), and the verb says it: *stopped:
-SIGTERM to its process group, <pid>* — or *scancel <job id>*. The run then
+stop` says so. A queue job: its kind's cancel, from where the record says
+the command is. The calculation's ledger records the stop (`stopped`, and
+how), and the verb says it: *stopped: SIGTERM to its process group, <pid>* —
+or the line it ran, `/usr/bin/scancel 62039301` on SLURM. The run then
 reads *failed — stopped before its
 end* by its own files ([`running-a-job.md`](?doc=execution/running-a-job.md)
 § 4.2); one stopped before its monitor began reads *queued*, and `jobs
@@ -2515,36 +2519,43 @@ each `#SBATCH` line are owned by
 [`job-contracts.md § 2.6`](?doc=execution/job-contracts.md). What the **job
 system** adds is submission and routing:
 
-- **The two layers.** The outer `.sbatch` is a thin `#SBATCH` header whose body
-  is a single line — `bash <base>.run.sh "$@"`. The inner `.run.sh` owns
-  activation and launch. You submit the outer file; it hands off to the inner
-  one. This split means the scheduler header and the run logic evolve
-  independently, and the exact same `.run.sh` works with or without a scheduler.
+- **The two layers.** The outer `.sbatch` is a thin header, in the language of
+  the target's scheduler kind ([`scheduler.md`](?doc=execution/scheduler.md)
+  § 6a), whose body says once what the scheduler tells the job, in
+  molbuilder's names (`MB_JOB_ID`, `MB_NTASKS`, …), then a single line —
+  `bash <base>.run.sh "$@"`. The inner `.run.sh` owns activation and launch,
+  and reads only molbuilder's names. You submit the outer file; it hands off to
+  the inner one. This split means the scheduler header and the run logic
+  evolve independently, and the exact same `.run.sh` works with or without a
+  scheduler.
 - **The `.sbatch` is not always written.** The `.run.sh` is always there; the
-  header beside it is withheld only where **the target's record says
-  `workstation`** — that machine has no queue, so a header for it would be a
+  header beside it is withheld only where **the target's record names a
+  scheduler with no queue** (`workstation`) — that machine has no queue, so a header for it would be a
   file nobody can submit — or where you asked for none (`prep --no-sbatch`). A
   target with a scheduler gets one, and every value in it is stated: a run
   that names no queue, wall or memory is refused at prep, never given a header
   that picks one ([`architecture.md` § 5.2](?doc=execution/architecture.md)).
 
   So *"I prepared and got no `.sbatch`"* has two answers: the machine's record
-  says `workstation`, or you said `--no-sbatch`.
+  names a scheduler with no queue (`workstation`), or you said `--no-sbatch`.
 - **One `sbatch` per invocation, and the header carries the job.** The
   line names the job (`-J`), restates its wall when the launch says so (`-t`
   from `--time`), and carries the launch claim and the run's arguments;
   every other value — queue, ranks, cores, GPUs, memory, binding — is the
   `#SBATCH` header prep wrote, sent as it stands.
 - **One request, one sender.** Every submission — a stage, a benchmark's
-  shelf, a bias scan, a transport group — builds its `sbatch` line the same way
-  (`submit._sbatch_request`), from the queue prep recorded; `--mode ask` asks
-  the same line with `--test-only`.
+  shelf, a bias scan, a transport group — builds its line the same way
+  (`submit._sbatch_request`), in the words of the scheduler kind its machine's
+  record names, from where the record says its submit command is
+  ([`scheduler.md`](?doc=execution/scheduler.md) § 6a); `--mode ask` asks the
+  same line with the kind's ask.
 - **Every run is handed its own ranks and threads.** Every launch passes each
   run script its `-np` and `-omp` — a run here; a stage sent to the queue,
   after the `.sbatch` name, which forwards them (`bash <base>.run.sh "$@"`);
   each trial of a benchmark's shelf and each point of a bias scan, inside
   their sequencer's script — so a launched run's counts are its own, never
-  the submitting shell's `OMP_NUM_THREADS` or the allocation's `SLURM_*`
+  the submitting shell's `OMP_NUM_THREADS` or what the scheduler tells the
+  job (`MB_NTASKS`, `MB_CPUS_PER_TASK`, said by its header)
   ([`running-a-job.md` § 3.2](?doc=execution/running-a-job.md): the flag comes
   first). *(User, 2026-10-05: "Make all calling consistent with —omp
   and settle it".)*
@@ -2607,8 +2618,9 @@ flowchart LR
     D --> P --> R --> S --> PR
 ```
 
-- **Detect the machine → `environment.json`** (`molbuilder/environment@2`): the
-  scheduler, the site, the topology, and the domains you can actually reach —
+- **Detect the machine → `environment.json`** (`molbuilder/environment@3`): the
+  scheduler (its kind, and where its commands are there), the site, the
+  topology, and the domains you can actually reach —
   resolved to the **compute node's** real core and GPU counts (read from the
   scheduler via `scontrol show node`, not from whatever login node you happen to
   be on), so the numbers are the ones the job will actually run against. The

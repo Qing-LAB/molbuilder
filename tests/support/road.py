@@ -18,10 +18,11 @@ from the road it imitates.  The steps live here once.
   (coarse, medium);
 * :func:`ladder_edited` -- a description's ladder edited through Task
   setup's Save, as the page edits it;
-* :func:`a_machine_with_queues` -- a machine record naming queues, and an
-  `sbatch` on PATH that writes down every call -- where it was made and
-  what it said -- and refuses it: the basic tests send nothing to a
-  scheduler and assume nothing of its answers (user, 2026-10-06);
+* :func:`a_machine_with_queues` -- a machine record naming queues, and a
+  SLURM submit command where the record says it is, off PATH, that writes
+  down every call -- where it was made and what it said -- and refuses it:
+  the basic tests send nothing to a scheduler and assume nothing of its
+  answers (user, 2026-10-06);
 * :func:`sbatch_line` -- the `sbatch` line a launch showed, as its words.
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from support.machines import SLURM
 
 
 def molbuilder(*args, input=None):
@@ -194,10 +196,16 @@ def describe_calculation(tmp_path, monkeypatch, *,
 def a_machine_with_queues(tmp_path, monkeypatch, domains,
                           **record) -> Path:
     """This machine's record names ``domains`` (`scheduler.Domain` rows) --
-    and ``record``'s other fields, when given -- and the `sbatch` first on
-    PATH writes down each call and REFUSES it, in molbuilder's words.
-    Returns the file each call is written to, one line each: ``<where it
-    was run> | <its arguments>``.
+    and ``record``'s other fields, when given -- and a SLURM scheduler whose
+    submit command, where the record says it is, writes down each call and
+    REFUSES it, in molbuilder's words.  Returns the file each call is
+    written to, one line each: ``<where it was run> | <its arguments>``.
+
+    THE COMMAND IS THE RECORD'S, AND IT IS NOT ON PATH (`configuration.md`
+    M-2, `scheduler.md` § 6a): the `sbatch` first on PATH stays the suite's
+    own, which refuses in other words and writes nothing down -- so a launch
+    that ran whatever PATH finds instead of what the machine's record names
+    sends no call here, and says the suite's words.
 
     NO SCHEDULER TEXT (user, 2026-10-06: *"there should be no assumption
     what so ever about the text returned by slurm ... the whole default test
@@ -205,8 +213,8 @@ def a_machine_with_queues(tmp_path, monkeypatch, domains,
     scheduler answers is read where one answers -- the field tier
     (`tests/field/`, `testing.md` § 0).  Refusing also keeps the basic suite
     from sending a real job when it runs on a cluster's login node."""
+    import dataclasses
     from conftest import write_machine_record
-    write_machine_record(scheduler="slurm", domains=list(domains), **record)
     bin_dir = tmp_path / "scheduler-bin"
     bin_dir.mkdir()
     calls = tmp_path / "sbatch-calls.log"
@@ -218,18 +226,27 @@ def a_machine_with_queues(tmp_path, monkeypatch, domains,
         'answers is the field tier\'s (testing.md 0)" >&2\n'
         "exit 1\n")
     f.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    write_machine_record(
+        scheduler=dataclasses.replace(SLURM, submit=str(f)),
+        domains=list(domains), **record)
     return calls
+
+
+def _submits(word: str) -> bool:
+    """Whether ``word`` is the SLURM submit command a road record names --
+    `sbatch`, by its bare name or its full path, as the road's records name
+    it."""
+    return Path(word).name == "sbatch"
 
 
 def sbatch_line(output: str):
     """The `sbatch` line a launch showed -- in its question, or as a dry
-    run's ``WOULD run`` -- as its arguments."""
+    run's ``WOULD run`` -- as its arguments, from its command on."""
     for ln in output.splitlines():
         words = ln.split()
-        if "sbatch" in words:
-            words = words[words.index("sbatch"):]
-            return [w for w in words if not w.startswith("[")]
+        at = next((i for i, w in enumerate(words) if _submits(w)), None)
+        if at is not None:
+            return [w for w in words[at:] if not w.startswith("[")]
     raise AssertionError(f"no sbatch line shown:\n{output}")
 
 
@@ -261,9 +278,10 @@ def calls_made(calls: Path):
 #      be refused: a launch that runs starts an engine, and a test that
 #      reads what an engine wrote is an end-to-end test (plan § 5y); the
 #      basic tests send nothing to a scheduler either, whose `sbatch`
-#      refuses (W57 T1) -- and what the launch left
-#      (`no_sbatch_on_path`: launched where no `sbatch` is found at all;
-#      `launch_writes_nothing`: every file under the calculation as it was;
+#      refuses (W57 T1) -- what molbuilder put to the record's scheduler
+#      (`scheduler_called`: each call its submit command was given, in order,
+#      as the words each carries) -- and what the launch left
+#      (`launch_writes_nothing`: every file under the calculation as it was;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`; `deck_says`, what the engine
@@ -372,7 +390,13 @@ def calls_made(calls: Path):
 # `record_declared`, the facts its `source` says were declared -- `flag`
 # among the note's parts, `configuration.md` M-1;
 # `record_stamped`, its `detected_at` is the last probe's own -- M-6: the
-# stamp follows the probe whatever survives).  A row about the record alone
+# stamp follows the probe whatever survives; `record_found_on_path`, each
+# scheduler command the record names where PATH finds it by the name the
+# contract gives it -- `{submit = "sbatch"}`: the full path `shutil.which`
+# answers where the probe ran).  `probe_path_lacks` -- the
+# commands the probe finds NOT on PATH where it runs (`["sbatch"]`: a
+# workstation, or a node whose scheduler is elsewhere), the only place PATH
+# is read: discovery (`scheduler.md` § 6a).  A row about the record alone
 # ends there: `ends_at = "probe"`.
 
 
@@ -390,6 +414,12 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
             "activation": "conda activate", "preamble": "true"}}, **case})
         if "record" in case:
             write_machine_record(**case["record"])
+        if case.get("probe_path_lacks"):
+            gone = case["probe_path_lacks"]
+            monkeypatch.setenv("PATH", os.pathsep.join(
+                d for d in os.environ["PATH"].split(os.pathsep)
+                if d and not any(os.path.exists(os.path.join(d, c))
+                                 for c in gone)))
         from datetime import datetime, timezone
         said, named = [], []
         for step in case["probe"]:
@@ -430,7 +460,7 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     from molbuilder.config_dir import ensure_private_dir
     from molbuilder.scheduler import environments_dir, named_environment_path
     ensure_private_dir(environments_dir())
-    fields = dict(scheduler="slurm", domains=queues,
+    fields = dict(scheduler=SLURM, domains=queues,
                   topology=Topology(sockets=2, cores_per_socket=24),
                   env_init={"activation": "conda activate",
                             "preamble": "true"})
@@ -455,6 +485,12 @@ def _road_probe_layer(case, said, target, began) -> None:
         _road_holds(record, case["record_says"], "record")
     for key in case.get("record_lacks", []):
         assert key not in record, f"record.{key} is {record[key]!r}"
+    for role, name in case.get("record_found_on_path", {}).items():
+        import shutil
+        found = shutil.which(name)
+        assert found and record["scheduler"].get(role) == found, \
+            (f"record.scheduler.{role} is {record['scheduler'].get(role)!r}, "
+             f"not {name!r} where PATH finds it ({found!r})")
     for fact in case.get("record_declared", []):
         note = record["source"].get(fact, "")
         assert "flag" in note.split("+"), \
@@ -1148,12 +1184,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     # ...and the `sbatch` line(s) launch shows -- one per shelf of a
     # benchmark -- or its refusal
     if "launch" in case:
-        if case.get("no_sbatch_on_path"):
-            # NO SCHEDULER ON THIS MACHINE AT ALL -- the suite's own refusing
-            # `sbatch` taken off PATH with the rest.
-            monkeypatch.setenv("PATH", os.pathsep.join(
-                d for d in os.environ["PATH"].split(os.pathsep)
-                if d and not os.path.exists(os.path.join(d, "sbatch"))))
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
         stage_typed = case.get("launch_stage", "coarse")
@@ -1169,15 +1199,26 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                 assert words in r.output, _one_line(r)
         else:
             assert r.exit_code == 0, _one_line(r)
-            sent = [ln for ln in r.output.splitlines() if "sbatch" in ln.split()]
-            # A LINE TO SHOW, unless the launch runs here or no scheduler is
-            # found to send it to.
-            assert sent or mode == "direct" or case.get("no_sbatch_on_path"), \
+            sent = [ln for ln in r.output.splitlines()
+                    if any(_submits(w) for w in ln.split())]
+            # A LINE TO SHOW, unless the launch runs here or the machine's
+            # record names no scheduler to send it to.
+            assert sent or mode == "direct" or case.get(
+                "machine", table.get("machine", "this")) == "workstation", \
                 _one_line(r)
             for ln in sent:
                 _road_lines(case, "line", " ".join(sbatch_line(ln)))
         for words in case.get("listing", []):
             assert words in r.output, _one_line(r)
+        if "scheduler_called" in case:
+            # WHAT MOLBUILDER PUT TO THE RECORD'S SCHEDULER, as its submit
+            # command wrote each call down (`a_machine_with_queues`).
+            made = [argv for _where, argv in
+                    calls_made(tmp_path / "sbatch-calls.log")]
+            want = case["scheduler_called"]
+            assert len(made) == len(want) and all(
+                all(w in argv for w in words)
+                for argv, words in zip(made, want)), (made, want)
         if case.get("launch_writes_nothing"):
             now = _all_written(bundle)
             assert now == was, sorted(set(now.items()) ^ set(was.items()))

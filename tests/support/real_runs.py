@@ -279,18 +279,76 @@ def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path) -> None:
     there = scratch / prepared.name
     shutil.copytree(prepared, there)
     script = next(there.glob("*.run.sh"))
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "MB_NP",
-                        "SLURM_NTASKS", "SLURM_JOB_ID", "PBS_NP",
-                        "MOLBUILDER_USE_MPS")}
-    env.update(MB_LAUNCHED_BY="manual")
     for step, extra in (("script dry run", ()),
                         ("script dry run -np 2", ("-np", "2"))):
         done = subprocess.run(["bash", str(script), "--run", "0",
                                "--dry-run", *extra],
                               cwd=there, capture_output=True, text=True,
-                              timeout=120, env=env)
+                              timeout=120, env=_scrubbed())
         run.said[step] = Said(done.returncode, done.stdout + done.stderr)
+
+
+#: What a shell may carry into a run: the counts a person sets, which the run
+#: script's chains read; what a scheduler tells a job in molbuilder's names,
+#: which they read too; and in SLURM's own names (`scheduler.md` § 6a), which
+#: a header maps -- so none reaches a dry run but what a step sets.
+_CARRIED = ("OMP_NUM_THREADS", "MB_NP", "MOLBUILDER_USE_MPS", "MB_JOB_ID",
+            "MB_NTASKS", "MB_CPUS_PER_TASK", "MB_CPUS_ON_NODE", "MB_JOB_GPUS",
+            "MB_JOB_NODELIST", "SLURM_JOB_ID", "SLURM_NTASKS",
+            "SLURM_CPUS_PER_TASK", "SLURM_CPUS_ON_NODE", "SLURM_JOB_GPUS",
+            "SLURM_JOB_NODELIST")
+
+
+def _scrubbed(**more) -> Dict[str, str]:
+    """This process's environment without what :data:`_CARRIED` names, the
+    launch claim made by hand, and ``more``."""
+    env = {k: v for k, v in os.environ.items() if k not in _CARRIED}
+    return {**env, "MB_LAUNCHED_BY": "manual", **more}
+
+
+def _header_under_a_slurm_grant(run: RealRun, tree: Path,
+                                scratch: Path) -> None:
+    """THE HEADER PREP WRITES FOR A SLURM MACHINE, started as SLURM starts
+    it -- ``bash <its .sbatch> --run 0 --dry-run``, 2 ranks granted
+    (``SLURM_NTASKS``, the variable `scheduler.md` § 6a names) -- on a copy
+    of a sibling H2 prepared for ``sol``: this machine's record as a SLURM
+    machine with one queue, entering its environments the same way, so the
+    run script activates here.  Said under ``header dry run under a SLURM
+    grant of 2 ranks``; the named record is taken away after, so no later
+    prep is asked which machine it means."""
+    import dataclasses
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import (Domain, environments_dir,
+                                      machine_scope_path,
+                                      named_environment_path,
+                                      read_environment, write_environment)
+    from support.machines import SLURM
+    sol = named_environment_path("sol")
+    ensure_private_dir(environments_dir())
+    write_environment(dataclasses.replace(
+        read_environment(machine_scope_path()), scheduler=SLURM,
+        domains=[Domain.from_row({
+            "name": "cpu", "partition": "cpu", "qos": "public",
+            "max_time": "1-00:00:00", "max_cores": 64,
+            "node_types": [{"cores": 64, "nodes": 1}]})]), sol)
+    try:
+        bundle = _h2_optimization(
+            tree, "P/opt/H2-on-sol",
+            execution={"mpi_np": 1, "omp_threads": 1},
+            allocation={"domain": "cpu", "time": "01:00:00", "mem": "1G"})
+        on_sol = RealRun(tree=tree, bundle=bundle)
+        _taken(on_sol, "prep coarse for sol", "prep", "task", "--group",
+               "1", "--target", "sol")
+    finally:
+        sol.unlink()
+    there = scratch / "on-sol"
+    shutil.copytree(bundle / "01_coarse" / "run-0", there)
+    header = next(there.glob("*.sbatch"))
+    done = subprocess.run(["bash", header.name, "--run", "0", "--dry-run"],
+                          cwd=there, capture_output=True, text=True,
+                          timeout=120, env=_scrubbed(SLURM_NTASKS="2"))
+    run.said["header dry run under a SLURM grant of 2 ranks"] = Said(
+        done.returncode, done.stdout + done.stderr)
 
 
 def _h2_optimization(tree: Path, where: str, **blocks) -> Path:
@@ -312,6 +370,8 @@ def layered(tmp_path_factory) -> RealRun:
                "--target", "this")
         _script_dry_runs(run, bundle / "01_coarse" / "run-0",
                          tmp_path_factory.mktemp("dry-run"))
+        _header_under_a_slurm_grant(run, tree,
+                                    tmp_path_factory.mktemp("header-dry-run"))
         _taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
                "--mode", "direct", "--foreground", "--yes")
         run.files_before = _files(bundle)

@@ -24,14 +24,16 @@ _BARE = {}
 
 
 def test_a_scheduler_allocation_wins_over_the_node():
-    """THE bug.  8 granted cores must give 8 threads, not the node's."""
-    assert threads_for(environ={"SLURM_CPUS_PER_TASK": "8"}) == \
-        (8, "SLURM_CPUS_PER_TASK")
+    """THE bug.  8 granted cores must give 8 threads, not the node's -- the
+    grant in molbuilder's name, as the job's header exports it
+    (`scheduler/kinds.py`, `JOB_VARIABLES`)."""
+    assert threads_for(environ={"MB_CPUS_PER_TASK": "8"}) == \
+        (8, "MB_CPUS_PER_TASK")
 
 
 def test_an_exported_thread_count_wins_over_everything():
     assert threads_for(environ={"OMP_NUM_THREADS": "3",
-                                "SLURM_CPUS_PER_TASK": "8"}) == \
+                                "MB_CPUS_PER_TASK": "8"}) == \
         (3, "OMP_NUM_THREADS")
 
 
@@ -42,7 +44,7 @@ def test_a_workstation_still_sizes_from_the_node():
 
 
 def test_an_explicit_config_value_is_honoured_and_says_so():
-    n, whence = threads_for(5, environ={"SLURM_CPUS_PER_TASK": "8"})
+    n, whence = threads_for(5, environ={"MB_CPUS_PER_TASK": "8"})
     assert n == 5 and "config" in whence
 
 
@@ -50,15 +52,15 @@ def test_a_garbage_allocation_variable_falls_through():
     """A scheduler variable that is not a positive integer is not a
     number of cores; fall through rather than crash or believe it."""
     for said in ("not-a-number", "0"):
-        n, whence = threads_for(environ={"SLURM_CPUS_PER_TASK": said})
+        n, whence = threads_for(environ={"MB_CPUS_PER_TASK": said})
         assert whence == "node physical cores" and n >= 1, said
 
 
 def test_the_caps_are_set_and_an_exported_value_wins(monkeypatch):
     """What the script runs before numpy loads: OpenMP at the run's count,
     every BLAS at one -- and a value already exported is left as it is."""
-    for var in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "PBS_NCPUS",
-                "NSLOTS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+    for var in ("OMP_NUM_THREADS", "MB_CPUS_PER_TASK",
+                "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
                 "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
         # Recorded first, so what `cap_threads` sets is taken away after.
         monkeypatch.setenv(var, "")

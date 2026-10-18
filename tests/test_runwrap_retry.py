@@ -40,6 +40,7 @@ EXEC_LINE = 'exec bash "$_mb_self" --continue'
 #: the SCF's cause rendered from the grammar's own marker.
 from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
 from molbuilder.runfiles import RunNames
+from support.machines import WORKSTATION
 ASK_SCF = f'_mb_ending stopped-by "{SCF_NOT_CONV_MARKER}"'
 ASK_GEOM = "_mb_ending relaxation-capped"
 
@@ -60,7 +61,7 @@ def _machine():
     """This machine's record: how a shell enters an environment here --
     the activation the generator reads (`configuration.md` § 4)."""
     from molbuilder.scheduler import Environment, Topology
-    return Environment(scheduler="workstation", topology=Topology(),
+    return Environment(scheduler=WORKSTATION, topology=Topology(),
                        env_init={"preamble": "module load mamba",
                                           "activation": "source activate"})
 

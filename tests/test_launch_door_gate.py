@@ -17,6 +17,7 @@ from molbuilder.runwrap import write_run_wrapper
 from molbuilder.jobset.model import Resources
 import pytest
 from molbuilder.runfiles import RunNames
+from support.machines import SLURM
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +37,7 @@ def _wrapper(tmp_path):
     # run's is (`architecture.md` § 5.2).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
-        _Env(scheduler="slurm",
+        _Env(scheduler=SLURM,
              topology=_Topo(sockets=2, cores_per_socket=32),
              env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()

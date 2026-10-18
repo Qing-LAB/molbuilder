@@ -171,18 +171,20 @@ def test_the_allocation_is_the_denominator_not_the_node(monkeypatch):
     assert M._alloc_cores() == (4, "affinity")
 
 
-def test_slurm_answers_when_the_mask_does_not(monkeypatch):
+def test_the_schedulers_grant_answers_when_the_mask_does_not(monkeypatch):
+    """The cores the scheduler granted, in molbuilder's name -- as the job's
+    header exports it (`scheduler/kinds.py`, `JOB_VARIABLES`)."""
     monkeypatch.setattr(M.os, "sched_getaffinity",
                         lambda _pid: (_ for _ in ()).throw(OSError()))
-    monkeypatch.setenv("SLURM_CPUS_ON_NODE", "16")
-    assert M._alloc_cores() == (16, "SLURM_CPUS_ON_NODE")
+    monkeypatch.setenv("MB_CPUS_ON_NODE", "16")
+    assert M._alloc_cores() == (16, "MB_CPUS_ON_NODE")
 
 
 def test_the_node_is_the_last_rung_and_says_so(monkeypatch):
     monkeypatch.setattr(M.os, "sched_getaffinity",
                         lambda _pid: (_ for _ in ()).throw(OSError()))
-    monkeypatch.delenv("SLURM_CPUS_ON_NODE", raising=False)
-    monkeypatch.delenv("SLURM_CPUS_PER_TASK", raising=False)
+    monkeypatch.delenv("MB_CPUS_ON_NODE", raising=False)
+    monkeypatch.delenv("MB_CPUS_PER_TASK", raising=False)
     n, rung = M._alloc_cores()
     assert rung == "node" and n >= 1
 

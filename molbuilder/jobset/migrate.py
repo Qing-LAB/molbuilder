@@ -1,5 +1,6 @@
 """Rewrite a calculation an older molbuilder wrote: its records written whole
-(2026-10-06), its stages' groups (2026-10-11), a flat calculation's run files
+(2026-10-06), its stages' groups (2026-10-11), its machine record's scheduler
+(2.10.1), a flat calculation's run files
 numbered (2026-10-06), its template's electronic-state items (2026-09-28),
 its template's zeros that meant *not set* (2.1.0), and the template items a
 release retired (2.10.0).
@@ -25,6 +26,14 @@ is kept beside the new as ``<name>.pre-w57``.  A key a release retired is
 removed and said: `task.json`'s `centre_junction` (2.6.0, the junction enters
 its calculation centred), the old file kept as ``<name>.pre-2.6.0`` when that
 is the earliest change.
+
+**The machine's record** (`_migrate_machine_record`): a calculation's copy
+of its machine's record names its scheduler as a block since 2.10.1 -- its
+kind and where its commands are (`configuration.md` § 5 M-2) -- and the
+reader refuses an older copy, naming this command.  The word it held becomes
+its kind, each command its kind's own name (`scheduler/kinds.toml`), run from
+PATH as the release before ran it; the old file is kept as
+``<name>.pre-2.10.1``.
 
 **The groups** (`_migrate_groups`): every stage states the job it runs in
 since 2026-10-11 (`engines/stages.md` § 2) -- a prepared stage its job's, the
@@ -427,6 +436,42 @@ def _migrate_records(base: Path):
     return said, writes, task
 
 
+def _migrate_machine_record(base: Path
+                            ) -> Tuple[List[str], List[Tuple[Path, str, str]]]:
+    """The calculation's copy of its machine's record, when an older
+    molbuilder wrote it (`record.older_record`): its scheduler word as the
+    block -- the kind, and each command by the name the kind gives it, run
+    from PATH as before (`scheduler/kinds.toml`).  Returns what changed and
+    the file to write; nothing for a copy that reads, or none."""
+    from ..persist import json_text, read_json
+    from ..scheduler.kinds import KindError, kind
+    from ..scheduler.record import (SCHEMA, Environment, calculation_record,
+                                    older_record)
+    path = calculation_record(base)
+    if not path.is_file():
+        return [], []
+    raw = read_json(path)
+    if not older_record(raw):
+        return [], []
+    word = raw.get("scheduler")
+    try:
+        k = kind(str(word))
+    except KindError as exc:
+        raise MigrateError(f"{path.name}: its scheduler {word!r} -- {exc}; "
+                           f"nothing was written") from None
+    raw["scheduler"] = {"kind": k.name, **dict(k.commands)}
+    raw["schema"] = SCHEMA
+    try:
+        env = Environment.from_dict(raw)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise MigrateError(f"{path.name} rewritten would still be refused, so "
+                           f"nothing was written: {exc}") from None
+    return ([f"{path.name}: scheduler {word!r} -> {env.scheduler.said()} "
+             f"(2.10.1: the kind and where its commands are; each run "
+             f"from PATH, as before)"],
+            [(path, json_text(env.to_dict()), ".pre-2.10.1")])
+
+
 def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
                                                      List[Tuple[Path, Path]]]:
     """A flat calculation's run files written before each carried its run's
@@ -521,7 +566,8 @@ def _migrate_last_run(base: Path, task, moves
 def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base``; return what changed, line by line
     -- its records (:func:`_migrate_records`: the readers refuse a file
-    written before they were whole), a flat calculation's run files numbered
+    written before they were whole), its copy of its machine's record
+    (:func:`_migrate_machine_record`), a flat calculation's run files numbered
     (:func:`_migrate_run_numbers`) and its last run recorded
     (:func:`_migrate_last_run`), its template's electronic-state
     items, its zeros, and its stages', that meant *not set* before 2.1.0,
@@ -536,6 +582,8 @@ def migrate_state(base) -> List[str]:
     # EVERY DECISION BEFORE ANY WRITE: a refusal of any step leaves the
     # calculation as it was, never half rewritten.
     said, writes, task = _migrate_records(base)
+    m_said, m_writes = _migrate_machine_record(base)
+    said, writes = said + m_said, writes + m_writes
     n_said, moves = _migrate_run_numbers(base, task)
     l_said, l_write = _migrate_last_run(base, task, moves)
     try:
@@ -544,7 +592,8 @@ def migrate_state(base) -> List[str]:
         if not said and not moves and l_write is None:
             raise MigrateError(
                 f"{base} holds nothing an older molbuilder wrote -- its "
-                f"records are whole, its run files carry their run's "
+                f"records are whole, its record of its machine is this "
+                f"molbuilder's, its run files carry their run's "
                 f"number, and its template carries no item an older "
                 f"molbuilder meant otherwise, renamed or a release "
                 f"retired.") from None

@@ -1,0 +1,94 @@
+# THE SCHEDULER KINDS -- everything molbuilder says to a scheduler, one block
+# per kind (`docs/execution/scheduler.md` § 6a).  Read by one reader,
+# `scheduler/kinds.py` (`kind(name)`); no other module spells a scheduler.
+#
+# A machine's record names its kind and where that kind's commands are on it
+# (`docs/configuration.md` § 5, M-2); the language below is the kind's, one
+# for every machine of that kind, and is never copied into a record.
+#
+# A value in braces is filled by molbuilder.  In a command line a token that
+# is ONE brace name -- `{restated}`, `{args}` -- stands for several words; any
+# other token is filled in place.
+#
+# What stays code is discovery, keyed by the kind's name: the probe reading a
+# scheduler's queues and limits out of its own tools, and `--mode ask`
+# reading its start-time answer.  Adding a scheduler is a block here and its
+# discovery reader.
+
+[workstation]
+what  = "no scheduler: a job runs here, directly"
+queue = false
+
+
+[slurm]
+what  = "SLURM"
+queue = true
+
+# Its commands, by the name each has on PATH: what `jobset probe` looks for
+# on the machine it runs on.  The record keeps where each was found there
+# (`submit`, `query`, `cancel`, `cluster`), or where it was declared
+# (`--set scheduler.submit=PATH`).
+[slurm.commands]
+submit  = "sbatch"
+query   = "squeue"
+cancel  = "scancel"
+cluster = "scontrol"
+
+# HOW A JOB IS SENT -- the one line (`jobset.submit._sbatch_request`): its
+# name, what a launch restates, molbuilder's launch claim, prep's header and
+# the run's arguments.  `ask` is how it is asked about without being sent,
+# set after the command (`--mode ask`); `job_id` the id the scheduler
+# answers a send with.
+[slurm.send]
+line   = ["{submit}", "-J", "{job}", "{restated}",
+          "--export", "ALL,MB_LAUNCHED_BY={launched_by}", "{header}", "{args}"]
+ask    = "--test-only"
+job_id = 'Submitted batch job (\d+)'
+
+# THE VALUE A LAUNCH MAY RESTATE on the line (`jobset.commands.LAUNCH_FLAGS`):
+# a submitted job's wall.
+[slurm.restate]
+wall = ["-t", "{wall}"]
+
+# HOW A SENT JOB IS ASKED AFTER, AND STOPPED, AND WHICH CLUSTER ANSWERS
+# (`scheduler.queue`: `molbuilder jobs status`, `jobs stop`, a job's address)
+# -- each answer read by the kind's reader (`queue._READERS`).
+[slurm.query]
+listed  = ["{query}", "--noheader", "--jobs={id}", "--format=%T"]
+cancel  = ["{cancel}", "{id}"]
+cluster = ["{cluster}", "show", "config"]
+
+# THE HEADER'S LANGUAGE -- its prefix, and one directive per value prep
+# writes (`scheduler.emit`, `runwrap.render_sbatch`).  `whole_node` is the
+# whole node with all its memory, written instead of `memory`; `stdout` and
+# `stderr` name the scheduler's own output files, `{file}` the name the file
+# catalogue gives them (`runfiles`), `jobid` the placeholder the scheduler
+# fills with the job's id.
+[slurm.header]
+prefix      = "#SBATCH"
+name        = "-J {name}"
+nodes       = "-N 1"
+ranks       = "-n {ranks}"
+cores       = "-c {cores}"
+wall        = "-t {wall}"
+partition   = "-p {partition}"
+qos         = "-q {qos}"
+gpus        = "--gres=gpu:{gpus}"
+gpu_binding = "--gres-flags=enforce-binding"
+memory      = "--mem={memory}"
+whole_node  = ["--exclusive", "--mem=0"]
+stdout      = "-o {where}{file}"
+stderr      = "-e {where}{file}"
+jobid       = "%j"
+
+# WHAT IT TELLS A RUNNING JOB, as molbuilder's own name = the scheduler's
+# variable.  The job's header says each once in molbuilder's name for
+# everything it starts -- the run script, a walk, the monitor, the engine
+# (`runwrap.render_sbatch`); they read only molbuilder's names.
+[slurm.job]
+MB_JOB_ID        = "SLURM_JOB_ID"
+MB_NTASKS        = "SLURM_NTASKS"
+MB_CPUS_PER_TASK = "SLURM_CPUS_PER_TASK"
+MB_CPUS_ON_NODE  = "SLURM_CPUS_ON_NODE"
+MB_JOB_GPUS      = "SLURM_JOB_GPUS"
+MB_JOB_NODELIST  = "SLURM_JOB_NODELIST"

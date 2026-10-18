@@ -33,6 +33,7 @@ from molbuilder.jobset.prep import prep_bench              # noqa: E402
 from molbuilder.scheduler import Environment, Topology     # noqa: E402
 from molbuilder.siesta.stages import default_siesta_stages  # noqa: E402
 from molbuilder.structure import Structure                 # noqa: E402
+from support.machines import WORKSTATION
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +70,7 @@ def sweep(isolated_projects_root, monkeypatch):
     from conftest import write_pseudos
     write_pseudos(calc, ["H"])
     (calc / "environment.json").write_text(
-        Environment(scheduler="workstation",
+        Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),

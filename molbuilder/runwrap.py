@@ -1065,7 +1065,7 @@ def _gpu_loadbalance_block() -> str:
            that K matches the allocation (validation pinpoint for the
            benchmark sweep, job-contracts.md § 6).
     WHY: K is the knob the benchmark sizes; it must come from the ACTUAL
-    runtime allocation (SLURM may grant a different GPU count than
+    runtime allocation (the scheduler may grant a different GPU count than
     generation assumed).  1 GPU degenerates to all-ranks-on-GPU0 (the
     existing single-GPU behavior) with no code fork.
 
@@ -1080,7 +1080,7 @@ def _gpu_loadbalance_block() -> str:
         "# local_rank*ngpu/localsize, so K=mpi_np/ngpu ranks share\n"
         "# each GPU via MPS.  1 GPU -> all ranks on GPU0 (the existing\n"
         "# behavior); N GPUs -> block-distributed, no code fork.\n"
-        "# Prefer CUDA_VISIBLE_DEVICES (SLURM's allocated set) over\n"
+        "# Prefer CUDA_VISIBLE_DEVICES (the scheduler's allocated set) over\n"
         "# nvidia-smi -L (which over-counts on a shared node without\n"
         "# device-cgroup isolation) -- must agree with the per-rank\n"
         "# launcher's own count.\n"
@@ -1119,7 +1119,7 @@ def _gpu_socket_affinity_block() -> str:
         socket -- the whole-node / ``--exclusive`` (or partial multi-
         socket) case where a rank would otherwise roam cross-socket;
       * **no-ops** when the cpuset is already confined to the GPU's socket
-        (SLURM co-located us -- nothing to do);
+        (the scheduler co-located us -- nothing to do);
       * **warns, never fails** when we own NO cores on the GPU's socket
         (a shared cross-socket allocation we cannot fix from here).
 
@@ -1215,7 +1215,7 @@ def _gpu_per_rank_launcher_block() -> str:
     """Bash that writes the per-rank GPU launcher + picks the CPU-bind
     policy.  Emit ONLY in GPU mode.
 
-    GOAL: give every MPI rank its own GPU and (under SLURM) defer CPU/mem
+    GOAL: give every MPI rank its own GPU and (under a scheduler) defer CPU/mem
     placement to the scheduler.  Implements the general load-balance
     model -- 1 GPU degenerates to "all ranks on GPU0", N GPUs
     block-distribute -- with no code fork on GPU count (running-a-job.md § 3.3).
@@ -1228,10 +1228,10 @@ def _gpu_per_rank_launcher_block() -> str:
     runs, not when the wrapper writes the file.
     SETS  ``$_siesta_target="bash $_rank_helper"`` (the launch target the
           ``_launch_cmd`` assembly interpolates in place of bare siesta).
-    UNDER SLURM (``$SLURM_JOB_ID`` set): clears ``$_numa_wrap_gpu`` and
-          ``$_mpirun_bind`` so we do NOT double-bind against SLURM's
-          cgroup cpuset (running-a-job.md § 3.3; the benchmark logs the actual
-          cpuset to confirm SLURM bound near the GPU).
+    UNDER A SCHEDULER (``$MB_JOB_ID`` set): clears ``$_numa_wrap_gpu`` and
+          ``$_mpirun_bind`` so we do NOT double-bind against the scheduler's
+          cgroup cpuset (running-a-job.md § 3.3; the benchmark logs the
+          actual cpuset to confirm the scheduler bound near the GPU).
     WHY a helper FILE (not ``bash -c``): the per-rank logic can't survive
     as a word-split ``_launch_cmd`` string -- the ``bash -c`` quoting
     breaks under the later unquoted expansion -- so a tiny temp script is
@@ -1242,9 +1242,9 @@ def _gpu_per_rank_launcher_block() -> str:
         "cat > \"$_rank_helper\" <<'HELPEREOF'\n"
         '#!/bin/bash\n'
         '_lr=${OMPI_COMM_WORLD_LOCAL_RANK:-${PMIX_RANK:-0}}\n'
-        '_ls=${OMPI_COMM_WORLD_LOCAL_SIZE:-${SLURM_NTASKS:-1}}\n'
+        '_ls=${OMPI_COMM_WORLD_LOCAL_SIZE:-${MB_NTASKS:-1}}\n'
         '[ "${_ls:-0}" -lt 1 ] && _ls=1\n'
-        '# Allocated GPU list: prefer CUDA_VISIBLE_DEVICES (SLURM sets it\n'
+        '# Allocated GPU list: prefer CUDA_VISIBLE_DEVICES (a scheduler sets it\n'
         '# to the allocated set -- robust whether or not device-cgroups\n'
         '# isolate the node, and it carries the real physical indices);\n'
         '# fall back to all visible GPUs only when unset (local / no\n'
@@ -1281,17 +1281,17 @@ def _gpu_per_rank_launcher_block() -> str:
         # EXIT`` here would CLOBBER the MPS cleanup trap (bash keeps only
         # the last EXIT trap) -- hence the centralised function.
         '_siesta_target="bash $_rank_helper"\n'
-        # Under SLURM, the scheduler's cgroup cpuset (--gres-flags=
-        # enforce-binding + -c) governs CPU/memory placement.  Do NOT
-        # also numactl-wrap / --map-by -- that double-binds and can fight
-        # SLURM.  P1 in running-a-job.md § 3.3
-        'if [ -n "${SLURM_JOB_ID:-}" ]; then\n'
+        # Under a scheduler, its cgroup cpuset (the GPU binding + the cores
+        # per rank) governs CPU/memory placement.  Do NOT also numactl-wrap
+        # / --map-by -- that double-binds and can fight the scheduler.  P1
+        # in running-a-job.md § 3.3
+        'if [ -n "${MB_JOB_ID:-}" ]; then\n'
         '    _numa_wrap_gpu=""\n'
         '    _mpirun_bind=""\n'
-        '    echo "molbuilder: under SLURM (job $SLURM_JOB_ID) -- '
+        '    echo "molbuilder: under the scheduler (job $MB_JOB_ID) -- '
         'trusting scheduler cpuset for CPU/mem binding '
         '(no manual numactl)" >&2\n'
-        # Off SLURM with >1 GPU in play, the whole-job wrap is WRONG by
+        # Off a scheduler with >1 GPU in play, the whole-job wrap is WRONG by
         # construction: it binds every rank to GPU0\'s node, and the
         # per-rank helper\'s own finer numactl (each rank pinned beside
         # ITS GPU) cannot escape the outer cpuset -- half the ranks would
@@ -1340,17 +1340,34 @@ def _siesta_resolved_log_block(script_name: str, gpu_mode: bool) -> str:
     )
 
 
-def _siesta_dry_run_block(script_name: str, sbatch_name: str,
-                          gpu_mode: bool) -> str:
+def _scheduler_context_block() -> str:
+    """Bash that logs what the scheduler told this job, when set -- in
+    molbuilder's own names (`kinds.JOB_VARIABLES`), which the job's header
+    says once for everything it starts (`kinds.Kind.job_lines`); none is set
+    for a run here.  The same lines on every machine: the run script is one
+    file with or without a scheduler (`architecture.md` § 9)."""
+    from .scheduler.kinds import JOB_VARIABLES
+    return (
+        "# What the scheduler told this job -- only logged if set.  Read for\n"
+        "# diagnostic logging + launch tuning (running-a-job.md 2.1-2.2a);\n"
+        "# they do NOT alter activation or preamble.\n"
+        f"for _v in {' '.join(JOB_VARIABLES)}; do\n"
+        '    _v_val="${!_v:-}"\n'
+        '    [ -n "$_v_val" ] && _log INFO "$_v=$_v_val"\n'
+        "done\n")
+
+
+def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
     """Bash implementing ``--dry-run``: print the resolved command and,
     in GPU mode, the per-rank GPU/NUMA mapping that WOULD be used, then
     ``exit 0`` WITHOUT launching SIESTA.
 
-    GOAL (user request 2026-06-26): let a user ``sbatch job.sbatch
-    --dry-run`` (or run locally) and read the log to confirm the
-    generated command matches the SLURM-allocated resources, WITHOUT
-    spending a real run.  This is the cheap pre-flight validation of the
-    whole resolution chain.
+    GOAL (user request 2026-06-26): let a user send the header with
+    ``--dry-run`` (or run it here) and read the log to confirm the
+    generated command matches what the scheduler granted (``MB_NTASKS``,
+    ``MB_CPUS_PER_TASK``, ``MB_JOB_GPUS``), WITHOUT spending a real run.
+    This is the cheap pre-flight validation of the whole resolution
+    chain.
 
     READS the same resolved vars as the launch.  In GPU mode it loops
     ranks ``0..mpi_np-1`` and prints ``rank R -> GPU G (numa=N)`` -- the
@@ -1377,35 +1394,9 @@ def _siesta_dry_run_block(script_name: str, sbatch_name: str,
         f'    echo "  OMP threads  : $_omp_threads   '
         f'(source: ${{_omp_source:-?}})"\n'
         f'    echo "  Env          : ${{CONDA_DEFAULT_ENV:-<none active>}}"\n'
-        f'    echo "  SLURM        : job=${{SLURM_JOB_ID:-<none>}} '
-        f'ntasks=${{SLURM_NTASKS:-?}} cpus/task=${{SLURM_CPUS_PER_TASK:-?}} '
-        f'gpus=${{SLURM_JOB_GPUS:-${{SLURM_GPUS:-?}}}}"\n'
-        # The sbatch-header cross-check (user design 2026-08-13): run
-        # OUTSIDE a SLURM job with the sibling .sbatch present, a local
-        # dry-run resolves through the policy and looks right -- while
-        # the header's -n is what will actually rule once submitted
-        # (SLURM_NTASKS outranks the baked default).  Read the header
-        # back and WARN on disagreement, so the stale-header mistake is
-        # caught before a queue slot is spent.
-        f'    if [ -z "${{SLURM_JOB_ID:-}}" ] '
-        f'&& [ -f "{sbatch_name}" ] 2>/dev/null; then\n'
-        f"        _hdr_all=$(sed -n 's/^#SBATCH[[:space:]]*//p' "
-        f'"{sbatch_name}" | tr "\\n" " " || true)\n'
-        f'        echo "  sbatch header: $_hdr_all"\n'
-        f"        _hdr_n=$(printf %s \"$_hdr_all\" | sed -n "
-        f"'s/.*\\(-n\\|--ntasks\\)[= ]\\([0-9][0-9]*\\).*/\\2/p' "
-        f'| head -1 || true)\n'
-        f'        if [ -n "$_hdr_n" ] && [ "$_hdr_n" != "$_mpi_np" ]; then\n'
-        f'            echo "  WARNING: submitted through that header, '
-        f'SLURM_NTASKS=$_hdr_n will OVERRIDE"\n'
-        f'            echo "           the $_mpi_np rank(s) resolved above.  '
-        f'Scale with:"\n'
-        f'            echo "               sbatch -n $_mpi_np '
-        f'{sbatch_name}"\n'
-        f'            echo "           or regenerate so header and deck '
-        f'agree."\n'
-        f"        fi\n"
-        f"    fi\n"
+        f'    echo "  Scheduler    : job=${{MB_JOB_ID:-<none>}} '
+        f'ntasks=${{MB_NTASKS:-?}} cpus/task=${{MB_CPUS_PER_TASK:-?}} '
+        f'gpus=${{MB_JOB_GPUS:-?}}"\n'
         + (
             '    echo "  Visible GPUs : ${_ngpu:-0}"\n'
             '    echo "  Ranks/GPU    : ${_ranks_per_gpu:-?} '
@@ -1843,13 +1834,13 @@ def _thread_chain(default: str) -> str:
 
 #: How the ``--dry-run`` report names each rung of :data:`runtime_info.
 #: THREAD_SOURCES` when the count came from it -- the report's own words,
-#: as the rank count's are ("PBS_NP (the qsub reservation)").  A rung added
-#: to the list without words here stops the render by name (KeyError).
+#: as the rank count's are ("MB_NTASKS (the ranks the scheduler granted)").
+#: A rung added to the list without words here stops the render by name
+#: (KeyError).
 _THREAD_SOURCE_WORDS = {
-    "OMP_NUM_THREADS":     "OMP_NUM_THREADS env",
-    "SLURM_CPUS_PER_TASK": "SLURM_CPUS_PER_TASK (the sbatch -c reservation)",
-    "PBS_NCPUS":           "PBS_NCPUS (the qsub reservation)",
-    "NSLOTS":              "NSLOTS (the SGE reservation)",
+    "OMP_NUM_THREADS":  "OMP_NUM_THREADS env",
+    "MB_CPUS_PER_TASK": "MB_CPUS_PER_TASK (the cores per rank the scheduler "
+                        "granted)",
 }
 
 
@@ -2245,21 +2236,21 @@ def render_run_wrapper(script_path: Path, *,
             + "# MPI rank-count precedence (highest first):\n"
             "#   1. ``-np N`` flag on the wrapper invocation\n"
             "#   2. ``MB_NP`` env var (manual override)\n"
-            "#   3. ``SLURM_NTASKS`` (scheduler-allocated under sbatch)\n"
-            "#   4. ``PBS_NP`` (scheduler-allocated under qsub)\n"
-            "#   5. the stated value, baked at prep ($_mpi_np_default)\n"
-            "# Per docs/execution/running-a-job.md § 5: reading scheduler env vars for\n"
-            "# launch tuning is part of the wrapper contract -- the user\n"
-            "# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
-            '_mpi_np="${MB_NP:-${SLURM_NTASKS:-${PBS_NP:-$_mpi_np_default}}}"\n'
+            "#   3. ``MB_NTASKS`` (the ranks the scheduler granted, said\n"
+            "#      in molbuilder's name by the job's header)\n"
+            "#   4. the stated value, baked at prep ($_mpi_np_default)\n"
+            "# Per docs/execution/running-a-job.md § 5: reading what the\n"
+            "# scheduler granted for launch tuning is part of the wrapper\n"
+            "# contract -- the ranks reserved, the wrapper honors.\n"
+            '_mpi_np="${MB_NP:-${MB_NTASKS:-$_mpi_np_default}}"\n'
             # OMP precedence: -omp flag > OMP_NUM_THREADS env > the
-            # scheduler's reservation (SLURM_CPUS_PER_TASK, PBS_NCPUS,
-            # NSLOTS) > the stated value, baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
+            # scheduler's reservation (MB_CPUS_PER_TASK) > the stated value,
+            # baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
             # standard OMP-toolchain convention (users bench with
-            # ``OMP_NUM_THREADS=8 ./run.sh``).  Under sbatch
-            # the scheduler reserved ``-c`` cores/rank (the OMP width per
-            # the running-a-job.md § 3.3 sizing) -- honor it so the
-            # Sol allocation drives OMP automatically without a manual
+            # ``OMP_NUM_THREADS=8 ./run.sh``).  Under a scheduler it
+            # reserved the cores per rank (the OMP width per the
+            # running-a-job.md § 3.3 sizing) -- honor it so the
+            # allocation drives OMP automatically without a manual
             # -omp (running-a-job.md § 5: reading scheduler env for launch
             # tuning is part of the wrapper contract).
             # THE CHAIN FROM THE ONE LIST (`runtime_info.THREAD_SOURCES`,
@@ -2287,7 +2278,7 @@ def render_run_wrapper(script_path: Path, *,
             "        --dry-run|--dryrun)\n"
             "            # Resolve + LOG the launch command and the\n"
             "            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
-            "            # running SIESTA.  Lets you sbatch a preview and\n"
+            "            # running SIESTA.  Lets you send a preview and\n"
             "            # read the log to confirm the command matches\n"
             "            # the allocation (running-a-job.md § 3.3).\n"
             '            _dry_run=1; shift ;;\n'
@@ -2346,12 +2337,11 @@ def render_run_wrapper(script_path: Path, *,
             "                   rank->GPU/NUMA placement for the current\n"
             "                   allocation, then exit WITHOUT running\n"
             "                   SIESTA.  Use to preview/validate a job\n"
-            "                   (e.g. ``sbatch job.sbatch --dry-run``).\n"
+            "                   (e.g. its header sent with --dry-run).\n"
             "  -h               this help.\n"
             "\n"
             "Environment variables:\n"
-            "  MB_NP=N            same as -np N (useful for SLURM/PBS:\n"
-            "                     ``export MB_NP=\\$SLURM_NTASKS``).\n"
+            "  MB_NP=N            same as -np N.\n"
             "  OMP_NUM_THREADS=N  same as -omp N (standard OMP toolchain\n"
             "                     convention; honored if set in env).\n"
             "\n"
@@ -2383,10 +2373,8 @@ def render_run_wrapper(script_path: Path, *,
             '_np_source="stated at prep"\n'
             'if [ "$_np_from_flag" = "1" ]; then _np_source="-np flag"\n'
             'elif [ -n "${MB_NP:-}" ]; then _np_source="MB_NP env"\n'
-            'elif [ -n "${SLURM_NTASKS:-}" ]; then '
-            '_np_source="SLURM_NTASKS (the sbatch reservation)"\n'
-            'elif [ -n "${PBS_NP:-}" ]; then '
-            '_np_source="PBS_NP (the qsub reservation)"\n'
+            'elif [ -n "${MB_NTASKS:-}" ]; then '
+            '_np_source="MB_NTASKS (the ranks the scheduler granted)"\n'
             'fi\n'
             '_omp_source="stated at prep"\n'
             'if [ "$_omp_from_flag" = "1" ]; then _omp_source="-omp flag"\n'
@@ -3183,16 +3171,8 @@ def render_run_wrapper(script_path: Path, *,
         f'_log INFO "script:     $0"\n'
         f'_log INFO "argv:       $0 $*"\n'
         f'_log INFO "log file:   $_runwrap_log"\n'
-        f"# Scheduler context -- only emit if the var is set.  These are\n"
-        f"# read for diagnostic logging + launch tuning (running-a-job.md\n"
-        f"# 2.1-2.2a); they do NOT alter activation or preamble.\n"
-        f'for _v in SLURM_JOB_ID SLURM_NTASKS SLURM_CPUS_PER_TASK \\\n'
-        f"          SLURM_JOB_NODELIST SLURM_GPUS SLURM_JOB_GPUS \\\n"
-        f"          PBS_JOBID PBS_NP PBS_NODEFILE; do\n"
-        f"    _v_val=\"${{!_v:-}}\"\n"
-        f'    [ -n "$_v_val" ] && _log INFO "$_v=$_v_val"\n'
-        f"done\n"
-        f"\n"
+        + _scheduler_context_block()
+        + f"\n"
         f"# The env bootstrap (preamble ``module load``, conda/mamba\n"
         f"# ``activate``) sources EXTERNAL scripts not under our control.\n"
         f"# Conda activate.d hooks (e.g. cuda-nvcc's, which references an\n"
@@ -3267,8 +3247,7 @@ def render_run_wrapper(script_path: Path, *,
         from .parse.engines import siesta_grammar as _G
         launch_block = (
             _siesta_resolved_log_block(script_name, gpu_mode)
-            + _siesta_dry_run_block(script_name, names.name(".sbatch"),
-                                    gpu_mode)
+            + _siesta_dry_run_block(script_name, gpu_mode)
             + _siesta_scf_timing_func()
             + f"# --- Launch SIESTA + capture exit -----------------------\n"
             f"# `set +e` lets us inspect the exit code; on a failure the\n"
@@ -3541,7 +3520,7 @@ def render_run_wrapper(script_path: Path, *,
         f"#\n"
         f"#     bash {names.name('.run.sh')} --run 0          # run 0 -> {names.name(_ext, 0)}\n"
         f"#     bash {names.name('.run.sh')} --run 0 -np 8    # override mpi_np (SIESTA only)\n"
-        f"#     MB_NP=8 bash {names.name('.run.sh')} --run 0  # same via env var (SLURM/PBS)\n"
+        f"#     MB_NP=8 bash {names.name('.run.sh')} --run 0  # same via env var\n"
         f"#\n"
         f"# Continuation contract:\n"
         # THE DECK DECIDES, AND THIS WRAPPER SHIPS BESIDE EXACTLY ONE DECK:
@@ -3585,8 +3564,8 @@ def render_run_wrapper(script_path: Path, *,
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"
         f"# docs/execution/running-a-job.md § 5).  Its own files (the\n"
         f"# runwrap log, -runN.out) land in the CALLER'S current working\n"
-        f"# directory.  Under sbatch this is ``SLURM_SUBMIT_DIR`` (the\n"
-        f"# dir you ran sbatch from); under direct invocation it's\n"
+        f"# directory.  Sent to a scheduler this is the folder it was\n"
+        f"# sent from; under direct invocation it's\n"
         f"# wherever you ``cd``'d before running the wrapper.  The\n"
         f"# engine's files (.chk, trajectory XYZ, .molwatch.log,\n"
         f"# .spectra.json, .DM, ...) land in the same directory:\n"
@@ -3628,8 +3607,8 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
         f"# --- Launch-door gate (one door: jobset launch) ----------\n"
         f"# `molbuilder jobset launch` sets MB_LAUNCHED_BY when it launches\n"
-        f"# this script (direct: child env; sbatch: --export on the command\n"
-        f"# line).  A bare invocation is usually an accident: it skips the\n"
+        f"# this script (direct: child env; sent to a scheduler: on the\n"
+        f"# line it is sent with).  A bare invocation is usually an accident: it skips the\n"
         f"# launch bookkeeping, the deck/launch agreement check and the\n"
         f"# mode/config resolution.  MB_LAUNCHED_BY=manual is the\n"
         f"# deliberate override, and the value is logged either way\n"
@@ -3660,21 +3639,20 @@ def render_run_wrapper(script_path: Path, *,
         f"    echo \"  Non-interactive shell: refusing.  Launch via\" >&2\n"
         f"    echo \"  'molbuilder jobset launch', or override deliberately:\" >&2\n"
         f"    echo \"    MB_LAUNCHED_BY=manual bash {run_sh} --run N   # local\" >&2\n"
-        f"    echo \"    sbatch --export=ALL,MB_LAUNCHED_BY=manual ...  # hand-sbatch\" >&2\n"
-        f"    echo \"  (the sbatch form matters: a site or config with\" >&2\n"
-        f"    echo \"  'export: NONE' strips a plain env var.)\" >&2\n"
+        f"    echo \"  or send its scheduler header by hand, as the header's own\" >&2\n"
+        f"    echo \"  comment shows -- the claim rides the line it is sent with.\" >&2\n"
         f"    echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
         f"    exit 2\n"
         f"  fi\n"
         f"fi\n"
-        f"# The verdict, in the JOB'S OWN OUTPUT: under sbatch this line is in\n"
+        f"# The verdict, in the JOB'S OWN OUTPUT: sent to a scheduler this line is in\n"
         f"# the job's .out, and since the tee above it is ALSO in the runwrap\n"
         f"# log -- either alone answers \"was this launched properly, run by\n"
         f"# hand on purpose, or refused?\" -- no terminal needed, and nothing\n"
         f"# can sit waiting on one (no-TTY never prompts).\n"
         f'echo "launched-by: ${{MB_LAUNCHED_BY:-none (help)}}"\n'
         f"# Per docs/execution/running-a-job.md § 5: the wrapper does NOT change cwd.\n"
-        f"# SLURM lands the job in SLURM_SUBMIT_DIR by default; direct\n"
+        f"# A scheduler lands the job in the folder it was sent from; direct\n"
         f"# callers ``cd`` to the project dir before invoking.  The\n"
         f"# caller's cwd is the contract -- outputs (log, -runN.out)\n"
         f"# land where the wrapper was invoked.\n"
@@ -4229,7 +4207,9 @@ def _render_sbatch_for(script_path: Path, *, names,
     OpenMP threads) asks for one task: that is what the engine is, not a
     value anyone picks -- the caller's answer, `placement.one_process`.
     ``where`` is the folder, from the one the job is submitted in, that its
-    run script and SLURM's own output are in (a walk's, `launch/`).  Whether
+    run script and the scheduler's own output are in (a walk's, `launch/`).
+    The header is written in the target's scheduler kind's language, and
+    none for a kind with no queue (`scheduler.md` § 6a).  Whether
     each is stated was asked at prep, before anything was written
     (`placement.launch_refusal`).  Nothing is filled in: not the target's
     width, not a rank per GPU, not a queue's ceiling, not a default from any
@@ -4244,7 +4224,7 @@ def _render_sbatch_for(script_path: Path, *, names,
         raise WrapperError(
             f"`{script_path.name}`: a header is rendered for the target's "
             f"record, and none was handed over")
-    if machine_record.scheduler != "slurm":
+    if not machine_record.kind.queue:
         return None  # no queue on this machine -> only .run.sh is meaningful
 
     # IS THIS A GPU JOB, AND HOW MANY -- the job's request, the one door for
@@ -4265,7 +4245,7 @@ def _render_sbatch_for(script_path: Path, *, names,
     ntasks = 1 if one_process else r.mpi_np
 
     return render_sbatch(
-        names,
+        names, scheduler=machine_record.scheduler,
         partition=partition, qos=qos,
         ntasks=int(ntasks), cpus_per_task=int(r.cpus_per_task),
         time=r.time, mem=r.mem,
@@ -4282,7 +4262,8 @@ def walk_header(base: Path, names, *, resources: "Resources",
     request on the queue prep admitted it on (``domain_pq``), submitted from
     ``base``, the folder the walk runs from -- the calculation's for a
     group, the stage's for a run of points, the benchmark's container for a
-    shelf -- its walk script and SLURM's own output in `launch/` beside it
+    shelf -- its walk script and the scheduler's own output in `launch/`
+    beside it
     -- or ``None`` where the target's record (``machine_record``) names no
     scheduler.  ``names`` are the walk's own (`runfiles.GroupNames`)."""
     from .runfiles import LAUNCH_DIR
@@ -4294,11 +4275,11 @@ def walk_header(base: Path, names, *, resources: "Resources",
 
 
 # --------------------------------------------------------------------- #
-#  SLURM .sbatch submission layer (docs/execution/job-system.md)  #
+#  The scheduler header (docs/execution/job-system.md § 6)              #
 # --------------------------------------------------------------------- #
 
 
-def render_sbatch(names, *,
+def render_sbatch(names, *, scheduler,
                   partition: str, qos: str,
                   ntasks: int, cpus_per_task: int,
                   time: str, mem: str,
@@ -4306,10 +4287,12 @@ def render_sbatch(names, *,
                   gpu_binding: Optional[bool] = None,
                   exclusive: Optional[bool] = None,
                   where: str = "") -> str:
-    """Render the ``<basename>.sbatch`` submission script.
+    """Render the ``<basename>.sbatch`` submission script, in the language of
+    ``scheduler``'s kind (the target record's `record.Scheduler`;
+    `scheduler.md` § 6a).
 
-    The thin two-layer model (job-system.md § 6, § 5): an ``#SBATCH`` header
-    that allocates resources, then a one-line body that delegates to the
+    The thin two-layer model (job-system.md § 6, § 5): a header that
+    allocates resources, then a one-line body that delegates to the
     UNCHANGED launcher ``bash <basename>.run.sh "$@"``.  The launcher still
     owns env activation + the ``mpirun`` launch; the ``.sbatch`` never
     re-implements ``module load`` / ``source activate`` (§ 2 principle 3).
@@ -4321,18 +4304,18 @@ def render_sbatch(names, *,
     `scheduler` block is refused.
 
     Args:
-      ntasks: ``-n``.  The MPI rank count for CPU **and** GPU jobs --
-        ``--gres`` carries the GPU count separately, and K ranks may share one
-        GPU via MPS, so ntasks = mpi_np, NOT the GPU count.  Under sbatch the
-        launcher reads ``SLURM_NTASKS``, so this ``-n`` and ``mpirun -np``
-        agree by construction (running-a-job.md § 3.1).
+      ntasks: the ranks.  The MPI rank count for CPU **and** GPU jobs --
+        the GPU ask carries the GPU count separately, and K ranks may share
+        one GPU via MPS, so ntasks = mpi_np, NOT the GPU count.  Under the
+        scheduler the launcher reads the ranks it granted (``MB_NTASKS``), so
+        this and ``mpirun -np`` agree by construction (running-a-job.md
+        § 3.1).
       gpus: the job's GPU request (`jobset.model.gpu_request`) -- for a run
-        on the GPU, ``--gres=gpu:<count>`` and ``--gres-flags=enforce-binding``
-        unless ``gpu_binding`` is False (`execution/gpu.md` G9).  ``None`` is
-        a job that asks for none.  The request is consistent by construction:
-        a GPU run with no count, or a count for a CPU run, never reaches
-        here (G5).
-      exclusive: ``--exclusive`` for a GPU job whose resources say so;
+        on the GPU, its count, with the binding unless ``gpu_binding`` is
+        False (`execution/gpu.md` G9).  ``None`` is a job that asks for none.
+        The request is consistent by construction: a GPU run with no count,
+        or a count for a CPU run, never reaches here (G5).
+      exclusive: the whole node, for a GPU job whose resources say so;
         always off for CPU.
     """
     for name, value in (("ntasks", ntasks), ("cpus_per_task", cpus_per_task)):
@@ -4353,11 +4336,14 @@ def render_sbatch(names, *,
             f"unsafe script basename for sbatch emission: {basename!r}."
         )
 
-    gres = gpus.gres if gpus is not None else None
-    if gres:
+    count = gpus.count if gpus is not None and gpus.uses else None
+    if count:
         exclusive = bool(exclusive)
     else:
         exclusive = False  # CPU jobs never request a whole node here
+    from .runfiles import SCHEDULER_STDERR, SCHEDULER_STDOUT
+    from .scheduler.kinds import kind as _kind_named
+    kind = _kind_named(scheduler.kind)
 
     # HOW IT IS SENT (`job-contracts.md` § 2.6): by `jobset launch`, which
     # numbers each run and records it; by hand, past the run script's
@@ -4365,30 +4351,33 @@ def render_sbatch(names, *,
     # header from its own folder, handing its run script the run's number;
     # a walk's (``where``) from the folder its `launch/` is in, its members'
     # numbers in its walk script.
-    by_hand = (f"sbatch --export=ALL,MB_LAUNCHED_BY=manual "
-               f"{where}{names.name('.sbatch')}"
-               + ("" if where else " --run N"))
+    # THE LINE TO SEND IT BY HAND -- launch's own form (`kinds.Kind.line`),
+    # the job named by its header's name, the claim the person's.
+    by_hand = " ".join(kind.line(
+        scheduler.commands(), job=basename, restated=[],
+        launched_by="manual", header=f"{where}{names.name('.sbatch')}",
+        args=[] if where else ["--run", "N"]))
     lines: List[str] = [
         "#!/bin/bash",
-        "# === molbuilder sbatch header (scheduler: slurm) ===",
+        f"# === molbuilder scheduler header (scheduler: {kind.name}) ===",
         "# Generated by prep from the job's own stated values.",
         "# Authoritative design: docs/execution/job-system.md.",
         "# Sent by `molbuilder jobset launch`, which numbers each run and",
-        "# records it.  By hand -- sbatch, not bash, which ignores the",
-        "# #SBATCH lines -- from "
+        f"# records it.  By hand -- sent to {kind.what}, not run with bash,",
+        f"# which ignores the {kind.header['prefix']} lines -- from "
         + ("the folder this file's launch/ is in:" if where
            else "this file's folder:"),
         f"#     {by_hand}",
         "#",
-        f"#SBATCH -J {basename}",
-        "#SBATCH -N 1",
+        *kind.directive("name", name=basename),
+        *kind.directive("nodes"),
     ]
     # THE ONE EMITTER (scheduler.md R1): the queue, the wall, the ranks, the
     # cores, the devices and the memory rule, rendered by `scheduler.emit`.
     from .scheduler.emit import Directives
     _d = Directives(partition=partition, qos=qos, walltime=time,
                     ntasks=ntasks, cpus_per_task=cpus_per_task,
-                    gres=gres,
+                    gpus=count,
                     gpu_binding=gpu_binding is not False,
                     mem=mem, exclusive=bool(exclusive))
     if exclusive:
@@ -4396,15 +4385,23 @@ def render_sbatch(names, *,
         # (the mem<->exclusive rule -- running-a-job.md § 5.3.1).  The RULE
         # itself lives in the emitter; this is the explanation beside it.
         lines.append(
-            f"# --exclusive owns the whole node -> ALL its memory.  The stated "
-            f"mem ({mem}) is IGNORED; --mem=0 = all node RAM.")
-    lines.extend(_d.header_lines())
-    lines.append(f"#SBATCH -o {where}slurm.%j.out")
-    lines.append(f"#SBATCH -e {where}slurm.%j.err")
+            f"# The whole node is owned -> ALL its memory.  The stated "
+            f"mem ({mem}) is IGNORED.")
+    lines.extend(_d.header_lines(kind))
+    lines += kind.directive("stdout", where=where,
+                            file=kind.output_file(SCHEDULER_STDOUT))
+    lines += kind.directive("stderr", where=where,
+                            file=kind.output_file(SCHEDULER_STDERR))
 
     body = (
         "\n"
-        "# SLURM lands us in SLURM_SUBMIT_DIR, the folder it was sent from;\n"
+        # WHAT THE SCHEDULER TELLS THE JOB, said once in molbuilder's names
+        # for everything this starts (`kinds.Kind.job_lines`) -- here, in the
+        # kind's own file, so the run script is one file on every machine
+        # (`architecture.md` § 9).
+        + "".join(f"{ln}\n" for ln in kind.job_lines())
+        + "\n"
+        "# The scheduler lands us in the folder it was sent from;\n"
         "# the launcher never cd's (running-a-job.md § 5).  The launcher's\n"
         "# preamble + activation are baked into it, so it needs nothing\n"
         "# from the submitting shell.  \"$@\" forwards what `jobset launch`\n"

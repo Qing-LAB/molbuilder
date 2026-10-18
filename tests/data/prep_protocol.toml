@@ -138,7 +138,7 @@ launch_refused = ["`coarse` was prepared from the description as it stood then",
 name = "a group's first launch saves the folder's state at the send, before anything is written, and says which -- the state a redo of the group restores, named though the scheduler then refuses the send -- empties its run whole and gives prep's own files back as they lie, and records what each stage took: the first stage, nothing"
 launch = []
 launch_sends = true
-launch_refused = ["sbatch failed", "the folder's state was saved first:", "· before launch task group 1 (coarse)"]
+launch_refused = ["refused coarse", "the folder's state was saved first:", "· before launch task group 1 (coarse)"]
 after_launch = { made = ["01_coarse/run-0/H2_01_coarse.molwatch.log", "01_coarse/run-0/H2_01_coarse.fdf"], saved_states = ["{stamp} · before launch task group 1 (coarse)", "{stamp} · before prep task group 1 (coarse)"], ledger_holds = ["launch saved", { decision = "launch starts-cold", asked = false }] }
 
 # ===================================================================== #

@@ -17,6 +17,8 @@ belong together.
     if not, why not.
   * :mod:`molbuilder.scheduler.queue` — whether the scheduler still lists a
     job, and its cancel, for `molbuilder jobs` (`job-system.md` § 6.0a).
+  * :mod:`molbuilder.scheduler.kinds` — the scheduler kinds, ``kinds.toml``
+    read: everything molbuilder says to a scheduler (`scheduler.md` § 6a).
 
 **Nothing here is shipped beside a job.**  The record is JSON and reads
 anywhere; what travels with a run is `runwrap.MONITOR_COMPANIONS`
@@ -35,7 +37,7 @@ from .quantities import (
 )
 from .record import (
     SCHEMA, FILENAME,
-    Topology, Site, Domain, Device, Environment,
+    Topology, Site, Domain, Device, Scheduler, Environment,
     detect_scheduler, detect_topology, detect_site,
     resolve_environment,
     machine_scope_path, environments_dir, named_environments,
@@ -53,7 +55,7 @@ from .quantities import parse_mem_gb
 
 __all__ = [
     "SCHEMA", "FILENAME",
-    "Topology", "Site", "Domain", "Device", "Environment",
+    "Topology", "Site", "Domain", "Device", "Scheduler", "Environment",
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
