@@ -112,8 +112,8 @@ def api_transport_describe_attempt() -> Any:
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
                                               compose_junction,
-                                              frame_set_answer,
                                               labeled_citation_structure)
+    from molbuilder.frame_average import answer as frames_answer
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
@@ -261,8 +261,10 @@ def api_transport_describe_attempt() -> Any:
         # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
-        # WHAT ITS FRAMES ARE (§ 3.8.1): the count, and a mode's definition.
-        "frame_set": frame_set_answer(cited),
+        # WHAT ITS FRAMES ARE (§ 3.8.1): a cited pair's count and its rows,
+        # the frames' post-process's answer; a cited run is one structure.
+        "frame_set": frames_answer(
+            cited.structure if isinstance(cited, CitedPair) else None),
     })
 
 

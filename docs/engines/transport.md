@@ -1442,7 +1442,7 @@ display; `transport.stages.frame_token`).
 **One mode per frame set, and what each frame is, stated in the pair**
 *(user, 2026-10-09: "i would rather let one multi-frame focus on one mode ...
 each vibration mode will have a separate prep and run as different task"; plan
-§ 5z D3; the definition, 2026-10-10)*. A set that samples a mode carries a
+§ 5z D3)*. A set that samples a mode carries a
 mode's frame set ([`model/structure.md`](?doc=model/structure.md) § 2.2f, its
 maker's vocabulary): the mode as the vibration result numbers it, its
 frequency, the temperature, the zero-point amplitude and the spread on the
@@ -1462,10 +1462,10 @@ nor how many there are — that is the maker's. Another mode is
 another frame set and another transport calculation; how the modes' results
 are weighed against each other is the person's *(user, 2026-10-09: "it is
 cleaner and more focused to let user to post-process the results from
-different vibrational mode and decide how they can be weighed")*. A set
-stating none of the definition is a family of frames with no average — each
-frame's curve its own, and the record saying so; nothing is refused for that,
-since what the displacement means is the person's.
+different vibrational mode and decide how they can be weighed")*. Frames
+that do not each state a weight are a family with no average — each frame's
+curve its own, and the record saying so; nothing is refused for that, since
+what the displacement means is the person's.
 
 #### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
 
@@ -1527,9 +1527,10 @@ varies — `f000/`, `v0.2/`, or `f000/v0.2/` (§ 2a.11).
 The result of a frame group is not one transmission curve but a **family** of
 them, each beside what its frame is, and the mode's average at its stated
 weights. § 2a.12 states that frame dimension of what the Results surface reads
-and of the data file *(built 2026-10-10: the record, `transport/average.py`,
-Q17-e; the data file, `transport/datafile.py`, Q17-e2; the Results family
-Q17-f)*. What else is derived across the family — a
+and of the data file *(built 2026-10-10: the record, Q17-e; the data file,
+`transport/datafile.py`, Q17-e2; the Results family Q17-f; the frames'
+average and their rows' reading moved out of transport's execution into their
+post-process, `frame_average.py`, 2026-10-18)*. What else is derived across the family — a
 slope, a variance, a comparison with another mode's set — is the analysis's,
 made on the data file, where every frame's values sit beside its rows.
 
@@ -1982,7 +1983,8 @@ The report draws it on the rung's row and the point's line (`web/results.md`
 § 2.5).
 
 **The frame dimension** *(the record built 2026-10-10 — plan § 5z Q17-e,
-`transport/average.py`, read by `record.collect_record`; the data file Q17-e2,
+the frames' average the post-process's, `frame_average.average_block`, read by
+`record.collect_record`; the data file Q17-e2,
 `transport/datafile.py`; the Results family Q17-f3, the PDOS of a selection
 asked at a frame and a voltage (`record.selection_pdos`); the physics is
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
@@ -2031,8 +2033,8 @@ pair the last `summarize` wrote:
 the JSON is the report — what `summarize` writes for the command line, the
 Results tab composing the same record on read — and the data file is the same
 results on their grid, for analysis — every point's raw outputs beside
-what molbuilder derives from them, a frame set's definition beside every
-frame's values, and each variable saying what it is. NetCDF-4, written with
+what molbuilder derives from them, each frame's rows beside its values, and
+each variable saying what it is. NetCDF-4, written with
 `netCDF4` (declared in the molbuilder env, 2026-10-10), read by any NetCDF
 reader — xarray, netCDF4, sisl — and by molbuilder's own door
 (`transport/datafile.py`). **One shape for every transport calculation**: one
@@ -2060,8 +2062,10 @@ named in each variable's `coordinates` attribute, which xarray and netCDF4
 read): along `frame` its folder `frame_token` (`f000` …, empty for one
 structure, which has no frame level), every per-frame row of a mode's frame
 set's vocabulary (§ 2.2f) and `frame_rows`, every row the frame states as
-written, a JSON list of `{name, value, unit}`; along `atom` each atom's
-`element` and `mass_amu` — the fill value where the set states none.
+written, a JSON list of the rows whole; along `atom` each atom's `element`
+and `mass_amu` — the fill value where the structure states none. The frames'
+part — their rows, masses and average — is laid out by their post-process
+(`frame_average.data_file_variables`, `fill_data_file`).
 
 | variable | over | kind | what it is |
 |---|---|---|---|
@@ -2095,11 +2099,12 @@ file it was read from. The file says what it is: `schema`
 (`molbuilder/transport-data@2`), the label, the treatment, the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
 (`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
-and `iv_notes`, the voltages the window does not reach); for a frame set the
-structure's rows of § 2.2f's vocabulary and `info.vibration` where it states
-them, every row as written (`structure_rows`, JSON), what is said of the
-weights (`frame_warnings`), and where every frame states a weight their sum,
-the tolerance and the average's assumptions; the reason there is no average, when there is
+and `iv_notes`, the voltages the window does not reach); wherever the
+structure states rows, the vocabulary's structure rows and `info.vibration`
+where it states them, every row as written (`structure_rows`, JSON), what is
+said of the weights (`frame_warnings`), and where every frame states a weight
+their sum, the tolerance and — where the frames state a mode — what a mode's
+average assumes; the reason there is no average, when there is
 none; the leads' Fermi levels compared (`leads_ef_differ_ev`,
 `leads_ef_agree`, `leads_ef_tolerance_ev`), the Fermi levels each in its run's
 frame (`fermi_frames`) and each run's SCF tolerances (`scf_criteria`), as JSON;
@@ -3319,12 +3324,12 @@ them (1 … F), each frame's rows a column under its words and unit
 (*Displacement (Å)*, *Weight*); the name the file stores each under, and its
 kind, on hover *(the user, 2026-10-10: plain words on the page, the stored
 name one hover away)*. The words and the page's unit are the vocabulary's own
-(`frameset.ROWS`), beside each name; a row the vocabulary does not know is
+(`frame_average.ROWS`), beside each name; a row the vocabulary does not know is
 said by its name and unit as written; what is said of the weights stands
 beneath. For frames stating no rows, *N frames — a family: each frame's curve
 its own, no average*; for one structure, nothing. The data is the describe
 door's `frame_set` — `{n_frames, definition}`, the definition
-`frameset.FrameRows.to_wire()`, so the card keeps no list
+`frame_average.answer`, so the card keeps no list
 (`compose.frame_set_answer`, asked by the describe door and Task setup's
 folder answer alike).
 
@@ -3971,9 +3976,9 @@ be.
 | Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run reads as **pending**, never as a failure |
-| Frame average | `transport/average.py` | the frames' average at their stated weights (§ 2a.12) — read by the record |
+| The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames, and a mode's vocabulary and assumptions (§ 2a.12, § 3.8.1) — called by the record, the data file and the describe door |
 | Data file | `transport/datafile.py` | the record's composition as `<label>.transport.nc` — every point's raw outputs beside what is derived from them, on one grid, each variable defined (§ 2a.12) — and its reader |
-| The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the citation door, the record and the data file |
+| The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the frames' post-process |
 
 **Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
 (§ 6a): `transport/engine_base.py` (a `Protocol` registry), `transport/results.py`

@@ -543,7 +543,10 @@ def create_app(*, config=None) -> Flask:
     # nav partial iterates rather than hard-coding the anchors.
     @app.context_processor
     def _inject_tabs():
-        return {"tabs": TABS}
+        # THE VERSION ON EVERY PAGE, beside the name, as the CLI says it
+        # first on every call (the user, 2026-10-18).
+        from .. import __version__
+        return {"tabs": TABS, "molbuilder_version": __version__}
 
     @app.route("/")
     def index():

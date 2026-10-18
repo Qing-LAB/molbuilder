@@ -2,25 +2,27 @@
  * shows a citation (the Transport tab's junction card, Task setup's echo).
  *
  * Contract: docs/engines/transport.md § 3.8.1 ("A frame set says what each
- *           frame is"); docs/model/structure.md § 2.2f (the definition).
+ *           frame is"); docs/model/structure.md § 2.2f (the rows as written).
  * Data:     the server's `frame_set` — `{n_frames, definition}`, the
- *           definition `frameset.FrameRows.to_wire()`: the structure's
- *           rows and the frames' columns, each with its unit and kind -- the
- *           vocabulary's words for a row `frameset.ROWS` knows, any other's
- *           name as written -- and what is said of the weights. The card
- *           keeps no list of names: what the definition holds is what it
- *           draws.
+ *           frames' post-process's answer (`frame_average.answer`): the
+ *           structure's rows and the frames' columns, each with its unit and
+ *           kind -- the vocabulary's words for a row `frame_average.ROWS`
+ *           knows, any other's name as written -- and what is said of the
+ *           weights. The card keeps no list of names: what the answer holds
+ *           is what it draws.
  * Owns:     lib/frameset/card.css.
  *
  * NEVER:
- *   - work out a number. Every value is the definition's, as stated.
+ *   - work out a number. Every value is the answer's, as written.
  *   - number a frame on its own: the frame bar's numbers, through MolView's
  *     one translation (`toDisplay`, model/overview.md § 2).
  */
 import { toDisplay } from "/static/lib/molview/index.js";
 
-/** A number as it reads on the card: six significant figures. */
+/** A value as it reads on the card: a number to six significant figures,
+ *  anything else as written, and a dash where a frame states none. */
 function _fmt(v) {
+    if (v === null || v === undefined) return "—";
     return typeof v === "number" ? String(Number(v.toPrecision(6))) : String(v);
 }
 
@@ -42,9 +44,10 @@ function _el(doc, tag, cls, text) {
 }
 
 /**
- * Draw ``frameSet`` into ``host``: for a mode's set, its mode line and a table
- * — a row per frame, numbered as the frame bar numbers them, a column per
- * frame row of the definition; for a set stating none of it, one line; for one
+ * Draw ``frameSet`` into ``host``: the structure's rows on one line -- a mode's
+ * set's as its mode line -- and a table: a row per frame, numbered as the
+ * frame bar numbers them, a column per row the frames state, and what is said
+ * of the weights beneath; for frames stating no rows, one line; for one
  * structure, nothing (the host hidden).
  */
 export function renderFrameSet(host, frameSet) {
@@ -57,8 +60,7 @@ export function renderFrameSet(host, frameSet) {
     const def = frameSet.definition;
     if (!def) {
         host.appendChild(_el(doc, "p", "frameset-line",
-            n + " frames — a family: each frame's curve its own, no average "
-            + "(it states no mode's definition, model/structure.md § 2.2f)."));
+            n + " frames — a family: each frame's curve its own, no average."));
         return;
     }
     // THE MODE LINE: each row its words, its value and its unit -- "Mode 6

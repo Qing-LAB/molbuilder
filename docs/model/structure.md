@@ -630,9 +630,10 @@ computed from (`frameset.read`, the one reader).
 
 **A mode's frame set, as its maker writes it** — the vocabulary the frame
 generator writes ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.10 ③; a person's script may write the same), constants of
-`molbuilder/frameset.py` (`ROWS`, `MASS_CHANNEL`, `INFO_KEY`): the names a page
-says in words and the data file keeps as variables of their own. The names
+§ 5.10 ③; a person's script may write the same), constants of the frames'
+post-process, `molbuilder/frame_average.py` (`ROWS`, `MASS_CHANNEL`,
+`INFO_KEY`): the names a page says in words, the frame rows the data file keeps
+as variables of their own, the structure rows as its attributes. The names
 carry their units; a row's `unit` field, when written, spells the same unit in
 ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`:
 
@@ -652,7 +653,7 @@ ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`:
 | | `weight` | given | the frame's share of the mode's average (`engines/transport.md` § 2a.12) | — | Weight |
 | `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the identity hash waits on M2m, as a cited pair's pin does, `structure-molstruct.md` § 3) | — | — |
 
-*On a page* is how a page says the row (`frameset.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;
+*On a page* is how a page says the row (`frame_average.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;
 *measured* is computed from the coordinates alone, before any correction;
 *derived* is computed from the others by the formula shown.
 

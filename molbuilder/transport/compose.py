@@ -187,9 +187,6 @@ class CitedPair:
     sidecar: Path                 # its .molstruct.json
     structure: Structure          # every frame (`StructureCodec.load(frames=True)`)
     calculation: Dict[str, object]
-    #: The frames' rows as written and their weights (`frameset.read`), or
-    #: ``None`` for one structure stating none.
-    frame_set: "Optional[object]" = None
 
     @property
     def n_frames(self) -> int:
@@ -291,8 +288,8 @@ def _classify_pair(path: Path) -> CitedPair:
     citation can check (`engines/transport.md` § 2a.9): every frame keeps
     the electrode atoms where frame 0 has them, within
     `wizard.FROZEN_TOL_ANG`, because every frame shares the leads'
-    calculation.  The frames' rows are carried as written (`frameset.read`,
-    `model/structure.md` § 2.2f) -- their maker's, never checked here.  The
+    calculation.  The frames' rows are their maker's, carried with the
+    structure and never read here (`model/structure.md` § 2.2f).  The
     same atoms, species and cell are the structure's own invariant, refused
     by its reader."""
     from ..sidecars.molstruct import sidecar_path_for
@@ -318,22 +315,8 @@ def _classify_pair(path: Path) -> CitedPair:
             f"optimization -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
     _frames_keep_the_leads(struct, path)
-    from ..frameset import read as read_frame_set
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
-                     calculation=calc, frame_set=read_frame_set(struct))
-
-
-def frame_set_answer(cited) -> Dict[str, object]:
-    """What a citation's frames are, as every page that shows them reads it
-    (`engines/transport.md` § 3.8.1: the describe door, Task setup's echo):
-    ``{n_frames, definition}`` -- a cited pair's frame count and its rows
-    as written (`frameset.FrameRows.to_wire`); a cited run is one
-    structure."""
-    if not isinstance(cited, CitedPair):
-        return {"n_frames": 1, "definition": None}
-    return {"n_frames": cited.n_frames,
-            "definition": (cited.frame_set.to_wire()
-                           if cited.frame_set is not None else None)}
+                     calculation=calc)
 
 
 def _frames_keep_the_leads(struct: Structure, path: Path) -> None:

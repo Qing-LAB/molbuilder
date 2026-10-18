@@ -4,8 +4,9 @@ as data on their grid (`engines/transport.md` § 2a.12, *the data file*).
 MODULE  transport.datafile (L2; numpy, netCDF4 and molbuilder's own doors)
 ROLE    one NetCDF-4 file per transport calculation, frame x voltage x
         energy: every point's raw outputs beside what molbuilder derives from
-        them, a mode's frame set's definition beside every frame's values,
-        the mode's average -- each variable stating its units, its long name,
+        them, each frame's rows beside its values and the frames' average --
+        that part the frames' post-process's (`frame_average`) -- each
+        variable stating its units, its long name,
         its definition and, for a raw one, the file it was read from.  The
         variables are :data:`VARIABLES`, one table the writer fills and the
         reader reads; :func:`write_data_file` writes it from the composition
@@ -20,8 +21,8 @@ structure at one voltage is a 1 x 1 grid, never another layout.  A point not
 done is the fill value, with ``done`` 0 -- a gap, never filled in.  The JSON
 record is the report -- `summarize` writes it for the command line, and the
 Results tab composes the same record on read; this file is the same results
-for analysis -- an average, a slope along the mode's ``q``,
-a comparison of modes is a line of xarray on it.
+for analysis -- an average, a slope along a frame row, a comparison of
+two calculations is a line of xarray on it.
 """
 from __future__ import annotations
 
@@ -137,46 +138,8 @@ def _scf_vars(prefix: str, dims: Tuple[str, ...],
                       dtype, fill) in columns)
 
 
-def _or_nan(value) -> float:
-    """``value`` as a number for a variable, NaN -- the fill value -- where
-    it is none or not a number."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return float("nan")
-    return float(value)
-
-
-def _frame_set_vars() -> Tuple[Var, ...]:
-    """Every per-frame row of a mode's frame set's vocabulary, along
-    ``frame`` -- its own names, kinds and units (`frameset.FRAME_ROWS`) --
-    and every row each frame states, as written (``frame_rows``)."""
-    from ..frameset import FRAME_ROWS
-    words = {
-        "displacement_ang": ("the frame's plain displacement from frame 0",
-                             "sqrt(sum_A |R_A - R0_A|^2) over every atom, no "
-                             "masses"),
-        "max_atom_displacement_ang": ("its largest single atom's displacement",
-                                      "max_A |R_A - R0_A|"),
-        "q_amu12_ang": ("the frame's position along the mode",
-                        "the mode's normal coordinate: every atom displaced by "
-                        "q * L_A; |q| = sqrt(sum_A m_A |R_A - R0_A|^2), its "
-                        "sign the side of frame 0"),
-        "node_sigma": ("the frame's position in units of the mode's spread",
-                       "q_amu12_ang / sigma_amu12_ang"),
-        "weight": ("the frame's share of the mode's average",
-                   "as the frame set states it; the set's weights sum to 1"),
-    }
-    return tuple(Var(r.name, ("frame",), r.kind, r.unit or "1",
-                     words[r.name][0], words[r.name][1]
-                     + " (model/structure.md 2.2f; the fill value where the "
-                       "set states none)", auxiliary=True)
-                 for r in FRAME_ROWS) + (
-        Var("frame_rows", ("frame",), "given", "", "the frame's rows",
-            "every row the frame states, as written: a JSON list of "
-            "{name, value, unit} (model/structure.md 2.2f)", dtype=str,
-            auxiliary=True),)
-
-
 def _variables() -> Tuple[Var, ...]:
+    from ..frame_average import data_file_variables
     S = str
     return (
         Var("frame", ("frame",), "coordinate", "1", "frame index",
@@ -208,10 +171,6 @@ def _variables() -> Tuple[Var, ...]:
             "x, y, z", dtype=S),
         Var("element", ("atom",), "given", "", "the atom's element",
             "as the composed junction states it", dtype=S, auxiliary=True),
-        Var("mass_amu", ("atom",), "given", "amu", "the atom's mass",
-            "the frame set's mass_amu channel -- what its q is weighted by "
-            "(model/structure.md 2.2f; the fill value where the set states "
-            "none)", auxiliary=True),
         Var("region", ("region",), "coordinate", "", "device region",
             "the regions molbuilder owns: L-electrode, bridge, R-electrode",
             dtype=S),
@@ -223,7 +182,9 @@ def _variables() -> Tuple[Var, ...]:
             "many as its .TBT.nc holds, those it was asked for (TBT.T.Eig); "
             "none where no file is read, nor for a polarized point, whose "
             "eigenchannels are one set per spin, in the record", dtype="i4"),
-        *_frame_set_vars(),
+        # THE FRAMES' POST-PROCESS: their rows, their masses and their
+        # average (`frame_average`).
+        *data_file_variables(Var),
         Var("positions_ang", ("frame", "atom", "xyz"), "given", "angstrom",
             "atom positions", "every frame's coordinates as composed"),
         Var("transmission_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
@@ -286,16 +247,6 @@ def _variables() -> Tuple[Var, ...]:
             "the transmission point's folder",
             "relative to the calculation folder: where its raw values were "
             "read -- for a point not done, where its attempt is", dtype=S),
-        Var("average_transmission", ("bias_v", "energy_ev"), "derived", "1",
-            "the mode's average transmission",
-            "sum_f weight_f T_f(E) over every frame, at its stated weight"),
-        Var("average_delta_transmission", ("bias_v", "energy_ev"), "derived", "1",
-            "the average's change", "<T(E)> - T_0(E), from frame 0's"),
-        Var("average_conductance_g0", ("bias_v",), "derived", "G0",
-            "the mode's averaged conductance", "sum_f weight_f G_f / G0"),
-        Var("average_conductance_change_percent", ("bias_v",), "derived", "%",
-            "the averaged conductance's change",
-            "100 (<G> - G_0) / G_0, in per cent of frame 0's"),
         # EVERY RUN'S STATE AND CONVERGENCE, on the grid it varies over.
         Var("rung", ("rung",), "coordinate", "", "rung",
             "the rungs that run once, by their stage names", dtype=S),
@@ -407,7 +358,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     junction; returns its path.  :class:`DataFileError` names what does not
     lay out on one grid."""
     import netCDF4
-    from ..frameset import FRAME_ROWS, STRUCTURE_ROWS, read as read_frame_set
+    from ..frame_average import fill_data_file
     from ..persist import write_bytes
     from .compose import recorded_junction
     from .record import order_unstated_said
@@ -424,7 +375,6 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         raise DataFileError(unstated)
     junction = (recorded.structure.restored() if recorded is not None
                 else None)
-    frame_set = read_frame_set(junction) if junction is not None else None
     n_frames = frames_of(base)
     biases = _voltages(pt.bias_v for pt in rung_points(
         task, "transmission", frames=n_frames)) or [0.0]
@@ -501,16 +451,6 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         values["element"][:] = [str(e) for e in junction.elements]
         values["positions_ang"][:] = np.asarray(
             junction.frames if n_frames > 1 else [junction.positions])
-    if frame_set is not None:
-        # THE ROWS AS WRITTEN: the vocabulary's numbers in their own
-        # variables, the fill value where a frame states none, and every row
-        # of every frame in ``frame_rows``.
-        if frame_set.masses_amu is not None:
-            values["mass_amu"][:] = [_or_nan(m) for m in frame_set.masses_amu]
-        for f, rows in enumerate(frame_set.frames):
-            values["frame_rows"][f] = json.dumps(list(rows))
-            for r in FRAME_ROWS:
-                values[r.name][f] = _or_nan(frame_set.value(r.name, f))
 
     def at(p) -> Tuple[int, int]:
         f = p.get("frame")
@@ -565,16 +505,6 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         _run_facts(by_stage.get(name) or {}, "rung", (r,), values,
                    _SCF_COLUMNS)
     average = record.get("average") or {}
-    for e in average.get("at") or ():
-        b = _index(e["bias_v"], biases)
-        for key, name in (("transmission", "average_transmission"),
-                          ("delta_transmission",
-                           "average_delta_transmission"),
-                          ("conductance_g0", "average_conductance_g0"),
-                          ("conductance_change_percent",
-                           "average_conductance_change_percent")):
-            if e.get(key) is not None:
-                values[name][b] = e[key]
 
     attrs: Dict[str, Any] = {
         "schema": DATA_SCHEMA,
@@ -589,24 +519,9 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         if slot.get(key) is not None:
             attrs[f"citation_{key}" if key != "citation" else "citation"] = (
                 str(slot[key]))
-    if frame_set is not None:
-        for r in STRUCTURE_ROWS:
-            if frame_set.value(r.name) is not None:
-                attrs[r.name] = frame_set.value(r.name)
-        if frame_set.vibration is not None:
-            for k in ("run", "result_sha256"):
-                attrs[f"vibration_{k}"] = str(
-                    frame_set.vibration.get(k) or "")
-        # EVERY ROW AS WRITTEN, and what is said of the weights.
-        attrs["structure_rows"] = json.dumps(list(frame_set.structure))
-        attrs["frame_warnings"] = json.dumps(list(frame_set.warnings))
-        if frame_set.weights is not None:
-            attrs["weight_sum"] = float(average.get("weight_sum"))
-            attrs["weight_tolerance"] = float(average.get("tolerance"))
-            attrs["average_assumptions"] = json.dumps(
-                list(average.get("assumptions") or ()))
-    if average.get("why"):
-        attrs["average_why"] = str(average["why"])
+    # THE FRAMES' PART -- their rows, masses and average, and what is said
+    # of them: the post-process's (`frame_average`).
+    fill_data_file(values, attrs, junction, average, biases, _index)
     # HOW THE I-V WAS COMPUTED, as the record states it (§ 2a.10).
     attrs["iv_computed"] = str(iv.get("computed") or "")
     if iv.get("kt_ev") is not None:

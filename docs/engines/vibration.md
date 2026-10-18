@@ -2283,9 +2283,8 @@ one loss-free serialiser, read back by `Structure.from_dict`
 
 **What is not in it, and where it is.** The masses the analysis weighted by
 stay the result's own, `equilibrium.masses_amu` (§ 6.2): they are the
-analysis's input, and on the structure's `mass_amu` channel they would make
-the structure read as half a mode's frame set, whose definition that channel
-belongs to ([`model/structure.md`](?doc=model/structure.md) § 2.2f; the
+analysis's input; the structure's `mass_amu` channel is a mode's frame set's
+maker's ([`model/structure.md`](?doc=model/structure.md) § 2.2f; the
 frame-set generator copies them there). The relaxation that made the
 geometry is the result's `relaxation` block (§ 6.2) — on SIESTA it now
 carries the `relax` stage's record **whole**, `relaxation.record`, from the
@@ -2355,9 +2354,10 @@ derivatives are analytic, § 5.9.)
 
 § 5.10 ③'s generator reads the result alone — the base structure with its
 labels and box, the masses, the mode. `info.vibration.result_sha256`, the
-sha256 of the result's JSON bytes, pins the file it was made from, and the
-transport citation door compares it with the result `info.vibration.run`
-names, refusing a mismatch (today it is written and never compared).
+sha256 of the result's JSON bytes, says which file it was made from; like
+every row of a frame set it is the maker's, carried and shown, and no
+calculation compares it ([`model/structure.md`](?doc=model/structure.md)
+§ 2.2f; the user, 2026-10-18).
 
 #### 5. The data file — `<label>.spectra.nc`
 

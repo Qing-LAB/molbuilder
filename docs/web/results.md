@@ -751,7 +751,7 @@ calculation holds several frames:
 
 | chart | *one frame* — the frame bar's | *all frames* — a legend entry each |
 |---|---|---|
-| T(E) | that frame's curve at each voltage, the selected voltage bold — as for one structure | every frame's T(E) at the selected voltage; beside them, dashed, the mode's average at it when the set states its mode (`record.average`), and under the card the averaged conductance, its change from frame 0's, the weights' sum and the assumptions |
+| T(E) | that frame's curve at each voltage, the selected voltage bold — as for one structure | every frame's T(E) at the selected voltage; beside them, dashed, the frames' average at it when every frame states a weight (`record.average`), and under the card the averaged conductance, its change from frame 0's, the weights' sum and the assumptions |
 | DOS | that frame's total, regions, leads and your selections, at the selected voltage | every frame's total DOS at the selected voltage |
 | I–V | that frame's curve, the selected voltage marked | one curve per frame |
 | convergence, the device | that frame's device run at the selected voltage | every frame's device SCF at the selected voltage, on one axis |

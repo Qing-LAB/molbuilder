@@ -89,7 +89,8 @@ def test_hydrogens_nothing_here_can_add_are_refused_as_advice(
 def test_the_cli_says_the_same_refusal_in_one_line(monkeypatch, capsys):
     """The same refusal on the CLI: one ``Error: ...`` line and exit 1, as a
     ``ClickException`` is said -- not a traceback (`model/chemistry.md`,
-    ``add_hydrogens``).  The engines are made to fail as above.
+    ``add_hydrogens``) -- after the line every call opens with, the version
+    (the user, 2026-10-18).  The engines are made to fail as above.
 
     MUTATION THIS MUST FAIL AGAINST: `cli.main` without its
     `BackendUnavailable` door.
@@ -102,6 +103,9 @@ def test_the_cli_says_the_same_refusal_in_one_line(monkeypatch, capsys):
     with pytest.raises(SystemExit) as ended:
         main(["peptide", "GG"])
     assert ended.value.code == 1
+    from molbuilder import __version__
     said = capsys.readouterr().err
-    assert said.startswith("Error: Cannot add hydrogens"), said
+    lines = said.splitlines()
+    assert lines[0] == f"molbuilder {__version__}", said
+    assert lines[1].startswith("Error: Cannot add hydrogens"), said
     assert "Traceback" not in said, said

@@ -78,6 +78,11 @@ body {
     letter-spacing: -0.01em;
     color: var(--text-primary);
 }
+.app-header .app-version {
+    font-size: var(--text-base);
+    font-weight: var(--weight-normal);
+    color: var(--text-secondary);
+}
 .app-header .tagline {
     margin: var(--space-sm) 0 0;
     color: var(--text-secondary);

@@ -236,7 +236,7 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
     frame's plain displacement, largest atom's, ``q``, ``q / sigma`` and
     weight; every atom's mass, the result's; where the mode came from."""
     import hashlib
-    from molbuilder.frameset import MASS_CHANNEL
+    from molbuilder.frame_average import MASS_CHANNEL
     from molbuilder.sidecars.spectra import parse_spectra_json
     from molbuilder.spectra.derived import thermal_spread_amu12_ang
     from molbuilder.structure import AtomChannel
@@ -281,7 +281,7 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
 def _family_of(built):
     """The same frames stating no rows, no channel and no ``info.vibration``
     -- each frame its own curve (`model/structure.md` § 2.2f)."""
-    from molbuilder.frameset import MASS_CHANNEL
+    from molbuilder.frame_average import MASS_CHANNEL
     bare = built.with_frames(np.asarray(built.frames, dtype=float))
     for row in list(bare.customized_rows()):
         bare.remove_customized(row["name"])
@@ -1763,7 +1763,7 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     the labels of its points coordinates beside it; every variable says what
     it is, a raw one where it was read from; and a calculation of one
     structure has the same layout, one frame."""
-    from molbuilder.frameset import FRAME_ROWS, MASS_CHANNEL
+    from molbuilder.frame_average import FRAME_ROWS, MASS_CHANNEL
     from molbuilder.task import read_task
     from molbuilder.transport.datafile import (VARIABLES, data_file_path,
                                                read_data_file)
@@ -1882,12 +1882,12 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     """§ 3.8.1: the Transport tab cites either kind of § 3.1 -- and for a
     pair the describe door says what its frames are: a mode's set its rows
     in the vocabulary's words, its masses, where the mode came from and its
-    weights (the wire `frameset.FrameRows.to_wire` builds from
-    `frameset.ROWS`); a family its count and no rows; a run one structure.  The shared panel
+    weights (the wire `frame_average.answer` builds from
+    `frame_average.ROWS`); a family its count and no rows; a run one structure.  The shared panel
     asks the pseudopotential directory of the person exactly for a pair,
     which brings none; and Task setup's folder answer echoes the frame-set
     calculation's frames as the describe door states them."""
-    from molbuilder.frameset import MASS_CHANNEL
+    from molbuilder.frame_average import MASS_CHANNEL
     from molbuilder.workingcopy_structure import StructureCodec
     # WHAT THE CARD SAYS, from § 2.2f's table and the rows the script wrote
     # -- the pair's own, read back -- never from the definition's reader.

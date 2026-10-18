@@ -3522,6 +3522,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """
     args = list(argv) if argv is not None else sys.argv[1:]
     asked_for_help = "--help" in args or "-h" in args
+    # THE VERSION, FIRST, ON EVERY CALL -- on stderr, so what a command
+    # prints on stdout (a JSON answer, a dry run) is untouched (the user,
+    # 2026-10-18).
+    from . import __version__
+    click.echo(f"molbuilder {__version__}", err=True)
     # Configure the root logger so warnings emitted by L1 modules
     # (e.g. ``molbuilder.projects.list_projects`` skipping invalid
     # directory names) actually reach the user.  Without this, Python's

@@ -2233,7 +2233,7 @@ def api_task_setup_folder():
         "treatment": getattr(_task, "treatment", None),
         # WHAT THE CITED JUNCTION'S FRAMES ARE -- the count and, for a mode's
         # set, its definition -- by the describe door's own helper
-        # (`compose.frame_set_answer`; `engines/transport.md` § 3.8.1); null
+        # (`frame_average.answer`; `engines/transport.md` § 3.8.1); null
         # for every other kind.  The "What came over" card draws it.
         "frame_set": _folder_frame_set(_task, folder),
         # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
@@ -2335,13 +2335,14 @@ def _folder_ladder(folder) -> dict:
 
 def _folder_frame_set(task, folder):
     """The cited junction's frames, as the describe door answers them
-    (`compose.frame_set_answer`), for a transport description; ``None`` for
+    (`frame_average.answer`), for a transport description; ``None`` for
     every other kind.  A citation that does not read says why, in its
     words -- the folder still opens."""
     if getattr(task, "calculation", None) != "transport":
         return None
     from molbuilder.projects import find_projects_root
-    from molbuilder.transport.compose import (ComposeError, frame_set_answer,
+    from molbuilder.frame_average import answer as frames_answer
+    from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               resolve_citation)
     cited_at = ((getattr(task, "slots", None) or {}).get("junction"))
     if not cited_at:
@@ -2357,7 +2358,8 @@ def _folder_frame_set(task, folder):
         _, cited = resolve_citation(str(cited_at), tree)
     except ComposeError as exc:
         return {"n_frames": None, "definition": None, "why": str(exc)}
-    return frame_set_answer(cited)
+    return frames_answer(
+        cited.structure if isinstance(cited, CitedPair) else None)
 
 
 def _folder_shape_fixed(task, folder) -> Optional[dict]:

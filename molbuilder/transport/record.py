@@ -9,8 +9,8 @@ a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
 ``<label>.transport.json`` (``molbuilder/transport-result@8``): T(E)
-per point -- a frame and a voltage -- the I–V table per frame, the mode's
-average over a frame set (`average.mode_average`), the junction's TOTAL
+per point -- a frame and a voltage -- the I–V table per frame, the frames'
+average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
 figure TBtrans printed and the factor between them (:data:`CURRENT_MEANS`)
 -- and the provenance that says which junction built it — the citation (from
@@ -47,9 +47,8 @@ if TYPE_CHECKING:
 #: ``@6``: the provenance names no ``atom_permutation`` file -- the junction
 #: (``junction_file``) carries its order record in its sidecar.
 #: ``@5``: the ``average`` carries no slope or curvature, and states the
-#: mode's definition by its own names -- the structure's rows of a mode's
-#: frame set (`model/structure.md` § 2.2f) -- its weights checked at the
-#: citation door.
+#: structure's rows of a mode's frame set by their own names
+#: (`model/structure.md` § 2.2f).
 #: ``@4``: a point is a frame and a voltage -- every point, pending and
 #: failed entry carries its ``frame`` (``None`` on a calculation with no
 #: frame axis) and its folder ``tokens``, a point its frame's
@@ -723,7 +722,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     **THE FRAMES' ROWS ARE READ THROUGH THEIR ONE DOOR** (`frameset.read`):
     the record carries the frames' average at each voltage, at every frame's
     stated weight, where every frame states one, the structure's rows beside
-    it as written (`average.mode_average`).
+    it as written -- the frames' post-process, `frame_average.average_block`.
 
     Reads each point's LATEST attempt, its state the run door's
     (`parse.dirs.run_status`): a point with its transmission is in
@@ -741,10 +740,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..parse.dirs.record import tbtrans_loop
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
+    from ..frame_average import AverageError, average_block
     from ..frameset import read as read_frame_set
-    from .average import AverageError, mode_average
     from .compose import read_provenance, recorded_junction
-    from .stages import frames_of, rung_points
+    from .stages import frames_of, rung_points, same_volts
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
                         spin_dos, tbt_files)
 
@@ -880,9 +879,9 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                                         ("failed", failed)) if got))
 
     try:
-        average = mode_average(
+        average = average_block(
             frames_of(base) if junction is not None else None, frame_set,
-            points_out, pending + failed)
+            points_out, pending + failed, same_volts)
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
     provenance = read_provenance(base)
@@ -929,7 +928,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                   [pt.frame for pt in rung_points(
                       task, "transmission", frames=frames_of(base))]
                   or [None]),
-        # THE MODE'S AVERAGE over a frame set, at each voltage (§ 2a.12).
+        # THE FRAMES' AVERAGE at each voltage -- their post-process's
+        # (`frame_average`, § 2a.12).
         "average": average,
         # WHAT THE CURRENT IS, in the record's own words -- for each spin the
         # points were run with (one, for a junction decided once).
@@ -1264,7 +1264,8 @@ def iv_table_text(record: Dict) -> str:
     """The printed deliverable: one row per point -- its frame's token,
     G(E_F), the junction's total current, and the figure TBtrans printed --
     then what the current is, in the record's words (:data:`CURRENT_MEANS`),
-    and the mode's average at each voltage, or why there is none."""
+    and the frames' average at each voltage, or why there is none (their
+    post-process's, `frame_average.summary_lines`)."""
     lines = [f"transport record — {record['label']}: "
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} pending"
@@ -1314,61 +1315,9 @@ def iv_table_text(record: Dict) -> str:
     for spin, means in sorted((record.get("current_means") or {}).items()):
         lines.append(f"  {spin}: {means}")
     lines.append(f"  {record['treatment']}: {record['treatment_note']}")
-    lines.extend(_average_lines(record.get("average") or {}))
+    from ..frame_average import summary_lines
+    lines.extend(summary_lines(record.get("average") or {}))
     frames = record.get("fermi_frames")
     if frames and frames.get("note"):
         lines.append(f"  E_F: {frames['note']}")
     return "\n".join(lines)
-
-
-def _average_lines(avg: Dict) -> List[str]:
-    """The mode's average, as `summarize` prints it: the mode and its
-    weights, at each voltage the averaged conductance beside the base
-    frame's and its change in per cent -- or why there is none."""
-    if not avg.get("frames") or avg["frames"] < 2:
-        return []
-    said = [f"  the frames' average: warning: {w}"
-            for w in avg.get("warnings") or ()]
-    if avg.get("why"):
-        return said + [f"  the frames' average: {avg['why']}"]
-    # EACH NUMBER IN ITS ROW'S UNIT, the vocabulary's own (`frameset.ROWS`,
-    # `model/structure.md` § 2.2f): the angstrom spelled out, `A` the
-    # ampere's on the same printout -- a mode's set in its words, any other
-    # set's rows as written.
-    from ..frameset import STRUCTURE_ROWS
-    unit = {r.name: r.unit for r in STRUCTURE_ROWS}
-    mode = ("mode_index_1based", "frequency_cm1", "temperature_k",
-            "sigma_amu12_ang")
-    if all(isinstance(avg.get(k), (int, float)) for k in mode):
-        head = (f"  the mode's average over {avg['frames']} frames -- mode "
-                f"{avg.get('mode_index_1based')} at "
-                f"{avg.get('frequency_cm1'):g} {unit['frequency_cm1']}, "
-                f"{avg.get('temperature_k'):g} {unit['temperature_k']}, "
-                f"sigma {avg.get('sigma_amu12_ang'):.6g} "
-                f"{unit['sigma_amu12_ang']}")
-    else:
-        rows = ", ".join(
-            f"{r['name']} {r['value']}" + (f" {r['unit']}" if r.get("unit")
-                                           else "")
-            for r in avg.get("rows") or ())
-        head = (f"  the frames' average over {avg['frames']} frames"
-                + (f" -- {rows}" if rows else ""))
-    lines = said + [head + f", weights {avg['weights']} (sum "
-                    f"{avg['weight_sum']!r}, within {avg['tolerance']:g} "
-                    f"of 1):"]
-    for e in avg.get("at", ()):
-        if e.get("why"):
-            lines.append(f"  {e['bias_v']:>8.3f} V  {e['why']}")
-            continue
-        g, d = e.get("conductance_g0"), e.get("conductance_change_percent")
-        g0 = e.get("base_conductance_g0")
-        lines.append(
-            f"  {e['bias_v']:>8.3f} V  <G> = "
-            + (f"{g:.6f} G0" if g is not None else "--")
-            + " against the base frame's "
-            + (f"{g0:.6f} G0" if g0 is not None else "--")
-            + ", change "
-            + (f"{d:+.4f} %" if d is not None
-               else f"-- ({e.get('conductance_why')})"))
-    lines.append("  it assumes: " + " ".join(avg.get("assumptions") or ()))
-    return lines

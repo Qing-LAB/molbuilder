@@ -14,9 +14,8 @@ here:
   * :mod:`.citation_defaults` — what the cited run contributes to the
     template, once, at ``jobset init``.
   * :mod:`.record`    — ``summarize task``'s ``<label>.transport.json``
-    (``molbuilder/transport-result@8``); :mod:`.average` — a frame set's
-    weight rule and the mode's average over its frames, which the record
-    carries.
+    (``molbuilder/transport-result@8``), the frames' average in it their
+    post-process's (`molbuilder.frame_average`, outside this package).
   * :mod:`.transiesta` — the TranSIESTA **emission library**: the
     geometry table every rung writes and the electrode and reservoir
     declarations the device and transmission rungs write, reused by
