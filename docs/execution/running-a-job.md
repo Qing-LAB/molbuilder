@@ -723,7 +723,9 @@ the scheduler: CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT
 the monitor's closing record because it does not depend on a signal reaching
 anything: on Sol's job 65999920 neither the wrapper's trap nor the monitor
 recorded the SIGTERM at its wall, and only the scheduler's line said the job
-was over. A run here, or a record that names no scheduler file, is not asked.
+was over. A run here is not asked; a record launched before it named the
+file (2.12.0) is asked where its header put it, the run's own folder under the
+file catalogue's name (`slurm.<id>.err`).
 A run of points' point asks it with its run's one record, from the run's
 folder, where the record lies and the file it names is named from — so a
 sweep the scheduler stopped reads `failed` at every point not done, the

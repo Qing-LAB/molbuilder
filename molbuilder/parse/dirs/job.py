@@ -34,6 +34,7 @@ what it is"*).
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field, replace
@@ -162,10 +163,12 @@ def _monitor_ended(run_dir: Path, basename: str,
 def _scheduler_ended(launched_in: Path, launch: Any) -> Optional[str]:
     """How the scheduler says it ended the job -- *stopped by the scheduler:
     <its words> (<its file>)* -- read from the job's error file the launch
-    record names, from ``launched_in``, the folder the record lies in
-    (`scheduler.md` R16), by its kind's reader; ``None`` where
-    it wrote no such line, or the record names no file: a run here, a record
-    written before it named one, a job whose id was not read.
+    the scheduler wrote for the job -- found through the file catalogue
+    (`runfiles.find_fixed`, `SCHEDULER_STDERR`: its kind and the job's id
+    read off its name) in the folder its header put it in: the one the
+    launch record names, else ``launched_in``, the folder the record lies in
+    -- and read by its kind's reader (`scheduler.md` R16).  ``None`` where
+    it wrote no such line: a run here, a job whose id was not read.
 
     Asked only by a caller holding the launch record -- molbuilder's
     readers of a run, never the monitor beside a job, which carries no
@@ -173,15 +176,22 @@ def _scheduler_ended(launched_in: Path, launch: Any) -> Optional[str]:
     """
     if not isinstance(launch, dict):
         return None
-    sent = launch.get("scheduler") or {}
-    kind, stderr, jid = sent.get("kind"), sent.get("stderr"), \
-        launch.get("job_id")
-    if not (kind and stderr and jid):
+    jid = launch.get("job_id")
+    if not jid:
+        return None
+    if launch.get("mode") != "submit":
         return None
     from ...scheduler.queue import ended
-    words = ended(kind, launched_in / stderr, str(jid))
-    return (f"stopped by the scheduler: {words} ({stderr})"
-            if words else None)
+    stated = (launch.get("scheduler") or {}).get("stderr")
+    folder = (launched_in / stated).parent if stated else launched_in
+    for path, fields in _rf.find_fixed(folder, _rf.SCHEDULER_STDERR):
+        if fields.get("jobid") != str(jid):
+            continue
+        words = ended(fields["scheduler"], path, str(jid))
+        if words:
+            return (f"stopped by the scheduler: {words} "
+                    f"({os.path.relpath(path, launched_in)})")
+    return None
 
 
 def _finish_failed(concluded: Optional[str]) -> bool:

@@ -1859,6 +1859,31 @@ def manifest(label: str, stage: Optional[str], *, shape: str,
     return rows
 
 
+def find_fixed(directory, name: str) -> "list[tuple[Path, dict]]":
+    """Every file in ``directory`` of the catalogue's FIXED-NAME family
+    ``name`` -- a :data:`WRITTEN` row's name with fields, as
+    :data:`SCHEDULER_STDERR` (``{scheduler}.{jobid}.err``) -- each with its
+    fields read back by their declared shapes (:data:`FIELDS`), sorted by
+    name: ``[(path, {"scheduler": "slurm", "jobid": "66027146"})]``.  A name
+    no row of the catalogue writes is :class:`RunFileError`."""
+    if not any(a.name == name and not a.role for a in WRITTEN):
+        raise RunFileError(
+            f"find_fixed({name!r}): not a fixed name molbuilder's catalogue "
+            f"writes (`runfiles.WRITTEN`).")
+    pattern = _role_pattern(name)
+    d = Path(directory)
+    try:
+        entries = sorted(d.iterdir())
+    except OSError:
+        return []
+    out = []
+    for p in entries:
+        m = pattern.match(p.name)
+        if m and p.is_file():
+            out.append((p, m.groupdict()))
+    return out
+
+
 def fixed(level: Optional[str] = None,
           when: "Optional[tuple]" = None,
           calculation: Optional[str] = None,
