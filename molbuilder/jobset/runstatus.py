@@ -267,11 +267,13 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
     gathered = _gathered_lines(run)
     pts, running = [], False
     for pdir, pt in points_in(run, task, stage, base=base):
-        ok, why = done(pdir, names, launch=launch, products=products)
+        ok, why = done(pdir, names, launch=launch, products=products,
+                       launched_in=run)
         # ITS RUN'S STATE AND VERDICT, the one status door's -- a point done
         # finished; decided on these, never on the reason's words.
         opened = pdir.is_dir()
-        st = run_status(pdir, names.stem, launch=launch) if opened else None
+        st = (run_status(pdir, names.stem, launch=launch, launched_in=run)
+              if opened else None)
         state = ("finished" if ok else st.state if st is not None
                  else "pending")
         converged = (st.verdict[1] if st is not None

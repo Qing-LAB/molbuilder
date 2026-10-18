@@ -121,7 +121,7 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
     """
     from ..contract import engine_of
     from ...runfiles import deck_roles, find
-    from .job import run_status
+    from .rundir import run_state_of
 
     from ...runrecord import newest_run
     d = Path(directory)
@@ -130,7 +130,9 @@ def run_files(directory, *, names, run: Optional[int] = None, status=None,
     # newest by the one rule (`runrecord.newest_run`).
     n = run if run is not None else newest_run(d, names)
     if status is None:
-        status = run_status(d, names.stem, run=n)
+        # THE ONE DOOR, with the run's launch record, as every reader asks it
+        # (`rundir.run_state_of`).
+        status = run_state_of(d, names, n)
     engine = engine or engine_of(str(d))
     # ONE LISTING of this run's files, filtered below -- `find` lists and
     # reads every name in the directory on each call, and a flat directory

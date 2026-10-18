@@ -2,14 +2,18 @@
 scheduler still lists it and in what state, and its cancel (`execution/job-system.md`
 § 6.0a): asked of the machine record's scheduler -- its kind's words
 (`kinds.toml`, `query`), run from where the record says its commands are
-(`record.Scheduler`) -- by the one sender and by `molbuilder jobs`; each
-answer read by the kind's reader (:data:`_READERS`, `scheduler.md` § 6a).
+(`record.Scheduler`) -- by the one sender and by `molbuilder jobs`; and how
+the scheduler ended a job, read from the job's own error file by the run
+door (`scheduler.md` R16).  Each answer read by the kind's reader
+(:data:`_READERS`, `scheduler.md` § 6a).
 Floor 1: facts of a machine.
 """
 from __future__ import annotations
 
+import re
 import subprocess
-from typing import Optional, Tuple
+from pathlib import Path
+from typing import Callable, NamedTuple, Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -51,9 +55,36 @@ def _slurm_listed(returncode: int, stdout: str,
     return any(s.strip() not in _SLURM_ENDED for s, _b, _r in rows), said
 
 
-#: Each kind with a queue -> the readers of its answers: which cluster it
-#: serves, and whether it still lists a job and in what state.
-_READERS = {"slurm": (_slurm_cluster, _slurm_listed)}
+def _slurm_ended(text: str, job_id: str) -> Optional[str]:
+    """SLURM's line in a job's error file when it ends the job --
+    ``*** JOB <id> ON <node> <its words> ***`` -- for job ``job_id``: the
+    words inside the frame as SLURM wrote them, ``CANCELLED AT
+    2026-10-18T01:19:15 DUE TO TIME LIMIT``; ``None`` where the file holds
+    no such line for the job (`scheduler.md` R16).  Nothing past the frame
+    is assumed: a cancel, a preemption or a node's loss reads in its own
+    words."""
+    framed = re.compile(r"\*\*\* JOB " + re.escape(job_id)
+                        + r" ON \S+ (.+?) \*\*\*")
+    for ln in text.splitlines():
+        m = framed.search(ln)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+class _Readers(NamedTuple):
+    """A kind's readers of what its scheduler says, which no format
+    states (`scheduler.md` § 6a)."""
+    #: Which cluster it serves (its ``cluster`` query's answer).
+    cluster: Callable[[str], Optional[str]]
+    #: Whether it still lists a job, and in what state (``listed``).
+    listed: Callable[[int, str, str], Optional[Tuple[bool, str]]]
+    #: How it says it ended a job, in the job's error file (R16).
+    ended: Callable[[str, str], Optional[str]]
+
+
+#: Each kind with a queue -> the readers of its answers.
+_READERS = {"slurm": _Readers(_slurm_cluster, _slurm_listed, _slurm_ended)}
 
 
 def _asked(scheduler, what: str, **values):
@@ -78,7 +109,7 @@ def cluster(scheduler) -> Optional[str]:
         r = subprocess.run(line, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
-    return _READERS[k.name][0](r.stdout) if r.returncode == 0 else None
+    return _READERS[k.name].cluster(r.stdout) if r.returncode == 0 else None
 
 
 def listed(scheduler, job_id: str) -> Optional[Tuple[bool, str]]:
@@ -94,7 +125,7 @@ def listed(scheduler, job_id: str) -> Optional[Tuple[bool, str]]:
         r = subprocess.run(line, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
-    return _READERS[k.name][1](r.returncode, r.stdout, r.stderr)
+    return _READERS[k.name].listed(r.returncode, r.stdout, r.stderr)
 
 
 def cancel(scheduler, job_id: str) -> str:
@@ -114,4 +145,19 @@ def cancel(scheduler, job_id: str) -> str:
     return said
 
 
-__all__ = ["cancel", "cluster", "listed"]
+def ended(kind_name: str, stderr, job_id: str) -> Optional[str]:
+    """How the scheduler of kind ``kind_name`` says it ended job ``job_id``,
+    in its own words -- read from the job's error file ``stderr`` by the
+    kind's reader (`scheduler.md` R16) -- or ``None``: the file is not there
+    or does not read, it holds no such line, or the kind keeps no queue."""
+    readers = _READERS.get(kind_name)
+    if readers is None:
+        return None
+    try:
+        text = Path(stderr).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return readers.ended(text, str(job_id))
+
+
+__all__ = ["cancel", "cluster", "ended", "listed"]

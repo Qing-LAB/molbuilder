@@ -79,14 +79,16 @@ never what a machine found — and adds one: never a secret.
 
 **No `notify` block is no notification** (user, 2026-09-26: *"when no set up
 for notification that means no notification"*) — nothing is sent, the start
-and the end included. A calculation with a `notify` block speaks on four
-occasions: the two it ticks, which combine, and its start and its end.
+and the end included. A calculation with a `notify` block speaks on five
+occasions: the two it ticks, which combine, its wall near, and its start and
+its end.
 
 | occasion | `event` | set by | sent |
 |---|---|---|---|
 | **it started** | `start` | a `notify` block | once, when the monitor starts watching a run |
 | **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step finishes (§ 2.2) — one message per wake, however many finished since the last |
 | **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `null` is never | N hours after the last message; the first, N hours after the start |
+| **its wall is near** | `wall_near` | a `notify` block, on a job sent with a wall | once, when the time the job has left falls below the longest step it has taken (§ 2.2) — the step it is in may not finish |
 | **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
@@ -96,7 +98,8 @@ of its loop (a transmission's, [`model/parse.md`](?doc=model/parse.md) § 5d.5)
 — and at the end how each SCF phase converged and how the process exited.
 
 - **Nothing else is sent.** Between the start and the end a message goes out
-  only on the two occasions the calculation ticked. Every wake's reading is in
+  only on the two occasions the calculation ticked, and once when its wall is
+  near (§ 2.1b). Every wake's reading is in
   the monitor log (§ 2.5); the channels hear what the policy asks for.
 - **A step's message restarts the N-hour clock**, and a step and a period due
   on the same wake are one message — the step's.
@@ -123,7 +126,7 @@ are **change-gated**, so a fast wake costs no volume:
 | the monitor log's `[STATUS]` | the run advanced — a new SCF row, the row's iteration, the phase or the step moved, or TBtrans's account of its loop moved (its set-up stated, a progress line, a pass begun or completed, its currents) — or its energy or state changed |
 | a `util.csv` row | CPU %, memory, or a GPU's use or memory moved by ≥ 10 % of its last written value, or 300 s passed since the last row (`--util-keepalive`), so the plotted series keeps anchor points |
 
-**Notifying is separate and rare**: § 2's four occasions, never one per wake.
+**Notifying is separate and rare**: § 2's five occasions, never one per wake.
 A notifier fired on every changed sample would message a running job's
 channels every few seconds.
 
@@ -166,6 +169,37 @@ the cores and which source gave them, where CPU time and memory were read, the
 peak and the limit. Read it before comparing two runs: cgroup v1 and v2 spell
 their files differently, and where no cgroup is readable the numbers fall back
 to the node and say so.
+
+### 2.1b The time the job has left, counted from its own record
+
+**A job sent with a wall counts down to it** — the wall it was sent with,
+from the run's launch record (`run.json`'s `placed_on.time`: the header's, or
+a launch's `--time`, which the scheduler takes over the header's,
+[`scheduler.md`](?doc=execution/scheduler.md) R9), from **the job's start**,
+which its header states once for everything the job runs
+(`MB_JOB_STARTED`, the epoch second): a walk's later member and a warm retry
+count from the job's start, never their own. No scheduler is asked: the
+count is the same in a job that cannot reach its scheduler's commands. The
+launch record is read on each wake until it is there — the sender writes it
+as the scheduler answers, and a job can start first. Each `[STATUS]` line
+says the count — *wall 4h: 21m left* — and a run with no wall stated (a run
+here) says none. A record or a wall that does not read, or a header that
+states no start (one written before it did), is said once in a `[WALL]`
+line, and nothing is counted. **A run of points' points count nothing**: the
+run's one launch record lies in the run's folder, and each point's monitor,
+in the point's own folder, finds none there — and a point, one SCF or one
+transmission, states no steps, so nothing would be warned.
+
+**It warns once, and only where it can say why**: when the time left falls
+below the longest step the run has taken so far (§ 2.2: a geometry move, a
+displacement, a PySCF step), the step it is in may not finish before the
+wall. The monitor writes one `[WALL]` record — *21m left; the longest of 3
+steps so far took 46m* — and, with a `notify` block, sends `wall_near`. A
+step's length runs from one step finishing to the next, the first from the
+monitor's start. A run
+that states no steps (a single point, a transmission) is counted down and
+never warned: nothing in it says how long its next part takes. It stops
+nothing and asks nothing: what to do with the warning is the person's.
 
 ### 2.2 A converged SCF is read from the step advancing
 
@@ -221,6 +255,8 @@ directory of decks.
 | which fields a report may carry, and how a card says each | the one declaration, `report_fields` (§ 4.1a): `ReportField.said`, the span rule's `span_words` and a share's `pct_words` | `report_fields.py` |
 | *not a report — what the run script records through it*: a flat run's warm retry, its own launch record (`mb_monitor.pyz retried`) | the one writer, `runrecord.record_retry` → `write_launch`, through `persist` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
+| the wall it was sent with (§ 2.1b) | the run's launch record, `runrecord.launch_record` — `placed_on.time`, read by `runrecord.sent_wall_s` | `runrecord.py` |
+| when the job started (§ 2.1b) | its header's `MB_JOB_STARTED`, written by `runwrap.render_sbatch`, its name `monitor.JOB_STARTED_VAR` | `mb_monitor.py` |
 
 **What stays the monitor's is what no file states**: the watched PID — *when*
 the run ended — the machine and its utilisation, when to tell someone, and the
@@ -238,7 +274,11 @@ and no `.concluded`; what it does leave is the monitor's closing record,
 `[MONITOR] job ended`, written before the monitor asks — and `run_status` reads
 that record as `failed`, *stopped before its end: no ending in its output and
 no exit recorded*. So the monitor's `finish` and the Results tab say the same
-thing, from the same files.
+thing, from the same files — but for the scheduler's own word on how it
+ended the job, which the Results tab reads first and the monitor, which
+carries no scheduler, does not ask: there its `finish` says *stopped before
+its end*, and the Results tab *stopped by the scheduler: <its words>*
+(§ 2.4).
 
 **The wrapper asks the same framework.** Its failure hint and its warm retries
 ask `_run_ending` through `mb_monitor.pyz ending`
@@ -259,7 +299,7 @@ sequenceDiagram
     W->>E: launch
     loop every MB_MONITOR_INTERVAL seconds
         M->>E: read what the output gained, sample CPU, GPU and memory
-        M-->>C: scf_converged or periodic, when the policy says so
+        M-->>C: scf_converged or periodic, when the policy says so; wall_near, once
     end
     E-->>W: exits with its return code
     alt a warm retry
@@ -279,8 +319,16 @@ A **forced stop** — walltime, `scancel`, a kill — never reaches the main lin
 so no `.concluded` is written. The monitor gets SIGTERM from the wrapper's
 signal trap or the scheduler, or sees the watched PID go; it logs
 `[MONITOR] job ended`, and `run_status`, reading that record, says *failed —
-stopped before its end*. A lost node takes the monitor with it: then no file
-says the run is over, and it reads `running`.
+stopped before its end*. **A signal is not a certainty**: on Sol's job
+65999920 (2026-10-18) the scheduler stopped the job at its wall and neither
+the wrapper's trap nor the monitor recorded it — why is not known. So the
+scheduler's own line in the job's error file is read first
+([`scheduler.md`](?doc=execution/scheduler.md) R16): `run_status` says
+*failed — stopped by the scheduler: <its words>*, and the monitor's countdown
+(§ 2.1b) said beforehand how much time was left — and warned, where a step
+the run took was longer than that. A lost node takes the
+monitor with it: then, with no scheduler line either, no file says the run
+is over, and it reads `running`.
 
 The **report's `state`** is the monitor's view of one run:
 
@@ -319,7 +367,8 @@ gpu<i>_vram_gb` per GPU sampled.
 |---|---|---|
 | `[MACHINE]` | first | `node= cores= mem_gb= gpu=` — the node the job landed on (`scheduler.md` R12) |
 | `[MONITOR] start` | at start | the interval, the watched PID, and the first reading |
-| `[STATUS]` | when the run advanced (§ 2.1), and once at the end | the summary line (§ 4.1a) |
+| `[STATUS]` | when the run advanced (§ 2.1), and once at the end | the summary line (§ 4.1a), the time left before the job's wall among it (§ 2.1b) |
+| `[WALL]` | once, when the time left falls below the longest step so far; or once, when the wall cannot be counted (§ 2.1b) | the time left, the longest step and how many have finished; or why nothing is counted |
 | `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>` — the record of every event; or why a channel is skipped or not set up |
 | `[MONITOR] job ended` · `[MONITOR] stopped` | the first closing line | why it stopped: SIGTERM or the watched PID gone — the closing record `run_status` reads, then the `finish` event; or a warm retry — not an ending, and no `finish` |
 | `[UTIL-SUMMARY]` | at the end | the CPU mean (min–max) and each GPU's SM mean; for a GPU run, a verdict from the busiest GPU's mean: ≥ 85 % *GPU-bound*, ≤ 60 % *host/CPU-bound*, otherwise *mixed* |
@@ -672,7 +721,7 @@ when — because somebody parses it later with no session to ask:
 | `job` | the monitor | `MB_JOB_ID`, the scheduler's id for the job; absent outside a scheduler |
 | `host` | the monitor | the node's own name |
 | `sent_at` | the monitor | the sender's clock, epoch seconds |
-| `event` | the monitor | `start`, `scf_converged`, `periodic` or `finish` (§ 2) |
+| `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near` or `finish` (§ 2) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
 | `elapsed_s` … `eta_s` | the monitor | the report fields, below |

@@ -182,7 +182,8 @@ def usable(state: Optional[str]) -> bool:
     return state == "finished"
 
 
-def done(folder, names, *, launch=None, products=()) -> Tuple[bool, str]:
+def done(folder, names, *, launch=None, products=(),
+         launched_in=None) -> Tuple[bool, str]:
     """THE DONE-DOOR (`engines/transport.md` § 2a.11): whether the run, or a
     swept run's point, in ``folder`` is DONE -- ``(True, "done")`` -- or what
     it is instead, in the run door's words.  Done is three facts, all read
@@ -191,13 +192,15 @@ def done(folder, names, *, launch=None, products=()) -> Tuple[bool, str]:
     relaxation (the same scan, `runstatus.converged_of`); and it **holds**
     ``products`` -- what the rungs downstream take from it.  ``launch`` is
     the launch record the folder's run was sent with (a point's is its
-    run's)."""
+    run's), and ``launched_in`` the folder it lies in when not ``folder``
+    (a point's run's folder; `run_status`)."""
     from ..parse.dirs import run_status
     from .runstatus import converged_of
     folder = Path(folder)
     if not folder.is_dir():
         return False, "not opened"
-    st = run_status(folder, names.stem, launch=launch)
+    st = run_status(folder, names.stem, launch=launch,
+                    launched_in=launched_in)
     if st.state in ("pending", "queued"):
         # NOTHING RAN HERE YET: queued and pending are the RUN's state, said
         # on its row; a point is done or not done.

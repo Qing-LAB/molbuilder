@@ -47,6 +47,7 @@ The rules, one line each — full statement in § 3:
 | **R13** | two ceilings | hardware (each machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read into the fit |
 | **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a benchmark that exceeds it is told **at prep** |
 | **R15** | a scheduler is a kind | every command, directive, output-file placeholder and job variable a scheduler has is its kind's, in one file (`scheduler/kinds.toml`); the machine's record names the kind and where its commands are there (§ 6a) |
+| **R16** | the scheduler's word on an ending | a job the scheduler ended says so in the scheduler's own words — the line it writes in the job's error file, read by its kind's reader and asked by the run door, on the cluster and wherever the run is copied |
 
 **How you use it:** the decision graph is § 5, the shape § 6, the scheduler
 kinds § 6a,
@@ -452,6 +453,34 @@ at once *by construction*, so it is the one limit a sweep reliably meets.
 > this change. R3 forbids reading an unstated limit as a bar, and it equally
 > forbids reading a never-asked one as permission.
 
+**R16 — How the scheduler ended a job is the scheduler's word, read where
+the run is** *(the user, 2026-10-18: "the parser's status probe/detection/
+investigation may need to be further extended to add a "plugin layer" when
+submission mode is there and it can correctly decode the scheduler's
+message")*. A job the scheduler stops — its wall reached, a cancel — never
+reaches the wrapper's conclusion, and what molbuilder's own instruments say
+of it depends on its signal reaching them: on Sol's job 65999920 (2026-10-18)
+neither the wrapper's trap nor the monitor recorded the SIGTERM at its wall,
+and the run read *running*. What the scheduler did write is one line in the
+job's own error file, the file the header names (§ 6a):
+
+```
+[2026-10-18T01:19:15.046] error: *** JOB 65999920 ON scc006 CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT ***
+```
+
+**Each kind with a queue has a reader of that file for one job** (§ 6a,
+`queue._READERS`): SLURM's finds the line framed `*** JOB <id> ON <node> …
+***` for the job's own id and gives the words inside it as the scheduler
+wrote them — `CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT`. Nothing
+past that frame is assumed: a cancel, a preemption or a node's loss reads in
+the scheduler's own words, and a file holding no such line for the job says
+nothing. **The file lies where the run's launch record says**
+([`job-contracts.md`](?doc=execution/job-contracts.md), the run launch
+record's `scheduler`), so the answer is the same on the cluster and on a
+machine the run was copied to — a run is its directory. The run door asks it
+beside the conclusion marker and the monitor's closing record
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2).
+
 **R11 — Comparability is a property of the MACHINE, never of the domain.**
 Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue
 holding many machines, so *"were these two runs on comparable hardware?"* has
@@ -654,8 +683,8 @@ scheduler/
   kinds.toml  each scheduler kind: its operations, its header's language,
               its output files' placeholder, what it tells a
               running job                                       # § 6a
-  queue.py    a sent job asked after and stopped, each answer read by
-              its kind's reader                                 # § 6a
+  queue.py    a sent job asked after, stopped, and how the scheduler
+              ended it, each answer read by its kind's reader  # § 6a, R16
   kinds.py    kind(name) -> Kind, the one reader of kinds.toml  # § 6a
 ```
 
@@ -693,10 +722,11 @@ kind: the header's own `<name>.sbatch`, and the scheduler's output
 | **the id it answers a send with** | `Submitted batch job (\d+)` | `submit._go` |
 | **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T|%r` — its state, and the scheduler's reason for it · `{cancel} {id}` | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
 | **which cluster answers** | `{cluster} show config` | `scheduler.queue` (a job's address); read by the kind's reader |
+| **how it says it ended a job** | in the job's error file (`stderr`, its placeholder filled with the job's id): `*** JOB <id> ON <node> <its words> ***` (R16) | the run door (`running-a-job.md` § 4.2), through the kind's reader (`queue._READERS`), the file named by the run's launch record |
 | **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={memory}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}{file}` `-e {where}{file}` | `scheduler.emit`, `runwrap.render_sbatch` (prep's header); `Directives.lines_of` (what prep and launch print of it) |
 | **the placeholder its output files are named with** | `%j`, the job's id: the file catalogue names them `{scheduler}.{jobid}.out` and `.err` (`runfiles.SCHEDULER_STDOUT`), one name for every kind — SLURM's `slurm.%j.out` | the header's `stdout`, `stderr` |
 | **the value a launch may restate** | the wall, `-t {wall}` | `commands.LAUNCH_FLAGS` |
-| **what it tells a running job** | molbuilder's name = its variable: `MB_JOB_ID` = `SLURM_JOB_ID`, `MB_NTASKS` = `SLURM_NTASKS`, `MB_CPUS_PER_TASK` = `SLURM_CPUS_PER_TASK`, `MB_CPUS_ON_NODE` = `SLURM_CPUS_ON_NODE`, `MB_JOB_GPUS` = `SLURM_JOB_GPUS`, `MB_JOB_NODELIST` = `SLURM_JOB_NODELIST` | the header, which says each once in molbuilder's name for everything it starts — the run script, a walk, the monitor, the engine; they read only molbuilder's names, so the run script is one file with or without a scheduler (`architecture.md` § 9) |
+| **what it tells a running job** | molbuilder's name = its variable: `MB_JOB_ID` = `SLURM_JOB_ID`, `MB_NTASKS` = `SLURM_NTASKS`, `MB_CPUS_PER_TASK` = `SLURM_CPUS_PER_TASK`, `MB_CPUS_ON_NODE` = `SLURM_CPUS_ON_NODE`, `MB_JOB_GPUS` = `SLURM_JOB_GPUS`, `MB_JOB_NODELIST` = `SLURM_JOB_NODELIST` | the header, which says each once in molbuilder's name for everything it starts — the run script, a walk, the monitor, the engine; they read only molbuilder's names, so the run script is one file with or without a scheduler (`architecture.md` § 9). Beside them the header says, in every kind's job, when the job started (`MB_JOB_STARTED`), which each run's monitor counts the wall down from ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) |
 
 `workstation` is a kind too: no queue, nothing sent, no header, nothing told
 to a run — a run here has no `MB_JOB_ID`. A reader asks the kind what it
@@ -732,7 +762,8 @@ whether it runs inside one of its jobs, the queues and their limits (`sinfo`,
 `scontrol`, `sacctmgr`; `record._DISCOVERY`) — ask mode reading its
 start-time answer (`jobset.ask._ANSWER_READERS`), and the jobs list reading
 whether it still lists a job, in what state and why, and which cluster it
-serves (`queue._READERS`).
+serves, and the run door reading how it ended a job from the job's own error
+file (`queue._READERS`, R16).
 Each parses a tool's output, which no format states. Discovery alone looks a
 command up on PATH, and runs the record's own where it has one (`scontrol`,
 the `cluster` command). Two readers of SLURM's ways stand where this file is

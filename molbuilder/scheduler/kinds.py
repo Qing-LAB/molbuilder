@@ -146,12 +146,14 @@ class Kind:
         return [f"{self.header['prefix']} {w.format(**values)}"
                 for w in words]
 
-    def output_file(self, name: str) -> str:
+    def output_file(self, name: str, job_id: Optional[str] = None) -> str:
         """``name`` -- the file catalogue's name for the scheduler's own
         output (`runfiles.SCHEDULER_STDOUT`), carrying ``{scheduler}`` and
         ``{jobid}`` -- as the header asks the scheduler for it: this kind's
-        name, and the placeholder it fills with the job's id."""
-        return name.format(scheduler=self.name, jobid=self.header["jobid"])
+        name, and the placeholder it fills with the job's id; or, given
+        ``job_id``, the file the scheduler wrote for that job."""
+        return name.format(scheduler=self.name,
+                           jobid=job_id or self.header["jobid"])
 
     def directive_lines_of(self, header_text: str) -> List[str]:
         """A written header's directive lines, as it carries them."""

@@ -170,7 +170,7 @@ that file's own door:
 | a run | **opened, not launched** | its `run-<n>` folder is there, stamped a run, and has no launch record | the folder (`calcdir.json`, `role: run`), no `run.json` | § 5.2 | `paths.attempts_in`, `runrecord.launch_record` (`materialize.resolve_attempt`) |
 | | **queued** | launched, nothing written yet | `run.json`, no output | § 5.3 | `rundir.run_state_of` (`parse.dirs.run_status`) |
 | | **running** | its engine is writing, and it has not concluded | `<base>-run<N>.out` (PySCF: `.pyscf.log`) | § 5.3 | the same |
-| | **finished** / **failed** | it concluded with exit code 0 / with another — or with none that can be told, a marker empty or not reading — or its output says the engine stopped; a stop the marker never saw is the monitor's closing record | `<base>-run<N>.concluded` and its `rc=`; the output's ending; `<base>-run<N>.monitor.log` | § 5.3 | `runrecord.ending`, and the same door |
+| | **finished** / **failed** | it concluded with exit code 0 / with another — or with none that can be told, a marker empty or not reading — or its output says the engine stopped; a stop the marker never saw is the scheduler's own line, else the monitor's closing record | `<base>-run<N>.concluded` and its `rc=`; the output's ending; the scheduler's error file `run.json` names (`scheduler.stderr`); `<base>-run<N>.monitor.log` | § 5.3 | `runrecord.ending`, and the same door |
 | | **unreadable** | its launch record is there and does not read | `run.json` | § 5.3 | `runrecord.launch_record` |
 | | *converged* — its own column, never the state | the engine's own output says so | `<base>-run<N>.out` | § 5.3 | the same scan |
 | a point of a run of points | **done** / **not done** | its run finished, converged, and left what the rungs after it take | its marker, its output, those files | § 5.3, § 5.4 | `continuation.done` |
@@ -2453,7 +2453,9 @@ PENDING (QOSMaxWallDurationPerJobLimit)*, its
 own words, so a job it took and will never start says why
 ([`scheduler.md`](?doc=execution/scheduler.md) R6); one it lists ended is
 said so with its state — *the scheduler lists it ended: FAILED
-(NonZeroExitCode)* — until the scheduler forgets it (its kind's query, run where the calculation's copy of its machine's
+(NonZeroExitCode)* — until the scheduler forgets it, when the run's own
+state says how it ended, the scheduler's word among it (`scheduler.md` R16;
+`running-a-job.md` § 4.2) (its kind's query, run where the calculation's copy of its machine's
 record says the command is, asked on its own cluster — another cluster's job
 is said *sent to cluster C: ask there*, and a record naming no query
 command, a command that does not run here, or a copy that does not read here

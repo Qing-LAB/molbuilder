@@ -309,7 +309,8 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
                  continued_from: Optional[RunRef] = None,
                  launched_at: Optional[str] = None,
                  placed_on: Optional[dict] = None,
-                 retry_of: Optional[int] = None) -> Path:
+                 retry_of: Optional[int] = None,
+                 scheduler: Optional[dict] = None) -> Path:
     """Record run ``run``'s launch where its stage's names put it
     (:func:`launch_record_path`) — ``molbuilder/run-launch@1`` -- through
     `persist`, so it is whole or absent, never half a file
@@ -332,6 +333,12 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
 
     ``retry_of`` is the run a flat run's warm retry retries
     (:func:`record_retry`), ``null`` for a launch (plan W57 decision 6).
+
+    ``scheduler`` is the scheduler the job was sent to and where it writes
+    the job's error file, from the run's own folder -- ``{kind, stderr}``,
+    ``stderr`` null where the job's id was not read -- the file the run
+    door reads for how the scheduler ended the job (`scheduler.md` R16);
+    ``null`` for a run here.
     """
     from datetime import datetime, timezone
     p = launch_record_path(where, names, run)
@@ -346,11 +353,13 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
     # EVERY KEY, EVERY TIME, its null stated (`checkpointing.md` S3,
     # `job-contracts.md` § 6.1): ``continued_from`` null -- it started from
     # the structure; ``placed_on`` null -- a run here, which no queue
-    # placed; ``retry_of`` null -- a launch.
+    # placed; ``retry_of`` null -- a launch; ``scheduler`` null -- a run
+    # here, sent to no scheduler.
     body["continued_from"] = (str(continued_from) if continued_from
                               else None)
     body["placed_on"] = dict(placed_on) if placed_on else None
     body["retry_of"] = retry_of
+    body["scheduler"] = dict(scheduler) if scheduler else None
     return _persist().write_json(p, body)
 
 
@@ -380,7 +389,7 @@ def record_retry(where, names: "_rf.RunNames", retried: int) -> Path:
         command=said["command"], job_id=said["job_id"],
         continued_from=RunRef.named(names.run_name(retried)),
         placed_on=said["placed_on"],
-        retry_of=retried)
+        retry_of=retried, scheduler=said.get("scheduler"))
 
 
 def retried_to(where, names: "_rf.RunNames", run: int) -> int:
@@ -468,6 +477,29 @@ def launch_record(where, names: "_rf.RunNames",
     return body
 
 
+def sent_wall_s(record: Optional[dict]) -> Optional[int]:
+    """The wall a launch record says its job was sent with, in seconds --
+    ``placed_on.time``, in the record's one spelling ``D-HH:MM:SS``
+    (`scheduler.quantities.slurm_time`, which wrote it) -- or ``None``
+    where it states none: a run here, which no queue placed.  A wall that
+    is there and does not read in that spelling is a
+    :class:`LaunchRecordError`, never read as no wall."""
+    placed = (record or {}).get("placed_on") or {}
+    wall = placed.get("time")
+    if wall in (None, ""):
+        return None
+    days, _dash, clock = str(wall).partition("-")
+    parts = clock.split(":")
+    if not _dash or len(parts) != 3 or not all(
+            x.isdigit() for x in [days] + parts):
+        raise LaunchRecordError(
+            f"the launch record's wall, {wall!r}, is not D-HH:MM:SS -- the "
+            f"spelling its writer uses -- so the time the job has left "
+            f"cannot be counted from it.")
+    h, m, s = (int(x) for x in parts)
+    return int(days) * 86400 + h * 3600 + m * 60 + s
+
+
 def retried_main(argv) -> int:
     """``retried --label L --stage S [--shared] --run N [--dir D]`` -- the
     command line of :func:`record_retry`, which the run script asks through
@@ -545,4 +577,4 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "newest_run", "last_run", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_to", "retried_main", "launch_record", "sent_wall_s", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

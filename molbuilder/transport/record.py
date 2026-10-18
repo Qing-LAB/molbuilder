@@ -667,7 +667,8 @@ def _rung_points(base: Path, task, name: str, token: str,
         entry["attempt"] = str(where.relative_to(base))
         try:
             st = run_status(where, names.stem,
-                            launch=launch_record(run, names))
+                            launch=launch_record(run, names),
+                            launched_in=run)
             entry.update(state=st.state, detail=st.detail)
         except LaunchRecordError as exc:
             entry.update(state="unreadable", detail=str(exc))
@@ -785,7 +786,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             failed.append({**at, "attempt": rel,
                            "state": "unreadable", "why": str(exc)})
             continue
-        st = run_status(where, names.stem, launch=launch)
+        st = run_status(where, names.stem, launch=launch, launched_in=run)
         if st.state != "finished":
             entry = {**at, "attempt": rel, "state": st.state,
                      "why": st.detail}

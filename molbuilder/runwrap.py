@@ -4359,6 +4359,7 @@ def render_sbatch(names, *, scheduler,
         exclusive = bool(exclusive)
     else:
         exclusive = False  # CPU jobs never request a whole node here
+    from .monitor import JOB_STARTED_VAR
     from .runfiles import SCHEDULER_STDERR, SCHEDULER_STDOUT
     from .scheduler.kinds import kind as _kind_named
     kind = _kind_named(scheduler.kind)
@@ -4418,6 +4419,13 @@ def render_sbatch(names, *, scheduler,
         # kind's own file, so the run script is one file on every machine
         # (`architecture.md` § 9).
         + "".join(f"{ln}\n" for ln in kind.job_lines())
+        + "\n"
+        # WHEN THE JOB STARTED, said once for everything it runs: each run's
+        # monitor counts the job's wall down from it -- a walk's later
+        # member and a warm retry too (`run-reports.md` § 2.1b).
+        "# When this job started, for everything it runs: each run's monitor\n"
+        "# counts the job's wall down from it (run-reports.md 2.1b).\n"
+        f'export {JOB_STARTED_VAR}="$(date +%s)"\n'
         + "\n"
         "# The scheduler lands us in the folder it was sent from;\n"
         "# the launcher never cd's (running-a-job.md § 5).  The launcher's\n"

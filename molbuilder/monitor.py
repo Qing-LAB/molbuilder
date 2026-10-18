@@ -193,6 +193,11 @@ class JobStatus:
     #: that relaxes nothing.
     relaxed: Optional[bool] = None
     exit: Optional[str] = None
+    #: A job sent with a wall: the wall, and the time it has left, counted
+    #: from the job's start (`run-reports.md` § 2.1b); ``None`` for a run
+    #: whose record states no wall -- a run here.
+    wall_s: Optional[float] = None
+    wall_left_s: Optional[float] = None
 
     def as_text(self) -> str:
         """The summary line every channel shows: the state, then where the
@@ -239,6 +244,10 @@ class JobStatus:
                         else "geometry did not converge within its moves")
         if self.exit:
             bits.append(f"exit {self.exit.split(' at ')[0]}")
+        if self.wall_s is not None and self.wall_left_s is not None:
+            bits.append(f"wall {_fields.span_words(self.wall_s)}: "
+                        f"{_fields.span_words(max(0.0, self.wall_left_s))} "
+                        f"left")
         bits.append(f"elapsed {_fields.span_words(self.elapsed_s)}")
         return " | ".join(bits)
 
@@ -426,6 +435,13 @@ class WatchedRun:
         st.tbtrans = state.get("tbtrans")
         st.done_pct = state.get("done_pct")
         st.eta_s = state.get("eta_s")
+
+    def launch(self) -> Optional[Dict[str, Any]]:
+        """This run's launch record (`runrecord.launch_record`) -- ``None``
+        while it is not written: the sender writes it as the scheduler
+        answers, and a job can start first.  One that does not read is
+        :class:`LaunchRecordError`."""
+        return _rr.launch_record(self.directory, self.names, self.run)
 
     def conclude(self, st: JobStatus) -> JobStatus:
         """How the run ended, as the Results tab reads it: `run_status` over
@@ -1071,7 +1087,8 @@ def _util_csv_row(s: UtilSample, ngpu: int) -> str:
 # --------------------------------------------------------------------- #
 
 # A notifier is ``fn(status, event)`` where ``event`` is one of
-# "start" | "scf_converged" | "periodic" | "finish" (`run-reports.md` § 2).
+# "start" | "scf_converged" | "periodic" | "wall_near" | "finish"
+# (`run-reports.md` § 2).
 # Register as many as you like; they are
 # called in registration order and individually guarded (one failing
 # hook never breaks the loop or the other hooks).
@@ -1839,6 +1856,12 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
     return (curr.geom_step or 0) > (prev.geom_step or 0)
 
 
+#: The variable a job's header sets once, when the job starts, for
+#: everything it runs (`runwrap.render_sbatch`): the epoch second each run's
+#: monitor counts the job's wall down from (`run-reports.md` § 2.1b).
+JOB_STARTED_VAR = "MB_JOB_STARTED"
+
+
 def run_monitor(watched: "WatchedRun", *,
                 interval: float = 10.0,
                 watch_pid: int = 0,
@@ -1851,6 +1874,7 @@ def run_monitor(watched: "WatchedRun", *,
                 util_keepalive_s: float = 300.0,
                 sampler: Optional[Callable[[], "UtilSample"]] = None,
                 notify: "NotifyPolicy" = NotifyPolicy(),
+                job_started: Optional[float] = None,
                 sleep: Callable[[float], None] = time.sleep,
                 clock: Callable[[], float] = time.time) -> JobStatus:
     """Periodically read + log + notify until the watched job ends.
@@ -1865,6 +1889,11 @@ def run_monitor(watched: "WatchedRun", *,
     Returns the final :class:`JobStatus`.  ``max_ticks`` bounds the loop
     (tests pass a small value); ``sleep``/``clock`` are injectable for
     deterministic testing.
+
+    ``job_started`` is when the job began -- its header's
+    :data:`JOB_STARTED_VAR` -- from which a job sent with a wall counts
+    down (`run-reports.md` § 2.1b): for every run in it, a walk's later
+    member and a warm retry too.
 
     **How often it LOOKS and how often it TELLS you are different numbers.**
     It wakes every ``interval`` seconds and writes a ``[STATUS]`` line
@@ -1907,6 +1936,41 @@ def run_monitor(watched: "WatchedRun", *,
     last_notify = start
     notify_period_s = max(0.0, notify.every_hours) * 3600.0
 
+    # THE TIME THE JOB HAS LEFT (`run-reports.md` § 2.1b): its wall, from
+    # the run's launch record, read on each wake until it is there -- the
+    # sender writes it as the scheduler answers, and a job can start first
+    # -- counted from the job's start.  Warned of once, when it falls below
+    # the longest step the run has taken.
+    wall: Optional[float] = None
+    wall_settled = False
+    step_began = start
+    longest_s: Optional[float] = None
+    steps_timed = 0
+    wall_warned = False
+
+    def _count_down(st: JobStatus, now: float) -> None:
+        nonlocal wall, wall_settled
+        if not wall_settled:
+            try:
+                record = watched.launch()
+                if record is not None:
+                    wall_settled = True
+                    wall = _rr.sent_wall_s(record)
+            except _rr.LaunchRecordError as exc:
+                wall_settled = True
+                _append(log, f"[{_iso(now)}] [WALL] not counted: {exc}")
+            else:
+                if wall is not None:
+                    if job_started is None:
+                        _append(log, f"[{_iso(now)}] [WALL] not counted: "
+                                     f"the job's header states no start "
+                                     f"({JOB_STARTED_VAR}) -- it was "
+                                     f"written before it did")
+                        wall = None
+        if wall is not None:
+            st.wall_s = wall
+            st.wall_left_s = wall - (now - job_started)
+
     # --- utilization sampling setup (same loop, separate change-gated
     # output file; `run-reports.md` § 2.1).  ``sampler`` is injectable for
     # tests. ---
@@ -1948,6 +2012,7 @@ def run_monitor(watched: "WatchedRun", *,
             util_prev = s
             util_last_log = now
 
+    _count_down(st0, start)
     prev = st0
     ticks = 0
     while True:
@@ -1962,6 +2027,7 @@ def run_monitor(watched: "WatchedRun", *,
         if alive:
             _util_tick(now)
         st = watched.read(start, now)
+        _count_down(st, now)
 
         if not alive:
             # WHY IT STOPPED comes first: the closing record is evidence
@@ -2001,6 +2067,25 @@ def run_monitor(watched: "WatchedRun", *,
         if (_progressed(st, prev) or st.energy != prev.energy
                 or st.state != prev.state):
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
+
+        # A STEP'S LENGTH, from one step finishing to the next (§ 2.2), and
+        # the one warning: the step underway may not finish before the wall.
+        if (st.steps_done is not None
+                and st.steps_done > (prev.steps_done or 0)):
+            took = now - step_began
+            longest_s = took if longest_s is None else max(longest_s, took)
+            step_began, steps_timed = now, st.steps_done
+        if (not wall_warned and st.wall_left_s is not None
+                and longest_s is not None and st.wall_left_s < longest_s):
+            wall_warned = True
+            steps = ("the one step so far" if steps_timed == 1 else
+                     f"the longest of {steps_timed} steps so far")
+            _append(log, f"[{_iso(now)}] [WALL] "
+                         f"{_fields.span_words(max(0.0, st.wall_left_s))} "
+                         f"left; {steps} took "
+                         f"{_fields.span_words(longest_s)} -- the step "
+                         f"underway may not finish before the wall")
+            _fire(st, "wall_near")
 
         # --- the two settable triggers (`run-reports.md` § 2) ------------
         #
@@ -2288,7 +2373,9 @@ def main(argv=None) -> int:
     except (OSError, AttributeError):
         pass
     register_notifier(make_log_notifier(watched.path(".monitor.log")))
+    started = os.environ.get(JOB_STARTED_VAR, "")
     run_monitor(watched,
+                job_started=float(started) if started.isdigit() else None,
                 interval=a.interval, watch_pid=a.watch_pid,
                 sleep=_sleep_until_stopped,
                 util=a.util, cores=a.cores, gpu=a.gpu,
@@ -2302,6 +2389,7 @@ def main(argv=None) -> int:
 
 
 __all__ = [
+    "JOB_STARTED_VAR",
     "JobStatus",
     "WatchedRun",
     "LIVE_READERS",

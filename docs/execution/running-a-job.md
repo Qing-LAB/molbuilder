@@ -667,13 +667,17 @@ flowchart TD
     E -->|"its end, or none"| C{"did the run end on its own?"}
     C -->|"exit code 0"| FIN["finished"]
     C -->|"another exit code"| FAIL
-    C -->|"not yet"| G{"its monitor's closing record?"}
+    C -->|"not yet"| K{"did its scheduler end it?"}
+    K -->|"its line, for this job"| FAIL
+    K -->|"none"| G{"its monitor's closing record?"}
     G -->|"job ended"| FAIL
     G -->|"none"| RUN["running"]
     S -->|"no"| C2{"did the run end on its own?"}
     C2 -->|"exit code 0"| FIN
     C2 -->|"another exit code"| FAIL
-    C2 -->|"not yet"| G2{"its monitor's closing record?"}
+    C2 -->|"not yet"| K2{"did its scheduler end it?"}
+    K2 -->|"its line, for this job"| FAIL
+    K2 -->|"none"| G2{"its monitor's closing record?"}
     G2 -->|"job ended"| FAIL
     G2 -->|"none"| L{"the launch record"}
     L -->|"no run.json"| PEN["pending"]
@@ -699,14 +703,31 @@ answers: SIESTA's own `0_NORMAL_EXIT` says the engine ended, not the job
 failed, one that ended with any other** — or whose output states a stop.
 **An output that states its end is not a run that ended**: the job may still
 be on its way out — a finish deriving its result, the wrapper's last lines —
-so it reads `running` until it concludes, and `failed` once the monitor's
-closing record says the process went without concluding. The monitor's
-closing record — `[MONITOR] job ended` in the latest run's
-`-runN.monitor.log` ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5)
-— speaks wherever the conclusion is silent: the process went, and nothing
+so it reads `running` until it concludes, and `failed` once its scheduler's
+own line says it ended the job, or the monitor's closing record says the
+process went without concluding. The monitor's closing record —
+`[MONITOR] job ended` in the latest run's `-runN.monitor.log`
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.5) — speaks wherever
+the conclusion and the scheduler are silent: the process went, and nothing
 recorded an exit. *(Until 2026-10-03 the output's end decided first: a run
 whose output ended read `finished` with no conclusion, and beside an exit code
 of 1, while every hand-over refused it — plan W38 F3.)*
+
+**Whether its scheduler ended it is the scheduler's own word**
+([`scheduler.md`](?doc=execution/scheduler.md) R16): for a job sent to a
+queue that has not ended on its own, the line its scheduler writes in the
+job's error file when it stops it — the file the run's launch record names
+(`scheduler.stderr`), read by its kind's reader — reads `failed`, *stopped by
+the scheduler: CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT
+(slurm.65999920.err)*, the scheduler's words and its file. It is asked before
+the monitor's closing record because it does not depend on a signal reaching
+anything: on Sol's job 65999920 neither the wrapper's trap nor the monitor
+recorded the SIGTERM at its wall, and only the scheduler's line said the job
+was over. A run here, or a record that names no scheduler file, is not asked.
+A run of points' point asks it with its run's one record, from the run's
+folder, where the record lies and the file it names is named from — so a
+sweep the scheduler stopped reads `failed` at every point not done, the
+ones the walk never reached too.
 
 **A job with a finish is not done when its engine is**
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5): a SIESTA
@@ -716,8 +737,8 @@ the job's own evidence decides: a marker naming a failed finish reads
 `failed`; with no marker yet, the run's session log saying the finish began
 (`finish started:`, `wrapper_log.FINISH_STARTED`) reads `running` — *the
 engine ended; the job's finish is deriving the result* — and `failed` once the
-monitor's closing record says the process went: a walltime or a kill inside
-the finish, which leaves no marker. A marker `rc=0` is a finished job.
+scheduler's line or the monitor's closing record says the job went: a
+walltime or a kill inside the finish, which leaves no marker. A marker `rc=0` is a finished job.
 
 **Convergence never decides the state** (P-S2): an unconverged SCF is a fact
 beside it, in `endings`. A run SIESTA *stopped* because its SCF had to converge
@@ -731,25 +752,27 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | `queued` | queued as job N · launched (direct), no output yet |
 | `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
+| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
 a file with no ending is `running` — not finished — however long it has been
 quiet *(user, 2026-09-26: "It shows what it is")*. A forced stop writes no
-marker; the monitor, which saw its PID go, writes its closing record first,
-and that record reads *failed — stopped before its end: no ending in its output
-and no exit recorded* here and in its own `finish`
-([`run-reports.md`](?doc=execution/run-reports.md) § 2.4). A lost node takes
-the monitor with it, and the run reads `running`. Launching it again is yours
+marker; what says it is over is the scheduler's own line, where it wrote one
+(R16 there), else the monitor's closing record, written when the monitor saw
+its PID go or got its signal — *failed — stopped before its end: no ending in
+its output and no exit recorded*, here and in its own `finish`
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.4). A stop neither
+records — a lost node, a kill no signal announced — reads `running`. Launching it again is yours
 to decide: `launch task` does it as asked, warm or `--cold`, however the last
 run ended ([`job-system.md`](?doc=execution/job-system.md), *What molbuilder
 does for you*, 3).
 
 **Before the first output**, a direct launch reads `queued` (its `run.json` is
-written as the process starts). One killed before writing anything reads
-`failed` by its monitor's closing record, or `queued` when nothing outlived
-it; an engine that merely died still reaches the wrapper's marker and reads
+written as the process starts). One stopped before writing anything reads
+`failed` by its scheduler's line or its monitor's closing record — a walk's
+member the job never reached too, its job's line naming it — or `queued`
+when nothing says so; an engine that merely died still reaches the wrapper's marker and reads
 `failed`; a job that cannot run its finish stops before its engine and says
 so in its marker (`finish cannot load`), which reads `failed`; a flat stage
 reads `queued` the same way, from its own `<basename>-run<N>.run.json`.
@@ -760,9 +783,9 @@ stateDiagram-v2
     [*] --> pending: prepared
     pending --> queued: run.json written
     queued --> running: first output
-    queued --> failed: nonzero marker or the monitor's closing record, no output
+    queued --> failed: nonzero marker, the scheduler's line or the monitor's closing record, no output
     running --> finished: an end (with a finish, its marker rc 0), else marker rc 0
-    running --> failed: a stop, a failed finish, else nonzero marker, else the monitor's closing record
+    running --> failed: a stop, a failed finish, else nonzero marker, else the scheduler's line, else the monitor's closing record
     note right of running: no clock moves a run out of here
 ```
 
@@ -794,7 +817,8 @@ run goes:
 | `bdt_01_coarse-run0.out`, no `>> End of run`, quiet for 40 minutes | `running` — running |
 | the `.out` ends `>> End of run`; `-run0.concluded` reads `rc=0 at …` | `finished` — job_completed |
 | the `.out` stopped on `SCF_NOT_CONV … (required)`; the warm retry's `-run1.out` is printing | `running` — `-run1.out` speaks: same stage, newer |
-| killed at walltime: no ending in the `.out`, no `.concluded` | `failed` — stopped before its end: no ending in its output and no exit recorded (the monitor's closing record); launching it again, warm or `--cold`, is yours |
+| killed at its wall: no ending in the `.out`, no `.concluded`; SLURM's `*** JOB 65999920 ON scc006 CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT ***` in `slurm.65999920.err`, which `run.json`'s `scheduler.stderr` names | `failed` — stopped by the scheduler: CANCELLED AT 2026-10-18T01:19:15 DUE TO TIME LIMIT (slurm.65999920.err); launching it again, warm or `--cold`, is yours |
+| stopped with no scheduler line, its monitor's closing record there | `failed` — stopped before its end: no ending in its output and no exit recorded |
 | no `.out` (SIESTA died before its first line); `-run0.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
 | `-run0.concluded` is there and does not read (unreadable, or not text) | `failed` — the run concluded, the wrapper wrote it, with an exit code no one can tell: `rc=? (… does not read: …)`, as an empty marker's `rc=?` (`runrecord.ending`) |
 

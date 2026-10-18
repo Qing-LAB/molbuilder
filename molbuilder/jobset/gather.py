@@ -109,10 +109,12 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             not_done = [f"{pt.words()} ({why})"
                         for p_, pt in _pts
                         for ok, why in [done(p_, _names, launch=_launch,
-                                             products=_prod)]
+                                             products=_prod,
+                                             launched_in=newest)]
                         if not ok]
             if not_done and _launch is not None and any(
-                    run_status(p_, _names.stem, launch=_launch).state
+                    run_status(p_, _names.stem, launch=_launch,
+                               launched_in=newest).state
                     in LIVE_STATES for p_, _pt in _pts):
                 # STILL QUEUED OR RUNNING: let it finish, as every run a
                 # stage builds on (`job-system.md` § 5.4).

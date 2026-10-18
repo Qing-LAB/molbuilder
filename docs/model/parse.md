@@ -381,7 +381,7 @@ first import, not a status poll of a running job.
 | `ended` | `finished` · job completed | `finished` |
 | `stopped` | `failed` · stopped before its end | `failed` |
 | `out_of_memory` | `failed` · out of memory | `failed` |
-| `running`, `unknown` | `finished` or `failed` by the `.concluded` code; without one, `failed` · stopped before its end, no exit recorded, when the monitor's closing record says its process went; else `running` | the directory's answer, asked after it writes that record |
+| `running`, `unknown` | `finished` or `failed` by the `.concluded` code; without one, `failed` · stopped by the scheduler: *its words*, when its scheduler's line in the job's error file says it ended the job (`execution/scheduler.md` R16), else `failed` · stopped before its end, no exit recorded, when the monitor's closing record says its process went; else `running` | the directory's answer, asked after it writes that record |
 | — no output yet | `pending` (no `run.json`) · `queued` (launched, silent) | — |
 
 While the PID lives the monitor says `running` (`execution/run-reports.md` § 2.3).

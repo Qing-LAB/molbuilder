@@ -1001,7 +1001,7 @@ What a run holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
 | concluded | + `-run0.concluded` | `finished` with exit code 0, `failed` with any other — the one door's answer (`runrecord.ending`, [`architecture.md`](?doc=execution/architecture.md) § 3.2) — or when its output states a stop. A marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
-| force-stopped | as *running*; no marker comes — the monitor's closing record `[MONITOR] job ended`, when the monitor outlived the stop | `failed` by that record — also when the stop landed after the engine's output ended, inside a job's finish or the wrapper's last lines; `running` when nothing outlived the stop (a lost node): no file then tells it from a live run |
+| force-stopped | as *running*; no marker comes — the scheduler's own line in the job's error file (`slurm.<id>.err`, which `run.json`'s `scheduler.stderr` names), and the monitor's closing record `[MONITOR] job ended` when the monitor outlived the stop | `failed` by the scheduler's line, else by the monitor's record — also when the stop landed after the engine's output ended, inside a job's finish or the wrapper's last lines; `running` when neither says it (a lost node, no scheduler line): no file then tells it from a live run |
 
 #### 1.6.4 What reads them
 
@@ -1009,8 +1009,8 @@ What a run holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 `run_status` builds its state on the marker, through the one door that says
 whether a run ended on its own (`runrecord.ending`) — an output that states a
 stop fails it whatever followed, and one that states its end is `running`
-until the job concludes — and reads the monitor's closing record where the
-marker is silent
+until the job concludes — and reads the scheduler's line, then the monitor's
+closing record, where the marker is silent
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); the run record
 reads them as its launch and its exit
 ([`model/parse.md`](?doc=model/parse.md) § 5d.2). And **`launch task`, launching

@@ -19,7 +19,9 @@ in the file:
 * **whether it was launched**, before anything is written -- the
   attempt's launch record answers (``launch``);
 * **whether its process went without a word** -- a forced stop, which the
-  monitor's closing record tells (:func:`_monitor_ended`);
+  scheduler's own line in the job's error file tells
+  (:func:`_scheduler_ended`), else the monitor's closing record
+  (:func:`_monitor_ended`);
 * **whether the job is still deriving its result after its engine ended**
   -- a job with a finish (`engines/vibration.md` § 5.5), whose run's
   session log says the finish began (:func:`_finish_started`).
@@ -155,6 +157,31 @@ def _monitor_ended(run_dir: Path, basename: str,
         except OSError:
             continue
     return False
+
+
+def _scheduler_ended(launched_in: Path, launch: Any) -> Optional[str]:
+    """How the scheduler says it ended the job -- *stopped by the scheduler:
+    <its words> (<its file>)* -- read from the job's error file the launch
+    record names, from ``launched_in``, the folder the record lies in
+    (`scheduler.md` R16), by its kind's reader; ``None`` where
+    it wrote no such line, or the record names no file: a run here, a record
+    written before it named one, a job whose id was not read.
+
+    Asked only by a caller holding the launch record -- molbuilder's
+    readers of a run, never the monitor beside a job, which carries no
+    scheduler (`scheduler/__init__`) and passes none.
+    """
+    if not isinstance(launch, dict):
+        return None
+    sent = launch.get("scheduler") or {}
+    kind, stderr, jid = sent.get("kind"), sent.get("stderr"), \
+        launch.get("job_id")
+    if not (kind and stderr and jid):
+        return None
+    from ...scheduler.queue import ended
+    words = ended(kind, launched_in / stderr, str(jid))
+    return (f"stopped by the scheduler: {words} ({stderr})"
+            if words else None)
 
 
 def _finish_failed(concluded: Optional[str]) -> bool:
@@ -303,7 +330,8 @@ _UNASKED = object()
 
 def run_status(run_dir, basename: str, *,
                launch: Any = _UNASKED,
-               run: Optional[int] = None) -> "RunStatus":
+               run: Optional[int] = None,
+               launched_in=None) -> "RunStatus":
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
 
@@ -312,6 +340,10 @@ def run_status(run_dir, basename: str, *,
     launched.  It is what tells *never launched* from *launched, nothing
     written yet* before any output exists (`project-layout.md` § 1.6) --
     ``pending`` and ``queued`` -- and a caller that holds it passes it.
+    ``launched_in`` is the folder that record lies in, where it is not
+    ``run_dir``: a run of points' one record, in the run's folder, answers
+    for each point in it, and the scheduler's file it names is named from
+    there (`scheduler.md` R16).
 
     **The state is built on two doors, each asked once**: how the run's
     PROCESS ended -- `runrecord.ending`, did it end on its own and with what
@@ -353,6 +385,9 @@ def run_status(run_dir, basename: str, *,
         states,
         _rr.ending(run_dir, basename, run),
         launch=launch,
+        scheduler_ended=lambda: _scheduler_ended(
+            Path(launched_in) if launched_in is not None else run_dir,
+            launch),
         monitor_ended=lambda: _monitor_ended(run_dir, basename, run),
         out_messages=messages,
         finish_started=lambda p: _finish_started(run_dir, p, basename),
@@ -372,6 +407,7 @@ def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str],
                   end: "Optional[_rr.Ending]" = None,
                   launch: Any = _UNASKED,
+                  scheduler_ended: Callable[[], Optional[str]] = lambda: None,
                   monitor_ended: Callable[[], bool] = lambda: False,
                   out_messages: Optional[Dict[str, Optional[str]]] = None,
                   finish_started: Callable[[Path], bool] = lambda _p: False,
@@ -391,8 +427,10 @@ def _build_status(out_paths: List[Path],
     the job may still be on its way out -- a finish deriving its result
     after the engine (`engines/vibration.md` § 5.5), the wrapper's own last
     lines -- so it is ``running`` until it concludes, and ``failed`` once
-    the monitor's closing record says the process went without concluding
-    (``monitor_ended``, asked only then).  Where nothing says anything the run is ``running`` -- not
+    the scheduler's own line says it ended the job (``scheduler_ended``,
+    `scheduler.md` R16) or the monitor's closing record says the process
+    went without concluding (``monitor_ended``) -- each asked only then,
+    the scheduler's first.  Where nothing says anything the run is ``running`` -- not
     finished -- however long it has been quiet (`running-a-job.md` § 4.2).
 
     ``out_paths`` are the files that may SPEAK, the run's newest run index
@@ -409,6 +447,9 @@ def _build_status(out_paths: List[Path],
                 detail=(f"concluded ({said})" if end.ok
                         else f"concluded ({said}) before any output"),
                 concluded=said)
+        stopped = scheduler_ended()
+        if stopped is not None:
+            return RunStatus(state="failed", detail=stopped)
         if monitor_ended():
             return RunStatus(
                 state="failed",
@@ -462,38 +503,48 @@ def _build_status(out_paths: List[Path],
             state, detail = "failed", (
                 f"the engine's output ended, but the job exited with an "
                 f"error ({said})" if ended else f"concluded ({said})")
-    elif ended and finish_started(active):
-        # THE ENGINE ENDED AND THE JOB'S FINISH BEGAN, and the wrapper has
-        # not concluded: the finish is deriving the result now -- or the job
-        # was stopped inside it (a walltime, a kill), which leaves no marker
-        # and whose monitor saw the process go.  Neither is finished: a
-        # force-constant run without its spectrum has not finished.
-        if monitor_ended():
-            state = "failed"
-            detail = ("the engine ended and the job's finish began, but the "
-                      "job stopped before it concluded -- no result was "
-                      "derived; the session log says how far it got")
-        else:
-            state = "running"
-            detail = ("the engine ended; the job's finish is deriving the "
-                      "result")
-    elif ended:
-        # THE ENGINE ENDED AND THE JOB HAS NOT CONCLUDED: on its way out --
-        # or stopped there, which its monitor saw.  Not finished either way:
-        # nothing builds on a run that did not end on its own.
-        if monitor_ended():
-            state = "failed"
-            detail = ("the engine's output ended, but the job stopped before "
-                      "it concluded -- no exit recorded")
-        else:
-            state = "running"
-            detail = "the engine's output ended; the job has not concluded"
-    elif monitor_ended():
-        # Content and the conclusion are silent, and the monitor saw the
-        # process go: a forced stop (`_monitor_ended`).
-        state, detail = "failed", _STOPPED_UNRECORDED
     else:
-        state, detail = "running", "running"
+        # NOT ENDED ON ITS OWN: the scheduler's own line first -- it does not
+        # depend on a signal reaching anything (`scheduler.md` R16) -- then
+        # the monitor's closing record.
+        stopped = scheduler_ended()
+        if stopped is not None:
+            state, detail = "failed", stopped
+        elif ended and finish_started(active):
+            # THE ENGINE ENDED AND THE JOB'S FINISH BEGAN, and the wrapper
+            # has not concluded: the finish is deriving the result now -- or
+            # the job was stopped inside it (a walltime, a kill), which
+            # leaves no marker and whose monitor saw the process go.
+            # Neither is finished: a force-constant run without its spectrum
+            # has not finished.
+            if monitor_ended():
+                state = "failed"
+                detail = ("the engine ended and the job's finish began, but "
+                          "the job stopped before it concluded -- no result "
+                          "was derived; the session log says how far it got")
+            else:
+                state = "running"
+                detail = ("the engine ended; the job's finish is deriving "
+                          "the result")
+        elif ended:
+            # THE ENGINE ENDED AND THE JOB HAS NOT CONCLUDED: on its way out
+            # -- or stopped there, which its monitor saw.  Not finished
+            # either way: nothing builds on a run that did not end on its
+            # own.
+            if monitor_ended():
+                state = "failed"
+                detail = ("the engine's output ended, but the job stopped "
+                          "before it concluded -- no exit recorded")
+            else:
+                state = "running"
+                detail = ("the engine's output ended; the job has not "
+                          "concluded")
+        elif monitor_ended():
+            # Content and the conclusion are silent, and the monitor saw the
+            # process go: a forced stop (`_monitor_ended`).
+            state, detail = "failed", _STOPPED_UNRECORDED
+        else:
+            state, detail = "running", "running"
 
     return RunStatus(state=state, detail=detail,
                      last_change_at=_iso_z(active.stat().st_mtime),

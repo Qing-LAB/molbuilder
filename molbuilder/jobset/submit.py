@@ -299,7 +299,7 @@ def _no_sbatch(what: str, name: str, *, base, told, machine,
 def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
                     time_s: Optional[int], job_name: str, script: str,
                     run_args: Sequence[str], machine
-                    ) -> Tuple[Resources, object, List[str]]:
+                    ) -> Tuple[Resources, object, List[str], Optional[str]]:
     """THE ONE LINE, for every door that hands work to the scheduler -- a
     stage, a group, a grouped bench's shelf, a run of points
     (`job-system.md` § 6.1): the header prep wrote -- for a walk, the one
@@ -312,10 +312,12 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     machine's record -- from where its commands are there
     (`kinds.Kind.line`, `scheduler.md` § 6a).
 
-    Returns ``(envelope, placement, command)``: the request as sent -- its
-    wall the one restated -- which ``run.json`` records beside the queue
-    (:func:`_placed_on`), the placement prep recorded, and the exact
-    line.
+    Returns ``(envelope, placement, command, outputs_in)``: the request as
+    sent -- its wall the one restated -- which ``run.json`` records beside
+    the queue (:func:`_placed_on`), the placement prep recorded, the exact
+    line, and the folder, from where the line runs, the scheduler writes
+    the job's own output files in: the header's own, as it asks
+    (`runwrap.render_sbatch`'s ``where``) -- ``None`` with no queue.
 
     ``run_args`` are the run script's arguments (`_run_sh_args`: ``--run
     N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
@@ -333,7 +335,7 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     # there is no scheduler (:func:`_ask`); sent, its missing header is
     # refused first (:func:`_needs_header`).
     if not kind.queue:
-        return envelope, placement, []
+        return envelope, placement, [], None
     restated = (kind.restated(row.says, getattr(envelope, row.restates))
                 if time_s is not None else [])
     # The launch-door claim, EXPLICIT on the line: environment inheritance
@@ -343,7 +345,7 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     cmd = kind.line(machine.scheduler.commands(), job=job_name,
                     restated=restated, launched_by="jobset-launch",
                     header=script, args=run_args)
-    return envelope, placement, cmd
+    return envelope, placement, cmd, os.path.dirname(script)
 
 
 def _ask(name: str, cmd: List[str], cwd: Path, *, kind,
@@ -614,6 +616,27 @@ class Submission:
     #: The calculation's copy of its machine's record, whose scheduler kind
     #: spelled the line (:func:`_machine_of`) -- ``None`` for a run here.
     machine: Optional[object] = None
+    #: The folder, from ``cwd``, the scheduler writes the job's own output
+    #: files in -- the header's own (:func:`_sbatch_request`): ``""``, the
+    #: run's folder, or a walk's ``launch/`` -- ``None`` for a run here.
+    outputs_in: Optional[str] = None
+
+    def scheduler_said(self, job_id: Optional[str],
+                       run_dir: Path) -> Dict[str, Optional[str]]:
+        """What a member's launch record says of the scheduler the job was
+        sent to (`runrecord.write_launch`'s ``scheduler``): its kind, and
+        where it writes the job's error file from the member's own folder
+        ``run_dir`` -- the file the run door reads for how it ended the job
+        (`scheduler.md` R16); the file unnamed when the job's id was not
+        read."""
+        from ..runfiles import SCHEDULER_STDERR
+        kind = self.machine.kind
+        stderr = None
+        if job_id is not None and self.outputs_in is not None:
+            err = (Path(self.cwd) / self.outputs_in
+                   / kind.output_file(SCHEDULER_STDERR, job_id=job_id))
+            stderr = os.path.relpath(err, run_dir)
+        return {"kind": kind.name, "stderr": stderr}
 
     @property
     def domain(self) -> Optional[str]:
@@ -1866,7 +1889,8 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
         # so a record in the container would leave every grouped trial
         # reading *never launched*.
         _record_launch(m, mode="submit", command=s.command, job_id=jid,
-                       placement=s.placement, sent=s.sent)
+                       placement=s.placement, sent=s.sent,
+                       scheduler=s.scheduler_said(jid, m.run_dir))
     kept = {}
     unkept = None
     if jid is not None:
@@ -2264,7 +2288,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         log=f"{LAUNCH_DIR}/{names.name('.log')}", bound_s=trial_timeout_s)
     # THE ONE LINE (`_sbatch_request`): the shelf's header as prep wrote it
     # -- nothing chosen here.
-    sent, placement, cmd = _sbatch_request(
+    sent, placement, cmd, outputs_in = _sbatch_request(
         envelope=request, placement=_placed_by_prep(members),
         time_s=time_s, job_name=_scheduler_job_name(jobset, name),
         script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=(),
@@ -2281,7 +2305,8 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     return Submission(
         name, cmd, container, False, pending,
         placement=placement, sent=sent, rides="rides the group",
-        header=header, refusal_hint=hint, machine=machine)
+        header=header, refusal_hint=hint, machine=machine,
+        outputs_in=outputs_in)
 
 
 def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
@@ -2332,7 +2357,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     for pdir, pt in m.points:
         if prev is not None and not m.cold:
             src = prev / pt.rel
-            ok, _why = done(src, names, launch=prev_launch, products=products)
+            ok, _why = done(src, names, launch=prev_launch, products=products,
+                            launched_in=prev)
             if ok:
                 taken.append((pdir, pt, src))
                 continue
@@ -2435,7 +2461,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
                 told=told, machine=machine,
                 redo=_redo(base, task, jobset, job)))
         plan.reads.append(_as_found(header, base))
-    sent, placement, cmd = _sbatch_request(
+    sent, placement, cmd, outputs_in = _sbatch_request(
         envelope=_walk_envelope([job] * len(m.points)),
         placement=_placed_by_prep([job]), time_s=time_s,
         job_name=_scheduler_job_name(jobset, gn.stem),
@@ -2443,7 +2469,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
         machine=machine)
     plan.submissions.append(Submission(
         gn.stem, cmd, stage_dir, False, [member], placement=placement,
-        sent=sent, rides="rides the sweep", header=header, machine=machine))
+        sent=sent, rides="rides the sweep", header=header, machine=machine,
+        outputs_in=outputs_in))
 
 
 def _gathered_now(base: Path, task, stage: str, template_text):
@@ -2549,15 +2576,16 @@ def _member_facts(s: "Submission") -> Dict[str, object]:
 
 def _record_launch(m: "_Member", *, mode: str, command: List[str],
                    job_id: Optional[str] = None, placement=None,
-                   sent=None) -> None:
+                   sent=None, scheduler: Optional[dict] = None) -> None:
     """Write member ``m``'s launch record in the folder its run runs in,
     named by its stage's names (`runrecord.write_launch`) -- carrying what
     it continues from, its own hand-over (`job-system.md` § 5.4).  Where a
     stage's runs share the folder, that hand-over's record is written now
     too, with the launch record: the flat layout opens no run before its
     launch, so a refused send leaves no file of a run that never started.
-    ``placement`` is passed because submission is what knows where the job
-    went, and nothing downstream should have to work it out from a command
+    ``placement`` and ``scheduler`` are passed because submission is what
+    knows where the job went and where its scheduler writes of it, and
+    nothing downstream should have to work either out from a command
     line."""
     from ..runrecord import write_launch
     cont = m.continued
@@ -2566,7 +2594,7 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
     write_launch(m.run_dir, names=m.names, run=m.run, mode=mode,
                  command=command, job_id=job_id,
                  continued_from=cont.source if cont is not None else None,
-                 placed_on=_placed_on(placement, sent))
+                 placed_on=_placed_on(placement, sent), scheduler=scheduler)
 
 
 def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
@@ -2669,7 +2697,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                 + _redo(base, task, jobset, jobs[0]))
     if header.is_file():
         plan.reads.append(_as_found(header, base))
-    sent, placement, cmd = _sbatch_request(
+    sent, placement, cmd, outputs_in = _sbatch_request(
         envelope=shared, placement=_placed_by_prep(jobs), time_s=time_s,
         job_name=_scheduler_job_name(jobset, gn.stem),
         script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
@@ -2678,7 +2706,8 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     # one the send passes.
     plan.submissions.append(Submission(
         gn.stem, cmd, base, False, members, placement=placement, sent=sent,
-        rides="rides the group", header=header, machine=machine))
+        rides="rides the group", header=header, machine=machine,
+        outputs_in=outputs_in))
     return plan
 
 
@@ -2777,7 +2806,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                 machine=machine,
                 redo=(None if jobset.kind == "sweep"
                       else _redo(base, task, jobset, job))))
-        sent, placement, cmd = _sbatch_request(
+        sent, placement, cmd, outputs_in = _sbatch_request(
             envelope=job.resources, placement=_placed_by_prep([job]),
             time_s=time_s, job_name=_scheduler_job_name(jobset, job.name),
             script=sbatch_name,
@@ -2787,7 +2816,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,
             sent=sent, ask_in=m.read_from, header=m.read_from / sbatch_name,
-            machine=machine))
+            machine=machine, outputs_in=outputs_in))
     return plan
 
 
