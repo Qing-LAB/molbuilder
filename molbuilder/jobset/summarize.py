@@ -312,7 +312,7 @@ def bench_record(jobset, bundle, *, now_iso: Optional[str] = None
 
 
 def run_summarize_jobset(jobset, bundle, *,
-                         out=None, now_iso: Optional[str] = None,
+                         out, now_iso: Optional[str] = None,
                          stage: Optional[str] = None):
     """Summarize a described sweep: write ``bench-result.json`` (the
     archival record) and RETURN the report for the caller to print.
@@ -333,9 +333,11 @@ def run_summarize_jobset(jobset, bundle, *,
     IS a use"*, `job-system.md` § 7.1).
     """
     res = bench_record(jobset, bundle, now_iso=now_iso)
-    from ..runfiles import BENCH_RESULT_FILE
-    out_path = Path(out) if out else Path(bundle) / BENCH_RESULT_FILE
-    out_path.write_text(res.to_json() + "\n", encoding="utf-8")
+    # WHERE IT LIVES is the caller's to say -- the benchmark's container,
+    # the catalogue's `bench` level -- and it is written by the one writer.
+    from ..persist import write_bytes
+    out_path = Path(out)
+    write_bytes(out_path, (res.to_json() + "\n").encode("utf-8"))
     return res, out_path, recommendation_text(res, stage=stage)
 
 

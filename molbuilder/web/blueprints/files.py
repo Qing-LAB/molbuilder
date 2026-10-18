@@ -1392,8 +1392,9 @@ def api_files_upload():
     except OSError as exc:
         return jsonify({"ok": False,
                         "error": f"is_symlink check failed: {exc}"}), 500
+    from molbuilder.persist import write_bytes
     try:
-        upload.save(str(dest))
+        write_bytes(dest, upload.read())
     except PermissionError as exc:
         return jsonify({
             "ok": False,
@@ -1603,38 +1604,11 @@ def api_files_write():
         )
         text = _mb_merge_user_custom(text, resolved)
 
-    # Atomic write — temp-file in the same directory
-    # (so ``os.replace`` is a same-filesystem rename), fsync the data
-    # before replace so a crash between write() and replace() can't
-    # leave the OS write buffer holding the only copy of the new
-    # bytes (orphan .tmp file would also block the next save until
-    # manual cleanup).
+    # THE PACKAGE'S ONE WRITER (`persist.write_bytes`): a unique temp,
+    # renamed into place, the target's own mode kept -- 0644 for a new file.
+    from molbuilder.persist import write_bytes
     try:
-        parent = resolved.parent
-        fd, tmp = tempfile.mkstemp(
-            prefix=resolved.name + ".",
-            suffix=".tmp",
-            dir=str(parent),
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(text)
-                fh.flush()
-                try:
-                    os.fsync(fh.fileno())
-                except OSError:
-                    # Some filesystems (tmpfs on certain kernels) reject
-                    # fsync — the data is in the OS write buffer and
-                    # will land before the replace.  Don't let a quirky
-                    # FS block the write.
-                    pass
-            os.replace(tmp, str(resolved))
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        write_bytes(resolved, text.encode("utf-8"))
     except PermissionError as exc:
         return jsonify({
             "ok": False,

@@ -845,7 +845,7 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
         "relaxation": {"converged": cited.converged,
                        "exit_code": cited.exit_code},
     }
-    return struct, start, cited.path, deck.read_text(), files, said
+    return struct, start, cited.path, deck.read_text(encoding="utf-8"), files, said
 
 
 def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
@@ -862,7 +862,7 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     list is not a hand-kept second copy of that set, and a codec that
     somehow skipped the label file is caught HERE, where the record is
     made, rather than at a load on another machine."""
-    from ..persist import write_json
+    from ..persist import write_bytes, write_json
     from ..workingcopy_structure import StructureCodec
     base_dir = Path(base_dir)
     # THE ENGINE'S RECORD, in the engine's order with its order record in
@@ -870,7 +870,8 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     StructureCodec().write(composed.junction,
                            base_dir / JUNCTION_GEOMETRY, engine_record=True)
     if composed.deck_text is not None:
-        (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
+        write_bytes(base_dir / JUNCTION_DECK,
+                    composed.deck_text.encode("utf-8"))
     # AT THIS SCHEMA, whoever composed it: a record read back and written
     # again holds what this molbuilder writes.
     write_json(base_dir / PROVENANCE_FILE,
@@ -1139,7 +1140,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # DECLARATION is asked separately and does re-run here, as does
     # even-spacing.  Both need only the structure.
     elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir)
-    deck_text = deck_path.read_text() if kind == "run" else None
+    deck_text = deck_path.read_text(encoding="utf-8") if kind == "run" else None
     return ComposedJunction(
         junction=dev,
         notes=(),

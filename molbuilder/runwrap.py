@@ -4202,8 +4202,8 @@ def write_run_wrapper(script_path: Path, *,
         if plan is not None:
             plan.bytes(parent / name, data, mode=0o644)
         else:
-            (parent / name).write_bytes(data)
-            (parent / name).chmod(0o644)
+            from .persist import write_bytes
+            write_bytes(parent / name, data, mode=0o644)
     return parent / rendered.wrapper_name
 
 

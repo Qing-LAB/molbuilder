@@ -627,14 +627,17 @@ def migrate_state(base) -> List[str]:
             f"a kept file is never written over; nothing was written.  Move "
             f"{'it' if len(held) == 1 else 'them'} aside and run the "
             f"migration again.")
+    # THE PACKAGE'S ONE WRITER for every file a migration rewrites
+    # (`persist.write_bytes`, `execution/architecture.md` § 2.1).
+    from ..persist import write_bytes
     for path, text, keep in writes + t_writes:
         kept = path.with_name(path.name + keep)
-        kept.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        path.write_text(text, encoding="utf-8")
+        write_bytes(kept, path.read_bytes())
+        write_bytes(path, text.encode("utf-8"))
     for old, new in moves:
         old.rename(new)
     if l_write is not None:
-        l_write[0].write_text(l_write[1], encoding="utf-8")
+        write_bytes(l_write[0], l_write[1].encode("utf-8"))
     said += n_said + l_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "

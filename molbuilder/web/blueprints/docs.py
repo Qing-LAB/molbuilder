@@ -353,17 +353,13 @@ def _build_toc_tree(root: Path) -> List[Dict]:
         # correct for THIS response).  Unique per-process tmp name so
         # concurrent writers cannot os.replace() each other's file
         # out from under them.
-        tmp = toc_path.with_suffix(f".tmp.{os.getpid()}")
+        from molbuilder.persist import write_bytes
         try:
-            tmp.write_text(
-                _json.dumps(toc, indent=2, ensure_ascii=False) + "\n",
-                encoding="utf-8")
-            os.replace(str(tmp), str(toc_path))
+            write_bytes(toc_path, (_json.dumps(toc, indent=2,
+                                               ensure_ascii=False)
+                                   + "\n").encode("utf-8"))
         except OSError:
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+            pass
 
     return tree
 
