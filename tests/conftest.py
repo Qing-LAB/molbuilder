@@ -431,6 +431,31 @@ def the_suite_leaves_your_environments_alone():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def the_suite_takes_no_projects_tree_from_your_shell():
+    """**Your shell's ``$MOLBUILDER_PROJECTS`` never reaches a test.**
+
+    It outranks every other step of `projects_root()` (`testing.md` § 2a).
+    Left in place, a test of the config's ``paths.projects``, or of the
+    default, resolves to your tree instead -- and passed or failed by
+    whether an earlier test in its worker had deleted it (found 2026-10-18:
+    `test_describe.py` popped it, and the two `test_seeding_a_fresh_machine`
+    tests of the resolution passed or failed by the worker count).  And a
+    test that falls back to the default would work in your real tree,
+    which the guard below cannot see: it watches the repository's
+    ``projects/``.  Cleared for the session; a test that needs a tree points
+    the one door itself (`isolated_projects_root`).
+    """
+    from _pytest.monkeypatch import MonkeyPatch
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    mp = MonkeyPatch()
+    mp.delenv(PROJECTS_ROOT_ENV, raising=False)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def the_suite_leaves_your_config_alone():
     """**A canary, because isolation by construction is still a claim.**
 

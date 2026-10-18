@@ -330,14 +330,17 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
     collected test counted; the failed ids are the plain ones pytest accepts
     back, in the progress file and in the last-failed cache that ``run lf``
     reads; a file that fails to collect is a failure of its own, named by its
-    path; a file runs whole in one worker; every file holding an engine test,
-    marked on its module or on a test, shares one worker.
+    path; a file whose tests share a fixture wider than one test runs whole
+    in one worker; every file holding an engine test, marked on its module or
+    on a test, shares one worker.
     """
     monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
     s, suite, ran_on = _spread_run(tmp_path, {
-        "test_alpha.py": ("def test_a1(): note('a1')\n"
-                          "def test_a2(): note('a2')\n"
-                          "def test_a3(): note('a3')\n"),
+        "test_alpha.py": ("@pytest.fixture(scope='module')\n"
+                          "def shared(): return 1\n"
+                          "def test_a1(shared): note('a1')\n"
+                          "def test_a2(shared): note('a2')\n"
+                          "def test_a3(shared): note('a3')\n"),
         "test_beta.py": ("def test_b1(): note('b1')\n"
                          "def test_b2(): note('b2'); assert False\n"
                          "def test_b3(): note('b3')\n"),

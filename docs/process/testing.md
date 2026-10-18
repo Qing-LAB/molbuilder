@@ -195,6 +195,12 @@ somewhere temporary and builds inside it:
 Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
 time, so pointing the door is enough and the live server serves the tmp tree.
 
+**Your shell's `$MOLBUILDER_PROJECTS` never reaches a test**: `conftest.py`
+clears it for the session, and a test that sets it sets it through
+`monkeypatch`, which puts back what was there *(found 2026-10-18: a test that
+set it by hand and deleted it after made two tests of the resolution pass or
+fail by the worker count)*.
+
 **Enforced while every test runs, whatever spells the path.** `conftest.py`
 installs an audit hook (`sys.addaudithook`) that watches each test — its
 fixtures included — for an open, a listing, a mkdir, a rename or a removal
