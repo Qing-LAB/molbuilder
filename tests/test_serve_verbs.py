@@ -274,6 +274,35 @@ def test_start_refuses_when_already_running(monkeypatch):
     assert "already running" in r.output
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root makes any directory")
+def test_start_refuses_a_pidfile_directory_it_cannot_make(tmp_path,
+                                                          monkeypatch):
+    """`configuration.md` § 2.1d: an ``XDG_RUNTIME_DIR`` naming a directory
+    that cannot be made here -- on a node reached through a scheduler, the
+    login node's session directory -- is refused by `serve start` before it
+    detaches, naming the variable and the way out.  Without it the terminal
+    said *starting in the background* and the detached supervisor died on
+    its pidfile, unseen (measured on Sol, 2026-10-17).
+
+    MUTATION THIS MUST FAIL AGAINST: the directory left to the supervisor,
+    made after ``daemonize()``."""
+    import socket
+    from click.testing import CliRunner
+    from molbuilder.cli import cli
+    shut = tmp_path / "run-user"
+    shut.mkdir(mode=0o500)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(shut / "961166"))
+    monkeypatch.setattr(sd, "daemonize",
+                        lambda: pytest.fail("serve start detached"))
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    r = CliRunner().invoke(cli, ["serve", "start", "--port", str(port)])
+    assert r.exit_code == 1, r.output
+    assert f"XDG_RUNTIME_DIR names {shut / '961166'}" in r.output, r.output
+    assert "`unset XDG_RUNTIME_DIR`" in r.output, r.output
+
+
 def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
     """The log is the record (deployment.md 1.0c): a `serve status` that
     finds the server up-but-not-answering must append that detection to

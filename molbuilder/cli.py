@@ -2409,6 +2409,15 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
             f"  The port is not reported busy; the address itself is the "
             f"problem.  `--host` must name an interface this machine has -- "
             f"`ip -br addr` lists them -- or 0.0.0.0 for all of them.")
+    # AND CAN ITS PIDFILE BE WRITTEN?  The supervisor writes it after
+    # `daemonize()`, where a directory that cannot be made -- an
+    # `XDG_RUNTIME_DIR` carried in from the node you logged in to -- ends the
+    # server unseen.  Made here, refused here (`configuration.md` § 2.1d).
+    from .config_dir import RuntimeDirError, ensure_runtime_dir
+    try:
+        ensure_runtime_dir()
+    except RuntimeDirError as exc:
+        raise click.ClickException(str(exc)) from None
     # NO `--no-supervise`: the environment the supervisor starts it with
     # (`reload_protocol.server_environment`) marks it supervised, which is
     # what makes it the server rather than another supervisor -- and its

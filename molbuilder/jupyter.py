@@ -817,7 +817,7 @@ def run_shepherd(serve_port: int, *, host: str,
     from .envs.builds import dispatch_into_env
     from .envs.recipes import effective_name, recipe_by_name
     from .persist import write_json
-    from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
+    from .config_dir import (PRIVATE_FILE_MODE, ensure_runtime_dir,
                              jupyter_pidfile, jupyter_runtime)
     from .projects import projects_root
 
@@ -866,7 +866,7 @@ def run_shepherd(serve_port: int, *, host: str,
     # would report down forever.  (The browser rebuilds the base from
     # `location.hostname`.)
     _hostpart = f"[{host}]" if ":" in host else host
-    ensure_private_dir(jupyter_pidfile(serve_port).parent, tighten=True)
+    ensure_runtime_dir()
     jupyter_pidfile(serve_port).write_text(f"{os.getpid()}\n")
     # 0600: the token authenticates a browser to a live kernel.
     write_json(jupyter_runtime(serve_port),

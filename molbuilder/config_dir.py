@@ -467,6 +467,36 @@ def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,
     return d
 
 
+class RuntimeDirError(OSError):
+    """The pidfile directory cannot be made -- said with the variable it came
+    from and the way out (`configuration.md` § 2.1d)."""
+
+
+def ensure_runtime_dir() -> Path:
+    """:func:`runtime_dir`, made at 0700 -- the one maker, asked by `serve
+    start` before it detaches, by the supervisor, and by the notebook's
+    shepherd.  :class:`RuntimeDirError` when it cannot be made: on a node
+    reached through a scheduler, ``XDG_RUNTIME_DIR`` often names the login
+    node's session directory, carried in with the job's environment."""
+    d = runtime_dir()
+    try:
+        return ensure_private_dir(d, tighten=True)
+    except OSError as exc:
+        why = exc.strerror or str(exc)
+        xdg = os.environ.get("XDG_RUNTIME_DIR")
+        if xdg:
+            raise RuntimeDirError(
+                f"XDG_RUNTIME_DIR names {xdg}, and the pidfile directory {d} "
+                f"cannot be made there ({why}).  On a node reached through a "
+                f"scheduler it is often the session directory of the node you "
+                f"logged in to, carried in with the job's environment.  "
+                f"`unset XDG_RUNTIME_DIR` -- the pidfile then goes to "
+                f"{state_dir() / 'run'} -- or set it to a directory you own, "
+                f"in every shell you run `molbuilder serve` from.") from None
+        raise RuntimeDirError(
+            f"the pidfile directory {d} cannot be made ({why}).") from None
+
+
 #: A channel NAME: letters, digits, ``-`` or ``_``, up to 64.  It names an
 #: entry of the channel file this module locates (`run-reports.md` § 3), and
 #: it is written into a description and read back out without quoting -- so

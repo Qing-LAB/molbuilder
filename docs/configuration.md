@@ -271,6 +271,16 @@ containers) the fallback is the **state** directory rather than a temp dir,
 because a supervisor's pidfile that vanished underneath it would leave a
 running server nothing can find.
 
+**A variable naming a directory this machine does not have is refused, not
+worked around.** On a node reached through a scheduler, `XDG_RUNTIME_DIR`
+often names the login node's session directory, carried in with the job's
+environment, and it cannot be made there. `serve start` makes the pidfile
+directory before it detaches — every later verb finds the server there — and
+refuses with the variable named and the way out:
+unset it, and the pidfile goes to `<state>/run`, or set it to a directory you
+own, in every shell the `serve` verbs are run from. Falling back silently
+would put the pidfile where a shell that has the variable never looks.
+
 **The variables are the only way to move them.** `paths` holds `projects`
 and nothing else — see the note below.
 

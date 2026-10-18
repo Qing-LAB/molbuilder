@@ -36,8 +36,8 @@ from typing import List, Optional, Tuple
 # which is what lets the supervisor -- L1, importing nothing of the application
 # it restarts -- reach it.
 from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
-                         jupyter_log, jupyter_pidfile,
-                          runtime_dir, serve_log, serve_pidfile)
+                         ensure_runtime_dir, jupyter_log, jupyter_pidfile,
+                         serve_log, serve_pidfile)
 from .reload_protocol import RELOAD_EXIT_CODE, server_environment
 
 
@@ -382,7 +382,7 @@ def supervise(port: int, child_argv: List[str], *,
     # 0700, like every other directory this program makes: when
     # $XDG_RUNTIME_DIR is absent this falls back INSIDE the state root, where
     # the default umask gives 0775.
-    ensure_private_dir(runtime_dir(), tighten=True)
+    ensure_runtime_dir()
     serve_pidfile(port).write_text(f"{os.getpid()}\n")
 
     # LAYER 3 (docs/web/jupyter.md § 3.3): a notebook server that outlived the
