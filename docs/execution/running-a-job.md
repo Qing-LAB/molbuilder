@@ -727,9 +727,10 @@ was over. A run here is not asked; a record launched before it named the
 file (2.12.0) is asked where its header put it, the run's own folder under the
 file catalogue's name (`slurm.<id>.err`).
 A run of points' point asks it with its run's one record, from the run's
-folder, where the record lies and the file it names is named from — so a
-sweep the scheduler stopped reads `failed` at every point not done, the
-ones the walk never reached too.
+folder, where the record lies and the file it names is named from
+(`rundir.run_state_of`, given the run's folder — the one door every reader
+of a point's state asks) — so a sweep the scheduler stopped reads `failed`
+at every point not done, the ones the walk never reached too.
 
 **A job with a finish is not done when its engine is**
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5): a SIESTA

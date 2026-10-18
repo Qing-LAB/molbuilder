@@ -651,9 +651,8 @@ def _rung_points(base: Path, task, name: str, token: str,
     each point of a rung that runs per point, its state the run door's
     (`run_status`) and its own answer (:func:`_science`); ``run`` names the
     run to read instead of the latest."""
-    from ..parse.dirs import run_status
+    from ..parse.dirs.rundir import run_state_of
     from ..runfiles import RunNames
-    from ..runrecord import LaunchRecordError, launch_record
     names = RunNames.of(task.label, token, task.shape)
     out: List[Dict] = []
     for pt, where, run in result_folders(base, task, name, run=run):
@@ -664,13 +663,10 @@ def _rung_points(base: Path, task, name: str, token: str,
             out.append(entry)
             continue
         entry["attempt"] = str(where.relative_to(base))
-        try:
-            st = run_status(where, names.stem,
-                            launch=launch_record(run, names),
-                            launched_in=run)
-            entry.update(state=st.state, detail=st.detail)
-        except LaunchRecordError as exc:
-            entry.update(state="unreadable", detail=str(exc))
+        # THE POINT'S STATE, the one door's, with its run's launch record
+        # (`rundir.run_state_of`, given the run's folder).
+        st = run_state_of(where, names, launched_in=run)
+        entry.update(state=st.state, detail=st.detail)
         outs = _outs_newest_first(where, token)
         if outs:
             entry.update(_science(outs[0], answers))
@@ -735,17 +731,16 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
     from ..jobset.materialize import stage_home
-    from ..parse.dirs import run_status
     from ..parse.dirs.job import LIVE_STATES
     from ..parse.dirs.record import tbtrans_loop
+    from ..parse.dirs.rundir import run_state_of
     from ..runfiles import JUNCTION_FILE, RunNames
-    from ..runrecord import LaunchRecordError, launch_record
     from ..frame_average import AverageError, average_block
     from ..frameset import read as read_frame_set
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points, same_volts
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
-                        spin_dos, tbt_files)
+                        spin_dos, tbt_files, tbt_name)
 
     base = Path(base_dir)
     recorded = recorded_junction(base)
@@ -774,15 +769,14 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                             "why": rung.get("detail") or ""})
             continue
         rel = str(where.relative_to(base))
-        # THE POINT'S STATE, the run door's -- asked as every reader asks
-        # it, with its run's launch record; one that does not read is said.
-        try:
-            launch = launch_record(run, names)
-        except LaunchRecordError as exc:
+        # THE POINT'S STATE, the one door's -- asked as every reader asks
+        # it, with its run's launch record (`rundir.run_state_of`, given the
+        # run's folder); one that does not read is said.
+        st = run_state_of(where, names, launched_in=run)
+        if st.state == "unreadable":
             failed.append({**at, "attempt": rel,
-                           "state": "unreadable", "why": str(exc)})
+                           "state": "unreadable", "why": st.detail})
             continue
-        st = run_status(where, names.stem, launch=launch, launched_in=run)
         if st.state != "finished":
             entry = {**at, "attempt": rel, "state": st.state,
                      "why": st.detail}
@@ -821,9 +815,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         dos_why = None
         try:
             if spin == "polarized":
-                missing = [f"{task.label}.TBT_{c}.nc"
-                           for c, k in (("UP", "up"), ("DN", "down"))
-                           if k not in ncs]
+                missing = [tbt_name(task.label, k)
+                           for k in ("up", "down") if k not in ncs]
                 if missing:
                     dos_why = f"{' and '.join(missing)} not in {rel}"
                 else:
@@ -831,7 +824,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             elif "unpolarized" in ncs:
                 dos = point_dos(ncs["unpolarized"], regions)
             else:
-                dos_why = f"{task.label}.TBT.nc is not in {rel}"
+                dos_why = (f"{tbt_name(task.label, 'unpolarized')} is not "
+                           f"in {rel}")
         except TbtError as exc:
             dos_why = str(exc)
         energies = read["energy_ev"]
@@ -998,7 +992,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     nothing else.  :class:`RecordError` names what is missing."""
     from ..structure import frame_words
     from .stages import Point, frames_of, same_volts
-    from .tbtnc import TbtError, spin_selection_pdos as _pdos, tbt_files
+    from .tbtnc import TbtError, spin_selection_pdos as _pdos, tbt_files, tbt_name
     base = Path(base_dir)
     n = frames_of(base)
     # THE POINT IS A FRAME AND A VOLTAGE (`engines/transport.md` § 2a.9):
@@ -1048,8 +1042,9 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     ncs = tbt_files(where, task.label)
     if "unpolarized" not in ncs and not ("up" in ncs and "down" in ncs):
         raise RecordError(f"the transmission at {said} has written "
-                          f"no {task.label}.TBT.nc (nor both "
-                          f"{task.label}.TBT_UP.nc and .TBT_DN.nc)")
+                          f"no {tbt_name(task.label, 'unpolarized')} (nor "
+                          f"both {tbt_name(task.label, 'up')} and "
+                          f"{tbt_name(task.label, 'down')})")
     junction = recorded.structure if recorded is not None else None
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.

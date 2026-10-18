@@ -73,12 +73,14 @@ fixed where it sits on one of these three roads and nowhere else.
    transport record and data file read back, the Results tab showing what the
    files say: `model/parse.md`, `execution/running-a-job.md` § 4.2,
    `web/results.md` against `parse/`, `runs.py`, `transport/record.py`,
-   `transport/tbtnc.py`, `web/blueprints/results.py`. On this road from the
-   2026-10-18 scan, still open: `transport/record.py` builds a point's
-   `RunNames` from the description instead of `run_of(where)` and
-   `run_state_of` cannot take a point's launch folder (a door is missing);
-   `transport/tbtnc.py` composes `.TBT.nc` names by hand (`Run.on_label`
-   exists); `parse/_log.py` names the parse log with `with_suffix`.
+   `transport/tbtnc.py`, `web/blueprints/results.py`. The 2026-10-18 scan's
+   three items on this road, checked against the code: a point's state is
+   asked through `rundir.run_state_of`, which now takes the run's folder
+   (done; the names come from the catalogue's composer `RunNames.of`, which
+   is not handcrafted); the `.TBT.nc` files are found through `runfiles.find`
+   and named through `compose` (done); the parse log's name is exactly what
+   the catalogue states for every file molbuilder writes — the scan's case
+   was a hand-started `job.out`, not ours — nothing to fix.
 
 **Pushed 2026-10-18 — 2.12.2** (Sol has it): a run SLURM stopped reads
 `failed` from its own files. **Local, to push**: 2.13.0 — the frames'

@@ -44,18 +44,31 @@ class TbtError(Exception):
     """The file cannot answer what was asked -- the message says why."""
 
 
+def tbt_name(label: str, spin: str) -> str:
+    """The name TBtrans gives a run's ``.TBT.nc`` of channel ``spin`` --
+    ``unpolarized``, ``up`` or ``down`` -- on the run's label, as the file
+    catalogue composes a name on a label (`runfiles.compose`); the channel's
+    tag is TBtrans's own (``siesta_grammar.TBT_CHANNELS``)."""
+    from ..parse.engines.siesta_grammar import TBT_CHANNELS
+    from ..runfiles import compose
+    tag = dict(TBT_CHANNELS)[spin]
+    return compose(label, tag + "nc")
+
+
 def tbt_files(run_dir: Path, label: str) -> Dict[str, Path]:
     """The transmission run's ``.TBT.nc`` files in ``run_dir``, by spin --
     ``{"unpolarized": …}`` or ``{"up": …, "down": …}`` -- each that is
-    there (`web/results.md` § 2.5).  TBtrans names them as it names its
-    transmission files, one name per channel
-    (``siesta_grammar.TBT_CHANNELS``)."""
+    there (`web/results.md` § 2.5): found through the file catalogue
+    (`runfiles.find`, as `runs.Run.on_label` finds an engine's own file on
+    the label), one role per channel (``siesta_grammar.TBT_CHANNELS``)."""
     from ..parse.engines.siesta_grammar import TBT_CHANNELS
+    from ..runfiles import find
     out = {}
     for spin, tag in TBT_CHANNELS:
-        p = Path(run_dir) / f"{label}{tag}nc"
-        if p.is_file():
-            out[spin] = p
+        hits = [p for p, rec in find(run_dir, label, role=tag + "nc")
+                if rec.stage is None]
+        if hits:
+            out[spin] = hits[-1]
     return out
 
 

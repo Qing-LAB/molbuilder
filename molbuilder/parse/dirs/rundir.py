@@ -93,7 +93,7 @@ def openable_in(directory: str, calculation: Optional[str] = None
     return None, attempts
 
 
-def run_state_of(directory, names, run=None):
+def run_state_of(directory, names, run=None, launched_in=None):
     """The run's state through the one door (`job.run_status`), asked with
     its launch record (`runrecord.launch_record`) as every reader asks it --
     the stage's newest run's, named by its stage's names
@@ -101,17 +101,23 @@ def run_state_of(directory, names, run=None):
     ``unreadable``, the file named in its detail -- never read as launched
     or not launched, and never followed.
     The run door (`runs`) asks it, with the run's names; ``run`` asks about
-    that run, by default the stage's newest."""
+    that run, by default the stage's newest.  ``launched_in`` is the folder
+    the launch record lies in when it is not ``directory``: a run of points'
+    one record, in the run's folder, answers for each point in it
+    (`engines/transport.md` § 2a.11), and the scheduler's file it names is
+    named from there (`running-a-job.md` § 4.2)."""
     from molbuilder.runrecord import LaunchRecordError, launch_record, newest_run
     from .job import RunStatus, run_status
     try:
         # ONE RUN, by the one rule (`runrecord.newest_run`), asked of its
         # launch record and of its files alike.
         run = run if run is not None else newest_run(directory, names)
-        launch = launch_record(directory, names, run)
+        launch = (launch_record(launched_in, names) if launched_in is not None
+                  else launch_record(directory, names, run))
     except LaunchRecordError as e:
         return RunStatus(state="unreadable", detail=str(e))
-    return run_status(directory, names.stem, launch=launch, run=run)
+    return run_status(directory, names.stem, launch=launch, run=run,
+                      launched_in=launched_in)
 
 
 __all__ = ["claimed", "openable_in", "run_state_of"]
