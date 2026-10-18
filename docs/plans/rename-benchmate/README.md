@@ -89,6 +89,40 @@ The rename also needs one more property: **a machine that already runs molbuilde
 
 ---
 
+## 2a. The word "molbuilder" means three different things — never one search-and-replace
+
+*(user, 2026-10-18: "there is a tab that has 'molbuilder' in its design. don't mix that with the name of the whole project. this needs some intelligent decision/differentiation")*
+
+The same word is used for three different things today. The rename treats each one differently, so **no step in this plan is a blanket search-and-replace of "molbuilder"**. Every change matches one meaning only.
+
+| Meaning | Where it appears | What happens |
+|---|---|---|
+| **1. The whole project** (the product) | Package and import name, the command, page titles ("molbuilder — Results"), the header, docs prose, conda environments, config directory, `MOLBUILDER_*` variables | **Renamed to Benchmate** (Phases 1–5) |
+| **2. The structure-building tab** (one feature inside the product) | The tab labelled **Molbuilder**, its key `molbuilder` and its address `/molbuilder` (`web/tabs.py:41-43`, `web/app.py:542`, `templates/modify.html:23`), links to it (`lib/inspectors/structure.js:69,85`, `templates/transport_calculation.html:88`), and 50 "Molbuilder tab" mentions in the docs | **Kept by default** (decision D7) |
+| **3. Names stored in files or sent over the wire** | File formats, record identifiers, bundled tools (§ 3), plus the notification wire format: the channel kind `"molbuilder"` (`monitor.py:1326,1347`, `this-machine/page.js:140,334`, `this_machine.html:80`), the default channel name (`cli.py:1810`) and the HTTP headers `X-Molbuilder-Timestamp` / `X-Molbuilder-Signature` (`monitor.py:1588-1589`) | **Kept**: existing files, configured channels and listeners depend on them |
+
+**How to tell them apart when editing:**
+
+- If the word names *what the person is using* ("molbuilder serves…", "molbuilder — Results", `python -m molbuilder`), it is meaning 1.
+- If it names *the tab where structures are built and edited* ("the Molbuilder tab", `/molbuilder`, `active_tab = "molbuilder"`), it is meaning 2.
+- If changing it would make an existing file, channel or listener unreadable, it is meaning 3.
+
+**Why keep the tab name "Molbuilder" (recommended for D7).** After the rename, the word goes back to what it literally says: the *molecule builder*. Benchmate is the whole bench; Molbuilder is the tool on it where you build and edit structures. The other tabs are named for what they do too ("Structure optimization", "Transport calculation"). Keeping it also means:
+
+- the 50 "Molbuilder tab" references in the docs stay correct;
+- the address `/molbuilder` and people's bookmarks keep working;
+- users who learned the tab by that name find it where it was.
+
+**The writing rule that keeps them apart:**
+
+- The product is always **Benchmate**.
+- The tab is always written **"the Molbuilder tab"**, capitalised and followed by "tab", never "molbuilder" alone.
+- A page title reads `Benchmate — Molbuilder` (product — tab), the same pattern as `Benchmate — Results`.
+
+**If you prefer a fully separate name (D7, option B):** rename the tab's *label* to **"Structure builder"**, which matches the other descriptive tab names. Keep its key `molbuilder` and address `/molbuilder` as they are, so links and bookmarks still work. Only the 50 doc mentions and one label change.
+
+---
+
 ## 3. What is NOT renamed
 
 | Kept as it is | Why |
@@ -101,6 +135,8 @@ The rename also needs one more property: **a machine that already runs molbuilde
 | `mb_pyscf.pyz`, `mb_monitor.pyz`, `mb_vibration.pyz` | Existing run folders carry them. "mb" also reads as "Benchmate" |
 | `MB_LAUNCHED_BY`, `MB_NP` and the other `MB_*` wrapper variables | Existing wrappers and site scripts set them |
 | Browser storage keys `molbuilder.current_dir` and four others | Renaming them makes every browser forget its remembered folder and sidebar layout once. Optional later (§ 6) |
+| The **Molbuilder tab**: its key `molbuilder`, its address `/molbuilder`, and (by default) its label | It names the structure builder inside Benchmate, not the project (§ 2a, D7) |
+| Notification channel kind `"molbuilder"` and the headers `X-Molbuilder-Timestamp` / `X-Molbuilder-Signature` | Configured channels and existing listeners send and check these. A new kind `"benchmate"` may be *added* and accepted alongside, but the old one is never removed |
 
 ---
 
@@ -129,7 +165,7 @@ Only what a person sees in the browser changes. No import, path or command chang
 | 1.1 | Copy `icon/benchmate.svg` into the app as `molbuilder/web/static/img/benchmate.svg` | new file |
 | 1.2 | Make the 16 px favicon: a simplified SVG (chip, top wave, coral centre dot), plus `favicon.ico` (16 + 32 px) and `apple-touch-icon.png` (180 px), rendered from the SVGs | `molbuilder/web/static/img/` |
 | 1.3 | Add `<link rel="icon" …>` once, in the shared head that every page includes (or in each of the 10 templates if there is no shared head) | `molbuilder/web/templates/*.html` |
-| 1.4 | Change the 10 page titles from `molbuilder &mdash; <page>` to `Benchmate &mdash; <page>`. `modify.html`'s title becomes `Benchmate &mdash; Workspace` | 10 templates |
+| 1.4 | Change the 10 page titles from `molbuilder &mdash; <page>` to `Benchmate &mdash; <page>`. `modify.html`'s title becomes `Benchmate &mdash; Molbuilder` (product — tab, § 2a). The tab label itself is not touched | 10 templates |
 | 1.5 | Change the app header from `<h1>molbuilder</h1>` to the icon plus "Benchmate", with the tagline as its `title` text | `_app_header.html:30` |
 | 1.6 | Find tests that pin the old titles and header text, and update them to the new text | `grep -rn "molbuilder &mdash;\|<h1>molbuilder" tests/` |
 | 1.7 | Re-capture the README screenshots, which show the old header | `scripts/capture-readme-screenshots.py`, `docs/img/` |
@@ -158,7 +194,7 @@ This is the one large mechanical change. Do it in a single commit with **no othe
 | Step | Action |
 |---|---|
 | 3.1 | `git mv molbuilder benchmate` |
-| 3.2 | Rewrite imports with a script that matches only real imports, never prose: `^(\s*)from molbuilder(\.|\s)` → `\1from benchmate\2`, `^(\s*)import molbuilder\b` → `\1import benchmate`, and the same inside `importlib.import_module("molbuilder…")` and `mock.patch("molbuilder…")` strings. Run it over `benchmate/`, `tests/`, `tools/` and `scripts/`. Commit the script in this folder for review |
+| 3.2 | Rewrite imports with a script that matches only real imports, never prose: `^(\s*)from molbuilder(\.|\s)` → `\1from benchmate\2`, `^(\s*)import molbuilder\b` → `\1import benchmate`, and the same inside `importlib.import_module("molbuilder…")` and `mock.patch("molbuilder…")` strings. Run it over `benchmate/`, `tests/`, `tools/` and `scripts/`. Commit the script in this folder for review. It must not touch the string `"molbuilder"` used as the tab key, the `/molbuilder` address or the notification kind (§ 2a) |
 | 3.3 | `pyproject.toml`: `name = "benchmate"`; `[project.scripts]` gets `benchmate = "benchmate.cli:main"` **and** `molbuilder = "molbuilder.__main__:main"` (the compatibility command); `packages.find include = ["benchmate*", "molbuilder*"]`; package-data paths |
 | 3.4 | Add the compatibility package `molbuilder/` (small and permanent until Phase 6). `molbuilder/__init__.py` installs an import alias, so that `import molbuilder.x.y` returns `benchmate.x.y` (one `sys.meta_path` finder, about 30 lines), and warns once per process: *"molbuilder is now Benchmate; import benchmate instead."* `molbuilder/__main__.py` prints *"`python -m molbuilder` is now `python -m benchmate`"* to stderr and forwards the arguments to `benchmate.cli.main` |
 | 3.5 | Commands printed to users: `python -m molbuilder …` → `python -m benchmate …` (`runwrap.py:2033,3289`, `envs/_cli.py:626`, `cli.py:1633`, `envs/recipes.py:1227`, and every docs page) |
@@ -217,7 +253,7 @@ Directories, environment variables and conda environments. Each one **reads the 
 
 | Check | What | How |
 |---|---|---|
-| **C1 — no stray old name** | After Phase 3 or 4, every remaining `molbuilder` in the code is one of the allowed kinds (§ 3, compatibility notices, history comments) | Keep an allow-list file in this folder; the command `grep -rnI molbuilder benchmate/ \| grep -vFf allowlist.txt` must print nothing. Run by review (the repository no longer pins its own text in tests; [`process/testing.md`](?doc=process/testing.md) § 3b) |
+| **C1 — no stray old name** | After Phase 3 or 4, every remaining `molbuilder` in the code is one of the allowed kinds: the Molbuilder tab (§ 2a, meaning 2), stored or wire names (§ 3), compatibility notices, history comments | Keep an allow-list file in this folder; the command `grep -rnI molbuilder benchmate/ \| grep -vFf allowlist.txt` must print nothing. Run by review (the repository no longer pins its own text in tests; [`process/testing.md`](?doc=process/testing.md) § 3b) |
 | **C2 — no reader depends on the old text** | Before step 2.5, confirm no parser or detector matches "generated by molbuilder" or `# molbuilder` | `grep -rnI "generated by molbuilder\|# molbuilder" benchmate/parse benchmate/runs.py benchmate/runfiles.py`; also run the parse tests on decks generated before and after |
 | **C3 — old run folders still work** | A run folder prepared under 2.9.x launches, warm-retries, is watched and shows results under 3.0.0 | Prepare a small PySCF task and a SIESTA task under 2.9.4, then switch the checkout to 3.0.0 and `launch`, `watch`, open Results. Repeat on Sol for one SLURM job |
 | **C4 — old machine still works** | A machine with `~/.config/molbuilder`, `MOLBUILDER_*` variables and `molbuilder-*` environments works after Phase 4 with no action | Run `envs doctor`, `serve start` and one prep and launch on such a machine (or a copy of its config in a test home directory) |
@@ -249,6 +285,7 @@ If renamed later (a separate, optional Phase 7):
 | D4 | Keep the `mb_*.pyz` and `MB_*` names permanently? | Yes: they read as "Benchmate" too, and existing run folders carry them |
 | D5 | Rename existing conda environments on the lab machines and Sol, or let them age out? | Let them age out, and use `envs rename-legacy` only on machines with no live runs |
 | D6 | Length of the compatibility period (Phase 6)? | Two minor releases or three months, whichever is later |
+| D7 | The structure-building tab is called **Molbuilder**. After the rename, keep that label (A), or relabel it **Structure builder** (B)? Either way its address `/molbuilder` stays | A: keep "Molbuilder" — after the rename it means the molecule builder inside Benchmate (§ 2a) |
 
 ---
 
@@ -257,3 +294,4 @@ If renamed later (a separate, optional Phase 7):
 | Date | Phase / step | What happened |
 |---|---|---|
 | 2026-10-18 | — | Plan written; icon H5 chosen; inventory measured at `83e72b2` |
+| 2026-10-18 | — | § 2a added: the Molbuilder tab and the notification wire names are separated from the project name (user's instruction); D7 added |

@@ -76,6 +76,28 @@ Command for the schema identifiers:
 grep -rhoI "molbuilder/[a-z_-]*@[0-9]*" molbuilder | sort | uniq -c
 ```
 
+## 3a. The Molbuilder tab and the notification wire names — not the project name (see plan § 2a)
+
+These use the same word but mean something else, so the rename must leave them alone.
+
+| What | Where | Value |
+|---|---|---|
+| Tab key, address and label | `molbuilder/web/tabs.py:41-43` | key `molbuilder`, path `/molbuilder`, label `Molbuilder` |
+| Route | `molbuilder/web/app.py:542` | `@app.route("/molbuilder")` |
+| Active-tab marker | `molbuilder/web/templates/modify.html:23` | `active_tab = "molbuilder"` |
+| Links to the tab | `lib/inspectors/structure.js:69,85`, `templates/transport_calculation.html:88` | `/molbuilder` |
+| "Molbuilder tab" in prose | `docs/` 43 + "Molbuilder-tab" 7 | — |
+| Capitalised "Molbuilder" overall | `molbuilder/` 35, `tests/` 16, `docs/` 47 | mostly the tab, a few the product |
+| Notification channel kind | `monitor.py:1326,1347`, `this-machine/page.js:140,334`, `templates/this_machine.html:80` | `"molbuilder"` |
+| Default notification channel name | `cli.py:1810` | `--channel molbuilder` |
+| Signed-request headers | `monitor.py:1588-1589` | `X-Molbuilder-Timestamp`, `X-Molbuilder-Signature` |
+
+Command for the capitalised counts:
+
+```bash
+for d in molbuilder tests docs; do printf "%-11s %s\n" $d "$(grep -rIo 'Molbuilder' $d --exclude-dir=vendor --exclude-dir=archive | wc -l)"; done
+```
+
 ## 4. Browser-side names — internal, decided separately (see plan § 6)
 
 | What | Count | Example |
