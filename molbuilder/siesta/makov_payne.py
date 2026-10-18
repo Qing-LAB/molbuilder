@@ -158,6 +158,8 @@ def render_correction_script(
     system_label: str,
     q: int,
     epsilon_r: float = 1.0,
+    *,
+    out_template: str,
 ) -> str:
     """Generate a self-contained Python post-process script that
     reads ``<system_label>.out``, extracts the converged total
@@ -253,6 +255,9 @@ import sys
 from pathlib import Path
 
 SYSTEM_LABEL = "{system_label}"
+# THIS STAGE'S OUTPUT, as the file catalogue names it -- {{run}} the run's
+# number (`runfiles.RunNames.template`): the newest run by its number.
+OUT_TEMPLATE = "{out_template}"
 NET_CHARGE   = {q}
 DEFAULT_EPS  = {epsilon_r!r}
 MADELUNG     = {MADELUNG_CUBIC!r}   # cubic; override if non-cubic
@@ -363,32 +368,36 @@ def compute_correction(q, L_angstrom, epsilon_r, madelung):
 def main():
     p = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out",
-        default=f"{{SYSTEM_LABEL}}.out",
-        help="SIESTA .out file to read (default: <system_label>.out)")
+    p.add_argument("--out", default=None,
+        help="SIESTA .out file to read (default: this stage's newest run)")
     p.add_argument("--epsilon", type=float, default=DEFAULT_EPS,
         help=f"Relative permittivity (default: {{DEFAULT_EPS}}, vacuum)")
     p.add_argument("--madelung", type=float, default=MADELUNG,
         help=f"Madelung constant (default: {{MADELUNG}}, cubic)")
     args = p.parse_args()
 
-    out_path = Path(args.out)
-    if not out_path.is_file():
-        # molbuilder's wrapper writes ``<label>...-run<N>.out`` (one per
-        # attempt), not the bare default -- discover the newest one here
-        # and SAY which was picked, so running this beside the output
-        # just works (E6 integration, 2026-08-12).
-        candidates = sorted(Path(".").glob("*-run*.out"),
-                            key=lambda c: c.stat().st_mtime)
-        if candidates:
-            out_path = candidates[-1]
-            print(f"note: {{Path(args.out)}} not found; reading "
-                  f"{{out_path}} (newest -run*.out in this directory).")
-        else:
-            print(f"error: {{out_path}} not found and no *-run*.out "
-                  "here.  Run SIESTA first, or pass --out to point at "
-                  "the correct file.", file=sys.stderr)
+    if args.out is not None:
+        out_path = Path(args.out)
+    else:
+        # THIS STAGE'S NEWEST RUN, by its number -- never another stage's
+        # output, and never by a file's time.
+        head, _, tail = OUT_TEMPLATE.partition("{{run}}")
+        runs = []
+        for c in Path(".").glob(head + "*" + tail):
+            n = c.name[len(head):len(c.name) - len(tail)]
+            if n.isdigit():
+                runs.append((int(n), c))
+        if not runs:
+            wanted = OUT_TEMPLATE.replace("{{run}}", "<N>")
+            print(f"error: {{wanted}} not found here.  Run SIESTA first, "
+                  "or pass --out to point at the correct file.",
+                  file=sys.stderr)
             sys.exit(1)
+        out_path = max(runs)[1]
+        print(f"note: reading {{out_path}}, this stage's newest run.")
+    if not out_path.is_file():
+        print(f"error: {{out_path}} not found.", file=sys.stderr)
+        sys.exit(1)
     text = out_path.read_text(errors="replace")
 
     E_raw = parse_total_energy(text)
@@ -457,6 +466,7 @@ def emit_correction_script(
     q: int,
     epsilon_r: float = 1.0,
     *,
+    names,
     plan=None,
 ) -> Optional[Path]:
     """Write ``makov_payne_correction.py`` next to the FDF -- or put it in
@@ -477,4 +487,6 @@ def emit_correction_script(
     return _sc.write_script(parent / MAKOV_PAYNE_SCRIPT,
                             render_correction_script(
                                 system_label=system_label, q=q,
-                                epsilon_r=epsilon_r), plan=plan)
+                                epsilon_r=epsilon_r,
+                                out_template=names.template(".out")),
+                            plan=plan)

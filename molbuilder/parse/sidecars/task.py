@@ -18,7 +18,6 @@ its one door (`task.read_task`) -- never the file's place or name alone.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from molbuilder.parse.base import FileParser
@@ -39,17 +38,18 @@ class TaskReadError(ValueError):
 def _load_transport_task(path: Path) -> dict:
     """The description's JSON, or :class:`TaskReadError` saying why not --
     one reader for both halves of the parser."""
+    from molbuilder.persist import read_json
     from molbuilder.runfiles import TASK_FILE
-    from molbuilder.task import Task
+    from molbuilder.task import read_task
     p = Path(path)
     if p.name != TASK_FILE:
         raise TaskReadError(f"{p.name} is not {TASK_FILE}")
     try:
-        obj = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise TaskReadError(f"{p.name} could not be read: {exc}") from exc
-    try:
-        task = Task.from_dict(obj)          # the codec's gate, on the one read
+        # THE DESCRIPTION'S ONE READER (`task.read_task`): what every other
+        # door reads it with, a description written before a rule refused
+        # naming the command that rewrites it.
+        task = read_task(p)
+        obj = read_json(p)
     except Exception as exc:                                  # noqa: BLE001
         raise TaskReadError(
             f"{p.name} does not read as a description: "

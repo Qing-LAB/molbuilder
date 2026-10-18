@@ -1174,7 +1174,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 with _calling("sibling_artifacts", engine=task.engine,
                               where=script):
                     seam.sibling_artifacts(rung.struct, cfg, _jdir / script,
-                                           kind=rung.render_kind, plan=plan)
+                                           kind=rung.render_kind,
+                                           names=_names, plan=plan)
             # THE PROGRESS LOG IS SEEDED BESIDE THE DECK IT FOLLOWS -- the
             # element's own, or for a sweep each point's -- and moved into the
             # run that writes it (`_move_progress_channel_into`), never left

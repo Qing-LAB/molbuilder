@@ -93,7 +93,7 @@ class EngineSeam:
 
 
 def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
-                              kind: str, plan=None) -> None:
+                              kind: str, names, plan=None) -> None:
     """The sibling files a SIESTA deck's own text PROMISES.
 
     A charged deck instructs ``python3 makov_payne_correction.py`` in its
@@ -112,7 +112,7 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
     if q != 0 and state.finite:
         emit_correction_script(fdf_path=deck_path,
                                system_label=cfg.system_label, q=q,
-                               plan=plan)
+                               names=names, plan=plan)
 
 
 def pseudo_dir(base: Path, plan=None) -> Path:
