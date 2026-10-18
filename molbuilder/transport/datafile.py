@@ -137,9 +137,18 @@ def _scf_vars(prefix: str, dims: Tuple[str, ...],
                       dtype, fill) in columns)
 
 
+def _or_nan(value) -> float:
+    """``value`` as a number for a variable, NaN -- the fill value -- where
+    it is none or not a number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return float("nan")
+    return float(value)
+
+
 def _frame_set_vars() -> Tuple[Var, ...]:
-    """Every per-frame row of a mode's frame set, along ``frame`` -- the one
-    definition's own names, kinds and units (`frameset.FRAME_ROWS`)."""
+    """Every per-frame row of a mode's frame set's vocabulary, along
+    ``frame`` -- its own names, kinds and units (`frameset.FRAME_ROWS`) --
+    and every row each frame states, as written (``frame_rows``)."""
     from ..frameset import FRAME_ROWS
     words = {
         "displacement_ang": ("the frame's plain displacement from frame 0",
@@ -160,7 +169,11 @@ def _frame_set_vars() -> Tuple[Var, ...]:
                      words[r.name][0], words[r.name][1]
                      + " (model/structure.md 2.2f; the fill value where the "
                        "set states none)", auxiliary=True)
-                 for r in FRAME_ROWS)
+                 for r in FRAME_ROWS) + (
+        Var("frame_rows", ("frame",), "given", "", "the frame's rows",
+            "every row the frame states, as written: a JSON list of "
+            "{name, value, unit} (model/structure.md 2.2f)", dtype=str,
+            auxiliary=True),)
 
 
 def _variables() -> Tuple[Var, ...]:
@@ -394,7 +407,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     junction; returns its path.  :class:`DataFileError` names what does not
     lay out on one grid."""
     import netCDF4
-    from ..frameset import STRUCTURE_ROWS, read as read_frame_set
+    from ..frameset import FRAME_ROWS, STRUCTURE_ROWS, read as read_frame_set
     from ..persist import write_bytes
     from .compose import recorded_junction
     from .record import order_unstated_said
@@ -489,10 +502,15 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         values["positions_ang"][:] = np.asarray(
             junction.frames if n_frames > 1 else [junction.positions])
     if frame_set is not None:
-        values["mass_amu"][:] = frame_set.masses_amu
+        # THE ROWS AS WRITTEN: the vocabulary's numbers in their own
+        # variables, the fill value where a frame states none, and every row
+        # of every frame in ``frame_rows``.
+        if frame_set.masses_amu is not None:
+            values["mass_amu"][:] = [_or_nan(m) for m in frame_set.masses_amu]
         for f, rows in enumerate(frame_set.frames):
-            for name in rows.__dataclass_fields__:
-                values[name][f] = getattr(rows, name)
+            values["frame_rows"][f] = json.dumps(list(rows))
+            for r in FRAME_ROWS:
+                values[r.name][f] = _or_nan(frame_set.value(r.name, f))
 
     def at(p) -> Tuple[int, int]:
         f = p.get("frame")
@@ -573,13 +591,20 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
                 str(slot[key]))
     if frame_set is not None:
         for r in STRUCTURE_ROWS:
-            attrs[r.name] = getattr(frame_set, r.name)
-        for k in ("run", "result_sha256"):
-            attrs[f"vibration_{k}"] = str(frame_set.vibration.get(k) or "")
-        attrs["weight_sum"] = float(average.get("weight_sum"))
-        attrs["weight_tolerance"] = float(average.get("tolerance"))
-        attrs["average_assumptions"] = json.dumps(
-            list(average.get("assumptions") or ()))
+            if frame_set.value(r.name) is not None:
+                attrs[r.name] = frame_set.value(r.name)
+        if frame_set.vibration is not None:
+            for k in ("run", "result_sha256"):
+                attrs[f"vibration_{k}"] = str(
+                    frame_set.vibration.get(k) or "")
+        # EVERY ROW AS WRITTEN, and what is said of the weights.
+        attrs["structure_rows"] = json.dumps(list(frame_set.structure))
+        attrs["frame_warnings"] = json.dumps(list(frame_set.warnings))
+        if frame_set.weights is not None:
+            attrs["weight_sum"] = float(average.get("weight_sum"))
+            attrs["weight_tolerance"] = float(average.get("tolerance"))
+            attrs["average_assumptions"] = json.dumps(
+                list(average.get("assumptions") or ()))
     if average.get("why"):
         attrs["average_why"] = str(average["why"])
     # HOW THE I-V WAS COMPUTED, as the record states it (§ 2a.10).

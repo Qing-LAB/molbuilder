@@ -426,9 +426,9 @@ The frame set states what every frame is, raw values beside derived ones —
 the mode as the vibration result numbers it, its frequency, the temperature,
 the zero-point amplitude and the spread $\sigma$; each frame's plain
 displacement, its mass-weighted position $Q_j$ and $Q_j/\sigma$, its weight;
-every atom's mass — in one definition whose home is
-[`model/structure.md`](?doc=model/structure.md) § 2.2f, checked when the set
-is cited. The transport record (`transport.md` § 2a.12) carries:
+every atom's mass — the maker's rows of
+[`model/structure.md`](?doc=model/structure.md) § 2.2f, carried as written;
+the calculation reads each frame's weight alone. The transport record (`transport.md` § 2a.12) carries:
 
 - each frame's $T_j(E)$ and current — the family of curves — beside its rows;
 - $\langle T(E)\rangle = \sum_j W_j T_j(E)$, the mode's average at every

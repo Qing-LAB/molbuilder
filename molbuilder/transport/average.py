@@ -2,11 +2,10 @@
 the science is `science/vibrational-averaging.md` (§ 5 the rule, § 7 what it
 assumes, § 8 what the record carries); plan § 5z Q17-e.
 
-A frame set samples ONE normal mode, and states what every frame is -- a
-mode's frame set, checked at the citation door (`frameset.read`,
-`model/structure.md` § 2.2f).  The average is computed with each frame's
-stated weight alone; the mode's definition -- its structure's rows, the
-weights' sum and the tolerance they were checked to -- is stated beside it.
+A multi-frame structure's frames are averaged where every frame states its
+``weight`` (`frameset.read`, `model/structure.md` § 2.2f): the average is
+computed with each frame's stated weight alone; the structure's rows, as
+written, and the weights' sum are stated beside it.
 
 **What the average is and is not**: the weighted sum of every frame's T(E)
 and its difference from the base frame's -- what the frames give.  No
@@ -54,10 +53,10 @@ class AverageError(ValueError):
 
 def mode_average(n_frames: Optional[int], frame_set,
                  points: List[Dict], missing: List[Dict]) -> Dict:
-    """The record's ``average`` block (§ 2a.12): the mode's definition as the
-    set states it (``frame_set``, `frameset.ModeFrameSet`, ``None`` for a
-    structure that states none) -- its structure's rows, each frame's weight,
-    their sum and the tolerance they were checked to -- the assumptions, and,
+    """The record's ``average`` block (§ 2a.12): the frames' rows as written
+    (``frame_set``, `frameset.FrameRows`, ``None`` for a structure that
+    states none) -- the structure's rows, each frame's weight, their sum,
+    what is said of them -- the assumptions, and,
     at each voltage the points ran at, the mode's average over every frame at
     its stated weight (``⟨T(E)⟩ = Σ_f W_f T_f(E)``), its change from the base
     frame's (``ΔT(E) = ⟨T(E)⟩ − T₀(E)``), and at E_F the averaged conductance
@@ -66,19 +65,24 @@ def mode_average(n_frames: Optional[int], frame_set,
     ``points`` are the record's done points, ``missing`` its pending and
     failed ones -- each a dict with ``frame`` and ``bias_v``.  ``why`` says,
     in one sentence, why there is no average: nothing composed yet, one
-    structure, or a family of frames stating no mode."""
-    from ..frameset import STRUCTURE_ROWS, WEIGHT_SUM_TOLERANCE
-    weights = frame_set.weights if frame_set is not None else None
-    # EVERY KEY, EVERY RECORD: the definition's structure rows by their own
-    # names, ``None`` where the set states none.
-    rows = (frame_set.structure_rows() if frame_set is not None
-            else {r.name: None for r in STRUCTURE_ROWS})
+    structure, or frames that do not each state a weight."""
+    from ..frameset import STRUCTURE_ROWS, WEIGHT_ROW, WEIGHT_SUM_TOLERANCE
+    weights = (list(frame_set.weights) if frame_set is not None
+               and frame_set.weights is not None else None)
+    # EVERY KEY, EVERY RECORD: the vocabulary's structure rows by their own
+    # names, as written, ``None`` where the structure states none; and every
+    # row as written beside them.
+    named = {r.name: (frame_set.value(r.name) if frame_set is not None
+                      else None) for r in STRUCTURE_ROWS}
     block: Dict = {
         "frames": n_frames,
-        **rows,
+        **named,
+        "rows": list(frame_set.structure) if frame_set is not None else [],
         "weights": weights,
         "weight_sum": math.fsum(weights) if weights is not None else None,
         "tolerance": WEIGHT_SUM_TOLERANCE,
+        "warnings": list(frame_set.warnings) if frame_set is not None
+        else [],
         "assumptions": list(ASSUMPTIONS),
         "why": None,
         "at": [],
@@ -91,10 +95,10 @@ def mode_average(n_frames: Optional[int], frame_set,
         block["why"] = ("one structure, not a frame set: there are no frames "
                         "to average over")
         return block
-    if frame_set is None:
-        block["why"] = ("the set states no mode's definition -- a family of "
-                        "frames with no average; each frame's curve is its "
-                        "own point (model/structure.md 2.2f)")
+    if weights is None:
+        block["why"] = (f"the frames do not each state a {WEIGHT_ROW} -- no "
+                        f"average; each frame's curve is its own point "
+                        f"(model/structure.md 2.2f)")
         return block
     voltages: List[float] = []
     for p in list(points) + list(missing):

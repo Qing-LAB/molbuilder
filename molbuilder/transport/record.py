@@ -720,10 +720,10 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
 def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     """Walk the transmission attempts and build the record dict.
 
-    **A MODE'S FRAME SET IS READ THROUGH ITS ONE DOOR** (`frameset.read`,
-    checked at the citation door, `engines/transport.md` § 2a.9): its record
-    carries the mode's average at each voltage, at every frame's stated
-    weight, the mode's definition beside it (`average.mode_average`).
+    **THE FRAMES' ROWS ARE READ THROUGH THEIR ONE DOOR** (`frameset.read`):
+    the record carries the frames' average at each voltage, at every frame's
+    stated weight, where every frame states one, the structure's rows beside
+    it as written (`average.mode_average`).
 
     Reads each point's LATEST attempt, its state the run door's
     (`parse.dirs.run_status`): a point with its transmission is in
@@ -741,7 +741,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..parse.dirs.record import tbtrans_loop
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
-    from ..frameset import FrameSetError, read as read_frame_set
+    from ..frameset import read as read_frame_set
     from .average import AverageError, mode_average
     from .compose import read_provenance, recorded_junction
     from .stages import frames_of, rung_points
@@ -751,11 +751,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     base = Path(base_dir)
     recorded = recorded_junction(base)
     junction = recorded.structure if recorded is not None else None
-    try:
-        frame_set = (read_frame_set(junction) if junction is not None
-                     else None)
-    except FrameSetError as exc:
-        raise RecordError(str(exc)) from exc
+    frame_set = (read_frame_set(junction) if junction is not None
+                 else None)
     points_out: List[Dict] = []
     pending: List[Dict] = []
     failed: List[Dict] = []
@@ -1330,21 +1327,35 @@ def _average_lines(avg: Dict) -> List[str]:
     frame's and its change in per cent -- or why there is none."""
     if not avg.get("frames") or avg["frames"] < 2:
         return []
+    said = [f"  the frames' average: warning: {w}"
+            for w in avg.get("warnings") or ()]
     if avg.get("why"):
-        return [f"  the frames' average: {avg['why']}"]
-    # EACH NUMBER IN ITS ROW'S UNIT, the definition's own (`frameset.ROWS`,
+        return said + [f"  the frames' average: {avg['why']}"]
+    # EACH NUMBER IN ITS ROW'S UNIT, the vocabulary's own (`frameset.ROWS`,
     # `model/structure.md` § 2.2f): the angstrom spelled out, `A` the
-    # ampere's on the same printout.
+    # ampere's on the same printout -- a mode's set in its words, any other
+    # set's rows as written.
     from ..frameset import STRUCTURE_ROWS
     unit = {r.name: r.unit for r in STRUCTURE_ROWS}
-    head = (f"  the mode's average over {avg['frames']} frames -- mode "
-            f"{avg.get('mode_index_1based')} at "
-            f"{avg.get('frequency_cm1'):g} {unit['frequency_cm1']}, "
-            f"{avg.get('temperature_k'):g} {unit['temperature_k']}, "
-            f"sigma {avg.get('sigma_amu12_ang'):.6g} "
-            f"{unit['sigma_amu12_ang']}")
-    lines = [head + f", weights {avg['weights']} (sum "
-             f"{avg['weight_sum']!r}, within {avg['tolerance']:g} of 1):"]
+    mode = ("mode_index_1based", "frequency_cm1", "temperature_k",
+            "sigma_amu12_ang")
+    if all(isinstance(avg.get(k), (int, float)) for k in mode):
+        head = (f"  the mode's average over {avg['frames']} frames -- mode "
+                f"{avg.get('mode_index_1based')} at "
+                f"{avg.get('frequency_cm1'):g} {unit['frequency_cm1']}, "
+                f"{avg.get('temperature_k'):g} {unit['temperature_k']}, "
+                f"sigma {avg.get('sigma_amu12_ang'):.6g} "
+                f"{unit['sigma_amu12_ang']}")
+    else:
+        rows = ", ".join(
+            f"{r['name']} {r['value']}" + (f" {r['unit']}" if r.get("unit")
+                                           else "")
+            for r in avg.get("rows") or ())
+        head = (f"  the frames' average over {avg['frames']} frames"
+                + (f" -- {rows}" if rows else ""))
+    lines = said + [head + f", weights {avg['weights']} (sum "
+                    f"{avg['weight_sum']!r}, within {avg['tolerance']:g} "
+                    f"of 1):"]
     for e in avg.get("at", ()):
         if e.get("why"):
             lines.append(f"  {e['bias_v']:>8.3f} V  {e['why']}")

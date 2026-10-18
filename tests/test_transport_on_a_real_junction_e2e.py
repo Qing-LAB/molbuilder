@@ -33,9 +33,7 @@ one (frame 0 the pair, frames at +/-sqrt(3) sigma, the mode's definition
 stated in full, `model/structure.md` § 2.2f); and a second transport
 calculation citing the set, its two-point self-consistent sweep at every
 frame: a point per frame and voltage, the record's average over the frames,
-and the data file.  And the definition's rules
-(`tests/data/frame_set_definition.toml`): the set with one rule broken each,
-cited at `jobset init`.
+and the data file; and the same frames stating no rows, a family.
 
 THE TRANSPORT RUNS RESTRICTED because a polarized moment that floats, as
 every transport rung's does, starts each atom at its full moment, aligned
@@ -52,7 +50,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -189,12 +186,6 @@ _PDOS_ASKS = (
      "refused": "cites one structure"},
 )
 
-#: The definition's rules (§ 2.2f), each a case of its own.
-_DEFINITION_CASES = tomllib.loads(
-    (Path(__file__).parent / "data" / "frame_set_definition.toml")
-    .read_text())["case"]
-
-
 def _junction() -> dict:
     """The junction as `jobset init` takes it, listed as :data:`_LISTED`:
     one chain, its ends the electrode blocks and its middle the bridge;
@@ -287,49 +278,19 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
     return built
 
 
-def _with_case(built, case):
-    """The good set with ``case``'s one change (`tests/data/
-    frame_set_definition.toml`): rows restated, scaled or dropped, the mass
-    channel dropped, a unit restated, every frame at frame 0's coordinates
-    -- or none of the definition at all."""
+def _family_of(built):
+    """The same frames stating no rows, no channel and no ``info.vibration``
+    -- each frame its own curve (`model/structure.md` § 2.2f)."""
     from molbuilder.frameset import MASS_CHANNEL
-    if case.get("none"):
-        bare = built.with_frames(np.asarray(built.frames, dtype=float))
-        for row in list(bare.customized_rows()):
-            bare.remove_customized(row["name"])
-        for f in range(bare.n_frames):
-            for row in list(bare.customized_rows(f)):
-                bare.remove_customized(row["name"], frame=f)
-        bare.annotations.pop(MASS_CHANNEL, None)
-        (bare.info or {}).pop("vibration", None)
-        return bare
-
-    def row(name, frame):
-        return next(r for r in built.customized_rows(frame)
-                    if r["name"] == name)
-    for e in case.get("set", ()):
-        r = row(e["row"], e.get("frame"))
-        built.set_customized(e["row"], e["value"], unit=r.get("unit"),
-                             frame=e.get("frame"))
-    for e in case.get("scale", ()):
-        r = row(e["row"], e.get("frame"))
-        built.set_customized(e["row"], r["value"] * e["by"],
-                             unit=r.get("unit"), frame=e.get("frame"))
-    for e in case.get("unit", ()):
-        r = row(e["row"], e.get("frame"))
-        built.set_customized(e["row"], r["value"], unit=e["unit"],
-                             frame=e.get("frame"))
-    for e in case.get("drop", ()):
-        built.remove_customized(e["row"], frame=e.get("frame"))
-    if case.get("drop_channel"):
-        built.annotations.pop(MASS_CHANNEL, None)
-    if case.get("still"):
-        built = built.with_frames(
-            np.stack([np.asarray(built.frames[0], dtype=float)]
-                     * built.n_frames),
-            frame_rows=[built.customized_rows(f)
-                        for f in range(built.n_frames)])
-    return built
+    bare = built.with_frames(np.asarray(built.frames, dtype=float))
+    for row in list(bare.customized_rows()):
+        bare.remove_customized(row["name"])
+    for f in range(bare.n_frames):
+        for row in list(bare.customized_rows(f)):
+            bare.remove_customized(row["name"], frame=f)
+    bare.annotations.pop(MASS_CHANNEL, None)
+    (bare.info or {}).pop("vibration", None)
+    return bare
 
 
 def _run_card(bundle: Path) -> None:
@@ -654,40 +615,12 @@ def junction(tmp_path_factory):
         run.stopped = copy_of(single, "stopped-in-its-loop",
                               stopped_in_its_loop)
 
-        # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
-        # the good set with one change each, cited at `jobset init`, the door
-        # that refuses it; the set stating none of the definition described,
-        # its seed and leads prepared -- which composes the junction -- and
-        # its record read where the Results tab reads it.
-        run.definition_said = {}
-        for k, case in enumerate(_DEFINITION_CASES):
-            path = f"P/structure/case{k}.xyz"
-            StructureCodec().write(
-                _with_case(_mode_frame_set(tree, pair, vibration), case),
-                tree / path)
-            bundle = f"P/transport/C{k}"
-            r = jobset("init", "--calculation", "transport",
-                       "--engine", "siesta", "--shape", "hierarchical",
-                       "--bundle", bundle, "--slot", f"junction={path}",
-                       "--psml-lib", "pseudopotential",
-                       "--bias", ",".join(f"{v:g}" for v in _BIAS),
-                       "--no-low-bias-approximation")
-            if "refused" in case:
-                run.definition_said[case["name"]] = Said(r.exit_code,
-                                                         r.output)
-                continue
-            assert r.exit_code == 0, r.output
-            c = RealRun(tree=tree, bundle=tree / bundle)
-            _run_card(c.bundle)
-            _set_by_the_person(c.bundle / f"C{k}.template.toml",
-                               "spin_treatment", "restricted")
-            _taken(c, "prep seed and leads", "prep", "task",
-                   *seed_and_leads(c), "--target", "this")
-            got = client.get(f"/api/transport/record?path={c.bundle}")
-            run.definition_said[case["name"]] = (got.status_code,
-                                                 got.get_json())
-            if case.get("none"):            # the set stating no definition
-                run.family = path
+        # THE SAME FRAMES STATING NO ROWS -- a family, each frame its own
+        # curve (`model/structure.md` § 2.2f).
+        run.family = "P/structure/family.xyz"
+        StructureCodec().write(
+            _family_of(_mode_frame_set(tree, pair, vibration)),
+            tree / run.family)
 
         # THE TRANSPORT TAB'S CARD, for each kind it cites (§ 3.8.1): what
         # the describe door says each citation's frames are, and whether the
@@ -1798,6 +1731,7 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
     assert avg["frames"] == _N_FRAMES
     for name, value in fs.structure_rows().items():
         assert avg[name] == value, (name, avg[name], value)
+    assert avg["rows"] == list(fs.structure) and avg["warnings"] == []
     assert avg["weights"] == list(_WEIGHTS) and avg["tolerance"] == 1e-6
     assert abs(avg["weight_sum"] - 1.0) <= avg["tolerance"]
     assert avg["why"] is None and len(avg["assumptions"]) == 6
@@ -1815,29 +1749,6 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
         assert e["base_conductance_g0"] == pytest.approx(g[0], rel=1e-12)
         assert e["conductance_change_percent"] == pytest.approx(
             100.0 * (g_avg - g[0]) / g[0], rel=1e-6, abs=1e-12)
-
-
-@pytest.mark.parametrize("case", _DEFINITION_CASES,
-                         ids=[c["name"] for c in _DEFINITION_CASES])
-def test_the_definition_is_checked_at_the_citation(junction, case):
-    """`model/structure.md` § 2.2f: a mode's frame set states what every
-    frame is, completely and consistently, and the transport citation door
-    checks it frame by frame before anything runs -- each rule broken once,
-    on the real mode's set, refused at `jobset init` naming the frame and the
-    row; a set stating none of it a family of frames with no average, said
-    so (`tests/data/frame_set_definition.toml`)."""
-    said = junction.definition_said[case["name"]]
-    if "refused" in case:
-        assert said.exit_code != 0, said.output
-        for words in case["refused"]:
-            assert words in said.output, (words, said.output)
-        return
-    status, body = said
-    assert status == 200, body
-    avg = body["record"]["average"]
-    assert avg["at"] == [], avg
-    for words in case["no_average"]:
-        assert words in avg["why"], (words, avg["why"])
 
 
 def test_the_data_file_holds_every_point_beside_its_frames_definition(
@@ -1877,6 +1788,8 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     for r in FRAME_ROWS:
         assert list(V[r.name]) == [cited.customized_value(r.name, frame=f)
                                    for f in range(_N_FRAMES)], r.name
+    assert [json.loads(x) for x in V["frame_rows"]] == [
+        cited.customized_rows(f) for f in range(_N_FRAMES)]
     masses = cited.annotations[MASS_CHANNEL].data
     assert list(V["atom"]) == list(range(cited.n_atoms))
     assert list(V["element"]) == list(cited.elements)
@@ -1902,7 +1815,8 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     dims = {d for v in got["variables"].values() for d in v["dims"]}
     for d in dims:
         assert got["variables"][d]["dims"] == (d,), d
-    frame_labels = {"frame_token", *(r.name for r in FRAME_ROWS)}
+    frame_labels = {"frame_token", "frame_rows",
+                    *(r.name for r in FRAME_ROWS)}
     attrs_of = {k: v["attrs"] for k, v in got["variables"].items()}
     assert set(attrs_of["transmission"]["coordinates"].split()) \
         == frame_labels
@@ -1966,10 +1880,10 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
 
 def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     """§ 3.8.1: the Transport tab cites either kind of § 3.1 -- and for a
-    pair the describe door says what its frames are: a mode's set its
-    definition, as the definition's own door reads the pair (the wire
-    `frameset.ModeFrameSet.to_wire` builds from `frameset.ROWS`); a family
-    its count and no definition; a run one structure.  The shared panel
+    pair the describe door says what its frames are: a mode's set its rows
+    in the vocabulary's words, its masses, where the mode came from and its
+    weights (the wire `frameset.FrameRows.to_wire` builds from
+    `frameset.ROWS`); a family its count and no rows; a run one structure.  The shared panel
     asks the pseudopotential directory of the person exactly for a pair,
     which brings none; and Task setup's folder answer echoes the frame-set
     calculation's frames as the describe door states them."""
@@ -1995,6 +1909,9 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         "masses_amu": [float(pair.annotations[MASS_CHANNEL].data[i])
                        for i in range(pair.n_atoms)],
         "vibration": pair.info["vibration"],
+        "weights": list(_WEIGHTS),
+        "weight_sum": pytest.approx(1.0, abs=1e-12),
+        "warnings": [],
     }
     # ...and those rows the script's own: its weights, its nodes, its
     # temperature.

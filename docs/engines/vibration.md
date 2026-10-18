@@ -1873,9 +1873,7 @@ displaced frame also states its largest atomic displacement against that
 atom's nearest-neighbour distance (science § 4c.5, soft modes) — a warning
 above a stated fraction, never a refusal. The pair keeps every promise the
 transport citation door checks by construction — count, order, species and
-labels unchanged, the definition complete and consistent
-([`model/structure.md`](?doc=model/structure.md) § 2.2f's rules), and no
-electrode atom moves when every electrode atom is held, which the generator
+labels unchanged, and no electrode atom moves when every electrode atom is held, which the generator
 checks and says when it is not so. **Another mode is another set**, cited by
 its own transport calculation; how the modes' results are weighed against each
 other is the person's *(user, 2026-10-09: "it is cleaner and more focused to

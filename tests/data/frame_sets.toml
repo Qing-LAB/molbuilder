@@ -27,9 +27,9 @@ rows = [{ name = "temperature", value = 300, unit = "K" }]
 frame_rows = [[],
               [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }],
               [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }]]
-# Beside the rows a person wrote (`temperature`, `mode`), parts of a mode's
-# definition (`structure.md` § 2.2f): the frames' `weight`, the `mass_amu`
-# channel and `info.vibration`.
+# Beside the rows a person wrote (`temperature`, `mode`), a maker's rows
+# (`structure.md` § 2.2f): the frames' `weight`, the `mass_amu` channel and
+# `info.vibration` -- carried as written.
 channels = { mass_amu = [1.008, 1.008] }
 info = { vibration = { run = "P/frequency/V/01_freq/run-0", result_sha256 = "0000000000000000000000000000000000000000000000000000000000000000" } }
 
@@ -51,10 +51,10 @@ load = {}
 expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.74]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [], engine_offset = "none" }
 
 [[case]]
-name = "read at one frame, that frame and the rows a person wrote, placed at frame 0's origin (periodicity § 6.0: one offset for the set) -- a mode's definition left behind: its weight, the mass_amu channel, info.vibration (structure.md § 2.2e)"
+name = "read at one frame, that frame and every row as written, placed at frame 0's origin (periodicity § 6.0: one offset for the set) -- its weight, the mass_amu channel and info.vibration with it (structure.md § 2.2e)"
 door = "save_load"
 load = { frame = 2 }
-expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [{ name = "mode", value = 1 }], engine_offset = [0.0, 0.0, 0.63], channels_absent = ["mass_amu"], info_absent = ["vibration"] }
+expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }], engine_offset = [0.0, 0.0, 0.63] }
 
 [[case]]
 name = "a frame outside the set is refused, naming how many there are"

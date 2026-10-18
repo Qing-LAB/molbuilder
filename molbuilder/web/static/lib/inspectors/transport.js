@@ -757,7 +757,10 @@ const WORKSPACE_TAG = "results:transport";
                       ? _fmt(a.conductance_change_percent, 2, false) + " %"
                       : "no change stated: " + (a.conductance_why || ""))
                   + "; the weights sum to " + _fmt(state.average.weight_sum, 6, false)
-                  + ", checked to " + state.average.tolerance + ".  It assumes: "
+                  + ", checked to " + state.average.tolerance
+                  + ((state.average.warnings || []).length
+                     ? " (" + state.average.warnings.join(" ") + ")" : "")
+                  + ".  It assumes: "
                   + (state.average.assumptions || []).join(" ")
                 : ((a && (a.why || a.conductance_why)) || state.average.why || "");
         } else {

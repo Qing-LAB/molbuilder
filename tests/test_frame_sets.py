@@ -169,10 +169,6 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
             assert list(got.axis_kind) == want
         elif key == "said":
             assert said and want in said[0], said
-        elif key == "channels_absent":
-            assert not set(want) & set(got.annotations or {}), got.annotations
-        elif key == "info_absent":
-            assert not set(want) & set(got.info or {}), got.info
         else:
             raise KeyError(f"frame_sets.toml: no check for {key!r}")
 

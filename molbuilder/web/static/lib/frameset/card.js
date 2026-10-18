@@ -4,10 +4,12 @@
  * Contract: docs/engines/transport.md § 3.8.1 ("A frame set says what each
  *           frame is"); docs/model/structure.md § 2.2f (the definition).
  * Data:     the server's `frame_set` — `{n_frames, definition}`, the
- *           definition `frameset.ModeFrameSet.to_wire()`: the structure's
- *           rows and the frames' columns, each with its unit and kind, built
- *           from `frameset.ROWS`. The card keeps no list of names: what the
- *           definition holds is what it draws.
+ *           definition `frameset.FrameRows.to_wire()`: the structure's
+ *           rows and the frames' columns, each with its unit and kind -- the
+ *           vocabulary's words for a row `frameset.ROWS` knows, any other's
+ *           name as written -- and what is said of the weights. The card
+ *           keeps no list of names: what the definition holds is what it
+ *           draws.
  * Owns:     lib/frameset/card.css.
  *
  * NEVER:
@@ -61,7 +63,9 @@ export function renderFrameSet(host, frameSet) {
     }
     // THE MODE LINE: each row its words, its value and its unit -- "Mode 6
     // · Frequency 2548.37 cm⁻¹ · …" -- the stored name on hover.
-    const mode = _el(doc, "p", "frameset-line", n + " frames of one mode — ");
+    const ofMode = def.structure.some((r) => r.name === "mode_index_1based");
+    const mode = _el(doc, "p", "frameset-line",
+                     n + (ofMode ? " frames of one mode — " : " frames — "));
     def.structure.forEach((r, i) => {
         if (i) mode.appendChild(doc.createTextNode(" · "));
         const bit = _el(doc, "span", null, r.words + " " + _fmt(r.value)
@@ -87,4 +91,8 @@ export function renderFrameSet(host, frameSet) {
         body.appendChild(tr);
     });
     host.appendChild(table);
+    // WHAT IS SAID OF THE WEIGHTS -- a frame with none, a sum off 1.
+    for (const w of def.warnings || []) {
+        host.appendChild(_el(doc, "p", "frameset-line", "Warning: " + w));
+    }
 }

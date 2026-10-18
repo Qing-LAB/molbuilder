@@ -373,13 +373,12 @@ the two built-in engine translations (`frozen_atoms` → `Geometry.Constraints`,
 tags → transport blocks); the region-label vocabulary + `ELECTRODE_LABELS`
 (Python, § 5); the JS L1/L2/L3 channel model + the generalized filter.
 
-**The first value channel molbuilder owns: `mass_amu`** *(2026-10-10)* —
-each atom's mass, the one a mode's frame set's coordinate is weighted by,
-defined with that set ([`model/structure.md`](?doc=model/structure.md)
-§ 2.2f) and spelled once, `frameset.MASS_CHANNEL`. Every atom carries one, a
-positive finite number in amu; molbuilder reads it there and nowhere else
-reads a mass off a structure. Any other value channel is the writer's: carried,
-remapped and shown, never read for a meaning.
+**`mass_amu`, a mode's maker's channel** *(2026-10-10; 2026-10-18)* — each
+atom's mass, the one a mode's coordinate is weighted by, written by a mode's
+frame set's maker ([`model/structure.md`](?doc=model/structure.md) § 2.2f).
+Like every value channel it is the writer's: carried, remapped and shown
+(the transport data file keeps it as its `mass_amu` variable), never read for
+a meaning — no calculation reads a mass off a structure.
 
 **Open work** (`plans/plan.md` **W15**): **`value`-channel filtering and
 display** — the server must resolve a `by_value` rule, and MolView must show a
