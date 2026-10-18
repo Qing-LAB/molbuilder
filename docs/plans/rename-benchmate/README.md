@@ -3,7 +3,7 @@
 **Role:** plan (the rename's working plan; one row in [`plans/plan.md`](?doc=plans/plan.md) § 2 points here — see § 0)
 **Domain:** all
 **Started:** 2026-10-18
-**Status:** proposed — nothing renamed yet. Baseline: commit `83e72b2`, molbuilder 2.9.4.
+**Status:** D1, D2, D3 and D7 decided; D4–D6 open; nothing renamed yet. Baseline: commit `83e72b2`, molbuilder 2.9.4.
 
 > *(user, 2026-10-18: "I like H5, make a folder to provide a detailed suggested step/plan to make the change of name with this icon design")*
 
@@ -275,17 +275,21 @@ If renamed later (a separate, optional Phase 7):
 
 ---
 
-## 7. Open decisions for the user
+## 7. Decisions
 
-| # | Question | Recommendation |
-|---|---|---|
-| D1 | Is the rename "a major framework change" that moves the version to 3.0.0 at Phase 3? | Yes: the command and the import name change |
-| D2 | When to rename the GitHub repository (Phase 5)? | After Phase 3 lands and has run for a week; GitHub keeps redirects either way |
-| D3 | Rename the browser-side names (§ 6)? | Not now |
-| D4 | Keep the `mb_*.pyz` and `MB_*` names permanently? | Yes: they read as "Benchmate" too, and existing run folders carry them |
-| D5 | Rename existing conda environments on the lab machines and Sol, or let them age out? | Let them age out, and use `envs rename-legacy` only on machines with no live runs |
-| D6 | Length of the compatibility period (Phase 6)? | Two minor releases or three months, whichever is later |
-| D7 | The structure-building tab is called **Molbuilder**. After the rename, keep that label (A), or relabel it **Structure builder** (B)? Either way its address `/molbuilder` stays | A: keep "Molbuilder" — after the rename it means the molecule builder inside Benchmate (§ 2a) |
+*(user, 2026-10-18: "D1 yes, D2 after a week, D3 not now, D7 A")*
+
+| # | Question | Recommendation | Decision |
+|---|---|---|---|
+| D1 | Is the rename "a major framework change" that moves the version to 3.0.0 at Phase 3? | Yes: the command and the import name change | **Decided: yes, 3.0.0** at Phase 3 |
+| D2 | When to rename the GitHub repository (Phase 5)? | After Phase 3 lands and has run for a week; GitHub keeps redirects either way | **Decided: one week after Phase 3** has run without problems |
+| D3 | Rename the browser-side names (§ 6)? | Not now | **Decided: not now** (Phase 7 stays optional) |
+| D4 | Keep the `mb_*.pyz` and `MB_*` names permanently? | Yes: they read as "Benchmate" too, and existing run folders carry them | *open* |
+| D5 | Rename existing conda environments on the lab machines and Sol, or let them age out? | Let them age out, and use `envs rename-legacy` only on machines with no live runs | *open* |
+| D6 | Length of the compatibility period (Phase 6)? | Two minor releases or three months, whichever is later | *open* |
+| D7 | The structure-building tab is called **Molbuilder**. After the rename, keep that label (A), or relabel it **Structure builder** (B)? Either way its address `/molbuilder` stays | A: keep "Molbuilder" — after the rename it means the molecule builder inside Benchmate (§ 2a) | **Decided: A, keep "Molbuilder"** |
+
+D4–D6 are needed before Phase 3 (D4) and Phase 4 (D5, D6). Phases 1 and 2 can start now.
 
 ---
 
@@ -294,4 +298,5 @@ If renamed later (a separate, optional Phase 7):
 | Date | Phase / step | What happened |
 |---|---|---|
 | 2026-10-18 | — | Plan written; icon H5 chosen; inventory measured at `83e72b2` |
+| 2026-10-18 | 0.4 | D1 yes (3.0.0), D2 one week after Phase 3, D3 not now, D7 A (keep "Molbuilder"). D4–D6 open |
 | 2026-10-18 | — | § 2a added: the Molbuilder tab and the notification wire names are separated from the project name (user's instruction); D7 added |
