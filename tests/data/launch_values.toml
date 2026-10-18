@@ -64,9 +64,15 @@ run_unset = ["threads"]
 refused = 'the run card on Task setup ("execution": {"threads": N} in task.json), or --cpus-per-task N'
 
 [[case]]
-name = "a run on a scheduler names its queue, from the record's list"
+name = "a run on a scheduler names its queue -- shown the record's queues against its wall and memory"
 allocation_unset = ["domain"]
-refused = "(the target's record lists: cpu, debug)"
+queues = [
+    { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
+    { name = "debug", partition = "cpu", qos = "debug", max_time = "00:15:00", max_cores = 64, max_mem_gb = 4, node_types = [{ cores = 64, nodes = 2 }] },
+]
+refused = ["states no queue (domain)", "the target's record lists:",
+           "cpu/public", "cpu/debug",
+           "but debug allows 00:15:00", "but debug allows 4"]
 
 [[case]]
 name = "every value stated nowhere is named in one refusal"
@@ -96,18 +102,34 @@ name = "--no-sbatch writes no header, and asks for none of the three"
 prep = ["--no-sbatch"]
 allocation_unset = ["domain", "time", "mem"]
 header_absent = true
+said = ["no header -- ranks, cores per rank from the run card"]
 
-# A run prepared with no header is not sent to a queue at all -- its launch is
-# refused for the header it lacks, a dry run too (`job-system.md` § 6.0: the
-# plan shown is the plan sent).  The header a benchmark's shelf is sent with
-# is written at its launch, and states only what was stated.
 [[case]]
-name = "...and launch fills none in: a benchmark's shelf, its header written at launch, states its wall and memory"
+name = "...and prepared again with it, a stage keeps no header from the prep before: its launch to a queue is refused for the header it lacks"
+before = [["prep", "task", "--group", "1"]]
+prep = ["--no-sbatch"]
+header_absent = true
+launch = []
+launch_refused = ["there is no scheduler header", "prepared with --no-sbatch"]
+
+[[case]]
+name = "...and a benchmark prepared with it runs where it is launched: its cells are the target's probed node's, not its queues'"
+prep = ["--no-sbatch"]
+bench = { mpi_np = [8, 32], omp_threads = [1] }
+said = ["crossed out (1)", "needs 32 cores but the target's probed node allows 16 cores"]
+
+# Work prepared with no header is not sent to a queue at all -- its launch
+# is refused for the header it lacks, a dry run too (`job-system.md` § 6.0:
+# the plan shown is the plan sent).  A benchmark's shelf header is written
+# at its launch from the queue its prep admitted, so one prepared with
+# --no-sbatch has none to write.
+[[case]]
+name = "...and a benchmark prepared with --no-sbatch is not sent to a queue: its shelves have no queue from prep"
 prep = ["--no-sbatch"]
 allocation_unset = ["time", "mem"]
 bench = { mpi_np = [1, 2], omp_threads = [1] }
 launch = []
-launch_refused = ["states no wall (time), memory (mem)", "--time 2-00:00:00 on this launch"]
+launch_refused = ["there is no scheduler header", "prepared with --no-sbatch"]
 
 [[case]]
 name = "a machine never probed is refused at prep, naming the probe that records it -- and nothing is written"
@@ -167,7 +189,7 @@ run_sh_lacks = ["module load mamba/latest"]
 # ===================================================================== #
 
 [[case]]
-name = "the header carries each stated value, and no site settings -- and the sbatch line launch shows states the same"
+name = "the header carries each stated value, and no site settings -- and the sbatch line sends it, restating none"
 header = ["#SBATCH -J H2_01_coarse", "#SBATCH -N 1",
           "#SBATCH -n 2", "#SBATCH -c 1", "#SBATCH -t 0-01:00:00",
           "#SBATCH -p cpu", "#SBATCH -q public", "#SBATCH --mem=8G",
@@ -176,7 +198,9 @@ header = ["#SBATCH -J H2_01_coarse", "#SBATCH -N 1",
 # hand form, `sbatch --export=ALL,MB_LAUNCHED_BY=manual ...`, which is not one.
 header_lacks = ["#SBATCH --mail", "#SBATCH --export", "#SBATCH --gres"]
 launch = []
-line = ["-p cpu", "-q public", "-t 0-01:00:00", "-n 2", "-c 1", "--mem=8G"]
+line = ["H2_01_coarse.sbatch --run 0"]
+line_lacks = ["-p ", "-q ", "-t ", "-n ", "-c ", "--mem"]
+listing = ["header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 run_sh = ["_mpi_np_default=2", "_omp_threads_default=1"]
 
 [[case]]
@@ -190,9 +214,10 @@ run_sh = ["_omp_threads_default=6",
 
 # job-contracts.md § 6.2: a stated max_memory_mb is the wrapper's `ulimit -v`, in KiB.
 [[case]]
-name = "a stated memory cap is the run script's ulimit -v, in KiB"
+name = "a stated memory cap is the run script's ulimit -v, in KiB -- and prep says it"
 run = { max_memory_mb = 2048 }
 run_sh = ["\nulimit -v 2097152 "]
+said = ["memory cap 2048 MB"]
 
 # job-contracts.md § 6.2: none stated is no cap -- no ulimit line.
 [[case]]
@@ -218,18 +243,19 @@ deck = ["MAX_MEMORY_MB = None # not stated: PySCF's own setting", "max_memory_mb
 
 [[case]]
 name = "a run's placement is recorded at prep, each value with its source, and said"
-said = ["placed on cpu (cpu/public)", "queue, wall, memory from the description", "ranks, cores per rank from the run card"]
+said = ["placed on cpu (cpu/public)", "queue, wall, memory from the description", "ranks, cores per rank from the run card",
+        "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 
 [[case]]
-name = "launch asks a queue the request prep asked: a PySCF run's cores are its threads"
+name = "prep asks a queue the run's whole request: a PySCF run's cores are its threads"
 engine = "pyscf"
 run = { threads = 48 }
+allocation = { domain = "small" }
 queues = [
     { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
     { name = "small", partition = "small", qos = "public", max_time = "1-00:00:00", max_cores = 16, node_types = [{ cores = 16, nodes = 4 }] },
 ]
-launch = ["--domain", "small"]
-launch_refused = "needs 48 cores but small allows 16 cores"
+refused = "needs 48 cores but small allows 16 cores"
 
 [[case]]
 name = "a PySCF run takes no rank count: it runs one process"
@@ -250,9 +276,19 @@ prep = ["--np", "6"]
 header = ["#SBATCH -n 6"]
 
 [[case]]
-name = "a launch flag overrides the wall prep baked"
+name = "a launch's --time restates the wall prep wrote, on the sbatch line"
 launch = ["--time", "3h"]
-line = ["-t 0-03:00:00", "-p cpu", "-q public"]
+line = ["-t 0-03:00:00 --export", "H2_01_coarse.sbatch"]
+
+[[case]]
+name = "--mem 0 at prep is the whole node, sent as said"
+prep = ["--mem", "0"]
+header = ["#SBATCH --mem=0"]
+
+[[case]]
+name = "...and a spelling that is no amount of memory is refused at prep, in the flag's words"
+prep = ["--mem", "12Q"]
+refused = "--mem: "
 
 [[case]]
 name = "the record checks the wall: one longer than the queue allows is refused at prep"
@@ -267,35 +303,61 @@ refused = "but debug allows 00:15:00"
 name = "a benchmark keeps the calculation's wall and queue, never a run card's"
 bench = { mpi_np = [1], omp_threads = [1] }
 run = { time = "2-00:00:00", domain = "debug" }
+bench_header = ["#SBATCH -t 0-01:00:00", "#SBATCH -p cpu", "#SBATCH -q public"]
+bench_header_lacks = ["#SBATCH -q debug"]
+said = ["placed on cpu (", "bench-group-cpu-G0K1C1  header: -J bench-group-cpu-G0K1C1  -N 1  -n 1  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 launch = []
-line = ["-t 0-01:00:00", "-p cpu", "-q public"]
 
 [[case]]
-name = "...and --domain at launch beats the queue its prep was told"
+name = "...and a queue named at prep is the one its shelves are sent to"
 bench = { mpi_np = [1], omp_threads = [1] }
+prep = ["--domain", "long"]
 queues = [
     { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
     { name = "long", partition = "long", qos = "public", max_time = "7-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
 ]
-launch = ["--domain", "long"]
-line = ["-p long", "-q public"]
-
-# A queue named nowhere reaches launch only for a benchmark, whose shelves'
-# queue is named when they are sent: a run prepared for a queue has its
-# queue recorded, and one prepared with --no-sbatch is refused for its
-# header first.
-[[case]]
-name = "the queues launch lists ask what its door admits -- the wall and memory prep baked, when launch states none"
-prep = ["--no-sbatch"]
-allocation_unset = ["domain"]
-bench = { mpi_np = [1], omp_threads = [1] }
-queues = [
-    { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
-    { name = "debug", partition = "cpu", qos = "debug", max_time = "00:15:00", max_cores = 64, max_mem_gb = 4, node_types = [{ cores = 64, nodes = 2 }] },
-]
+bench_header = ["#SBATCH -p long"]
+said = ["placed on long ("]
 launch = []
-launch_refused = "no --domain"
-listing = ["but debug allows 00:15:00", "but debug allows 4"]
+
+# ASKED ABOUT (`--mode ask`), every line is shown with every value of the
+# header it sends -- what the answer is an answer about (`submission.md` S4).
+[[case]]
+name = "asked about, each line is shown with every value of the header it sends"
+launch = []
+launch_mode = "ask"
+listing = ["would send coarse   -> domain cpu", "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
+
+# A BENCHMARK STATES ITS QUEUE BEFORE ITS GRID IS ENUMERATED ON IT: one naming
+# none is refused for that first, the record's queues listed.
+[[case]]
+name = "a benchmark on a scheduler names its queue, refused for that before its grid"
+allocation_unset = ["domain"]
+bench = { mpi_np = [1, 2], omp_threads = [1] }
+refused = ["states no queue (domain)", "the target's record lists:", "cpu/public", "cpu/debug"]
+
+# A QUEUE'S JOB CAP (`scheduler.md` R14): each kept cell of a benchmark is one
+# shelf, one submitted job -- said at prep, where the grid can still change,
+# as a condition: what is already queued there is not on the record.
+[[case]]
+name = "a benchmark of more shelves than its queue lets one person have submitted is told so at prep -- a condition, not a prediction"
+bench = { mpi_np = [1, 2, 3, 4, 5, 6], omp_threads = [1] }
+queues = [
+    { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, max_submit_jobs = 2, node_types = [{ cores = 64, nodes = 10 }] },
+]
+said = ["cpu takes 2 submitted job(s) per user", "this benchmark is 6 shelf job(s)",
+        "with nothing of yours already queued there, 2 go and 4 come back",
+        "fewer if you already hold some",
+        "launching the benchmark again sends exactly them"]
+
+[[case]]
+name = "...and one that fits says nothing of it"
+bench = { mpi_np = [1, 2], omp_threads = [1] }
+queues = [
+    { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, max_submit_jobs = 2, node_types = [{ cores = 64, nodes = 10 }] },
+]
+said_lacks = ["submitted job(s) per user"]
+
 
 # ===================================================================== #
 #  3 · WHAT THE RUN SCRIPT DOES HERE                                    #

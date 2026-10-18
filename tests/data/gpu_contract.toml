@@ -78,26 +78,24 @@ record = { conda_envs = ["molbuilder-siesta"] }
 refused = "env is not installed"
 
 [[case]]
-name = "a queue named for a GPU job must list GPUs"
+name = "a queue named for a GPU job must list GPUs -- refused at prep"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
-launch = ["--domain", "cpu"]
-launch_refused = "its record lists no GPUs"
+allocation = { domain = "cpu" }
+refused = "its record lists no GPUs"
 
 [[case]]
 name = "one node must hold the GPUs asked for -- refused at prep, on the queue the run names"
 run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
 refused = "needs 8 GPUs but gpu allows 4 GPUs"
 
-# A queue named nowhere reaches launch only for a benchmark, whose shelves'
-# queue is named when they are sent.
+# A run on a scheduler that names no queue is refused at prep, shown the
+# record's queues against its own request (`submission.md` S5).
 [[case]]
 name = "the queue list checks the job's own GPU count"
-bench = { use_gpu = [true], gpu_count = [2], mpi_np = [2], omp_threads = [1] }
-prep = ["--no-sbatch"]
+run = { use_gpu = true, gpu_count = 2, mpi_np = 2 }
 allocation_unset = ["domain"]
-launch = []
-launch_refused = "no --domain"
-listing = ["needs 2 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
+refused = ["states no queue (domain)",
+           "needs 2 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
 
 [[case]]
 name = "a GPU job's cores fit the widest node that has GPUs"
@@ -107,17 +105,15 @@ refused = "needs 64 cores but gpu allows 48 cores"
 [[case]]
 name = "a CPU job on the same queue keeps its 128-core nodes"
 run = { use_gpu = false, mpi_np = 64 }
-launch = ["--domain", "gpu"]
-line = ["-n 64", "-p gpu"]
-line_lacks = ["--gres"]
+header = ["#SBATCH -n 64", "#SBATCH -p gpu"]
+header_lacks = ["--gres"]
 
 [[case]]
 name = "a queue listing several cards holds the most any node holds"
 queues = [{ name = "public", partition = "public", qos = "public", max_time = "1-00:00:00", gpu = { a100 = 4, "a100.20gb" = 16 }, node_types = [{ cores = 48, nodes = 50, gpu = { a100 = 4 } }, { cores = 48, nodes = 2, gpu = { "a100.20gb" = 16 } }] }]
 allocation = { domain = "public" }
 run = { use_gpu = true, gpu_count = 16, mpi_np = 16 }
-launch = ["--domain", "public"]
-line = ["--gres=gpu:16"]
+header = ["#SBATCH --gres=gpu:16"]
 
 # ===================================================================== #
 #  2 · WHAT IS PRODUCED                                                 #
@@ -131,8 +127,12 @@ header = ["#SBATCH -n 8", "#SBATCH -p gpu", "#SBATCH --gres=gpu:2",
 header_lacks = ["a100"]
 deck_says = { "Diag.ELPA.GPU" = ".true." }
 run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
-launch = ["--domain", "gpu"]
-line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
+said = ["gpu share  8 rank(s) / 2 GPU(s) = 4 rank(s)/GPU"]
+
+[[case]]
+name = "fewer ranks than GPUs share none, said as it is"
+run = { use_gpu = true, gpu_count = 2, mpi_np = 1 }
+said = ["gpu share  1 rank(s) / 2 GPU(s): a GPU each, and 1 GPU(s) with no rank"]
 
 # THE SOLVER IS NOT THE ACCELERATOR (G3): `diag_algorithm` chooses the
 # eigensolver and decides no environment and no resource -- the packaged
@@ -148,18 +148,13 @@ header = ["#SBATCH -n 8", "#SBATCH -p gpu", "#SBATCH --gres=gpu:2",
 header_lacks = ["a100"]
 deck_says = { "Diag.Algorithm" = "ELPA-2STAGE", "Diag.ELPA.GPU" = ".true." }
 run_sh = ["molbuilder-siesta-gpu", "socket co-location"]
-launch = ["--domain", "gpu"]
-line = ["-n 8", "-p gpu", "--gres=gpu:2", "--gres-flags=enforce-binding"]
 
 [[case]]
-name = "the binding turned off leaves both renderings"
+name = "the binding turned off leaves it out of the header"
 allocation = { gpu_binding = false }
 run = { use_gpu = true, gpu_count = 2, mpi_np = 8 }
 header = ["#SBATCH --gres=gpu:2"]
 header_lacks = ["enforce-binding"]
-launch = ["--domain", "gpu"]
-line = ["--gres=gpu:2"]
-line_lacks = ["enforce-binding"]
 
 [[case]]
 name = "a PySCF run states its count like SIESTA's, on one process"
@@ -168,6 +163,7 @@ run = { use_gpu = true, gpu_count = 2, threads = 4 }
 header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
           "#SBATCH --gres=gpu:2"]
 deck_says = { USE_GPU = true }
+said = ["gpu share  one process on 2 GPU(s)"]
 
 # GPU acceleration is ELPA's: ScaLAPACK with a GPU is refused rather than
 # written (`engines/siesta.md` § 7).
@@ -306,9 +302,17 @@ allocation = { gpu_binding = false }
 bench = { use_gpu = [true], mpi_np = [8], gpu_count = [2], omp_threads = [1] }
 bench_gres = ["gpu:2"]
 bench_header_lacks = ["enforce-binding"]
-launch = ["--gpu-domain", "gpu"]
-line = ["--gres=gpu:2"]
-line_lacks = ["enforce-binding"]
+
+# A BENCHMARK NAMED ON A QUEUE WITH NO GPUs, on a record whose other queue
+# has them: its GPU cells are enumerated for the record's GPUs and crossed out
+# by that queue's own refusal, its CPU cells kept -- a cell that fits is never
+# denied by a sibling that does not (`generator.md` § 4.3a).
+[[case]]
+name = "a benchmark named on a queue with no GPUs crosses its GPU cells out by that queue's own refusal, and keeps its CPU cells"
+allocation = { domain = "cpu" }
+bench = { use_gpu = [true, false], mpi_np = [8], omp_threads = [1] }
+said = ["needs 1 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
+bench_header_lacks = ["--gres"]
 
 [[case]]
 name = "a benchmark on GPUs where no queue lists any is refused"

@@ -1501,7 +1501,8 @@ trial keeps writing into its own `bench-<POINT>/` directory exactly as
 before. Each job's allocation is its shelf's own ask — nothing wider —
 so a narrow trial never idles a wide allocation's cores, the CPU groups
 ask for no GPU, and a one-device trial never holds a four-device grant;
-the wall is Σ of its trials' bounds plus margin. A trial that
+the wall is the benchmark's own (`allocation.time`), stated for the shelf's
+whole job, and its header is written at the benchmark's prep. A trial that
 hits its bound is killed and reads `incomplete` in the summary's census;
 the walk continues — one bad point says nothing about the next. The
 shelves submit **biggest ask first**, as independent jobs the queue may
@@ -2789,7 +2790,7 @@ and a voltage, `transport.md` § 2a.11), or a task's stages sharing one job, in 
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
 | `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
-| `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch -- a task's group's by its prep (`prep.group_header`) | none | derived |
+| `<group>.sbatch` — only: a target with a scheduler, no `--no-sbatch` | its queue header — a task's group's, a run of points' walk's, a benchmark's shelf's | prep (`prep.walk_header_of`), written again at each prep; launch sends it | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
 <!-- /manifest -->
 

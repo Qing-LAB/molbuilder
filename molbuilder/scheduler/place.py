@@ -17,17 +17,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from .admit import Refusal
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
-from .admit import Request, admits, domain_serves_gpu
+from .admit import Request, admits
 
 
 @dataclass(frozen=True)
 class Placement:
-    """A request bound to a domain — the ONE decision (R1).
-
-    The header and the command line are two renderings of this, never two
-    decisions, which is what stops them naming different queues.
+    """A request bound to a domain — the ONE decision (R1), made at prep and
+    rendered once, in the header.
     """
     domain: "object"
     partition: str
@@ -52,21 +50,6 @@ class Unplaceable(Exception):
         self.reasons = list(reasons)
         super().__init__("; ".join(i.message for i in self.reasons)
                          or "no domain admits it")
-
-
-def candidates(routing, *, prefer_gpu: bool) -> List:
-    """The queues that serve this KIND of work — § 5's third branch.
-
-    A GPU request needs devices.  A CPU request PREFERS a cpu-only queue even
-    on a gpu-capable cluster, because idle devices cost -- but the preference
-    is expressed by ordering, not by exclusion: a cluster whose every queue
-    has GPUs must still be able to run CPU work.
-    """
-    if prefer_gpu:
-        return [d for d in routing if domain_serves_gpu(d)]
-    cpu_only = [d for d in routing if not domain_serves_gpu(d)]
-    return cpu_only or list(routing)
-
 
 
 def place(routing, request: Request, *,

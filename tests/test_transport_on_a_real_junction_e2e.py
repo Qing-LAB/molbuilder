@@ -711,6 +711,12 @@ def junction(tmp_path_factory):
             got = client.get(f"/api/transport/pdos?path={tree / ask['calc']}"
                              f"&atoms={atoms}&{ask['query']}")
             run.pdos_said[ask["name"]] = (got.status_code, got.get_json())
+        # A RUN OF POINTS SENT TO A QUEUE IS ONE JOB (`job-system.md` § 6.0):
+        # a calculation citing the same run, prepared for a named machine
+        # with queues -- its device's walk, its two points' walls summed,
+        # admitted at prep: refused on a queue shorter than the sum, and its
+        # one header written for a queue that takes it.  Nothing runs.
+        run.walk = _a_walk_prepared_for_a_queue(tree, cite)
         run.vibration = vibration
         run.frame_set = frame_set
         run.cite = cite
@@ -725,6 +731,77 @@ def _said(run, step, *words):
     said = run.said[step]
     for w in words:
         assert w in said.output, f"{step}: {w!r} not in:\n{said.output}"
+
+
+#: The device's wall, per point, on the walk's run card -- two points sum to
+#: 80 minutes, past the short queue's hour.
+_POINT_WALL = "00:40:00"
+
+
+def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
+    """A calculation citing ``cite`` at :data:`_BIAS`, its device stating
+    :data:`_POINT_WALL` a point, prepared for ``cluster`` -- this machine's
+    record with a scheduler and two queues, a short one and a long one,
+    copied in as a remote machine's record is (`configuration.md` § 5):
+    first naming the short queue, then the long one.  What each prep said,
+    and the walk's header as the second wrote it."""
+    import dataclasses as _dc
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.runfiles import LAUNCH_DIR, GroupNames, RunNames
+    from molbuilder.scheduler import Domain
+    from molbuilder.scheduler.record import (machine_scope_path,
+                                             named_environment_path,
+                                             read_environment,
+                                             write_environment)
+    from molbuilder.task import read_task
+    from support.real_runs import RealRun, _typed
+    from support.road import group_words, jobset
+    from molbuilder.config_dir import ensure_private_dir
+    here = read_environment(machine_scope_path())
+    # THE NAMED TARGET'S RECORD, copied here as one probed there is.
+    ensure_private_dir(named_environment_path("cluster").parent)
+    write_environment(_dc.replace(here, scheduler="slurm", domains=[
+        Domain(name="short", partition="cpu", qos="short",
+               max_time="01:00:00", max_cores=16,
+               node_types=[{"cores": 16, "nodes": 2}]),
+        Domain(name="long", partition="cpu", qos="long",
+               max_time="1-00:00:00", max_cores=16,
+               node_types=[{"cores": 16, "nodes": 2}])]),
+        named_environment_path("cluster"))
+    r = jobset("init", "--calculation", "transport", "--engine", "siesta",
+               "--shape", "hierarchical", "--bundle", "P/transport/W",
+               "--slot", f"junction={cite}",
+               "--bias", ",".join(f"{v:g}" for v in _BIAS),
+               "--no-low-bias-approximation")
+    assert r.exit_code == 0, r.output
+    walk = RealRun(tree=tree, bundle=tree / "P" / "transport" / "W")
+    _run_card(walk.bundle)
+    # THE SPIN RESTRICTED, as the calculation the module runs has it.
+    _set_by_the_person(walk.bundle / "W.template.toml", "spin_treatment",
+                       "restricted")
+    task = json.loads((walk.bundle / "task.json").read_text())
+    task["allocation"] = {"time": "01:00:00", "mem": "4G"}
+    for st in task["stages"]:
+        if st["name"] == "device":
+            st["execution"] = {**st.get("execution", {}),
+                               "time": _POINT_WALL}
+    for queue in ("short", "long"):
+        task["allocation"]["domain"] = queue
+        (walk.bundle / "task.json").write_text(json.dumps(task, indent=2))
+        _typed(walk, f"prep on {queue}", "prep", "task",
+               *group_words(walk.bundle, "device"), "--target", "cluster")
+    described = read_task(walk.bundle / "task.json")
+    home = stage_home(walk.bundle, described, "device")
+    names = RunNames.of(described.label, home.token, described.shape)
+    header = (home.dir / LAUNCH_DIR
+              / GroupNames.of_points(names.stem).name(".sbatch"))
+    walk.header = header.read_text() if header.is_file() else None
+    # ...and the headers anywhere else below the stage: a point's own,
+    # beside its deck, or a run's copy of one.
+    walk.point_headers = sorted(
+        str(h.relative_to(home.dir))
+        for h in home.dir.rglob(names.name(".sbatch")))
+    return walk
 
 
 def _record(run):
@@ -1481,6 +1558,39 @@ def test_a_walk_run_here_names_its_log(junction, step, under):
                None)
     assert log is not None and log.startswith(under), said
     assert (junction.bundle / log).is_file(), log
+
+
+def test_a_walk_of_points_is_admitted_at_prep_its_walls_summed(junction):
+    """A run of points goes to a queue as one job walking every point, its
+    wall the points' summed (`job-system.md` § 6.0): prep admits that one
+    request on the queue it names -- a queue shorter than the sum is refused
+    there, naming the walk, the sum and where the wall was stated -- before
+    anything is sent, where a launch would only meet the scheduler's
+    refusal."""
+    r = junction.walk.said["prep on short"]
+    assert r.exit_code != 0, r.output
+    for words in (f"stage 'device', one job walking its {len(_BIAS)} "
+                  f"points (their walls summed), does not fit the queue "
+                  f"'short'",
+                  "needs 80 min but short allows 01:00:00",
+                  "wall: the run card (`execution` in task.json)"):
+        assert words in r.output, r.output
+
+
+def test_a_walk_of_points_is_written_at_prep_as_the_one_header_launch_sends(
+        junction):
+    """On a queue that takes it, prep writes the walk's one header -- the
+    summed wall, the queue it admitted -- and prints every value of it, so
+    launch sends it as it is (`submission.md` S4); and it is the run's one
+    header: no point carries one of its own, which nothing sends."""
+    from molbuilder.scheduler.emit import Directives
+    r = junction.walk.said["prep on long"]
+    assert r.exit_code == 0, r.output
+    lines = Directives.lines_of(junction.walk.header or "")
+    assert "#SBATCH -t 0-01:20:00" in lines, lines
+    assert "#SBATCH -p cpu" in lines and "#SBATCH -q long" in lines, lines
+    assert "header: " in r.output and "-t 0-01:20:00" in r.output, r.output
+    assert junction.walk.point_headers == [], junction.walk.point_headers
 
 
 def test_launched_again_warm_with_every_point_done_it_is_refused(junction):

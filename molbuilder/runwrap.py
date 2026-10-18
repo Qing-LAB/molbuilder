@@ -4129,7 +4129,7 @@ def render_wrappers(script_path: Path, *,
     if emit_sbatch:
         from .jobset.placement import deck_runs_one_process
         sbatch = _render_sbatch_for(
-            script_path, names=names, resources=r, project_dir=project_dir,
+            script_path, names=names, resources=r,
             domain_pq=domain_pq, machine_record=machine_record,
             one_process=deck_runs_one_process(script_path.suffix))
         if sbatch is not None:
@@ -4211,64 +4211,10 @@ def write_run_wrapper(script_path: Path, *,
     return parent / rendered.wrapper_name
 
 
-def _bound_queue(resources, domain_pq, env_rec):
-    """The queue this job NAMES, bound on the target's record -- a
-    :class:`~molbuilder.scheduler.place.Placement`, or ``None`` when the job
-    names none.
-
-    ``Placement`` is R1's "ONE decision" -- the header and the `sbatch`
-    command line are two renderings of it -- so this returns one rather than
-    a bare ``(partition, qos)``.
-
-    Who names it, in order:
-
-    1. ``domain_pq`` -- the caller already placed it (`launch` does, on the
-       record it admitted the request against);
-    2. the domain the job states (``Resources.domain`` -- `allocation.domain`,
-       the run card's ``domain``, ``--domain``).
-
-    **Nothing else** *(user, 2026-10-02: "explicit job config is the only way
-    allowed")*.  An unnamed queue is not chosen here.  Prep refuses both before anything is written
-    (`placement.launch_refusal`).
-
-    **The binding, not the fit**: the request here is empty.  Whether the
-    run fits the queue it names -- its cores, GPUs, memory and wall -- prep
-    has asked already, at its checkpoint 4, of the same record by the same
-    `place` (`placement.admitted`), and launch asks again of the
-    machine as it stands then (R9).
-    """
-    from .scheduler.place import Placement, Unplaceable, place
-    from .scheduler import Request
-    from .runtime_config import routing_of
-
-    rows = routing_of(env_rec)
-    if domain_pq and domain_pq[0] and domain_pq[1]:
-        # Bind the ROW behind the pair, not just the two strings: callers
-        # downstream want the domain itself, and re-finding it by matching
-        # `(partition, qos)` against the menu is the lookup this function
-        # exists to do once.
-        _row = next((d for d in rows
-                     if (d.partition, d.qos) == (domain_pq[0], domain_pq[1])),
-                    None)
-        return Placement(domain=_row, partition=domain_pq[0],
-                         qos=domain_pq[1])
-    want = getattr(resources, "domain", None)
-    if not want:
-        return None
-    try:
-        return place(rows, Request(), named=want)
-    except Unplaceable as exc:
-        raise WrapperError(
-            f"this job names the queue {want!r}, which the target's record "
-            f"cannot take it on:\n    "
-            + "\n    ".join(r.message for r in exc.reasons)) from None
-
-
 def _render_sbatch_for(script_path: Path, *, names,
-                       project_dir: Optional[Path] = None,
                        resources: "Resources",
                        domain_pq: Optional[Tuple[str, str]] = None,
-                       machine_record=None, one_process: bool,
+                       machine_record, one_process: bool,
                        where: str = "") -> Optional[str]:
     """The ``.sbatch`` text for this job when its target has a scheduler;
     ``None`` when it does not.
@@ -4277,34 +4223,28 @@ def _render_sbatch_for(script_path: Path, *, names,
     before anything is on disk (`script-preparation.md` § 5, W7).
 
     **Every value in it is one the job stated** (`architecture.md` § 5.2):
-    the queue it names, its wall, its memory, its cores per rank, its GPU
+    the queue prep admitted it on (``domain_pq``, its job's placement,
+    `placement.admitted`), its wall, its memory, its cores per rank, its GPU
     count and -- for SIESTA -- its rank count.  ``one_process`` (PySCF, with
     OpenMP threads) asks for one task: that is what the engine is, not a
     value anyone picks -- the caller's answer, `placement.one_process`.
     ``where`` is the folder, from the one the job is submitted in, that its
-    run script and SLURM's own output are in (a walk's, `launch/`).  Whether each is stated is asked ONCE per
-    moment, by `placement.launch_refusal` -- at prep, before anything is
-    written, and at launch for a header written there (`submit.
-    _sbatch_request`).  Nothing is filled in: not the target's width, not a
-    rank per GPU, not a queue's ceiling, not a default from any config.
-
+    run script and SLURM's own output are in (a walk's, `launch/`).  Whether
+    each is stated was asked at prep, before anything was written
+    (`placement.launch_refusal`).  Nothing is filled in: not the target's
+    width, not a rank per GPU, not a queue's ceiling, not a default from any
+    config.
     """
     r = resources
-    if project_dir is None:
-        project_dir = (script_path.parent
-                       if script_path.parent.exists() else None)
-
-    # THE MACHINE IS DECIDED ONCE, AND IT WAS DECIDED BEFORE THIS: the
-    # caller hands over the record, and that IS the answer -- resolving it a
-    # second time here is how the two artifacts of one render could come to
-    # describe two different machines.  A caller with none (the launch
-    # doors) reads the calculation's own snapshot.
-    if machine_record is not None:
-        env_rec = machine_record
-    else:
-        from .scheduler import machine_for
-        env_rec = machine_for(project_dir)
-    if env_rec is None or env_rec.scheduler != "slurm":
+    # THE MACHINE IS DECIDED ONCE, AND IT WAS DECIDED BEFORE THIS: prep
+    # hands over the target's record, and that IS the answer -- resolving it
+    # a second time here is how the two artifacts of one render could come
+    # to describe two different machines.
+    if machine_record is None:
+        raise WrapperError(
+            f"`{script_path.name}`: a header is rendered for the target's "
+            f"record, and none was handed over")
+    if machine_record.scheduler != "slurm":
         return None  # no queue on this machine -> only .run.sh is meaningful
 
     # IS THIS A GPU JOB, AND HOW MANY -- the job's request, the one door for
@@ -4315,12 +4255,18 @@ def _render_sbatch_for(script_path: Path, *, names,
     except GpuRequestError as exc:
         raise WrapperError(f"`{script_path.name}`: {exc}") from None
 
-    placement = _bound_queue(r, domain_pq, env_rec)
+    # THE QUEUE PREP ADMITTED IT ON (`placement.admitted`), as its job
+    # records it: the header renders it and binds nothing.
+    if not domain_pq:
+        raise WrapperError(
+            f"`{script_path.name}`: a header is rendered for the queue prep "
+            f"admitted, and none was handed over")
+    partition, qos = domain_pq
     ntasks = 1 if one_process else r.mpi_np
 
     return render_sbatch(
         names,
-        partition=placement.partition, qos=placement.qos,
+        partition=partition, qos=qos,
         ntasks=int(ntasks), cpus_per_task=int(r.cpus_per_task),
         time=r.time, mem=r.mem,
         gpus=gpus, gpu_binding=r.gpu_binding,
@@ -4329,21 +4275,20 @@ def _render_sbatch_for(script_path: Path, *, names,
 
 
 def walk_header(base: Path, names, *, resources: "Resources",
-                one_process: bool, machine_record=None,
-                domain_pq: Optional[Tuple[str, str]] = None
-                ) -> Optional[str]:
+                one_process: bool, machine_record,
+                domain_pq: Tuple[str, str]) -> Optional[str]:
     """THE ONE HEADER OF A WALK -- a group's one job, a benchmark's shelf, a
-    run of points (`job-system.md` § 6.0): rendered for its one request,
-    submitted from ``base``, the folder the walk runs from -- the
-    calculation's for a group, the stage's for a run of points, the
-    benchmark's container for a shelf -- its walk script and SLURM's own
-    output in `launch/` beside it -- or ``None`` where the
-    machine has no scheduler.  ``names`` are the walk's own
-    (`runfiles.GroupNames`)."""
+    run of points (`job-system.md` § 6.0): rendered at prep for its one
+    request on the queue prep admitted it on (``domain_pq``), submitted from
+    ``base``, the folder the walk runs from -- the calculation's for a
+    group, the stage's for a run of points, the benchmark's container for a
+    shelf -- its walk script and SLURM's own output in `launch/` beside it
+    -- or ``None`` where the target's record (``machine_record``) names no
+    scheduler.  ``names`` are the walk's own (`runfiles.GroupNames`)."""
     from .runfiles import LAUNCH_DIR
     return _render_sbatch_for(
         Path(base) / names.name(".sbatch"), names=names,
-        project_dir=Path(base), resources=resources, domain_pq=domain_pq,
+        resources=resources, domain_pq=domain_pq,
         machine_record=machine_record, one_process=one_process,
         where=f"{LAUNCH_DIR}/")
 
@@ -4418,31 +4363,28 @@ def render_sbatch(names, *,
     # numbers each run and records it; by hand, past the run script's
     # launch-door gate, from the folder `launch` sends it from -- a run's
     # header from its own folder, handing its run script the run's number;
-    # a walk's (``where``) from the calculation's, its members' numbers in
-    # its walk script.
+    # a walk's (``where``) from the folder its `launch/` is in, its members'
+    # numbers in its walk script.
     by_hand = (f"sbatch --export=ALL,MB_LAUNCHED_BY=manual "
                f"{where}{names.name('.sbatch')}"
                + ("" if where else " --run N"))
     lines: List[str] = [
         "#!/bin/bash",
         "# === molbuilder sbatch header (scheduler: slurm) ===",
-        "# Generated from the job's own stated values -- by prep, or for a",
-        "# run of points' walk and a benchmark's shelf, by the launch.",
+        "# Generated by prep from the job's own stated values.",
         "# Authoritative design: docs/execution/job-system.md.",
         "# Sent by `molbuilder jobset launch`, which numbers each run and",
         "# records it.  By hand -- sbatch, not bash, which ignores the",
         "# #SBATCH lines -- from "
-        + ("the calculation's folder:" if where else "this file's folder:"),
+        + ("the folder this file's launch/ is in:" if where
+           else "this file's folder:"),
         f"#     {by_hand}",
         "#",
         f"#SBATCH -J {basename}",
         "#SBATCH -N 1",
     ]
-    # THE ONE EMITTER (2026-08-23, scheduler.md R1).  The queue, the wall, the
-    # ranks, the cores, the devices and the memory rule are rendered by
-    # `scheduler.emit`, which also renders them for the `sbatch` command line
-    # -- so the header and the flags are two spellings of one placement rather
-    # than two writers deciding separately.
+    # THE ONE EMITTER (scheduler.md R1): the queue, the wall, the ranks, the
+    # cores, the devices and the memory rule, rendered by `scheduler.emit`.
     from .scheduler.emit import Directives
     _d = Directives(partition=partition, qos=qos, walltime=time,
                     ntasks=ntasks, cpus_per_task=cpus_per_task,

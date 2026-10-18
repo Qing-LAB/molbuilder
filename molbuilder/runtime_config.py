@@ -80,7 +80,7 @@ _SCHEDULER_RETIRED = (
     "delete the block.  Nothing in it may be set for every job:\n"
     "  * a job's queue, wall, memory, ranks and cores per rank are the JOB's "
     "own: its description (`allocation`, or the run card `execution` in "
-    "task.json) or the prep/launch flags (--domain, --time, --mem, --np, "
+    "task.json) or the prep flags (--domain, --time, --mem, --np, "
     "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
     "  * a machine's scheduler and queues are its RECORD's: `{probe}` ON that "
     "machine -- with --name and the name you prep it by when it is not this "
@@ -1516,11 +1516,7 @@ def get_env_init() -> Dict[str, str]:
             if isinstance(section.get(k), str) and section[k].strip()}
 
 
-def get_routing(
-    project_dir: Optional[Path] = None,
-    *,
-    local_only: bool = False,
-) -> List["Domain"]:
+def get_routing(project_dir: Optional[Path] = None) -> List["Domain"]:
     """Return the submission-domain menu: every ``(partition, qos)`` this
     account may actually reach, with its wall.
 
@@ -1529,8 +1525,7 @@ def get_routing(
     live ``sinfo``/``sacctmgr`` -- and `configuration.md` § 5 M-1 puts
     measurements in the machine record and preferences in ``molbuilder.json``.
 
-    Each entry is a :class:`~molbuilder.scheduler.record.Domain` (phase 3 of
-    `execution/scheduler.md` § 8).
+    Each entry is a :class:`~molbuilder.scheduler.record.Domain`.
 
     Returns ``[]`` when there is no record, or on a workstation: no queue to
     name.  Order is the record's; nothing here chooses among them -- a job
@@ -1539,13 +1534,9 @@ def get_routing(
     ``project_dir`` selects the calculation scope, so a folder carried to a
     cluster reads the record `prep` snapshotted beside it (M-3's precedence,
     through the one door).
-
-    ``local_only`` bypasses ``project_dir`` and asks a different question --
-    :func:`molbuilder.scheduler.record.machine_for`'s ``local_only`` docstring
-    has the reasoning.
     """
     from .scheduler import machine_for
-    return routing_of(machine_for(project_dir, local_only=local_only))
+    return routing_of(machine_for(project_dir))
 
 
 def routing_of(env) -> List["Domain"]:

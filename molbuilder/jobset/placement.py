@@ -15,29 +15,31 @@ from .model import AS_RESOURCE
 _SHAPE_ITEMS = ("mpi_np", "omp_threads", "threads")
 
 #: What a person calls each launch value, and the flag that states it -- the
-#: words of the one refusal below.
+#: words of the one refusal below, of a refused queue's ask, and of the line
+#: that says where each value came from.
 _LAUNCH_WORDS = {
     "domain":        ("queue", "--domain QUEUE"),
     "time":          ("wall", "--time 2-00:00:00"),
     "mem":           ("memory", "--mem 64G"),
     "mpi_np":        ("ranks", "--np N"),
     "cpus_per_task": ("cores per rank", "--cpus-per-task N"),
+    "gres":          ("GPUs", "--gpus N"),
+    "max_memory_mb": ("memory cap", "--max-memory-mb MB"),
+    "gpu_binding":   ("GPU binding", "allocation.gpu_binding"),
 }
 
 
 def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
-                   stage=None, queues=(), base=None, target=None,
-                   at_launch: bool = False):
+                   stage=None, queues=(), asked=None, base=None,
+                   target=None):
     """**Why this launch cannot be written** -- ``None`` when every value it
     needs is stated (`execution/architecture.md` § 5.2; user, 2026-10-02:
     *"explicit job config is the only way allowed"*).
 
-    ONE ANSWER, asked at each moment a launch is written: by `prep.plan_stage`
-    with the whole assembly in hand, before anything is written -- for a run
-    and for a benchmark alike -- and by launch's one request
-    (`submit._sbatch_request`) of what it sends, where a launch flag may
-    have stated a value.  The renderers below them take what is stated and
-    ask nothing again:
+    ONE ANSWER, asked by `prep.plan_stage` with the whole assembly in hand,
+    before anything is written -- for a run and for a benchmark alike; launch
+    sends what prep wrote and asks nothing again (`scheduler.md` R9).  The
+    renderers take what is stated and ask nothing again:
 
     * ``shape`` -- a RUN's processes: the engine's own launch-shape items
       (the catalogue's, so PySCF is asked its threads and never a rank
@@ -50,9 +52,12 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     GPU, not a thread count of one, not a queue's ceiling, not the
     scheduler's default memory.  Each was a value nobody stated for that run,
     and a run is hours before anyone learns which one it got.  ``queues`` --
-    the target's own, by name -- is the record's fact, shown so the person
-    can choose one; ``base`` and ``target`` say which record that was, for
-    the refusal that finds it lists none.
+    the target's own, as its record holds them -- is the record's fact: a
+    run naming none is shown them with what each allows and whether it
+    takes ``asked`` -- the work's request, the one admission reads
+    (`ask.queue_table`, `submission.md` S5), so one can be named; ``base``
+    and ``target`` say
+    which record that was, for the refusal that finds it lists none.
     """
     from ..template import catalogue, select
     missing = []
@@ -78,15 +83,16 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
             if getattr(allocation, field, None) in (None, ""):
                 missing.append((field, field))
         named = getattr(allocation, "domain", None)
-        if named and named not in queues:
+        listed = [q.name for q in queues]
+        if named and named not in listed:
             # A QUEUE THE RECORD DOES NOT LIST is not a queue this job can be
             # sent to.  A record that lists none at all was probed off its
             # scheduler, or not probed there.
             said = f"{'stage ' + repr(stage) + ' ' if stage else ''}names "
-            if queues:
+            if listed:
                 return (f"{said}the queue {named!r}, which the target's "
                         f"record does not list -- it lists: "
-                        f"{', '.join(queues)}.")
+                        f"{', '.join(listed)}.")
             # NONE AT ALL: probed off its scheduler, or not probed there --
             # renewed by the record that answered's own steps.
             from ..scheduler.record import record_and_renewal
@@ -99,11 +105,6 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     where = []
     for field, key in missing:
         words, flag = _LAUNCH_WORDS[field]
-        if at_launch:
-            # LAUNCH READS NO DESCRIPTION: what it can still be told is a
-            # flag on this launch.
-            where.append(f"  {words:<15} {flag} on this launch")
-            continue
         # WHERE A PERSON STATES IT, on either road: the Task setup card that
         # writes it, the task.json key that card writes, and the flag --
         # the refusal reaches the page and the terminal alike.
@@ -120,17 +121,37 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
                     f'{{"{key}": N}} in task.json)')
         line = f"  {words:<15} {card}, or {flag}"
         if field == "domain" and queues:
-            line += (f"\n  {'':<15} (the target's record lists: "
-                     f"{', '.join(queues)})")
+            line += "\n" + _the_queues(asked, queues, engine)
         where.append(line)
     what = ", ".join(f"{_LAUNCH_WORDS[f][0]} ({k})" for f, k in missing)
     return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states no "
             f"{what} -- and nothing fills one in "
             f"(docs/execution/architecture.md § 5.2).  State each:\n"
-            + "\n".join(where)
-            + ("\n  (the description's values are read at prep: to state "
-               "one there, go back to the state saved before the prep and "
-               "prep anew)" if at_launch else ""))
+            + "\n".join(where))
+
+
+def _the_queues(asked, rows, engine: str) -> str:
+    """The target's queues against the work's request -- its wall, memory,
+    cores and GPUs, those it states (`ask.queue_table`)."""
+    from ..scheduler import parse_mem_gb
+    from ..scheduler.quantities import parse_walltime
+    from .ask import Ask, queue_table
+    from .model import GpuRequestError, gpu_request
+
+    def _read(parse, text):
+        try:
+            return parse(str(text)) if text else None
+        except ValueError:
+            return None
+    try:
+        gpus = gpu_request(asked)
+    except GpuRequestError:
+        gpus = None
+    return queue_table(
+        rows, Ask(time_s=_read(parse_walltime, asked.time),
+                  mem_gb=_read(parse_mem_gb, asked.mem)),
+        cores=request_of(asked, one_process=one_process(engine)).cores,
+        gpus=(gpus.count if gpus is not None and gpus.uses else None))
 
 
 def request_of(resources, *, one_process: bool):
@@ -171,7 +192,8 @@ def deck_runs_one_process(suffix: str) -> bool:
 
 #: The values a run's placement records the source of -- its queue, wall
 #: and memory, its ranks, cores per rank and GPUs (`job-system.md` § 6.0).
-_PLACED = ("domain", "time", "mem", "mpi_np", "cpus_per_task", "gres")
+_PLACED = ("domain", "time", "mem", "mpi_np", "cpus_per_task", "gres",
+           "max_memory_mb", "gpu_binding")
 
 #: The values each limit a queue refuses is asked against
 #: (`scheduler.admit.Refusal.limit`).
@@ -185,7 +207,7 @@ _REFUSED = {"walltime": ("time",), "mem": ("mem",),
 def _stated_at(field: str, source: str) -> str:
     """Where a launch value was stated, as the person changes it: the
     flag on this prep, the run card, or the description."""
-    words, flag = {**_LAUNCH_WORDS, "gres": ("GPUs", "--gpus N")}[field]
+    words, flag = _LAUNCH_WORDS[field]
     if source == "flag":
         return f"{words}: {flag.split()[0]} on this prep"
     if source == "run card":
@@ -193,18 +215,20 @@ def _stated_at(field: str, source: str) -> str:
     return f"{words}: the description (`allocation` in task.json)"
 
 
-def admitted(resources, environment, *, one_process: bool, stage=None,
+def admitted(resources, environment, *, one_process: bool, what: str,
              sources=None):
-    """``(placement, refusal)`` -- the queue a run names, admitted on the
+    """``(placement, refusal)`` -- the queue a job names, admitted on the
     target's record with its whole request (:func:`request_of`) by the
-    binding launch asks too (`scheduler.place`), and what its job records
+    one binding (`scheduler.place`), and what its job records
     of it: the queue's name, partition and qos, and where each value came
-    from (``sources``, `prep._fold_allocation`) -- or ``(None, why)``: a GPU
-    run naming a queue with no GPUs, more cores or memory than its nodes
-    hold, a wall longer than it allows is refused at prep, naming what was
-    asked and what the queue offers (`job-system.md` § 5.0, checkpoint 4;
-    § 6.0).  Launch admits what it sends again, against the machine as it
-    stands then (`scheduler.md` R9)."""
+    from (``sources``, `prep_inputs.fold_allocation`; a walk's, each field's
+    every source among its members, as a tuple) -- or ``(None, why)``:
+    a GPU run naming a queue with no GPUs, more cores or memory than its
+    nodes hold, a wall longer than it allows is refused at prep, naming
+    ``what`` was admitted -- a stage, a group's one job, a run of points, a
+    benchmark's shelf -- what was asked and what the queue offers
+    (`job-system.md` § 5.0, checkpoint 4; § 6.0).  Launch sends what this
+    admitted and asks nothing again (`scheduler.md` R9)."""
     from ..runtime_config import routing_of
     from ..scheduler.place import Unplaceable, place
     named = getattr(resources, "domain", None)
@@ -221,9 +245,13 @@ def admitted(resources, environment, *, one_process: bool, stage=None,
             for f in _REFUSED.get(r.limit, ()):
                 if (getattr(resources, f, None) not in (None, "", 0)
                         and f in said):
-                    line = _stated_at(f, said[f])
-                    if line not in at:
-                        at.append(line)
+                    # A WALK'S VALUE, summed or shared, stated in each
+                    # place one of its members states it (``sources``' tuple).
+                    for source in (said[f] if isinstance(said[f], tuple)
+                                   else (said[f],)):
+                        line = _stated_at(f, source)
+                        if line not in at:
+                            at.append(line)
         other = "name another of the record's queues"
         if any(r.limit == "gpus" for r in exc.reasons):
             from ..scheduler import domain_serves_gpu
@@ -231,7 +259,7 @@ def admitted(resources, environment, *, one_process: bool, stage=None,
                     if domain_serves_gpu(d)]
             other = (f"name a queue with GPUs: {', '.join(able)}" if able
                      else "the target's record lists no queue with GPUs")
-        return None, (f"{'stage ' + repr(stage) + ' ' if stage else ''}does "
+        return None, (f"{what} does "
                       f"not fit the queue {named!r} on the target's record:\n    "
                       + "\n    ".join(r.message for r in exc.reasons)
                       + ("\n  Ask for less where it is stated:\n    "
@@ -246,6 +274,20 @@ def admitted(resources, environment, *, one_process: bool, stage=None,
                       and f in said}}, None)
 
 
+def _sources_said(sources) -> str:
+    """Where each launch value came from, by source -- ``wall, memory from
+    the description; ranks, cores per rank from the run card``."""
+    by_source: dict = {}
+    sources = sources or {}
+    for field in _LAUNCH_WORDS:            # in the one order of the words
+        if field in sources:
+            by_source.setdefault(sources[field], []).append(
+                _LAUNCH_WORDS[field][0])
+    return "; ".join(f"{', '.join(fields)} from the {source}"
+                     if source != "flag" else f"{', '.join(fields)} from a flag"
+                     for source, fields in by_source.items())
+
+
 def placement_line(placement) -> str:
     """A run's placement, as both doors say it -- the queue it was admitted
     on and where each value came from (`job-system.md` § 6.0): ``placed on
@@ -253,17 +295,19 @@ def placement_line(placement) -> str:
     description; ranks, cores per rank from the run card``."""
     if not placement:
         return ""
-    words = dict(_LAUNCH_WORDS, gres=("GPUs", "--gpus N"))
-    by_source: dict = {}
-    for field, source in (placement.get("from") or {}).items():
-        by_source.setdefault(source, []).append(words.get(field, (field,))[0])
-    said = "; ".join(f"{', '.join(fields)} from the {source}"
-                     if source != "flag" else f"{', '.join(fields)} from a flag"
-                     for source, fields in by_source.items())
+    said = _sources_said(placement.get("from"))
     return (f"placed on {placement.get('domain')} "
             f"({placement.get('partition')}/{placement.get('qos')})"
             + (f" -- {said}" if said else ""))
 
 
+def stated_line(sources) -> str:
+    """A run prepared with no header -- a machine with no scheduler, or
+    ``--no-sbatch`` -- said as a placement is: where each value it states
+    came from (`prep_inputs.fold_allocation`)."""
+    said = _sources_said(sources)
+    return f"no header -- {said}" if said else ""
+
+
 __all__ = ["admitted", "launch_refusal", "one_process",
-           "placement_line", "request_of"]
+           "placement_line", "request_of", "stated_line"]

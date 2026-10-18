@@ -228,19 +228,6 @@ for every parameter; the allocation is stated for this run and is itself bounded
 by what the cluster has. So *"is this sweep point legal?"* is answered by reading
 data that was declared for other reasons — never by a table inside the generator.
 
-> **⚠ Three corrections to this table, all recorded rather than silently
-> applied.** (1) It said machine axes were bounded by *capability* until
-> 2026-08-11 — a sweep is bounded by **what you asked for**, not by what the
-> machine has, which is § 4.1's whole point. (2) It said a machine axis is
-> *"not a template item at all"* until 2026-08-14, which `@2` changed: the
-> **item** is declared and stays **valueless**, marked as one the machine will
-> answer (`template.md` § 6.4). (3) It read *"floor 2 must never assert a
-> machine's VALUE"* until 2026-09-01, which was two rules in one sentence. The
-> **template's** half never moved and is still absolute — `read_template`
-> refuses a hand-written `mpi_np`. The **description's** half was the carve-out
-> § 4.3a has now closed: the run's condition is `execution`, its own block —
-> a `bench` point is a thing to measure at any length.
-
 > **The worked case, because it is the one that goes wrong.** `block_size` (the
 > item; `BlockSize` is the SIESTA keyword it anchors) is a
 > parameter axis whose legal ceiling is **orbitals ÷ ranks** — and ranks are a
@@ -366,7 +353,7 @@ because both halves are real and they are different acts:
 | | | |
 |---|---|---|
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
-| **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template for the bench's trials *(user rule, 2026-08-20)* — and only for them since 2026-09-30: what the RUN uses is `execution`, its own block (below) |
+| **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template for the bench's trials *(user rule, 2026-08-20)* — and only for them: what the RUN uses is `execution`, its own block (below) |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
 | **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep task` |
 
@@ -378,12 +365,11 @@ because both halves are real and they are different acts:
 > benchmark's verdict** *(2026-09-02)*: it writes a report a person reads,
 > and what the run uses is what that person then wrote.  Flags beat
 > everything, exactly as they do today.  A **multi-point** non-machine entry
-> is a **value axis** — the rule below *(built 2026-08-21; it was refused by
-> name until then)*.
+> is a **value axis** — the rule below.
 
 #### The run's condition is its OWN declaration — `execution`
 
-*(User, 2026-09-02, correcting a design that had conflated the two: "run
+*(User, 2026-09-02: "run
 parameter is independent from bench grid or bench result. User can run
 without bench. Bench and run share the same framework to choose/set
 parameters but run does not produce grid but a single user defined condition
@@ -402,27 +388,25 @@ run **never requires a benchmark** — not to have been executed, not to have
 been declared. That is the whole of the user's complaint that opened this
 work, and it is a property of the data model rather than of any surface.
 
-> **Why a one-point `bench` entry is NOT the run's condition** *(a design that
-> shipped on 2026-09-01 and was wrong)*. It made the two share one block, so
-> `bench: {mpi_np: [4, 8, 16]}` could not coexist with *"run at 8"*: narrowing
-> the row to say what the run uses **destroys the plan to measure**. You could
-> have a bench or a run decision, never both — which is exactly what a person
-> doing this work needs at the same time.
+> **Why a one-point `bench` entry is NOT the run's condition.** Sharing one
+> block, `bench: {mpi_np: [4, 8, 16]}` could not coexist with *"run at 8"*:
+> narrowing the row to say what the run uses **destroys the plan to measure**.
+> You could have a bench or a run decision, never both — which is exactly what
+> a person doing this work needs at the same time. A `bench` point is a thing
+> to try, at any length.
 >
-> The 2026-08-20 rule it over-read sets the trials only since 2026-09-30: a
-> one-point **non-machine** `bench` entry pins the bench's trials, and the
-> run reads `execution`. What was wrong on 2026-09-01 was extending that rule
-> to the machine axes and reading the bench's grid as the run's shape.
+> A one-point **non-machine** `bench` entry pins the bench's trials, and the
+> run reads `execution`.
 
 **Same framework, different arity — and the framework is the pipeline BELOW
 `resolve()`.** Both lanes end in `plan_stage → resolve() → ParameterSet
 → the renderers`, and that is what "one framework" means. What differs is the
 step above it: a bench hands down a sweep and its translation; a run hands
 down one condition, split by the catalogue into the launch shape and the pins
-(`_declared_execution_pins` for the second half, unchanged).
+(`_declared_execution_pins` for the second half).
 
 **The run does NOT go through the grid enumerator.** `bench_inputs`
-(`jobset/prep_inputs.py`; `_bench_inputs` in `jobset/_cli.py` until 2026-09-29) is a
+(`jobset/prep_inputs.py`) is a
 sweep's own machinery — it must invent the axes a condition does not mention —
 so the machine half is a **direct map** from the catalogue's name to the
 `Resources` field. See *"Where `execution`'s machine values land"* below, and
@@ -436,32 +420,19 @@ itself, field by field over the calculation's.
 
 > template < the calculation's **`execution`** < the rung's **`execution`** < a `prep` flag
 
-*(A one-point `bench` pin stood below `execution` until 2026-09-30; it sets
-only the trials now — `stages.md` § 6.8d's "and nowhere else".)*
+*(A one-point `bench` pin sets only the trials — `stages.md` § 6.8d's "and
+nowhere else".)*
 
 `execution` is what a person **asked for**, in the file that records asks, and
 only a flag — a person speaking about right now — wins over it.
 
-**A measured verdict is not a rung.** It stood between the pin and
-`execution` for one day, as the editable `run-config.toml`
-(`project-layout.md` § 2.3.2), on the reasoning that a finding you had the
-chance to edit was a finding you had endorsed. In practice it inverted twice
-inside that day — folded before `execution`, then before `allocation`'s wall
-and memory — because a rung whose authority comes from *not having been
-deleted* has no natural place among rungs whose authority comes from having
-been typed. It is now a report `jobset summarize` prints, read by a person,
-by no code.
-
-> **Why not a one-point `bench` entry, which is where this went first.** On
-> 2026-09-01 the machine axes were pulled into the 2026-08-20 override lane,
-> so `mpi_np: [8]` meant *run at eight*. It could not express the ordinary
-> case — a grid to measure **and** a decision to run at the same time —
-> because narrowing the row to state the run destroys the plan to measure.
-> `execution` replaced it on 2026-09-02 and the exclusion is back: a `bench`
-> point is a thing to try, at any length.
+**A measured verdict is not a rung**: a rung whose authority comes from *not
+having been deleted* has no natural place among rungs whose authority comes
+from having been typed. It is a report `jobset summarize` prints, read by a
+person, by no code.
 
 **Where `execution`'s machine values land.** Not in the template —
-`template.md` § 7's refusal of a hand-written `mpi_np` **is untouched**, and
+`template.md` § 7 refuses a hand-written `mpi_np`, and
 the item stays valueless. They become **the allocation for this prep**, by a
 direct map from the catalogue's name to the `Resources` field: `omp_threads`
 → `cpus_per_task`, `gpu_count` → `--gres=gpu:<count>`, the rest one to one.
@@ -475,18 +446,15 @@ baked at prep) only chooses among statements.
 A device ask is a **count** and names no card: which card a node carries is
 the machine's business (`scheduler.md` R2a). **Every run that uses a device
 is asked for its count here**, on every engine — the run card's
-`gpu_count`, which PySCF carries too since 2026-10-01, or `--gpus N` — and
-one that states none is refused (`gpu.md` G5: no default; it was one device
-until 2026-10-01). Before 2026-09-30, when the header asked a SIESTA deck
-alone, a PySCF run whose card said `use_gpu` reached the queue with no
-device. *(Until 2026-10-01 a card was looked up here — a stated
-`scheduler.gpu.default_type`, else the target's probe, else its queues — and
-written into the ask.)*
+`gpu_count`, which PySCF carries too, or `--gpus N` — and
+one that states none is refused (`gpu.md` G5: no default). A header that
+asked a SIESTA deck alone sent a PySCF run whose card said `use_gpu` to the
+queue with no device.
 
 > **It went through the grid enumerator for one afternoon** (2026-09-02) on
 > the argument that a run is a sweep of length one. It is — *below*
 > `resolve()`, which is where the shared pipeline actually is. `bench_inputs`
-> (then `_bench_inputs`) sits **above** that and is a sweep's own machinery: it must invent the axes
+> sits **above** that and is a sweep's own machinery: it must invent the axes
 > a condition does not mention. So `{omp_threads: 4}` came back as a
 > **single-rank job** (its `mpi_np or [1]` default), `{use_gpu: true,
 > mpi_np: 8}` came back **empty** because the device axis enumerated three
@@ -496,15 +464,13 @@ written into the ask.)*
 > problem it then solves.
 
 **A condition the queue cannot hold is refused at `prep`**, before anything
-is written — the run's whole request admitted on the target's record by the
-door launch asks too (`scheduler.place`; [`job-system.md`](?doc=execution/job-system.md)
+is written — the run's whole request admitted on the target's record
+(`placement.admitted`, over `scheduler.place`; [`job-system.md`](?doc=execution/job-system.md)
 § 5.0, checkpoint 4, and § 6.0), naming what was asked and what the queue
-offers — and admitted again at `launch`, against the machine as it stands then
+offers; launch sends what prep admitted and admits nothing again
 (`scheduler.md` R9). `prep` never trims a number to fit: what you asked for is
 written, or refused. Task setup's **Preview** is the same entry, so the
-refusal is on the page before **Prep** is offered. *(Until 2026-10-05 this
-said the refusal came at `launch` alone, and the tab's run card showed the
-door's answer beside its fields — a panel retired with the preview.)*
+refusal is on the page before **Prep** is offered.
 
 **Precedence gains one rung**, and it is the one above: `execution` is what a
 person asked for, and nothing a machine found sits beside it — a benchmark
@@ -520,24 +486,20 @@ reports, and a person writes. The full ladder is
 > with an allocation; an axis is the set you want measured, and the
 > allocation is what you then ask for — which a one-point axis states.
 >
-> **The declaration DRIVES the sweep** *(wired 2026-08-19 — until then
-> `_bench_inputs` enumerated from the probed topology regardless, so the
-> machine chose the points and the user had no input)*: declared axes become
+> **The declaration DRIVES the sweep**: declared axes become
 > exactly those trials, a point the machine cannot hold is refused by name
 > (never clamped — a clamped point measures a configuration nobody
 > declared), and an ABSENT declaration keeps the machine's enumeration as
 > the proposal. A declared grid states **both** its axes, `mpi_np` and
-> `omp_threads` — one alone is refused, never filled (the other was `[1]`
-> until 2026-10-06); and the machine proposes only from what its record
-> says: a record that does not state its cores per socket proposes no grid
-> (constants stood in until then), and an unknown socket count is no
+> `omp_threads` — one alone is refused, never filled; and the machine proposes only from what its record
+> says: a record that does not state its cores per socket proposes no grid,
+> and an unknown socket count is no
 > ceiling, never one socket (R3). On a GPU description a declared `mpi_np` is the point's
 > total rank count, and the device count is **declared with `gpu_count`**
 > — exactly those counts, one shelf each; an uneven `(mpi_np, G)` pair is
 > dropped by name (the equal-share rule), a count beyond the machine's
 > record refuses, and an ABSENT `gpu_count` keeps the divisor enumeration
-> as the proposal *(user, 2026-08-21: "explicit is what we need"; the
-> divisors were the only lane until then)*.
+> as the proposal *(user, 2026-08-21: "explicit is what we need")*.
 
 **A value axis multiplies the grid, and the point carries its coordinates**
 *(user-settled 2026-08-21: GPU-vs-CPU measured under ONE bench, split
@@ -563,15 +525,13 @@ framework rule, not a script patch)*:
   at `G = 0` (plain ranks), the GPU family ranges `G` over each rank
   count's divisors, and the flag rides each point as an ordinary value
   coordinate — so the deck's answer and the point's family agree by
-  construction, and `launch`'s placement (below) needs no new declaration.
+  construction, and the shelves (below) need no new declaration.
   The GPU family's device count is the target's GPUs per node: the probed
   node's own, else the most a node of a GPU queue holds — the **domain menu's
   GPU inventory** (`jobset probe` records each partition's `gres` on its
   domain row) — so a login node can enumerate the GPU family for the cluster
   behind it.  A trial asks `gpu:G`, a count, and no card: which card a node
-  carries is the machine's business (`scheduler.md` R2a).  *(Until
-  2026-10-01 the family carried a card — `scheduler.gpu.default_type`, else
-  the probed node's, else the row's — and a row listing several refused.)*
+  carries is the machine's business (`scheduler.md` R2a).
 - **Enumerate every combination, cross out what no queue can hold, show what
   is left** *(user, 2026-08-30: "we don't have to fight with what language we
   use to indicate error, but present the correct outcome")*.  The queues are
@@ -579,42 +539,30 @@ framework rule, not a script patch)*:
   machine": `prep --target sol` on a workstation checks against Sol's
   record.
   The grid is a **proposal**; the machine record decides; and what reaches
-  the screen is the surviving list — each cell with its shape and the
-  queues it could go to — followed by the struck ones, each naming its
-  numbers (R4).  **A cell that fits is never denied by a sibling that does
+  the screen is the surviving list — each cell with its shape — followed by
+  the struck ones, each naming its numbers (R4).  **A cell that fits is never denied by a sibling that does
   not.**  Both families go through it, and neither refuses the prep while
   anything survives.
 
-  The check is `scheduler.admits` over `place.candidates` — the same pair
-  `place` itself walks — so *"some queue admits it"* here and *"placeable"*
-  at `launch` are one verdict rather than two.  What is deliberately **not**
-  done is choosing a queue: the queue each of a benchmark's sides goes to is
-  named at its launch (`--domain`, `--gpu-domain`; `scheduler.md` R7), so the
-  row lists where a cell *could* go.  A cell past this prep's own ask — its
+  The check is `scheduler.admits` — the admission `place` itself asks — so
+  *"its queue admits it"* here and *"placeable"* at prep are one verdict
+  rather than two.  **A benchmark measures on one queue** — the one its prep names (`prep --domain`, else
+  `allocation.domain`; the user, 2026-10-17: *"You need one domain to
+  bench. If you need a different domain, another bench"*) — so each cell is
+  checked against that queue alone, and a cell it cannot hold is crossed out
+  by name; with no queues on the record, against this box.  A cell past this prep's own ask — its
   `--np`, `--cpus-per-task`, `--gpus` (§ 4.1) — is crossed out the same way,
-  by name.  For a device
-  cell the pool is the gpu-capable rows (a cpu-only row states no inventory
-  and R3 would read that silence as permission); for a CPU cell it is the
-  **whole menu**, because `candidates` narrows CPU work to cpu-only queues
-  as a *preference*, and a preference must not decide a fit question.
+  by name.  A device cell is answered by the queues whose record lists
+  GPUs — a queue listing none refuses every device cell alike, which says
+  nothing of the cell — unless none does (the benchmark's one queue has no
+  GPUs), when that queue's own refusal is the answer; a CPU cell by every
+  queue it is checked against.  The benchmark states its queue, wall and
+  memory before its grid is enumerated: a benchmark naming no queue, or one
+  its target's record does not list, is refused for that first.
 
   A machine with **no queue menu** is answered by its own probed topology —
   which is the only place topology may bound a cell.
 
-  > **What this replaced, and why all of it.**  Until 2026-08-30 a single
-  > `max_cores` number was compared against the GPU family alone, and it was
-  > wrong three ways at once: it read `candidates()[0]` — on Sol the *debug*
-  > queue, whose fifteen-minute wall the bench can never use — it read
-  > `max_cores`, which since 2026-08-27 (R0) is the widest machine **of any
-  > kind** rather than the widest with a device, and it never looked at the
-  > device **type**.  Beside it stood a second gate comparing a declared
-  > point against `topology.sockets × cores_per_socket`, **one node's**
-  > measurement taken wherever the probe ran.  On Sol that refused a
-  > declared 128-rank point outright — while `public` holds 107 nodes of 128
-  > cores — and told the person to *"benchmark on the machine it is meant to
-  > measure"* while they were standing on it.  Two ceilings, both read off
-  > the wrong thing, neither agreeing with the admission `launch` would
-  > apply.
 - **Submission splits by each trial's GPU request** (`gpu_request`, the
   one door, `architecture.md` § 3.2) **and then by RESOURCE SHELF** *(user,
   2026-08-21: "lighter tasks scheduled for heavy resource idling for hours
@@ -624,30 +572,26 @@ framework rule, not a script patch)*:
   neither the cores a narrow trial would leave of a wide envelope nor
   the devices a G1 trial would hold of a `gres:4` one.  The value-axis
   cartesian shares shelves by construction, which is what keeps queue
-  waits at #shelves instead of #trials — the point of the 2026-08-20
-  grouping, kept.  Naming, in full always: a shelf is
+  waits at #shelves instead of #trials.  Naming, in full always: a shelf is
   `bench-group-<side>-<cell>` — `bench-group-cpu-G0K4C1`,
   `bench-group-gpu-G2K16C1`, the cell in the same `G`/`K`/`C` spelling its
   trials carry — whatever else the sweep holds; the walk of every
-  unlaunched trial here is `bench-group`.  *(The side and the cell were
-  added only when the sweep needed them to tell shelves apart until
-  2026-10-06: one shelf had four names, and a sweep's one shelf sent to a
-  queue wrote over the walk's `launch/bench-group.*`.)*
+  unlaunched trial here is `bench-group`.
   The CPU side's groups ask **no `gres`**, so devices are never held
   while CPU trials run — the waste the split exists to stop.  **Routing**: the
-  queue is named, never inferred (`submission.md` S5) — the bench's
-  `allocation.domain` or `--domain` for both sides, `--gpu-domain` for the GPU
-  side when the two differ.  `--only cpu|gpu` submits one side — so
-  `--only` + `--domain` places each side wherever the user says.  A side this
-  machine cannot launch stays pending, and a later `submit bench`
-  collects exactly the unlaunched side — which is the cross-cluster lane:
-  each machine submits what it reaches, results ride the folder back.
+  queue is named, never inferred (`submission.md` S5) — the bench's one
+  queue, named at its prep, for both sides.  **Each shelf's one header is
+  prep's** (`shelves.shelves_of`, the one partition; `prep.walk_header_of`):
+  its trials' shared request admitted on that queue and written in the
+  benchmark's `launch/`; launch walks the shelf's trials still to run and
+  sends that header as it is.  `--only cpu|gpu` submits one side; the other
+  stays pending for a later launch of the same benchmark.
   **The shelves submit widest-first, per side** *(user, 2026-08-21)*:
   the CPU side's shelves submit first, then the GPU side's, and within
   each side by descending footprint — cores (ranks × cores-per-rank),
   device count breaking ties.  Only the WITHIN-side order carries the
-  rule; across sides the jobs are independent and often target different
-  domains, so their relative entry order decides nothing.  An exact-fit
+  rule; across sides the jobs are independent, so their relative entry
+  order decides nothing.  An exact-fit
   group costs the same whenever it runs, so the order is free —
   it banks the expensive measurements first and lets a person watch the
   trend (`bench-group*.log`; `summarize` mid-flight) and stop early — an
@@ -655,10 +599,9 @@ framework rule, not a script patch)*:
   over what completed, and the queue may even run shelves concurrently.
   *(An early stop's un-run riders are already stamped `launched`; to
   measure them, restore the state saved before the benchmark's prep and
-  prep it anew — the summary of what completed is read first. The
-  move-aside path this named was retired 2026-08-18.)*
-- **`summarize` is unchanged in kind** — allocation-blind, spanning
-  whichever trials have landed.  What it gains is data: `job-set.json`
+  prep it anew — the summary of what completed is read first.)*
+- **`summarize` is allocation-blind**, spanning
+  whichever trials have landed: `job-set.json`
   records each trial's point (the coordinate as data, never parsed back
   from a name), the winner is matched by its label, and the proposal's
   `[pins]` carry the winner's value coordinates — already pin-shaped for
@@ -782,10 +725,9 @@ a fact about the hardware. It is not a defect in the sweep, and it changes
 nothing about the rule above: the trials record what they ran on, the summary
 shows it, and the comparison is read by the person who asked for it.
 
-**Where a `choice` is carried into another prep, `submission.md` S3 still
-refuses** rather than reports — not a different principle, a different moment.
-Carrying applies a number with nobody looking; a summary is read by someone who
-can weigh it.
+**A `choice` is never carried into another prep by itself**: a person writes
+it into `execution` (`submission.md` S3). Carrying would apply a number with
+nobody looking; a summary is read by someone who can weigh it.
 
 
 ## 5. `ParameterSet` — the object that makes `kind` a value

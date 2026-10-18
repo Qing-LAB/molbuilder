@@ -35,37 +35,27 @@ where to state it ([`architecture.md` § 5.2](?doc=execution/architecture.md),
 2026-10-02). Neither the framework nor the scheduler's own default answers it:
 both would be a number nobody chose.
 
-**S2 — Nothing is derived, for either axis** *(amended 2026-08-24; the
-first version let a stated total become a per-trial bound by arithmetic, and
-an UNSTATED total become fifteen invented minutes a trial — which sent five
-38-minute jobs to Sol for a system nobody had sized)*. **Time**: the wall is
-stated — `allocation.time`, the run card's `time`, `--time` at prep or at
-launch — and on a target with a scheduler an unstated one is refused at prep
-(until 2026-10-02 the queue's own ceiling stood in for it). `--trial-timeout`
-exists so one hung trial cannot eat a group's whole wall; unstated, no
-per-trial bound exists. **Memory**: `allocation.mem`, `--mem` at prep or at
-launch — unstated, refused at prep the same way (until 2026-10-02 a
-`molbuilder.json` default, else the scheduler's, stood in). Hitting a limit is
-a result; inventing one is not.
+**S2 — Nothing is derived, for either axis** *(a derived bound — fifteen
+invented minutes a trial, for a total nobody stated — sent five 38-minute jobs
+to Sol for a system nobody had sized)*. **Time**: the wall is
+stated — `allocation.time`, the run card's `time`, `--time` at prep, or for a
+submitted job `--time` at launch — and on a target with a scheduler an
+unstated one is refused at prep. `--trial-timeout` exists so one hung trial
+cannot eat a group's whole wall; unstated, no per-trial bound exists.
+**Memory**: `allocation.mem`, `--mem` at prep — unstated, refused at prep the
+same way. Hitting a limit is a result; inventing one is not.
 
 **S3 — A measurement is not portable.** Numbers taken on one kind of node do
 not describe another.
 
-**Nothing enforces this, and nothing needs to** *(corrected 2026-09-04)*.
-This said the crossing was "refused, not warned about", and named a refusal
-(`_refuse_if_measured_elsewhere`) that **no production path ever called** —
-its only caller was a test, so a green suite proved a rule the product did
-not apply. The refusal is deleted rather than wired, because the route it
-guarded is gone: since 2026-09-02 no verdict reaches a launch by itself
-(`prep_inputs.prep_run_inputs`, *"THERE IS NO SECOND RUNG"*), so there is no boundary left to
-cross. What a run uses is what a person wrote in `execution` — and a person
-reading a report about another machine's node is making a judgement, which
-is theirs to make.
+**Nothing enforces this, and nothing needs to**: no verdict reaches a launch
+by itself (`prep_inputs.prep_run_inputs`, *"THERE IS NO SECOND RUNG"*), so
+there is no boundary to cross. What a run uses is what a person wrote in
+`execution` — and a person reading a report about another machine's node is
+making a judgement, which is theirs to make.
 
 > **The boundary is the machine, not the queue** (`scheduler.md` **R11**,
-> 2026-08-27). This rule read `node_type` — a scalar on the domain — until the
-> probe showed a domain holds 1–14 machine types and never wrote the field at
-> all, so the refusal had never once fired. The comparison it makes is now
+> 2026-08-27): a domain holds 1–14 machine types, so the comparison is
 > against what a trial *landed on* (R12), which is a fact rather than a
 > description of a mixture.
 >
@@ -78,11 +68,11 @@ is theirs to make.
 
 **S4 — Nothing is submitted unseen**, and nothing run here unseen *(user,
 2026-10-05: a run here is shown and asked as a submission is)*. The full
-request, before the irreversible step — on every door: a stage, a grouped
-bench, a bias chain, a run here
-*(the stage's door sent straight away until 2026-10-01, on the premise that
-`prep`'s printout had been the look; a launch flag can change the queue and
-the wall after it, so the line as sent was never seen — ruled that day)*. `--yes` is how a person
+request, before the irreversible step — on every door: a stage, a group, a
+benchmark's shelf, a run of points, a run here. Prep prints every value it
+decided with where it came from, and every value of the header it writes; the
+launch shows the line as sent and every value of the header it sends, a wall
+it restates on the line. `--yes` is how a person
 says *I have decided to trust this*; its absence is not permission — with
 nobody to ask (no terminal), nothing goes and the launch is refused.
 
@@ -90,8 +80,8 @@ nobody to ask (no terminal), nothing goes and the launch is refused.
 wall-clock in is a judgement about priority, contention and what else is
 running — none of it on the machine's record, all of it the person's. So the
 person names one — in the description (`allocation.domain`, the run card's
-`domain`) or with `--domain` — and a run on a scheduler that names none is
-refused at prep. **Prep admits the job on the queue it names** — its wall,
+`domain`) or with `prep --domain` — and a run on a scheduler that names none
+is refused at prep; launch sends to that queue and names none of its own. **Prep admits the job on the queue it names** — its wall,
 memory, ranks, cores and GPUs against what the record says that queue takes —
 and records the placement with each value's source
 ([`job-system.md`](?doc=execution/job-system.md) § 6.0); a queue that cannot
@@ -101,38 +91,11 @@ with the reason: hiding it answers *"why is my queue not an option?"* with
 silence. **And a page that offers queues proposes no value**: choosing a queue
 on the Task setup card fills neither the wall nor the memory — its limits are
 shown beside the fields, and an empty field stays empty until it is stated
-*(it wrote the queue's ceiling and 95 % of its memory until 2026-10-05, which a
-Save made "stated" — S1's default wearing a number's clothes)*.
+*(a value the page proposed, a Save would make "stated" — S1's default wearing
+a number's clothes)*.
 
-*There is no queue given once for a whole machine: `execution.domain` in
-`molbuilder.json` did that until 2026-10-02, and every job there received a
-queue it never named. A split sweep needs one per side, because a cpu-only
-partition cannot take a GPU group; `--gpu-domain` **refines** `--domain` and is
-needed only when the two differ.*
-
----
-
-## 2. Why this replaced a bigger design
-
-The first version of this document was 350 lines: five provenance categories,
-a rule that assumed numbers must announce themselves, and a display labelling
-every figure with where it came from.
-
-**All of that machinery existed to cope with numbers nobody chose.** Ask, and
-there are none to label.
-
-What prompted it: a job asked for 128 GB because SLURM grants 2 GB a core and
-it had 64 of them, and for 38 minutes because a per-trial default nobody set
-was multiplied by a trial count nobody saw. Both were *correct arithmetic on
-inputs the person had never been offered*. The instinct was to make the
-arithmetic visible. The better answer was to stop doing it.
-
-> **Recorded because the method matters more than the conclusion.** Chasing
-> *why* those numbers appeared produced three confident explanations, each
-> falsified: memory could not have caused the queue fall-through (the ceiling
-> was never populated, and an unstated limit never bars), `htc` holds far more
-> than 128 GB anyway, and the old placement rule picks `htc` regardless. Hours
-> went into explaining a number instead of removing the need to explain it.
+**A benchmark measures on one queue** — the one its prep names; measuring
+another queue is another benchmark (the user, 2026-10-17).
 
 ---
 
@@ -145,56 +108,39 @@ was asked.*
 | | |
 |---|---|
 | `Ask` | the question, and the answer to it |
-| `queue_table` | the queues this machine offers, and which can take the job |
+| `queue_table` | the queues the target's record lists, and which can take the job — shown in prep's refusal of a run that names none |
+| `gpu_share_notes` | what a run's GPU request means — its ranks over its GPUs — said at its prep |
 | `confirm` | the one interface — approve, or don't; for a run here, also approve the other way, in the foreground or in the background (`Said.other`, `job-system.md` § 6.0) |
 
 *The one output is the launch entry's **plan** — the exact `sbatch` command
-of every submission, made once and then sent as it was shown
-([`job-system.md`](?doc=execution/job-system.md) § 6.0): the send checks the
-folder is still the one the plan was made from, and refuses otherwise. A
-`render` summary lived here until 2026-08-24 and could disagree with the
-submission it described; until 2026-10-03 the plan was made twice — once to
-show, once to send — with nothing comparing the two.*
+of every submission and the header it sends, made once and then sent as it
+was shown ([`job-system.md`](?doc=execution/job-system.md) § 6.0): the send
+checks the folder is still the one the plan was made from, and refuses
+otherwise.*
 
 ```
-$ molbuilder jobset launch bench coarse --mem 900G
-this machine offers:
-     name         partition/qos           max time  cores    memory  gpu
-!  1  debug        htc/debug                    15m    128    251 GB  -
-      -> needs 900 GB but debug allows 251
-!  2  htc          htc/public                    4h    128    251 GB  -
-      -> needs 900 GB but htc allows 251
-!  3  general      general/public              168h     48  502.9 GB  a100 x4
-      -> needs 900 GB but general allows 502.9
-   4  highmem      highmem/public               48h    128   2002 GB  -
-
-  choose one with --domain <name>.  Nothing is submitted until you do.
-
-$ molbuilder jobset launch bench coarse --mem 128G --domain htc
+$ molbuilder jobset launch bench coarse --mode submit
 about to submit:
-  bench-group-cpu-G0K48C1
-    sbatch -J AuBDTAu/bench-group-cpu-G0K48C1 -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu-G0K48C1.sbatch
-  bench-group-gpu-G1K48C1
-    sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
-  gpu share  48 rank(s) / 1 GPU(s) = 48 rank(s)/GPU
-  NOTE 48 ranks/GPU; this stack's tuned point (no NCCL) is ~4 (engines/tuning.md § 2.12).
-  per-trial bound: none -- each trial runs until the wall
+  bench-group-cpu-G0K48C1   -> domain htc
+    sbatch -J AuBDTAu/bench-group-cpu-G0K48C1 --export ALL,MB_LAUNCHED_BY=jobset-launch launch/bench-group-cpu-G0K48C1.sbatch
+    header: -J bench-group-cpu-G0K48C1  -N 1  -n 48  -c 1  -t 0-04:00:00  -p htc  -q public  --mem=64G  -o launch/slurm.%j.out  -e launch/slurm.%j.err
+  bench-group-gpu-G1K48C1   -> domain htc
+    sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 --export ALL,MB_LAUNCHED_BY=jobset-launch launch/bench-group-gpu-G1K48C1.sbatch
+    header: -J bench-group-gpu-G1K48C1  -N 1  -n 48  -c 1  -t 0-04:00:00  -p htc  -q public  --gres=gpu:1  --gres-flags=enforce-binding  --mem=64G  -o launch/slurm.%j.out  -e launch/slurm.%j.err
+  per-trial bound: none -- each trial runs until it ends, or the job's wall
   submit this? [Y/n]
 ```
 
-*Every line is read off the very `sbatch` commands about to be sent. Only
-what a queue can actually refuse appears as a bar. The `-t 0-04:00:00` is the
-wall the description states (`allocation.time`); a run stating none is refused
-at prep. The GPU-sharing lines say once per RATIO what several shelves may
-share.*
+*Every line is read off the very `sbatch` commands about to be sent and the
+headers they send: each shelf's header written at the benchmark's prep, from
+what it admitted on the benchmark's one queue, its wall the description's
+(`allocation.time`). What a GPU shelf's ranks mean for its device — the
+GPU-sharing note — is said at that prep, where the grid can still change.*
 
-*The display is the exact command, from the same code that submits it; a
-summary computed a second way is how "170 minutes" was once shown for five
-38-minute jobs.*
-
-The listing reuses the scheduler's own admission, so it cannot say yes where
-the submission says no. *A table that disagrees with the check is worse than
-no table.*
+*The queues this machine offers, and which can take the job, are listed at
+prep, where a queue is named: the listing reuses the scheduler's own
+admission, so it cannot say yes where the prep says no. A table that
+disagrees with the check is worse than no table.*
 
 `--yes` skips the question, never the output: a person scrolling back must be
 able to see what was sent.

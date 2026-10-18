@@ -210,25 +210,20 @@ any floor may reach straight to floor 1, because floor 1 holds plain values and
 keeps no state. `launch` asking `identity` for a name is not a violation — it is
 floor 1 doing the job it exists for.
 
-*(The floor-3 nodes drew `bench/to_jobset.py` until 2026-08-12 — deleted with
-the pre-resolve producers; the diagram now matches § 2.1's row 3, whose own
-note records the deletion.)*
-
 ### 2.1 What each floor owns, and how you call it
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
 | **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission; a queue job's cluster, whether the queue lists it, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, `job-system.md` § 6.0a) | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `queue.cluster` / `lists` / `cancel` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` | know what a calculation is — a stage, a ladder, a plan |
 | **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template` · `jobset/migrate` · `runs` | `read_task` · `write_task` · `find_template` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `openable` · `transmission_point` · `folder_answer` | `task.json` · the template | **name a machine** |
-| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/transport_rung` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
+| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** |
 | **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` | `stage_home` · `open_run` · `hand_over` · `job_dir_names` · `paths.attempts_in` · `latest_attempt` · `continuation_answer` · `usable` · `gather_sources` · `task_state` · `readiness` · `job_of` · `first_launch_takes` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `launch_agreement` · `check_launch_matches_deck` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
 | **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `job_members` · `summarize` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobs_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · `molbuilder jobs {status,stop}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s and `launch`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
-**Every `jobset` module has a floor** *(W55 B7, 2026-10-03)*. Five of them had
-none — `plan`, `commands`, `continuation`, `ask`, `migrate` — so an import into
-them could not be judged; the table names each. **`parse/` is floor 1**: a
+**Every `jobset` module has a floor** *(W55 B7, 2026-10-03)*, so an import
+into any of them can be judged; the table names each. **`parse/` is floor 1**: a
 reader turns a file, or a run folder's files, into facts and knows no
 calculation — which is what lets launch (5) and the layout (4) ask how a run
 ended without reaching up. **A run's own records** — `run.json`, its
@@ -267,7 +262,7 @@ assumed is that reach, and it once cost a real run.
 > surfaces only. **Nothing below the two entries imports either**: what a lower
 > floor needed from the conductor — the stage namer, the engine seam, the error
 > type, the launch-value check — lives on the floor that owns it (§ 3.2), so
-> status, launch and a spectra reader no longer reach the conductor to ask it.
+> status, launch and a spectra reader never reach the conductor to ask it.
 
 ---
 
@@ -457,8 +452,8 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, the files it carries included | 4 | a first launch — checked, written and ledgered as one object — a force-constant stage's prep, a re-launch, status, Task setup's *Continue from* |
 | **a stage launched again** | `relaunch(..., cold=)` → `Continuation` or `None` — warm, its own latest run, however it ended, when it continues from a run of its own (`Job.relaunch_continues`: its kind resumes and it takes something from a run); cold, or a stage that takes nothing, `None` | 4 | launch — opened, written and ledgered as prep's hand-over is — and status, which words what launching again will do from the same fact ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 3 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |
-| **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, launch and its queue table, a benchmark's trials and their report, the Task setup card |
-| **what a queue offers, and whether a job fits** | `Domain.devices` and the record's limits; `admits(row, request)` with the job's whole request | 1 | prep (the placement), launch (a flag that changes it), the queue table, a benchmark's cells |
+| **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, prep's admission and its queue list, a benchmark's trials, their shelves and their report, the Task setup card |
+| **what a queue offers, and whether a job fits** | `Domain.devices` and the record's limits; `admits(row, request)` with the job's whole request | 1 | prep (the placement, and the one request of every job that walks several members), the queue list in its refusal, a benchmark's cells |
 | **`job-set.json`** | `JobSet.load` / `write` (`persist`) | 3 | everyone — the sweep reader the Results tab uses among them |
 | **the template** | `find_template(base, label)` — the one template, named for the label, or refused by name | 2 | prep, the preflight, continuation, the run inputs, Task setup, transport |
 | **the shape** | `Shape.named(task.shape)` — asked, never inferred from what is on disk | 1 | every reader of the layout |
@@ -682,7 +677,7 @@ flowchart TB
         A1 --> A2 --> A3
     end
 
-    subgraph MACH["track B — a VALUELESS parameter (mpi_np · omp_threads · gpu_count · max_memory_mb)"]
+    subgraph MACH["track B — a VALUELESS parameter (mpi_np · omp_threads · gpu_count · max_memory_mb, a cap whose absence is no cap)"]
         direction TB
         B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
         B2["<b>2 · task.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
@@ -718,14 +713,16 @@ flowchart TB
   it?"* cannot arise — the template holds a value for every one.
 - **Track B is the only place an item has no value in the template, and an
   unstated one has exactly one answer: prep refuses it** *(user, 2026-10-02:
-  "explicit job config is the only way allowed")*. The refusal names the two
+  "explicit job config is the only way allowed")* — all but the memory cap,
+  `max_memory_mb`, whose absence asks for nothing: no cap is written
+  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2). The refusal names the two
   places to state it — the run card (`execution` in `task.json`) and the prep
   flag. There is no width of the target, no rank per GPU, no thread count of
   one: each of those was a value nobody stated, and a run is hours before
   anyone finds out which one it got.
 - **Step 5's two artifacts carry the one stated value**, which is why the
-  `.sbatch` header and the wrapper's baked value agree (A9). They did not
-  until 2026-09-02, when each worked out its own default: the header floored
+  `.sbatch` header and the wrapper's baked value agree (A9): when each worked
+  out its own default, the header floored
   at `-n 1` while the wrapper read this box's core count — and since step 6
   reads `SLURM_NTASKS` *from that header*, a 64-core node ran the job on one
   rank.
@@ -772,13 +769,11 @@ from the text the plan holds: the header's `#SBATCH` lines
 (`scheduler.emit.Directives.lines_of`) where a scheduler runs the job — the
 run script takes its counts from the allocation there — and on a machine
 without one the run script's stated counts (`runwrap.stated_counts`), which it
-runs with. A transport bias scan shows its first point's header: every point
-launches the one job, and the chain that walks them is written when it is sent
-(`submit`), with the same counts, queue, wall and memory. A value stated
+runs with. A transport bias scan shows its walk's one header — every point
+in one job, the points' walls summed, written and admitted at prep
+(`prep.walk_header_of`) — and a benchmark each shelf's. A value stated
 nowhere is not shown blank: the preview is **the refusal prep will give**,
-naming where to state it. *(Until 2026-10-05
-the run card showed each value with the rung of § 5.2's ladder that supplied
-it, assembled beside the entry.)*
+naming where to state it.
 
 **And it is resolved by the emitter, not re-derived.** A13 is A12 applied to
 display: a surface that computed the emitted value itself would be a second
@@ -786,10 +781,7 @@ implementation of the thing it is reporting, and would agree with the
 `.sbatch` only until one of them changed.
 
 **Five kinds, five ladders, weakest first — and no value is in two of
-them.** *(It read "four" until 2026-09-02: § 6.8e split the scheduler
-ask in two — `mem`, which is the same in both lanes, and `time`/`domain`,
-which are not — and the row was added without the count above it being
-changed.)*
+them.**
 
 **The last three are the launch values, and every one of them is stated or
 refused** *(user, 2026-10-02: "explicit job config is the only way allowed")*.
@@ -802,15 +794,16 @@ writes anything, and the refusal names every place the value may be stated.
 | kind | example | weakest → strongest | stated nowhere |
 |---|---|---|---|
 | **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` | cannot happen: the template holds a value |
-| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → **`execution`**, the calculation's then the rung's *(a one-point `bench` pin sets only the bench's trials since 2026-09-30)* | cannot happen |
+| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → **`execution`**, the calculation's then the rung's *(a one-point `bench` pin sets only the bench's trials)* | cannot happen |
 | **launch shape** | SIESTA's `mpi_np` · cores per rank (`omp_threads`, PySCF's `threads`) · `gpu_count` for a GPU run | **`execution`** → a `prep` **flag** (`--np`, `--cpus-per-task`, `--gpus`) | **refused at prep**, every target |
-| **scheduler ask** | `mem` | `allocation` → a `prep` **flag** → a `launch` **flag** | **refused at prep** when the target has a scheduler |
-| **scheduler ask, per lane** | `time` · `domain` | `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** → a `launch` **flag** | **refused at prep** when the target has a scheduler |
+| **scheduler ask** | `mem` | `allocation` → a `prep` **flag** | **refused at prep** when the target has a scheduler |
+| **scheduler ask, per lane** | `time` · `domain` | `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** — and `time` alone, for a submitted job, a `launch` **flag** | **refused at prep** when the target has a scheduler |
 
-**A launch flag overrides; it does not fill.** `--domain`, `--time` and `--mem`
-on `launch` win over what prep baked, on the `sbatch` line — they never stand in
-for a value prep refused, because prep refuses before there is anything to
-launch. A benchmark trial's shape is its grid point (`generator.md` § 4.3a); its
+**Prep decides every value; launch restates one.** `--time` on `launch`
+restates a submitted job's wall on the `sbatch` line — for a run launched again
+that ran out of it — and never stands in for a value prep refused, because prep
+refuses before there is anything to launch. The queue, the memory, the ranks,
+the cores and the GPUs are prep's alone (the user, 2026-10-17). A benchmark trial's shape is its grid point (`generator.md` § 4.3a); its
 queue, wall and memory follow these ladders like a run's. *"A target with a
 scheduler"* means a prep that writes a `.sbatch` for it: `prep --no-sbatch`
 writes none, and then nothing is asked of a queue.
@@ -834,20 +827,8 @@ person and by no code**, and what the run uses is `execution` — which exists
 whether or not you ever benchmarked, and a run never requires one
 (`stages.md` § 6.8d).
 
-> **Why this rung went.** `run-config.toml` was an editable TOML the next
-> `prep run` folded into the launch, labelled *"recommendation, not decision"*
-> in the contract while functioning as a decision. That made it a SECOND way
-> for a run parameter to arrive — and every silent-value defect found on
-> 2026-09-02 was a second arrival route. It also inverted twice in one day
-> (the verdict folded before `execution`, then before `allocation`'s `mem`
-> and `time`), which is the signature of a rung that should not exist rather
-> than one ordered wrongly. **Deleting a rung settles an ordering question
-> permanently; ordering it correctly settles it until the next edit.**
->
-> The consequence, stated because it is a real change: after a benchmark,
-> a run that does not name the winner in `execution` does **not** use the
-> winner — prep refuses it until a shape is written. The measurement stops
-> reaching the launch by itself, which is the point.
+After a benchmark, a run that does not name the winner in `execution` does
+**not** use the winner — prep refuses it until a shape is written.
 
 **Where the UI enters, and it is only two places** — which is § 5's *"the
 browser lives in rows 3–5 only"*, restated as values: it **edits floor 2**,
@@ -1219,7 +1200,7 @@ flowchart LR
       S1["1 · resolve the machine — floor 1"]
       S2["2 · resolve the parameters — floors 2→3"]
       S3["3 · render the deck — floor 3"]
-      S4["4 · render the wrapper — floor 5"]
+      S4["4 · render the wrapper and the header — floor 3"]
       S5["5 · build the run directory — floor 4"]
       S1 --> S2 --> S3 --> S4 --> S5
     end
@@ -1347,7 +1328,7 @@ the printed report differs where floor 1 or your statement differs:
 | `BlockSize` in the deck | 32 | 16 | floor 3, at step 3 — the ceiling is *orbitals ÷ ranks*, so **more ranks means a smaller block** ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
 | `Diag.Algorithm` | ScaLAPACK | ELPA-1STAGE | you, but only the cluster has the GPU build |
 | the env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` | floor 5, at step 4 — *derived from the **GPU request*** (`gpu_request`, § 3.2): the job's `use_gpu`, as `resolve` carries it — never read back off the deck. **Not** from `Diag.Algorithm` — `job-contracts.md` § 6.2 owns this, and `runwrap` stopped reading the solver for it in 2026-08 |
-| `.sbatch` | not written | written | floor 5, from the target's record naming a scheduler |
+| `.sbatch` | not written | written | floor 3, at prep step 4, from the target's record naming a scheduler |
 | **the template, `task.json`** | **byte-identical** | **byte-identical** | — |
 
 **Read the second and fourth rows together and § 4.1's forced ordering falls
@@ -1428,7 +1409,7 @@ flowchart LR
 | **0-based → 1-based** | the single conversion boundary | **prep step 3** | `model/overview.md` | ✅ one point, stated once |
 | **V2 → V6** | asked-for + machine → a list of jobs | floor 3, at `prep` | `resolve` (the `ParameterSet`); `prep` writes the `JobSet` from it | ✅ |
 | **V2 → V5** | building the job's resources | floor 3, at `prep` | `resolve` — the allocation rides the element, a sweep axis enters only through its declared `MachineTranslation` | ❌ **a maintained table** — § 6.2 |
-| **V5 → SLURM** | building the command | **submit** | `render_sbatch` | ✅ from § 6.2 |
+| **V5 → SLURM** | building the header | **prep step 4** | `render_sbatch` | ✅ from § 6.2 |
 | **label → V7** | naming any file | every route | **`identity` and nothing else** (A1) | ✅ |
 | **run dir → V9** | reading it back | observe | `run_status` | ✅ |
 

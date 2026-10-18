@@ -1021,8 +1021,14 @@ statement (`allocation.domain`, `--domain`), never a default anywhere.
 
 ### M-2 — one shape, cluster or workstation
 
-`environment.json` carries `scheduler: "slurm" | "workstation"` and the same
-fields either way; a field that could not be detected is `null`, kept and never
+`environment.json` carries its `scheduler` — the kind (`slurm`, `workstation`)
+and, for a kind with a queue, where its commands are on that machine
+(`submit`, `query`, `cancel`, `cluster`), found there by the probe or declared
+to it (`--scheduler`; `--set scheduler.submit=PATH` for a site's own wrapper);
+the kind's language — its commands' forms, its header, its files, what it tells
+a running job — is `scheduler/kinds.toml`'s, never a record's
+([`execution/scheduler.md`](?doc=execution/scheduler.md) § 6a; designed
+2026-10-17, built with plan row SK) — and the same fields either way; a field that could not be detected is `null`, kept and never
 omitted, so a consumer can tell *absent* from *unknown* — **but for the three
 facts that travel with the record**, `env_init`, `conda_envs` and `env_arch`,
 which are left out when empty *(user, 2026-10-03)*, and the probe says in its
@@ -1171,6 +1177,11 @@ and unreadable alike, and the probe took the one for the other)*.
 These are rows of `tests/data/machine_record.toml`, run down the road.
 
 ### The schema is `molbuilder/environment@2`
+
+*(`@3` with plan row SK: the `scheduler` field becomes the block M-2 names. A
+record of an older schema is then refused by name, naming the probe that
+renews it — this machine's, a named target's (probed there and copied here),
+and a calculation's own copy alike.)*
 
 The reachable `(name, partition, qos, max_time)` **domains** land in the
 record — the prober's `routing`, minus the preference M-1 removes. The whole

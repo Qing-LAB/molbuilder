@@ -7,7 +7,7 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 """
 from __future__ import annotations
 
-from support.road import group_words
+from support.road import group_words, shelf_headers
 
 import json
 import re
@@ -381,11 +381,13 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert "bench-group" in r.output
     assert ".sbatch" in plans[0]
     # TIME IS NEVER INVENTED (user dictation, 2026-08-24): the wall is the
-    # one the description states -- `allocation.time`, on every shelf --
-    # and one stated nowhere is refused, not sent (`architecture.md` § 5.2).
-    # A --time at launch is the wall instead.
-    assert all(" -t 0-01:00:00 " in pl for pl in plans), (
-        f"the stated wall did not ride every shelf-job: {plans}")
+    # one the description states -- `allocation.time`, on every shelf's
+    # header -- and one stated nowhere is refused, not sent
+    # (`architecture.md` § 5.2).  A --time at launch is the wall instead,
+    # restated on the line.
+    headers = list(shelf_headers(calc, "coarse").values())
+    assert all("#SBATCH -t 0-01:00:00" in h for h in headers), (
+        f"the stated wall did not ride every shelf-job: {headers}")
     r2 = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                       "--bundle", str(calc),
                                       "--mode", "submit", "--dry-run",
@@ -398,9 +400,9 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     # widest = the CORE footprint (ranks x cores-per-rank), not ranks
     wid = max(js["jobs"], key=lambda j: (j["resources"].get("mpi_np") or 1)
               * (j["resources"].get("cpus_per_task") or 1))["resources"]
-    assert (f" -n {wid.get('mpi_np') or 1} " in plans[0]
-            and f" -c {wid.get('cpus_per_task')} " in plans[0]), (
-        f"the widest shelf must submit first: {plans[0]}"
+    assert (f"#SBATCH -n {wid.get('mpi_np') or 1}" in headers[0]
+            and f"#SBATCH -c {wid.get('cpus_per_task')}" in headers[0]), (
+        f"the widest shelf must submit first: {headers[0]}"
     )
     assert r.output.count("rides the group") == len(js["jobs"])
     assert "next unlaunched trial" not in r.output
@@ -412,62 +414,45 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert "bench-group" not in r.output
 
 
-def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
+def test_the_benchmarks_memory_reaches_every_shelf_header(calc):
     """**The regression.**  Job 62039305 (48 ranks, 1 GPU, `htc`) OOM'd at
     24576M on 2026-08-23 -- a number nobody asked for and nothing told
-    anyone about, because `--mem` typed at `launch` never reached
-    `submit_bench_group` at all: `_group_envelope` only ever set
-    mpi_np/cpus_per_task/gres/exclusive, so the actual `sbatch` command
-    asked for no memory no matter what a person typed.
+    anyone about, because the memory a person stated never reached the
+    shelf's job: `_group_envelope` only ever set
+    mpi_np/cpus_per_task/gres/exclusive, so the actual job asked for no
+    memory no matter what a person typed.
 
-    Fixed by threading the memory through the shelf's planner
-    (`submit._plan_shelf`, then the one request, `_sbatch_request`),
-    applied to the envelope the same way the wall is (`jobset/submit.py`).
-    This is the CLI end to end, `--dry-run` so nothing real is submitted --
-    the same entry point `test_cli_submit_bench_groups_the_sweep_by_shelf`
-    proves the shelf-grouping through, with one flag added.
+    The memory is prep's (`job-system.md` § 6.0): stated at the benchmark's
+    prep, it is on every trial's request, and the shelf's header -- written
+    at launch from the trials' shared request (`group.envelope`) -- asks it.
     """
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     _on_a_queue(calc)
-    _prep_bench(calc)
-    r = CliRunner().invoke(jobset_group, [
-        "launch", "bench", "coarse", "--bundle", str(calc),
-        "--mode", "submit", "--dry-run", "--yes",
-        "--mem", "128G"])
-    assert r.exit_code == 0, r.output
-    plans = [l for l in r.output.splitlines() if "WOULD run" in l]
-    assert plans, r.output
-    assert all("--mem=128G" in p for p in plans), (
-        f"--mem 128G never reached the sbatch command: {plans}")
+    prep_bench(calc, "coarse",
+               allocation=Resources(mpi_np=8, cpus_per_task=8, mem="128G"))
+    headers = shelf_headers(calc, "coarse")
+    assert headers
+    assert all("#SBATCH --mem=128G" in h for h in headers.values()), (
+        f"--mem 128G never reached a shelf's header: {headers}")
 
 
-def test_the_launch_plan_states_gpu_sharing(calc):
+def test_the_benchmarks_prep_states_gpu_sharing(calc):
     """**What a person approves says what will actually be asked for.**
 
     User, 2026-08-23: *"explicitly note for gpu enabled task: how many
     task will be sharing the gpu at the same time, and warn if that
-    number is exceedingly high"* -- checked on the real launch door, from
-    the very commands it is about to send.
-
-    The arithmetic itself (`ask.gpu_share_notes`) is unit-tested; this
-    pins that it REACHES the approval screen, which is the half that was
-    missing while five Sol jobs went out against limits nobody chose.
+    number is exceedingly high"* -- said by the benchmark's prep, where the
+    grid can still change, once per share.
     """
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     _on_a_queue(calc)
-    _prep_bench(calc)
     r = CliRunner().invoke(jobset_group, [
-        "launch", "bench", "coarse", "--bundle", str(calc),
-        "--mode", "submit", "--dry-run", "--yes"])
+        "prep", "bench", "coarse", "--bundle", str(calc), "--np", "8",
+        "--cpus-per-task", "8"])
     assert r.exit_code == 0, r.output
-    # every GPU shelf's ratio, stated -- and stated ONCE per ratio, not
-    # once per shelf (several shelves share a ratio).
-    ratios = [l for l in r.output.splitlines() if "gpu share" in l]
-    assert ratios, r.output
-    assert len(ratios) == len(set(ratios)), f"repeated: {ratios}"
-    assert any("rank(s)/GPU" in l for l in ratios)
+    shares = [l for l in r.output.splitlines() if "GPU sharing" in l]
+    assert len(shares) == 1, r.output
+    assert "rank(s)/GPU" in shares[0], shares
 
 
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):

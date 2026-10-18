@@ -979,8 +979,8 @@ def _load_bench_set(base, stage, verb: str = "launch"):
         raise click.ClickException(str(e))
 
 
-#: WHAT YOU MAY TYPE FOR THE TWO ASKS -- said ONCE, because `prep` and
-#: `launch` each take a `--time` and a `--mem`.
+#: WHAT YOU MAY TYPE FOR THE TWO ASKS -- said ONCE, prep's; launch's
+#: `--time` takes the same spelling (`TIME_METAVAR`).
 #:
 #: These describe the HUMAN edge only.  What the file stores and what
 #: reaches `sbatch` is SLURM's own spelling, always, and neither is any of
@@ -989,14 +989,13 @@ TIME_METAVAR = "DURATION"
 TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
              "number of minutes.  A run on a scheduler states one -- here, "
              "or `allocation.time` / the run card's `time` in task.json -- "
-             "or prep refuses; on launch it overrides what prep baked.  "
-             "Never derived, never estimated (architecture.md § 5.2).")
+             "or prep refuses.  Never derived, never estimated "
+             "(architecture.md § 5.2).")
 MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  A run "
             "on a scheduler states one -- here, or `allocation.mem` in "
-            "task.json -- or prep refuses; on launch it overrides what prep "
-            "baked (running-a-job.md § 5.3.1).")
+            "task.json -- or prep refuses (running-a-job.md § 5.3.1).")
 
 
 def _duration(text):
@@ -1006,17 +1005,6 @@ def _duration(text):
         return parse_duration(text)
     except ValueError as e:
         raise click.ClickException(f"--time: {e}")
-
-
-def _memory(text):
-    """A stated memory as the record writes it -- SLURM's spelling, ``0``
-    for all of the node's (`scheduler.quantities.canonical_mem`) -- refusing
-    in click's voice."""
-    from ..scheduler.quantities import canonical_mem
-    try:
-        return canonical_mem(text)
-    except ValueError as e:
-        raise click.ClickException(f"--mem: {e}")
 
 
 def _resolve_stage_name(js, stage: str) -> str:
@@ -1070,13 +1058,15 @@ def _resolve_stage_name(js, stage: str) -> str:
               help=TIME_HELP)
 @click.option("--mem", default=None, metavar=MEM_METAVAR, help=MEM_HELP)
 @click.option("--max-memory-mb", type=int, default=None, metavar="MB",
-              help="per-rank cap, baked into the wrapper as ulimit -v.")
+              help="the run's memory cap in MB: a SIESTA run script's "
+                   "ulimit -v per rank, a PySCF deck's mol.max_memory.")
 @click.option("--domain", default=None, metavar="NAME",
               help="which named domain to run in (a PROBED domain from "
                    "the target's record -- a partition and a QOS together, "
                    "with its own limits).  On a scheduler a run names one "
-                   "-- here, or `allocation.domain` in task.json -- or prep "
-                   "refuses and lists them.")
+                   "-- here, its run card's `domain`, or `allocation.domain` "
+                   "in task.json (a benchmark: here, or `allocation.domain`) "
+                   "-- or prep refuses and lists them.")
 @click.option("--target", default=None, metavar="NAME",
               help="which MACHINE this is for -- a record written by "
                    "`jobset probe --write --name NAME`, or `this` for this "
@@ -1307,6 +1297,14 @@ def _ask_which_groups(base, named) -> tuple:
     return answer, asked
 
 
+def _header_said(lines) -> str:
+    """A header's request in one line, as its ``#SBATCH`` lines carry it
+    (`Directives.lines_of`) -- every value of what a launch sends, said
+    where a person approves it (`submission.md` S4)."""
+    return "header: " + "  ".join(ln[len("#SBATCH"):].strip()
+                                  for ln in lines)
+
+
 def _echo_prep_answer(ans, base, *, first: bool = True,
                       last: bool = True) -> None:
     """The prep report, from the entry's answer -- `job-system.md` § 5.3:
@@ -1353,6 +1351,15 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
             # attempt layer every trial's dir ENDS in run-<n> (user,
             # 2026-08-28)
             click.echo(f"  {_rel(base, d)}")
+        if ans.placement:
+            # THE ONE QUEUE IT MEASURES ON, admitted at prep and recorded on
+            # every trial (`job-system.md` § 6.0) -- said as a run's is.
+            from .placement import placement_line
+            click.echo("  " + placement_line(ans.placement))
+        for shelf in ans.shelves:
+            # EACH SHELF AS ITS HEADER ASKS IT -- the one job its launch
+            # sends (`shelves.shelves_of`).
+            click.echo(f"  {shelf['name']}  {_header_said(shelf['header'])}")
         if ans.continuation is not None:
             # A FORCE-CONSTANT STAGE'S TRIALS are written at the geometry of
             # the relax run it builds on -- which one, said (§ 5.2a).
@@ -1397,11 +1404,26 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         click.echo("  takes nothing from another run"
                    + ("" if ans.linked else
                       " (the first stage, or one that starts clean)"))
+    from .placement import placement_line, stated_line
     if ans.placement:
         # WHERE IT WAS ADMITTED, and where each value came from
         # (`job-system.md` § 6.0) -- the line the tab shows too.
-        from .placement import placement_line
         click.echo("  " + placement_line(ans.placement))
+    elif stated_line(ans.sources):
+        # NO HEADER -- where each value it states came from, all the same.
+        click.echo("  " + stated_line(ans.sources))
+    if ans.launch and ans.launch.get("header") and ans.group is None:
+        # EVERY VALUE IT IS SENT WITH, as the header its launch sends carries
+        # it -- a run of points', its walk's -- the line above saying where
+        # each came from.  A member of a group of several is sent in the
+        # group's one job, said after its last member.
+        click.echo("  " + (f"one job walking its {len(ans.points)} points "
+                           f"(their walls summed) -- " if ans.points else "")
+                   + _header_said(ans.launch["header"]))
+    for line in ans.notes:
+        # WHAT ITS REQUEST MEANS, said where a value can still change -- its
+        # ranks over its GPUs (`ask.gpu_share_notes`).
+        click.echo("  " + line)
     if ans.resources is not None:
         r = ans.resources
         # WHAT IS STATED, and nothing else: no launch value is left for
@@ -1410,6 +1432,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         asks = [f"{word} {r[key]}" for word, key in (("mpi_np", "mpi_np"),
                                                      ("omp", "cpus_per_task"))
                 if r.get(key)]
+        if r.get("max_memory_mb"):
+            asks.append(f"memory cap {r['max_memory_mb']} MB")
         if r.get("continue_retries"):
             asks.append(f"retries {r['continue_retries']}")
         if asks:
@@ -1436,8 +1460,11 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         # first launch sends, not a member's own (`job-system.md` § 5.0,
         # checkpoint 6).
         click.echo(f"group {g['number']} -- one job: "
-                   f"{', '.join(g['members'])}, one after another"
+                   f"{', '.join(g['members'])}, one after another (their "
+                   f"walls summed, the largest memory)"
                    + (f"; its header: {g['header']}" if g["header"] else ""))
+        if g["launch"]["header"]:
+            click.echo("  " + _header_said(g["launch"]["header"]))
     if not last:
         return
     say_next("next -- launch the group that can go, each group one job:\n"
@@ -1615,62 +1642,30 @@ def summarize_cmd(kind: str, words, bundle: str,
             reported=report is not None)
 
 
-def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
-                                 domain, time_text, mem_text, gpu_domain,
-                                 trial_timeout_min, only_side,
-                                 foreground: bool = False,
+def _refuse_flags_without_effect(*, kind: str, mode: str, trial, typed,
                                  each_mode=lambda: "") -> None:
     """A launch flag that would not be read is REFUSED by name, never
-    ignored -- a queue's flag on a run here, a run here's on a queue, each
-    with the launch as typed for each mode (``each_mode``, R-L4)."""
-    from .commands import HERE_FLAGS, QUEUE_FLAGS
-    flags = {"--domain": domain, "--time": time_text, "--mem": mem_text,
-             "--gpu-domain": gpu_domain,
-             "--trial-timeout": trial_timeout_min, "--only": only_side,
-             "--foreground": True if foreground else None}
-
-    def said(*names):
-        return [n for n in names if flags[n] is not None]
-
-    if mode == "direct":
-        # A BENCHMARK'S PER-TRIAL BOUND IS ITS WALK'S, here as on a queue
-        # (`job-system.md` § 6.0, *A benchmark's walk*) -- the rest are what a
-        # scheduler is asked (`commands.QUEUE_FLAGS`, whose `--only` is
-        # said apart below).
-        got = said(*(f for f in QUEUE_FLAGS if f != "--only"))
-        if got:
+    ignored -- each as the one table says who reads it
+    (`commands.LAUNCH_FLAGS`): its modes, the launches that take it, a
+    benchmark's grouped walk alone -- with the launch as typed for each mode
+    (``each_mode``, R-L4)."""
+    from .commands import LAUNCH_FLAGS
+    said = {flag for flag, _value in typed}
+    for row in LAUNCH_FLAGS:
+        if row.flag not in said:
+            continue
+        if kind not in row.kinds:
             raise click.ClickException(
-                f"{', '.join(got)}: what a scheduler is asked for -- "
-                f"`--mode direct` runs it here, where "
-                f"{'it means' if len(got) == 1 else 'they mean'} nothing.\n"
-                + each_mode())
-        if said("--only") and kind == "bench" and trial is None:
+                f"{row.flag}: {row.what} -- `launch {kind}` does not read "
+                f"it.")
+        if row.grouped and trial is not None:
             raise click.ClickException(
-                "--only: sends one side of a benchmark to a queue -- a "
-                "walk here runs every unlaunched trial.")
-    else:
-        # A RUN HERE'S FLAG ON A QUEUE: a scheduler's job runs without
-        # anyone waiting on it (`commands.HERE_FLAGS`).
-        got = said(*HERE_FLAGS)
-        if got:
+                f"{row.flag}: {row.what} -- a named trial is sent alone, and "
+                f"is the selection.")
+        if mode not in row.modes:
             raise click.ClickException(
-                f"{', '.join(got)}: waits for a run here (`--mode direct`) "
-                f"-- with `--mode {mode}` nothing runs here to wait for; "
-                + ("a scheduler's job runs without you."
-                   if mode == "submit" else "the scheduler is only asked.")
-                + "\n" + each_mode())
-    if kind != "bench":
-        got = said("--gpu-domain", "--trial-timeout", "--only")
-        if got:
-            raise click.ClickException(
-                f"{', '.join(got)}: a benchmark's -- `launch task` sends one "
-                f"stage, to the queue --domain names.")
-    elif trial is not None:
-        got = said("--trial-timeout", "--only")
-        if got:
-            raise click.ClickException(
-                f"{', '.join(got)}: a grouped bench's -- a named trial is "
-                f"sent alone, and is the selection.")
+                f"{row.flag}: {row.what} -- `--mode {mode}` does not read "
+                f"it.\n" + each_mode())
 
 
 def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
@@ -1680,52 +1675,36 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     it -- what each follows, what only the person can judge, and what the
     request leaves to the scheduler; then the one question.  ``True`` to go.
 
-    Every door asks it, the stage's included (user, 2026-10-01: the queue and
-    the wall are decided at launch, after prep's printout, so they were never
-    seen).  Under ``--dry-run`` the commands are printed by the results that
+    Every door asks it, the stage's included.  Under ``--dry-run`` the
+    commands are printed by the results that
     follow, so only what the plan alone carries is said here, and nothing
     is asked: ``None``.  Otherwise the answer (`ask.Said`).  ``--yes``
     skips the question, never the output.  A run ``here`` is shown and
     asked as a submission is (user, 2026-10-05), the question offering the
     other way of running it -- in the foreground, or in the background
     (user, 2026-10-16; `job-system.md` § 6.0)."""
-    from .ask import confirm, gpu_share_notes
-    from ..scheduler.quantities import parse_gres_flag
-    planned = [r for r in plan if r.status == "planned"]
+    from .ask import confirm
     lines = [("about to start here, in the background:" if background
               else "about to run here, waited on:") if here
              else "about to submit:"]
     for r in plan:
         if r.status == "planned":
-            # NAME THE DOMAIN, not only the flags: where several domains
-            # share one partition, `-p htc` reads as *htc* to anyone scanning
-            # (2026-08-30: a debug sweep was believed to have gone wrong).
+            # NAME THE QUEUE, not only its header's lines: where several
+            # queues share one partition, `-p htc` reads as *htc* to anyone
+            # scanning (2026-08-30: a debug sweep was believed to have gone
+            # wrong).
             lines.append(f"  {r.name}"
                          + (f"   -> domain {r.domain}" if r.domain else ""))
             lines.append(f"    {' '.join(r.command)}")
+            if r.request:
+                lines.append(f"    {_header_said(r.request)}")
         elif r.status == "takes":
             lines.append(f"  {r.name}: {r.said}")
-    warn = []
-    for r in planned:
-        # GPU SHARING, read off the very command about to be sent (user
-        # 2026-08-23) -- its `-n` and its `--gres`, through the one reader.
-        g = next((a for a in r.command if a.startswith("--gres=")), None)
-        try:
-            ng = parse_gres_flag(g.split("=", 1)[1]) if g else 0
-            nr = int(r.command[r.command.index("-n") + 1])
-        except (ValueError, IndexError):
-            ng = 0
-        for line in (gpu_share_notes(ng, nr) if ng else ()):
-            line = "  " + line.strip()
-            if line not in warn:
-                warn.append(line)
-    for r in planned:
-        # R14 -- the cap this sweep will meet, said while no is still free.
-        if r.detail and "  " + r.detail.strip() not in warn:
-            warn.append("  " + r.detail.strip())
-    lines += warn + list(footer)
+    # WHAT THE REQUEST MEANS -- a GPU's ranks, a queue's job cap -- was said
+    # at prep, where a value can still change (`job-system.md` § 6.0).
+    lines += list(footer)
     if dry_run:
-        for line in warn + list(footer):
+        for line in footer:
             click.echo(line)
         return None
     if not here:
@@ -1756,31 +1735,20 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "'submit' = hand it to this machine's scheduler; "
                    "**'ask' = submit NOTHING and report when it "
                    "would start** (`sbatch --test-only` on the line submit "
-                   "would send), so you can change the queue or the request "
-                   "and ask again before committing.  'ask' needs a login "
+                   "would send), so you can change the request at prep and "
+                   "ask again before committing.  'ask' needs a login "
                    "node -- there is no prediction without the cluster.  "
                    "**Defaults to `launch.mode` in molbuilder.json** "
                    "(running-a-job.md § 5.4); pass it only to override that.")
-@click.option("--domain", default=None, metavar="NAME",
-              help="the queue -- a domain of this machine's record, sent as "
-                   "-p/-q (submit and ask).  Unstated: the one prep baked "
-                   "for this stage; with none, the queues are listed and "
-                   "nothing is sent.  A grouped "
-                   "bench's sides take it too; --only places one side at a "
-                   "time.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing, write nothing.")
 @click.option("--time", "time_text", default=None, metavar=TIME_METAVAR,
-              help=TIME_HELP)
-@click.option("--mem", "mem_text", default=None, metavar=MEM_METAVAR,
-              help=MEM_HELP)
-@click.option("--gpu-domain", "gpu_domain", default=None, metavar="NAME",
-              help="the queue a benchmark's GPU side goes to -- a grouped "
-                   "bench's GPU shelves, or a named GPU trial -- when it "
-                   "differs from --domain.  A cpu-only partition cannot take "
-                   "the GPU side, so one queue cannot always answer for "
-                   "both.  Omit it and the GPU side takes --domain.")
+              help="submit and ask: a submitted job's wall, restated on its "
+                   "sbatch line (-t) -- for a run launched again that ran "
+                   "out of it.  Every other value -- the queue, ranks, cores, "
+                   "GPUs, memory -- is the header prep wrote, sent as it is "
+                   "(job-system.md 6.0).")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="take what is shown without being asked.  The request is "
                    "still printed -- --yes skips the question, never the "
@@ -1810,7 +1778,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
               type=click.IntRange(min=1), metavar="MINUTES",
               help="a benchmark's walk (`launch bench <stage>`, here or "
-                   "on a queue): kill any single trial after this many "
+                   "sent to its queue): kill any single trial after this many "
                    "minutes so the rest of the walk still runs; the killed "
                    "trial reads incomplete.  Unstated, no per-trial bound "
                    "exists -- each trial runs until it ends, or the job's "
@@ -1830,12 +1798,11 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               type=click.Choice(["cpu", "gpu"]),
               help="a grouped bench: send just this side of a sweep that "
                    "spans CPU and GPU trials (generator.md § 4.3a).  The "
-                   "other side stays pending; a later `launch bench` "
-                   "collects it -- here or on the cluster that reaches it.")
+                   "other side stays pending; a later `launch bench` sends "
+                   "it.")
 def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
-               domain, dry_run: bool, time_text, mem_text, gpu_domain,
-               auto_yes, cold, from_attempt, gather, foreground,
-               trial_timeout_min, only_side) -> None:
+               dry_run: bool, time_text, auto_yes, cold, from_attempt,
+               gather, foreground, trial_timeout_min, only_side) -> None:
     """Launch a prepared group, or a stage again: run it here (direct) --
     in the background, unless ``--foreground`` or your answer waits for it
     -- hand it to the machine's scheduler (submit), or ask the scheduler
@@ -1871,10 +1838,10 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
             stage = stages[0]
         said = {"kind": kind, "stage": stage, "group": group,
                 "trial": trial, "mode": mode}
-        _launch(said, kind, stage, trial, bundle, mode, domain, dry_run,
-                time_text, mem_text, gpu_domain, auto_yes, trial_timeout_min,
-                only_side, cold, group, from_attempt=from_attempt,
-                gather=gather, foreground=foreground)
+        _launch(said, kind, stage, trial, bundle, mode, dry_run,
+                time_text, auto_yes, trial_timeout_min, only_side, cold,
+                group, from_attempt=from_attempt, gather=gather,
+                foreground=foreground)
     except SubmitError as e:
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
@@ -1931,22 +1898,19 @@ def _how_runs_ended(results, plan, js, base):
 
 
 def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
-            domain, dry_run: bool, time_text, mem_text, gpu_domain,
-            auto_yes, trial_timeout_min, only_side, cold: bool,
-            group=None, *, from_attempt=None, gather: bool = False,
-            foreground: bool = False) -> None:
+            dry_run: bool, time_text, auto_yes, trial_timeout_min, only_side,
+            cold: bool, group=None, *, from_attempt=None,
+            gather: bool = False, foreground: bool = False) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
     refusal it raises).  ``said`` is what that line names, filled in as the
     body learns it: the mode and where it came from, the stage as the
     description spells it."""
     mode_source = "--mode flag"
-    domain_source = "--domain flag" if domain else None
     # THE FLAGS AS TYPED, ``(flag, value)`` in the help's order -- recorded
     # with what the verb was told, and carried by every line that offers
     # this launch again in another mode (`commands.launch_with`).
     typed = [[f, v] for f, v in (
-        ("--domain", domain), ("--gpu-domain", gpu_domain),
-        ("--time", time_text), ("--mem", mem_text),
+        ("--time", time_text),
         ("--trial-timeout", trial_timeout_min), ("--only", only_side),
         ("--cold", True if cold else None), ("--from", from_attempt),
         ("--gather", True if gather else None),
@@ -2008,12 +1972,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                                   typed=typed, groups=groups)
                       for m in (("direct", "submit") if takes_a_queue(base)
                                 else ("direct",))])
-    _refuse_flags_without_effect(
-        kind=kind, mode=mode, trial=trial, domain=domain,
-        time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
-        trial_timeout_min=trial_timeout_min, only_side=only_side,
-        foreground=foreground, each_mode=each_mode)
-    mem = _memory(mem_text)
+    _refuse_flags_without_effect(kind=kind, mode=mode, trial=trial,
+                                 typed=typed, each_mode=each_mode)
     time_s = _duration(time_text)
     if kind == "bench":
         for flag, said_it in (("--cold", cold), ("--from", from_attempt),
@@ -2049,9 +2009,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     groups = [group] if group is not None else []
     grouped = kind == "bench" and trial is None
 
-    # THE QUEUE is the entry's to decide -- --domain as typed, else the one
-    # the work's prep admitted (`submit.plan_launch`; floor 7 never works
-    # out a launch, `architecture.md` § 2.1).
+    # THE QUEUE is the one the work's prep recorded (`submit.plan_launch`;
+    # floor 7 never works out a launch, `architecture.md` § 2.1).
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).
@@ -2061,8 +2020,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     from .submit import ask_launch, plan_launch, send_launch
 
     # A grouped bench's per-trial bound.  NOTHING IS DERIVED (user
-    # dictation, 2026-08-24): --time is the wall, said or the target queue's
-    # ceiling; --trial-timeout is itself or absent.
+    # dictation, 2026-08-24): --trial-timeout is itself or absent.
     _bound_s = (trial_timeout_min * 60 if trial_timeout_min is not None
                 else None)
 
@@ -2071,17 +2029,14 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # entry writes its own decisions down, with what this verb was told on
     # each line; a dry run writes nothing.
     told = dict(kind=kind, stage=stage, group=group, trial=trial, mode=mode,
-                mode_source=mode_source, flags=typed, domain=domain,
-                domain_source=domain_source, provenance=prov,
-                # A LAUNCH FLAG'S WALL AND MEMORY, as typed: the values it
-                # changes are recorded in the launch record too (§ 6.0).
+                mode_source=mode_source, flags=typed, provenance=prov,
+                # A LAUNCH'S WALL, as typed: the value it restates is
+                # recorded in the launch record too (§ 6.0).
                 **({"time": time_text} if time_text else {}),
-                **({"mem": mem_text} if mem_text else {}),
                 **({"trial_timeout_s": _bound_s, "side": only_side}
                    if grouped else {}))
     try:
-        plan = plan_launch(js, base, mode=mode, only=only, domain=domain,
-                           gpu_domain=gpu_domain, side=only_side, mem=mem,
+        plan = plan_launch(js, base, mode=mode, only=only, side=only_side,
                            time_s=time_s, trial_timeout_s=_bound_s,
                            told=told, record=not dry_run, cold=cold,
                            group=group, from_attempt=from_attempt,
@@ -2100,8 +2055,9 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             plan.record("question", **facts)
         results = ask_launch(plan)
         # NOTHING WAS SUBMITTED.  The line the scheduler was asked about is
-        # the line that WOULD be sent -- same flags, plus --test-only -- so
-        # what is printed here and what launch would do cannot drift.
+        # the line that WOULD be sent, the header its prep wrote, plus
+        # --test-only -- so what is printed here and what launch would do
+        # cannot drift.
         from .ask import prediction_table
         import dataclasses as _dcs
         preds = [_dcs.replace(r.prediction, label=r.name)
@@ -2131,7 +2087,6 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                 click.echo("  read what they measured:\n    "
                            + command("summarize", "bench", stage, base=base))
             return
-        asked = next((r for r in results if r.prediction is not None), None)
         click.echo("")
         # "nothing to wait for" followed by an sbatch preview reads as a
         # contradiction (user, 2026-08-28): on a scheduler-less machine
@@ -2140,7 +2095,16 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # launch_with`).
         from .commands import block, launch_with
         if not all(p.no_scheduler for p in preds):
-            click.echo("  would send: " + " ".join(asked.command))
+            # EVERY LINE ASKED ABOUT, and every value of the header it sends
+            # (`submission.md` S4) -- what the answer is an answer about.
+            for r in results:
+                if r.prediction is None:
+                    continue
+                click.echo(f"  would send {r.name}"
+                           + (f"   -> domain {r.domain}" if r.domain else "")
+                           + f"\n    {' '.join(r.command)}")
+                if r.request:
+                    click.echo(f"    {_header_said(r.request)}")
             click.echo("  to send it, when the answer suits you:\n"
                        + block([launch_with(kind, *words, base=base,
                                             mode="submit", typed=typed,
@@ -2229,6 +2193,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
              else verb)
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.shown}] {tail}".rstrip())
+        if r.request:
+            click.echo(f"  {'':9}  {_header_said(r.request)}")
     # A PARTIAL SUBMISSION SAYS SO, LOUDLY.  One shelf refused by the
     # scheduler does not cancel the others, so the run can end with some
     # jobs queued and some not; the refused shelves' trials stay pending,

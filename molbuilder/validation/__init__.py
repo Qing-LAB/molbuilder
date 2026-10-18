@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import sys
 from contextvars import ContextVar
-from typing import Callable, Dict, List, Optional, Type
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 
@@ -96,7 +96,16 @@ def _structure_declares_a_box(struct: Structure) -> bool:
 def structure_findings(struct: Structure, *,
                        cell: Optional[np.ndarray] = None,
                        engine: Optional[str] = None) -> List[Issue]:
-    """THE STRUCTURE'S OWN FINDINGS -- its box's facts (`cell.check`) and its
+    """THE STRUCTURE'S OWN FINDINGS (:func:`_the_structure`'s) -- what
+    `molbuilder validate` says with no engine named, and :func:`validate`
+    first."""
+    return _the_structure(struct, cell=cell, engine=engine)[1]
+
+
+def _the_structure(struct: Structure, *, cell: Optional[np.ndarray],
+                   engine: Optional[str]
+                   ) -> "Tuple[Optional[np.ndarray], List[Issue]]":
+    """``(box, findings)`` -- THE STRUCTURE'S OWN FINDINGS -- its box's facts (`cell.check`) and its
     geometry's (:func:`validate_geometry`) -- the structural half of
     :func:`validate`, which asks it first.  ``engine`` names who will
     compute on it, and so which of the box's findings it hears
@@ -105,7 +114,9 @@ def structure_findings(struct: Structure, *,
     that is no box (`cell.no_volume`, `cell.left_handed`) is an error on
     every road (`science/validation.md` § 4.1, *representability is
     blocking*).  ``cell`` as :func:`validate` takes it (F4: omitted, the
-    structure's own, when it declares one)."""
+    structure's own, when it declares one); ``box`` is the one every
+    engine's and kind's check then reads -- resolved, and ``None`` for an
+    engine that computes in no box."""
     issues: List[Issue] = []
     # WHETHER THE ENGINE COMPUTES IN THE BOX (`model/structure-periodicity.md`
     # § 2.1, plan § 5w K8): PySCF builds a molecule in free space, so the
@@ -151,7 +162,7 @@ def structure_findings(struct: Structure, *,
     if not in_cell:
         cell = None
     issues += validate_geometry(struct, cell)
-    return issues
+    return cell, issues
 
 
 def validate(struct: Structure, cfg, *,
@@ -227,7 +238,9 @@ def validate(struct: Structure, cfg, *,
     """
     from ..template import engine_name
     engine = engine_name(type(cfg))
-    issues = structure_findings(struct, cell=cell, engine=engine)
+    # THE BOX, worked out once with the structure's findings, and the one
+    # every check below reads.
+    cell, issues = _the_structure(struct, cell=cell, engine=engine)
     # WHAT MAY STAND FOR EACH ITEM ON THIS KIND, asked first so a refused
     # value's range warning can stand aside (`engines/template.md` § 5.3):
     # a component the kind fixes, a choice it does not offer -- a relaxer a

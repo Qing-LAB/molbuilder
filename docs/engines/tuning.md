@@ -521,9 +521,9 @@ always the TOTAL rank count (`G·K`), so K follows as `mpi_np / G`. The
 rules around `gpu_count` are refusals and named drops, never silent
 repairs: a device count the machine's record does not hold **refuses**; a
 `(mpi_np, gpu_count)` pair that cannot split into equal shares is
-**dropped, and the dropped pair is printed by name** — ELPA's own rule is
-the same rank count on every device, and a benchmark must never round
-your numbers; `gpu_count` on a bench whose `use_gpu` resolves to false
+**dropped, and the dropped pair is printed by name** — a trial is counted
+by its ranks per GPU, which an uneven split does not have, and a benchmark
+never rounds your numbers; `gpu_count` on a bench whose `use_gpu` resolves to false
 **refuses** rather than being silently ignored; and with `gpu_count`
 absent, the machine *proposes* — G ranges over each declared rank count's
 divisors, bounded by the recorded device count. The device count itself

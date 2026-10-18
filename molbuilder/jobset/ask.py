@@ -10,14 +10,14 @@ explained afterwards because nothing was invented.
 Everything that lives here, and it lives nowhere else:
 
     Ask              the question, and the answer to it
-    queue_table      the queues this machine offers, and which can take the job
+    queue_table      the queues the target's record lists, and which can take the job
     gpu_share_notes  what a GPU-sharing request means, stated once
     confirm          the one interface — approve, change, or skip
 
     The one output is the PLAN the launch door prints -- the exact sbatch
-    command of every job, from the same code that submits it.  TIME IS NEVER
-    DERIVED (user dictation, 2026-08-24): the user states it, or the launch
-    is refused (`architecture.md` § 5.2).
+    command of every job and the header it sends, from the same code that
+    submits it.  TIME IS NEVER DERIVED (user dictation, 2026-08-24): the
+    user states it, or prep refuses (`architecture.md` § 5.2).
 
 `admits` is the one check of "does this fit": placement uses it, and
 `queue_table` renders it per queue.
@@ -67,13 +67,16 @@ class Ask:
 
 def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
                 gpus: Optional[int] = None) -> str:
-    """**Every queue this machine offers, and which of them can take this job.**
+    """**Every queue the target's record lists, and which of them can take this
+    job.**
 
     The framework does not choose (user, 2026-08-23: *"just don't guess
-    shit"*).  It shows what exists, marks what fits, and the person picks with
-    ``--domain``.  Which queue to spend a day of wall-clock in is a judgement
+    shit"*).  It shows what exists, marks what fits, and the person names one
+    where the refusal it is shown in says -- prep shows this when a run names
+    none (`placement.launch_refusal`).  Which queue to spend a day of
+    wall-clock in is a judgement
     about priority, contention and what else is running — none of which is on
-    this machine's record, and all of which the person has.
+    the target's record, and all of which the person has.
 
     A queue that cannot take the job is still LISTED, with the reason.
     Hiding it would answer *"why is my queue not an option?"* with silence,
@@ -95,11 +98,9 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
     ``htc``, 128 looks like the rare extreme and is 134 of 188 nodes.
     """
     from ..scheduler import domain_ceiling_s
-    if not rows:
-        return "this machine states no queues -- the job runs directly."
     head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
             f"{'cores':>8} {'memory':>9}  gpu")
-    lines = ["this machine offers:", head]
+    lines = ["the target's record lists:", head]
     for i, d in enumerate(rows, 1):
         secs = domain_ceiling_s(d)
         wall = human_wall(secs)
@@ -117,9 +118,6 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
             lines.append(f"         {fit}")
         if why:
             lines.append(f"     -> {'; '.join(r.message for r in why)}")
-    lines.append("")
-    lines.append("  name one of them with --domain.  Nothing is submitted "
-                 "until you do.")
     return "\n".join(lines)
 
 
@@ -234,18 +232,19 @@ def _why_not(row, ask: Ask, *, cores=None,
                                     mem_gb=ask.mem_gb, gpus=gpus or None)))
 
 
-def gpu_share_notes(gpu_count: Optional[int],
-                    mpi_np: Optional[int]) -> List[str]:
-    """What a GPU-sharing request means, stated once so the bench-grid
-    enumeration and the submission display cannot disagree about it --
-    and so neither drifts from what `runwrap.py` actually runs.
+def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
+                    one_process: bool = False) -> List[str]:
+    """What a GPU-sharing request means, said at a run's prep -- by the two
+    thresholds the bench grid's note reads too (`prep_inputs.bench_inputs`),
+    so the two cannot disagree -- and so neither drifts from what
+    `runwrap.py` actually runs.
 
     **The three things this states, always in this order:**
 
     1. ALWAYS -- how many ranks land on one device.  `runwrap.py`'s own
        load-balance line is this exact arithmetic (``_ranks_per_gpu =
        mpi_np / ngpu``, `running-a-job.md` § 3.3); stated here so the
-       person choosing --domain sees it BEFORE a day in the queue, not in
+       person sees it at prep, BEFORE a day in the queue, not in
        stderr after the job has already started.
     2. a WARNING past :data:`MPS_MAX_CLIENTS_PER_DEVICE` -- ranks past the
        ceiling do not run slowly, they fail to attach.
@@ -260,10 +259,17 @@ def gpu_share_notes(gpu_count: Optional[int],
 
     ``gpu_count`` falsy/``None`` returns no lines -- a CPU-family request,
     nothing here applies.  ``mpi_np`` falsy/``None`` the same -- there is no
-    rank count yet to say anything about.
+    rank count yet to say anything about.  An engine that runs ONE process
+    (``one_process``, PySCF) shares no device among ranks, and fewer ranks
+    than GPUs share none either: each is said as it is.
     """
     if not gpu_count or not mpi_np:
         return []
+    if one_process:
+        return [f"  gpu share  one process on {gpu_count} GPU(s)"]
+    if mpi_np < gpu_count:
+        return [f"  gpu share  {mpi_np} rank(s) / {gpu_count} GPU(s): a GPU "
+                f"each, and {gpu_count - mpi_np} GPU(s) with no rank"]
     ranks_per_gpu = mpi_np // gpu_count
     remainder = mpi_np % gpu_count
     lines = [
@@ -406,15 +412,15 @@ def choose(text: str, preselected, *, echo=None, prompt=None,
 #
 # `sbatch --test-only` validates a request and reports when it WOULD be
 # scheduled.  **It creates no job.**  That is what makes it safe to run in
-# a loop while you tune: change the domain, change the cores, ask again,
-# and either take the better wait or decide you can live with this one.
+# a loop while you tune: change the wall and ask again, or prepare again on
+# another queue or with other resources, and either take the better wait or
+# decide you can live with this one.
 #
 # **It is a MODE of launch, not a verb of its own** (user, 2026-08-27:
 # *instead of submit, we can just say ask -- we don't have to reinvent
 # something*).  `--mode ask` walks the identical path `--mode submit`
-# walks and inserts one flag, so the line asked about IS the line that
-# would be sent.  A separate verb would have had to re-render the flags,
-# and two renderings of one fact are two things that can disagree.
+# walks and inserts one flag, so the line asked about -- the header its prep
+# wrote -- IS the line that would be sent.
 #
 # Only the PARSING lives here: it is pure, so it can be tested with no
 # cluster present -- and this workstation has none.
@@ -503,7 +509,7 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
         return "nothing to ask about."
     # NO SCHEDULER AT ALL -- a different answer, not an empty table.  The
     # header would say "asked the scheduler" when none was asked, and the
-    # footer would offer to change --domain, which means nothing here.
+    # footer would offer to change a wall nothing waits on.
     if all(p.no_scheduler for p in preds):
         # The FACT only.  What to do about it is the caller's closing line,
         # or the two say `--mode direct` one after the other.
@@ -521,10 +527,9 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
     lines.append("")
     lines.append("  a time is an ESTIMATE from the queue as it is right now; "
                  "it moves.")
-    # FLAGS THAT EXIST: `launch` takes --domain, --time and --mem; the
-    # ranks and cores are prep's, and a prepared stage is not prepared
-    # again.
-    lines.append("  change --domain, --time or --mem and ask again, or launch "
-                 "when you are happy (the ranks and cores are fixed at "
-                 "prep).")
+    # WHAT A LAUNCH MAY RESTATE (`commands.LAUNCH_FLAGS`): the wall; the
+    # queue, ranks, cores, GPUs and memory are prep's.
+    lines.append("  change the wall (--time) and ask again, or launch when you "
+                 "are happy -- the queue, ranks, cores, GPUs and memory are "
+                 "prep's.")
     return "\n".join(lines)

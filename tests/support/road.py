@@ -262,7 +262,8 @@ def calls_made(calls: Path):
 #      reads what an engine wrote is an end-to-end test (plan § 5y); the
 #      basic tests send nothing to a scheduler either, whose `sbatch`
 #      refuses (W57 T1) -- and what the launch left
-#      (`launch_writes_nothing`: every file under the calculation as it was;
+#      (`no_sbatch_on_path`: launched where no `sbatch` is found at all;
+#      `launch_writes_nothing`: every file under the calculation as it was;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`; `deck_says`, what the engine
@@ -276,8 +277,8 @@ def calls_made(calls: Path):
 #      with a `_lacks` twin -- and the first three with an `_order` twin
 #      (lines standing in that order) and a `_once` twin (lines standing
 #      once each); the `sbatch` line launch shows (`line`,
-#      `line_lacks`); a benchmark's trials (`bench_gres`,
-#      `bench_header_lacks`).
+#      `line_lacks`); a benchmark's trials (`bench_gres`, their headers'
+#      `bench_header` and `bench_header_lacks`).
 #
 # INPUTS: `engine` (siesta | pyscf); `groups` -- each stage's group, in
 # order, over the ones `jobset init` gave; `stage_run` -- a stage's own run
@@ -947,6 +948,34 @@ def _the_runs(bundle: Path, pattern: str) -> Path:
     return found[-1]
 
 
+def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
+    """The shelves of ``stage``'s prepared benchmark as its launch would
+    send them -- planned by the launch verb's own planner
+    (`submit.plan_launch`), nothing sent and nothing written -- each with
+    the request its line sends, the header prep wrote read back by the
+    header's reader (`Submission.request`): ``{shelf: its #SBATCH lines}``,
+    in the order the shelves are sent; ``side`` is `--only`'s."""
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.model import JobSet
+    from molbuilder.jobset.submit import plan_launch
+    from molbuilder.paths import Shape, bench_container
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    container = bundle / bench_container(
+        Shape.named(task.shape), stage_home(bundle, task, stage).token)
+    plan = plan_launch(JobSet.load(container / "job-set.json"), bundle,
+                       mode="submit", side=side, record=False,
+                       told=dict(kind="bench", stage=stage, trial=None,
+                                 mode="submit", flags=[]))
+    return {s.name: list(s.request()) for s in plan.submissions}
+
+
+def stage_file(bundle: Path, stage: str, role: str) -> Path:
+    """The file ``stage``'s prep wrote for ``role`` -- ``.sbatch``,
+    ``.run.sh``, the deck's suffix -- by the one composer's names."""
+    return _the_runs(bundle, _stage_names(bundle, stage).name(role))
+
+
 def _one_line(text) -> str:
     """A failure's text on ONE line: `tools/testrun.py` reports
     ``--tb=line``, which shows a message's first line and nothing else --
@@ -1077,13 +1106,12 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                       ("run_sh", ".run.sh")):
         if any(k in case for k in (key, f"{key}_lacks", f"{key}_order",
                                    f"{key}_once")):
-            names = _stage_names(bundle, case.get("stage", "coarse"))
-            _road_lines(case, key,
-                        _the_runs(bundle, names.name(role)).read_text())
+            _road_lines(case, key, stage_file(
+                bundle, case.get("stage", "coarse"), role).read_text())
     # ...and the deck as its engine reads it, keyword by keyword
     if "deck_says" in case:
-        names = _stage_names(bundle, case.get("stage", "coarse"))
-        text = _the_runs(bundle, names.name(deck)).read_text()
+        text = stage_file(bundle, case.get("stage", "coarse"),
+                          deck).read_text()
         said, key = _deck_says(case.get("engine", "siesta"), text)
         for keyword, want in case["deck_says"].items():
             assert key(keyword) in said, \
@@ -1096,29 +1124,36 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     # field by field, never by its lines
     if "deck_reads" in case:
         from molbuilder.parse.fdf import parse_fdf_params
-        names = _stage_names(bundle, case.get("stage", "coarse"))
-        got = parse_fdf_params(
-            _the_runs(bundle, names.name(".fdf")).read_text())
+        got = parse_fdf_params(stage_file(
+            bundle, case.get("stage", "coarse"), ".fdf").read_text())
         for field, want in case["deck_reads"].items():
             have = getattr(got, field)
             assert (have == want if isinstance(want, (bool, str))
                     else have == pytest.approx(want)), (field, have, want)
     # ...a benchmark's trials, when the row names them
-    if kind == "bench" and ("bench_gres" in case
-                            or "bench_header_lacks" in case):
+    if kind == "bench" and any(k in case for k in (
+            "bench_gres", "bench_header", "bench_header_lacks")):
         plan = next(bundle.rglob("bench/job-set.json"))
         asked = sorted({j["resources"]["gres"]
                         for j in json.loads(plan.read_text())["jobs"]})
         assert asked == sorted(case.get("bench_gres", asked)), asked
         headers = sorted(plan.parent.rglob("*.sbatch"))
-        assert headers or "bench_header_lacks" not in case, \
-            "bench_header_lacks: the benchmark wrote no .sbatch"
+        assert headers or not ({"bench_header", "bench_header_lacks"}
+                               & set(case)), \
+            "bench_header: the benchmark wrote no .sbatch"
         for header in headers:
-            _road_lines({"h_lacks": case.get("bench_header_lacks", [])}, "h",
+            _road_lines({"h": case.get("bench_header", []),
+                         "h_lacks": case.get("bench_header_lacks", [])}, "h",
                         header.read_text())
     # ...and the `sbatch` line(s) launch shows -- one per shelf of a
     # benchmark -- or its refusal
     if "launch" in case:
+        if case.get("no_sbatch_on_path"):
+            # NO SCHEDULER ON THIS MACHINE AT ALL -- the suite's own refusing
+            # `sbatch` taken off PATH with the rest.
+            monkeypatch.setenv("PATH", os.pathsep.join(
+                d for d in os.environ["PATH"].split(os.pathsep)
+                if d and not os.path.exists(os.path.join(d, "sbatch"))))
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
         stage_typed = case.get("launch_stage", "coarse")
@@ -1135,7 +1170,10 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         else:
             assert r.exit_code == 0, _one_line(r)
             sent = [ln for ln in r.output.splitlines() if "sbatch" in ln.split()]
-            assert sent or mode == "direct", _one_line(r)
+            # A LINE TO SHOW, unless the launch runs here or no scheduler is
+            # found to send it to.
+            assert sent or mode == "direct" or case.get("no_sbatch_on_path"), \
+                _one_line(r)
             for ln in sent:
                 _road_lines(case, "line", " ".join(sbatch_line(ln)))
         for words in case.get("listing", []):

@@ -164,6 +164,11 @@ class Plan:
 
     # -- the folder as it will be -------------------------------------------
 
+    def decides(self, path) -> bool:
+        """Whether this plan writes or removes ``path`` -- as opposed to
+        leaving what is on disk there."""
+        return _at(path) in self._held
+
     def is_file(self, path) -> bool:
         p = _at(path)
         if p in self._held:

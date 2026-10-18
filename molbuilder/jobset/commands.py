@@ -18,8 +18,9 @@ wrapper's banner) cannot import it and prints plain text by the same rules.
 from __future__ import annotations
 
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 #: The program as a person types it.
 PROG = "molbuilder jobset"
@@ -128,13 +129,52 @@ def launches_here(base, target: Optional[str] = None) -> bool:
             or LOCAL_TARGET) == LOCAL_TARGET
 
 
-#: The launch flags only a queue reads -- what a scheduler is asked for,
-#: and the side of a benchmark sent to one.  A run here refuses each by name
-#: (`_cli._refuse_flags_without_effect`), and a line that offers the launch
-#: here leaves them off (:func:`launch_with`).
-QUEUE_FLAGS = ("--domain", "--time", "--mem", "--gpu-domain", "--only")
-#: The flags only a run here reads: whether the launch waits for it.
-HERE_FLAGS = ("--foreground",)
+@dataclass(frozen=True)
+class LaunchFlag:
+    """One flag a launch reads -- a fact of how the launch SENDS what prep
+    wrote, never a value of the job: every value is prep's, and the one a
+    launch may restate is a submitted job's wall (`job-system.md` § 6.0;
+    the user, 2026-10-17)."""
+    #: As typed.
+    flag: str
+    #: The modes that read it.
+    modes: Tuple[str, ...]
+    #: The launches that read it: a task's, a benchmark's (a grouped one,
+    #: when ``grouped``).
+    kinds: Tuple[str, ...]
+    #: What it is, in the words a refusal says it in.
+    what: str
+    #: A benchmark's grouped walk only -- a named trial is sent alone.
+    grouped: bool = False
+    #: The request field it restates, and how the `sbatch` line writes it.
+    restates: Optional[str] = None
+    sbatch: Optional[str] = None
+
+
+#: EVERY FLAG A LAUNCH READS beside the work it names and how it asks
+#: (`--mode`, `--yes`, `--dry-run`, the continuation's `--cold`, `--from`,
+#: `--gather`): what the verb refuses where it would not be read
+#: (`_cli._refuse_flags_without_effect`), what a line offering the launch in
+#: another mode keeps (:func:`launch_with`), and what the `sbatch` line
+#: restates (`submit._sbatch_request`).
+LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
+    LaunchFlag("--time", modes=("submit", "ask"), kinds=(TASK, BENCH),
+               what="a submitted job's wall, restated on its sbatch line",
+               restates="time", sbatch="-t"),
+    LaunchFlag("--only", modes=("submit", "ask"), kinds=(BENCH,),
+               what="one side of a benchmark, sent to its queue",
+               grouped=True),
+    LaunchFlag("--trial-timeout", modes=("submit", "direct"),
+               kinds=(BENCH,), what="a benchmark's per-trial bound",
+               grouped=True),
+    LaunchFlag("--foreground", modes=("direct",), kinds=(TASK, BENCH),
+               what="waits for a run here"),
+)
+
+
+def launch_flag(flag: str) -> LaunchFlag:
+    """The row of :data:`LAUNCH_FLAGS` for ``flag``."""
+    return next(f for f in LAUNCH_FLAGS if f.flag == flag)
 
 
 def launch_with(kind: str, *words, base, mode: str, typed=(),
@@ -142,15 +182,15 @@ def launch_with(kind: str, *words, base, mode: str, typed=(),
     """The launch of ``words`` with ``mode`` stated, and the flags it was
     typed with (``typed``, ``(flag, value)`` pairs as the verb records them,
     a switch's value ``True``)
-    that ``mode`` reads -- a run here leaves off :data:`QUEUE_FLAGS`, a
-    queue's off :data:`HERE_FLAGS`.  What a
+    that ``mode`` reads (:data:`LAUNCH_FLAGS`; a flag no row names -- the
+    continuation's, `--yes` -- is every mode's).  What a
     line says when it offers a launch again in another mode: the whole
     command, never *"the same command with --mode X"*, an edit to a line the
     person may never have typed -- a bare launch takes its mode from config
     (`job-system.md` § 5.3)."""
+    read = {f.flag: f.modes for f in LAUNCH_FLAGS}
     kept = [x for flag, value in typed
-            if not (mode == "direct" and flag in QUEUE_FLAGS)
-            and not (mode != "direct" and flag in HERE_FLAGS)
+            if mode in read.get(flag, (mode,))
             for x in ((flag,) if value is True
                       else (flag, shlex.quote(str(value))))]
     return command("launch", *words_for(kind, *words, groups=groups),

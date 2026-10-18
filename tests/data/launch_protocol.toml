@@ -29,14 +29,14 @@ name = "a refusal is written down -- one the verb says before anything is planne
 launch = ["--time", "1h"]
 launch_mode = "direct"
 launch_sends = true
-launch_refused = "--time: what a scheduler is asked for"
+launch_refused = "--time: a submitted job's wall, restated on its sbatch line -- `--mode direct` does not read it"
 after_launch = { ledger_holds = ["refused"] }
 
 [[case]]
 name = "a refused dry run writes nothing"
 launch = ["--time", "1h"]
 launch_mode = "direct"
-launch_refused = "--time: what a scheduler is asked for"
+launch_refused = "--time: a submitted job's wall, restated on its sbatch line -- `--mode direct` does not read it"
 launch_writes_nothing = true
 
 # ---- A RUN HERE, IN THE BACKGROUND UNLESS SAID (job-system.md § 6.0, *A run
@@ -60,6 +60,19 @@ launch_sends = true
 launch_refused = ["--foreground: waits for a run here", "--stage coarse --foreground --mode direct", "--stage coarse --mode submit"]
 after_launch = { ledger_holds = ["refused"] }
 
+# ---- ASKED ABOUT WHERE NO SCHEDULER IS (`running-a-job.md` § 5.5: no
+# scheduler here is an answer): a group's one job answers as a stage does.
+[[case]]
+name = "a group asked about on a machine with no scheduler is answered, as a stage is -- nothing to wait for"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+launch = []
+launch_stage = ["coarse", "medium"]
+launch_mode = "ask"
+no_sbatch_on_path = true
+listing = ["no scheduler on this machine"]
+
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)
 
 # THE DRY RUN SHOWS THE PLAN THE LAUNCH WOULD SEND (`job-system.md` § 6.0):
@@ -77,5 +90,5 @@ name = "a benchmark run here is planned as one walk of its unlaunched trials, as
 bench = { mpi_np = [1, 2], omp_threads = [1] }
 launch = []
 launch_mode = "direct"
-listing = ["bench-group", "rides the group"]
+listing = ["bench-group", "rides the group -np 2 -omp 1"]
 launch_writes_nothing = true

@@ -162,6 +162,26 @@ class TestTheDoorServesTheOneEnumerator:
         # with GPUs here is `short`'s 64 cores.
         assert any("64" in w for w in struck[0]["why"]), struck[0]["why"]
 
+    def test_the_card_checks_the_queue_the_description_names(self, client,
+                                                             bundle):
+        """A benchmark measures on one queue, the one its description names
+        (`allocation.domain`, `generator.md` § 4.3a), and the card asks each
+        cell of that queue alone, by the one fold prep asks
+        (`prep_inputs.fold_allocation`) -- so a cell the card keeps is one
+        prep keeps.  Here `short`'s GPU nodes are 64 cores wide and
+        `public`'s 48: a 64-rank GPU cell fits `short` alone, and the card
+        of a benchmark naming `public` crosses it out by `public`'s own
+        numbers."""
+        tj = bundle / "task.json"
+        doc = json.loads(tj.read_text())
+        doc["allocation"] = {**doc.get("allocation", {}), "domain": "public"}
+        tj.write_text(json.dumps(doc, indent=2))
+        d = _post(client, bundle, {"mpi_np": [64], "omp_threads": [1],
+                                   "use_gpu": [True], "gpu_count": [1]})
+        cell = next(c for c in d["cells"] if c["label"] == "G1K64C1")
+        assert cell["why"] and not cell["fits"], cell
+        assert any("public" in w and "48" in w for w in cell["why"]), cell
+
     def test_nothing_surviving_is_a_result_not_an_error(self, client, bundle):
         """*Nothing here fits* is the answer, and the crossed-out rows are
         how the person sees why.  A 400 would throw them away."""

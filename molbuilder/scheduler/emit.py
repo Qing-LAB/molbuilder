@@ -1,13 +1,13 @@
-"""Emission — a placement, rendered for the scheduler in both its spellings.
+"""Emission — a placement, rendered as the scheduler's ``#SBATCH`` lines.
 
-The contract is ``docs/execution/scheduler.md`` **R1**: the ``#SBATCH`` header
-and the ``sbatch`` command line are two RENDERINGS of one placement, never two
-decisions.  They cannot disagree, because there is nothing to disagree about.
+The contract is ``docs/execution/scheduler.md`` **R1**: a placement is decided
+once, at prep, and rendered once -- the header; the ``sbatch`` line sends that
+header (`jobset.submit._sbatch_request`).
 
-A ``Directives`` renders the facts BOTH spellings carry.  Everything else in
-the header -- the job name, the account, mail, output paths, the body -- is
-the header's own and stays where it is: those are not decisions the command
-line also makes, so they cannot drift from it.
+A ``Directives`` renders the placement's facts: the queue, the wall, the
+ranks, the cores, the devices and the memory.  Everything else in the header
+-- the job name, the output paths, the body -- is its renderer's
+(`runwrap._render_sbatch_for`).
 
 Stdlib-only.
 """
@@ -21,9 +21,8 @@ from typing import List, Optional
 class Directives:
     """The scheduler-facing facts of one placement.
 
-    ``walltime`` is SLURM text (``D-HH:MM:SS``) because that is what both
-    spellings carry; converting it here rather than at each caller is the
-    point.  ``None`` fields are simply not rendered -- an unstated fact is
+    ``walltime`` is SLURM text (``D-HH:MM:SS``), the spelling the header
+    carries.  ``None`` fields are simply not rendered -- an unstated fact is
     not a zero.
     """
     partition:     Optional[str] = None
@@ -38,36 +37,6 @@ class Directives:
     mem:           Optional[str] = None
     exclusive:     bool = False
 
-    @classmethod
-    def of(cls, placement, resources=None) -> "Directives":
-        """Bind a :class:`~molbuilder.scheduler.place.Placement` to the
-        resources it was placed for.
-
-        **Both objects travel whole** (`architecture.md` § 3.1, A8).  The
-        fields are read HERE, by the thing that needs them.
-
-        ``resources`` is duck-typed rather than imported: this package
-        sits below the layer that defines ``Resources``, so
-        it reads the attributes it needs and names none of the type.
-
-        ``placement`` may be ``None`` on a machine with no menu, where the
-        queue is simply not stated.
-        """
-        r = resources
-        return cls(
-            partition=getattr(placement, "partition", None),
-            qos=getattr(placement, "qos", None),
-            walltime=getattr(r, "time", None),
-            ntasks=getattr(r, "mpi_np", None),
-            cpus_per_task=getattr(r, "cpus_per_task", None),
-            gres=getattr(r, "gres", None),
-            gpu_binding=getattr(r, "gpu_binding", None) is not False,
-            mem=getattr(r, "mem", None),
-            exclusive=bool(getattr(r, "exclusive", False)),
-        )
-
-    # ---- the two spellings -------------------------------------------- #
-
     @staticmethod
     def lines_of(header_text: str) -> List[str]:
         """A rendered header's ``#SBATCH`` lines, as it carries them -- what
@@ -78,10 +47,10 @@ class Directives:
                 if ln.startswith("#SBATCH")]
 
     def header_lines(self) -> List[str]:
-        """``#SBATCH`` lines for the facts a command line also carries.
+        """The placement's ``#SBATCH`` lines.
 
-        Not the whole header: ``-J``, ``-N``, the account, mail and the output
-        paths belong to the header alone and are added by its renderer.
+        Not the whole header: ``-J``, ``-N`` and the output paths are added
+        by its renderer.
         """
         out: List[str] = []
         if self.ntasks is not None:
@@ -94,69 +63,35 @@ class Directives:
             out.append(f"#SBATCH -p {self.partition}")
         if self.qos:
             out.append(f"#SBATCH -q {self.qos}")
-        out.extend(self._gres_lines("#SBATCH "))
-        out.extend(self._memory_lines("#SBATCH ", spell_all=True))
+        out.extend(self._gres_lines())
+        out.extend(self._memory_lines())
         return out
 
-    def sbatch_flags(self) -> List[str]:
-        """The same facts as command-line flags, which WIN over the header.
-
-        That is what lets one rendered ``.sbatch`` serve a whole sweep while
-        each job still gets its own ranks and cores.
-        """
-        out: List[str] = []
-        if self.partition:
-            out += ["-p", self.partition]
-        if self.qos:
-            out += ["-q", self.qos]
-        if self.ntasks is not None:
-            out += ["-n", str(self.ntasks)]
-        if self.cpus_per_task is not None:
-            out += ["-c", str(self.cpus_per_task)]
-        out.extend(self._gres_lines(""))
-        if self.walltime:
-            out += ["-t", self.walltime]
-        out.extend(self._memory_lines("", spell_all=False))
-        return out
-
-    def _gres_lines(self, prefix: str) -> List[str]:
+    def _gres_lines(self) -> List[str]:
         """The GPU ask, and the binding that goes with it.
-
-        Both spellings carry ``--gres-flags=enforce-binding`` (R1): it is not
-        one of the header-only facts (``-J``, ``-N``, the account, mail and
-        the output paths).
 
         It rides WITH the gres because it is meaningless without one: it
         asks the scheduler to put the task on the socket its GPU is
         attached to, which is the difference between a device on the local
         PCIe root and one across the interconnect.  A calculation may turn
-        it off (`allocation.gpu_binding`, `execution/gpu.md` G9) -- for both
-        spellings at once, since this is the one place either is written.
+        it off (`allocation.gpu_binding`, `execution/gpu.md` G9).
         """
         if not self.gres:
             return []
-        return [f"{prefix}--gres={self.gres}"] + (
-            [f"{prefix}--gres-flags=enforce-binding"] if self.gpu_binding
+        return [f"#SBATCH --gres={self.gres}"] + (
+            ["#SBATCH --gres-flags=enforce-binding"] if self.gpu_binding
             else [])
 
-    def _memory_lines(self, prefix: str, *, spell_all: bool) -> List[str]:
+    def _memory_lines(self) -> List[str]:
         """``--exclusive`` and ``--mem`` are mutually exclusive.
 
         Whole-node ownership already grants all the node's memory, so a
         ``--mem`` beside it is meaningless and some sites reject the pair
-        (`running-a-job.md` § 5.3.1).  One rule, both spellings.
-
-        ``spell_all`` is the one place the two renderings legitimately
-        differ, and they differ in VERBOSITY, not in meaning: the header adds
-        ``--mem=0`` because a person reads that file and "all the node's
-        memory" is worth saying out loud, while a command line that overrides
-        nothing has nothing to spell.
+        (`running-a-job.md` § 5.3.1); ``--mem=0`` beside it says "all the
+        node's memory" out loud to the person reading the file.
         """
         if self.exclusive:
-            out = [f"{prefix}--exclusive"]
-            if spell_all:
-                out.append(f"{prefix}--mem=0")
-            return out
+            return ["#SBATCH --exclusive", "#SBATCH --mem=0"]
         if self.mem:
-            return [f"{prefix}--mem={self.mem}"]
+            return [f"#SBATCH --mem={self.mem}"]
         return []

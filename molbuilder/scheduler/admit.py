@@ -13,9 +13,9 @@ from .record import UNSET
 
 def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
     """Whether a routing row (a :class:`Domain` as `to_row` speaks it) can
-    place a GPU job -- the ONE predicate for both consumers (`prep`'s
-    cell check and `launch`'s side routing, `generator.md` § 4.3a): half of
-    the GPU check (`scheduler.md` R2a), the count being the other.
+    place a GPU job -- the ONE predicate, asked by admission and by the
+    benchmark grid's GPU cells (`generator.md` § 4.3a): half of the GPU
+    check (`scheduler.md` R2a), the count being the other.
 
     True when the row records a GPU inventory -- the probe writes each
     partition's gres types onto its row.
@@ -68,8 +68,8 @@ def _compare(row, *, cores: Optional[int] = None,
     question gets one public door, or the two drift.
 
     Callers ask what they know and leave the rest ``None``
-    (`scheduler.md` R7): `prep` what a job states, `launch` all of it, and a
-    caller asking about capability alone passes nothing.
+    (`scheduler.md` R7): `prep` what a job states, and a caller asking about
+    capability alone passes nothing.
 
     Returns REASONS rather than a bool because every caller has to explain
     itself to a user — a refusal that cannot say what was too big sends them
@@ -150,11 +150,9 @@ def _compare(row, *, cores: Optional[int] = None,
         # thing you check is the gpu dependent task is scheduled to the
         # group/domain that actually claimed to have it, and has the capacity
         # as requested"): the queue's record CLAIMS GPUs -- its `gpu` column
-        # (`domain_serves_gpu`) -- and a node there holds
-        # as many as were asked.  Both halves here, so a queue NAMED with
-        # `--domain` meets the check a queue `place.candidates` picked does.  No card
-        # is compared: a GPU ask names none, and which card a node carries
-        # is the machine's business.
+        # (`domain_serves_gpu`) -- and a node there holds as many as were
+        # asked.  No card is compared: a GPU ask names none, and which card a
+        # node carries is the machine's business.
         if not domain_serves_gpu(row):
             why.append(Refusal("gpus", row.name, unit="GPUs", asked=gpus,
                                allowed=0, note="its record lists no GPUs"))
@@ -265,9 +263,9 @@ class Request:
 
     Fields the caller does not know are ``None``, and ``None`` is never a
     refusal (R7): `prep` asks what a job states (`jobset.placement.
-    request_of`), `launch` all of it, and a caller asking about capability
-    alone passes nothing.  That is what lets one admission serve every
-    caller instead of each growing its own variant.
+    request_of`), and a caller asking about capability alone passes nothing.
+    That is what lets one admission serve every caller instead of each
+    growing its own variant.
 
     ``mem_gb`` is a NUMBER because the record's ceiling is one; build it with
     :func:`parse_mem_gb` from whatever SLURM text the caller holds.

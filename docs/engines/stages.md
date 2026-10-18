@@ -1396,7 +1396,7 @@ when you describe the calculation.
 
 ### 6.8a `allocation` — what this calculation asks the scheduler for
 
-*(Added 2026-08-24, user.)* Four optional fields, and absent means
+*(User, 2026-08-24.)* Four optional fields, and absent means
 **unstated**:
 
 ```json
@@ -1423,15 +1423,13 @@ kind of statement.
 that can do some translation for human readability/input")*. Not seconds and
 gigabytes either: what the file holds is what `sbatch` takes.
 
-*This section said the opposite until that date* — **"values are spelled as a
-person types them … nothing is converted twice"** — and the reason it had to
-change is worth keeping, because it is not a matter of taste. **The two
+The reason is not a matter of taste. **The two
 vocabularies disagree**: `04:30` is four minutes thirty to SLURM and four and
 a half hours to a person, so a field holding *whichever spelling arrived*
-cannot be read correctly by anybody. And nothing converted between this key
-and `Resources.time`, which has always been documented as SLURM's own — so
-the browser's `"4h"` travelled unread as far as the command line, where
-`sbatch` refused `-t 4h`: the tool's own written value, rejected by the tool.
+cannot be read correctly by anybody. And with nothing converting between this
+key and `Resources.time`, which is SLURM's own, the browser's `"4h"` travelled
+unread as far as the command line, where `sbatch` refused `-t 4h`: the tool's
+own written value, rejected by the tool.
 
 **Translation lives at the edges where humans are** — the Task-setup tab's
 input box, `--time`/`--mem`, and a file typed by hand, which is such an edge
@@ -1442,13 +1440,13 @@ description written before this rule still opens and a person may still type
 spelling. `Resources` enforces the same invariant on itself, because four
 roads reach it and a fix at one would leave three.
 
-**The queue name is still not judged here**, and that half of the old reason
-stands unchanged: a description written for one cluster is opened on another,
+**The queue name is not judged here**: a description written for one cluster
+is opened on another,
 and refusing it here for naming a queue this box never heard of would refuse
 a file that is correct where it is going. The difference is that a spelling
 is machine-independent and a queue name is not — so the spelling can be
-settled at the door and the queue cannot. The machine record answers that, at
-launch, where the machine is known.
+settled at the door and the queue cannot. The target's record answers that,
+at prep, where the machine is known.
 
 **`prep` reads it as the base allocation, and a flag still wins — FIELD by
 field.** `--mem 64G` overrides the memory and leaves the queue and the wall
@@ -1518,10 +1516,11 @@ you wrote here.
 membership `bench` uses — **plus `time` and `domain`**, which are not
 catalogue items at all (§ 6.8e). The same split decides where each of the
 catalogue names lands: a machine-answered item becomes the launch shape,
-anything else a pin over the template. `generator.md` § 4.3a owns how, and the answer is that the block
-is handed to the one grid enumerator as a declaration of length one, so a run
-earns the typed device ask, the `G × K` rank split, the by-name refusal and
-the queue check that a trial gets, with no translation of its own.
+anything else a pin over the template. The launch shape is a direct map of
+the block's machine items onto the run's request (`prep_inputs.
+declared_run_shape`, `generator.md` § 4.1), never the benchmark's grid
+enumerator, and that request is admitted on its queue at prep as a trial's
+cell is checked on its benchmark's.
 
 **Why not `allocation`.** That block is what this calculation asks the
 **scheduler** for — the queue, the wall, the memory, the GPU binding
@@ -1561,8 +1560,9 @@ start — and a benchmark is the thing you run to *save* time.
 **`allocation` is the calculation's ask and the BENCH's; `execution` is this
 RUN's.** So the scheduler ladder gains one rung, for these two names only:
 
-> `allocation` → **`execution`** → a `prep` flag → a `launch` flag — and
-> stated nowhere, refused at prep on a target with a scheduler
+> `allocation` → **`execution`** → a `prep` flag — and stated nowhere,
+> refused at prep on a target with a scheduler; a submitted job's wall may be
+> restated at launch (`launch --time`)
 
 **`mem` is deliberately NOT among them.** The line is *does this differ
 between the two lanes* — and memory does not: a trial and a run compute the
@@ -1593,11 +1593,11 @@ it belongs in the description, and nothing else in `task.json` could hold it:
 > they chose. It never records what a machine **found**.
 
 **And ONE point on a NON-MACHINE entry is the value the trials run with**
-*(user rule, 2026-08-20 — the override lane; trials only since 2026-09-30)*:
+*(user rule, 2026-08-20 — the override lane)*:
 `use_gpu: [true]` is applied at prep as a pin over the template for the
-bench's trials, **and only for them**. It pinned the run as well until
-2026-09-30 — a second home for the run's value beside `execution` — and the
-run now reads its own card (§ 6.8d; user: *"trials only"*).
+bench's trials, **and only for them**. The run reads its own card — a pin on
+it would be a second home for the run's value beside `execution` (§ 6.8d;
+user: *"trials only"*).
 
 **A machine-answered entry is never an answer here, at any length.**
 `mpi_np: [8]` is *measure eight* — one trial, not a decision. What the RUN
@@ -1605,24 +1605,17 @@ uses is `execution`, its own block (§ 6.8d), and the two are independent: a
 grid and a decision coexist, because narrowing a row to state the run would
 destroy the plan to measure.
 
-> **This section said otherwise for one day.** On 2026-09-01 the machine axes
-> were pulled into the override lane, so a one-point `mpi_np` was read as the
-> run's shape; `execution` replaced that on 2026-09-02 and the exclusion is
-> back. `generator.md` § 4.3a carries the argument.
-
-> **The machine axes were excluded from this until 2026-09-01**, on the
-> grounds that *"use 16"* is true on one cluster where *"try 4, 8, 16"* is
-> true on all of them. The exclusion is gone, and the argument it rested on
-> is answered in `generator.md` § 4.3a: **the line is decision vs finding,
-> not portable vs not.** `allocation` has carried `domain` since 2026-08-24
-> and a queue name is no more portable than a rank count; what this file must
+> **The line is decision vs finding, not portable vs not**
+> (`generator.md` § 4.3a). *"Use 16"* is true on one cluster where *"try 4,
+> 8, 16"* is true on all of them — yet `allocation` carries `domain`, and a
+> queue name is no more portable than a rank count; what this file must
 > never hold is what a **machine found**, which is why `summarize` writes its
 > verdict to a report of its own (printed by `summarize`) that no code
 > reads. A person who read a benchmark and chose eight ranks is *asking*, and
 > asks are what this file is for.
 >
-> `template.md` § 7 is untouched and still absolute: the **template** may not
-> carry a machine value, `read_template` still refuses a hand-edited
+> `template.md` § 7 is absolute: the **template** may not
+> carry a machine value, `read_template` refuses a hand-edited
 > `mpi_np`, and the item stays valueless. That rule is about a different
 > file with a different job.
 

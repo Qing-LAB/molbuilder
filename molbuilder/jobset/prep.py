@@ -144,10 +144,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
         plan.folder(_jd)
         script_path = _jd / job.script
         # A SWEPT RUNG'S DECKS ARE ITS POINTS' -- none at the stage level
-        # (`engines/transport.md` § 2a.11).
-        _decks = ([Path(p_) / job.script
-                   for p_ in (points or {}).get(job.name, ())]
-                  or [script_path])
+        # (`engines/transport.md` § 2a.11) -- and its one header is its
+        # walk's (`prep_calculation`): a point is never sent alone.
+        _pts = (points or {}).get(job.name, ())
+        _decks = [Path(p_) / job.script for p_ in _pts] or [script_path]
         for _deck in _decks:
             if not plan.is_file(_deck):
                 raise PrepError(
@@ -166,7 +166,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 names=_names,
                 resources=job.resources,
                 env=env,
-                emit_sbatch=emit_sbatch,
+                emit_sbatch=emit_sbatch and not _pts,
                 # The BUNDLE'S scope, explicitly: the script is born in its
                 # job directory now, and the renderer's parent-derived
                 # fallback would read the record one level below the
@@ -200,6 +200,13 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
         with user_error_as_prep():
             for _deck in _decks:
                 _wrap(_deck)
+                # A HEADER THIS PREP DOES NOT WRITE is taken away: one an
+                # earlier prep left -- for a queue since dropped, or a point
+                # -- would otherwise be sent as this one's (`job-system.md`
+                # § 6.0, *every header is prep's*).
+                _left = _deck.parent / _names.name(".sbatch")
+                if not plan.decides(_left) and _left.is_file():
+                    plan.remove(_left)
         if log is not None:
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))
@@ -210,6 +217,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 elif _w.endswith(".sbatch"):
                     log.note(f"{_w}: not written "
                              + ("(emit_sbatch off)" if not emit_sbatch
+                                else "(a run of points: its walk's header "
+                                     "is the job's)" if _pts
                                 else "(no scheduler configured)"))
 
     # ---- 2. the shared package, copied --------------------------------- #
@@ -756,11 +765,12 @@ class Resolved:
     #: `STAGE-PLAN.md`, the pipeline log and the ledger's *prepared* line say
     provenance: Optional[dict] = None
     #: where each value of ``allocation`` came from -- ``flag``, ``run
-    #: card`` or ``description`` (:func:`_fold_allocation`)
+    #: card`` or ``description`` (`prep_inputs.fold_allocation`)
     sources: Optional[dict] = None
-    #: a run's placement, admitted at checkpoint 4 on the queue it names --
-    #: what its job records and its header renders (`job-system.md` § 6.0);
-    #: ``None`` with no queue (a benchmark, a machine with no scheduler)
+    #: the placement, admitted at checkpoint 4 on the queue it names --
+    #: what its jobs record, a benchmark's every trial, and its header
+    #: renders (`job-system.md` § 6.0); ``None`` with no header written (a
+    #: machine with no scheduler, `--no-sbatch`)
     placement: Optional[dict] = None
 
     @property
@@ -802,6 +812,7 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     folder is a template PLUS a description."""
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
+    from .prep_inputs import fold_allocation
     from ..template import template_filename
     if template is None:
         raise PrepError(
@@ -821,8 +832,8 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     # enumerator -- runs with the rest of the inputs before the five steps
     # (A12), so `prep` folds what it is handed and owns no second
     # translation (`generator.md` § 2).
-    allocation, sources = _fold_allocation(allocation, task.allocation,
-                                           chosen)
+    allocation, sources = fold_allocation(allocation, task.allocation,
+                                          chosen)
     # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
     # prepared bundle needs no flag to know it.  A separate line rather than a
@@ -1185,9 +1196,9 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 element, script, task, pset.stage, seam, base,
                 finish=(None if element.is_trial else spec.finish),
                 # WHERE IT WAS ADMITTED (`job-system.md` § 6.0): a run's
-                # queue, recorded on its job.
-                placement=(None if element.is_trial
-                           else resolved.placement),
+                # queue, and a benchmark's one queue on each trial, recorded
+                # on its job -- what launch sends to.
+                placement=resolved.placement,
                 # THE `relax` RUN A FORCE-CONSTANT DECK IS WRITTEN AT, whose
                 # files its first launch copies (`engines/vibration.md`
                 # § 5.2a) -- its attempt, or on the flat layout its name.
@@ -1331,11 +1342,57 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             _move_progress_channel_into(pdir, plan, seeded=seeded[point.rel])
         if opened is not None:
             opened.append(sweep)
+        # THE WALK'S ONE HEADER, written and admitted here as a group's is
+        # (`job-system.md` § 6.0): one allocation walking every point, their
+        # walls summed (`group.envelope`) -- launch sends it as it is.
+        from ..runfiles import GroupNames
+        from .group import envelope
+        from .materialize import open_container, run_names
+        job = js.job(stage)
+        walk = walk_header_of(
+            home.dir, GroupNames.of_points(
+                run_names(js, job, resolved.shape).stem),
+            envelope([job] * len(_points)), environment, engine=task.engine,
+            jobs=[job], emit_sbatch=emit_sbatch,
+            what=(f"stage {stage!r}, one job walking its {len(_points)} "
+                  f"points (their walls summed),"))
+        if walk is not None:
+            open_container(base, home.dir / LAUNCH_DIR, plan)
+            plan.text(*walk)
+        else:
+            # NO HEADER THIS TIME, so none an earlier prep wrote is left to
+            # be sent as this one's.
+            _left = (home.dir / LAUNCH_DIR / GroupNames.of_points(
+                run_names(js, job, resolved.shape).stem).name(".sbatch"))
+            if _left.is_file():
+                plan.remove(_left)
     elif kind == "ladder" and stage:
         reports = _open_attempts(js, base, stage, plan=plan,
                                  shape=resolved.shape)
         if opened is not None:
             opened.extend(reports)
+    elif kind == "sweep":
+        # EACH SHELF'S ONE HEADER, written and admitted here on the
+        # benchmark's one queue (`generator.md` § 4.3a, `job-system.md`
+        # § 6.0): its trials' shared request -- launch walks the trials
+        # still to run and sends it as it is.
+        from ..runfiles import LAUNCH_DIR
+        from .materialize import open_container
+        from .shelves import ShelfError, shelf_request, shelves_of
+        try:
+            shelves = [(names, shelf_request(trials), trials)
+                       for _side, names, trials in shelves_of(js.jobs)]
+        except ShelfError as exc:
+            raise PrepError(str(exc)) from None
+        for names, request, trials in shelves:
+            got = walk_header_of(
+                record_dir, names, request, environment, engine=task.engine,
+                jobs=trials, emit_sbatch=emit_sbatch,
+                what=(f"the benchmark's shelf {names.stem} ({len(trials)} "
+                      f"trial(s), one after another)"))
+            if got is not None:
+                open_container(base, record_dir / LAUNCH_DIR, plan)
+                plan.text(*got)
 
     # THE LOG, then THE PLAN'S ROW LAST -- the moment the stage is prepared
     # (`job-system.md` § 5.0, checkpoint 6): a prep that stops before this
@@ -1385,16 +1442,14 @@ def _takes_at_launch(task, stage: str, job, continuation, *, base, jobset,
                      template_text=template_text)
 
 
-def _launch_as_written(plan, run_dir, names) -> dict:
-    """What the job will be launched with, as its header and its run script
-    carry it -- A13's end point (`execution/architecture.md` § 5.2): the
-    header's ``#SBATCH`` lines and the run script's stated counts, read from
-    the text the plan holds by each writer's own reader, never worked out
-    again."""
+def _launch_as_written(plan, header, script) -> dict:
+    """What the job will be launched with, as the header its launch sends
+    and its run script carry it -- A13's end point
+    (`execution/architecture.md` § 5.2): the header's ``#SBATCH`` lines and
+    the run script's stated counts, read from the text the plan holds by
+    each writer's own reader, never worked out again."""
     from ..runwrap import stated_counts
     from ..scheduler.emit import Directives
-    header = Path(run_dir) / names.name(".sbatch")
-    script = Path(run_dir) / names.name(".run.sh")
     return {"header": (Directives.lines_of(plan.read_text(header))
                        if plan.is_file(header) else []),
             "run_script": (stated_counts(plan.read_text(script))
@@ -1643,50 +1698,6 @@ def _rung_kind(task, stage_name: Optional[str]) -> str:
     return str(task.calculation)
 
 
-def _fold_allocation(flags, declared, chosen=None):
-    """``(Resources, where each value came from)`` -- the caller's
-    allocation over the description's, with each field it holds named by
-    its source:
-    ``flag``, ``run card`` or ``description`` -- what a run's placement
-    records beside the queue it was admitted on (`job-system.md` § 6.0).
-    ONE fold: the sources are read off the same precedence that fills the
-    values, never worked out a second way.
-
-    FIELD BY FIELD: a flag is what the person asks for now, so a stated
-    one wins and an unstated one leaves the file's answer standing --
-    whole-object precedence would make ``--np 8`` erase a memory ask
-    nobody mentioned.  ``declared`` is the description's ``allocation``
-    (`stages.md` § 6.8a); ``chosen``, the run card's launch shape
-    (§ 6.8d, `prep_inputs.declared_run_shape`)."""
-    out = flags or Resources()
-    import dataclasses as _dc
-    known = {f.name for f in _dc.fields(Resources)}
-    sources = {f: "flag" for f in known
-               if getattr(out, f, None) not in (None, "")}
-    patch = {}
-    said = {}
-    if declared:
-        for name, val in (("domain", declared.domain),
-                          ("time", declared.time),
-                          ("mem", declared.mem)):
-            if val and getattr(out, name, None) in (None, ""):
-                patch[name] = val
-                said[name] = "description"
-        # THE BINDING SWITCH, when said: `False` is the value that matters,
-        # so it is not tested for truth (`execution/gpu.md` G9).
-        if declared.gpu_binding is not None and out.gpu_binding is None:
-            patch["gpu_binding"] = declared.gpu_binding
-            said["gpu_binding"] = "description"
-    # ALREADY IN `Resources`' OWN WORDS -- `to_resources` speaks them, so
-    # there is no name map here and no second place for one to drift.
-    for name, val in sorted((chosen or {}).items()):
-        if name in known and getattr(out, name, None) in (None, ""):
-            patch[name] = val
-            said[name] = "run card"
-    sources.update(said)
-    return (_dc.replace(out, **patch) if patch else out), sources
-
-
 def _with_notify(flags, declared) -> "Resources":
     """The description's `notify` block, onto the allocation that reaches
     the wrapper.
@@ -1848,6 +1859,14 @@ class PrepAnswer:
     #: compares a prepared stage's files with (`submit._as_described`).
     #: Not on the wire.
     plan: Optional[object] = None
+    #: WHERE EACH VALUE CAME FROM, the one fold's answer
+    #: (`prep_inputs.fold_allocation`) -- what a prep that writes no header
+    #: says in place of a placement (`placement.stated_line`).
+    sources: Optional[dict] = None
+    #: A BENCHMARK'S SHELVES, each as its one header carries it -- what its
+    #: launch sends to the queue (`shelves.shelves_of`): ``[{"name",
+    #: "header"}]``, the header's ``#SBATCH`` lines.
+    shelves: List[dict] = dataclasses.field(default_factory=list)
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
@@ -1903,6 +1922,8 @@ class PrepAnswer:
             "preview": self.preview,
             "plan_id": self.plan_id,
             "writes": list(self.writes),
+            "shelves": [dict(sh) for sh in self.shelves],
+            "sources": dict(self.sources or {}),
         }
 
 
@@ -2155,21 +2176,54 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     so a terminal says a benchmark's grid ahead of what its decks say."""
     from .prep_inputs import bench_inputs, prep_run_inputs
     from .placement import admitted, launch_refusal, one_process
+    from ..runtime_config import routing_of
     base = Path(base).resolve()
     task, environment = described.task, described.environment
     template_text = described.template_text
     notes = [] if notes is None else notes
     deck_findings: list = []
 
+    #     EVERY LAUNCH VALUE IS STATED, OR THE PREP IS REFUSED -- before
+    #     anything is written (`architecture.md` § 5.2; user, 2026-10-02:
+    #     "explicit job config is the only way allowed").  A run states its
+    #     processes; a run or a benchmark that this prep writes a `.sbatch`
+    #     for states its queue, wall and memory.  The target's record CHECKS
+    #     an ask -- its queues are shown against ``asked``, the request the
+    #     queue list and admission both check, so one can be named -- and
+    #     supplies no value of it.
+    header = bool(emit_sbatch and environment.scheduler == "slurm")
+
+    def stated_or_refused(allocation, asked, *, shape: bool) -> None:
+        why = launch_refusal(
+            allocation, engine=task.engine, shape=shape, stage=stage,
+            header=header, queues=routing_of(environment), asked=asked,
+            base=base, target=target)
+        if why:
+            raise PrepError(why)
+
+    def bench_asks(allocation):
+        # A BENCHMARK'S REQUEST OF ITS ONE QUEUE: its wall and memory --
+        # each trial's shape is checked against that queue cell by cell
+        # where its grid is enumerated (`prep_inputs.bench_inputs`).
+        return dataclasses.replace(allocation, mpi_np=None,
+                                   cpus_per_task=None, gres=None,
+                                   use_gpu=False)
+
     #     THE INPUTS -- one assembly per kind (`prep_inputs`, A12).  A bench
     #     measures ONE stage's configuration, and there is always a stage to
-    #     name (§ 6.5); its grid is enumerated from the record read.
+    #     name (§ 6.5); its grid is enumerated from the record read, on the
+    #     one queue it states -- so the queue, wall and memory are asked of
+    #     it first.
     sweep = pins = translation = None
     chosen: dict = {}
     if kind == "bench":
+        from .prep_inputs import fold_allocation
+        ask = fold_allocation(allocation, task.allocation)[0]
+        stated_or_refused(ask, bench_asks(ask), shape=False)
         sweep, pins, translation = bench_inputs(
             base, target, notes=notes, task=task, environment=environment,
-            template_text=template_text, ask=allocation)
+            template_text=template_text, flags=allocation,
+            on_a_queue=header)
     else:
         allocation, pins, chosen = prep_run_inputs(base, task, stage,
                                                    allocation)
@@ -2192,37 +2246,36 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
             gpu_request(resolved.pset.elements[0].resources)
         except GpuRequestError as exc:
             raise PrepError(f"stage {stage!r}: {exc}") from None
-
-    #     ...AND EVERY LAUNCH VALUE IS STATED, OR THE PREP IS REFUSED -- with
-    #     the whole assembly in hand, before anything is written
-    #     (`architecture.md` § 5.2; user, 2026-10-02: "explicit job config is
-    #     the only way allowed").  A run states its processes; a run or a
-    #     benchmark that this prep writes a `.sbatch` for states its queue,
-    #     wall and memory.  The target's record CHECKS an ask -- its queues
-    #     are shown so one can be named -- and supplies no value of it.
-    header = bool(emit_sbatch and environment.scheduler == "slurm")
-    why = launch_refusal(
-        resolved.allocation, engine=task.engine, shape=(kind == "task"),
-        stage=stage, header=header,
-        queues=[d.name for d in (environment.domains or ())],
-        base=base, target=target)
-    if why:
-        raise PrepError(why)
-    #     ...AND THE RUN FITS THE QUEUE IT NAMES -- its whole request, cores,
-    #     GPUs, memory and wall, admitted on the target's record by the
-    #     binding launch asks too (`job-system.md` § 5.0, checkpoint 4;
-    #     § 6.0), and RECORDED on its job: the queue and where each value
-    #     came from.  A benchmark's cells are admitted where its grid is
-    #     enumerated, and its queue is named when it is launched
-    #     (`generator.md` § 4.3a).
-    if kind == "task" and header:
+    #     WHAT THE WORK ASKS OF ITS QUEUE: a run's whole request -- cores,
+    #     GPUs, memory and wall -- with the whole assembly in hand.
+    asked = (resolved.pset.elements[0].resources if kind == "task"
+             else bench_asks(resolved.allocation))
+    if kind == "task":
+        stated_or_refused(resolved.allocation, asked, shape=True)
+    #     ...AND THE WORK FITS THE QUEUE IT NAMES, admitted on the target's
+    #     record and RECORDED on its jobs: the queue and where each value
+    #     came from -- the one decision launch sends (`job-system.md` § 5.0,
+    #     checkpoint 4; § 6.0; `scheduler.md` R9); every trial of a
+    #     benchmark records the queue.
+    if header:
         placed, why = admitted(
-            resolved.pset.elements[0].resources, environment,
-            one_process=one_process(task.engine), stage=stage,
-            sources=resolved.sources)
+            asked, environment, one_process=one_process(task.engine),
+            what=f"stage {stage!r}", sources=resolved.sources)
         if why:
             raise PrepError(why)
         resolved = dataclasses.replace(resolved, placement=placed)
+    #     ...AND WHAT A RUN'S GPUs MEAN, said here where the count can still
+    #     change -- its ranks over its devices (`ask.gpu_share_notes`); a
+    #     benchmark's grid says its own (`prep_inputs.bench_inputs`).
+    if kind == "task":
+        from .ask import gpu_share_notes
+        from .model import gpu_request
+        _r = resolved.pset.elements[0].resources
+        _g = gpu_request(_r)
+        if _g.uses:
+            notes.extend(line.strip() for line in gpu_share_notes(
+                _g.count, _r.mpi_np or 1,
+                one_process=one_process(task.engine)))
 
     # 4a · A VALUE HAND-OVER (`job-system.md` § 5.0): the `relax` run a
     #      force-constant stage's deck is written at -- read BEFORE anything
@@ -2279,9 +2332,20 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     # § 4.5): where this one is, by the rule its writer asks.
     out.pipeline_log = resolved.log_path(base)
     out.placement = resolved.placement
+    out.sources = resolved.sources
     out.plan = plan
     out.writes = [str(Path(w).relative_to(base))
                   for w in plan.writes() if w not in had]
+    if kind == "bench":
+        # EACH SHELF AS ITS HEADER CARRIES IT, read back from the text the
+        # plan holds (`Directives.lines_of`), in the order they are sent.
+        from ..runfiles import LAUNCH_DIR
+        from ..scheduler.emit import Directives
+        shelf_dir = resolved.record_dir(base) / LAUNCH_DIR
+        out.shelves = [{"name": w.stem,
+                        "header": Directives.lines_of(plan.read_text(w))}
+                       for w in plan.writes()
+                       if w.parent == shelf_dir and w.suffix == ".sbatch"]
     if kind == "bench" and continuation is not None:
         # A BENCHMARK OF A FORCE-CONSTANT STAGE is written at the geometry
         # the `relax` run it builds on reached, and says which
@@ -2326,10 +2390,18 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         r = job.resources
         out.resources = {"mpi_np": r.mpi_np,
                          "cpus_per_task": r.cpus_per_task,
+                         "max_memory_mb": r.max_memory_mb,
                          "continue_retries": r.continue_retries}
         out.deck = Path(job.script).name
+        from ..runfiles import LAUNCH_DIR, GroupNames
+        names = run_names(js, job, shape_of(js, base))
+        # THE HEADER ITS LAUNCH SENDS: a run of points', the walk's one
+        # (:func:`prep_calculation`); every other run's, its own.
+        sends = (stage_home(base, task, stage).dir / LAUNCH_DIR
+                 / GroupNames.of_points(names.stem).name(".sbatch")
+                 if out.points else Path(run_dir) / names.name(".sbatch"))
         out.launch = _launch_as_written(
-            plan, run_dir, run_names(js, job, shape_of(js, base)))
+            plan, sends, Path(run_dir) / names.name(".run.sh"))
         from .agreement import launch_agreement
         agreement = launch_agreement(
             run_dir, job, text=plan.read_text(Path(run_dir) / out.deck))
@@ -2545,16 +2617,49 @@ def _record_the_order(base, task, *, refuse, asked, preview,
     return answer
 
 
+def walk_header_of(where, names, request, environment, *, engine: str,
+                   what: str, jobs, emit_sbatch: bool = True
+                   ) -> Optional[Tuple[Path, str]]:
+    """THE ONE HEADER OF A JOB THAT WALKS SEVERAL MEMBERS -- a group's
+    stages, a run of points, a benchmark's shelf (`job-system.md` § 6.0):
+    ``request``, the members' one allocation, admitted on the queue it
+    names as a run's is (`placement.admitted`) and rendered for that queue
+    in the `launch/` folder of ``where``, the folder it is sent from --
+    ``(path, text)``, or ``None`` where no header is written (a machine with
+    no scheduler, `--no-sbatch`).  A refusal names ``what`` and where each
+    refused value was stated, read off the members' own placements
+    (``jobs``), each source any member states it in.  Launch sends it as
+    it is."""
+    from ..runfiles import LAUNCH_DIR
+    if not (emit_sbatch and environment.scheduler == "slurm"):
+        return None
+    from .placement import admitted, one_process
+    sources: dict = {}
+    for j in jobs:
+        for field, source in ((j.placement or {}).get("from") or {}).items():
+            if source not in sources.setdefault(field, ()):
+                sources[field] += (source,)
+    placed, why = admitted(request, environment,
+                           one_process=one_process(engine), what=what,
+                           sources=sources)
+    if why:
+        raise PrepError(why)
+    from ..runwrap import walk_header
+    text = walk_header(
+        where, names, resources=request, one_process=one_process(engine),
+        machine_record=environment,
+        domain_pq=(placed["partition"], placed["qos"]))
+    return Path(where) / LAUNCH_DIR / names.name(".sbatch"), text
+
+
 def group_header(base, task, number: int, jobs, environment, *,
                  emit_sbatch: bool = True) -> Optional[Tuple[Path, str]]:
     """``(path, text)`` of group ``number``'s one header -- its members'
-    ``jobs`` sharing one allocation (`group.envelope`), that request -- the
-    walls summed, the largest memory -- admitted on the queue it names, as
-    a run's is (`placement.admitted`) -- or ``None`` where the machine has
-    no scheduler.  What prep writes and launch checks the header against
-    (`job-system.md` § 6.0).  Raises :class:`PrepError` naming what the
-    members do not share, or what the queue does not offer."""
-    from ..runfiles import LAUNCH_DIR
+    ``jobs`` sharing one allocation (`group.envelope`: the walls summed, the
+    largest memory) -- by the one header of a walk (:func:`walk_header_of`),
+    or ``None`` where no header is written.  Raises :class:`PrepError`
+    naming what the members do not share, or what the queue does not
+    offer."""
     from .group import GroupError, envelope, names_for
     base = Path(base)
     names = [j.name for j in jobs]
@@ -2562,24 +2667,11 @@ def group_header(base, task, number: int, jobs, environment, *,
         shared = envelope(jobs)
     except GroupError as exc:
         raise PrepError(f"group {number}: {exc}") from None
-    if not (emit_sbatch and environment.scheduler == "slurm"):
-        return None
-    from .placement import admitted, one_process
-    placed, why = admitted(shared, environment,
-                           one_process=one_process(task.engine),
-                           stage=f"group {number}")
-    if why:
-        raise PrepError(f"group {number}'s one job -- {', '.join(names)}, "
-                        f"their walls summed and the largest memory -- {why}")
-    from ..runwrap import walk_header
-    gn = names_for(base, task, names)
-    text = walk_header(
-        base, gn, resources=shared, one_process=one_process(task.engine),
-        machine_record=environment,
-        domain_pq=((placed["partition"], placed["qos"]) if placed else None))
-    if text is None:
-        return None
-    return base / LAUNCH_DIR / gn.name(".sbatch"), text
+    return walk_header_of(
+        base, names_for(base, task, names), shared, environment,
+        engine=task.engine, jobs=jobs, emit_sbatch=emit_sbatch,
+        what=(f"group {number}'s one job ({', '.join(names)}: their walls "
+              f"summed and the largest memory)"))
 
 
 def _prep_groups(base, numbers: List[int], *, target, allocation,

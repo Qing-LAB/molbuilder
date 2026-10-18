@@ -38,9 +38,9 @@ order § 6.0 states:
    it goes.
 
 Every door builds its scheduler line through ONE request
-(:func:`_sbatch_request`: what prep baked, what was said at launch, admitted
-on the queue, every value stated or refused).  The scheduler is handed one
-job per invocation -- a grouped bench one per shelf.
+(:func:`_sbatch_request`): the header its prep wrote, sent as it is, and the
+one value a launch may restate, a submitted job's wall.  The scheduler is
+handed one job per invocation -- a grouped bench one per shelf.
 """
 
 from __future__ import annotations
@@ -64,7 +64,6 @@ from ..scheduler.quantities import slurm_time as _slurm_time
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
-from .placement import one_process
 from .continuation import Continuation
 from .planned import Plan, found
 from ..paths import attempt_dir
@@ -77,8 +76,9 @@ from .commands import (block, command as _cmd, launch_lines, redo_launched,
 
 
 class SubmitError(Exception):
-    """A JobSet could not be submitted (bad mode, unknown domain, missing
-    prepared wrapper, or sbatch failure)."""
+    """A JobSet could not be launched -- a mode, a member or a prepared
+    file it lacks, or the scheduler's refusal -- in the sentence a person
+    reads."""
 
 
 #: The codes a :class:`JobResult` can carry -- a CLOSED set, enforced on
@@ -122,23 +122,22 @@ class JobResult:
     #: What is known about this shelf's fate.  After a ``sbatch refused``,
     #: the scheduler's own words -- carried rather than raised, because ONE
     #: refused shelf must not cancel the shelves behind it, so the failure
-    #: travels back as data (2026-08-30).  In a PREVIEW, what the record
-    #: predicts instead: today, that this domain's per-user job cap will
-    #: refuse some of this sweep (R14).  One meaning, two moments -- what we
-    #: know about whether this will run.
+    #: travels back as data (2026-08-30).
     detail:     Optional[str] = None
     #: Only in ``ask`` mode.  ``None`` everywhere else, and a ``Prediction``
     #: whose ``start`` is ``None`` when SLURM declined to predict -- which
     #: is reported as *unknown*, never as *soon*.
     prediction: Optional[object] = None
-    #: WHICH DOMAIN this was placed on, by name (2026-08-30).  The command
-    #: carries ``-p`` and ``-q``, and on a cluster where several domains
-    #: share one partition those flags do not say which domain was chosen:
-    #: Sol's `debug` is (htc, debug) and its `htc` is (htc, public), so a
-    #: preview showing ``-p htc`` reads as *htc* to anyone scanning it.
-    #: It did, and the person who ran it believed a debug sweep had gone to
-    #: the wrong queue.  The name is the fact; the flags are its rendering.
+    #: WHICH QUEUE prep placed it on, by name (2026-08-30): where several
+    #: queues share one partition, ``-p htc`` reads as *htc* to anyone
+    #: scanning it -- Sol's `debug` is (htc, debug) and its `htc` is (htc,
+    #: public).  The name is the fact; the header's lines its rendering.
     domain:     Optional[str] = None
+    #: THE REQUEST THE LINE SENDS, as the header its prep wrote carries it
+    #: -- its ``#SBATCH`` lines, read back by the header's reader
+    #: (`Directives.lines_of`): what the question and a dry run show
+    #: (`submission.md` S4).  ``()`` for a run here.
+    request:    Tuple[str, ...] = ()
     #: The sentence shown beside the status, when it has one -- what a
     #: member takes, what a member rides, how a trial was passed over.
     said:       Optional[str] = None
@@ -154,19 +153,33 @@ class JobResult:
         return self.said or self.status
 
 
-# --------------------------------------------------------------------- #
-#  domain → -p/-q resolution (reuses runtime_config.get_routing)         #
-# --------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class _Placed:
+    """Where prep placed the work -- the queue its jobs record
+    (`job-set.json`'s ``placement``, `job-system.md` § 6.0): its name, and
+    the partition and qos prep bound it to on the target's record."""
+    name: str
+    partition: str
+    qos: str
 
-def _sbatch_resource_flags(r: Resources, placement=None) -> List[str]:
-    """The per-job ``sbatch`` flags — rendered by `scheduler.emit`, the ONE
-    emitter (R1).
 
-    CLI flags still WIN over the rendered header, which is what lets one
-    ``.sbatch`` serve a whole sweep while each job gets its own ranks.
-    """
-    from ..scheduler.emit import Directives
-    return Directives.of(placement, r).sbatch_flags()
+def _placed_by_prep(jobs) -> "Optional[_Placed]":
+    """The one queue the work's prep recorded -- its members' placement,
+    which a group and a benchmark share by construction (prep refuses a group
+    whose members name two, `group.envelope`; a benchmark measures on one,
+    `prep_inputs.bench_inputs`) -- or ``None`` where it placed none: a
+    machine with no queues, a prep that wrote no header.  Launch reads it and
+    decides nothing (`scheduler.md` R9)."""
+    p = jobs[0].placement or {}
+    return (_Placed(p["domain"], p["partition"], p["qos"])
+            if p.get("domain") else None)
+
+
+def _counts_of(r: Resources) -> List[str]:
+    """A run script's counts, as its line passes them -- ``-np N``, ``-omp
+    M`` -- the ones stated."""
+    return ((["-np", str(r.mpi_np)] if r.mpi_np else [])
+            + (["-omp", str(r.cpus_per_task)] if r.cpus_per_task else []))
 
 
 def _run_sh_args(r: Resources, run: int, *, cold: bool = False
@@ -180,11 +193,7 @@ def _run_sh_args(r: Resources, run: int, *, cold: bool = False
     args: List[str] = ["--run", str(run)]
     if cold:
         args += ["--cold", "--force"]
-    if r.mpi_np:
-        args += ["-np", str(r.mpi_np)]
-    if r.cpus_per_task:
-        args += ["-omp", str(r.cpus_per_task)]
-    return args
+    return args + _counts_of(r)
 
 
 # --------------------------------------------------------------------- #
@@ -258,95 +267,38 @@ def _no_sbatch(what: str, name: str, *, base, told,
             + rollback("its first prep", base=base))
 
 
-def _sbatch_request(base: Path, *, envelope: Resources,
-                    domain: Optional[str], mem: Optional[str],
-                    time_s: Optional[int], label: str, job_name: str,
-                    script: str, run_args: Sequence[str],
-                    one_process: bool = False,
-                    redo: Callable[[], str]
+def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
+                    time_s: Optional[int], job_name: str, script: str,
+                    run_args: Sequence[str]
                     ) -> Tuple[Resources, object, List[str]]:
-    """THE ONE REQUEST, for every door that hands work to the scheduler --
-    a stage, a grouped bench's shelf, a bias chain (`job-system.md` § 6).
+    """THE ONE LINE, for every door that hands work to the scheduler -- a
+    stage, a group, a grouped bench's shelf, a run of points
+    (`job-system.md` § 6.1): the header prep wrote -- for a walk, the one
+    written from the queue prep recorded and its members' requests -- sent
+    as it is.  **Launch decides nothing** (`job-system.md` § 6.0;
+    `scheduler.md` R9): the line names the job, carries what the launch
+    restates (`commands.LAUNCH_FLAGS` -- a submitted job's wall,
+    ``time_s``), the launch claim and the run's arguments.
 
-    ``envelope`` is what `prep` baked; ``mem`` and ``time_s`` are what the
-    person said at launch, and win.  The request is ADMITTED against the
-    whole of it -- wall, cores, memory, the GPU count -- on the queue
-    it is sent to (`scheduler.md` R9: what was admitted when the work was
-    built is re-admitted when it is sent, against what this machine says
-    now).  **Every value is stated** (`architecture.md` § 5.2): a wall or a
-    memory stated nowhere is refused here, never the queue's ceiling or
-    the scheduler's default -- prep refuses it first, and this is the door
-    that would send it.
-
-    Returns ``(envelope, placement, command)``: the envelope as sent, the
-    `Placement` (``None`` on a machine with no menu -- the rendered header's
-    own directives stand, R6), and the exact ``sbatch`` line, its resources
-    as flags that win over the header.
+    Returns ``(envelope, placement, command)``: the request as sent -- its
+    wall the one restated -- which ``run.json`` records beside the queue
+    (:func:`_placed_on`), the placement prep recorded, and the exact
+    ``sbatch`` line.
 
     ``run_args`` are the run script's arguments (`_run_sh_args`: ``--run
-    N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards them
-    (``bash <base>.run.sh "$@"``): every launch hands every run its own
-    counts (`job-system.md` § 6.1).  A submission whose script walks several
-    members -- a benchmark's shelf, a bias sweep -- hands each member its own
-    inside that script, and passes none here.  ``redo`` says, when asked,
-    the way to change what prep fixed -- the caller's own: a stage's way
-    back, a benchmark's.
+    N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards
+    them (``bash <base>.run.sh "$@"``).  A submission whose script walks
+    several members hands each member its own inside that script, and passes
+    none here.
     """
-    from ..scheduler.quantities import parse_walltime
-    if mem:
-        envelope = dataclasses.replace(envelope, mem=mem)
-    # What admission is asked to fit: the wall stated at launch, else the one
-    # prep baked.  Unstated is None -- an unstated limit never bars (R3) --
-    # and is refused below, once the request has a queue.
-    needed_s = time_s
-    if needed_s is None and envelope.time:
-        try:
-            needed_s = parse_walltime(str(envelope.time))
-        except ValueError:
-            raise SubmitError(
-                f"prep baked time={envelope.time!r}, which does not parse "
-                f"as a SLURM walltime.")
-    # THE GPU REQUEST is the envelope's own (the one door,
-    # `model.gpu_request`): one that disagrees with itself is refused here.
-    _gpus(envelope, label)
-    # A QUEUE NAMED NOWHERE -- no `--domain`, none its prep recorded -- is
-    # refused with this machine's queues against what the work asks, for
-    # every submission alike (`job-system.md` R-L19).
-    if domain is None:
-        why = _no_queue_named(base, envelope, label=label, mem=mem,
-                              time_s=needed_s, one_proc=one_process)
-        if why:
-            raise SubmitError(why)
-    # THE ONE REQUEST a queue is asked, prep's and launch's alike
-    # (`placement.request_of`): the envelope as it is sent -- its wall the
-    # one stated at launch, else prep's.
-    from .placement import request_of
-    asked = (dataclasses.replace(envelope, time=_slurm_time(needed_s))
-             if needed_s is not None else envelope)
-    placement = _place(base, request_of(asked, one_process=one_process),
-                       named=domain, label=label, redo=redo)
-    # THE WALL: what was stated at launch, else what prep baked.
+    from .commands import launch_flag
+    restated: List[str] = []
     if time_s is not None:
-        envelope = dataclasses.replace(envelope, time=_slurm_time(time_s))
-    # EVERY VALUE IS STATED, asked of the request AS SENT by the one answer
-    # prep gives (`placement.launch_refusal`): a launch flag may state
-    # what the description did not, and a prep with `--no-sbatch` asked
-    # none of the three.  The envelope names the queue it is sent to.
-    # Asked only where the request goes to a QUEUE: a machine with no menu
-    # promised nothing (R6), and `ask` there must answer "no scheduler
-    # here", as prep asks no wall of a run that writes no header.
-    if placement is not None:
-        from .. import runtime_config as _rc
-        from .placement import launch_refusal
-        envelope = dataclasses.replace(envelope, domain=placement.domain.name)
-        why = launch_refusal(
-            envelope, engine=None, header=True, shape=False,
-            queues=[d.name for d in _rc.get_routing(project_dir=base)],
-            at_launch=True)
-        if why:
-            raise SubmitError(f"{label or 'this job'} {why}")
-    cmd = (["sbatch", "-J", job_name]
-           + _sbatch_resource_flags(envelope, placement)
+        row = launch_flag("--time")
+        envelope = dataclasses.replace(
+            envelope, **{row.restates: _slurm_time(time_s)})
+        restated = [row.sbatch, getattr(envelope, row.restates)]
+    cmd = (["sbatch", "-J", job_name] + restated
            # The launch-door claim, EXPLICIT on the command line: environment
            # inheritance alone is fragile (sites override SLURM's --export
            # policy), and the flag wins over site defaults, so the claim
@@ -357,18 +309,15 @@ def _sbatch_request(base: Path, *, envelope: Resources,
 
 
 def _ask(name: str, cmd: List[str], cwd: Path, *,
-         domain: Optional[str] = None,
-         script: Optional[str] = None) -> JobResult:
+         domain: Optional[str] = None) -> JobResult:
     """``sbatch --test-only`` on the line that WOULD be sent -- the scheduler
     answers instead of enqueueing.  Writes and records nothing.
 
     The result carries the line that would be SENT; ``--test-only`` goes
     first only in what is run, so it cannot be shadowed and is never shown
-    as the line to send.  ``script`` stands in for the line's own when that
-    one is written only at sending -- a grouped bench's shelf, a bias chain
-    -- and is a header rendered for the same work: the flags, which win
-    over any header, are the request asked about.  No scheduler here is an
-    answer, not an error: on a workstation there is nothing to queue behind.
+    as the line to send.  The header asked about is the one the line sends,
+    its prep's.  No scheduler here is an answer, not an error: on a
+    workstation there is nothing to queue behind.
     """
     from .ask import Prediction, parse_test_only
     if shutil.which(cmd[0]) is None:
@@ -376,8 +325,7 @@ def _ask(name: str, cmd: List[str], cwd: Path, *,
                          prediction=Prediction(no_scheduler=True,
                                                refused="no scheduler here"))
     try:
-        cp = subprocess.run([cmd[0], "--test-only"] + cmd[1:-1]
-                            + [script or cmd[-1]], cwd=str(cwd),
+        cp = subprocess.run([cmd[0], "--test-only"] + cmd[1:], cwd=str(cwd),
                             capture_output=True, text=True)
     except OSError as exc:
         # "I could not reach the scheduler" is what the person asked about.
@@ -601,21 +549,23 @@ class Submission:
     #: `LaunchPlan.background`), or handed to the scheduler.
     direct: bool
     members: List[_Member]
-    #: The `Placement` it was admitted on -- ``None`` for a run here, or on a
-    #: machine with no menu (R6).
-    placement: object = None
-    #: The request as sent -- the job's resources under the launch's
-    #: ``--time`` / ``--mem`` (:func:`_sbatch_request`): the wall and memory
-    #: its ``run.json`` records beside the queue (`job-system.md` § 6.0).
+    #: The queue prep placed it on (:func:`_placed_by_prep`) -- ``None`` for
+    #: a run here, or on a machine with no queues.
+    placement: "Optional[_Placed]" = None
+    #: The request as sent -- the job's resources, its wall the launch's
+    #: ``--time`` when restated (:func:`_sbatch_request`): the wall and
+    #: memory its ``run.json`` records beside the queue (`job-system.md`
+    #: § 6.0).
     sent: Optional[Resources] = None
     #: What each member says in the results when the submission walks
     #: several (``rides the group``, ``rides the sweep``); ``None`` for one
     #: run, which is the submission itself.
     rides: Optional[str] = None
-    #: Where `ask` asks about it, and the header it asks over when the
-    #: line's own is written only at the send -- a shelf's, a chain's.
+    #: Where `ask` asks about it, when not where the line is run.
     ask_in: Optional[Path] = None
-    ask_script: Optional[str] = None
+    #: The header the line sends, where it lies -- its prep's: what the
+    #: question and a dry run show the request as (:meth:`LaunchPlan.shown`).
+    header: Optional[Path] = None
     #: What a refusal by the scheduler adds to the scheduler's own words.
     refusal_hint: str = ""
     #: Where a walk's members write their output -- a benchmark's trials, a
@@ -625,8 +575,18 @@ class Submission:
 
     @property
     def domain(self) -> Optional[str]:
-        """The NAME of the queue it was placed on (:func:`_domain_name`)."""
-        return _domain_name(self)
+        """The NAME of the queue prep placed it on."""
+        return self.placement.name if self.placement else None
+
+    def request(self) -> Tuple[str, ...]:
+        """The request the line sends -- its header's ``#SBATCH`` lines, as
+        its prep wrote them (`Directives.lines_of`); ``()`` for a run here,
+        or a header not written."""
+        from ..scheduler.emit import Directives
+        if self.direct or self.header is None or not self.header.is_file():
+            return ()
+        return tuple(Directives.lines_of(
+            self.header.read_text(errors="replace")))
 
 
 @dataclass
@@ -662,9 +622,9 @@ class LaunchPlan:
     #: nothing, the ledger included (§ 6.0, step 3), and neither does the
     #: plan the send makes again to compare.
     records: bool = True
-    #: The queue the work goes to and where that came from -- --domain,
-    #: or the queue its prep recorded (:func:`_the_queue`); ``(None,
-    #: None)`` for a run here or a machine with no queues.
+    #: The queue the work goes to and where that came from -- the queue its
+    #: prep recorded (:func:`_the_queue`); ``(None, None)`` for a run here
+    #: or a machine with no queues.
     queue: Tuple[Optional[str], Optional[str]] = (None, None)
     #: A run here started and left to run -- a run here's default; waited
     #: on under ``launch --foreground``, and the question's third answer
@@ -722,17 +682,20 @@ class LaunchPlan:
     def shown(self) -> List[JobResult]:
         """The plan as the question and a dry run show it: the trials passed
         over, what each member follows,
-        each submission's exact line and queue -- with what the record
-        predicts of its cap (R14) -- and the members riding it."""
-        caps = submitted_cap_notes(self.submissions)
+        each submission's exact line and queue, and the members riding
+        it."""
         out: List[JobResult] = list(self.skipped)
         for s in self.submissions:
             out += [JobResult(m.name, [], "takes", said=m.would())
                     for m in s.members if m.follows]
             out.append(JobResult(s.name, s.command, "planned",
-                                 domain=s.domain, detail=caps.get(s.domain)))
+                                 domain=s.domain, request=s.request()))
             if s.rides:
-                out += [JobResult(m.name, [], "rides", said=s.rides)
+                # EACH MEMBER WITH THE COUNTS ITS WALK HANDS IT (`-np`,
+                # `-omp`, :func:`_run_sh_args`) -- what runs it is seen too.
+                out += [JobResult(m.name, [], "rides",
+                                  said=" ".join([s.rides] + _counts_of(
+                                      m.job.resources)))
                         for m in s.members]
         return out
 
@@ -806,8 +769,11 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
             f"{exc}\n  To prepare it as it is described now, "
             + _redo(base, task, jobset, job)) from None
     names = run_names(jobset, job, shape_of(jobset, base))
+    # ITS OWN FILES, and the one header of its walk of points when it has
+    # them (`prep.prep_calculation`).
     own = {Path(job.script).name, names.name(".run.sh"),
-           names.name(".sbatch")}
+           names.name(".sbatch"), GroupNames.of_points(names.stem).name(
+               ".sbatch")}
     differ = []
     prepared_by, deck_read = None, False
     for path in now.plan.writes():
@@ -1292,70 +1258,11 @@ def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
     return h
 
 
-def _gpus(resources, what: str):
-    """A job's GPU request -- `model.gpu_request`, the one door every reader
-    asks (`execution/architecture.md` § 3.2) -- or a `SubmitError` naming
-    ``what`` when it disagrees with itself, which a job prep wrote never
-    does (prep refuses it first)."""
-    from .model import GpuRequestError, gpu_request
-    try:
-        return gpu_request(resources)
-    except GpuRequestError as exc:
-        raise SubmitError(f"{what}: {exc}") from None
-
-
 def _the_queue(jobs) -> Tuple[Optional[str], Optional[str]]:
-    """``(queue, its source)`` the work's prep recorded -- a run's
-    placement, which prep admitted; a trial's resources, the queue its
-    prep was told (`job-system.md` § 6.0, the placement) -- or ``(None,
-    None)`` when it recorded none.  Several are
-    refused: one launch goes to one queue (a benchmark's GPU side names its
-    own, ``--gpu-domain``)."""
-    named = {(j.placement or {}).get("domain") or j.resources.domain
-             for j in jobs} - {None, ""}
-    # ADMITTED only where prep admitted it -- a run's placement; a
-    # benchmark's trials carry the queue their prep was told, which is
-    # admitted at this launch (`job-system.md` § 6.0, the placement)
-    admitted = any((j.placement or {}).get("domain") for j in jobs)
-    if len(named) > 1:
-        raise SubmitError(
-            f"the work being sent names more than one domain "
-            f"({', '.join(sorted(named))}).  Name the one to use with "
-            f"--domain, and --gpu-domain if a benchmark's GPU side differs.")
-    if named:
-        return named.pop(), ("its prep (the queue it admitted)" if admitted
-                             else "its prep (the queue it named)")
-    return None, None
-
-
-def _no_queue_named(base: Path, envelope: Resources, *, label: str,
-                    mem: Optional[str], time_s: Optional[int],
-                    one_proc: bool) -> Optional[str]:
-    """The refusal for work sent to a queue that is named nowhere -- no
-    ``--domain``, and none recorded at its prep -- with this machine's
-    queues listed against what the work asks: ``envelope``, the request as
-    it is sent (`placement.request_of`), its wall ``time_s``, so one can be
-    named.  ``None`` on a machine with no queues, where the door's own
-    answer stands (`scheduler.md` R6)."""
-    from ..runtime_config import get_routing
-    rows = get_routing(project_dir=base)
-    if not rows:
-        return None
-    from ..scheduler import parse_mem_gb
-    from .ask import Ask, queue_table
-    from .placement import request_of
-    gpus = _gpus(envelope, label)
-    try:
-        gb = parse_mem_gb(str(mem or envelope.mem)) if (mem or envelope.mem) \
-            else None
-    except ValueError:                   # the door refuses it, by name
-        gb = None
-    return (queue_table(rows, Ask(time_s=time_s, mem_gb=gb),
-                        cores=request_of(envelope,
-                                         one_process=one_proc).cores,
-                        gpus=gpus.count if gpus.uses else None)
-            + "\nno --domain was given, and its prep recorded no queue: "
-              "name one from the list above with `--domain`.")
+    """``(queue, its source)`` -- the queue the work's prep recorded
+    (:func:`_placed_by_prep`), or ``(None, None)`` where it placed none."""
+    placed = _placed_by_prep(jobs)
+    return (placed.name, "its prep") if placed else (None, None)
 
 
 # --------------------------------------------------------------------- #
@@ -1377,10 +1284,7 @@ def _record(base: Path, told, decision: str, **facts) -> None:
 
 def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 only: Optional[str] = None,
-                domain: Optional[str] = None,
-                gpu_domain: Optional[str] = None,
                 side: Optional[str] = None,
-                mem: Optional[str] = None,
                 time_s: Optional[int] = None,
                 trial_timeout_s: Optional[int] = None,
                 told: Dict[str, object],
@@ -1396,17 +1300,17 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     lines and every script the send will write.  A refusal can only come
     from here.
 
-    ``mode`` is ``"submit"`` (``sbatch``, its resources as flags over the
-    rendered header), ``"ask"`` (the same line, asked with ``--test-only``)
+    ``mode`` is ``"submit"`` (``sbatch`` of the header prep wrote),
+    ``"ask"`` (the same line, asked with ``--test-only``)
     or ``"direct"`` (``bash`` here, the members in order; ``background``
     leaves it running, the default of the verb's run here, and otherwise the
     send waits for it -- `job-system.md` § 6.0).  ``only``
     names ONE job -- a ladder's stage (the only case: stages do not chain,
     `project-layout.md` § 1.6) or a sweep's trial -- by its name or ``#N``.
-    ``domain`` names the queue, and ``gpu_domain`` the one a sweep's GPU
-    side goes to when it differs; ``mem`` -- SLURM text, ``0`` for the whole
-    node -- and ``time_s`` are what the person said at launch; ``side``
-    (``"cpu"`` / ``"gpu"``) and ``trial_timeout_s`` are a grouped bench's.
+    The queue is the one the work's prep recorded; ``time_s`` is a submitted
+    job's wall as the launch restates it, the one value a launch may
+    (`commands.LAUNCH_FLAGS`); ``side`` (``"cpu"`` / ``"gpu"``) and
+    ``trial_timeout_s`` are a grouped bench's.
     ``told`` is what the verb was told -- the launch's ``kind``, ``stage``
     and ``trial``, and its ``flags`` as typed among it -- written on each of
     the launch's lines in the ledger, and said again by a refusal that
@@ -1433,8 +1337,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     """
     base = Path(base_dir).resolve()
     try:
-        plan = _planned(jobset, base, mode=mode, only=only, domain=domain,
-                        gpu_domain=gpu_domain, side=side, mem=mem,
+        plan = _planned(jobset, base, mode=mode, only=only, side=side,
                         time_s=time_s, trial_timeout_s=trial_timeout_s,
                         told=told, cold=cold, group=group,
                         from_attempt=from_attempt, gather=gather)
@@ -1456,8 +1359,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     return plan
 
 
-def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
-             side, mem, time_s, trial_timeout_s, told,
+def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
+             trial_timeout_s, told,
              cold: bool = False, group=None, from_attempt=None,
              gather: bool = False) -> LaunchPlan:
     """:func:`plan_launch`'s body -- the plan, or the refusal it records."""
@@ -1485,8 +1388,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
             raise SubmitError(str(e))
 
     def again() -> LaunchPlan:
-        return plan_launch(jobset, base, mode=mode, only=only, domain=told_q,
-                           gpu_domain=gpu_domain, side=side, mem=mem,
+        return plan_launch(jobset, base, mode=mode, only=only, side=side,
                            time_s=time_s, trial_timeout_s=trial_timeout_s,
                            told=told, record=False, cold=cold, group=group,
                            from_attempt=from_attempt, gather=gather)
@@ -1507,35 +1409,29 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
     if members is not None and len(members) == 1:
         only, members = members[0], None
 
-    # THE QUEUE, decided here and nowhere else (`job-system.md` § 6.0, the
-    # placement): --domain when typed, else the one the work's prep
-    # recorded.  Each door refuses a queue named nowhere at its own
-    # moment -- a stage after its header is found.
-    told_q = domain
-    source = "--domain flag" if domain else None
-    if mode in ("submit", "ask") and not domain:
-        domain, source = _the_queue(
-            [j for j in jobset.jobs
-             if ((j.name in members) if members
-                 else (only is None or j.name == only))])
+    # THE QUEUE, the one the work's prep recorded (`job-system.md` § 6.0,
+    # the placement) -- for the plan's lines and the ledger; each door
+    # sends to it.
+    domain, source = (_the_queue(
+        [j for j in jobset.jobs
+         if ((j.name in members) if members
+             else (only is None or j.name == only))])
+        if mode in ("submit", "ask") else (None, None))
 
     if members:
         plan = _plan_group(jobset, base, members, mode=mode,
-                           domain=domain, mem=mem, time_s=time_s,
-                           told=told, task=task,
+                           time_s=time_s, told=told, task=task,
                            template_text=template_text, number=number,
                            described=described)
     elif jobset.kind == "sweep" and only is None and mode in ("submit", "ask"):
-        plan = _plan_shelves(jobset, base, mode=mode, domain=domain,
-                             gpu_domain=gpu_domain, side=side, mem=mem,
+        plan = _plan_shelves(jobset, base, mode=mode, side=side,
                              time_s=time_s, trial_timeout_s=trial_timeout_s,
                              told=told)
     elif jobset.kind == "sweep" and only is None:
         plan = _plan_bench_here(jobset, base,
                                 trial_timeout_s=trial_timeout_s)
     else:
-        plan = _plan_stage(jobset, base, mode=mode, domain=domain,
-                           gpu_domain=gpu_domain, only=only, mem=mem,
+        plan = _plan_stage(jobset, base, mode=mode, only=only,
                            time_s=time_s, told=told, cold=cold, task=task,
                            template_text=template_text,
                            from_attempt=from_attempt, gather=gather,
@@ -1671,8 +1567,9 @@ def ask_launch(plan: LaunchPlan) -> List[JobResult]:
         if n >= ASK_MAX_QUERIES:
             out.append(JobResult(s.name, [], "not asked"))
             continue
-        out.append(_ask(s.name, s.command, s.ask_in or s.cwd,
-                        domain=s.domain, script=s.ask_script))
+        out.append(dataclasses.replace(
+            _ask(s.name, s.command, s.ask_in or s.cwd, domain=s.domain),
+            request=s.request()))
     plan.record("asked", jobs=[{"job": r.name, "status": r.status,
                                 **({"said": r.said} if r.said else {})}
                                for r in out])
@@ -1956,59 +1853,8 @@ def _keep(job):
     return job, None
 
 
-def _group_envelope(jobs) -> "Resources":
-    """The allocation one shelf's grouped job asks for.
-
-    Every caller passes trials sharing
-    ONE exact ask (`_shelf_key`: ranks, cores, GPUs), so this is the
-    shelf's own ask read off its trials -- nothing is widened and nothing
-    narrower exists inside a group.  The uniformity is ASSERTED rather
-    than assumed: trials disagreeing here mean the shelf partition broke,
-    and launching an allocation that fits only some of them would be the
-    silent repair this module never makes.
-    """
-    keys = {(j.resources.mpi_np, j.resources.cpus_per_task,
-             j.resources.gres or "") for j in jobs}
-    if len(keys) > 1:
-        raise SubmitError(
-            "the group's trials do not share one resource ask "
-            f"({sorted(keys)}) -- the per-shelf partition is broken "
-            "(generator.md § 4.3a); this is a bug, not a declaration "
-            "problem.")
-    n = max(j.resources.mpi_np for j in jobs)
-    c = max(j.resources.cpus_per_task for j in jobs)
-    gres = next((j.resources.gres for j in jobs if j.resources.gres), None)
-    exclusive = any(j.resources.exclusive for j in jobs)
-    # PREP'S ANSWERS RIDE THE TRIALS (resolve.py: `replace(allocation,
-    # **machine)` -- the sweep delta only touches ranks/cores/gres, so a
-    # `prep --mem/--time` is on every trial).
-    mems = {j.resources.mem for j in jobs}
-    times = {j.resources.time for j in jobs}
-    # ...and the GPU binding, the description's switch for the whole
-    # calculation (`execution/gpu.md` G9) -- one value over a sweep, too.
-    binds = {j.resources.gpu_binding for j in jobs}
-    # ...and WHETHER the trials use the GPU: the envelope is a request like
-    # any job's (`model.gpu_request`), so it carries both halves -- its
-    # count above, and this.  A shelf's trials share one family by
-    # construction (G = 0 is the CPU family, `prep_inputs.bench_inputs`).
-    uses = {bool(j.resources.use_gpu) for j in jobs}
-    if len(mems) > 1 or len(times) > 1 or len(binds) > 1 or len(uses) > 1:
-        raise SubmitError(
-            f"the group's trials disagree about mem/time/gpu_binding/use_gpu "
-            f"({sorted(mems, key=str)} / {sorted(times, key=str)} / "
-            f"{sorted(binds, key=str)} / {sorted(uses)}) -- prep bakes one "
-            f"allocation over a sweep, so this is a bug, not a declaration "
-            f"problem.")
-    return Resources(mpi_np=n, cpus_per_task=c, gres=gres,
-                     use_gpu=next(iter(uses)),
-                     exclusive=exclusive, gpu_binding=next(iter(binds)),
-                     mem=next(iter(mems)), time=next(iter(times)))
-
-
 def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
-                  domain: Optional[str], gpu_domain: Optional[str],
-                  side: Optional[str], mem: Optional[str],
-                  time_s: Optional[int],
+                  side: Optional[str], time_s: Optional[int],
                   trial_timeout_s: Optional[int], told) -> LaunchPlan:
     """ONE scheduler job per RESOURCE SHELF of the sweep
     (`generator.md` § 4.3a).
@@ -2021,29 +1867,30 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     timing data, not the structure, so the trials ride one allocation in
     sequence.
 
-    **The split** (§ 4.3a): trials partition by each trial's GPU request
-    (:func:`sides_of`, the one door), then by their exact ask -- each shelf
-    named in full, ``bench-group-<side>-<cell>`` (``bench-group-cpu-G0K4C1``),
-    so the CPU group's envelope asks no ``gres`` and devices are never held
-    while CPU trials run.  A shelf's name is its side and its cell, never
-    what else the sweep holds, so it keeps its name across resubmissions.
-    ``domain``
-    applies to both sides through `scheduler.place`; ``side`` (``"cpu"``/
-    ``"gpu"``) sends one side -- and a side this machine cannot launch
-    simply stays pending for a later `launch bench`, which is the
-    cross-cluster lane.
+    **The shelves are prep's** (`shelves.shelves_of`, the one partition):
+    by each trial's GPU request, then by its exact ask, each named in full,
+    ``bench-group-<side>-<cell>`` -- so the CPU shelf asks no GPU and
+    devices are never held while CPU trials run -- each side's widest first,
+    and each with the one header prep wrote and admitted on the benchmark's
+    one queue.  ``side`` (``"cpu"``/``"gpu"``) sends one side, the other
+    staying pending for a later `launch bench`.
 
-    The per-shelf pieces (:func:`_plan_shelf`): the allocation, the
-    sequencer and its header -- planned here, written by the send -- and
-    every included trial's launch record, stamped with the ONE job id, so
-    `status` and a later single-trial re-run see the truth.  ``ask`` asks
-    the scheduler about each shelf -- the jobs the send would hand it.
+    The per-shelf pieces (:func:`_plan_shelf`): the walk of its trials still
+    to run, planned here and written by the send, and every included trial's
+    launch record, stamped with the ONE job id, so `status` and a later
+    single-trial re-run see the truth.  ``ask`` asks the scheduler about
+    each shelf -- the jobs the send would hand it.
     """
     from .materialize import job_dir_names, shape_of
+    from .shelves import ShelfError, shelves_of, sides_of
     dirs = job_dir_names(jobset, shape_of(jobset, base))
     if side not in (None, "cpu", "gpu"):
         raise SubmitError(f"--only takes cpu or gpu, not {side!r}")
-    sides = sides_of(jobset)
+    try:
+        sides = sides_of(jobset.jobs)
+        shelves = shelves_of(jobset.jobs)
+    except ShelfError as exc:
+        raise SubmitError(str(exc)) from None
     if side and not sides[side]:
         raise SubmitError(f"this sweep has no {side} trials to submit")
     plan = LaunchPlan(base, mode, [], tolerant=True)
@@ -2055,27 +1902,15 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     trials = {m.job.name: m for m in _bench_trials(
         jobset, base, plan, mode=mode,
         jobs=[j for j in jobset.jobs if j.name in sent])}
-    for this in ("cpu", "gpu"):
-        jobs = sides[this]
-        if not jobs or (side and this != side):
+    for this, names, members in shelves:
+        if side and this != side:
             continue
-        shelves: dict = {}
-        for j in jobs:
-            shelves.setdefault(_shelf_key(j), []).append(j)
-        for key in sorted(shelves, key=_shelf_width, reverse=True):
-            pending = [trials[j.name] for j in shelves[key]
-                       if j.name in trials]
-            if not pending:
-                continue            # this shelf already rode a group
-            # THE SHELF'S NAME IN ITS FULL FORM, always -- its side and its
-            # machine cell (`generator.md` § 4.3a): `bench-group-cpu-G0K4C1`.
-            name = GroupNames.of_trials(this, _shelf_token(shelves[key])).stem
-            named = (gpu_domain or domain) if this == "gpu" else domain
-            plan.submissions.append(_plan_shelf(
-                jobset, base, pending, name, plan,
-                domain=named,
-                trial_timeout_s=trial_timeout_s, told=told, mem=mem,
-                time_s=time_s))
+        pending = [trials[j.name] for j in members if j.name in trials]
+        if not pending:
+            continue            # this shelf already rode a group
+        plan.submissions.append(_plan_shelf(
+            jobset, base, pending, names, members, plan,
+            trial_timeout_s=trial_timeout_s, told=told, time_s=time_s))
 
     if not plan.submissions:
         from .materialize import bench_stage_of
@@ -2086,189 +1921,6 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
             + (_cmd("summarize", "bench", stage, base=base) if stage else
                "`summarize bench` on the sweep's stage"))
     return plan
-
-
-def _place(base: Path, want, *, named=None,
-           label: str = "", redo: Callable[[], str]):
-    """This side's placement — `scheduler.place`, walked with THIS machine's
-    menu (`execution/scheduler.md` § 5).
-
-    Fetching the menu is this layer's job; deciding is not.
-
-    Returns ``None`` when this machine has no menu at all: nothing was
-    promised, so the rendered header stands (R6).  Raises `SubmitError` when
-    there IS a menu and nothing on it can take the request -- we hold the
-    record that says the scheduler will refuse, so we say so here rather than
-    spend a round trip finding out.
-    """
-    from .. import runtime_config as _rc
-    from ..scheduler.place import place, Unplaceable
-    # ``want`` is THE request (`placement.request_of`): the GPU count and no
-    # card (`scheduler.md` R2a) -- a GPU job goes to a queue that has GPUs,
-    # where a node holds as many as were asked.
-    try:
-        placed = place(_rc.get_routing(project_dir=base), want,
-                       named=named)
-        # R9's SECOND record.  Routing reads the calculation scope first, so
-        # a prepared bundle routes against the snapshot beside it -- which is
-        # right for reproducibility and useless as a re-check, because it is
-        # the same record the request was built against.  What will actually
-        # enforce the limits is THIS machine's own record, so the re-admission
-        # reads that one.  When the two agree this costs a read; when they
-        # disagree it is the whole point of the rule.
-        if placed is not None:
-            _reject_if_this_machine_says_no(placed, want, label, base)
-        return placed
-    except Unplaceable as exc:
-        raise SubmitError(
-            f"{label or 'this group'} cannot be placed on this machine:\n    "
-            # `.message` -- `exc.reasons` is List[Refusal].
-            + "\n    ".join(r.message for r in exc.reasons)
-            + "\n  Nothing was submitted -- the scheduler would refuse it.  "
-              "Change the wall or the memory with --time / --mem, or name "
-              "another of the record's queues with --domain.  The ranks "
-              "and cores are its prep's -- to change them, "
-            + redo()) from None
-
-
-def _reject_if_this_machine_says_no(placed, want, label: str,
-                                    base) -> None:
-    """R9 -- the machine's OWN record has the last word.
-
-    A bundle carries the record it was prepared against.  If it travelled, or
-    if the machine has been re-probed since, the limits that will actually be
-    enforced are the ones here.  The Au-BDT-Au sweep is the worked example:
-    its cells were sized against a snapshot whose gpu rows said
-    ``max_cores: None``, and Sol has since measured 48.
-
-    Silent when this machine has no record of the queue in question -- absent
-    evidence is not evidence of a smaller limit (R3).
-
-    ``local_only=True`` -- this asks what the box RUNNING THIS PROCESS knows,
-    never what the calculation is prepared for.
-    """
-    from .. import runtime_config as _rc
-    from ..scheduler import admits
-    here = _rc.get_routing(project_dir=None, local_only=True)
-    if not here:
-        return                       # no record of my own; nothing to add
-    mine = [d for d in here if (d.partition, d.qos) == (placed.partition,
-                                                        placed.qos)]
-    if not mine:
-        return                       # this machine does not know that queue
-    why = admits(mine[0], want)
-    if why:
-        # THE REMEDY IS THE ASK, OR A NEW PREP.  A
-        # calculation is set to the record of its first prep (M-3), so this
-        # machine's reaches it through a new prep from a saved state.
-        raise SubmitError(
-            f"{label or 'this group'} was prepared against a record that "
-            f"allowed it, but THIS machine does not:\n    "
-            + "\n    ".join(i.message for i in why)
-            + f"\n  This machine's record of the queue {mine[0].name!r} "
-              f"differs from the one the calculation was prepared against, "
-              f"and its limits are the ones enforced here.  Change the wall "
-              f"or the memory with --time / --mem, or name another of the "
-              f"record's queues with --domain (the ranks and cores are its "
-              f"prep's) -- or, to prepare against this machine's record "
-              f"(configuration.md M-3), "
-            + rollback("the calculation's first prep", base=base))
-
-
-def _shelf_key(job: "Job"):
-    """The exact resource ask that defines a group (§ 4.3a, 2026-08-21):
-    trials grouped together must fit ONE allocation with nothing idle, so
-    the key is everything the envelope would widen over."""
-    r = job.resources
-    return (r.mpi_np, r.cpus_per_task,
-            _gpus(r, f"trial {job.name!r}").count or 0)
-
-
-def _shelf_width(key) -> tuple:
-    """Widest-first order across shelves: cores, then devices."""
-    n, c, g = key
-    return (n * max(c, 1), g)
-
-
-#: The machine axes of a sweep coordinate, in the order they are spelled.
-_MACHINE_AXES = ("G", "K", "C")
-
-
-def _shelf_token(jobs) -> str:
-    """A shelf's machine cell -- ``G2K24C1`` -- in its name
-    (`job-contracts.md` § 6.3: the ``-`` announces a qualifier; the token
-    stays in [A-Za-z0-9_]).
-
-    **THE SPELLING ITS TRIALS CARRY, read off a trial's own point**: every
-    trial on a shelf shares one resource ask by construction, so any member
-    answers, and the value axes that DO differ between them are dropped --
-    the shelf is the machine cell, not the point.  A trial whose point
-    carries no machine cell is not one prep wrote, and is refused by
-    name."""
-    from ..resolve import point_token
-    pt = jobs[0].point
-    if not all(a in pt for a in _MACHINE_AXES):
-        raise SubmitError(
-            f"trial {jobs[0].name!r} carries no machine point "
-            f"({', '.join(_MACHINE_AXES)}) -- not a trial prep wrote, so its "
-            f"shelf cannot be named")
-    return point_token({a: pt[a] for a in _MACHINE_AXES})
-
-
-def _domain_name(prepared) -> Optional[str]:
-    """The NAME of the domain a shelf was placed on, or ``None``.
-
-    ``None`` means this machine has no menu (R6) -- the rendered header's
-    own directives stand, and there is no domain to name.
-    """
-    placement = getattr(prepared, "placement", None)
-    return getattr(placement, "name", None) or None
-
-
-def submitted_cap_notes(plans) -> Dict[str, str]:
-    """What a domain's per-user submitted-job cap says about THIS sweep
-    (R14) -- ``{domain: its sentence}`` for each domain that cannot take it,
-    ``{}`` otherwise.
-
-    **A note, not a refusal**, and that is the design.  A refused shelf
-    already costs nothing: its trials keep no launch record, so
-    ``_launched`` leaves them pending and the next ``launch bench``
-    picks up exactly them.
-
-    Silent when the record does not state a cap.  ``UNSET`` means the
-    probe never asked and ``None`` means
-    it asked and the QoS states none; neither is a limit, and R3 forbids
-    reading an unstated one as a bar.
-    """
-    from collections import Counter
-    counts: Counter = Counter()
-    caps: Dict[str, object] = {}
-    for p in plans:
-        name = _domain_name(p)
-        if not name:
-            continue
-        counts[name] += 1
-        placement = getattr(p, "placement", None)
-        caps[name] = getattr(getattr(placement, "domain", None),
-                             "max_submit_jobs", None)
-    notes: Dict[str, str] = {}
-    for name, n in sorted(counts.items()):
-        cap = caps.get(name)
-        # `bool` is a subclass of `int`, so a stray True would compare as a
-        # cap of 1 and invent a refusal.  A cap is a count or it is nothing.
-        if type(cap) is not int or n <= cap:
-            continue
-        # SAID AS A CONDITION, NOT A PREDICTION.  What is known here is the
-        # cap and the size of this sweep; what is NOT known is how many jobs
-        # are already queued under that QoS -- with one already there, only
-        # `cap - 1` of these get in.
-        notes[name] = (
-            f"{name} takes {cap} submitted job(s) per user, and this sweep "
-            f"is {n}. With nothing of yours already queued there, {cap} go "
-            f"and {n - cap} come back QOSMaxSubmitJobPerUserLimit -- fewer "
-            f"if you already hold some. A refused shelf's trials stay "
-            f"pending, and re-running this launch picks up exactly them.")
-    return notes
 
 
 def _walk_script(name: str, steps, *, where: str, log: str,
@@ -2394,17 +2046,6 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     return "\n".join(lines)
 
 
-def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
-    """A sweep's trials by the side they run on -- ``{"cpu": [...],
-    "gpu": [...]}`` -- each trial's GPU request (`model.gpu_request`, the one
-    door), read off the trial itself.  The grouped door splits on it."""
-    sides: Dict[str, List[Job]] = {"cpu": [], "gpu": []}
-    for j in jobset.jobs:
-        sides["gpu" if _gpus(j.resources, f"trial {j.name!r}").uses
-              else "cpu"].append(j)
-    return sides
-
-
 def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
                   mode: str, jobs=None) -> List[_Member]:
     """A benchmark's walk: its trials still to run -- of ``jobs``, all of
@@ -2506,26 +2147,16 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
 
 
 def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
-                name: str, plan: LaunchPlan, *,
-                domain: Optional[str],
+                names: GroupNames, members, plan: LaunchPlan, *,
                 trial_timeout_s: Optional[int], told,
-                mem: Optional[str] = None,
                 time_s: Optional[int] = None) -> Submission:
-    """One shelf's submission, checked and placed, its sequencer and header
-    planned in ``plan`` -- written by the send, never before.  ``pending``
-    are its trials still to run, each planned and gated once
-    (:func:`_bench_trials`).
-
-    Every gate, the envelope, the placement and both scripts; the `sbatch`
-    is the send's (:func:`_go`).  A dry run and an `ask` write nothing
-    (`job-system.md` § 6.0, step 3), and an `ask` needs no header of the
-    shelf's own: it asks over the first trial's.
-
-    Widest-first ordering lives one level up: every trial in a group shares one exact resource ask by
-    construction, so within a group the enumeration (declaration) order
-    stands, and the SHELVES submit widest first.
+    """One shelf's submission: the walk of ``pending`` -- its trials still
+    to run, each planned and gated once (:func:`_bench_trials`) -- planned
+    in ``plan`` and written by the send, and the line sending the header
+    its prep wrote for all its trials, ``members``
+    (`shelves.shelf_request`), as it is.  A dry run and an `ask` write
+    nothing (`job-system.md` § 6.0, step 3).
     """
-
     # THE CONTAINER IS THE TRIAL'S PARENT, NOT THE ATTEMPT'S.  With an
     # attempt layer the attempt's parent is `bench-<point>` -- one per
     # trial.  The container question belongs to
@@ -2538,85 +2169,57 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
             f"submission needs the one parent that sees them all; found "
             f"{sorted(str(c) for c in containers)}")
     container = next(iter(containers))
-    # L3 (roadmap 7.10, user 2026-08-24): the group's own machinery -- this
-    # sequencer, its .sbatch, its log, and SLURM's stdout/err -- lives in
-    # ``launch/`` beside the trial directories, not among them.  Made when
-    # the send writes the plan: a dry run and a declined question leave
-    # nothing behind, an empty ``launch/`` included (W52).
+    # L3 (roadmap 7.10, user 2026-08-24): the shelf's own machinery -- its
+    # walk, its header, its log, and SLURM's stdout/err -- lives in
+    # ``launch/`` beside the trial directories, not among them.
     launch_dir = container / LAUNCH_DIR
-
-    envelope = _group_envelope([m.job for m in pending])
-
+    name = names.stem
+    header = launch_dir / names.name(".sbatch")
+    # THE HEADER PREP WROTE, or no queue to send to: a benchmark prepared
+    # with --no-sbatch, or for a machine that names no queue, has none --
+    # said by the one answer (`_no_sbatch`); asked about, the same.
+    if plan.mode == "submit" or shutil.which("sbatch"):
+        if not header.is_file():
+            raise SubmitError(_no_sbatch(
+                name, f"{LAUNCH_DIR}/{names.name('.sbatch')}", base=base,
+                told=told))
+        plan.reads.append(_as_found(header, base))
+    from .shelves import ShelfError, shelf_request
+    try:
+        request = shelf_request(members)
+    except ShelfError as exc:
+        raise SubmitError(str(exc)) from None
     # THE ATTEMPT, NOT THE TRIAL (`project-layout.md` § 1.5a).  Each member's
     # ``run_dir`` is the one answer to "where does this trial run", and the
     # gates asked it (:func:`_bench_trials`).  Each trial is handed its own
-    # -np / -omp: the shield against the envelope's SLURM_* variables.
-    gn = GroupNames(name)
+    # -np / -omp: the shield against the allocation's SLURM_* variables.
     script = _walk_script(
         name, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
-        log=f"{LAUNCH_DIR}/{gn.name('.log')}", bound_s=trial_timeout_s)
-    # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
-    # launch, admitted on this side's queue (R9), every value stated.  The
-    # side IS the envelope's GPU request -- every trial on the shelf shares
-    # it (`_group_envelope`), so nothing is re-derived here.
-    envelope, placement, cmd = _sbatch_request(
-        base, envelope=envelope, domain=domain, mem=mem,
-        time_s=time_s, label=name,
-        job_name=_scheduler_job_name(jobset, name),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
-        one_process=one_process(jobset.engine),
-        redo=lambda: rollback("the benchmark's prep", base=base))
-
+        log=f"{LAUNCH_DIR}/{names.name('.log')}", bound_s=trial_timeout_s)
+    # THE ONE LINE (`_sbatch_request`): the shelf's header as prep wrote it
+    # -- nothing chosen here.
+    sent, placement, cmd = _sbatch_request(
+        envelope=request, placement=_placed_by_prep(members),
+        time_s=time_s, job_name=_scheduler_job_name(jobset, name),
+        script=f"{LAUNCH_DIR}/{names.name('.sbatch')}", run_args=())
     if plan.mode == "submit":
-        from ..runwrap import walk_header
-        # Rendered at the BUNDLE's scope, not the container's (review
-        # 2026-08-21): the render derives its config/environment scope from
-        # the script path's parent, and the calculation's environment.json
-        # lives at the bundle root.  The pair this submission
-        # is ALREADY routing to is handed to the header emitter, so the
-        # .sbatch and the `sbatch -p/-q` on the command line cannot name
-        # different queues.  The group's names name the delegated run
-        # script (`runfiles.GroupNames`), so the header runs it from the
-        # container.
-        header = walk_header(base, gn, resources=envelope,
-                             one_process=one_process(jobset.engine),
-                             domain_pq=((placement.partition, placement.qos)
-                                        if placement else None))
-        if header is None:
-            raise SubmitError(_no_sbatch(name, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
-                                         base=base, told=told))
         open_container(base, launch_dir, plan.writes)
-        plan.writes.text(launch_dir / gn.name(".run.sh"), script)
-        plan.writes.text(launch_dir / gn.name(".sbatch"), header)
-    elif plan.mode == "ask":
-        # ASKED WITH THE FIRST TRIAL'S HEADER, the shelf's being written
-        # only when it is sent: a benchmark with none -- prepared with
-        # --no-sbatch, or for a machine that names no queue -- has nothing
-        # to ask about, said by the one answer (`_no_sbatch`).
-        first = pending[0]
-        script = first.names.name(".sbatch")
-        if not (first.read_from / script).exists():
-            raise SubmitError(_no_sbatch(name, script, base=base, told=told))
-
+        plan.writes.text(launch_dir / names.name(".run.sh"), script)
     # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
     # record -- so launching the benchmark again sends exactly them; a
     # shelf sent by hand would write no record, and the next launch would
     # measure its trials twice (the unit 11 review, 2026-10-05).
     hint = ("\n  Its trials stay pending: launch the benchmark again once "
             "the ask fits -- the shelves already queued are skipped.")
-    first = pending[0]
     return Submission(
         name, cmd, container, False, pending,
-        placement=placement, sent=envelope, rides="rides the group",
-        ask_in=first.read_from,
-        ask_script=first.names.name(".sbatch"),
-        refusal_hint=hint)
+        placement=placement, sent=sent, rides="rides the group",
+        header=header, refusal_hint=hint)
 
 
 def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
-                 task, *, mode: str, domain: Optional[str],
-                 mem: Optional[str], time_s: Optional[int], told) -> None:
+                 task, *, mode: str, time_s: Optional[int], told) -> None:
     """A RUN OF POINTS SENT: one submission walking ``m``'s run -- its
     points as :func:`_plan_member` opened and filled them -- into ``plan``
     (`engines/transport.md` § 2a.11).
@@ -2634,8 +2237,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     one another (§ 2a.9 *Both axes*).  A rung that hands nothing forward
     (the transmission) walks on past a point that fails; one that does ends
     that frame's chain there, and the walk goes on to the next frame.  The
-    walk is the one walk script (:func:`_walk_script`); the request is the
-    sum of the walked points' walls (`group.envelope`)."""
+    walk is the one walk script (:func:`_walk_script`); the header is its
+    prep's, written for every point, their walls summed (`group.envelope`,
+    `prep.prep_calculation`) -- the points done before walk on past."""
     from ..runrecord import launch_record, next_run, read_continued_from
     from ..transport.stages import products_of
     from ..warmfiles import warm_list
@@ -2752,32 +2356,25 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
             log=stage_dir / log))
         return
     # ---- submit / ask: one scheduler job walking the points ------------ #
-    # ONE ALLOCATION WALKING THE POINTS asks what a group asks: the wall the
-    # sum of the walked points' (`group.envelope`, `project-layout.md`
-    # § 1.6.6).
-    envelope, placement, cmd = _sbatch_request(
-        base, envelope=_walk_envelope([job] * len(walked)), domain=domain,
-        mem=mem, time_s=time_s, label=gn.stem,
-        job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
-        one_process=one_process(jobset.engine),
-        redo=lambda: _redo(base, task, jobset, job))
-    if mode == "submit":
-        from ..runwrap import walk_header
-        header = walk_header(base, gn, resources=envelope,
-                             one_process=one_process(jobset.engine),
-                             domain_pq=((placement.partition, placement.qos)
-                                        if placement else None))
-        if header is None:
+    # THE WALK'S ONE HEADER, as its prep wrote and admitted it: one
+    # allocation walking every point, their walls summed (`group.envelope`,
+    # `prep.prep_calculation`) -- or no queue to send to, said by the one
+    # answer (`_no_sbatch`); asked about, the same.
+    header = launch_dir / gn.name(".sbatch")
+    if mode == "submit" or shutil.which("sbatch"):
+        if not header.is_file():
             raise SubmitError(_no_sbatch(
                 gn.stem, f"{LAUNCH_DIR}/{gn.name('.sbatch')}", base=base,
                 told=told, redo=_redo(base, task, jobset, job)))
-        plan.writes.text(launch_dir / gn.name(".sbatch"), header)
+        plan.reads.append(_as_found(header, base))
+    sent, placement, cmd = _sbatch_request(
+        envelope=_walk_envelope([job] * len(m.points)),
+        placement=_placed_by_prep([job]), time_s=time_s,
+        job_name=_scheduler_job_name(jobset, gn.stem),
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=())
     plan.submissions.append(Submission(
         gn.stem, cmd, stage_dir, False, [member], placement=placement,
-        sent=envelope, rides="rides the sweep",
-        ask_in=stage_dir / walked[0][1].rel,
-        ask_script=names.name(".sbatch")))
+        sent=sent, rides="rides the sweep", header=header))
 
 
 def _gathered_now(base: Path, task, stage: str, template_text):
@@ -2835,10 +2432,10 @@ def _carry_sweep_gather(prev_run: Path, run: Path, points, writes, *,
 
 
 def _placed_on(placement, sent=None) -> Optional[dict]:
-    """A `Placement` -> where this run was SENT, and with what wall and
-    memory (``sent``, the request as sent: a launch flag changes them,
-    `job-system.md` § 6.0) -- or ``None`` when there was no placement (a
-    direct run).
+    """The queue prep placed the run on -> where this run was SENT, and with
+    what wall and memory (``sent``, the request as sent: its wall the
+    launch's ``--time`` when restated, `job-system.md` § 6.0) -- or ``None``
+    when there was no placement (a direct run).
 
     The QUEUE half of `scheduler.md` R12: domain, partition, qos -- known
     the moment ``sbatch`` accepts, and reachable before this field only by
@@ -2847,8 +2444,7 @@ def _placed_on(placement, sent=None) -> Optional[dict]:
     """
     if placement is None:
         return None
-    d = getattr(placement, "domain", None)
-    return {"domain": getattr(d, "name", None),
+    return {"domain": placement.name,
             "partition": placement.partition,
             "qos": placement.qos,
             **{f: getattr(sent, f) for f in ("time", "mem")
@@ -2906,8 +2502,7 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
 
 def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                 mode: str, told, task, template_text: Optional[str],
-                number: int, domain: Optional[str] = None,
-                mem: Optional[str] = None, time_s: Optional[int] = None,
+                number: int, time_s: Optional[int] = None,
                 described=None) -> LaunchPlan:
     """ONE submission walking a GROUP's stages -- the description's group
     ``number``, its members ``names`` in the ladder's order, prepared as one
@@ -2974,12 +2569,15 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
             True, members, rides="rides the group", log=base / log))
         return plan
     header = launch_dir / gn.name(".sbatch")
-    if not header.is_file():
-        raise SubmitError(_no_sbatch(
-            f"group {number}", f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
-            base=base, told=told,
-            redo=_redo(base, task, jobset, jobs[0])))
-    if any(m.first for m in members):
+    # THE HEADER PREP WROTE, or no queue to send to -- asked about where a
+    # scheduler is here to ask, as every door's is.
+    if mode == "submit" or shutil.which("sbatch"):
+        if not header.is_file():
+            raise SubmitError(_no_sbatch(
+                f"group {number}", f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
+                base=base, told=told,
+                redo=_redo(base, task, jobset, jobs[0])))
+    if header.is_file() and any(m.first for m in members):
         # THE HEADER IS STILL WHAT PREP WOULD WRITE (L4): the members'
         # shared request, rendered now.
         from ..deck_record import without_stamps
@@ -2999,25 +2597,23 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                 f"it is rendered from changed, since the prep (job-system.md "
                 f"§ 6.0).  To prepare it as it is described now, "
                 + _redo(base, task, jobset, jobs[0]))
-    plan.reads.append(_as_found(header, base))
+    if header.is_file():
+        plan.reads.append(_as_found(header, base))
     sent, placement, cmd = _sbatch_request(
-        base, envelope=shared, domain=domain, mem=mem, time_s=time_s,
-        label=gn.stem, job_name=_scheduler_job_name(jobset, gn.stem),
-        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
-        one_process=one_process(jobset.engine),
-        redo=lambda: _redo(base, task, jobset, jobs[0]))
+        envelope=shared, placement=_placed_by_prep(jobs), time_s=time_s,
+        job_name=_scheduler_job_name(jobset, gn.stem),
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=())
     # `--mode ask` ASKS OVER THE LINE ITSELF: the header prep wrote is the
     # one the send passes.
     plan.submissions.append(Submission(
         gn.stem, cmd, base, False, members, placement=placement, sent=sent,
-        rides="rides the group"))
+        rides="rides the group", header=header))
     return plan
 
 
 def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
-                domain: Optional[str], gpu_domain: Optional[str],
-                only: Optional[str], mem: Optional[str],
-                time_s: Optional[int], told, cold: bool = False,
+                only: Optional[str], time_s: Optional[int], told,
+                cold: bool = False,
                 task=None, template_text: Optional[str] = None,
                 from_attempt: Optional[str] = None, gather: bool = False,
                 described=None) -> LaunchPlan:
@@ -3029,8 +2625,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     sent as the points' walk (:func:`_points_walk`); else the deck/launch
     agreement and a trial's cold start, the wrapper the line runs -- where
     the line is run, or asked about when a scheduler is here to ask -- and,
-    for a scheduler, the one request (:func:`_sbatch_request`): the queue
-    admitted, the line exact.
+    for a scheduler, the one line (:func:`_sbatch_request`): the header
+    prep wrote, sent to the queue it recorded.
 
     A ladder is launched ONE stage at a time, in every mode -- direct
     running stages in order would be local chaining.
@@ -3065,7 +2661,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             continue
         if m.points is not None:
             _points_walk(plan, m, jobset, base, task, mode=mode,
-                         domain=domain, mem=mem, time_s=time_s, told=told)
+                         time_s=time_s, told=told)
             continue
         try:
             # A NAMED TRIAL'S way back is its benchmark's, not a group's.
@@ -3109,23 +2705,15 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                 f"job {job.name!r}", sbatch_name, base=base, told=told,
                 redo=(None if jobset.kind == "sweep"
                       else _redo(base, task, jobset, job))))
-        gpu = _gpus(job.resources, f"job {job.name!r}").uses
-        named = gpu_domain if gpu and gpu_domain else domain
         sent, placement, cmd = _sbatch_request(
-            base, envelope=job.resources,
-            domain=named,
-            mem=mem, time_s=time_s, label=job.name,
-            job_name=_scheduler_job_name(jobset, job.name),
+            envelope=job.resources, placement=_placed_by_prep([job]),
+            time_s=time_s, job_name=_scheduler_job_name(jobset, job.name),
             script=sbatch_name,
             run_args=_run_sh_args(job.resources, m.run,
-                                  cold=m.cold and not m.has_attempt),
-            one_process=one_process(jobset.engine),
-            redo=lambda: (rollback("the benchmark's prep", base=base)
-                          if jobset.kind == "sweep"
-                          else _redo(base, task, jobset, job)))
+                                  cold=m.cold and not m.has_attempt))
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,
-            sent=sent, ask_in=m.read_from))
+            sent=sent, ask_in=m.read_from, header=m.read_from / sbatch_name))
     return plan
 
 

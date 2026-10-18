@@ -1224,8 +1224,8 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
             f"re-probe it --\n    {probe_line(target)}\n ")
 
 
-def machine_for(bundle_dir=None, *, target: Optional[str] = None,
-                local_only: bool = False) -> Optional["Environment"]:
+def machine_for(bundle_dir=None, *, target: Optional[str] = None
+                ) -> Optional["Environment"]:
     """**The precedence, entire** — the one function a caller asks.
 
     Walks :func:`record_scopes` and returns the first record that reads.  The
@@ -1239,23 +1239,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
 
     **It never probes** (`configuration.md` M-4): when no scope answers it
     answers ``None``, and the caller refuses with :func:`probe_command`.
-
-    ``local_only`` asks a DIFFERENT question from everything else in this
-    function: not *"which machine is this calculation for"* (bundle / target /
-    C1's ambiguity guard -- all of that is precedence among CANDIDATES for the
-    calculation's answer), but *"what does the box this process is literally
-    running on know about itself, full stop."*  R9's second check
-    (`jobset/submit.py::_reject_if_this_machine_says_no`) wants exactly that:
-    a re-admission against THIS machine's own probe, independent of and in
-    addition to whichever machine the calculation is prepared for.  The C1
-    question and this one only LOOK alike because both start from "no target
-    was named"; C1 protects the case where that silence would make a wrong
-    machine's numbers travel into a wrapper.  Here there is no wrapper, no
-    numbers travelling, and no target in the question -- so C1 does not apply
-    and must not run.
     """
-    if local_only:
-        return read_environment(machine_scope_path())
     # A named target is validated FIRST, before any scope is consulted, so a
     # typo is never answered by whatever was snapshotted.
     # `LOCAL_TARGET` NAMES WHICH MACHINE; IT IS NOT A DIFFERENT WAY OF FINDING

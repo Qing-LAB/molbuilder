@@ -324,8 +324,8 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
     ``placed_on`` is WHERE IT WAS SENT: the domain name, its partition and
     qos (`scheduler.md` R12 -- the queue half; what it LANDED ON is the
     monitor's ``[MACHINE]`` line, written on the node) -- and the wall and
-    memory it was sent with, which a launch flag changes
-    (`job-system.md` § 6.0).
+    memory it was sent with: prep's, the wall the launch's ``--time`` when
+    it restates it (`job-system.md` § 6.0).
 
     ``null`` for a run here, which no queue placed -- written, never left
     out: a reader tells "no queue" from "not recorded" by the key.

@@ -267,8 +267,8 @@ class GpuRequest:
 def gpu_request(resources) -> GpuRequest:
     """**Does this job use a GPU, and how many does it ask for** -- the one
     door every reader asks (`execution/architecture.md` § 3.2): the header,
-    the run script, launch and its queue table, a benchmark's trials and
-    their report, the Task setup card.
+    the run script, prep's admission and its queue list, a benchmark's
+    trials, their shelves and their report, the Task setup card.
 
     Read off the job's ``Resources``: ``use_gpu`` as `resolve` carries it
     from the job's own values -- what its deck renders -- and the count in
@@ -389,7 +389,7 @@ class Job:
     written_at: Optional[str] = None
     #: WHAT ITS PREP WAS TOLD BESIDE THE DESCRIPTION -- ``allocation``, the
     #: launch values said on prep's command line (each over the run card and
-    #: the description, `prep._fold_allocation`), ``env`` and
+    #: the description, `prep_inputs.fold_allocation`), ``env`` and
     #: ``emit_sbatch``; ``{}`` for a trial.  Launch plans the stage again
     #: with it to check the prepared stage is still what the description
     #: gives (`job-system.md` § 6.0).

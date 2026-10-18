@@ -39,7 +39,7 @@ name = "launch.mode in this machine's file sends a launch given no --mode"
 machine_config = { launch = { mode = "submit" } }
 launch_mode = ""
 launch = []
-line = ["-p cpu", "-q public"]
+line = ["H2_01_coarse.sbatch"]
 
 [[case]]
 name = "...but the launch printed for a calculation set to another machine states its mode: it is typed there, where this file does not speak"
@@ -68,7 +68,7 @@ name = "a comment key is ignored, at the top and inside a section"
 machine_config = { _note = "mine", launch = { _comment = "this box", mode = "submit" } }
 launch_mode = ""
 launch = []
-line = ["-p cpu"]
+line = ["H2_01_coarse.sbatch"]
 
 # ===================================================================== #
 #  Every preference section reads                                        #

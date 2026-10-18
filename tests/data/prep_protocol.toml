@@ -295,7 +295,10 @@ name = "a group goes whole the first time -- a member launched alone before its 
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
 stage = ["coarse", "medium"]
-said = ["group 1 -- one job: coarse, medium, one after another; its header: launch/H2_group-01_coarse-02_medium.sbatch"]
+said = ["group 1 -- one job: coarse, medium, one after another (their walls summed, the largest memory); its header: launch/H2_group-01_coarse-02_medium.sbatch",
+        "header: -J H2_group-01_coarse-02_medium  -N 1  -n 2  -c 1  -t 0-02:00:00  -p cpu  -q public  --mem=8G"]
+# ...and not a member's own: its first launch is the group's one job.
+said_lacks = ["header: -J H2_01_coarse", "header: -J H2_02_medium"]
 made = ["launch/H2_group-01_coarse-02_medium.sbatch"]
 launch = []
 launch_stage = "medium"
@@ -308,7 +311,8 @@ stage_strategy = "publishable"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
 stage = ["coarse", "medium"]
-said = ["group 1 -- one job: coarse, medium, one after another; its header: launch/H2_group-01_coarse-02_medium.sbatch"]
+said = ["group 1 -- one job: coarse, medium, one after another (their walls summed, the largest memory); its header: launch/H2_group-01_coarse-02_medium.sbatch",
+        "header: -J H2_group-01_coarse-02_medium  -N 1  -n 1"]
 made = ["launch/H2_group-01_coarse-02_medium.sbatch"]
 launch = []
 launch_stage = ["coarse", "medium"]
@@ -354,9 +358,9 @@ made_lacks = ["launch/H2_group-01_coarse-02_medium.sbatch"]
 [[case]]
 name = "a group's one job is admitted at prep -- its members' walls summed, refused when the queue it names allows less"
 groups = [1, 1]
-stage_run = { coarse = { time = "20:00:00" }, medium = { restart = "clean", time = "20:00:00" } }
+stage_run = { coarse = { time = "23:30:00" }, medium = { restart = "clean" } }
 stage = ["coarse", "medium"]
-refused = ["group 1's one job -- coarse, medium, their walls summed and the largest memory", "does not fit the queue 'cpu'"]
+refused = ["group 1's one job (coarse, medium: their walls summed and the largest memory) does not fit the queue 'cpu'", "needs 1470 min", "Ask for less where it is stated:", "wall: the run card (`execution` in task.json)", "wall: the description (`allocation` in task.json)"]
 made_lacks = ["job-set.json", "01_coarse"]
 
 # ===================================================================== #

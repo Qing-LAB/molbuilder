@@ -1,21 +1,15 @@
 """Launch must not re-ask a question its own artifacts already answered.
 
-Two failures on Sol, 2026-08-24, from one bundle whose `task.json` said
+A failure on Sol, 2026-08-24, from a bundle whose `task.json` said
 everything:
 
     "allocation": {"domain": "htc", "time": "4h", "mem": "256G"}
 
-`prep` baked all three into every job's `resources`.  Then:
-
-* `launch` printed the queue table and refused for want of a `--domain`,
-  though `resources.domain` said `htc` -- R9 says what was admitted when
-  the work was built is re-admitted when it is sent, and it cannot be
-  re-admitted unread.
-* with `--domain htc` supplied by hand, it refused again: *"prep baked
-  time='4h', which does not parse as a SLURM walltime"* -- the tool
-  rejecting a value the tool had written.  `Allocation.time` was
-  documented as what a person types and `Resources.time` as what SLURM
-  takes, and nothing translated between them.
+`prep` baked all three into every job's `resources`, and launch refused:
+*"prep baked time='4h', which does not parse as a SLURM walltime"* -- the
+tool rejecting a value the tool had written.  `Allocation.time` was
+documented as what a person types and `Resources.time` as what SLURM takes,
+and nothing translated between them.
 
 The rule: **the record holds ONE spelling, SLURM's, and
 translation happens at the edges where humans are** (`task.py::Allocation`,
@@ -24,15 +18,10 @@ translation happens at the edges where humans are** (`task.py::Allocation`,
 from __future__ import annotations
 
 import json
-import re
 
 import pytest
 
 from molbuilder.jobset.model import Job, Resources
-
-
-SLURM_TIME = re.compile(r"^(?:\d+-)?\d+(?::\d{2}){0,2}$")
-SLURM_MEM = re.compile(r"^\d+(?:\.\d+)?[KMGT]?$")
 
 
 class TestTheRecordHoldsOneSpelling:
@@ -62,19 +51,6 @@ class TestTheRecordHoldsOneSpelling:
         with pytest.raises(Exception) as e:
             _allocation_from_obj({"allocation": {"time": "banana"}})
         assert "allocation.time" in str(e.value)
-
-    def test_what_reaches_sbatch_is_what_sbatch_takes(self):
-        """The end of the chain, and the assertion the whole rule exists
-        for: `-t 4h` was emitted and SLURM refused it."""
-        from molbuilder.scheduler.emit import Directives
-        flags = Directives.of(None, Resources(
-            time="4h", mem="80GB", mpi_np=48, cpus_per_task=1)).sbatch_flags()
-        for i, tok in enumerate(flags):
-            if tok == "-t":
-                assert SLURM_TIME.match(flags[i + 1]), flags
-            if tok.startswith("--mem="):
-                assert SLURM_MEM.match(tok.split("=", 1)[1]), flags
-        assert "-t" in flags and any(f.startswith("--mem=") for f in flags)
 
 
 class TestAStatedValueIsNeverLostQuietly:

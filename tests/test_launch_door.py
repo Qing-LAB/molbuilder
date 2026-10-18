@@ -1,24 +1,15 @@
 """The launch door -- through the road: `jobset init`, `prep`, `launch`.
 
-PINS: ``docs/execution/job-system.md`` § 6 (*One request, three doors*: what
-`prep` baked, under what was said at launch, admitted on the queue it is sent
-to; the queue named once, for the work being launched; `-J
-<calculation>/<job>`); ``docs/execution/architecture.md`` § 5.2 (every
-launch value is stated -- the queue, the wall, the memory -- and a launch
-flag overrides what prep baked, never fills what nobody stated);
-``docs/execution/submission.md`` S4 (nothing is submitted unseen -- every
-door);
-``docs/execution/running-a-job.md`` § 5.5 (a flag the launch would not read
-is refused) and § 5.3.1 (`--mem 0` is the whole node); plan W52.
+PINS: ``docs/execution/job-system.md`` § 6.0 (launch sends the header its
+prep wrote, each stage its own; `-J <calculation>/<job>`);
+``docs/execution/architecture.md`` § 5.2 (every launch value is stated, at
+prep); ``docs/execution/submission.md`` S4 (nothing is submitted unseen --
+every door); ``docs/execution/running-a-job.md`` § 5.5 (a flag the launch
+would not read is refused).
 
-PREVENTS, each read in the code before 2026-10-01 (the W52 review):
-
-* a stage sent to the queue `--domain` named under a wall nobody stated --
-  the one `prep`'s header had worked out for ANOTHER queue, a production
-  stage killed at `debug`'s fifteen minutes -- and sent with no question,
-  while the grouped bench and the bias chain asked;
-* the queue one stage's prep baked routing every stage of the ladder;
-* `launch --mem 0` refused, though the help it shares with prep offers it.
+PREVENTS: the queue one stage's prep baked routing every stage of the
+ladder; a direct run without the ranks and threads its prep stated; a send
+over a folder changed since its plan.
 
 The scheduler is a stub on PATH that queues nothing and writes every call
 down (`support.road`).  Nothing here launches an engine.
@@ -30,7 +21,7 @@ import json
 import pytest
 
 from support.road import (a_machine_with_queues, calls_made, describe_calculation,
-                          group_words, jobset)
+                          group_words, jobset, stage_file)
 
 
 def _queues(gpu: bool = False):
@@ -91,62 +82,43 @@ def _ledger(bundle):
 
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
-    """`prep task --stage coarse --domain debug` names coarse's queue -- not medium's.
-    Launched, coarse goes to `debug`; medium, prepared naming none, is
-    refused at its prep with the record's queues listed (a run on a
-    scheduler names its queue, `architecture.md` § 5.2); named, it goes to
-    its own.
+    """`prep task --stage coarse --domain debug` names coarse's queue -- not
+    medium's.  Medium, prepared naming none, is refused at its prep with the
+    record's queues listed (a run on a scheduler names its queue,
+    `architecture.md` § 5.2); named, its header carries its own -- and
+    launch sends each stage's own header.
 
-    MUTATION THIS MUST FAIL AGAINST: the baked queue read from every
-    stage's row (medium sent to coarse's `debug`)."""
+    MUTATION THIS MUST FAIL AGAINST: a header rendered from another stage's
+    placement (medium's on coarse's `debug`)."""
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
     r = jobset("prep", "task", "--group", "2", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code != 0, r.output
-    assert "(the target's record lists: debug, htc)" in r.output, r.output
+    for said in ("the target's record lists:", "htc/debug", "htc/public"):
+        assert said in r.output, r.output
     _prep(bundle, "medium", "--domain", "htc")
-    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--dry-run")
-    assert r.exit_code == 0, r.output
-    assert _flag(_line(r.output), "-q") == "debug", r.output
-    # MEDIUM'S FIRST LAUNCH from the structure (`--cold`): coarse has not
-    # run, and what medium would take from it is not this test's question.
-    r = jobset("launch", "task", "--stage", "medium", "--bundle", bundle,
-               "--mode", "submit", "--dry-run", "--cold")
-    assert r.exit_code == 0, r.output
-    assert _flag(_line(r.output), "-q") == "public", r.output
-
-
-def test_memory_is_sent_as_said_and_zero_is_the_whole_node(cluster):
-    """`--mem 64G` reaches the line as `--mem=64G`; `--mem 0` -- the help's
-    own "all of the node's" -- as `--mem=0`; a spelling that is no amount of
-    memory is refused in the verb's own words.
-
-    MUTATION THIS MUST FAIL AGAINST: `launch` reading --mem as a number of
-    gigabytes (`0` refused as "memory must be positive")."""
-    bundle, _calls = cluster
-    _prep(bundle, "coarse", "--domain", "htc")
-    for said, sent in (("64G", "--mem=64G"), ("0", "--mem=0")):
-        r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-                   "--mode", "submit", "--domain", "htc", "--dry-run",
-                   "--mem", said)
-        assert r.exit_code == 0, (said, r.output)
-        assert sent in _line(r.output), (said, r.output)
-    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc", "--dry-run",
-               "--mem", "12Q")
-    assert r.exit_code != 0 and "--mem:" in r.output, r.output
+    for stage, qos in (("coarse", "debug"), ("medium", "public")):
+        header = stage_file(bundle, stage, ".sbatch")
+        assert f"#SBATCH -q {qos}" in header.read_text().splitlines(), stage
+        # MEDIUM'S FIRST LAUNCH from the structure (`--cold`): coarse has
+        # not run, and what medium would take from it is not this test's
+        # question.
+        r = jobset("launch", "task", "--stage", stage, "--bundle", bundle,
+                   "--mode", "submit", "--dry-run",
+                   *(("--cold",) if stage == "medium" else ()))
+        assert r.exit_code == 0, r.output
+        assert header.name in _line(r.output), r.output
 
 
 def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
         cluster):
     """`--mode direct` runs the stage's own wrapper here, the ranks and
-    threads its prep stated as arguments; a scheduler's flag beside it is
-    refused by name.
+    threads its prep stated as arguments; a submitted job's wall (`--time`)
+    beside it is refused by name.
     A bundle whose config says `launch.mode: submit` launches that way when
-    nothing is typed -- to the queue its prep named -- and `--mode direct`
-    typed over it runs here.
+    nothing is typed -- sending the header its prep wrote -- and `--mode
+    direct` typed over it runs here.
 
     MUTATION THIS MUST FAIL AGAINST: a direct run without -np/-omp."""
     bundle, _calls = cluster
@@ -159,17 +131,16 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
                if "WOULD start" in ln)
     assert run[run.index("bash") + 1] == "H2_01_coarse.run.sh", run
     assert (_flag(run, "-np"), _flag(run, "-omp")) == ("4", "2"), run
-    for flag, value in (("--domain", "htc"), ("--mem", "8G"),
-                        ("--time", "1h")):
-        r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
-                   "--mode", "direct", flag, value)
-        assert r.exit_code != 0 and flag in r.output, (flag, r.output)
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
+               "--mode", "direct", "--time", "1h")
+    assert r.exit_code != 0 and "--time" in r.output, r.output
 
     from molbuilder.runtime_config import write_config_scope
     write_config_scope({"launch": {"mode": "submit"}})
     r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle, "--dry-run")
     assert r.exit_code == 0, r.output
-    assert _flag(_line(r.output), "-q") == "public", r.output
+    assert (stage_file(bundle, "coarse", ".sbatch").name
+            in _line(r.output)), r.output
     r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "direct", "--dry-run")
     assert r.exit_code == 0, r.output

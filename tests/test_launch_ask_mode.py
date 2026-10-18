@@ -49,14 +49,14 @@ def test_no_scheduler_is_its_own_ANSWER_not_an_empty_table():
 
     A missing scheduler is not "the queue could not say"; it is "there is
     no queue". Rendering the normal table would head it *asked the
-    scheduler* when none was asked, and offer to change `--domain`, which
-    means nothing here.
+    scheduler* when none was asked, and offer to change a wall nothing waits
+    on.
     """
     out = prediction_table([Prediction(label="relax", no_scheduler=True)])
     assert "no scheduler on this machine" in out
     assert "nothing to wait for" in out
     assert "asked the scheduler" not in out
-    assert "--domain" not in out, "offered a knob that does nothing here"
+    assert "--time" not in out, "offered a knob that does nothing here"
     assert "would start" not in out, "rendered the table header anyway"
 
 
@@ -95,9 +95,10 @@ def test_the_table_says_the_time_is_an_estimate_that_moves():
 
 def test_the_table_names_the_next_move():
     """*Come back, tune it, ask again, or say I can live with that.* The
-    loop only works if the table says how to re-enter it."""
+    loop only works if the table says how to re-enter it: the wall at this
+    launch, everything else at prep."""
     out = prediction_table([Prediction(label="htc", start="x")])
-    assert "--domain" in out and "ask again" in out
+    assert "--time" in out and "ask again" in out and "prep" in out
 
 
 def test_an_empty_ask_says_so_rather_than_printing_a_header():

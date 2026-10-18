@@ -887,11 +887,9 @@ emitted verbatim.
 
 ### 5.3 The `.sbatch` header — every value stated
 
-**There is no scheduler configuration.** `molbuilder.json` carried a
-`scheduler` block until 2026-10-02 — a queue, defaults for the wall, the cores
-per task and the memory, a queue menu, an order to place by, mail and export
-lines — and each value in it was one some job received without stating it.
-The block is refused by name (`configuration.md` § 4).
+**There is no scheduler configuration.** A `scheduler` block in
+`molbuilder.json` is refused by name (`configuration.md` § 4): each value in
+it would be one some job received without stating it.
 
 **What the `.sbatch` header carries** (`render_sbatch`): a fixed `-J <basename>`,
 `-N 1`, `-o slurm.%j.out` / `-e slurm.%j.err`, and the job's own stated values —
@@ -909,21 +907,17 @@ the target's record says `workstation`
 
 #### 5.3.1 Memory and wall — the user states them, nothing else does
 
-**No estimation exists** *(user decision, 2026-08-24)*. A per-`.fdf` memory
-model (`siesta/memory.py`, the `mem_model` coefficients, a runtime
-estimate-vs-allocation audit, and a GPU floor/ceiling clamp band) lived here
-until then and was deleted whole: five Sol jobs (62039301–05) OOM'd against
-scheduler defaults while that machinery sat unconfigured and silent, and a
-model that answers a question the user was never asked is the wrong shape
-regardless of its coefficients.
+**No estimation exists** *(user decision, 2026-08-24)*: five Sol jobs
+(62039301–05) OOM'd against scheduler defaults while a memory model sat
+unconfigured and silent, and a model that answers a question the user was
+never asked is the wrong shape regardless of its coefficients.
 
 **And no default exists either** *(user, 2026-10-02)*. A job's memory is, from
-strongest: `--mem` at launch, `--mem` at prep, the description's
-`allocation.mem`. Its wall is `--time` at launch, `--time` at prep, the run
-card's `time`, `allocation.time`. **Stated nowhere, prep refuses** on a target
-with a scheduler. `scheduler.defaults.mem` and the queue's own ceiling stood in
-for an unstated memory and wall until then; the scheduler's own default would
-stand in now if prep let it through, and that is a value nobody stated too.
+strongest: `--mem` at prep, the description's `allocation.mem`. Its wall is,
+for a submitted job, `--time` at launch, then `--time` at prep, the run card's
+`time`, `allocation.time`. **Stated nowhere, prep refuses** on a target
+with a scheduler. The scheduler's own default would stand in if prep let it
+through, and that is a value nobody stated too.
 
 `--mem 0` asks for the node's whole memory.
 
@@ -932,9 +926,7 @@ stand in now if prep let it through, and that is a value nobody stated too.
 - **`launch`** — `{mode}`. `mode` is `direct` (run in place) or `submit`
   (through the scheduler); any other value, and any other key, is refused by
   name (`runtime_config.get_launch_mode`). This, not the detected scheduler, is what
-  gates `.sbatch` submission. *(It was spelled `execution` until 2026-10-02 —
-  the name of `task.json`'s run card, a different thing — and carried a default
-  queue, `domain`, which a job now names itself.)*
+  gates `.sbatch` submission.
 - **`envs`** — overrides the conda env name per category
   (`{"siesta": "my-siesta-env", …}`); unset categories use the defaults
   (§ 2.3).
@@ -966,35 +958,34 @@ two machines is explained by the bundle itself. Secret sections (`auth`,
 **There is ONE launch door.** `molbuilder jobset launch` resolves the mode
 (flag, else `launch.mode`, else a refusal — never the detected scheduler),
 decides everything before it writes anything — what the run follows, the
-deck/launch agreement check, the queue (`--domain`, else the one `prep` baked
-for this stage — a run on a scheduler is refused at prep when it names none)
-and the request admitted on it — then **shows the exact `sbatch` line
-and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
+deck/launch agreement check, and the queue `prep` recorded for the work (a run
+on a scheduler is refused at prep when it names none; launch admits nothing
+again) — then **shows the exact `sbatch` line and every value of the
+header it sends, and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
 the question, never the output), records the attempt, and launches **one job
 per invocation** — a grouped bench one per resource shelf
 ([`job-system.md`](?doc=execution/job-system.md) § 7). **It hands each run
 script its run's number**, `--run N`, decided in the plan with everything
 else ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a run
 script refuses to start without one, naming this door. The single-stage door
-asks too *(ruled 2026-10-01)*: a launch flag may still change the queue, the
-wall or the memory after `prep`'s printout, so the line as sent is seen only
-here. **A run here starts in the background**, its question offering the
+asks too: `--time` may restate a submitted job's wall after `prep`'s
+printout, so the line as sent is seen only here. **A run here starts in the background**, its question offering the
 foreground, `--foreground` the waited-on run
 ([`job-system.md`](?doc=execution/job-system.md) § 6.0). A flag the launch
 would not read is refused by name, with the launch as typed for each mode —
-`--time`/`--mem`/`--domain`/`--gpu-domain` under `--mode direct`,
+`--time` under `--mode direct`,
 `--foreground` under `submit` or `ask`, a bench's flags on `launch task`.
 
 > **`--mode ask` submits nothing and tells you when it would start.** It walks
 > the identical path `--mode submit` walks and inserts one flag,
-> `sbatch --test-only`, so the line asked about **is** the line that would be
-> sent. SLURM validates the request and predicts a start time; no job is
+> `sbatch --test-only`, so the line asked about — the header its prep wrote —
+> **is** the line that would be sent. SLURM validates the request and predicts a start time; no job is
 > created, nothing is recorded, and `status` sees nothing — because after it,
 > nothing exists.
 >
 > It is for the minute before you commit: ask, and if the wait is poor, change
-> `--domain` or trim the resources and ask again, or decide you can live with
-> it and re-run with `--mode submit`. It needs a login node — **there is no
+> the wall (`--time`) and ask again, or prepare it again on another queue or
+> with less, or decide you can live with it and re-run with `--mode submit`. It needs a login node — **there is no
 > prediction without the cluster**, and node counts are a poor proxy for it:
 > 134 wide nodes are no help if all 134 are busy for two days.
 >
@@ -1012,9 +1003,7 @@ would not read is refused by name, with the launch as typed for each mode —
 > A sweep is where it pays: a grid's shelves ask for different shapes, `G1`
 > schedules sooner than `G4`, and seeing their waits side by side is what tells
 > you which one to submit. It is asked **as `submit` sends it** — one question
-> per resource shelf, with the shelf's own request; the shelf's script is
-> written only when it is sent, so the question rides one of its trials'
-> rendered headers under the same flags, which win over any header. A stage
+> per resource shelf, each with the shelf's own header, its prep's. A stage
 > launched before is asked about as the attempt its re-launch would open —
 > nothing is opened by asking. The number of queries is capped for politeness, and
 > anything past the cap is **named as unasked** — a partial answer that does

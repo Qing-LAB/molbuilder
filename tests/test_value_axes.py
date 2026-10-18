@@ -8,8 +8,8 @@ gpu-capable row carries the sinfo inventory and the probed 48-core cap
 (the GPU node group's own core count; hand-editable).
 Every rule the section states is pinned here: the family split, the
 inventory fallback, the cap drop BY NAME, the per-trial coordinates in the
-decks and in ``job-set.json``, and the per-side grouped submission with the
-routing preference.
+decks and in ``job-set.json``, and the per-side grouped submission, every
+shelf to the benchmark's one queue.
 """
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.prep import prep_bench
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
+
+from support.road import shelf_headers
 
 
 @pytest.fixture(autouse=True)
@@ -202,21 +204,13 @@ def _small_matrix():
             "block_size": [64, 128]}
 
 
-def _prep(calc):
-    """`prep bench coarse`, through the one entry -- what the command line
-    and the Task setup tab call; the folders it prepared."""
-    from molbuilder.jobset.model import Resources
-    return prep_bench(calc, "coarse", allocation=Resources(),
-                      emit_sbatch=False).dirs
-
-
 def test_per_trial_coordinates_reach_the_decks(sol_calc):
     """Render-probed, not assumed: two trials differing only in
     ``block_size`` render different ``BlockSize`` lines; the CPU-family
     deck says ``Diag.ELPA.GPU .false.`` while its GPU sibling says
     ``.true.`` — and `job-set.json` records every trial's point as data."""
     _declare(sol_calc, _small_matrix())
-    dirs = _prep(sol_calc)
+    dirs = _prep_on(sol_calc, "general")
     assert len(dirs) == 2 + 3 * 2       # cpu: 1 cell x2 blocks; gpu: G in 1,2,4
 
     def deck(sub):
@@ -252,22 +246,25 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
 
 
 # --------------------------------------------------------------------- #
-#  split submission: one group per side and shelf; domains; override    #
+#  split submission: one group per side and shelf, on the one queue     #
 # --------------------------------------------------------------------- #
 
-def _submit_dry(calc, *extra):
-    """A scripted submit names its queues, exactly as a person now does.
+def _prep_on(calc, queue):
+    """`prep bench coarse --domain QUEUE`, through the one entry: the
+    benchmark's one queue, its headers written (`job-system.md` § 6.0)."""
+    from molbuilder.jobset.model import Resources
+    return prep_bench(calc, "coarse", allocation=Resources(domain=queue),
+                      emit_sbatch=True).dirs
 
-    `htc` for the CPU side and `general` for the GPU side: a cpu-only
-    partition cannot take a GPU group, so one queue cannot answer for both
-    when a sweep splits.  `--yes` because there is no terminal to ask.
-    """
+
+def _submit_dry(calc, *extra):
+    """A scripted submit, as a person types it -- `--yes` because there is
+    no terminal to ask; its output."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(
         jobset_group, ["launch", "bench", "coarse", "--bundle", str(calc),
-                       "--mode", "submit", "--dry-run", "--yes",
-                       "--domain", "htc", "--gpu-domain", "general", *extra])
+                       "--mode", "submit", "--dry-run", "--yes", *extra])
     assert r.exit_code == 0, r.output
     return r.output
 
@@ -276,52 +273,47 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     """One grouped job per side AND resource shelf (user rulings,
     2026-08-21): the CPU side is one shelf here (one exact-fit group,
     named in full, its side and its cell -- `generator.md` § 4.3a); the
-    GPU side spans three device counts, so it
-    submits three exact-fit groups -- a G1 trial never idles inside a
-    gres:4 envelope.  The CPU group prefers the cpu-only domain, every
-    GPU group the gpu-capable one, and only GPU groups ask for devices."""
+    GPU side spans three device counts, so it submits three exact-fit
+    groups -- a G1 trial never idles inside a gres:4 envelope.  Every shelf
+    goes to the benchmark's one queue, and only GPU shelves ask for
+    devices."""
     _declare(sol_calc, _small_matrix())
-    _prep(sol_calc)
-    out = _submit_dry(sol_calc)
-    plans = [l for l in out.splitlines() if "WOULD run" in l]
-    assert len(plans) == 4
-    cpu = next(l for l in plans if "bench-group-cpu-G0K4C1 " in l)
-    assert "-p htc" in cpu and "--gres" not in cpu
+    _prep_on(sol_calc, "general")
+    shelves = shelf_headers(sol_calc, "coarse")
+    assert len(shelves) == 4
+    cpu = shelves["bench-group-cpu-G0K4C1"]
+    assert "#SBATCH -p general" in cpu
+    assert not any(ln.startswith("#SBATCH --gres") for ln in cpu), cpu
     # The shelf token is the SAME spelling its trials carry:
     # `G<gpus>K<ranks-per-gpu>C<cores>`, where 4 ranks over g devices is
     # K = 4/g.
     for g in (1, 2, 4):
-        tok = f"G{g}K{4 // g}C1"
-        line = next(l for l in plans if f"bench-group-gpu-{tok}" in l)
-        assert "-p general" in line and f"--gres=gpu:{g}" in line
+        header = shelves[f"bench-group-gpu-G{g}K{4 // g}C1"]
+        assert "#SBATCH -p general" in header, header
+        assert f"#SBATCH --gres=gpu:{g}" in header, header
     # widest first ACROSS shelves: the G4 group precedes G2 precedes G1
-    order = [l for l in plans if "bench-group-gpu-" in l]
-    assert ["G4" in order[0], "G2" in order[1], "G1" in order[2]] == \
-        [True, True, True]
-    assert out.count("rides the group") == 8
+    assert [n for n in shelves if "-gpu-" in n] == [
+        "bench-group-gpu-G4K1C1", "bench-group-gpu-G2K2C1",
+        "bench-group-gpu-G1K4C1"]
+    assert _submit_dry(sol_calc).count("rides the group") == 8
 
 
-def test_only_submits_one_side_and_the_named_queue_wins(sol_calc):
-    """``--only gpu`` carries just that side, and the queue named for that
-    side is where it goes — nothing infers a preference over a stated answer.
-    """
-    # A SECOND QUEUE WITH GPUS, named for the GPU side: the stated queue
-    # must win over the one placement would pick (`general`, first on the
-    # menu).
+def test_only_sends_one_side_to_the_queue_its_prep_named(sol_calc):
+    """``--only gpu`` carries just that side, to the queue the benchmark's
+    prep named -- a second queue with GPUs here, not the first on the
+    menu."""
     env = json.loads((sol_calc / "environment.json").read_text())
     env["domains"].append({"name": "public", "partition": "public",
                            "qos": "public", "max_time": "7-00:00:00",
                            "max_cores": 48, "gpu": {"a100": 4}})
     (sol_calc / "environment.json").write_text(json.dumps(env, indent=2))
     _declare(sol_calc, _small_matrix())
-    _prep(sol_calc)
-    out = _submit_dry(sol_calc, "--only", "gpu", "--gpu-domain", "public")
-    plans = [l for l in out.splitlines() if "WOULD run" in l]
-    assert len(plans) == 3
-    assert all("bench-group-gpu-" in l for l in plans)
-    assert all("-p public" in l for l in plans), \
-        "the named queue wins over the preference for every shelf"
-    assert "bench-group-cpu" not in out
+    _prep_on(sol_calc, "public")
+    shelves = shelf_headers(sol_calc, "coarse", side="gpu")
+    assert len(shelves) == 3
+    assert all("-gpu-" in name for name in shelves), list(shelves)
+    assert all("#SBATCH -p public" in header
+               for header in shelves.values()), shelves
 
 
 def test_the_shelves_submit_widest_first(sol_calc):
@@ -331,15 +323,16 @@ def test_the_shelves_submit_widest_first(sol_calc):
     to a verdict.  Declared ASCENDING here, so the order must flip it."""
     _declare(sol_calc, {"mpi_np": [2, 4], "omp_threads": [1],
                         "use_gpu": [False]})
-    _prep(sol_calc)
-    out = _submit_dry(sol_calc)
-    plans = [l for l in out.splitlines() if "WOULD run" in l]
-    assert len(plans) == 2
+    _prep_on(sol_calc, "htc")
+    shelves = shelf_headers(sol_calc, "coarse")
     # The shelf token is the SAME spelling its trials carry
-    # (`G<gpus>K<ranks-per-gpu>C<cores>`).
-    # Named in full, side and cell (`generator.md` § 4.3a).
-    assert "bench-group-cpu-G0K4C1" in plans[0] and " -n 4 " in plans[0]
-    assert "bench-group-cpu-G0K2C1" in plans[1] and " -n 2 " in plans[1]
+    # (`G<gpus>K<ranks-per-gpu>C<cores>`), named in full, side and cell
+    # (`generator.md` § 4.3a).
+    assert list(shelves) == ["bench-group-cpu-G0K4C1",
+                             "bench-group-cpu-G0K2C1"]
+    assert "#SBATCH -n 4" in shelves["bench-group-cpu-G0K4C1"]
+    assert "#SBATCH -n 2" in shelves["bench-group-cpu-G0K2C1"]
+    out = _submit_dry(sol_calc)
     riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
     assert riders == ["G0K4C1", "G0K2C1"], riders
 
@@ -354,7 +347,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     from molbuilder.jobset._cli import jobset_group
     _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
                         "use_gpu": [False], "block_size": [64, 128]})
-    _prep(sol_calc)
+    _prep_on(sol_calc, "htc")
     # The trial's ARTIFACT directory, not a hardcoded container: the deck
     # lives in the attempt (`project-layout.md` § 1.5a).
     _c = sol_calc / "01_coarse" / "bench" / "bench-G0K4C1block_size64"
@@ -368,7 +361,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     deck.write_text(warm_text)
     r = CliRunner().invoke(
         jobset_group, ["launch", "bench", "coarse", "--bundle",
-                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code != 0
     assert "WARM-start" in r.output and "G0K4C1block_size64" in r.output
 
@@ -376,7 +369,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
                            text, flags=re.M))
     r = CliRunner().invoke(
         jobset_group, ["launch", "bench", "coarse", "--bundle",
-                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code != 0
     assert "no restart group" in r.output
 
@@ -388,7 +381,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
 def test_declared_gpu_count_is_exact(sol_calc):
     """User ruling, 2026-08-21 ("explicit is what we need"): declared
     device counts are measured exactly -- no divisor invention -- and an
-    uneven (mpi_np, G) pair is dropped BY NAME (ELPA's equal-share rule),
+    uneven (mpi_np, G) pair is dropped BY NAME (a trial counts its ranks per GPU),
     never rounded."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [1, 2, 3]})
@@ -403,7 +396,7 @@ def test_uneven_split_is_dropped_by_name(sol_calc):
     notes: list = []
     bench_inputs(sol_calc, None, notes=notes)
     out = "\n".join(notes)
-    assert "split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
+    assert "do not split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
 
 
 def test_gpu_count_beyond_the_record_is_refused(sol_calc):
@@ -560,7 +553,7 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     arm), and the split submission works the same from there."""
     from molbuilder.jobset._cli import _stage_bench_dir
     _declare(flat_sol_calc, _small_matrix())
-    _prep(flat_sol_calc)
+    _prep_on(flat_sol_calc, "general")
     container, token = _stage_bench_dir(flat_sol_calc, "coarse")
     assert container.name.startswith("bench_"), (
         f"flat container is {container.name!r}, not the root-level "
@@ -568,7 +561,10 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     assert container.is_dir(), "prep did not lay the flat container down"
     assert (container / "job-set.json").is_file(), (
         "the sweep's record is not in the flat container")
-    trials = [d.name for d in container.iterdir() if d.is_dir()]
+    # ITS TRIALS, beside the shelves' own folder (`launch/`, L3).
+    from molbuilder.runfiles import LAUNCH_DIR
+    trials = [d.name for d in container.iterdir()
+              if d.is_dir() and d.name != LAUNCH_DIR]
     assert trials and all(t.startswith("bench-") for t in trials), (
         f"trials misplaced: {trials}")
     out = _submit_dry(flat_sol_calc)

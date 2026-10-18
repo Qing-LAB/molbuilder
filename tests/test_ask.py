@@ -138,14 +138,3 @@ def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
     assert "64 cores" in t and "48 cores" in t
     assert "general" in t
     assert "largest machine" in t
-
-
-def test_it_says_how_to_choose_and_that_nothing_has_happened_yet():
-    t = _table(cores=64)
-    assert "--domain" in t
-    assert "Nothing is submitted until you do" in t
-
-
-def test_a_machine_with_no_queues_says_the_job_runs_directly():
-    from molbuilder.jobset.ask import queue_table
-    assert "runs directly" in queue_table([], Ask(time_s=60))

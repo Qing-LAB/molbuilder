@@ -18,8 +18,8 @@ split this subsystem must not blur;
 
 **A machine is measured into a record (`probe` → `environment.json`);
 a job states a request, its queue included; admission compares them;
-placement binds the queue the job names; one placement renders both the
-`#SBATCH` header and the command-line flags.**  Nothing here chooses a queue
+placement binds the queue the job names — all of it at prep; the placement
+renders the `#SBATCH` header, and launch sends that header.**  Nothing here chooses a queue
 for a job that names none: it is refused at prep
 ([`architecture.md`](?doc=execution/architecture.md) § 5.2, 2026-10-02). Package: `molbuilder.scheduler`
 (`record` · `probe` · `admit` · `place` · `emit`, § 6). All built; live
@@ -30,7 +30,7 @@ The rules, one line each — full statement in § 3:
 | rule | keyword | one line |
 |---|---|---|
 | **R0** | queue ≠ machine | a partition is a QUEUE holding many machine kinds; `node_types` lists them, any single figure over them is an opinion |
-| **R1** | one placement | header and flags are two renderings of ONE decision |
+| **R1** | one placement | ONE decision, made at prep, rendered once — the header; the `sbatch` line carries no resource but a wall the launch restates |
 | **R2** | total admission | every limit the record declares is compared — a declared field nobody checks is the defect |
 | **R2a** | GPUs: there, and enough | a GPU job goes only to a queue whose record lists GPUs, where one node holds at least the number asked; molbuilder names no card — the ask is `gpu:N`, and which card a node carries is that machine's business |
 | **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked — for a GPU job, the widest that has GPUs |
@@ -39,14 +39,16 @@ The rules, one line each — full statement in § 3:
 | **R6** | refuse early | when the record already says no, refuse before the scheduler does |
 | **R7** | ask what you know | unasked constraints are `None`, and `None` never refuses |
 | **R8** | fact vs statement | what a queue ALLOWS is the record's; which queue a job USES is the job's own statement |
-| **R9** | re-admit on send | what was admitted at `prep` is re-checked at `launch` — the record can change under a traveling bundle |
+| **R9** | admitted once | what prep admitted is what launch sends: prep's header, checked only against prep's own files; a calculation meant for a changed record goes back to the state before its first prep |
 | **R10** | name the way out | a refusal says what WOULD fit, not only what doesn't |
 | **R11** | compare KINDS | comparability = the node's kind (cores, device model, mem ≈10 GB) — never its hostname, never the allocation |
 | **R12** | sent ≠ landed | `run.json` records where it was SENT; the monitor's first `[MACHINE]` line records what it LANDED on |
 | **R13** | two ceilings | hardware (widest machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read; the smaller governs |
-| **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a sweep that exceeds it is told **before** the prompt |
+| **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a benchmark that exceeds it is told **at prep** |
+| **R15** | a scheduler is a kind | every command, directive, file name and job variable a scheduler has is its kind's, in one file (`scheduler/kinds.toml`); the machine's record names the kind and where its commands are there (§ 6a) |
 
-**How you use it:** the decision graph is § 5, the five-file shape § 6,
+**How you use it:** the decision graph is § 5, the shape § 6, the scheduler
+kinds § 6a,
 and § 7 shows the caller's view (`Request` → `place` → `Directives`) in
 ten lines. §§ 1–2 are the evidence record — the two Sol failures this
 subsystem exists to prevent — read them for *why*, never for *how*.
@@ -216,9 +218,11 @@ the range implies. The same 64-core ask lands on 94% of `general` and 72% of
 > Node counts are still only a proxy for **wait**. What a queue costs *today*
 > is `--mode ask` (`running-a-job.md`), which asks the scheduler.
 
-**R1 — A placement is decided once.** The `#SBATCH` header and the `sbatch`
-command line are two *renderings* of one placement, never two decisions. They
-cannot disagree, because there is nothing to disagree about.
+**R1 — A placement is decided once, at prep, and rendered once.** The
+`#SBATCH` header carries it (`scheduler.emit`); the `sbatch` line sends that
+header and carries no resource of its own but a wall the launch restates
+(`commands.LAUNCH_FLAGS`, `submit._sbatch_request`). There is one rendering,
+so there is nothing to disagree about.
 
 **R2 — Admission is total over the named limits.** Every limit `Domain`
 *declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu`, `node_types` — is
@@ -314,23 +318,14 @@ job goes only to a queue whose record lists GPUs — the `gpu` column the probe
 writes from what the scheduler reports — and is admitted
 there only when one node offers at least the number asked: the most any node
 of that queue holds, whatever its card. That is the whole of the GPU check,
-and it is made in `admits`, so a queue named with `--domain` meets it as a
-queue placement picked does *(the named path skipped the first half until
-2026-10-01)*. A queue that lists GPUs without saying how many is never refused
-on the number (R3).
+and it is made in `admits`, which every admission asks. A queue that lists
+GPUs without saying how many is never refused on the number (R3).
 
 **molbuilder names no card.** A GPU ask is `--gres=gpu:N`; which card a node
 carries is the machine's business, and its scheduler places the job on one that
 has GPUs. The card the probe records stays a fact on the record — `jobset
 machines` shows it — and nothing compares it.
 
-> *(Until 2026-10-01 molbuilder wrote a card into every GPU ask — from
-> `scheduler.gpu.default_type`, else the card of the node the probe ran on,
-> else the queue's — and, after such an invented `a100.40gb` was sent to a
-> queue that does not stock it (2026-08-30), compared the card at admission
-> and narrowed the core ceiling to that card's machines. The fault was the
-> invented card, not a missing comparison; both are gone, `default_type`
-> with them — `configuration.md` § 5, M-1.)*
 
 **R4 — A refusal names the numbers.** *"needs 38 min but debug allows
 00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read
@@ -344,47 +339,41 @@ S2). *(Until 2026-10-02 the queue's own ceiling was the value when nothing
 else supplied one.)*
 
 **R6 — Refuse before submitting, when the record already says so.** The
-existing `job-system.md` § 6 rule, now with somewhere to live. A machine whose
-record lists **no** domains is a different situation: nothing was promised,
-and the header stands.
+existing `job-system.md` § 6 rule, now with somewhere to live: at prep, before
+anything is written. A machine whose record lists **no** domains has no
+scheduler to send to: prep writes no header, and the job runs directly.
 
 **R7 — Callers ask what they know.** `prep` knows what a job states — its
 cores and devices, and where it writes a header the wall and memory it is
 refused without ([`submission.md`](?doc=execution/submission.md) S1, S2) — and
 admits a run on the queue it names with all of them
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4); the
-benchmark grid asks each cell's shape of every queue, since the queue each of
-a benchmark's sides goes to is named at its launch; `launch` knows all of them;
+benchmark grid asks each cell's shape of the one queue the benchmark names;
 a caller asking about *capability* asks about nothing else. An unasked
 constraint is `None`, and `None` is never a refusal. This is what lets one
 admission function serve every caller without each growing its own variant.
-*(It said `prep` knows no duration until 2026-10-05; a wall has been stated at
-prep since 2026-10-02.)*
 
 **R8 — Measurements from the record, the queue from the job.** M-1
 (`configuration.md` § 5) is not relaxed here. What a queue *allows* is a
 measurement and is read from `environment.json`. Which queue a job *uses* is
 the job's own statement — `allocation.domain`, the run card's `domain`,
-`--domain` — and never a default from any file: `molbuilder.json`'s
-`scheduler.directives` and `execution.domain` gave every job a queue it never
-named until 2026-10-02. This subsystem reads both and mixes neither.
+`--domain` — and never a default from any file. This subsystem reads both
+and mixes neither.
 
-**R9 — What was admitted when the work was BUILT is re-admitted when it is
-SENT.** A request built under weaker knowledge must not be submitted under
-better knowledge without being re-checked.
-
-> This is the rule the Sol case actually needed, and the one neither failure
-> in § 1 exposed. `prep` already drops a trial no queue can hold — it walked
-> that branch for the Au-BDT-Au sweep and found **no limit to apply**, because
-> the record it had said `max_cores: None` for every GPU row. That record
-> predates `max_cores` being probed. The machine has since learned its GPU
-> nodes hold 48 cores; the bundle still carries 64-rank trials; and `launch`
-> compares only the wall, so nothing notices on arrival.
->
-> Both records are on disk — the bundle's snapshot and the machine's own — so
-> comparing them costs a read. A bundle that travels is exactly the case where
-> the two can differ, which is why this rule belongs to a subsystem that
-> spans build and send rather than to either one.
+**R9 — Admitted once, at prep** *(the user, 2026-10-17: "whether it's direct
+launch or submission, all the decision is already done at the prep … It is
+none of molbuilder's business at the launch time to decide what is allowed to
+launch")*. What prep admitted on the target's record is what launch sends:
+launch sends the header prep wrote, walks no graph and admits nothing. What it
+checks is prep's own files — at a first launch, prep's own planning asked
+again on the calculation's own files (its description, its template and its
+copy of the target's record), refusing a prep that is no longer what they
+give; every launch, that a deck agrees with its launch's counts
+(`job-system.md` § 6.0, R-L15, R-L16, R-L29). That copy is the one its first prep
+took, and no probe replaces it (`configuration.md` M-3): a calculation meant
+for a machine whose record has changed since goes back to the state saved
+before its first prep. The one value a launch may restate is a submitted
+job's wall (`--time`), passed to `sbatch` as typed; the scheduler answers it.
 
 **R10 — A refusal names what *would* fit.** Not *"64 cores is too many"* but
 *"this queue holds 48; the largest rank count that fits is 48"*. The graph in
@@ -451,9 +440,9 @@ at once *by construction*, so it is the one limit a sweep reliably meets.
 > **A note, not a refusal.** A refused shelf already costs nothing: its trials
 > keep no launch record, so the launched door (`runrecord.launch_record`) leaves them pending and re-running
 > the launch picks up exactly them. What was missing was not enforcement, it was
-> being told — so the preview states the arithmetic (*debug takes 2; this sweep
-> is 6; 4 will be refused*) while saying no is still free, and the choice stays
-> the person's.
+> being told — so prep states the arithmetic (*debug takes 2; this benchmark
+> is 6 shelf jobs; 4 come back*) where the grid can still change, and the
+> choice stays the person's.
 >
 > **Tri-state, like R13's fields.** A number caps; `null` means *asked, and this
 > QoS states none*; the key absent means *never asked* — a record older than
@@ -547,9 +536,9 @@ already running where the answer is.
 
 ## 4. The vocabulary
 
-- **Machine** — one host or cluster, as measured: scheduler kind, topology,
-  site, and its domains. Persisted as `environment.json`
-  (`configuration.md` § 5).
+- **Machine** — one host or cluster, as measured: its scheduler (the kind,
+  and where its commands are there, § 6a), topology, site, and its domains.
+  Persisted as `environment.json` (`configuration.md` § 5).
 - **Domain** — one reachable `(partition, qos)` pair and what it allows:
   `max_time`, `max_cores`, `max_mem_gb`, `gpu`. *A fact, never a preference —
   it says "you may submit here, for this long", never "submit here".*
@@ -583,8 +572,8 @@ already running where the answer is.
   wall, exclusivity. Fields the caller does not know are `None` (R7).
 - **Placement** — a request bound to a domain, with the reasoning that chose
   it. The single decision R1 refers to.
-- **Directives** — a placement rendered for the scheduler, in the two
-  spellings it needs: header lines and command-line flags.
+- **Directives** — a placement rendered for the scheduler: the header's
+  `#SBATCH` lines, the one rendering (R1).
 
 A **workstation** is a machine with no domains. It is not an error state: it
 yields no header at all, and the job runs directly.
@@ -624,37 +613,18 @@ flowchart TD
 **A named queue is checked like any other.** The `--domain` branch reaches the
 same admission test — your choice is honoured as a *choice*, not as permission
 to skip the check: `place(..., named=)` asks `admits` of the named domain and
-refuses it by name like any other (`scheduler/place.py`; it landed with § 8's
-placement phase, 2026-08-23 — this said "not checked at all" until 2026-09-29).
+refuses it by name like any other (`scheduler/place.py`).
 
 **Refusals are the graph's real output.** Three of the five leaves refuse, and
 each refuses differently, because the reason is the useful part (R4, R10).
-*(The graph had a second road until 2026-10-02: a job naming no queue was
-given the cheapest ceiling that fits, ordered by a `placement_priority` from
-`molbuilder.json` — a queue nobody named for it.)*
 
-### 5.1 The same walk, at two moments
+### 5.1 The walk is prep's
 
-```mermaid
-flowchart LR
-  subgraph B["when the work is BUILT — prep"]
-    B1["each candidate trial"] --> B2["walk the graph"]
-    B2 --> B3["no queue holds it?<br/>drop it BY NAME, with the reason"]
-  end
-  subgraph S["when the work is SENT — launch"]
-    S1["the request as built"] --> S2["walk the graph again<br/>against what the machine says NOW"]
-    S2 --> S3["still admitted? submit<br/>no longer? refuse before the scheduler does"]
-  end
-  B -.->|"the bundle travels,<br/>and the record can change under it"| S
-```
-
-This is **R9** — built with § 8 step 4, when the walk became callable
-from both moments. The case that demanded it: `prep` walked the graph
-for the Au-BDT-Au sweep under a record that said `max_cores: None`; the
-machine later learned its GPU nodes hold 48 cores, and the bundle still
-carried 64-rank trials. The two records that must agree are both on
-disk — the snapshot beside the bundle, and the machine's own — so the
-re-walk costs a read.
+The graph is walked once, when the work is built: each run on the queue it
+names (`placement.admitted`), each benchmark trial on its benchmark's one queue
+(`prep_inputs.bench_inputs`), and each job that walks several members — a
+group, a run of points, a benchmark's shelf — with its one request
+(`prep.walk_header_of`). Launch sends the header the walk produced (R9).
 
 ---
 
@@ -665,8 +635,11 @@ scheduler/
   record.py   Machine · Domain · Topology · Site; read/write; scopes; named targets
   probe.py    detection (sinfo / scontrol / lscpu) -> a record
   admit.py    admits(domain, request) -> [reasons]        # R2, R3, R4, R7
-  place.py    place(routing, request, *, prefer_gpu, named) -> Placement  # R6
-  emit.py     Directives(placement) -> header_lines() · sbatch_flags()   # R1, R5
+  place.py    place(routing, request, *, named) -> Placement  # R6
+  emit.py     Directives(...).header_lines()                    # R1, R5
+  kinds.toml  each scheduler kind: its operations, its header's language,
+              its files, what it tells a running job            # § 6a
+  kinds.py    kind(name) -> Kind, the one reader of kinds.toml  # § 6a
 ```
 
 Honestly graded, these are not equally forced:
@@ -679,11 +652,58 @@ Honestly graded, these are not equally forced:
   in a general-purpose `environment.py` is what let the check drift away from
   the record it checks.
 
-`emit.py` is unapologetically SLURM syntax. The *boundary* is not: the code
-already models two scheduler kinds (`slurm` and `workstation`), and a header
-renderer that returns nothing for a workstation is the second kind being
-handled. Naming the package for SLURM would bake one kind into the boundary
-and be wrong the first time anything else appears.
+`emit.py` renders a kind's header language (§ 6a) and spells no scheduler of
+its own; a workstation's kind writes no header. Naming the package for SLURM
+would bake one kind into the boundary and be wrong the first time anything
+else appears.
+
+---
+
+## 6a. The scheduler kinds — one file, one protocol *(the user, 2026-10-17: "we just need a configure file to say what are the parameters, what are the format we need to put in there … unified layer, unified API, unified protocol")*
+
+*(Designed with the user 2026-10-17; built with plan row SK — until then
+the SLURM row's facts are spelled in the modules this table names.)*
+
+**Everything molbuilder says to a scheduler is a kind's, and a kind is
+data**: `molbuilder/scheduler/kinds.toml`, one block per kind, read by one
+reader (`scheduler/kinds.py`, `kind(name)`). No other module spells a
+scheduler — no command, no directive, no file name, no environment variable.
+
+| a kind states | SLURM's | asked by |
+|---|---|---|
+| **how a job is sent** — its name, a wall the launch restates, molbuilder's launch claim, the header, the run's arguments | `{submit} -J {job} [-t {wall}] --export ALL,MB_LAUNCHED_BY=jobset-launch {header} {args}` | `submit._sbatch_request`, the one line |
+| **how it is asked about without being sent** | the same line, `--test-only` after the command | `submit._ask` (`--mode ask`) |
+| **the id it answers a send with** | `Submitted batch job (\d+)` | `submit._go` |
+| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id}` · `{cancel} {id}` | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`) |
+| **which cluster answered** | `{cluster} show config`, its `ClusterName` | `scheduler.queue` (a job's address) |
+| **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={mem}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}slurm.%j.out` `-e {where}slurm.%j.err` | `scheduler.emit` (prep's header); `Directives.lines_of` (what prep and launch print of it) |
+| **the value a launch may restate** | the wall, `-t {wall}` | `commands.LAUNCH_FLAGS` |
+| **its own output files** | `slurm.{jobid}.out`, `slurm.{jobid}.err` | `runfiles.WRITTEN` |
+| **what it tells a running job** | `SLURM_JOB_ID`, `SLURM_NTASKS`, `SLURM_CPUS_PER_TASK`, `SLURM_CPUS_ON_NODE`, `SLURM_ARRAY_TASK_ID` | the run script, written at prep, which says each once in molbuilder's own name (`MB_JOB_ID`, …) for everything it starts — the monitor, a walk |
+
+`workstation` is a kind too: no queue, nothing sent, no header. A reader asks
+the kind what it does, never compares the word.
+
+**The machine's record names its kind and where its commands are there**
+([`configuration.md`](?doc=configuration.md) § 5, M-2):
+`scheduler: {kind, submit, query, cancel, cluster}`, written by `jobset probe`
+on that machine — the commands found there, or declared to it (`--scheduler`;
+`--set scheduler.submit=PATH` for a site's own wrapper). **The language is
+never copied into a record**: it is the kind's, one for every machine of that
+kind, so two records cannot disagree about SLURM.
+
+**Every step asks its kind through the record**: prep writing the header;
+launch writing the line; ask mode — whether there is a scheduler to ask is the
+record's kind, never this computer's `PATH`; the jobs list; the run script and
+what it starts.
+
+**What stays code is discovery, a reader per kind**: the probe reading a
+scheduler's queues and limits out of its own tools (`sinfo`, `scontrol`,
+`sacctmgr`), and ask mode reading its start-time answer. Each parses a tool's
+output, which no format states, and each is keyed by the kind's name.
+
+**Adding a scheduler is a block in the file and its discovery reader**;
+nothing else changes.
 
 ---
 
@@ -693,62 +713,21 @@ and be wrong the first time anything else appears.
 req = Request(ranks=64, cpus_per_task=1, gpus=2,
               mem_gb=390, walltime_s=38 * 60)
 
-placement = place(routing, req, prefer_gpu=True, named="htc")
+placement = place(routing, req, named="htc")
 #   -> htc/public          the queue the job names, admitted on its row
 #   -> Unplaceable(reasons=[...]) when it cannot take the job, or the job
 #      names none on a machine that has queues (R6), each reason naming
 #      its numbers (R4)
 
-d = Directives(placement)
-d.header_lines()    # what the .sbatch carries, wall included (R5)
-d.sbatch_flags()    # what the command line carries
-#   the same placement, twice (R1)
+d = Directives(partition=placement.partition, qos=placement.qos,
+               walltime="0-00:38:00", ntasks=64, cpus_per_task=1,
+               gres="gpu:2", mem="390G")
+d.header_lines()    # what the .sbatch carries, wall included (R5) -- at prep
+#   the one rendering (R1): launch sends this header
 ```
 
-**The job names its queue; `place` chooses none** *(since 2026-10-02)* — the
-description, the run card or `--domain` names it, and it is still
+**The job names its queue; `place` chooses none** — the
+description, the run card or `prep --domain` names it, and it is still
 **admitted**: naming a queue that cannot hold the job earns R4's refusal, not
 silent acceptance — the user's explicit choice is honoured as a choice, not as
 permission to skip the check.
-
----
-
-## 8. Migration
-
-Smallest risk first; each step separately testable and separately revertable.
-The schedule is `plans/plan.md` § 5f, **S6**, not here (R3).
-
-1. **Move the record and the probe.** Pure relocation. *(Done 2026-08-23.)*
-2. **Move admission.** *(Done 2026-08-23.)* `scheduler/admit.py` — `admits(domain, request)` returning the refusals — split out of `record.py` so the check cannot drift from the record it checks. *(This step named `domain_admits`, which it replaced; marked done 2026-09-29.)*
-3. **Typed rows instead of dictionaries.** *(Done 2026-08-23.)* The record is
-   a dataclass, but the queue menu was handed out as `List[Dict[str, Any]]` —
-   `get_routing` built `Domain`s and then threw the type away on its last line
-   with `to_row()`, so every placement function poked at a plain dict with
-   `row.get("max_time")` and nothing could tell a real column from a typo. That is *how* `gpu_partition` (removed 2026-10-02) came to
-   redirect real work from inside the unexamined bag (§ 4): nothing checks a
-   dictionary key against a declared field. Steps 4 and 5 both assume typed
-   rows, and R2's memory comparison needs the unit conversion this step gives
-   the request.
-4. **Move placement out of `jobset/submit.py`.** *(Done 2026-08-23.)* The CPU
-   and GPU branches became the single walk of § 5; `--domain` now goes through
-   admission like everything else; and **R9** arrived with it, because the
-   walk is finally callable from both moments. Two corrections fell out of
-   doing it: R3 had to be extended to devices (a domain that states no GPU
-   inventory is not claiming it has none — refusing on silence made a terse
-   record unusable the moment the named path started being admitted), and
-   preferring nodes that *do* have devices stayed in `candidates`, where a
-   choice belongs, rather than migrating into admission.
-5. **Unify the emitters.** *(Done 2026-08-23.)* `scheduler/emit.py` renders
-   the facts both spellings carry — queue, wall, ranks, cores, devices, and
-   the `--exclusive`/`--mem` mutual exclusion. `-J`, `-N`, the account, mail
-   and the output paths stay with the header: the command line does not also
-   decide them, so they cannot drift from it. The one place the renderings
-   differ is verbosity, not meaning — the header adds `--mem=0` beside
-   `--exclusive` because a person reads that file.
-
-**The gate for step 5** is a test that renders both spellings from one
-placement and asserts they name the same queue and the same wall — the
-assertion neither emitter could have made alone, and the one that would have
-caught both Sol failures before they left the workstation.
-
-**R9 rides step 4**, where the walk becomes callable from both moments.
