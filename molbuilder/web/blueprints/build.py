@@ -1352,7 +1352,7 @@ def api_task_setup_prep():
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
         # gives them -- WITH what the entry had found by then: the preflight's
-        # notes and what the inputs said (a bench's crossed-out cells, which
+        # notes and what the inputs said (a bench's cells left out, which
         # a refusal may point at).  A refused prep wrote nothing.
         return jsonify({
             "ok": False, "error": str(exc),
@@ -1813,8 +1813,9 @@ def _folder_provenance(dest) -> dict:
 
 @bp.route("/api/task-setup/bench-grid", methods=["POST"])
 def api_task_setup_bench_grid():
-    """The bench grid this description would produce, cell by cell, with
-    the queues on the target that would take each one.
+    """The bench grid this description would produce, cell by cell, each
+    with its fit on the target's queue -- the one picked on the page, else
+    each of the record's (`task-setup.md` § 6.2a).
 
     **The same list the terminal prints, as data** -- served rather than
     recomputed, because a browser enumerating the grid a second way would
@@ -1822,11 +1823,14 @@ def api_task_setup_bench_grid():
     removed.  `bench_inputs` is the one enumerator; this hands it the
     axes and collects its report.
 
-    POST ``{dest, target?, bench}``.  ``bench`` is the axis map AS IT IS
-    BEING EDITED -- the card's model, not what is saved -- so the list
-    tracks the person's typing instead of the last write.
+    POST ``{dest, target?, bench, domain?}``.  ``bench`` is the axis map AS
+    IT IS BEING EDITED -- the card's model, not what is saved -- so the list
+    tracks the person's typing instead of the last write; ``domain`` the
+    queue picked on the page, likewise -- ``""`` for none picked -- which
+    the cells are fit on in place of the description's
+    (`prep_inputs.bench_inputs`, ``queue``).
 
-    Answers 200 with ``cells`` even when none survive: *nothing here fits*
+    Answers 200 with ``cells`` even when none is kept: *nothing here fits*
     is a result to show, not a failure.  400 is for a description this
     cannot resolve at all (a bad axis name, an engine with no bench lane),
     and carries the reader's own words.
@@ -1856,18 +1860,24 @@ def api_task_setup_bench_grid():
         target = LOCAL_TARGET
 
     from molbuilder.jobset.prep_inputs import bench_inputs
+    domain = body.get("domain")
+    if domain is not None and not isinstance(domain, str):
+        return jsonify({"ok": False,
+                        "error": "domain: must be a queue's name"}), 400
     rows: list = []
     try:
         # THE SAME REPORT the prep's notes print, as data: the card refreshes
         # it on every keystroke, so it asks for the rows and not the notes.
         # One function, two renderings.
-        bench_inputs(dest, target, bench_override=bench, report=rows)
+        bench_inputs(dest, target, bench_override=bench, report=rows,
+                     **({"queue": domain or None} if "domain" in body
+                        else {}))
     except Exception as exc:                      # noqa: BLE001
-        # A grid where nothing survives raises, and its report is still the
-        # answer worth showing -- the crossed-out rows say why.  The COUNT
+        # A grid where nothing is left raises, and its report is still the
+        # answer worth showing -- the rows left out say why.  The COUNT
         # is computed, never assumed: `bench_inputs` fills the report
         # before its last few refusals, so a raise can follow cells that
-        # did survive, and writing 0 here would report them as struck.
+        # were kept, and writing 0 here would report them as left out.
         if rows:
             return jsonify({"ok": True, "cells": rows,
                             "kept": sum(1 for r in rows if not r["why"]),

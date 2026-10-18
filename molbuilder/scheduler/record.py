@@ -25,7 +25,7 @@ an exception.
 This module is NOT shipped beside a job.  The files that travel are
 `runwrap.MONITOR_COMPANIONS` -- the monitor and the framework readers it
 reads a run through; this one imports `..persist`, `..config_dir`,
-`.quantities` and `.admit` where it needs them.  The RECORD is JSON and reads anywhere.
+`.quantities` and `.fit` where it needs them.  The RECORD is JSON and reads anywhere.
 """
 
 from __future__ import annotations
@@ -167,11 +167,10 @@ class Domain:
     #: QUEUE and not a machine type -- Sol's ``htc`` is 48-, 64- and
     #: 128-core nodes under one name.
     #:
-    #: Any single core figure over them is an opinion: a floor refuses work
-    #: the wide nodes would run, a ceiling admits work most nodes cannot
-    #: hold.  ``max_cores`` is kept as the widest (R3 -- refuse only what
-    #: the record positively rules out) and this is what a person reads to
-    #: choose.  Empty means the record does not say, never *no machines*.
+    #: Any single figure over them is an opinion, so the fit reads each
+    #: machine (`scheduler.md` R3) and this is what a person reads to
+    #: choose; ``max_cores`` and ``max_mem_gb`` are the largest machine's.
+    #: Empty means the record does not say, never *no machines*.
     node_types: Optional[List[Dict[str, Any]]] = None
     #: Columns this reader does not check, kept verbatim.
     extra:     Dict[str, Any] = field(default_factory=dict)
@@ -222,6 +221,29 @@ class Domain:
         return row
 
     @property
+    def core_range(self) -> str:
+        """The core range across this domain's machines -- ``"48-128"``, one
+        number when they are one size -- else ``max_cores``, the largest
+        machine's, for a record that lists none (`scheduler.md` R0).  ONE
+        spelling, read by the queue table and the machines listing."""
+        from .quantities import core_range
+        said = core_range([t.get("cores") for t in (self.node_types or [])
+                           if isinstance(t, dict)])
+        return said or (str(self.max_cores) if self.max_cores else "-")
+
+    @property
+    def mem_range(self) -> str:
+        """The memory range across this domain's machines --
+        ``"501-1511.2 GB"`` -- else ``max_mem_gb``, the largest machine's
+        (`scheduler.md` R0)."""
+        from .quantities import mem_range
+        said = mem_range([t.get("mem_gb") for t in (self.node_types or [])
+                          if isinstance(t, dict)])
+        if said:
+            return said
+        return f"{float(self.max_mem_gb):g} GB" if self.max_mem_gb else "-"
+
+    @property
     def devices(self) -> Tuple[Device, ...]:
         """What this domain's ``gpu`` column says the nodes offer.
 
@@ -238,7 +260,7 @@ def _read_devices(gpu: Any) -> Tuple[Device, ...]:
     "a100.20gb": 16}`` -- one entry per type ``sinfo`` reported.
 
     An unreadable count is ``None``, never a raise and never a zero -- a column
-    we cannot read is not a domain with no devices (R3), and admission must be
+    we cannot read is not a domain with no devices (R3), and the fit must be
     able to tell those apart.  This interprets the column; `to_row` still
     returns what was written.
     """
@@ -995,7 +1017,7 @@ def known_machines() -> List[Dict[str, object]]:
     (`preparing-for-another-machine.md` § 5).  ``readable`` is the flag; the
     summary says how to rewrite it.
     """
-    from .admit import domain_ceiling_s          # one parser for max_time
+    from .fit import domain_ceiling_s            # one parser for max_time
 
     def _describe(env, name, kind, path):
         if env is None:
@@ -1021,27 +1043,40 @@ def known_machines() -> List[Dict[str, object]]:
         # `sinfo` printed first (`_slurm_pick_node`) -- and a partition is a
         # queue, not a machine type (`scheduler.md` R0).
         #
-        # R3: a record whose domains list no `node_types` falls back to the
-        # one figure it does have.
+        # A MACHINE WITH QUEUES IS SAID BY ITS QUEUES' MACHINES -- the core
+        # and memory ranges across them, and the cards they carry; a queue
+        # that lists no machines by its largest machine's figures (R3).  Its
+        # `topology` is the one node the probe sampled, which describes a
+        # machine with no queue and never the cluster (`gpu.md` § 1.3).
         from .quantities import core_range as _core_range
-        from .quantities import machine_sizes as _machine_sizes
-        cores = getattr(env.topology, "cores_per_socket", None)
-        sockets = getattr(env.topology, "sockets", None)
-        total = (cores * sockets) if (cores and sockets) else None
-        spread = _core_range(_machine_sizes(env.domains))
+        from .quantities import mem_range as _mem_range
         bits = [env.scheduler.kind]
-        if spread:
-            bits.append(f"{spread} cores")
-        elif total:
-            bits.append(f"{total} cores")
-        _mem = getattr(env.topology, "mem_total_gb", None)
-        if _mem:
-            bits.append(f"{float(_mem):g} GB")
-        if getattr(env.topology, "gpus_per_node", None):
-            bits.append(f"{env.topology.gpus_per_node}\u00d7 "
-                        f"{env.topology.gpu_type or 'GPU'}")
+        cores_of, mem_of = [], []
+        for d in env.domains or []:
+            listed = [t for t in (d.node_types or []) if isinstance(t, dict)]
+            cores_of += ([t.get("cores") for t in listed] if listed
+                         else [d.max_cores])
+            mem_of += ([t.get("mem_gb") for t in listed] if listed
+                       else [d.max_mem_gb])
         if env.domains:
+            spread = _core_range(cores_of)
+            mem = _mem_range(mem_of)
+            cards = sorted({c for d in env.domains for c in (d.gpu or {})})
+            bits += [f"{spread} cores"] if spread else []
+            bits += [mem] if mem else []
+            bits += [", ".join(cards)] if cards else []
             bits.append(f"{len(env.domains)} domain(s)")
+        else:
+            cores = getattr(env.topology, "cores_per_socket", None)
+            sockets = getattr(env.topology, "sockets", None)
+            if cores and sockets:
+                bits.append(f"{cores * sockets} cores")
+            _mem = getattr(env.topology, "mem_total_gb", None)
+            if _mem:
+                bits.append(f"{float(_mem):g} GB")
+            if getattr(env.topology, "gpus_per_node", None):
+                bits.append(f"{env.topology.gpus_per_node}\u00d7 "
+                            f"{env.topology.gpu_type or 'GPU'}")
 
         # WHAT WAS KEPT BUT NOT UNDERSTOOD (2026-09-06, user).  An
         # unrecognised column in a routing row is KEPT -- R10, "silently
@@ -1050,7 +1085,7 @@ def known_machines() -> List[Dict[str, object]]:
         # makes a MISSPELLING indistinguishable from a deliberate extra:
         # `max_tme` lands in `extra` exactly like `node_type` does, and
         # `max_time` then reads as unstated, so a job asking more wall than
-        # the queue allows is admitted (R3).  `scheduler.md` § 4 predicted
+        # the queue allows is never said to be over it (R4).  `scheduler.md` § 4 predicted
         # it -- "a value that changes where a job lands is a field, or it is
         # a bug waiting for someone to misspell it".
         #
@@ -1089,8 +1124,10 @@ def known_machines() -> List[Dict[str, object]]:
                              "qos": d.qos,
                              "max_time": d.max_time,
                              "max_time_s": domain_ceiling_s(d),
-                             "max_cores": d.max_cores,
-                             "max_mem_gb": d.max_mem_gb,
+                             "cores": d.core_range,
+                             "memory": d.mem_range,
+                             "devices": ", ".join(f"{x.type} x{x.per_node}"
+                                                  for x in d.devices),
                              **({} if d.default_mem_per_core_gb is UNSET
                                 else {"default_mem_per_core_gb":
                                       d.default_mem_per_core_gb}),

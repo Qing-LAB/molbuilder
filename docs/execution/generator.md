@@ -38,7 +38,7 @@ render identically.
 | key rule | one line | where |
 |---|---|---|
 | **the spine** | one picture of every arrow, template to deck | § 3 |
-| **machine-fit** | a declared bench point that exceeds the target machine is refused BY NAME with the numbers ("needs 32 cores, probe found 20") | § 4.1 |
+| **machine-fit** | a bench cell is fit on its one queue: one declared whole is kept with its fit, one the machine proposed that no node holds is left out with the numbers, one past the prep's own ask is left out by name | § 4.3a |
 | **nothing invented** | a sweep varies only what the description declares; defaults come from the catalogue, answers from the template | § 4 |
 | **speed data is presented, never judged** | results record the machine each trial LANDED on; comparisons are grouped by machine kind and shown — the user is the analyzer | § 4.4a-b |
 | **the engine seam** | an engine is a plugin behind one interface, not a branch in the pipeline | § 7 |
@@ -255,12 +255,11 @@ allocation    what you ASK FOR, this run      your choice — and asking for les
 sweep         the points a benchmark tries    must FIT INSIDE the allocation
 ```
 
-> **The rule:** a sweep point that exceeds the allocation is refused, **not**
-> silently clamped and **not** checked against capability instead — refused
-> by name, crossed out beside the cells no queue holds, the prep refused only
-> when no cell is left (§ 4.3a: *a cell that fits is never denied by a sibling
-> that does not*; the whole prep was refused over one such point until
-> 2026-10-05). *"The sweep …
+> **The rule:** a sweep point that exceeds the allocation is left out by
+> name, **not** silently clamped and **not** checked against capability
+> instead — listed with the proposed cells no node of the queue holds, the
+> prep refused only when no cell is left (§ 4.3a: *a cell that fits is never
+> denied by a sibling that does not*). *"The sweep …
 > should not exceed that allowable resource. It should be compatible."*
 >
 > **Which allocation?** The one for *this* `prep`. A benchmark and the run it
@@ -463,14 +462,15 @@ queue with no device.
 > know. Reusing a wheel is right; reusing the **wrong** wheel invents the
 > problem it then solves.
 
-**A condition the queue cannot hold is refused at `prep`**, before anything
-is written — the run's whole request admitted on the target's record
-(`placement.admitted`, over `scheduler.place`; [`job-system.md`](?doc=execution/job-system.md)
-§ 5.0, checkpoint 4, and § 6.0), naming what was asked and what the queue
-offers; launch sends what prep admitted and admits nothing again
-(`scheduler.md` R9). `prep` never trims a number to fit: what you asked for is
-written, or refused. Task setup's **Preview** is the same entry, so the
-refusal is on the page before **Prep** is offered.
+**A run is placed on its queue at `prep`, and its fit printed**, before
+anything is written — the run's whole request against the target's record
+(`placement.placed`, over `scheduler.place`; [`job-system.md`](?doc=execution/job-system.md)
+§ 5.0, checkpoint 4, and § 6.0): the nodes that hold it, and each limit it is
+over, with its numbers. It is never refused for it — the scheduler decides
+(`scheduler.md` R6) — and launch sends what prep placed and fits nothing again
+(R9). `prep` never trims a number to fit: what you asked for is written. Task
+setup's **Preview** is the same entry, so the fit is on the page before
+**Prep** is offered.
 
 **Precedence gains one rung**, and it is the one above: `execution` is what a
 person asked for, and nothing a machine found sits beside it — a benchmark
@@ -487,19 +487,20 @@ reports, and a person writes. The full ladder is
 > allocation is what you then ask for — which a one-point axis states.
 >
 > **The declaration DRIVES the sweep**: declared axes become
-> exactly those trials, a point the machine cannot hold is refused by name
+> exactly those trials, a point the queue cannot hold kept with its fit said
 > (never clamped — a clamped point measures a configuration nobody
-> declared), and an ABSENT declaration keeps the machine's enumeration as
-> the proposal. A declared grid states **both** its axes, `mpi_np` and
+> declared; § 4.3a), and an ABSENT declaration keeps the machine's
+> enumeration as the proposal. A declared grid states **both** its axes, `mpi_np` and
 > `omp_threads` — one alone is refused, never filled; and the machine proposes only from what its record
 > says: a record that does not state its cores per socket proposes no grid,
 > and an unknown socket count is no
 > ceiling, never one socket (R3). On a GPU description a declared `mpi_np` is the point's
 > total rank count, and the device count is **declared with `gpu_count`**
 > — exactly those counts, one shelf each; an uneven `(mpi_np, G)` pair is
-> dropped by name (the equal-share rule), a count beyond the machine's
-> record refuses, and an ABSENT `gpu_count` keeps the divisor enumeration
-> as the proposal *(user, 2026-08-21: "explicit is what we need")*.
+> dropped by name (the equal-share rule), a count beyond what the record
+> says a node carries is kept with its fit when the cell is declared whole
+> (§ 4.3a), and an ABSENT `gpu_count` keeps the divisor enumeration as the
+> proposal *(user, 2026-08-21: "explicit is what we need")*.
 
 **A value axis multiplies the grid, and the point carries its coordinates**
 *(user-settled 2026-08-21: GPU-vs-CPU measured under ONE bench, split
@@ -531,37 +532,44 @@ framework rule, not a script patch)*:
   GPU inventory** (`jobset probe` records each partition's `gres` on its
   domain row) — so a login node can enumerate the GPU family for the cluster
   behind it.  A trial asks `gpu:G`, a count, and no card: which card a node
-  carries is the machine's business (`scheduler.md` R2a).
-- **Enumerate every combination, cross out what no queue can hold, show what
-  is left** *(user, 2026-08-30: "we don't have to fight with what language we
-  use to indicate error, but present the correct outcome")*.  The queues are
-  the TARGET's, which is why neither the terminal nor the card says "this
-  machine": `prep --target sol` on a workstation checks against Sol's
-  record.
-  The grid is a **proposal**; the machine record decides; and what reaches
-  the screen is the surviving list — each cell with its shape — followed by
-  the struck ones, each naming its numbers (R4).  **A cell that fits is never denied by a sibling that does
-  not.**  Both families go through it, and neither refuses the prep while
-  anything survives.
+  carries is the machine's business (`scheduler.md` R2a).  That count is
+  what the machine proposes `G` up to; a record that states none leaves it
+  nothing to propose, and a GPU benchmark that declares no `gpu_count` is
+  refused there, naming the probe that writes the count. Declared counts
+  need no proposal: they are enumerated as declared.
+- **The machine proposes what its queue's nodes hold; what you declare is
+  kept** *(user, 2026-08-30: "we don't have to fight with what language we
+  use to indicate error, but present the correct outcome"; 2026-10-17: the
+  record is shown, never a veto)*.  The queues are the TARGET's, which is
+  why neither the terminal nor the card says "this machine": `prep --target
+  sol` on a workstation fits against Sol's record.
+  **A benchmark measures on one queue** — the one its prep names (`prep
+  --domain`, else `allocation.domain`; the user, 2026-10-17: *"You need one
+  domain to bench. If you need a different domain, another bench"*) — and
+  each cell is fit on that queue alone (`scheduler.fit`, the fit `place`
+  itself asks, so a cell here and a run at prep get one reading); on a
+  machine whose scheduler kind has no queue, or prepared with
+  `--no-sbatch`, on the target's probed node. A scheduler whose record
+  lists no queues has none to measure on: the benchmark is refused, naming
+  the probe that renews the record (`scheduler.md` R6).
+  * **A cell is declared** when every coordinate of it is — its ranks and
+    cores per rank (`mpi_np`, `omp_threads`), and on the GPU its device
+    count (`gpu_count`); a cell with any coordinate the machine proposed is
+    the machine's proposal.
+  * **A proposed cell** that no node of the queue holds is not proposed:
+    what reaches the screen is the list kept, each cell with its shape and
+    its fit, followed by those left out, each naming its numbers (R4).  **A
+    cell that fits is never denied by a sibling that does not.**
+  * **A declared cell** is kept whatever the record says, its fit printed
+    under it: the scheduler decides (`scheduler.md` R6).
+  * A cell past this prep's own ask — its `--np`, `--cpus-per-task`,
+    `--gpus` (§ 4.1) — is left out by name, proposed or declared: that is
+    two statements of yours disagreeing.
 
-  The check is `scheduler.admits` — the admission `place` itself asks — so
-  *"its queue admits it"* here and *"placeable"* at prep are one verdict
-  rather than two.  **A benchmark measures on one queue** — the one its prep names (`prep --domain`, else
-  `allocation.domain`; the user, 2026-10-17: *"You need one domain to
-  bench. If you need a different domain, another bench"*) — so each cell is
-  checked against that queue alone, and a cell it cannot hold is crossed out
-  by name; with no queues on the record, against this box.  A cell past this prep's own ask — its
-  `--np`, `--cpus-per-task`, `--gpus` (§ 4.1) — is crossed out the same way,
-  by name.  A device cell is answered by the queues whose record lists
-  GPUs — a queue listing none refuses every device cell alike, which says
-  nothing of the cell — unless none does (the benchmark's one queue has no
-  GPUs), when that queue's own refusal is the answer; a CPU cell by every
-  queue it is checked against.  The benchmark states its queue, wall and
-  memory before its grid is enumerated: a benchmark naming no queue, or one
-  its target's record does not list, is refused for that first.
-
-  A machine with **no queue menu** is answered by its own probed topology —
-  which is the only place topology may bound a cell.
+  The benchmark states its queue, wall and memory before its grid is
+  enumerated: a benchmark sent to a queue naming none, or one its target's record does
+  not list, is refused for that first.  A machine with **no queue menu** is
+  fit on its own probed topology.
 
 - **Submission splits by each trial's GPU request** (`gpu_request`, the
   one door, `architecture.md` § 3.2) **and then by RESOURCE SHELF** *(user,
@@ -582,7 +590,7 @@ framework rule, not a script patch)*:
   queue is named, never inferred (`submission.md` S5) — the bench's one
   queue, named at its prep, for both sides.  **Each shelf's one header is
   prep's** (`shelves.shelves_of`, the one partition; `prep.walk_header_of`):
-  its trials' shared request admitted on that queue and written in the
+  its trials' shared request placed on that queue, its fit said, and written in the
   benchmark's `launch/`; launch walks the shelf's trials still to run and
   sends that header as it is.  `--only cpu|gpu` submits one side; the other
   stays pending for a later launch of the same benchmark.

@@ -176,8 +176,8 @@ has the monitor record it on the node rather than inferring it from the queue.
 >
 > * read as *node size*, the 8 is contradicted — the nodes are 48 and 128;
 > * read as a *request cap*, the probe can neither confirm nor deny it, **and if
->   such a cap exists our `max_cores: 128` is wrong for admission** — R2 would
->   admit a 128-core job that the scheduler then refuses.
+>   such a cap exists our `max_cores: 128` does not show it** — the fit would
+>   call a 128-core job held while the scheduler refuses it.
 >
 > **And this is a PROBE gap, not a question for a person** *(user, 2026-08-27:
 > "why do I need to separately get info on lightwork? your jobset probe did not
@@ -191,7 +191,7 @@ has the monitor record it on the node rather than inferring it from the queue.
 >
 > So the answer is one field in each, not a trip to the login node. **Built
 > 2026-08-27** (`machine-identity-plan.md` P7): the probe asks for both and
-> `admits` compares against them. The next `jobset probe` on Sol settles the
+> the fit compares against them. The next `jobset probe` on Sol settles the
 > 8 — either answer is a result.
 >
 > Kept rather than deleted because the second is the recurring one: this page's
@@ -207,7 +207,7 @@ the probe) needs exactly the columns this page has:
 { "name": "bench",                  // what you type: --domain bench
   "partition": "htc", "qos": "public",
   "max_time": "0-04:00:00",
-  "max_cores": 128,                 // ← the WIDEST machine, for admission (R3)
+  "max_cores": 128,                 // ← the WIDEST machine, read where no machines are listed (R0)
   "max_mem_gb": 512,
   "default_mem_per_core_gb": 2,
   "node_types": [                   // ← every machine the queue draws from (R0)

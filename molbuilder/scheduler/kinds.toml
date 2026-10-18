@@ -10,10 +10,12 @@
 # is ONE brace name -- `{restated}`, `{args}` -- stands for several words; any
 # other token is filled in place.
 #
-# What stays code is discovery, keyed by the kind's name: the probe reading a
-# scheduler's queues and limits out of its own tools, and `--mode ask`
-# reading its start-time answer.  Adding a scheduler is a block here and its
-# discovery reader.
+# What stays code is discovery and the reading of a scheduler's answers,
+# keyed by the kind's name: the probe reading a scheduler's queues and limits
+# out of its own tools, `--mode ask` reading its start-time answer, and the
+# jobs list reading which cluster answers and whether, in what state, it
+# lists a job (`scheduler.md` § 6a).  Adding a scheduler is a block here and
+# those readers.
 
 [workstation]
 what  = "no scheduler: a job runs here, directly"
@@ -54,7 +56,7 @@ wall = ["-t", "{wall}"]
 # (`scheduler.queue`: `molbuilder jobs status`, `jobs stop`, a job's address)
 # -- each answer read by the kind's reader (`queue._READERS`).
 [slurm.query]
-listed  = ["{query}", "--noheader", "--jobs={id}", "--format=%T"]
+listed  = ["{query}", "--noheader", "--jobs={id}", "--format=%T|%r"]
 cancel  = ["{cancel}", "{id}"]
 cluster = ["{cluster}", "show", "config"]
 

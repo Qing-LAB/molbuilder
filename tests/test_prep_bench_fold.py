@@ -10,7 +10,6 @@ from __future__ import annotations
 from support.road import group_words, shelf_headers
 
 import json
-import re
 import pathlib
 import os
 
@@ -762,16 +761,16 @@ class TestTheRunsOwnCondition:
 
     def test_prep_writes_a_big_ask_and_does_not_second_guess_it(self, calc):
         """`generator.md` § 4.3: what you asked for is written, or refused --
-        never trimmed.  Where a header is written, the queue it names admits
-        it or prep refuses it (`job-system.md` § 5.0, checkpoint 4); with no
-        header, as here (`--no-sbatch`), nothing is admitted, and
+        never trimmed.  Where a header is written, it is placed on the queue
+        it names and its fit said (`scheduler.md` R6); with no header, as
+        here (`--no-sbatch`), nothing is placed, and
 
         `prep` writes what you asked for, exactly as it does for `--np 999`.
         It refused here for one afternoon on 2026-09-02, because the run's
         shape was being produced BY the sweep's enumerator, whose job is to
-        cross out cells -- so a run inherited a bench's verdict on its own
-        numbers, in the bench's words ("no bench cell survived"), for a legal
-        `max_memory_mb` among others."""
+        leave cells out -- so a run inherited a bench's verdict on its own
+        numbers, in the bench's words, for a legal `max_memory_mb` among
+        others."""
         self._write(calc, execution={"mpi_np": 64, "omp_threads": 8,
                                      "use_gpu": False})
         r = self._run(calc)["resources"]
@@ -1192,37 +1191,6 @@ def test_the_declared_grid_is_the_sweep(calc):
     assert translation.axes == ("G", "K", "C")
 
 
-def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
-    """A point the machine cannot hold is CROSSED OUT naming the point, the
-    ask and the bound — never clamped, because a clamped point measures a
-    configuration nobody declared.
-
-    User, 2026-08-30: *"generate all combinations, then cross out by
-    checking each one and leave only the valid ones... present the correct
-    outcome"*.  The grid is enumerated whole and each cell checked; what
-    reaches the screen is the surviving list plus what was struck and why.
-    Nothing survives here, so the sweep still cannot proceed — but the
-    person is told which cell and by how much, not handed a sentence about
-    one number.
-    """
-    _describe_cpu(calc)
-    _declare_bench(calc, {"mpi_np": [4096], "omp_threads": [2]})
-    notes: list = []
-    with pytest.raises(PrepError):
-        bench_inputs(calc, None, notes=notes)
-    shown = "\n".join(notes)
-    assert "0 fit a queue" in shown
-    assert "crossed out (1)" in shown
-    # The CELL, by the name its trial directory would carry, and both
-    # numbers -- what was asked and what there is.
-    assert "G0K4096C2" in shown
-    # THE NUMBERS, NOT THE VERB: what the line is about is that BOTH
-    # numbers reach the person.
-    assert "8192" in shown and re.search(r"\b4\b", shown), (
-        f"the refusal must name what was asked and what is "
-        f"allowed; it said: {shown!r}")
-
-
 def test_a_multi_point_value_entry_is_a_value_axis(calc):
     """§ 4.3a: a non-machine entry with SEVERAL
     points multiplies the machine grid, each point carries its coordinate,
@@ -1556,45 +1524,4 @@ def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
         "\n".join(l for l in warn_lines if warn_lines.count(l) > 1))
     assert "each warning shown once" in err, (
         "suppression must be SAID, not silent")
-
-
-# --------------------------------------------------------------------- #
-#  Enumerate, cross out, show what is left (user, 2026-08-30)            #
-# --------------------------------------------------------------------- #
-
-def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
-        calc):
-    """THE BUG THE USER HIT, in its smallest form.
-
-    A declared grid mixing a point this machine holds with one it does not
-    refused the WHOLE prep -- so a person asking to benchmark 48 and 128
-    ranks got neither, and had to delete the 128 by hand to get anything
-    at all.  (Worse on a cluster: the bound it was refused against was
-    ``topology.sockets x cores_per_socket``, ONE node's measurement taken
-    wherever the probe ran, while the queue that would run the job holds
-    107 nodes twice that wide -- R0.)
-
-    Now every combination is enumerated, each is checked, the ones that
-    fit are listed and the ones that do not are struck by name.  The sweep
-    proceeds on the survivors.
-    """
-    _describe_cpu(calc)                      # a 4-core box, no queues
-    _declare_bench(calc, {"mpi_np": [2, 4096], "omp_threads": [1]})
-    notes: list = []
-    sweep, _pins, _translation = bench_inputs(calc, None, notes=notes)
-
-    assert sweep == [{"G": 0, "K": 2, "C": 1}], (
-        "the point that fits must survive its oversized sibling")
-
-    shown = "\n".join(notes)
-    assert "2 combination(s) enumerated, 1 fit a queue" in shown
-    assert "G0K2C1" in shown and "G0K4096C1" in shown
-    # The struck one names its numbers (R4), not a verdict word.
-    assert "crossed out (1)" in shown
-    # THE NUMBERS, NOT THE VERB: what the line is about is that BOTH
-    # numbers reach the person.
-    assert "4096" in shown and re.search(r"\b4\b", shown), (
-        f"the refusal must name what was asked and what is "
-        f"allowed; it said: {shown!r}")
-
 

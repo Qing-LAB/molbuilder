@@ -48,6 +48,14 @@ class Directives:
         (`kinds.Kind`)."""
         return kind.directive_lines_of(header_text)
 
+    @staticmethod
+    def said(lines: List[str]) -> str:
+        """A header's request in one line, as its directive ``lines`` carry
+        it (:meth:`lines_of`) -- every value of what a launch sends, each
+        line's directive after its kind's prefix -- the line both doors show
+        where a person approves it (`submission.md` S4)."""
+        return "header: " + "  ".join(ln.split(None, 1)[1] for ln in lines)
+
     def header_lines(self, kind) -> List[str]:
         """The placement's directive lines, in ``kind``'s language
         (`kinds.Kind`).

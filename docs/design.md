@@ -114,7 +114,7 @@ you need a new operation on a duration, it goes where durations live; it does
 > `scheduler/quantities.py` — one object, one module, all three dialects.
 
 **`scheduler/` is the one deliberate exception, and it is recorded rather than
-implicit.** By question 1 its `admit`/`place`/`emit` read as verbs, yet it is
+implicit.** By question 1 its `fit`/`place`/`emit` read as verbs, yet it is
 L1. The reason is portability, not grammar: a machine record is read *on the
 cluster*, inside a backend environment with no molbuilder installed, so the
 whole subpackage is stdlib-only by contract. Anything that must survive that

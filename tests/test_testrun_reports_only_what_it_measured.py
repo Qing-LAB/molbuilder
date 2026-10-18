@@ -379,18 +379,22 @@ def test_a_worker_that_dies_ends_the_run_and_names_its_test(
     CONTRACT (`testing.md` § 6.1a): the test whose worker died -- here in its
     teardown, after its call passed -- is recorded as failed with the crash
     as its reason, so ``status --fails`` names it, and is counted once; the
-    next test of its file never runs, so ``ran`` stays short of
-    ``collected`` and the run reads PARTIAL; no replacement worker re-runs
-    it (a replacement could be handed a finished group and wait for ever).
+    next test of its file -- one kept whole, its tests sharing a module
+    fixture -- never runs, so ``ran`` stays short of ``collected`` and the
+    run reads PARTIAL; no replacement worker re-runs it (a replacement could
+    be handed a finished group and wait for ever).
     """
     monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
     s, _suite, ran_on = _spread_run(tmp_path, {
-        "test_crash.py": ("@pytest.fixture\n"
+        "test_crash.py": ("@pytest.fixture(scope='module')\n"
+                          "def shared():\n"
+                          "    yield\n"
+                          "@pytest.fixture\n"
                           "def dies_after():\n"
                           "    yield\n"
                           "    os._exit(3)\n"
-                          "def test_x(dies_after): note('x')\n"
-                          "def test_y(): note('y')\n")})
+                          "def test_x(shared, dies_after): note('x')\n"
+                          "def test_y(shared): note('y')\n")})
     assert (s["state"], s["collected"], s["ran"]) == ("partial", 2, 1), s
     [(nid, reason)] = s["failed_ids"]
     assert nid == "test_crash.py::test_x" and "crashed" in reason, s

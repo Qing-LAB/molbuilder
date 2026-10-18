@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.jobset.ask import Ask, confirm
+from molbuilder.jobset.ask import confirm
 from molbuilder.scheduler.quantities import parse_duration, parse_memory
-from molbuilder.scheduler import Domain
+from molbuilder.scheduler import Domain, Request
 
 
 # --------------------------------------------------------------------- #
@@ -50,8 +50,6 @@ def test_unanswered_is_None_and_never_zero():
     for blank in (None, "", "   "):
         assert parse_duration(blank) is None
         assert parse_memory(blank) is None
-    assert not Ask()
-    assert Ask(time_s=60)
 
 
 # --------------------------------------------------------------------- #
@@ -108,33 +106,28 @@ def _menu():
     ]
 
 
-def _table(**kw):
+def _table():
     from molbuilder.jobset.ask import queue_table
-    return queue_table(_menu(), Ask(time_s=4 * 3600, mem_gb=128), **kw)
+    return queue_table(_menu(), Request(ranks=64, walltime_s=4 * 3600,
+                                        mem_gb=128))
 
 
 def test_every_queue_is_listed_with_what_it_offers():
     """The framework does not choose.  Which queue to spend a day of
     wall-clock in is a judgement about priority, contention and what else is
     running — none of it on this machine's record, all of it the person's."""
-    t = _table(cores=64)
+    t = _table()
     for name in ("debug", "htc", "general"):
         assert name in t
     assert "251 GB" in t and "a100 x4" in t
 
 
-def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
-    """Hiding it would answer *"why is my queue not an option?"* with
-    silence, and that question has a real answer worth reading."""
-    t = _table(cores=64)
-    assert "needs 240 min but debug allows" in t
-    # R10 (2026-08-27): a refusal names the MACHINE, not just the number.
-    # Knowing 48 is the ceiling is less useful than knowing which machine
-    # it is -- that is the difference between "trim this" and "this will
-    # queue".  A hand-written row with no `node_types` still falls back to
-    # `max_cores`, which is what this fixture exercises.
-    # The FACTS R10 asks for, not the phrasing: what was asked, what is
-    # allowed, and WHICH machine sets the ceiling.
-    assert "64 cores" in t and "48 cores" in t
-    assert "general" in t
-    assert "largest machine" in t
+def test_every_queue_says_the_jobs_fit_on_it_WITH_THE_NUMBERS():
+    """`scheduler.md` R4, R6: each queue is listed with how the job sits
+    on it -- what it is over, with the numbers -- and none is hidden or
+    struck: the person names one, and the scheduler decides.  A record that
+    lists no machines is read by its largest machine's figures (R3)."""
+    t = _table()
+    assert "4h is over debug's wall (0-00:15:00)" in t
+    assert "64 cores is over general's largest machine (48 cores)" in t
+    assert "64 cores · 128 GB · 4h fits htc" in t

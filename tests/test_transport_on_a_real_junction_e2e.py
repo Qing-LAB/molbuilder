@@ -715,8 +715,9 @@ def junction(tmp_path_factory):
         # A RUN OF POINTS SENT TO A QUEUE IS ONE JOB (`job-system.md` § 6.0):
         # a calculation citing the same run, prepared for a named machine
         # with queues -- its device's walk, its two points' walls summed,
-        # admitted at prep: refused on a queue shorter than the sum, and its
-        # one header written for a queue that takes it.  Nothing runs.
+        # placed at prep with its fit: said over a queue shorter than the
+        # sum, and its one header written for the queue it names.  Nothing
+        # runs.
         run.walk = _a_walk_prepared_for_a_queue(tree, cite)
         run.vibration = vibration
         run.frame_set = frame_set
@@ -1561,33 +1562,31 @@ def test_a_walk_run_here_names_its_log(junction, step, under):
     assert (junction.bundle / log).is_file(), log
 
 
-def test_a_walk_of_points_is_admitted_at_prep_its_walls_summed(junction):
+def test_a_walk_of_points_is_placed_at_prep_its_walls_summed(junction):
     """A run of points goes to a queue as one job walking every point, its
-    wall the points' summed (`job-system.md` § 6.0): prep admits that one
-    request on the queue it names -- a queue shorter than the sum is refused
-    there, naming the walk, the sum and where the wall was stated -- before
-    anything is sent, where a launch would only meet the scheduler's
-    refusal."""
+    wall the points' summed (`job-system.md` § 6.0): prep places that one
+    request on the queue it names and says its fit -- on a queue shorter
+    than the sum, the wall it is over, with the numbers -- before anything
+    is sent; the scheduler decides (`scheduler.md` R6)."""
     r = junction.walk.said["prep on short"]
-    assert r.exit_code != 0, r.output
-    for words in (f"stage 'device', one job walking its {len(_BIAS)} "
-                  f"points (their walls summed), does not fit the queue "
-                  f"'short'",
-                  "needs 80 min but short allows 01:00:00",
-                  "wall: the run card (`execution` in task.json)"):
+    assert r.exit_code == 0, r.output
+    for words in (f"one job walking its {len(_BIAS)} points (their walls "
+                  f"summed)", "-t 0-01:20:00",
+                  "1h20m is over short's wall (01:00:00)"):
         assert words in r.output, r.output
 
 
 def test_a_walk_of_points_is_written_at_prep_as_the_one_header_launch_sends(
         junction):
     """On a queue that takes it, prep writes the walk's one header -- the
-    summed wall, the queue it admitted -- and prints every value of it, so
+    summed wall, the queue it names -- and prints every value of it, so
     launch sends it as it is (`submission.md` S4); and it is the run's one
     header: no point carries one of its own, which nothing sends."""
     from molbuilder.scheduler.emit import Directives
+    from molbuilder.scheduler.kinds import kind
     r = junction.walk.said["prep on long"]
     assert r.exit_code == 0, r.output
-    lines = Directives.lines_of(junction.walk.header or "")
+    lines = Directives.lines_of(junction.walk.header or "", kind("slurm"))
     assert "#SBATCH -t 0-01:20:00" in lines, lines
     assert "#SBATCH -p cpu" in lines and "#SBATCH -q long" in lines, lines
     assert "header: " in r.output and "-t 0-01:20:00" in r.output, r.output

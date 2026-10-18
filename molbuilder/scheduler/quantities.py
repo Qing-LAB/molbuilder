@@ -40,7 +40,7 @@ __all__ = [
     "slurm_time", "slurm_mem",
     "canonical_time", "canonical_mem", "parse_mem_gb",
     "parse_gres_flag", "canonical_gres",
-    "human_wall", "core_range", "machine_sizes",
+    "human_wall", "core_range", "mem_range",
 ]
 
 
@@ -384,18 +384,15 @@ def core_range(shapes) -> str:
     return str(sizes[0]) if len(sizes) == 1 else f"{sizes[0]}-{sizes[-1]}"
 
 
-def machine_sizes(domains) -> "list":
-    """Every distinct machine size across a menu of domains.
+def mem_range(values) -> str:
+    """A set of machine memories (GB) -> the **memory range** they span, as
+    :func:`core_range` states cores: ``"501-1511.2 GB"``, one number when
+    they are the same, ``""`` when nothing is measured."""
+    sizes = sorted({float(v) for v in values if v})
+    if not sizes:
+        return ""
+    if len(sizes) == 1:
+        return f"{sizes[0]:g} GB"
+    return f"{sizes[0]:g}-{sizes[-1]:g} GB"
 
-    A partition is a QUEUE and holds several kinds of machine
-    (`scheduler.md` R0), and one domain's ``node_types`` names the ones IT
-    can reach.  Empty when no record states them, and a caller then falls back to whatever single
-    figure it has, which is R3: an unstated fact never bars.
-    """
-    out = []
-    for d in domains or []:
-        for t in (getattr(d, "node_types", None) or []):
-            c = t.get("cores")
-            if c:
-                out.append(int(c))
-    return out
+

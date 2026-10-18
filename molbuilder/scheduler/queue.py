@@ -1,5 +1,5 @@
 """A job in the scheduler's queue -- the cluster it is sent to, whether the
-scheduler still lists it, and its cancel (`execution/job-system.md`
+scheduler still lists it and in what state, and its cancel (`execution/job-system.md`
 § 6.0a): asked of the machine record's scheduler -- its kind's words
 (`kinds.toml`, `query`), run from where the record says its commands are
 (`record.Scheduler`) -- by the one sender and by `molbuilder jobs`; each
@@ -9,7 +9,7 @@ Floor 1: facts of a machine.
 from __future__ import annotations
 
 import subprocess
-from typing import Optional
+from typing import Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -33,18 +33,26 @@ def _slurm_cluster(stdout: str) -> Optional[str]:
 
 
 def _slurm_listed(returncode: int, stdout: str,
-                  stderr: str) -> Optional[bool]:
-    """``squeue``'s answer for one id: a state not yet ended, ended, or --
-    an id it has forgotten, answered with an error rather than an empty
-    list, since SLURM keeps an ended job only `MinJobAge` seconds -- not
-    listed; ``None`` for an answer that says neither."""
-    if returncode == 0:
-        return any(s not in _SLURM_ENDED for s in stdout.split())
-    return False if "Invalid job id" in stderr else None
+                  stderr: str) -> Optional[Tuple[bool, str]]:
+    """``squeue``'s answer for one id, ``STATE|REASON`` -- ``(listed, said)``:
+    listed while its state has not ended, and ``said`` the state with
+    SLURM's reason for it, ``PENDING (QOSMaxWallDurationPerJobLimit)``, its
+    own words (`scheduler.md` R6).  An id it has forgotten is answered with
+    an error rather than an empty list, since SLURM keeps an ended job only
+    `MinJobAge` seconds -- not listed; ``None`` for an answer that says
+    neither."""
+    if returncode != 0:
+        return (False, "") if "Invalid job id" in stderr else None
+    rows = [ln.partition("|") for ln in stdout.split("\n") if ln.strip()]
+    if not rows:
+        return False, ""
+    state, _bar, reason = (x.strip() for x in rows[0])
+    said = state if reason in ("", "None") else f"{state} ({reason})"
+    return any(s.strip() not in _SLURM_ENDED for s, _b, _r in rows), said
 
 
 #: Each kind with a queue -> the readers of its answers: which cluster it
-#: serves, and whether it still lists a job.
+#: serves, and whether it still lists a job and in what state.
 _READERS = {"slurm": (_slurm_cluster, _slurm_listed)}
 
 
@@ -73,11 +81,12 @@ def cluster(scheduler) -> Optional[str]:
     return _READERS[k.name][0](r.stdout) if r.returncode == 0 else None
 
 
-def lists(scheduler, job_id: str) -> Optional[bool]:
-    """Whether ``scheduler`` still lists job ``job_id`` as not yet ended --
-    queued, running, ending -- ``False`` once it does not, and ``None``
-    where it cannot be asked: no command for it on the record, one that does
-    not run here, or an answer that says neither."""
+def listed(scheduler, job_id: str) -> Optional[Tuple[bool, str]]:
+    """``(listed, said)`` -- whether ``scheduler`` still lists job
+    ``job_id`` as not yet ended (queued, running, ending), and the state it
+    lists it in with its reason, in the scheduler's words (`job-system.md`
+    § 6.0a); ``None`` where it cannot be asked: no command for it on the
+    record, one that does not run here, or an answer that says neither."""
     k, line = _asked(scheduler, "listed", id=job_id)
     if line is None:
         return None
@@ -105,4 +114,4 @@ def cancel(scheduler, job_id: str) -> str:
     return said
 
 
-__all__ = ["cancel", "cluster", "lists"]
+__all__ = ["cancel", "cluster", "listed"]

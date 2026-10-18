@@ -78,29 +78,33 @@ record = { conda_envs = ["molbuilder-siesta"] }
 refused = "env is not installed"
 
 [[case]]
-name = "a queue named for a GPU job must list GPUs -- refused at prep"
+name = "a GPU job on a queue that lists no GPUs is prepared as asked, its fit saying so (scheduler.md R2a, R6)"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
 allocation = { domain = "cpu" }
-refused = "its record lists no GPUs"
+said = ["fits no node of cpu -- 1 GPU is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs"]
+header = ["#SBATCH --gres=gpu:1", "#SBATCH -p cpu"]
 
 [[case]]
-name = "one node must hold the GPUs asked for -- refused at prep, on the queue the run names"
+name = "one node holds the GPUs a job asks -- more than any node of its queue carries is said, with the most there is"
 run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
-refused = "needs 8 GPUs but gpu allows 4 GPUs"
+said = ["fits no node of gpu -- 8 GPUs is over gpu's most GPUs on a node (4 GPUs)"]
+header = ["#SBATCH --gres=gpu:8"]
 
 # A run on a scheduler that names no queue is refused at prep, shown the
-# record's queues against its own request (`submission.md` S5).
+# record's queues with its own request's fit on each (`submission.md` S5).
 [[case]]
-name = "the queue list checks the job's own GPU count"
+name = "the queue list fits the job's own GPU count"
 run = { use_gpu = true, gpu_count = 2, mpi_np = 2 }
 allocation_unset = ["domain"]
 refused = ["states no queue (domain)",
-           "needs 2 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
+           "2 GPUs is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs",
+           "fits 5 of 15 nodes of gpu (33%): 48 cores · a100"]
 
 [[case]]
-name = "a GPU job's cores fit the widest node that has GPUs"
+name = "a GPU job's cores are fit on the nodes that have GPUs -- prep says what each kind of machine lacks (scheduler.md R3, R10)"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 64 }
-refused = "needs 64 cores but gpu allows 48 cores"
+said = ["fits no node of gpu -- no one machine of gpu holds all of it: the 48-core machines have 48 cores; the 128-core machines have no GPU"]
+header = ["#SBATCH -n 64", "#SBATCH --gres=gpu:1"]
 
 [[case]]
 name = "a CPU job on the same queue keeps its 128-core nodes"
@@ -277,17 +281,17 @@ bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] 
 bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
-name = "a benchmark's GPU ask bounds its trials, as its rank ask does: a declared cell past it is crossed out by name (generator.md 4.1, 4.3a)"
+name = "a benchmark's GPU ask bounds its trials, as its rank ask does: a declared cell past it is left out by name (generator.md 4.1, 4.3a)"
 bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] }
 prep = ["--gpus", "1"]
-said = ["needs 2 GPUs but this prep's ask allows 1 GPUs"]
+said = ["2 GPUs is over this prep's --gpus (1 GPU)"]
 bench_gres = ["gpu:1"]
 
 [[case]]
 name = "...and a cell the machine proposed past it, the same way -- the prep is not refused over a cell nobody declared"
 bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
 prep = ["--gpus", "2"]
-said = ["needs 4 GPUs but this prep's ask allows 2 GPUs"]
+said = ["4 GPUs is over this prep's --gpus (2 GPUs)"]
 bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
@@ -304,14 +308,42 @@ bench_gres = ["gpu:2"]
 bench_header_lacks = ["enforce-binding"]
 
 # A BENCHMARK NAMED ON A QUEUE WITH NO GPUs, on a record whose other queue
-# has them: its GPU cells are enumerated for the record's GPUs and crossed out
-# by that queue's own refusal, its CPU cells kept -- a cell that fits is never
-# denied by a sibling that does not (`generator.md` § 4.3a).
+# has them: its GPU cells are enumerated for the record's GPUs and each is fit
+# on that queue -- a declared one kept, a proposed one left out by that
+# queue's numbers, its CPU cells kept: a cell that fits is never denied by a
+# sibling that does not (`generator.md` § 4.3a).
 [[case]]
-name = "a benchmark named on a queue with no GPUs crosses its GPU cells out by that queue's own refusal, and keeps its CPU cells"
+name = "a benchmark named on a queue with no GPUs keeps its declared GPU cells, each cell's fit saying so (scheduler.md R6)"
+allocation = { domain = "cpu" }
+bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1], omp_threads = [1] }
+said = ["1 kept on cpu", "8 cores · 1 GPU fits no node of cpu -- 1 GPU is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs"]
+bench_gres = ["gpu:1"]
+
+[[case]]
+name = "...and prepared to run where it is launched (--no-sbatch), a declared GPU cell is fit on the target's probed node, which records none: kept, its fit naming it"
+prep = ["--no-sbatch"]
+bench = { use_gpu = [true], mpi_np = [2], gpu_count = [1], omp_threads = [1] }
+said = ["1 kept", "1 GPU is over the target's probed node's GPUs (0 GPUs)"]
+# ...and it is the node it is fit on, never the queue the description names.
+said_lacks = ["kept on"]
+
+[[case]]
+name = "...and a GPU cell whose device count the machine proposed -- none declared -- is the machine's proposal: left out there by that queue's numbers, its declared CPU cell kept"
 allocation = { domain = "cpu" }
 bench = { use_gpu = [true, false], mpi_np = [8], omp_threads = [1] }
-said = ["needs 1 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
+said = ["1 kept on cpu", "left out (3)", "1 GPU is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs"]
+bench_header_lacks = ["--gres"]
+
+[[case]]
+name = "...and declared device counts in a grid whose ranks the machine proposed: no node holds 8 GPUs, so nothing is proposed, and the refusal says how to keep them -- declare the cells whole"
+bench = { use_gpu = [true], gpu_count = [8] }
+refused = ["8 GPUs is over gpu's most GPUs on a node (4 GPUs)", "no GPU cell is left", "or declare the cells whole"]
+
+[[case]]
+name = "...and a cell the machine proposed there is left out by that queue's numbers, its CPU cells kept"
+allocation = { domain = "cpu" }
+bench = { use_gpu = [true, false] }
+said = ["left out (", "1 GPU is over cpu's most GPUs on a node (0 GPUs); its record lists no GPUs"]
 bench_header_lacks = ["--gres"]
 
 [[case]]

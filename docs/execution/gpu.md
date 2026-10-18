@@ -47,7 +47,7 @@ accurate/accommodating" — "and which part is none of your business".)*
 |---|---|---|
 | **Does this run use a GPU?** | the person — `use_gpu` on the run card (`execution`), over the template's value; an axis of a bench | renders each engine's keyword (`Diag.ELPA.GPU`, gpu4pyscf), takes SIESTA to its GPU build, asks the scheduler for GPUs. Not said, no GPU is asked for |
 | **How many GPUs?** | the person — `gpu_count` on the run card, both engines, or `--gpus N` on the prep | asks `--gres=gpu:N`. **No default, and no count without the GPU:** a run that uses a GPU and states no count, or states a count and does not use the GPU, is refused at prep, before anything is written, naming where each is said (G5). A bench that names no `gpu_count` measures each count that divides its rank counts, up to the most one node holds (§ 3.1) |
-| **Which queue may take it?** | the target's record, written by `jobset probe` | only a queue whose record lists GPUs, where one node holds at least N — the queue the job names (`allocation.domain`, the run card, `--domain`). That is the whole of the GPU check ([`scheduler.md`](?doc=execution/scheduler.md) R2a). A GPU job's cores are checked against the widest node that HAS GPUs (R3) |
+| **Which queue may take it?** | the person — the queue the job names (`allocation.domain`, the run card, `--domain`); the target's scheduler decides | the job is placed there and its fit printed: the nodes of that queue carrying at least N GPUs that also hold its cores and memory, of how many — a queue whose record lists no GPUs has none ([`scheduler.md`](?doc=execution/scheduler.md) R2a, R3). Never refused for it (R6) |
 | **Where is GPU work submitted?** | the job — the queue it names | that queue, as for any job; nothing on the record sends GPU work elsewhere |
 | **Which rungs take the calculation's GPU?** | the catalogue — the rungs whose role reads `use_gpu` | a calculation-wide `use_gpu` and `gpu_count` reach only those rungs: never a transport ladder's transmission, whose `tbtrans` has no GPU path ([`stages.md`](?doc=engines/stages.md) § 6.8d); a rung's own card stating one there is refused |
 | **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `task.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
@@ -78,8 +78,8 @@ is never refused on the number (R3: silence never bars).
   R12) — measured, never asked for.
 - **Whether the GPU is there and works when the job lands** — drivers,
   CUDA, the card's memory, whether the calculation fits on it. The target's
-  scheduler and the job itself answer that: admission owns only what the
-  scheduler would refuse (`scheduler.md` § 0).
+  scheduler and the job itself answer that: the fit owns only what the
+  scheduler decides (`scheduler.md` § 0).
 - **Which node the scheduler picks, and whether it can enforce the
   binding.** `enforce-binding` asks; a scheduler that does not know which
   cores sit near which GPU cannot honour it.
@@ -101,18 +101,16 @@ queue and memory are its own, its memory asked exactly as a CPU job's
 | `gpu_binding` | **the person**, to turn it off | `task.json` · `allocation` → `Resources` | whether the ask carries `--gres-flags=enforce-binding` (G9) |
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
 | `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck: `_mb_to_gpu(mf)`, imported from its bundle (`runtime_info.to_gpu`) | the same, for PySCF |
-| `Device(type, per_node)` | **the probe** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling; its `type` is shown, never compared |
-| `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what the probed node has — the count bounds a bench's GPU counts; the card is shown, never compared |
+| `Device(type, per_node)` | **the probe** | `environment.json` · `Domain.gpu`, each machine's `gpu` | what one node of a queue **offers**; its `type` is shown, never compared |
+| `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what the probed node has — a machine with no queue's own; on a cluster, one sampled node, never read as the cluster's; the card is shown, never compared |
 
-> **The ask and the ceiling are different variables, and the names hide it.**
-> `gpu_count` is what a trial asks for. The ceiling is `Device.per_node`, which
-> `admit._devices_offered` reads as *"the most devices one node of this
-> domain offers"*, and
-> `topology.gpus_per_node` for the probed node. The bench reads them
-> together: leave `gpu_count` out and prep proposes the divisors of each rank
-> count **bounded by the recorded device count**. Ask ≤ ceiling; two
-> variables, one bounding the other. A reader who assumes `gpu_count` is the
-> ceiling will size a run to the hardware and call it a request.
+> **The ask and what a node offers are different variables, and the names
+> hide it.** `gpu_count` is what a run or a trial asks for; `Device.per_node`
+> is what one node of a queue carries. The fit reads them together — the
+> nodes carrying at least the number asked — and a bench that names no
+> `gpu_count` proposes the divisors of each rank count **up to the most one
+> machine of its queue carries**. A reader who takes `gpu_count` for what a
+> node offers will size a run to the hardware and call it a request.
 
 ---
 
@@ -137,12 +135,12 @@ SIESTA carries ELPA through ELSI and runs both stages on CPU, measured.
 Only `Diag.ELPA.GPU true` re-routes anything. The two are easy to confuse
 and sit on different cards on purpose.
 
-**G4 — The ask is bounded by the ceiling, and they are different names.**
-A request states `gpu_count`; a record states `Device.per_node`. Admission
-takes a GPU job only to a queue whose record lists GPUs and compares the
-count with the most one node holds — on the queue the job names
-([`scheduler.md`](?doc=execution/scheduler.md) R2a). Neither may be read as
-the other.
+**G4 — The ask and what a node offers are different names.** A request
+states `gpu_count`; a record states each machine's `gpu`. The fit counts the
+nodes of the queue the job names that carry at least the number asked, and
+says so; the job is placed there whatever the count, and the scheduler
+decides ([`scheduler.md`](?doc=execution/scheduler.md) R2a, R6). Neither may
+be read as the other.
 
 **G5 — No default for the count, and no count without the GPU.** A run that
 uses a GPU states how many — `gpu_count` on its run card, or `--gpus N` on its
@@ -152,7 +150,7 @@ refused at prep, before anything is written, saying where each half is stated
 The two halves
 are one answer, the job's **GPU request** (`jobset.model.gpu_request`,
 `architecture.md` § 3.2), and every reader asks it — the header, the run
-script, prep's admission and its queue list, a benchmark's trials, their
+script, prep's placement and its queue list, a benchmark's trials, their
 shelves and their report, the Task setup card, which shows a request prep refuses as the refusal. A bench is
 not a run: a bench that names no `gpu_count` measures the counts § 3.1
 describes.
@@ -226,20 +224,19 @@ flowchart TB
     ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · binding (G9) · MPS · NUMA pin<br/>ranks, threads, --mem = what the person stated"]
 
     COUNT --> RT
-    TOPO -.->|"GPUs per node, when no queue lists them"| RT
+    TOPO -.->|"GPUs per node, a machine with no queue"| RT
     RT --> REQ["<b>Request</b> gpus = gpu_count<br/><i>gres gpu:N — no card</i>"]
 
-    REQ --> ADMIT{"admission — the queue the job names<br/>lists GPUs, and<br/>gpus ≤ the most one node holds?<br/><i>(scheduler.md R2a)</i>"}
-    DEV -.-> ADMIT
-    ADMIT -->|no| REFUSE3["<b>refused locally</b><br/>names the number that would fit"]
-    ADMIT -->|yes| PLACE["placement — one decision"]
+    REQ --> FIT["<b>the fit</b> — the queue the job names:<br/>its nodes carrying ≥ gpus that hold it,<br/>of how many; printed, never a refusal<br/><i>(scheduler.md R2a, R6)</i>"]
+    DEV -.-> FIT
+    FIT --> PLACE["placement — one decision"]
     PLACE --> OUT["#SBATCH header, at prep<br/><i>the one rendering; launch sends it</i>"]
 
     CPU --> OUT
     PYDECK --> OUT
 
     classDef refuse fill:#7f1d1d,stroke:#ef4444,color:#fff
-    class REFUSE1,REFUSE2,REFUSE3 refuse
+    class REFUSE1,REFUSE2 refuse
 ```
 
 ### 3.1 The bench walks the same graph, once per family
@@ -284,6 +281,7 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 |---|---|
 | `test_gpu_answerers.py` — the `allocation` set is read from the catalogue and `use_gpu` is not in it | **G2.** The one door, so a document cannot disagree with the data |
 | the solver decides no environment and no resource — two pairs of rows of the table, each pair differing only in `diag_algorithm` (one-stage and two-stage ELPA on the GPU, ELPA and ScaLAPACK on the CPU) and asking the same queue, GPUs and environment | **G3** |
+| a GPU job is fit on the nodes of its queue that carry the GPUs it asks, whatever their card — prepared as asked on a queue that lists none, or past the most a node carries, its fit saying so — rows of the table, and the fit's own (`tests/data/the_fit.toml`) | **G4** |
 | a GPU run with no count, and a count for a run that does not use the GPU — by the run card or `--gpus`, either engine — are refused at prep before anything is written, naming where to write it — rows of the table; the Task setup card shows each refusal on its devices row (`test_bench_grid_card.py`, API-level: no `jobset` verb reaches the card) | **G5** |
 | a calculation that turns the binding off asks without it, in the header and in a benchmark's trials — rows of the table | **G9** |
 | a CPU deck writes `.false.` explicitly | **G6.** Absence crashes a CPU run |

@@ -9,8 +9,8 @@ explained afterwards because nothing was invented.
 
 Everything that lives here, and it lives nowhere else:
 
-    Ask              the question, and the answer to it
-    queue_table      the queues the target's record lists, and which can take the job
+    queue_table      the queues the target's record lists, their machines,
+                     and the job's fit on each
     gpu_share_notes  what a GPU-sharing request means, stated once
     confirm          the one interface — approve, change, or skip
 
@@ -19,10 +19,10 @@ Everything that lives here, and it lives nowhere else:
     submits it.  TIME IS NEVER DERIVED (user dictation, 2026-08-24): the
     user states it, or prep refuses (`architecture.md` § 5.2).
 
-`admits` is the one check of "does this fit": placement uses it, and
-`queue_table` renders it per queue.
+`scheduler.fit` is the one reading of "how does this fit": placement prints
+it, and `queue_table` renders it per queue (`scheduler.md` R6).
 
-The command line asks through these four.
+The command line asks through these.
 """
 from __future__ import annotations
 
@@ -31,12 +31,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
-    from ..scheduler.admit import Refusal
+    from ..scheduler.fit import Request
 
 # The two quantities a job asks for -- a wall and an amount of memory -- and
 # every dialect each is written in, live in `scheduler/quantities.py`:
 # a codec on a basic unit is L1; this module is L2 (`docs/design.md`).
-from ..scheduler.quantities import human_wall
+from ..scheduler.quantities import human_wall, mem_range
 
 #: MPS's own hard ceiling -- more than this many processes cannot even
 #: ATTACH to one device (`engines/tuning.md` § 2.12, citing
@@ -50,142 +50,63 @@ MPS_MAX_CLIENTS_PER_DEVICE = 48
 GPU_TUNED_RANKS_PER_DEVICE = 4
 
 
-@dataclass(frozen=True)
-class Ask:
-    """What one job needs, as the person said it.
-
-    ``None`` means *not answered* — never zero, never a default wearing a
-    number's clothes.  A caller that must have a value asks; a caller that can
-    proceed without one says so.
-    """
-    time_s: Optional[int] = None
-    mem_gb: Optional[float] = None
-
-    def __bool__(self) -> bool:
-        return self.time_s is not None or self.mem_gb is not None
-
-
-def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
-                gpus: Optional[int] = None) -> str:
-    """**Every queue the target's record lists, and which of them can take this
-    job.**
+def queue_table(rows: Sequence, request: "Request") -> str:
+    """**Every queue the target's record lists, its machines, and this job's
+    fit on each** (`scheduler.md` R4, R6).
 
     The framework does not choose (user, 2026-08-23: *"just don't guess
-    shit"*).  It shows what exists, marks what fits, and the person names one
-    where the refusal it is shown in says -- prep shows this when a run names
-    none (`placement.launch_refusal`).  Which queue to spend a day of
-    wall-clock in is a judgement
-    about priority, contention and what else is running — none of which is on
-    the target's record, and all of which the person has.
+    shit"*).  It shows what exists and how the job sits on each, and the
+    person names one -- prep shows this when a run names none
+    (`placement.launch_refusal`).  Which queue to spend a day of wall-clock
+    in is a judgement about priority, contention and what else is running --
+    none of which is on the target's record, and all of which the person
+    has.
 
-    A queue that cannot take the job is still LISTED, with the reason.
-    Hiding it would answer *"why is my queue not an option?"* with silence,
-    and that question has a real answer worth reading.
+    **Each queue is up to three kinds of line**::
 
-    **Each row is up to four lines**, and the last three appear only when
-    they have something to say::
+        1  htc   htc/public   4h   48-128   501-1511.2 GB   a100 x4, h100 x8, …
+             - 128 cores  x137 node(s)  503.2-1511.2 GB  a30, h200   <- the
+             - 48 cores  x69 node(s)  501-503.5 GB  a100, l40          machines,
+           64 cores · 900 GB fits 3 of 212 nodes of htc (1%): …     when several
+                                                                     <- the fit
 
-        2  htc   htc/public   4h   48-128   -   a100 x4, a100.20gb x16
-             - 128 cores  x134 node(s)                    <- the machines,
-             - 64 cores  x3 node(s)  a100.20gb x16           when there is
-             - 48 cores  x51 node(s)  a100 x4  (too small)   more than one
-               64 cores fits 137 of 188 nodes here (72%)  <- given an ask
-           -> needs 240 min but debug allows 00:15:00      <- why not
-
-    ``cores`` is the **maximum core range** (:func:`core_range`) -- one
-    number when every machine is the same size.  The fit line
-    (:func:`fits_how_many`) is there because the range alone misleads: on
-    ``htc``, 128 looks like the rare extreme and is 134 of 188 nodes.
+    The cores and memory columns are the **ranges** across the queue's
+    machines (`Domain.core_range`, `Domain.mem_range`), one number when
+    every machine is the same.
     """
-    from ..scheduler import domain_ceiling_s
+    from ..scheduler.fit import domain_ceiling_s, fit
     head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
-            f"{'cores':>8} {'memory':>9}  gpu")
+            f"{'cores':>8} {'memory':>14}  gpu")
     lines = ["the target's record lists:", head]
     for i, d in enumerate(rows, 1):
-        secs = domain_ceiling_s(d)
-        wall = human_wall(secs)
-        mem = f"{float(d.max_mem_gb):g} GB" if d.max_mem_gb else "-"
-        dev = ", ".join(f"{x.type} x{x.per_node}" for x in d.devices) or "-"
-        why = _why_not(d, ask, cores=cores, gpus=gpus)
-        mark = "  " if not why else "! "
+        wall = human_wall(domain_ceiling_s(d))
+        dev = ", ".join(x.type + (f" x{x.per_node}" if x.per_node else "")
+                        for x in d.devices) or "-"
         lines.append(
-            f"{mark}{i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
-            f"{wall:>9} {core_range(d):>8} {mem:>9}  {dev}")
-        for shape in _machine_lines(d, cores=cores):
+            f"  {i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
+            f"{wall:>9} {d.core_range:>8} {d.mem_range:>14}  {dev}")
+        for shape in _machine_lines(d):
             lines.append(f"       {shape}")
-        fit = fits_how_many(d, cores)
-        if fit:
-            lines.append(f"         {fit}")
-        if why:
-            lines.append(f"     -> {'; '.join(r.message for r in why)}")
+        lines.append(f"     {fit(d, request).line}")
     return "\n".join(lines)
 
 
-def core_range(row) -> str:
-    """This domain's **maximum core range**, for the table's cores column.
-
-    The arithmetic is `scheduler.quantities.core_range` -- ONE spelling, so
-    the queue table here and the browser's machine card cannot disagree
-    about how a range is written.  This wrapper adds only the fallback: a
-    record with no ``node_types`` still has ``max_cores``, and R3 says an
-    unstated fact never bars.
-    """
-    from ..scheduler.quantities import core_range as _range
-    shapes = [t.get("cores") for t in (getattr(row, "node_types", None) or [])]
-    return _range(shapes) or str(row.max_cores or "-")
-
-
-def fits_how_many(row, cores: Optional[int]) -> str:
-    """How much of this queue an ask of ``cores`` could actually land on.
-
-    **The range alone misleads, and the count is what makes it a
-    decision.**  Reading ``48-128`` you would take 128 for the rare
-    extreme; on Sol's ``htc`` it is 134 of 188 nodes -- the COMMON machine,
-    with the 48-core GPU nodes in the minority.  So a large CPU ask there
-    costs almost nothing in scheduling, which is the opposite of what the
-    range implies on its own.
-
-    Nothing is printed without an ask to measure, or when every machine
-    fits: a line saying *all of them* on every row is noise.
-    """
-    shapes = [t for t in (getattr(row, "node_types", None) or [])
-              if t.get("cores") and t.get("nodes")]
-    if not cores or not shapes:
-        return ""
-    total = sum(t["nodes"] for t in shapes)
-    fit = sum(t["nodes"] for t in shapes if t["cores"] >= cores)
-    if fit == total:
-        return ""
-    # NO LEADING ARROW.  `->` already means *this queue is refused* one
-    # indent out, and two arrows at two indents saying different things is
-    # a table you have to decode.  This is a SUMMARY of the machines listed
-    # directly above it, so it sits with them and reads as their total.
-    if not fit:
-        return f"{cores} cores fits none of this queue's {total} nodes"
-    return (f"{cores} cores fits {fit} of {total} nodes here "
-            f"({100 * fit // total}%)")
-
-
-def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
+def _machine_lines(row) -> List[str]:
     """The machines a domain holds, **one line per SIZE**.
 
     **A partition is a queue, not a machine type.**  Sol's ``htc`` is 48-,
     64-, 96- and 128-core nodes under one name.  The ``cores`` column above
-    summarises them as a range (:func:`core_range`); these lines are the
-    machines themselves.
+    summarises them as a range; these lines are the machines themselves.
 
     **Grouped by size, and that is not cosmetic.**  `sinfo` reports one row
-    per *gres group*, and on the real Sol record `htc` has FOURTEEN -- nine
-    of them 48-core rows differing only in which card they carry.  Printed
-    one-per-group the menu ran to 68 lines and stopped being readable,
-    which is the opposite of showing what exists.  Sizes are what a person
+    per *gres group*, and on Sol `htc` has FOURTEEN -- nine of them 48-core
+    rows differing only in which card they carry.  Sizes are what a person
     picking a machine is choosing between; the cards available AT each size
     ride along, because that is the pairing no single figure could state:
     on ``htc`` you can have 128 cores or you can have an A100, never both.
 
     Nothing is printed for a domain that holds ONE size: the ``cores``
-    column already said it, and a line repeating it is noise on every row
-    with nothing to disclose.
+    column already said it.
     """
     shapes = getattr(row, "node_types", None) or []
     by_size: Dict[int, Dict[str, Any]] = {}
@@ -205,31 +126,11 @@ def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
         g = by_size[c]
         bits = [f"{c:>4} cores", f"x{g['nodes']} node(s)"]
         if g["mem"]:
-            lo, hi = min(g["mem"]), max(g["mem"])
-            bits.append(f"{lo:g} GB" if lo == hi else f"{lo:g}-{hi:g} GB")
+            bits.append(mem_range(g["mem"]))
         if g["dev"]:
             bits.append(", ".join(sorted(g["dev"])))
-        # A size too small for THIS ask is marked, not hidden: it is why
-        # the queue is slower than its node count suggests.
-        fits = "" if (cores is None or c >= cores) else "   (too small)"
-        out.append("- " + "  ".join(bits) + fits)
+        out.append("- " + "  ".join(bits))
     return out
-
-
-def _why_not(row, ask: Ask, *, cores=None,
-             gpus: Optional[int] = None) -> "List[Refusal]":
-    """Why this queue cannot take this job — empty when it can.
-
-    Reuses the scheduler's own admission so the listing and the submission
-    cannot disagree about what fits: a table that says yes where the check
-    says no is worse than no table.  ``gpus`` is the job's own GPU count.
-    """
-    from ..scheduler.admit import Request, admits
-    # `Refusal`s: each carries its `limit`, `asked` and
-    # `allowed`.  The listing renders `.message`; a caller wanting to know
-    # WHICH limit bit reads the field instead of the sentence.
-    return list(admits(row, Request(ranks=cores, walltime_s=ask.time_s,
-                                    mem_gb=ask.mem_gb, gpus=gpus or None)))
 
 
 def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
@@ -253,9 +154,8 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
        reason to make, so this states both numbers and renders no verdict
        (`docs/execution/submission.md` -- ask, do not derive).
 
-    Whether the cores fit a node is not said here: the bench grid crosses out
-    what no queue of the machine admits
-    (`jobset/prep_inputs._cells_this_machine_holds`).
+    Whether the cores fit a node is not said here: it is each cell's fit on
+    the benchmark's queue (`jobset/prep_inputs._cells_on_the_queue`).
 
     ``gpu_count`` falsy/``None`` returns no lines -- a CPU-family request,
     nothing here applies.  ``mpi_np`` falsy/``None`` the same -- there is no

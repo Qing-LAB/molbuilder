@@ -8,8 +8,8 @@ Two tuples, one per kind:
 and the pieces they are made of: the run's condition (`Task.run_condition`,
 read by `declared_run_shape`, `run_inputs`), the bench's
 declared pins and axes (`_declared_execution_pins`), and the bench grid --
-enumerated, checked cell by cell against the target's queues, and reported
-(`_cells_this_machine_holds`, `_rank_reasons`, `_local_refusals`, `_cell_*`).
+enumerated, fit cell by cell on the benchmark's queue, and reported
+(`_cells_on_the_queue`, `_local_over`, `_past_the_ask`, `_cell_*`).
 
 **The conductor's own assembly, beside it** (`architecture.md` § 2.1's note:
 only a surface imports the conductor, and its own modules).  A refusal is a
@@ -138,123 +138,89 @@ def _gpus_per_node(routing) -> "int | None":
     return max(counts) if counts else None
 
 
-def _cells_this_machine_holds(plan, *, routing,
-                              local_cores=None, local_gpus=None):
-    """Every enumerated bench cell, checked one by one against the target's
-    queues -- ``[(fam, (g, k, c), domains, why)]`` in enumeration order,
-    ``domains`` naming every queue that would take the cell and ``why`` the
-    reasons it fits nowhere.  Exactly one of the two is non-empty, so
-    ``why`` alone decides kept-vs-crossed.
+def _cells_on_the_queue(plan, *, routing, local_cores=None,
+                        local_gpus=None):
+    """Every enumerated bench cell, fit on the benchmark's queue --
+    ``[(fam, (g, k, c), fits, over)]`` in enumeration order: ``fits`` the
+    cell's fit on each queue of ``routing``, as ``{queue, holds, line}``
+    (`scheduler.fit`, the one `place` itself asks, so a cell and a run get
+    one reading), ``over`` the limits it is over -- empty when a node of
+    some queue there holds it (`generator.md` § 4.3a).
 
-    **Enumerate everything, then cross out what the machine cannot hold,
-    then show what is left** (user, 2026-08-30).
-
-    The check is `scheduler.admits` on each queue -- the one admission
-    `place` asks, a GPU cell on a queue whose record lists no GPUs refused
-    with it.  ``routing`` is the benchmark's ONE queue when it names one
-    (:func:`bench_inputs`): a benchmark measures on the queue its prep
-    names (`generator.md` § 4.3a; the user, 2026-10-17), so each cell is
-    answered by that queue alone.
-
-    A machine with no queue menu at all is answered by ``local_cores`` /
-    ``local_gpus`` -- the probed topology of the machine it is for, which
-    IS the machine when nothing schedules for it.  That is the ONLY place
-    topology may bound a cell: on a cluster it measures whichever node the
-    probe happened to land on, and R0 says a queue holds many kinds.
+    ``routing`` is the benchmark's ONE queue (:func:`bench_inputs`): a
+    benchmark measures on the queue its prep names (the user, 2026-10-17);
+    the Task setup card, before one is named, asks every queue of the
+    record, so the person sees each one's fit while choosing.  A machine
+    with no queue menu at all is fit on ``local_cores`` / ``local_gpus`` --
+    the probed topology of the machine it is for, which IS the machine when
+    nothing schedules for it; its one entry is then what the cell is over
+    there, ``queue`` ``None``.
     """
-    from ..scheduler import domain_serves_gpu
-    from ..scheduler.admit import Request, admits
-    # ``routing`` is the target's menu, from the record the caller holds.
+    from ..scheduler.fit import Request, fit
     if not routing:
-        return [(fam, cell, (), _local_refusals(cell, fam,
-                                                local_cores, local_gpus))
-                for fam, cell in plan]
-    # A GPU CELL IS ANSWERED BY THE QUEUES WHOSE RECORD LISTS GPUs: a queue
-    # listing none refuses every GPU cell alike, which says nothing of the
-    # cell -- unless none lists any (the benchmark's one queue has no GPUs),
-    # when that queue's own refusal is the answer.
-    with_gpus = [row for row in routing if domain_serves_gpu(row)]
-
+        out = []
+        for fam, cell in plan:
+            over = _local_over(cell, fam, local_cores, local_gpus)
+            said = ({"queue": None, "holds": not over,
+                     "line": "; ".join(o.message for o in over)},)
+            out.append((fam, cell, said if over else (), over))
+        return out
     out = []
     for fam, (g, k, c) in plan:
         want_gpu = bool(fam and g)
         req = Request(ranks=_cell_ranks(want_gpu, g, k), cpus_per_task=c,
                       gpus=g if want_gpu else None)
-        fits, why = [], []
-        for row in ((with_gpus or routing) if want_gpu else routing):
-            no = admits(row, req)
-            if no:
-                why.extend(no)
-            else:
-                fits.append(row.name)
-        out.append((fam, (g, k, c), tuple(fits),
-                    () if fits else _rank_reasons(why)))
+        fits = [fit(row, req) for row in routing]
+        held = any(f.holds for f in fits)
+        out.append((fam, (g, k, c),
+                    tuple({"queue": f.domain, "holds": f.holds,
+                           "line": f.line} for f in fits),
+                    () if held else tuple(o for f in fits for o in f.over)))
     return out
 
 
-def _rank_reasons(reasons):
-    """The refusals worth showing, most actionable first.
-
-    A cell no queue takes collects one reason per queue; duplicates -- Sol
-    repeats the same node groups across debug/htc/general -- collapse, and
-    the shortest come first.
-    """
-    seen, ranked = set(), []
-    for r in reasons:
-        key = (r.limit, r.message)
-        if key not in seen:
-            seen.add(key)
-            ranked.append(r)
-    ranked.sort(key=lambda r: len(r.message))
-    return tuple(ranked)
-
-
-def _local_refusals(cell, fam, cores_total, gpus_per_node):
-    """Why THIS BOX cannot hold a cell -- the no-scheduler answer.
+def _local_over(cell, fam, cores_total, gpus_per_node):
+    """What a cell is over on the target's probed node -- the fit where
+    there is no queue (`generator.md` § 4.3a).
 
     Empty means it fits, or that the probe measured nothing to compare
-    against: an unmeasured topology is silence, and silence never bars
-    (R3).  Reasons name their numbers (R4).
+    against: an unmeasured topology is silence (R3).  Each names its
+    numbers (R4).
     """
-    # FINDINGS, NOT SENTENCES, as `admits` returns.  Everything downstream
-    # reads the FIELDS: `_rank_reasons` dedups on `(limit, message)`, and
-    # the task-setup card renders `.message` per cell.  The numbers stay
-    # numbers; the sentence is rendered at the edge, once.
-    from ..scheduler.admit import Refusal
+    from ..scheduler.fit import Over
     g, k, c = cell
     ranks = _cell_ranks(fam, g, k)
-    why = []
+    over = []
     if cores_total and ranks * c > cores_total:
-        why.append(Refusal("cores", "the target's probed node",
-                           asked=ranks * c, allowed=cores_total,
-                           unit="cores"))
-    if fam and g and gpus_per_node and g > gpus_per_node:
-        why.append(Refusal("gpus", "the target's probed node",
-                           asked=g, allowed=gpus_per_node, unit="GPUs"))
-    return tuple(why)
+        over.append(Over("box_cores", "the target's probed node",
+                         asked=ranks * c, allowed=cores_total, unit="cores"))
+    if fam and g and gpus_per_node is not None and g > gpus_per_node:
+        over.append(Over("box_gpus", "the target's probed node", asked=g,
+                         allowed=gpus_per_node, unit="GPUs"))
+    return tuple(over)
 
 
 def _past_the_ask(fam, cell, ask) -> list:
     """Why a cell is past what this prep allows -- its ranks, its cores per
-    rank, its GPUs against the ask's (`generator.md` § 4.1) -- as the
-    findings a queue's refusal is (`admit.Refusal`); empty when it fits or
-    nothing was asked."""
+    rank, its GPUs against the ask's (`generator.md` § 4.1): two statements
+    of the person's disagreeing, so the cell is left out whether proposed
+    or declared; empty when it is within or nothing was asked."""
     if ask is None:
         return []
-    from ..scheduler.admit import Refusal
+    from ..scheduler.fit import Over
     from ..scheduler.quantities import parse_gres_flag
     g, k, c = cell
     gpus = g if (fam and g) else 0
     out = []
     for limit, asked, allowed, unit in (
-            ("ranks", _cell_ranks(fam, g, k), ask.mpi_np, "ranks"),
-            ("cpus_per_task", c, ask.cpus_per_task, "cores per rank"),
-            ("gpus", gpus,
+            ("ask_ranks", _cell_ranks(fam, g, k), ask.mpi_np, "ranks"),
+            ("ask_cpus", c, ask.cpus_per_task, "cores per rank"),
+            ("ask_gpus", gpus,
              parse_gres_flag(ask.gres) if ask.gres not in (None, "")
              else None, "GPUs")):
         if allowed is not None and asked > int(allowed):
-            out.append(Refusal(limit, "this prep's ask", asked=asked,
-                               allowed=int(allowed), unit=unit))
+            out.append(Over(limit, "this prep", asked=asked,
+                            allowed=int(allowed), unit=unit))
     return out
 
 
@@ -462,7 +428,7 @@ def fold_allocation(flags, declared, chosen=None):
     allocation over the description's, with each field it holds named by
     its source:
     ``flag``, ``run card`` or ``description`` -- what a run's placement
-    records beside the queue it was admitted on (`job-system.md` § 6.0).
+    records beside the queue it was placed on (`job-system.md` § 6.0).
     ONE fold: the sources are read off the same precedence that fills the
     values, never worked out a second way.
 
@@ -502,9 +468,15 @@ def fold_allocation(flags, declared, chosen=None):
     return (_dc.replace(out, **patch) if patch else out), sources
 
 
+#: The queue a caller names no queue of its own for: the fold's
+#: (:func:`fold_allocation`) -- prep's, its flags over the description.
+_FOLDED = object()
+
+
 def bench_inputs(base, target, *, bench_override=None, report=None,
                  notes=None, task=None, environment=None,
-                 template_text=None, flags=None, on_a_queue: bool = True):
+                 template_text=None, flags=None, on_a_queue: bool = True,
+                 queue=_FOLDED):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
     ``target`` is REQUIRED: this function exists to read a SPECIFIC
@@ -548,14 +520,20 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     ``allocation`` by the one fold (:func:`fold_allocation`) into the ASK:
     the benchmark's one queue, and what the person allows this prep -- its
     ranks, cores per rank and GPUs (`generator.md` § 4.1, the allocation
-    the sweep must fit inside).  A cell past it is crossed out by name with
-    the cells its queue does not hold, and the prep refused only when none
-    is left (§ 4.3a: a cell that fits is never denied by a sibling that
-    does not).  The bench card, with no flags, asks the description's.
+    the sweep must fit inside).  A cell past it is left out by name; a
+    PROPOSED cell no node of the queue holds is left out with its fit, and
+    one DECLARED whole -- its ranks, cores per rank and, on the GPU, its
+    device count -- is kept with its fit said under it (`scheduler.md` R6); the
+    prep is refused only when no cell is left (§ 4.3a: a cell that fits is
+    never denied by a sibling that does not).  The bench card names no
+    flags; it passes the queue picked on the page as ``queue`` (``None`` for
+    none picked), in place of the description's, as it passes the axes
+    being edited (``bench_override``).
 
     ``on_a_queue`` is whether the benchmark goes to a queue -- false where
-    prep writes it no header (`--no-sbatch`): it then runs where it is
-    launched, and its cells are the target's own topology's.
+    prep writes it no header (`--no-sbatch`, or a machine with no
+    scheduler): it then runs where it is launched, and its cells are the
+    target's own topology's.
     """
     # WHAT A PERSON IS TOLD comes back to the caller, never printed here:
     # the command line prints it, the Task setup tab shows it
@@ -591,18 +569,30 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # file.
     from ..runtime_config import routing_of
     every = menu = routing_of(environment)
+    # A SCHEDULER WHOSE RECORD LISTS NO QUEUES has none to measure on --
+    # prep's own refusal, in its words (`placement.no_queues_said`), so the
+    # card says what prep will.
+    if on_a_queue and environment.kind.queue and not menu:
+        from .placement import no_queues_said
+        raise PrepError(no_queues_said(base, target, who="the benchmark "))
     # A BENCHMARK MEASURES ON ONE QUEUE -- the one its prep names (`prep
     # --domain`, else `allocation.domain`; the user, 2026-10-17: "You need
     # one domain to bench"): every cell is checked against it alone.  A name
     # the record does not hold is the prep's refusal, in its words
     # (`placement.launch_refusal`).
-    named = getattr(ask, "domain", None)
+    named = (getattr(ask, "domain", None) if queue is _FOLDED
+             else queue or None)
     if named and menu and any(d.name == named for d in menu):
         menu = [d for d in menu if d.name == named]
+    else:
+        # NONE NAMED THAT THE RECORD LISTS -- the card before a queue is
+        # picked: each cell fit on every queue, and none said to be its.
+        named = None
     # A BENCHMARK THAT GOES TO NO QUEUE runs where it is launched: its cells
-    # are the target's own topology's (`_cells_this_machine_holds`).
+    # are the target's own topology's (`_cells_on_the_queue`).
     if not on_a_queue:
         every = menu = []
+        named = None
     topo = getattr(environment, "topology", None)
     # GPUs per node as the record states them -- None when it does not say,
     # never read as 0 (`configuration.md` M-2).
@@ -670,10 +660,12 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # GPUs PER NODE, a count: the probed node's own, else the most a node of
     # the target's GPU queues holds -- a login node probes none, and the
     # cluster behind it has them (§ 4.3a: the probe records each partition's
-    # gres on its domain row).  No card (`scheduler.md` R2a).
+    # gres on its domain row).  No card (`scheduler.md` R2a).  Needed only
+    # to PROPOSE the device counts: declared counts are kept whatever the
+    # record says, each cell's fit saying so (R6).
     if any(families) and not gpn:
         gpn = _gpus_per_node(every) or 0
-        if not gpn:
+        if not gpn and not declared_axes.get("gpu_count"):
             # NAMED BY THE RECORD THAT ANSWERED, renewed in its own two
             # steps -- `record_and_renewal`, the one spelling.
             from ..scheduler.record import record_and_renewal
@@ -687,7 +679,9 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                    if node_gpus is None
                    else "states no GPU on the node (gpus_per_node=0)")
                 + (" and lists no queue with recorded GPUs" if on_a_queue
-                   else ", where this benchmark runs (--no-sbatch)")
+                   else ", where this benchmark runs (--no-sbatch)"
+                   if environment.kind.queue
+                   else ", where this benchmark runs")
                 + f".  If that machine has "
                 f"one, its record is out of date: {_redo}.  Or prep for the "
                 f"machine that has the GPU (`--target`): the comparison is "
@@ -710,9 +704,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             f"resolve today are {', '.join(_KNOWN_AXES)} "
             f"(generator.md § 4.3a).")
     sockets = getattr(topo, "sockets", None)
-    #: What the LOCAL box holds -- the ceiling only when this machine has
-    #: no queues to answer for it (`_cells_this_machine_holds`).  Unknown
-    #: when the record does not say both -- never a smaller limit (R3).
+    #: What the target's probed node holds -- what a cell is fit on where
+    #: no queue answers for it (`_cells_on_the_queue`: no queues, or
+    #: `--no-sbatch`).  Unknown when the record does not say both -- never
+    #: a smaller figure (R3).
     cores_total = (sockets * cps) if (sockets and cps) else None
     # gpu_count alone does not declare a RANK grid: without mpi_np /
     # omp_threads the K x C half stays the machine's proposal, filtered
@@ -732,22 +727,22 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     if grid_declared:
         # THE DECLARED GRID (§ 4.3a).  ``mpi_np`` is the TOTAL rank count a
         # point runs -- the same meaning it has everywhere else -- and
-        # ``omp_threads`` the cores per rank.  A point the machine cannot
-        # hold is refused BY NAME, not clamped: a clamped point would
-        # measure a configuration nobody declared.
+        # ``omp_threads`` the cores per rank.  A point is measured as
+        # declared, never clamped: a clamped point would measure a
+        # configuration nobody declared.
         ranks = [int(v) for v in declared["mpi_np"]]
         cores = [int(v) for v in declared["omp_threads"]]
-        # A DECLARED POINT IS NOT REFUSED HERE against the probed topology:
-        # a partition is a QUEUE holding many machine kinds (R0).  The
-        # queues answer instead, cell by cell, in
-        # `_cells_this_machine_holds` -- which falls back to this same
-        # topology when there is no queue menu at all, because a
-        # workstation IS its own machine.
+        # A DECLARED POINT IS NOT JUDGED HERE against the probed topology:
+        # a partition is a QUEUE holding many machine kinds (R0).  Each cell
+        # is fit on the queue instead, in `_cells_on_the_queue` -- a cell
+        # declared whole kept, its fit said -- or on this same topology
+        # where no queue answers for it, because a workstation IS its own
+        # machine.
 
     # THE DECLARED DEVICE COUNTS (user, 2026-08-21: "explicit is what we
     # need").  Declared, gpu_count is exact: those G values and no others,
-    # each its own shelf.  A count the machine does not have is refused by
-    # name (the same rule as a rank count the machine cannot hold); a
+    # each its own shelf -- a cell declared whole kept whatever the record
+    # says, its fit on the queue saying what holds it (`scheduler.md` R6); a
     # (mpi_np, G) pair that cannot split EVENLY is dropped by name below
     # -- a trial is named and sized by its ranks per GPU (mpi_np = G·K),
     # which an uneven split does not have, and a benchmark never rounds a
@@ -761,14 +756,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             "CPU family (use_gpu is false and not an axis) -- the "
             "device counts would be silently ignored.  Declare use_gpu "
             "= [true] (or the [true, false] axis), or drop gpu_count.")
-    if gpu_counts and any(families):
-        _over = sorted(g for g in gpu_counts if g > (gpn or 0))
-        if _over:
-            raise PrepError(
-                f"task.json declares gpu_count = {_over!r} and this "
-                f"machine's record holds {gpn or 0} device(s) per node.  "
-                f"Trim the declaration, or benchmark on the machine it "
-                f"is meant to measure.")
+
+    #: The (mpi_np, gpu_count) pairs dropped by the even-split rule, for
+    #: the refusal that points at them.
+    dropped: list = []
 
     def _family_cells(fam):
         """The machine cells of ONE family, as (G, K, C) -- G=0 is the CPU
@@ -784,6 +775,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                     bad = sorted({(r, g) for r in ranks for g in gpu_counts
                                   if r % g})
                     if bad:
+                        dropped.extend(bad)
                         note(
                             "  dropped (a trial counts its ranks per GPU, "
                             "and these do not split EVENLY over the "
@@ -807,30 +799,39 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         # held at 0 and dropped from a single-family coordinate below.
         # A declared gpu_count FILTERS the probed grid to exactly those
         # device counts.
+        # DECLARED DEVICE COUNTS ARE THE COUNTS, whatever the probed node
+        # carries: the grid ranges up to the largest declared.
+        reach = max(gpu_counts) if (fam and gpu_counts) else (gpn if fam
+                                                              else 1)
         return [(g if fam else 0, k, c)
-                for g, k, c in sweep_grid(gpn if fam else 1, cps, ks, None)
+                for g, k, c in sweep_grid(reach, cps, ks, None)
                 if not (fam and gpu_counts) or g in gpu_counts]
 
-    # ENUMERATE EVERYTHING, THEN CROSS OUT WHAT THIS MACHINE CANNOT HOLD,
-    # THEN SHOW WHAT IS LEFT (user, 2026-08-30: "we don't have to fight
-    # with what language we use to indicate error, but present the correct
-    # outcome").  The grid is a proposal; the machine record is the thing
-    # that decides; and what the person needs on screen is the surviving
-    # list, not a sentence about a number.  Both families go through it.
+    # ENUMERATE, FIT EACH CELL ON THE QUEUE, SHOW THE OUTCOME (user,
+    # 2026-08-30: "we don't have to fight with what language we use to
+    # indicate error, but present the correct outcome"; 2026-10-17: the
+    # record is shown, never a veto).  A PROPOSED cell no node holds is not
+    # proposed; a cell DECLARED whole is kept whatever the record says, its
+    # fit beside it -- the scheduler decides (`generator.md` § 4.3a).
     plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
-    checked = _cells_this_machine_holds(plan, routing=menu,
-                                        local_cores=cores_total,
-                                        local_gpus=gpn)
+    checked = _cells_on_the_queue(plan, routing=menu,
+                                  local_cores=cores_total,
+                                  local_gpus=node_gpus)
     # ...AND WHAT THIS PREP DOES NOT ALLOW: a cell past the person's own ask
-    # is crossed out by name, beside the ones no queue holds.
+    # is left out by name, proposed or declared -- two of their statements
+    # disagreeing.  A cell is DECLARED when every coordinate of it is -- its
+    # ranks and cores per rank, and on the GPU its device count; one with a
+    # coordinate the machine proposed is the machine's proposal.
     marked = []
-    for fam, cell, doms, why in checked:
+    for fam, cell, lines, over in checked:
         past = _past_the_ask(fam, cell, ask)
-        marked.append((fam, cell, () if past else doms, past + list(why)))
+        declared_whole = grid_declared and (not fam or bool(gpu_counts))
+        marked.append((fam, cell, lines,
+                       past + ([] if declared_whole else list(over))))
     checked = marked
 
-    kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]
-    crossed = [(f, cell, why) for f, cell, doms, why in checked if why]
+    kept    = [(f, cell, lines) for f, cell, lines, why in checked if not why]
+    crossed = [(f, cell, why) for f, cell, lines, why in checked if why]
 
     # THE SAME REPORT THE TERMINAL PRINTS, AS DATA.  The task-setup card
     # shows this list live beside the axes being edited.  One enumerator,
@@ -842,22 +843,23 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
              "family": "gpu" if fam else "cpu",
              "ranks": _cell_ranks(fam, g, k), "cores_each": c,
              "gpus": (g if (fam and g) else 0),
-             # The wire carries the SENTENCES; the finding's `where` is for
-             # callers inside the process (`_rank_reasons` ranks on it).  The
-             # browser renders prose, so it gets prose.
-             "fits": list(doms), "why": [i.message for i in why]}
-            for fam, (g, k, c), doms, why in checked)
+             # The wire carries the SENTENCES: the browser renders prose.
+             "fit": list(lines), "why": [i.message for i in why]}
+            for fam, (g, k, c), lines, why in checked)
 
     # The menu these cells are checked against is the TARGET's -- `prep --target sol` on a workstation reads
     # the record for Sol, a cluster you are not standing on at all
     # (`preparing-for-another-machine.md`).  So the count is about the
     # QUEUES, and says so.
     note(f"  bench grid: {len(checked)} combination(s) enumerated, "
-         f"{len(kept)} fit " + (f"{named}" if named and len(menu) == 1
-                                else "a queue"))
-    for fam, (g, k, c), doms in kept:
+         f"{len(kept)} kept" + (f" on {named}" if named else ""))
+    for fam, (g, k, c), lines in kept:
         note(f"    {_cell_label(g, k, c):<11} "
              f"{_cell_shape(g, k, c):<37}")
+        # EACH CELL'S FIT, said under it (`generator.md` § 4.3a) -- a
+        # declared cell is kept whatever it says (R4, R6).
+        for said in lines:
+            note(f"      {said['line']}")
     # THE QUEUE'S JOB CAP (`scheduler.md` R14), said here where the grid can
     # still change: each kept cell is one shelf, one submitted job.  A cap
     # the record does not state is no limit (R3).
@@ -871,16 +873,18 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
              f"A refused shelf's trials stay pending, and launching the "
              f"benchmark again sends exactly them.")
     if crossed:
-        note(f"  crossed out ({len(crossed)}) -- "
-             + (f"{named} does not take them" if named
-                else "no queue takes them")
+        note(f"  left out ({len(crossed)}) -- "
+             + (f"no node of {named} holds them" if named else
+                "no node of the target's queues holds them" if menu else
+                "the target's probed node does not hold them")
              + ", or this prep's ask does not allow them:")
         for fam, (g, k, c), why in crossed:
-            # `.message`, NOT the Refusal itself, whose repr is not a
+            # `.message`, NOT the finding itself, whose repr is not a
             # sentence.  The numbers are fields so callers can read them; the
             # SENTENCE is what a person is shown.
             note(f"    {_cell_label(g, k, c):<11} "
-                 f"{_cell_shape(g, k, c):<37}  {why[0].message}")
+                 f"{_cell_shape(g, k, c):<37}  "
+                 + "; ".join(w.message for w in why))
 
     cells = []
     for fam in families:
@@ -889,7 +893,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             # The GPU-sharing note (user, 2026-08-23): ALWAYS state
             # ranks/GPU -- a cell's K -- warn past MPS's client ceiling, note
             # past this stack's tuned point.  Whether the cores fit a node is
-            # the crossing-out above.  The two thresholds are the ones
+            # each cell's fit above.  The two thresholds are the ones
             # `ask.gpu_share_notes` states at a run's prep, so the two
             # displays cannot disagree.
             from .ask import (GPU_TUNED_RANKS_PER_DEVICE,
@@ -904,20 +908,27 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                 bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
             note("  GPU sharing in this family: " + ", ".join(bits))
         if fam and not fcells:
-            # every GPU cell was crossed out above, or fell to the
+            # every GPU cell was left out above, or fell to the
             # even-split rule -- both are listed by name, so this names
             # the consequence.
             if mixed:
                 note(
-                    "  NOTE: no GPU cell survived -- this sweep measures "
+                    "  NOTE: no GPU cell is left -- this sweep measures "
                     "only the CPU family.")
             else:
+                # POINTING AT WHAT IS THERE: the cells left out, the pairs
+                # dropped, either or both.
+                seen = [w for w, there in (
+                    ("the cells left out", any(f for f, _c, _w in crossed)),
+                    ("the pairs dropped by the even-split rule",
+                     bool(dropped))) if there]
                 raise PrepError(
-                    "no GPU cell survived (see the crossed-out list "
-                    "above, and the even-split rule).  Adjust mpi_np / "
-                    "gpu_count in task.json, name a domain whose GPU "
-                    "nodes are larger, or benchmark the card this "
-                    "machine's queues actually offer.")
+                    "no GPU cell is left"
+                    + (f" -- see {' and '.join(seen)} above" if seen else "")
+                    + ".  Adjust mpi_np / gpu_count in task.json, name a "
+                      "queue whose GPU nodes hold them, or declare the cells "
+                      "whole -- mpi_np, omp_threads and gpu_count: a "
+                      "declared cell is kept, its fit said.")
         cells.extend((fam, cell) for cell in fcells)
     # THE VALUE-AXIS CARTESIAN (§ 4.3a): every machine cell is crossed
     # with the remaining declared value axes, in declaration order, and
@@ -927,8 +938,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # `job-set.json`'s per-trial ``point``.
     if not cells:
         raise PrepError(
-            "no bench cell survived the declaration on this machine -- "
-            "see the crossed-out list above.")
+            "no bench cell is left -- see the cells left out above.")
     combos = [{}]
     for name, vals in value_axes.items():
         combos = [{**c, name: v} for c in combos for v in vals]

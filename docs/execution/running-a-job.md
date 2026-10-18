@@ -964,7 +964,7 @@ two machines is explained by the bundle itself. Secret sections (`auth`,
 (flag, else `launch.mode`, else a refusal — never the detected scheduler),
 decides everything before it writes anything — what the run follows, the
 deck/launch agreement check, and the queue `prep` recorded for the work (a run
-on a scheduler is refused at prep when it names none; launch admits nothing
+on a scheduler is refused at prep when it names none; launch places nothing
 again) — then **shows the exact `sbatch` line and every value of the
 header it sends, and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
 the question, never the output), records the attempt, and launches **one job

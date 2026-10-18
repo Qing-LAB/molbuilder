@@ -922,18 +922,38 @@ def _capture_on_fail(request):
     print(f"[capture_on_fail] diagnostic written -> {out}")
 
 
-def _worker_group(item, engine_files) -> str:
+#: Fixture scopes wider than one test: a file whose tests share one is kept
+#: whole, so the fixture is built once (`testing.md` § 6.1a).
+_SHARED_SCOPES = ("module", "class", "package")
+
+
+def _shares_a_fixture(item) -> bool:
+    """Does this test use a fixture wider than itself -- one its file's
+    other tests meet too?"""
+    info = getattr(item, "_fixtureinfo", None)
+    for defs in (getattr(info, "name2fixturedefs", None) or {}).values():
+        if any(getattr(d, "scope", "function") in _SHARED_SCOPES
+               for d in defs):
+            return True
+    return False
+
+
+def _worker_group(item, engine_files, whole_files) -> "str | None":
     """Which tests share a worker in a spread run (`testing.md` § 6.1a).
 
-    A file runs whole, in order, in one worker -- its module fixtures built
-    once, as in one process -- and every file holding an engine test, marked
-    on the module or on the test, shares the one engine worker, so no two
-    computations overlap.  By FILE, because a test-level mark grouped alone
-    split its file: the engine test ran on one worker and its siblings on
-    another, each building the module's fixtures.
+    Every file holding an engine test, marked on the module or on the test,
+    shares the one engine worker, so no two computations overlap; a file in
+    ``whole_files`` -- an e2e file, or one whose tests share a fixture wider
+    than one test -- runs whole, in order, in one worker, its fixtures built
+    once.  By FILE, because a test-level mark grouped alone split its file:
+    the engine test ran on one worker and its siblings on another, each
+    building the module's fixtures.  Every other test is ``None``, no group:
+    its fixtures are its own, so it runs on whichever worker is free.
     """
     file = item.nodeid.split("::", 1)[0]
-    return "engine" if file in engine_files else file
+    if file in engine_files:
+        return "engine"
+    return file if file in whole_files else None
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -977,6 +997,10 @@ def pytest_collection_modifyitems(config, items):
     in_worker = hasattr(config, "workerinput")
     engine_files = {item.nodeid.split("::", 1)[0] for item in items
                     if item.get_closest_marker("engine") is not None}
+    whole_files = {item.nodeid.split("::", 1)[0] for item in items
+                   if _shares_a_fixture(item)
+                   or item.fspath.basename.endswith("_e2e.py")
+                   or "_e2e_" in item.fspath.basename}
     for item in items:
         fn = item.fspath.basename
         if fn.endswith("_e2e.py") or "_e2e_" in fn:
@@ -986,9 +1010,10 @@ def pytest_collection_modifyitems(config, items):
         if "_smoke" in fn or "_smoke_l4" in fn:
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)
-        if in_worker:
-            item.add_marker(
-                _pt.mark.xdist_group(_worker_group(item, engine_files)))
+        group = (_worker_group(item, engine_files, whole_files)
+                 if in_worker else None)
+        if group is not None:
+            item.add_marker(_pt.mark.xdist_group(group))
     yield
     # A FILE RUNS WHOLE, IN ORDER (`testing.md` § 6.1a, rule 1).  pytest
     # moves the tests a session-scoped parametrized fixture holds next to

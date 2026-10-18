@@ -2562,7 +2562,7 @@ flowchart TD
 | 4 | `template_with_values` | 2 | the catalogue → **this calculation's** template | § 4.3: the surface fills in answers to questions the catalogue already asked |
 | 5 | `config_from_template` | 3 | narrows to one engine, rebuilds the config | the deck writer takes an ordinary config, not a template (D4: `prep` **rebuilds and renders**, it never splices) |
 | 6 | `effective_config` | 3 | **⊕** — the template's values plus a mapping of overrides | R1: what comes back is an ordinary config, so the shipped validator and emitter both take it unchanged and nothing downstream learns the word *stage* |
-| 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **capability ⊇ allocation ⊇ sweep** is enforced; a sweep exceeding the grant is refused, not clamped |
+| 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **allocation ⊇ sweep** holds — a sweep point past the allocation left out by name, never clamped; the allocation's fit on the capability is said, never enforced ([`scheduler.md`](?doc=execution/scheduler.md) R6) |
 | 8 | `element.render_config()` | 3 | values **⊕ the allocation** | a deck records what it assumed in BENCH-MARKS; one rendered without a rank count says `mpi_np auto` and is then launched at 32 |
 | 9 | `seam.spec_for` | 3 (engine) | the deck's **form** — its layout, and how this engine spells one setting | the only step that knows an engine's spelling, and the only thing about the deck that is the engine's to say |
 | 10 | `script_emit.prepare_deck` | 3 | the `.fdf` / `.py`, **written and checked** | the order — validate, render, write, read back — has one owner; stated per caller it drifted |

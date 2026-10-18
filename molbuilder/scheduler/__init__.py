@@ -1,7 +1,7 @@
 """The scheduler subsystem — what a machine offers, and what a job may ask.
 
-The contract is ``docs/execution/scheduler.md``.  In one line: whether a
-request fits a queue (**admission**), which queue it is placed in
+The contract is ``docs/execution/scheduler.md``.  In one line: how a request
+fits a queue's machines (**the fit**), the queue it is placed in
 (**placement**), and the directives that placement produces (**emission**)
 belong together.
 
@@ -13,10 +13,12 @@ belong together.
   * :mod:`molbuilder.scheduler.probe` — **pure text parsing**: ``sinfo`` /
     ``scontrol`` / ``qos`` output → ``Partition`` / ``Domain`` data, testable
     on captured text.  It runs no subprocess at all.
-  * :mod:`molbuilder.scheduler.admit` — can this domain take this request, and
-    if not, why not.
+  * :mod:`molbuilder.scheduler.fit` — how a request sits on a queue's
+    machines: the nodes that hold it and each limit it is over; it refuses
+    nothing (`scheduler.md` R6).
   * :mod:`molbuilder.scheduler.queue` — whether the scheduler still lists a
-    job, and its cancel, for `molbuilder jobs` (`job-system.md` § 6.0a).
+    job, in what state and why, and its cancel, for `molbuilder jobs`
+    (`job-system.md` § 6.0a).
   * :mod:`molbuilder.scheduler.kinds` — the scheduler kinds, ``kinds.toml``
     read: everything molbuilder says to a scheduler (`scheduler.md` § 6a).
 
@@ -48,8 +50,8 @@ from .record import (
     known_machines, choice_required,
     topology_field_types,
 )
-from .admit import (
-    Request, admits, domain_ceiling_s, domain_serves_gpu,
+from .fit import (
+    Fit, Over, Request, domain_ceiling_s, domain_serves_gpu, fit,
 )
 from .quantities import parse_mem_gb
 
@@ -64,7 +66,7 @@ __all__ = [
     "read_environment", "write_environment", "machine_for",
     "UnknownTarget", "AmbiguousTarget",
     "known_machines", "choice_required",
-    "Request", "admits", "parse_mem_gb",
+    "Fit", "Over", "Request", "fit", "parse_mem_gb",
     "domain_ceiling_s", "domain_serves_gpu",
     # M-1's typed `--set` door.
     "topology_field_types",

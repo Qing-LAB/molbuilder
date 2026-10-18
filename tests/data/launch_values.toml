@@ -64,15 +64,16 @@ run_unset = ["threads"]
 refused = 'the run card on Task setup ("execution": {"threads": N} in task.json), or --cpus-per-task N'
 
 [[case]]
-name = "a run on a scheduler names its queue -- shown the record's queues against its wall and memory"
+name = "a run on a scheduler names its queue -- shown the record's queues with its fit on each"
 allocation_unset = ["domain"]
 queues = [
     { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
-    { name = "debug", partition = "cpu", qos = "debug", max_time = "00:15:00", max_cores = 64, max_mem_gb = 4, node_types = [{ cores = 64, nodes = 2 }] },
+    { name = "debug", partition = "cpu", qos = "debug", max_time = "00:15:00", max_cores = 64, node_types = [{ cores = 64, nodes = 2, mem_gb = 4 }] },
 ]
 refused = ["states no queue (domain)", "the target's record lists:",
            "cpu/public", "cpu/debug",
-           "but debug allows 00:15:00", "but debug allows 4"]
+           "1h is over debug's wall (00:15:00)",
+           "8 GB is over debug's largest machine (4 GB)"]
 
 [[case]]
 name = "every value stated nowhere is named in one refusal"
@@ -84,6 +85,12 @@ refused = "states no ranks (mpi_np), cores per rank (omp_threads), queue (domain
 name = "a queue the target's record does not list is refused"
 allocation = { domain = "nowhere" }
 refused = "names the queue 'nowhere', which the target's record does not list -- it lists: cpu, debug"
+
+[[case]]
+name = "a scheduler whose record lists no queues has none a run could name -- refused, naming the probe that renews it, never asked to state one"
+allocation_unset = ["domain"]
+queues = []
+refused = ["goes to a scheduler, and the record it reads", "lists no queues at all -- none a job could name", "molbuilder jobset probe --write"]
 
 [[case]]
 name = "a named target whose record lists no queues is renewed by ITS probe, on that machine, the file copied here"
@@ -113,15 +120,16 @@ launch = []
 launch_refused = ["there is no scheduler header", "prepared with --no-sbatch"]
 
 [[case]]
-name = "...and a benchmark prepared with it runs where it is launched: its cells are the target's probed node's, not its queues'"
+name = "...and a benchmark prepared with it runs where it is launched: its cells are fit on the target's probed node, not its queues -- a declared one kept (scheduler.md R6)"
 prep = ["--no-sbatch"]
 bench = { mpi_np = [8, 32], omp_threads = [1] }
-said = ["crossed out (1)", "needs 32 cores but the target's probed node allows 16 cores"]
+said = ["2 kept", "32 cores is over the target's probed node's cores (16 cores)"]
+said_lacks = ["kept on"]
 
 # Work prepared with no header is not sent to a queue at all -- its launch
 # is refused for the header it lacks, a dry run too (`job-system.md` § 6.0:
 # the plan shown is the plan sent).  A benchmark's shelf header is written
-# at its launch from the queue its prep admitted, so one prepared with
+# at its launch from the queue its prep placed it on, so one prepared with
 # --no-sbatch has none to write.
 [[case]]
 name = "...and a benchmark prepared with --no-sbatch is not sent to a queue: its shelves have no queue from prep"
@@ -248,7 +256,7 @@ said = ["placed on cpu (cpu/public)", "queue, wall, memory from the description"
         "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 
 [[case]]
-name = "prep asks a queue the run's whole request: a PySCF run's cores are its threads"
+name = "prep fits the run's whole request on its queue: a PySCF run's cores are its threads"
 engine = "pyscf"
 run = { threads = 48 }
 allocation = { domain = "small" }
@@ -256,7 +264,8 @@ queues = [
     { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
     { name = "small", partition = "small", qos = "public", max_time = "1-00:00:00", max_cores = 16, node_types = [{ cores = 16, nodes = 4 }] },
 ]
-refused = "needs 48 cores but small allows 16 cores"
+said = ["48 cores · 8 GB · 1h fits no node of small -- 48 cores is over small's largest machine (16 cores)"]
+header = ["#SBATCH -c 48", "#SBATCH -p small"]
 
 [[case]]
 name = "a PySCF run takes no rank count: it runs one process"
@@ -277,9 +286,10 @@ prep = ["--np", "6"]
 header = ["#SBATCH -n 6"]
 
 [[case]]
-name = "a launch's --time restates the wall prep wrote, on the sbatch line"
+name = "a launch's --time restates the wall prep wrote, on the sbatch line -- and the request shown carries the wall sent, the header's beside it"
 launch = ["--time", "3h"]
 line = ["-t 0-03:00:00 --export", "H2_01_coarse.sbatch"]
+listing = ["-t 0-03:00:00 (this launch's --time; the header says 0-01:00:00)"]
 
 [[case]]
 name = "--mem 0 at prep is the whole node, sent as said"
@@ -292,9 +302,10 @@ prep = ["--mem", "12Q"]
 refused = "--mem: "
 
 [[case]]
-name = "the record checks the wall: one longer than the queue allows is refused at prep"
+name = "the fit says the wall: one longer than the queue allows is prepared as asked, and said (scheduler.md R6)"
 allocation = { domain = "debug" }
-refused = "but debug allows 00:15:00"
+said = ["1h is over debug's wall (00:15:00)"]
+header = ["#SBATCH -q debug", "#SBATCH -t 0-01:00:00"]
 
 # A benchmark keeps the calculation's ask -- `allocation` is the
 # calculation's and the benchmark's, `execution` this run's (`stages.md`
@@ -306,7 +317,8 @@ bench = { mpi_np = [1], omp_threads = [1] }
 run = { time = "2-00:00:00", domain = "debug" }
 bench_header = ["#SBATCH -t 0-01:00:00", "#SBATCH -p cpu", "#SBATCH -q public"]
 bench_header_lacks = ["#SBATCH -q debug"]
-said = ["placed on cpu (", "bench-group-cpu-G0K1C1  header: -J bench-group-cpu-G0K1C1  -N 1  -n 1  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
+said = ["placed on cpu (", "bench-group-cpu-G0K1C1  header: -J bench-group-cpu-G0K1C1  -N 1  -n 1  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G",
+        "1 core · 8 GB · 1h fits all 10 nodes of cpu"]
 launch = []
 
 [[case]]

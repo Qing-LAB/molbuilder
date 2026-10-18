@@ -356,12 +356,15 @@ stage = "medium"
 made_lacks = ["launch/H2_group-01_coarse-02_medium.sbatch"]
 
 [[case]]
-name = "a group's one job is admitted at prep -- its members' walls summed, refused when the queue it names allows less"
+name = "a group's one job is placed at prep -- its members' walls summed, its fit said when the queue it names allows less (scheduler.md R6)"
 groups = [1, 1]
 stage_run = { coarse = { time = "23:30:00" }, medium = { restart = "clean" } }
 stage = ["coarse", "medium"]
-refused = ["group 1's one job (coarse, medium: their walls summed and the largest memory) does not fit the queue 'cpu'", "needs 1470 min", "Ask for less where it is stated:", "wall: the run card (`execution` in task.json)", "wall: the description (`allocation` in task.json)"]
-made_lacks = ["job-set.json", "01_coarse"]
+said = ["-t 1-00:30:00  -p cpu  -q public",
+        "24h30m is over cpu's wall (1-00:00:00)"]
+# ...and a member's own fit is not said: the group's one job is what is sent.
+said_lacks = ["· 23h30m fits"]
+made = ["launch/H2_group-01_coarse-02_medium.sbatch"]
 
 # ===================================================================== #
 #  THE TASK'S QUESTION -- `job-system.md`, *The task*                   #

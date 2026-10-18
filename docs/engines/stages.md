@@ -1529,8 +1529,8 @@ catalogue names lands: a machine-answered item becomes the launch shape,
 anything else a pin over the template. The launch shape is a direct map of
 the block's machine items onto the run's request (`prep_inputs.
 declared_run_shape`, `generator.md` § 4.1), never the benchmark's grid
-enumerator, and that request is admitted on its queue at prep as a trial's
-cell is checked on its benchmark's.
+enumerator, and that request is placed on its queue at prep, its fit said, as
+a trial's cell is fit on its benchmark's.
 
 **Why not `allocation`.** That block is what this calculation asks the
 **scheduler** for — the queue, the wall, the memory, the GPU binding

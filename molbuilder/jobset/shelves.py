@@ -4,7 +4,7 @@ on, then by its exact resource ask, each shelf one allocation walking its
 trials one after another.
 
 Answered once, here, for the two steps that need it: prep writes each
-shelf's one header from its request, admitted on the benchmark's one queue
+shelf's one header from its request, placed on the benchmark's one queue
 (`prep.walk_header_of`); launch walks each shelf's trials still to run and
 sends that header (`submit._plan_shelves`).
 

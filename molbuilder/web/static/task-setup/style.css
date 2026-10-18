@@ -900,8 +900,8 @@
 }
 .ts-fit-label { font-family: var(--font-mono); color: var(--text-primary); }
 .ts-fit-shape { color: var(--text-muted); }
-/* WHERE it could go -- not where it WILL: the wall decides that, and it is
- * stated at launch (scheduler.md R7). */
+/* ITS FIT on each queue it was fit on -- the server's lines
+ * (scheduler.md R4). */
 .ts-fit-where { color: var(--text-muted); font-size: var(--text-xs); }
 /* A struck cell stays READABLE.  It is the row the person most needs to
  * read -- it carries the number to change -- so it is marked, not faded

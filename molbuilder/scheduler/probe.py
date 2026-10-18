@@ -66,21 +66,12 @@ class Partition:
     timelimit_str: str
     timelimit_secs: int
     nodes: int = 0
-    #: Every distinct machine this partition holds.  The MEASUREMENT; the
-    #: scalars below are summaries over it, kept because callers already
-    #: read them.
+    #: Every distinct machine this partition holds -- ``sinfo`` reports one
+    #: row PER NODE GROUP.  The MEASUREMENT; the scalars below summarise it.
     groups: List["NodeGroup"] = field(default_factory=list)
     gpu_types: Dict[str, int] = field(default_factory=dict)  # type -> max count
-    #: Cores per node of the GPU-carrying node group(s) -- the SMALLEST
-    #: when they differ, because it feeds a cap (2026-08-21, user: "why
-    #: not autodetected?").  ``sinfo`` reports one row PER NODE GROUP, so
-    #: a partition mixing 128-core CPU nodes with 48-core GPU nodes shows
-    #: the GPU nodes' own cores on the GPU row -- measurable after all.
-    gpu_cores: Optional[int] = None
-    #: The widest node's cores across every group (CPU rows included).
-    max_cpus: Optional[int] = None
-    #: MEMORY PER NODE, in MB, of the SMALLEST node group -- the safe reading
-    #: for a ceiling, the same rule ``gpu_cores`` uses.
+    #: MEMORY PER NODE, in MB, of the LARGEST node group -- the queue's one
+    #: figure, as ``max_cpus`` is its widest (`scheduler.md` R0).
     mem_mb: Optional[int] = None
     #: DEFAULT MEMORY PER CORE, in MB -- what SLURM grants when a job states
     #: no ``--mem``.  From ``scontrol show partition``; ``sinfo`` does not
@@ -121,8 +112,8 @@ def parse_sinfo(text: str) -> List[Partition]:
     """Parse ``sinfo -h -o '%P|%<w>l|%D|%<w>G|%c|%m'`` (pipe-delimited; fields
     may be space-padded by the width modifier -- we strip).  A partition
     appears once per node group; merge them (union GPU types, sum nodes,
-    keep the time limit; per-group CPUS feed ``gpu_cores``/``max_cpus``, and
-    per-group MEMORY feeds ``mem_mb``).
+    keep the time limit; each group its own machine, its MEMORY feeding
+    ``mem_mb``, the largest machine's).
     The default-partition ``*`` marker is stripped.  A capture lacking the
     CPUS or MEMORY column leaves it ``None``: an absent column is not a small
     one (R3)."""
@@ -140,7 +131,7 @@ def parse_sinfo(text: str) -> List[Partition]:
         cpus: Optional[int] = None
         if len(cols) >= 5 and cols[4]:
             # sinfo prints "48+" when a group's nodes differ; the base is
-            # the smallest, which is the safe reading for a cap.
+            # the smallest, which every node of the group has.
             try:
                 cpus = int(cols[4].rstrip("+"))
             except ValueError:
@@ -148,7 +139,7 @@ def parse_sinfo(text: str) -> List[Partition]:
         mem: Optional[int] = None
         if len(cols) >= 6 and cols[5]:
             # Same "48+" convention as the core column: the base is the
-            # SMALLEST of a differing group, which is the safe ceiling.
+            # SMALLEST of a differing group, which every node of it has.
             try:
                 mem = int(cols[5].rstrip("+"))
             except ValueError:
@@ -164,17 +155,11 @@ def parse_sinfo(text: str) -> List[Partition]:
                                   gpu=tuple(sorted(gpus.items()))))
         for t, c in gpus.items():
             p.gpu_types[t] = max(p.gpu_types.get(t, 0), c)
-        if cpus is not None:
-            if gpus:
-                p.gpu_cores = cpus if p.gpu_cores is None \
-                    else min(p.gpu_cores, cpus)
-            p.max_cpus = cpus if p.max_cpus is None \
-                else max(p.max_cpus, cpus)
         if mem is not None:
-            # SMALLEST across groups: a partition whose nodes differ can only
-            # promise the least of them, and a ceiling that over-promises is
-            # the one that sends a job to a queue it does not fit.
-            p.mem_mb = mem if p.mem_mb is None else min(p.mem_mb, mem)
+            # THE LARGEST MACHINE'S, as `max_cpus` is: the queue's single
+            # memory figure stands only where no machines are listed, and
+            # the fit reads each machine's own (`scheduler.md` R0, R3).
+            p.mem_mb = mem if p.mem_mb is None else max(p.mem_mb, mem)
     return list(parts.values())
 
 
@@ -381,23 +366,20 @@ def derive_domains(
         # (2026-08-27, user: *list available machine types explicitly and
         # allow cpu request to fit that range instead of one lowest fit*).
         # A partition is a queue: `htc` is 48-, 64- and 128-core nodes
-        # under one name, and a single figure has to be either a floor
-        # that refuses work the wide nodes would run, or a ceiling that
-        # admits work most nodes cannot hold.  Listing them refuses
-        # neither and lets the person see the trade.
+        # under one name, and any single figure over them is an opinion.
+        # Listing them lets the fit read each machine and the person see the
+        # trade (`scheduler.md` R0, R3).
         if part.groups:
             kw["node_types"] = [g.as_row() for g in part.groups
                                 if g.cores]
-        # ``max_cores`` stays, as the WIDEST node -- the honest ceiling for
-        # a refusal, since `admits` "only refuses what the record
-        # positively rules out" (R3) and SLURM will not place a job on a
-        # node too small; it waits for one that fits.
+        # ``max_cores`` is the WIDEST node, as ``max_mem_gb`` is the largest:
+        # the figure the fit reads where a record lists no machines (R3).
         widest = max((g.cores for g in part.groups if g.cores), default=None)
         if widest:
             kw["max_cores"] = widest
         # THE TWO MEMORY FACTS (`execution/scheduler.md` § 2).
         #
-        # `max_mem_gb` is the CEILING (what the node has).
+        # `max_mem_gb` is the largest machine's memory (what a node has).
         # `default_mem_per_core_gb` is what SLURM GRANTS PER CORE when a job
         # states no --mem.  They are different facts and the code
         # that reads one must not read the other (submission.md § 1).
@@ -405,7 +387,7 @@ def derive_domains(
             kw["max_mem_gb"] = round(part.mem_mb / 1024.0, 1)
         # THE POLICY CEILING, beside the hardware one (R13).  ``max_cores``
         # says what the widest machine HAS; this says what the partition
-        # LETS one job take of it, and the smaller governs.
+        # LETS one job take of it -- both read into the fit.
         #
         # WRITTEN AS NULL WHEN ASKED AND UNSTATED, absent only when never
         # asked.

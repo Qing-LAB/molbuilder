@@ -267,7 +267,7 @@ class GpuRequest:
 def gpu_request(resources) -> GpuRequest:
     """**Does this job use a GPU, and how many does it ask for** -- the one
     door every reader asks (`execution/architecture.md` § 3.2): the header,
-    the run script, prep's admission and its queue list, a benchmark's
+    the run script, prep's placement and its queue list, a benchmark's
     trials, their shelves and their report, the Task setup card.
 
     Read off the job's ``Resources``: ``use_gpu`` as `resolve` carries it
@@ -369,8 +369,8 @@ class Job:
     #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung
     #: and a PySCF vibration.
     resumes:    bool            = True
-    #: WHERE IT WAS ADMITTED: a run prepared for a queue -- the queue its
-    #: request was admitted on at prep (``domain``, ``partition``, ``qos``,
+    #: WHERE IT WAS PLACED: a run prepared for a queue -- the queue its
+    #: request was placed on at prep (``domain``, ``partition``, ``qos``,
     #: bound on the target's record) and where each value came from
     #: (``from``: ``flag``, ``run card`` or ``description``, per field;
     #: `job-system.md` § 6.0) -- what its header renders and launch sends to.

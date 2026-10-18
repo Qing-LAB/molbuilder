@@ -124,7 +124,7 @@ def test_an_unknown_column_survives_the_type(tmp_path):
     assert got.extra["invented_by_hand"] == 7
     # ...and it is in `extra`, NOT promoted to a field: a drafted
     # column must stay distinguishable from a declared one, which is
-    # exactly what R2 relies on to say admission is total.
+    # exactly what R2 relies on to say the fit is total.
     assert not hasattr(got, "invented_by_hand")
 
 
@@ -165,7 +165,7 @@ def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
 def test_a_silent_or_unreadable_column_states_no_count():
     """R3 applies to devices: *the row does not say* is ``None``, never zero.
     A count we cannot read must not read as a domain with no devices, or
-    admission refuses work the record never ruled out."""
+    the fit says a queue holds no GPU it may well carry."""
     for column in (None, {}, "gpu:a100:4", {"a100": "many"},
                    {"type": "a100"}):
         row = Domain(name="g", partition="general", qos="public", gpu=column)
@@ -195,7 +195,7 @@ def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
     survive).  That makes a TYPO indistinguishable from a deliberate extra:
     `max_tme` lands in `extra` exactly as `node_type` does, `max_time` then
     reads as unstated, and a job asking more wall than the queue allows is
-    admitted (R3).  `scheduler.md` § 4 called it *"a bug waiting for someone
+    never said to be over it (R4).  `scheduler.md` § 4 called it *"a bug waiting for someone
     to misspell it"*.
 
     Neither refusing nor dropping is available, so the machine list SAYS SO.

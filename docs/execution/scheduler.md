@@ -5,8 +5,8 @@
 
 **Companions:**
 [`execution/job-system.md`](?doc=execution/job-system.md) § 6 — submission and
-routing as the job system sees them (**this document is the mechanism its
-design decision #4 always needed**);
+routing as the job system sees them (its design decision #4, a header
+complete before it is sent, is R5 here);
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.1, § 5.3 —
 what each `#SBATCH` line *means*, which stays there;
 [`configuration.md`](?doc=configuration.md) § 5 — **M-1**, the fact/preference
@@ -17,13 +17,14 @@ split this subsystem must not blur;
 ## The short version
 
 **A machine is measured into a record (`probe` → `environment.json`);
-a job states a request, its queue included; admission compares them;
-placement binds the queue the job names — all of it at prep; the placement
-renders the `#SBATCH` header, and launch sends that header.**  Nothing here chooses a queue
-for a job that names none: it is refused at prep
+a job states a request, its queue included; the fit says how the request sits
+on that queue's machines; placement binds the queue the job names — all of it
+at prep; the placement renders the `#SBATCH` header, and launch sends that
+header. The record is shown, never a veto: the scheduler decides, and its
+answer is shown (R6).**  Nothing here chooses a queue for a job that names
+none: it is refused at prep
 ([`architecture.md`](?doc=execution/architecture.md) § 5.2, 2026-10-02). Package: `molbuilder.scheduler`
-(`record` · `probe` · `admit` · `place` · `emit`, § 6). All built; live
-since 2026-08-23.
+(`record` · `probe` · `fit` · `place` · `emit`, § 6).
 
 The rules, one line each — full statement in § 3:
 
@@ -31,26 +32,26 @@ The rules, one line each — full statement in § 3:
 |---|---|---|
 | **R0** | queue ≠ machine | a partition is a QUEUE holding many machine kinds; `node_types` lists them, any single figure over them is an opinion |
 | **R1** | one placement | ONE decision, made at prep, rendered once — the header; the line a launch sends carries no resource but a wall the launch restates |
-| **R2** | total admission | every limit the record declares is compared — a declared field nobody checks is the defect |
-| **R2a** | GPUs: there, and enough | a GPU job goes only to a queue whose record lists GPUs, where one node holds at least the number asked; molbuilder names no card — the ask is `gpu:N`, and which card a node carries is that machine's business |
-| **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked — for a GPU job, the widest that has GPUs |
-| **R4** | numbers, not "no" | a refusal names the numbers ("38 min > debug's 00:15:00") |
-| **R5** | header stands alone | a header naming a queue states a wall that queue accepts |
-| **R6** | refuse early | when the record already says no, refuse before the scheduler does |
-| **R7** | ask what you know | unasked constraints are `None`, and `None` never refuses |
+| **R2** | the fit is total | every limit of one job the record declares is read into the fit — a declared field nobody reads is the error |
+| **R2a** | GPUs: counted, no card | a GPU request fits the nodes that carry at least the number asked, whatever their card; molbuilder names no card — the ask is `gpu:N` |
+| **R3** | silence is not a limit | a limit the record does not state is not counted against a request |
+| **R4** | numbers, not "no" | the fit names the numbers: the nodes that hold the request, of how many, and each limit it is over ("38m is over debug's wall (00:15:00)") |
+| **R5** | header stands alone | a header naming a queue states the wall stated for the run, never one filled in |
+| **R6** | shown, never a veto | prep refuses no request for what the record says of its queue: it prepares it and prints the fit; the scheduler decides, and its answer is shown |
+| **R7** | ask what you know | unasked constraints are `None`, and `None` is never counted |
 | **R8** | fact vs statement | what a queue ALLOWS is the record's; which queue a job USES is the job's own statement |
-| **R9** | admitted once | what prep admitted is what launch sends: prep's header, checked only against prep's own files; a calculation meant for a changed record goes back to the state before its first prep |
-| **R10** | name the way out | a refusal says what WOULD fit, not only what doesn't |
+| **R9** | placed once | what prep placed is what launch sends: prep's header, checked only against prep's own files; a calculation meant for a changed record goes back to the state before its first prep |
+| **R10** | name what holds it | the fit names the machines that hold the request, not only those that do not |
 | **R11** | compare KINDS | comparability = the node's kind (cores, device model, mem ≈10 GB) — never its hostname, never the allocation |
 | **R12** | sent ≠ landed | `run.json` records where it was SENT; the monitor's first `[MACHINE]` line records what it LANDED on |
-| **R13** | two ceilings | hardware (widest machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read; the smaller governs |
+| **R13** | two ceilings | hardware (each machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read into the fit |
 | **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a benchmark that exceeds it is told **at prep** |
 | **R15** | a scheduler is a kind | every command, directive, output-file placeholder and job variable a scheduler has is its kind's, in one file (`scheduler/kinds.toml`); the machine's record names the kind and where its commands are there (§ 6a) |
 
 **How you use it:** the decision graph is § 5, the shape § 6, the scheduler
 kinds § 6a,
-and § 7 shows the caller's view (`Request` → `place` → `Directives`) in
-ten lines. §§ 1–2 are the evidence record — the two Sol failures this
+and § 7 shows the caller's view (`Request` → `place` → `fit` → `Directives`)
+in a few lines. §§ 1–2 are the evidence record — the two Sol failures this
 subsystem exists to prevent — read them for *why*, never for *how*.
 
 ---
@@ -70,21 +71,20 @@ noticed a problem.
 
 ## 0. What this document owns
 
-**Owns:** whether a request fits a queue; which queue a request is placed in;
-and the directives that placement produces. The vocabulary below (*machine*,
-*domain*, *request*, *placement*) is defined here.
+**Owns:** how a request fits a queue's machines; which queue a request is
+placed in; and the directives that placement produces. The vocabulary below
+(*machine*, *domain*, *request*, *fit*, *placement*) is defined here.
 
-**Owns only what the SCHEDULER would refuse.** Admission exists to catch, from
-the record, the asks `sbatch` will bounce — a wall past the queue's limit, more
-cores than any machine there has, GPUs on a queue that has none, more devices
-than a node offers, a policy cap. It does **not** model whether the
+**Owns only what the SCHEDULER decides, and shows it before it is asked.**
+The fit says, from the record, what `sbatch` will decide — a wall past the
+queue's limit, more cores or memory than its machines have, GPUs on a queue
+that has none, more devices than a node offers, a policy cap — so the person
+sees it while changing the ask is free. It does **not** model whether the
 *calculation* will fit once it lands: a job whose system is too large for the
-GPU it landed on is a runtime failure the person deals with, and pulling it in
-here would make submission answer a question it cannot answer and cannot own.
-*(User, 2026-08-30: "what i care most is if the sbatch schedule goes through —
-those are road blockers.")* A device's memory is accordingly no column at
-all: the probe cannot read it (`sinfo` reports none), and nothing would admit
-against it. *(`Device.mem_gb`, declarable by hand, stood until 2026-10-02 —
+GPU it landed on is a runtime failure the person deals with. *(User,
+2026-08-30: "what i care most is if the sbatch schedule goes through — those
+are road blockers.")* A device's memory is accordingly no column at all: the
+probe cannot read it (`sinfo` reports none). *(`Device.mem_gb`, declarable by hand, stood until 2026-10-02 —
 W54 R22.)*
 
 **Does not own:** the meaning of an individual `#SBATCH` line
@@ -130,9 +130,9 @@ Placement living inside bench-submission is why the CPU and GPU branches were
 written separately and disagreed. Two emitters is why one half of a placement
 could name `debug` while the other asked for 38 minutes.
 
-And the rule was already written. `job-system.md` § 6 says the framework
-*"refuses to emit a header it knows will be rejected (design decision #4)"*.
-The rule existed; nothing was in a position to enforce it.
+And both have one answer once the subsystem has a home: a header complete
+before it is sent (R5), and the request's fit on the queue it names said from
+the record before the person sends it (R4, R6).
 
 ---
 
@@ -155,34 +155,36 @@ four bugs. It is one missing function.
 > defect.** `max_mem_gb` was not forgotten by accident — there was no place
 > where *"does this fit?"* was a question anybody had to answer, so nothing
 > ever pulled it into use. When the subsystem exists, adding a column to the
-> record and not comparing it becomes visible: § 3's R2 makes admission total.
+> record and not comparing it becomes visible: § 3's R2 makes the fit total.
 
 ---
 
 ## 3. The rules
 
-**R0 — A partition is a QUEUE, not a machine type.** Added 2026-08-27, and
-it is the premise the rest of the core rules rest on. ASU Sol's `htc` is 51
-nodes of 48 cores with A100s, 3 of 64 with MIG slices, and 134 of 128 with no
-device at all; `general` and `public` hold the same mixture, and what
-separates the three is the **wall clock** — 4 h, 7 d, 14 d. Four others
-(`highmem`, `gaudi`, `arm`, `fpga`) genuinely *are* hardware classes.
+**R0 — A partition is a QUEUE, not a machine type.** It is the premise the
+rest of the core rules rest on. ASU Sol's `htc`, as its record was probed on
+2026-10-17, is 69 nodes of 48 cores with GPUs, 4 of 64 and 2 of 96 with GPUs,
+and 137 of 128 cores, 134 of them with no GPU at all; `general` and `public`
+hold the same kind of mixture, and what separates the three is the **wall
+clock** — 4 h, 7 d, 14 d. Four others (`highmem`, `gaudi`, `arm`, `fpga`)
+genuinely *are* hardware classes.
 
 So **the machines are the measurement, and any single figure over them is an
 opinion.** A domain carries `node_types` — every distinct machine, with its
-count, memory and devices — and the person reads it. `max_cores` remains as
-the **widest** of them, which is the only core figure a refusal can honestly
-use — see R3's corollary.
+node count, cores, memory and the GPUs each node carries — and the person
+reads it; the fit reads it machine by machine (R3). `max_cores` and
+`max_mem_gb` are the largest machine's, for a record that lists no
+machines.
 
 > **Two consequences worth stating.** Hardware cannot be chosen by choosing a
 > partition; that is `--gres` or `--constraint`. And a device is a property of
 > a *machine*, not of a queue: `htc` offers A100s and it offers 128-core
 > nodes, but never both at once — which no single figure could have said.
 
-**What a person is shown: the maximum core range, and the node count.** Each
-machine has a maximum — its own core count — so a queue holding several has a
-**range** across them; `htc` is `48-128`, and a queue of one machine shows one
-number rather than `128-128`.
+**What a person is shown: the ranges, and the node count.** Each machine has
+its own core count and memory, so a queue holding several has a **range**
+across them; `htc` is `48-128` cores and `501-1511.2 GB`, and a queue of one
+machine shows one number rather than `128-128`.
 
 > **The low end is not a floor on the ask.** A `-c 4` job gets four cores on a
 > 48-core node; you can always ask for less than a machine has. Naming it a
@@ -196,23 +198,25 @@ picking a machine chooses between; the cards available *at* each size ride
 along, because that is the pairing no single figure could state:
 
 ```
-  1  htc   htc/public   4h   48-128   501 GB   a100 x4, h100 x8, l40 x4, …
+     name         partition/qos           max time    cores         memory  gpu
+  1  htc          htc/public                    4h   48-128  501-1511.2 GB  a100.40gb x4, a100 x4, h100 x8, a30 x3, l40 x4, h200 x1, h200.35gb x4, gpu x1, a100.20gb x16
        -  128 cores  x137 node(s)  503.2-1511.2 GB  a30, gpu, h200, h200.35gb
-       -   96 cores  x2 node(s)    1007.4 GB        h100
-       -   64 cores  x4 node(s)    503.5 GB         a100.40gb
-       -   48 cores  x69 node(s)   501-503.5 GB     a100, a100.20gb, a30, h100, l40
-          64 cores fits 143 of 212 nodes here (67%)
+       -   96 cores  x2 node(s)  1007.4 GB  h100
+       -   64 cores  x4 node(s)  503.5 GB  a100.40gb
+       -   48 cores  x69 node(s)  501-503.5 GB  a100, a100.20gb, a30, h100, l40
+     64 cores fits 143 of 212 nodes of htc (67%): 64 cores · 503.5 GB; 96 cores · 1007.4 GB; 128 cores · 503.2-1511.2 GB
 ```
 
 > **Read the last two columns together.** On `htc` you can have 128 cores or
 > you can have an A100 — never both. That is a fact about *machines*, and no
 > queue-level figure can carry it.
 
-**The range alone misleads, so the fitting node count rides with it.** Reading
-`48-128` you would take 128 for the rare extreme. On `htc` it is **134 of 188
+**The range alone misleads, so the fit rides with it** — the nodes that hold
+the request, of how many (R4). Reading
+`48-128` you would take 128 for the rare extreme. On `htc` it is **137 of 212
 nodes** — the common machine, with the 48-core GPU nodes in the minority — so a
 large CPU ask there costs almost nothing in scheduling, the opposite of what
-the range implies. The same 64-core ask lands on 94% of `general` and 72% of
+the range implies. The same 64-core ask lands on 70% of `general` and 67% of
 `htc`, and neither figure is a field: both fall out of the machines.
 
 > Node counts are still only a proxy for **wait**. What a queue costs *today*
@@ -224,12 +228,13 @@ the line a launch sends carries that header and no resource of its own but a
 wall the launch restates (`commands.LAUNCH_FLAGS`, `submit._sbatch_request`). There is one rendering,
 so there is nothing to disagree about.
 
-**R2 — Admission is total over the named limits.** Every limit `Domain`
-*declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu`, `node_types` — is
-compared against the request. `node_types` is read by `_widest_node`, which is
-what keeps it a limit rather than a display: it arrived with its comparison
-(2026-08-27), which is what this rule asks of a new field. A new declared limit arrives with its comparison or it
-does not arrive; that is what stops another `max_mem_gb`.
+**R2 — The fit is total over the named limits.** Every limit of one job
+that `Domain` *declares* — `max_time`, the policy caps (R13), and
+`node_types`, each machine's cores, memory and GPUs — is read into the fit;
+the cap on how many jobs one user may have submitted is a limit of a SET of
+jobs, read by the benchmark at prep (R14). A new declared limit arrives with
+its reading or it does not arrive: a field the record carries and nothing
+reads is the error § 2 records.
 
 `extra` is the deliberate exception and the only one: it holds columns a probe
 saw and this reader does not interpret, and `Domain`'s own rule governs it —
@@ -243,8 +248,7 @@ still writes, or a column of their own, must survive (R10; pinned by
 `test_declared_rows_keep_the_operators_own_columns`). But that leaves a
 **misspelling indistinguishable from a deliberate extra**: `max_tme` lands in
 `extra` exactly as `node_type` does, `max_time` then reads as unstated, and
-a job asking more wall than the queue allows is admitted — R3, silence never
-bars — and the scheduler, not molbuilder, is the one that finds out. This section predicts
+the fit says nothing of a wall the queue will refuse. This section predicts
 it below: *"a value that changes where a job lands is a field, or it is a bug
 waiting for someone to misspell it."*
 
@@ -268,58 +272,30 @@ they must not be able to disagree about a machine.
 > `parse_mem_gb` is that conversion, and `--mem=0` maps to *no stated limit*
 > rather than zero, because in SLURM it means **all** the node's memory.
 
-**R3 — An unstated limit never bars.** A domain that does not state a ceiling
-is not claiming a small one; a ceiling that cannot be parsed is not a
-refusal. Silence is permission — the opposite reading would make a
-partially-probed cluster unusable.
+**R3 — An unstated limit is not counted.** A domain that does not state a
+ceiling is not claiming a small one, and a ceiling that cannot be parsed is
+not one. A machine the record lists without a field — its memory unstated —
+holds the request as far as the record says.
 
-> **The corollary that was violated for months.** *Refuse only what the record
-> positively rules out* — so a core ceiling must be the **widest** machine,
-> because SLURM will not place a job on a node too small; it waits for one
-> that fits. `max_cores` was a MINIMUM across GPU groups for a gpu-capable
-> partition and a MAXIMUM across all groups for a cpu-only one, and admission
-> compared both as one number. The floor reading refused a declared 64-rank
-> CPU trial on a partition whose CPU nodes have 128 cores. Fixed 2026-08-27 by
-> R0: keep the machines, and derive the ceiling from them.
->
-> **And the corollary has a second half, found the same day by taking its own
-> argument one step further.** *"SLURM will not place a job on a node too
-> small"* is exactly as true of **devices**: a job asking for an A100 can only
-> land on a node that has one. So the honest ceiling is the widest machine
-> **among those offering what was asked for**, not the widest overall.
->
-> On Sol's `public` those differ sharply — 128 cores across its 107 standard
-> nodes, **48** across the 52 carrying A100s. A 64-rank GPU trial is admitted
-> against the 128 and is then unplaceable, which R0 predicted in words —
-> *"`htc` offers A100s and it offers 128-core nodes, but never both at once"* —
-> while admission went on asking the queue for one figure. **A benchmark's GPU
-> side is where this bites first**, because a sweep's rank axis is normally
-> sized against the CPU side. Built the same day: `admits`
-> narrows the ceiling to device-bearing machines when the request names a
-> device, and stands aside — never bars — when the machine list does not say
-> which nodes hold them.
->
-> **Silence still wins over the narrowing, and that is not a detail.** A queue
-> that never said *which* of its machines hold devices has said nothing, so the
-> wider ceiling stands — the widest listed machine, else `max_cores`. Reading
-> the empty list as *no machine carries a device* would make asking for a GPU
-> **loosen** the ceiling instead of tightening it, and every record written
-> before `node_types` existed (2026-08-27) carries only `max_cores`.
->
-> *(A third half narrowed the ceiling to the machines carrying one named
-> CARD, 2026-08-30 to 2026-10-01. It is gone with R2a's card comparison:
-> molbuilder names no card.)*
+**Machine by machine.** SLURM places a job only on a node that holds all of
+it at once — its cores, its memory, its GPUs — and waits for one. So the fit
+asks each machine type whether one node holds the whole request, and counts
+the nodes that do: on Sol's `public`, 64 cores fit the 107 standard nodes and
+none of the 52 with A100s, so a 64-rank GPU job fits no node there, though
+the queue has 128-core nodes and it has GPUs. A record that lists no machines
+is read by its `max_cores` and `max_mem_gb`, the largest machine's.
 
-**R2a — GPUs: the queue has them, and enough of them.** *(User, 2026-10-01:
-"the only thing you check is the gpu dependent task is scheduled to the
-group/domain that actually claimed to have it, and has the capacity as
-requested (gpu_number). that's it"; "we never claimed any card type".)* A GPU
-job goes only to a queue whose record lists GPUs — the `gpu` column the probe
-writes from what the scheduler reports — and is admitted
-there only when one node offers at least the number asked: the most any node
-of that queue holds, whatever its card. That is the whole of the GPU check,
-and it is made in `admits`, which every admission asks. A queue that lists
-GPUs without saying how many is never refused on the number (R3).
+**R2a — GPUs: counted, and no card.** *(User, 2026-10-01: "the only thing
+you check is the gpu dependent task is scheduled to the group/domain that
+actually claimed to have it, and has the capacity as requested (gpu_number).
+that's it"; "we never claimed any card type".)* A GPU request fits the nodes
+that carry at least the number asked, whatever their card — every card a
+node carries counted together, as the scheduler counts a GPU ask that names
+none, from the `gpu` the probe writes for each machine type, one per `sinfo`
+row, from what the scheduler reports; a queue whose
+record lists no GPUs has no node that holds it. That is the whole of the GPU
+reading, made in `fit`. A queue that lists GPUs without saying how many is not
+counted against the number (R3).
 
 **molbuilder names no card.** A GPU ask is `--gres=gpu:N`; which card a node
 carries is the machine's business, and its scheduler places the job on one that
@@ -327,33 +303,54 @@ has GPUs. The card the probe records stays a fact on the record — `jobset
 machines` shows it — and nothing compares it.
 
 
-**R4 — A refusal names the numbers.** *"needs 38 min but debug allows
-00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read
-`scontrol` for numbers already on disk is the failure this subsystem exists to
-end.
+**R4 — The fit names the numbers.** *"900 GB fits 3 of 212 nodes of htc
+(1%): 96 cores · 1007.4 GB; 128 cores · 1511.2 GB"*, *"2000 GB fits no node of
+htc -- 2000 GB is over htc's largest machine (1511.2 GB)"*, *"4 cores · 38m
+fits all 212 nodes of debug -- 38m is over debug's wall (00:15:00)"* — never
+*"does not fit"*. The machines that hold it are named one per size, as the
+queue table groups them (R0), with the cards at each size when it asks GPUs;
+a share is never rounded to none or all (*"<1%"*, *">99%"*); and every limit
+it is over is named — on a queue that lists no GPUs, its cores and memory
+past every machine as well. We hold the record; sending a person to `scontrol` for
+numbers already on disk is the failure this subsystem exists to end.
 
 **R5 — A header must be submittable on its own.** If it names a queue it
-states a wall that queue accepts — the wall stated for the run; an unstated
-one is refused at prep, never filled in ([`submission.md`](?doc=execution/submission.md)
-S2). *(Until 2026-10-02 the queue's own ceiling was the value when nothing
-else supplied one.)*
+states the wall stated for the run; an unstated one is refused at prep, never
+filled in ([`submission.md`](?doc=execution/submission.md) S2). Whether the
+queue takes that wall is the fit's to say and the scheduler's to decide.
 
-**R6 — Refuse before submitting, when the record already says so.** The
-existing `job-system.md` § 6 rule, now with somewhere to live: at prep, before
-anything is written. A machine whose record's scheduler kind has no queue
-has nothing to send to: prep writes no header, and the job runs directly; a
-kind with a queue whose record lists no domains names no queue a run could
-name, and its run is refused at prep.
+**R6 — Shown, never a veto** *(the user, 2026-10-17: "the information on
+each domain is displayed correctly to the user, do not refuse user's choice,
+user knows best and when denied, the output gives the reason")*. Prep refuses
+no request for what the target's record says of the queue it names: it
+prepares the job and prints the fit beside its placement — each limit it is
+over, with its numbers. **The scheduler decides, and its answer is shown**:
+at submit its refusal in its own words, `--mode ask` before anything is sent,
+and a job it takes but holds shows its reason in `molbuilder jobs status`
+([`job-system.md`](?doc=execution/job-system.md) § 6.0a). The record's
+figures are measurements of a mixture of machines; the scheduler is the
+authority on what it takes.
+
+**What prep still refuses is a statement missing or contradicting another**:
+a queue stated nowhere, or one the record does not list; a wall or memory
+stated nowhere ([`submission.md`](?doc=execution/submission.md) S1, S2); a
+GPU run with no count, or a count with no GPU ([`gpu.md`](?doc=execution/gpu.md)
+G5); a deck that disagrees with its header. A machine whose record's
+scheduler kind has no queue has nothing to send to: prep writes no header,
+and the job runs directly; a kind with a queue whose record lists no domains
+names no queue a run could name, and its run is refused at prep.
 
 **R7 — Callers ask what they know.** `prep` knows what a job states — its
 cores and devices, and where it writes a header the wall and memory it is
 refused without ([`submission.md`](?doc=execution/submission.md) S1, S2) — and
-admits a run on the queue it names with all of them
+fits a run on the queue it names with all of them
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4); the
 benchmark grid asks each cell's shape of the one queue the benchmark names;
-a caller asking about *capability* asks about nothing else. An unasked
-constraint is `None`, and `None` is never a refusal. This is what lets one
-admission function serve every caller without each growing its own variant.
+the Task setup card shows the queue's wall and its machines' memory beside
+the fields being typed, and its Preview is prep's, the fit of the whole
+request ([`task-setup.md`](?doc=web/task-setup.md) § 6.2). An unasked
+constraint is `None`, and `None` is never counted. This is what lets one fit
+serve every caller without each growing its own variant.
 
 **R8 — Measurements from the record, the queue from the job.** M-1
 (`configuration.md` § 5) is not relaxed here. What a queue *allows* is a
@@ -362,11 +359,11 @@ the job's own statement — `allocation.domain`, the run card's `domain`,
 `--domain` — and never a default from any file. This subsystem reads both
 and mixes neither.
 
-**R9 — Admitted once, at prep** *(the user, 2026-10-17: "whether it's direct
+**R9 — Placed once, at prep** *(the user, 2026-10-17: "whether it's direct
 launch or submission, all the decision is already done at the prep … It is
 none of molbuilder's business at the launch time to decide what is allowed to
-launch")*. What prep admitted on the target's record is what launch sends:
-launch sends the header prep wrote, walks no graph and admits nothing. What it
+launch")*. What prep placed on the target's record is what launch sends:
+launch sends the header prep wrote, walks no graph and fits nothing. What it
 checks is prep's own files — at a first launch, prep's own planning asked
 again on the calculation's own files (its description, its template and its
 copy of the target's record), refusing a prep that is no longer what they
@@ -379,19 +376,21 @@ job's wall (`--time`), passed on the line in a job's own spelling
 (`D-HH:MM:SS`, § 6a) and checked by nothing of ours; the scheduler answers
 it.
 
-**R10 — A refusal names what *would* fit.** Not *"64 cores is too many"* but
-*"this queue holds 48; the largest rank count that fits is 48"*. The graph in
-§ 5 knows which limit bound, so it knows what to suggest, and a refusal that
-stops at "no" leaves the user guessing at the number we are already holding.
-R4 says name the numbers; this says name the way out.
+**R10 — The fit names what holds the request.** Not only *"fits no node"* but
+which machines would hold what: *"64 cores · 1 GPU fits no node of public --
+no one machine of public holds all of it: the 48-core machines have 48 cores;
+the 128-core machines have no GPU"*, each kind of lack once, with the range
+the machines lacking it have; a size whose machines do not all lack it is
+named by the ones that do, with their memory and cards (*"the 128-core ·
+503.2 GB machines"*), so every clause is true of every machine it names. The fit reads each
+machine, so it says. R4 says name the numbers; this says name the way out.
 
 **R13 — What the hardware can do and what policy lets you ask for are two
-ceilings. Both are read; the smaller governs.** Added 2026-08-27. `max_cores`
-is derived from `node_types` — the **widest machine** (R3's corollary) — and
-that is a fact about silicon. A scheduler also *declares* per-job caps that no
-amount of hardware overrides: a QOS `MaxTRESPerJob=cpu=N`, a partition's
-`MaxCPUsPerNode`. **A hardware ceiling cannot stand in for a policy one**, and
-R3 then reads the missing policy limit as permission.
+ceilings, and both are read into the fit.** Each machine's cores are a fact
+about silicon. A scheduler also *declares* per-job caps that no amount of
+hardware overrides: a QOS `MaxTRESPerJob=cpu=N`, a partition's
+`MaxCPUsPerNode`. **A hardware ceiling cannot stand in for a policy one**: a
+request over a policy cap is over it on every machine, and the fit says so.
 
 > **The record measured the first and never asked for the second**, which is
 > how `lightwork` came to carry `max_cores: 128` beside a long-standing note
@@ -407,8 +406,8 @@ R3 then reads the missing policy limit as permission.
 > (`MaxTRES` in the format list; `MaxCPUsPerNode` from the block already
 > fetched), they ride the row as `max_cpus_per_job` / `max_cpus_per_node`
 > — written as `null` when asked-and-uncapped, absent only when never
-> asked — and `admits` compares the ask against every ceiling it holds;
-> the smaller governs. **Sol's answer: no policy cap anywhere** —
+> asked — and the fit reads the ask against every ceiling it holds.
+> **Sol's answer: no policy cap anywhere** —
 > `lightwork` included; its only policy split from `public` is the
 > 1-day wall.
 
@@ -544,13 +543,13 @@ already running where the answer is.
   and where its commands are there, § 6a), topology, site, and its domains.
   Persisted as `environment.json` (`configuration.md` § 5).
 - **Domain** — one reachable `(partition, qos)` pair and what it allows:
-  `max_time`, `max_cores`, `max_mem_gb`, `gpu`. *A fact, never a preference —
-  it says "you may submit here, for this long", never "submit here".*
-  `node_types` describes the machines it draws from — every distinct one, with
-  its count, cores, memory and devices (R0). It constrains no *admission*;
-  `max_cores` is the widest of them and does that job (R3's corollary). What it
-  is for is R11: it is the only place a machine can be named. `extra` holds
-  columns this reader does not interpret (R2).
+  `max_time`, the policy caps, `gpu`. *A fact, never a preference — it says
+  "you may submit here, for this long", never "submit here".* `node_types`
+  describes the machines it draws from — every distinct one, with its count,
+  cores, memory and GPUs (R0) — and is what the fit reads
+  (R3) and the only place a machine can be named (R11); `max_cores` and
+  `max_mem_gb` are the largest machine's. `extra` holds columns this reader
+  does not interpret (R2).
 
   > **The scalar `node_type` was retired 2026-08-27** and is not read anywhere.
   > It said a queue had one machine type, which R0 measured to be false; a
@@ -573,9 +572,14 @@ already running where the answer is.
   that changes where a job lands is a field, or it is a bug waiting for
   someone to misspell it.)*
 - **Request** — what one job asks for: ranks, cpus-per-task, GPUs, memory,
-  wall, exclusivity. Fields the caller does not know are `None` (R7).
-- **Placement** — a request bound to a domain, with the reasoning that chose
-  it. The single decision R1 refers to.
+  wall. Fields the caller does not know are `None` (R7).
+- **Fit** — how a request sits on a domain's machines: the nodes that hold
+  the whole of it, of how many, the machine types that do, and each limit it
+  is over, with its numbers (R2–R4, R10). One reading (`fit.fit`) and one
+  rendering (`Fit.line`), read by prep, the benchmark grid, the queue table
+  and the Task setup card; it refuses nothing (R6).
+- **Placement** — a request bound to the domain it names, and its fit. The
+  single decision R1 refers to.
 - **Directives** — a placement rendered for the scheduler: the header's
   directive lines in its kind's language (SLURM's `#SBATCH`, § 6a), the one
   rendering (R1).
@@ -594,39 +598,43 @@ separately and disagreeing, which is § 1's first failure.
 ```mermaid
 flowchart TD
   START(["a request · this machine"])
-  Q0{"any queues<br/>on this machine?"}
-  DIRECT["run it directly<br/><i>no header at all</i>"]
+  Q0{"does this machine's<br/>scheduler kind have a queue?"}
+  DIRECT["run it directly<br/><i>no header at all; a queue<br/>the job names is not read</i>"]
+  QR{"does its record<br/>list queues?"}
+  RN["refuse — the record lists no queues,<br/>none a job could name; probe it there"]
   Q1{"does the job<br/>name a queue?"}
   QL{"does the record<br/>list it?"}
-  Q2{"does that queue<br/>admit the request?"}
-  PLACE(["PLACE<br/><i>the named queue, bound</i>"])
+  FIT["the fit — the nodes that hold it,<br/>each limit it is over"]
+  PLACE(["PLACE<br/><i>the named queue, bound, its fit printed</i>"])
   RU["refuse — a job names its own queue;<br/>here are the record's"]
   RL["refuse — the record lists<br/>no such queue"]
-  RN["refuse — name what is too big,<br/>and what would fit"]
 
   START --> Q0
   Q0 -- no --> DIRECT
-  Q0 -- yes --> Q1
+  Q0 -- yes --> QR
+  QR -- no --> RN
+  QR -- yes --> Q1
   Q1 -- no --> RU
   Q1 -- yes --> QL
   QL -- no --> RL
-  QL -- yes --> Q2
-  Q2 -- yes --> PLACE
-  Q2 -- no --> RN
+  QL -- yes --> FIT
+  FIT --> PLACE
 ```
 
-**A named queue is checked like any other.** The `--domain` branch reaches the
-same admission test — your choice is honoured as a *choice*, not as permission
-to skip the check: `place(..., named=)` asks `admits` of the named domain and
-refuses it by name like any other (`scheduler/place.py`).
-
-**Refusals are the graph's real output.** Three of the five leaves refuse, and
-each refuses differently, because the reason is the useful part (R4, R10).
+**A named queue is placed, and its fit said.** `place(..., named=)` binds the
+queue the job names and asks the fit of it (`scheduler/place.py`): a request
+over every machine there is placed all the same, the fit saying so, and the
+scheduler decides (R6). **The refusals are statements missing or
+contradicting the record** — a scheduler whose record lists no queues, none a
+job could name (`placement.no_queues_said`, naming the probe that renews
+it); no queue named, or one the record does not list, each naming the
+record's queues. `place` itself answers the same way for a caller that hands
+it no queues: `None` when none is named, a refusal when one is.
 
 ### 5.1 The walk is prep's
 
 The graph is walked once, when the work is built: each run on the queue it
-names (`placement.admitted`), each benchmark trial on its benchmark's one queue
+names (`placement.placed`), each benchmark trial on its benchmark's one queue
 (`prep_inputs.bench_inputs`), and each job that walks several members — a
 group, a run of points, a benchmark's shelf — with its one request
 (`prep.walk_header_of`). Launch sends the header the walk produced (R9).
@@ -640,7 +648,7 @@ scheduler/
   record.py   Machine · Domain · Topology · Site · Scheduler; read/write;
               scopes; named targets; discovery (_DISCOVERY) -> a record
   probe.py    parsers of the scheduler's answers (sinfo / scontrol / sacctmgr)
-  admit.py    admits(domain, request) -> [reasons]        # R2, R3, R4, R7
+  fit.py      fit(domain, request) -> Fit                 # R2-R4, R7, R10
   place.py    place(routing, request, *, named) -> Placement  # R6
   emit.py     Directives(...).header_lines(kind)                # R1, R5
   kinds.toml  each scheduler kind: its operations, its header's language,
@@ -653,7 +661,7 @@ scheduler/
 
 Honestly graded, these are not equally forced:
 
-- **`admit.py`, `place.py`, `emit.py` are forced by measured defects** — the
+- **`fit.py`, `place.py`, `emit.py` are forced by measured defects** — the
   four-treatments table in § 2, the two divergent branches, the two emitters.
   Each has a failure on Sol behind it.
 - **`record.py` and `probe.py` are relocations.** They work today. They move
@@ -683,7 +691,7 @@ kind: the header's own `<name>.sbatch`, and the scheduler's output
 | **how a job is sent** — its name, a wall the launch restates, molbuilder's launch claim, the header, the run's arguments | `{submit} -J {job} [-t {wall}] --export ALL,MB_LAUNCHED_BY=jobset-launch {header} {args}` | `submit._sbatch_request`, the one line |
 | **how it is asked about without being sent** | the same line, `--test-only` after the command | `submit._ask` (`--mode ask`); its answer read by the kind's reader (`jobset.ask._ANSWER_READERS`) |
 | **the id it answers a send with** | `Submitted batch job (\d+)` | `submit._go` |
-| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T` · `{cancel} {id}` | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
+| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T|%r` — its state, and the scheduler's reason for it · `{cancel} {id}` | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
 | **which cluster answers** | `{cluster} show config` | `scheduler.queue` (a job's address); read by the kind's reader |
 | **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={memory}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}{file}` `-e {where}{file}` | `scheduler.emit`, `runwrap.render_sbatch` (prep's header); `Directives.lines_of` (what prep and launch print of it) |
 | **the placeholder its output files are named with** | `%j`, the job's id: the file catalogue names them `{scheduler}.{jobid}.out` and `.err` (`runfiles.SCHEDULER_STDOUT`), one name for every kind — SLURM's `slurm.%j.out` | the header's `stdout`, `stderr` |
@@ -723,7 +731,8 @@ scheduler's own tools — a compute node's shape, the default partition,
 whether it runs inside one of its jobs, the queues and their limits (`sinfo`,
 `scontrol`, `sacctmgr`; `record._DISCOVERY`) — ask mode reading its
 start-time answer (`jobset.ask._ANSWER_READERS`), and the jobs list reading
-whether it still lists a job and which cluster it serves (`queue._READERS`).
+whether it still lists a job, in what state and why, and which cluster it
+serves (`queue._READERS`).
 Each parses a tool's output, which no format states. Discovery alone looks a
 command up on PATH, and runs the record's own where it has one (`scontrol`,
 the `cluster` command). Two readers of SLURM's ways stand where this file is
@@ -743,10 +752,15 @@ req = Request(ranks=64, cpus_per_task=1, gpus=2,
               mem_gb=390, walltime_s=38 * 60)
 
 placement = place(routing, req, named="htc")
-#   -> htc/public          the queue the job names, admitted on its row
-#   -> Unplaceable(reasons=[...]) when it cannot take the job, or the job
-#      names none on a machine that has queues (R6), each reason naming
-#      its numbers (R4)
+#   -> htc/public          the queue the job names, bound, with its fit:
+#      placement.fit.line  "64 cores · 390 GB · 2 GPUs · 38m fits 9 of 212
+#                           nodes of htc (4%): 64 cores · 503.5 GB ·
+#                           a100.40gb; 96 cores · 1007.4 GB · h100; ..."
+#                           -- or each limit it is over, with its numbers
+#                           (R4); never a refusal (R6)
+#   -> Unplaceable, only when the job names no queue on a machine that
+#      has queues, one its record does not list, or one on a machine
+#      whose record lists none
 
 d = Directives(partition=placement.partition, qos=placement.qos,
                walltime="0-00:38:00", ntasks=64, cpus_per_task=1,
@@ -756,8 +770,7 @@ d.header_lines(record.kind)   # what the .sbatch carries, wall included (R5),
 #   (R1): launch sends this header
 ```
 
-**The job names its queue; `place` chooses none** — the
-description, the run card or `prep --domain` names it, and it is still
-**admitted**: naming a queue that cannot hold the job earns R4's refusal, not
-silent acceptance — the user's explicit choice is honoured as a choice, not as
-permission to skip the check.
+**The job names its queue; `place` chooses none** — the description, the
+run card or `prep --domain` names it — and **its fit is said**: naming a queue
+none of whose machines hold the job earns R4's numbers beside the placement,
+and the scheduler's answer when it is sent — never a refusal of ours (R6).

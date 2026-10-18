@@ -81,16 +81,18 @@ wall-clock in is a judgement about priority, contention and what else is
 running — none of it on the machine's record, all of it the person's. So the
 person names one — in the description (`allocation.domain`, the run card's
 `domain`) or with `prep --domain` — and a run on a scheduler that names none
-is refused at prep; launch sends to that queue and names none of its own. **Prep admits the job on the queue it names** — its wall,
-memory, ranks, cores and GPUs against what the record says that queue takes —
+is refused at prep; launch sends to that queue and names none of its own. **Prep places the job on the queue it names** and prints
+its fit — its wall, memory, ranks, cores and GPUs against that queue's
+machines on the record: the nodes that hold it, and each limit it is over —
 and records the placement with each value's source
-([`job-system.md`](?doc=execution/job-system.md) § 6.0); a queue that cannot
-take it is refused there, naming what was asked and what the queue offers.
-Where the queues are listed, a queue that cannot take the job is listed too,
-with the reason: hiding it answers *"why is my queue not an option?"* with
-silence. **And a page that offers queues proposes no value**: choosing a queue
-on the Task setup card fills neither the wall nor the memory — its limits are
-shown beside the fields, and an empty field stays empty until it is stated
+([`job-system.md`](?doc=execution/job-system.md) § 6.0). It refuses none of
+it: the scheduler decides, and its answer is shown
+([`scheduler.md`](?doc=execution/scheduler.md) R6). Where the queues are
+listed, each is listed with its machines and the fit of what the job states.
+**And a page that offers queues proposes no value**: choosing a queue
+on the Task setup card fills neither the wall nor the memory — its wall and
+its machines' memory are shown beside the fields, its Preview gives the fit,
+and an empty field stays empty until it is stated
 *(a value the page proposed, a Save would make "stated" — S1's default wearing
 a number's clothes)*.
 
@@ -99,16 +101,15 @@ another queue is another benchmark (the user, 2026-10-17).
 
 ---
 
-## 3. The four things, and where they live
+## 3. The three things, and where they live
 
-`jobset/ask.py` — and the CLI and the browser call the same four. *Two
+`jobset/ask.py` — and the CLI and the browser call the same three. *Two
 surfaces asking one question two ways is how they come to disagree about what
 was asked.*
 
 | | |
 |---|---|
-| `Ask` | the question, and the answer to it |
-| `queue_table` | the queues the target's record lists, and which can take the job — shown in prep's refusal of a run that names none |
+| `queue_table` | the queues the target's record lists, their machines, and the job's fit on each — shown in prep's refusal of a run that names none |
 | `gpu_share_notes` | what a run's GPU request means — its ranks over its GPUs — said at its prep |
 | `confirm` | the one interface — approve, or don't; for a run here, also approve the other way, in the foreground or in the background (`Said.other`, `job-system.md` § 6.0) |
 
@@ -133,14 +134,14 @@ about to submit:
 
 *Every line is read off the very `sbatch` commands about to be sent and the
 headers they send: each shelf's header written at the benchmark's prep, from
-what it admitted on the benchmark's one queue, its wall the description's
+what it placed on the benchmark's one queue, its wall the description's
 (`allocation.time`). What a GPU shelf's ranks mean for its device — the
 GPU-sharing note — is said at that prep, where the grid can still change.*
 
-*The queues this machine offers, and which can take the job, are listed at
-prep, where a queue is named: the listing reuses the scheduler's own
-admission, so it cannot say yes where the prep says no. A table that
-disagrees with the check is worse than no table.*
+*The queues the target offers, and the job's fit on each, are listed at prep
+when a run names none: the listing asks the one fit the placement asks
+(`scheduler.fit`), so it cannot say a queue holds the job where prep's own
+line says it does not.*
 
 `--yes` skips the question, never the output: a person scrolling back must be
 able to see what was sent.

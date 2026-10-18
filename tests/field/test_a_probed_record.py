@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.scheduler.admit import domain_ceiling_s
+from molbuilder.scheduler.fit import domain_ceiling_s
 from molbuilder.scheduler.record import read_environment
 
 RECORD = Path(os.environ.get("MOLBUILDER_FIELD_RECORD", "")).expanduser()
@@ -68,6 +68,20 @@ def test_every_wall_a_queue_states_reads(env):
     for d in env.domains or ():
         if d.max_time is not None:
             assert domain_ceiling_s(d) is not None, (d.name, d.max_time)
+
+
+def test_a_queues_one_figures_are_its_largest_machines(env):
+    """R0: a queue's ``max_cores`` and ``max_mem_gb`` are its largest
+    machine's -- the figures read where a record lists no machines, so one
+    that is a smaller machine's says the queue is smaller than it is."""
+    for d in env.domains or ():
+        machines = [m for m in d.node_types or [] if isinstance(m, dict)]
+        cores = [m["cores"] for m in machines if m.get("cores")]
+        mem = [m["mem_gb"] for m in machines if m.get("mem_gb")]
+        if cores:
+            assert d.max_cores == max(cores), (d.name, d.max_cores, cores)
+        if mem and d.max_mem_gb is not None:
+            assert d.max_mem_gb == max(mem), (d.name, d.max_mem_gb, mem)
 
 
 def test_the_answers_of_one_question_arrive_together(raw):

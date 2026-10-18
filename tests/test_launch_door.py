@@ -170,7 +170,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     js = JobSet.load(bundle / "job-set.json")
     attempt = bundle / "01_coarse" / "run-0"
 
-    def plan():                  # the queue its prep admitted: `debug`
+    def plan():                  # the queue its prep placed it on: `debug`
         return plan_launch(js, bundle, mode="submit", only="coarse",
                            told=dict(kind="task", stage="coarse", trial=None,
                                      mode="submit", flags=[]))

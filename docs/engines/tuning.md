@@ -509,6 +509,7 @@ half, and since 2026-08-21 that includes the device count itself
 ```json
 "bench": {
   "mpi_np":      [32, 64],
+  "omp_threads": [1],
   "use_gpu":  [true, false],
   "gpu_count":   [1, 2, 4],
   "diag_algorithm": ["ELPA-1STAGE", "ELPA-2STAGE"]
@@ -518,8 +519,12 @@ half, and since 2026-08-21 that includes the device count itself
 — CPU trials at 32 and 64 total ranks; GPU trials at exactly 1, 2 and 4
 devices; both solvers rendered into every trial's input file. `mpi_np` is
 always the TOTAL rank count (`G·K`), so K follows as `mpi_np / G`. The
-rules around `gpu_count` are refusals and named drops, never silent
-repairs: a device count the machine's record does not hold **refuses**; a
+rules around `gpu_count` are refusals, named drops and fits said, never
+silent repairs: a device count past what the record says a node carries is
+**kept** when the cell is declared whole — its `mpi_np` and `omp_threads`
+declared too — its fit saying so, the scheduler deciding
+([`execution/scheduler.md`](?doc=execution/scheduler.md) R6), and left out
+by its numbers in a cell whose ranks the machine proposed; a
 `(mpi_np, gpu_count)` pair that cannot split into equal shares is
 **dropped, and the dropped pair is printed by name** — a trial is counted
 by its ranks per GPU, which an uneven split does not have, and a benchmark
@@ -544,7 +549,7 @@ flowchart TD
     end
     subgraph MACHINE["environment.json — what the machine RECORDS"]
         TOPO["hardware: sockets × cores/socket,<br/>GPUs per node + GPU type<br/>(probed where the GPUs are)"]
-        DOM["submission menu: partition/qos,<br/>GPU inventory {a100: 4} (probed),<br/>max_cores = 48 (probed from the GPU<br/>nodes' own row; yours to edit)"]
+        DOM["submission menu: partition/qos,<br/>GPU inventory {a100: 4} (probed),<br/>each machine's cores, memory, GPUs<br/>(probed)"]
     end
     PREP["prep bench — builds the grid of trials"]
     MP --> PREP
@@ -554,8 +559,8 @@ flowchart TD
     TOPO -->|"device count + type<br/>(on a login node: the inventory answers)"| PREP
     DOM -->|"which partitions have GPUs?<br/>how many cores per node?"| PREP
     PREP --> CPU["CPU trials (G = 0)<br/>one per mpi_np × omp_threads"]
-    PREP --> GPU["GPU trials<br/>G = your gpu_count, exactly<br/>K = mpi_np / G — must divide evenly,<br/>else that pair is dropped BY NAME<br/>C = omp_threads (default 1)"]
-    GPU -->|"needs more cores than the<br/>GPU nodes have → dropped BY NAME"| GPU
+    PREP --> GPU["GPU trials<br/>G = your gpu_count, exactly<br/>K = mpi_np / G — must divide evenly,<br/>else that pair is dropped BY NAME<br/>C = omp_threads, declared beside mpi_np"]
+    GPU -->|"each cell's fit on the queue said;<br/>a cell declared whole kept whatever it says"| GPU
     CPU --> TRIALS["× the value settings = the trials,<br/>each input file carrying its own values"]
     GPU --> TRIALS
     TRIALS --> SHELF["submit: trials with the SAME resource ask<br/>share one scheduler job sized to fit them<br/>exactly — independent jobs, biggest first,<br/>CPU jobs hold no GPU"]
@@ -602,10 +607,14 @@ when few ranks run, the wrapper widens each rank's threads to use the
 node's spare cores, unless you state a number. Either way it is an
 assumption you can replace with a measurement — declare `omp_threads` as
 an axis, and the winning C is reported for you to write into `execution`.  One
-declaration measures all the full-node layouts: `mpi_np: [24, 48]` ×
-`omp_threads: [1, 2]` enumerates `G4 K12`, `G2 K24`, `G1 K48` (at the
-MPS ceiling) and their two-thread variants — and the verdict, not the
-ceiling, picks.
+declaration measures the full-node layouts: `mpi_np: [24, 48]` ×
+`omp_threads: [1, 2]` × `gpu_count: [1, 2, 4]` enumerates each rank count
+over one, two and four GPUs — `G4 K12`, `G2 K24`, `G1 K48` (at the MPS
+ceiling) among them — with one and two threads each, every cell declared
+and kept with its fit (a 48-rank, two-thread cell on a 48-core GPU node is
+said to fit no node there); without `gpu_count` the machine proposes the
+device counts, and a cell no GPU node holds is left out with its numbers —
+and the verdict, not the ceiling, picks.
 
 **Memory on the card is usually not the limit.** A ~440-heavy-atom
 junction with a DZP basis is roughly a 6–7 thousand orbital problem; one
@@ -622,9 +631,10 @@ run *inherits* it — there is no fixed CPU-to-GPU ratio anywhere:
 **(1)** the winner's whole shape, the device count included, is reported
 in what `summarize` prints, for you to write into `execution` — where
 a device count is stated as `gpu_count`, since no command-line flag
-states one, on purpose. **(2)** With no verdict on
-file, a GPU calculation's submission header asks for **one** device — a
-deliberate floor, not a scaling rule. **(3)** At launch, the wrapper
+states one, on purpose. **(2)** A GPU run states its device count —
+`gpu_count` on its run card, or `--gpus` at its prep — and one that states
+none is refused at prep: there is no default
+([`execution/gpu.md`](?doc=execution/gpu.md) G5). **(3)** At launch, the wrapper
 counts the devices the scheduler actually granted, assigns ranks to
 devices in equal shares, pins each rank's memory to the socket that owns
 its GPU, and starts MPS when ranks outnumber devices — so the run adapts

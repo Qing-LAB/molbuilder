@@ -4053,7 +4053,7 @@ def render_wrappers(script_path: Path, *,
     ``deck_text`` is the deck as it will be written, for one `prep` has
     planned and not yet written (`jobset.planned`) -- the wrapper is
     rendered from it, and the file need not exist yet.  ``domain_pq`` is the
-    queue a run was admitted on at prep -- its job's placement, which the
+    queue a run was placed on at prep -- its job's placement, which the
     header renders rather than binding the name again (`job-system.md`
     § 6.0).
 
@@ -4219,8 +4219,8 @@ def _render_sbatch_for(script_path: Path, *, names,
     before anything is on disk (`script-preparation.md` § 5, W7).
 
     **Every value in it is one the job stated** (`architecture.md` § 5.2):
-    the queue prep admitted it on (``domain_pq``, its job's placement,
-    `placement.admitted`), its wall, its memory, its cores per rank, its GPU
+    the queue prep placed it on (``domain_pq``, its job's placement,
+    `placement.placed`), its wall, its memory, its cores per rank, its GPU
     count and -- for SIESTA -- its rank count.  ``one_process`` (PySCF, with
     OpenMP threads) asks for one task: that is what the engine is, not a
     value anyone picks -- the caller's answer, `placement.one_process`.
@@ -4253,12 +4253,12 @@ def _render_sbatch_for(script_path: Path, *, names,
     except GpuRequestError as exc:
         raise WrapperError(f"`{script_path.name}`: {exc}") from None
 
-    # THE QUEUE PREP ADMITTED IT ON (`placement.admitted`), as its job
+    # THE QUEUE PREP PLACED IT ON (`placement.placed`), as its job
     # records it: the header renders it and binds nothing.
     if not domain_pq:
         raise WrapperError(
             f"`{script_path.name}`: a header is rendered for the queue prep "
-            f"admitted, and none was handed over")
+            f"placed it on, and none was handed over")
     partition, qos = domain_pq
     ntasks = 1 if one_process else r.mpi_np
 
@@ -4277,7 +4277,7 @@ def walk_header(base: Path, names, *, resources: "Resources",
                 domain_pq: Tuple[str, str]) -> Optional[str]:
     """THE ONE HEADER OF A WALK -- a group's one job, a benchmark's shelf, a
     run of points (`job-system.md` § 6.0): rendered at prep for its one
-    request on the queue prep admitted it on (``domain_pq``), submitted from
+    request on the queue prep placed it on (``domain_pq``), submitted from
     ``base``, the folder the walk runs from -- the calculation's for a
     group, the stage's for a run of points, the benchmark's container for a
     shelf -- its walk script and the scheduler's own output in `launch/`

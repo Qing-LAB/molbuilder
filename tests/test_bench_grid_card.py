@@ -26,10 +26,10 @@ from molbuilder.structure import Structure
 from support.machines import SLURM
 
 
-#: A small Sol-SHAPED menu, written by hand so the fits list is a fact about
-#: this fixture rather than about whatever the developer's cluster last
-#: probed.  `short`'s GPU nodes are 48 and 64 cores wide and `public`'s 48,
-#: so the widest a GPU job can be anywhere here is 64 cores.
+#: A small Sol-SHAPED menu, written by hand so each fit is a fact about this
+#: fixture rather than about whatever the developer's cluster last probed.
+#: `short`'s GPU nodes are 48 and 64 cores wide and `public`'s 48, so the
+#: widest a GPU job can be anywhere here is 64 cores; `cpu` lists no GPUs.
 _DOMAINS = [
     {"name": "short", "partition": "short", "qos": "public",
      "max_time": "04:00:00", "max_cores": 128,
@@ -42,7 +42,25 @@ _DOMAINS = [
      "gpu": {"a100": 4},
      "node_types": [{"cores": 128, "nodes": 100},
                     {"cores": 48, "nodes": 50, "gpu": {"a100": 4}}]},
+    {"name": "cpu", "partition": "cpu", "qos": "public",
+     "max_time": "7-00:00:00", "max_cores": 128,
+     "node_types": [{"cores": 128, "nodes": 40}]},
 ]
+
+
+def _queues(cell):
+    """The queues a cell was fit on, and whether a node of each holds it --
+    read off the answer's fields, never its sentences."""
+    return {f["queue"]: f["holds"] for f in cell["fit"]}
+
+
+def _with_queue(bundle, name):
+    """The description names the benchmark's one queue
+    (`allocation.domain`, `generator.md` § 4.3a)."""
+    tj = bundle / "task.json"
+    doc = json.loads(tj.read_text())
+    doc["allocation"] = {**doc.get("allocation", {}), "domain": name}
+    tj.write_text(json.dumps(doc, indent=2))
 
 
 @pytest.fixture()
@@ -106,15 +124,22 @@ def client():
     return create_app(config={}).test_client()
 
 
-def _post(client, dest, bench, target="(this machine)"):
+def _post(client, dest, bench, target="(this machine)", domain=None):
     return client.post("/api/task-setup/bench-grid",
                        json={"dest": str(dest), "target": target,
-                             "bench": bench}).get_json()
+                             "bench": bench,
+                             **({"domain": domain} if domain is not None
+                                else {})}
+                       ).get_json()
 
 
 class TestTheDoorServesTheOneEnumerator:
 
-    def test_it_answers_the_cells_and_where_each_would_go(self, client, bundle):
+    def test_a_cell_is_fit_on_every_queue_while_none_is_named(self, client,
+                                                              bundle):
+        """`task-setup.md` § 6.2a: before the description names the
+        benchmark's queue, the card fits each cell on every queue of the
+        target's record, so the person sees each one's while choosing."""
         # A CPU-family grid states no device counts: declaring `gpu_count`
         # beside `use_gpu: [false]` is refused by name upstream, because
         # the counts would be silently ignored.
@@ -124,9 +149,9 @@ class TestTheDoorServesTheOneEnumerator:
         assert d["cells"], "a resolvable grid must answer its cells"
         one = d["cells"][0]
         assert set(one) >= {"label", "shape", "family", "ranks",
-                            "cores_each", "gpus", "fits", "why"}
-        assert set(one["fits"]) == {"short", "public"}, (
-            f"both queues hold a 48-rank CPU cell; got {one['fits']}")
+                            "cores_each", "gpus", "fit", "why"}
+        assert _queues(one) == {"short": True, "public": True, "cpu": True}, (
+            f"every queue holds a 48-rank CPU cell; got {one['fit']}")
 
     def test_the_axes_SENT_win_over_the_axes_on_disk(self, client, bundle):
         """The card's edits live in the browser's model until the person
@@ -149,47 +174,73 @@ class TestTheDoorServesTheOneEnumerator:
             f"the in-flight 64 must be the whole grid, and the saved 16 must "
             f"not appear; got {sorted(labels)}")
 
-    def test_a_cell_no_queue_takes_is_returned_struck_not_dropped(
+    def test_a_declared_cell_no_node_holds_is_kept_with_its_fit(
             self, client, bundle):
-        """R4 -- the struck row carries the numbers to change.  Dropping it
-        would leave the person guessing why their point vanished."""
+        """`scheduler.md` R6, `generator.md` § 4.3a: a declared cell is
+        kept whatever the record says, and its fit names what each kind of
+        machine lacks (R4, R10) -- the scheduler decides."""
+        _with_queue(bundle, "short")
         d = _post(client, bundle, {"mpi_np": [48, 128], "omp_threads": [1],
                                    "use_gpu": [True], "gpu_count": [4]})
-        kept = {c["label"] for c in d["cells"] if not c["why"]}
-        struck = [c for c in d["cells"] if c["why"]]
-        assert "G4K12C1" in kept, f"48 ranks x 4 GPUs fits a GPU node: {d}"
-        assert struck, "a 128-rank GPU cell fits no queue here"
-        # R4 -- the struck row names the number to change: the widest node
-        # with GPUs here is `short`'s 64 cores.
-        assert any("64" in w for w in struck[0]["why"]), struck[0]["why"]
+        cells = {c["label"]: c for c in d["cells"]}
+        assert _queues(cells["G4K12C1"]) == {"short": True}, cells
+        wide = cells["G4K32C1"]
+        assert not wide["why"], f"a declared cell was left out: {wide}"
+        assert _queues(wide) == {"short": False}, wide
+        assert "the 128-core machines have no GPU" in wide["fit"][0]["line"]
 
-    def test_the_card_checks_the_queue_the_description_names(self, client,
-                                                             bundle):
+    def test_the_card_fits_the_queue_the_description_names(self, client,
+                                                           bundle):
         """A benchmark measures on one queue, the one its description names
-        (`allocation.domain`, `generator.md` § 4.3a), and the card asks each
-        cell of that queue alone, by the one fold prep asks
+        (`allocation.domain`, `generator.md` § 4.3a), and the card fits each
+        cell on that queue alone, by the one fold prep asks
         (`prep_inputs.fold_allocation`) -- so a cell the card keeps is one
-        prep keeps.  Here `short`'s GPU nodes are 64 cores wide and
-        `public`'s 48: a 64-rank GPU cell fits `short` alone, and the card
-        of a benchmark naming `public` crosses it out by `public`'s own
-        numbers."""
-        tj = bundle / "task.json"
-        doc = json.loads(tj.read_text())
-        doc["allocation"] = {**doc.get("allocation", {}), "domain": "public"}
-        tj.write_text(json.dumps(doc, indent=2))
-        d = _post(client, bundle, {"mpi_np": [64], "omp_threads": [1],
-                                   "use_gpu": [True], "gpu_count": [1]})
-        cell = next(c for c in d["cells"] if c["label"] == "G1K64C1")
-        assert cell["why"] and not cell["fits"], cell
-        assert any("public" in w and "48" in w for w in cell["why"]), cell
+        prep keeps.  `public`'s GPU nodes are 48 cores wide: a GPU cell the
+        machine proposes wider than that is left out by `public`'s own
+        numbers, and the narrower ones are kept."""
+        _with_queue(bundle, "public")
+        d = _post(client, bundle, {"use_gpu": [True], "gpu_count": [1]})
+        assert d["ok"] is True, d
+        assert all(_queues(c) == {"public": not c["why"]}
+                   for c in d["cells"]), d["cells"]
+        left = [c for c in d["cells"] if c["why"]]
+        assert left and all(c["ranks"] * c["cores_each"] > 48
+                            for c in left), left
+        assert any(not c["why"] for c in d["cells"]), d["cells"]
 
-    def test_nothing_surviving_is_a_result_not_an_error(self, client, bundle):
-        """*Nothing here fits* is the answer, and the crossed-out rows are
-        how the person sees why.  A 400 would throw them away."""
-        d = _post(client, bundle, {"mpi_np": [999999], "omp_threads": [1],
-                                   "use_gpu": [False]})
-        assert d["ok"] is True and d["kept"] == 0
+    def test_the_card_fits_the_queue_picked_on_the_page(self, client,
+                                                        bundle):
+        """`task-setup.md` § 6.2a: the cells are fit on the queue picked on
+        the page -- sent with the axes, before it is saved -- as a prep's
+        `--domain` would place them (`prep_inputs.fold_allocation`), over
+        the queue the saved description names."""
+        _with_queue(bundle, "public")
+        d = _post(client, bundle, {"mpi_np": [48], "omp_threads": [1],
+                                   "use_gpu": [False]}, domain="short")
+        assert d["ok"] is True, d
+        assert all(_queues(c) == {"short": True} for c in d["cells"]), d
+
+    def test_with_none_picked_on_the_page_every_queue_is_asked(
+            self, client, bundle):
+        """`task-setup.md` § 6.2a: the page shows no queue picked -- its
+        model's allocation names none -- so each cell is fit on every queue
+        of the record, whatever the saved description still names."""
+        _with_queue(bundle, "public")
+        d = _post(client, bundle, {"mpi_np": [48], "omp_threads": [1],
+                                   "use_gpu": [False]}, domain="")
+        assert d["ok"] is True, d
+        assert all(set(_queues(c)) == {"short", "public", "cpu"}
+                   for c in d["cells"]), d
+
+    def test_nothing_left_is_a_result_not_an_error(self, client, bundle):
+        """*Nothing here fits* is the answer, and the rows left out are how
+        the person sees why.  A 400 would throw them away.  The machine's
+        GPU proposal on `cpu`, whose record lists no GPUs, holds nothing."""
+        _with_queue(bundle, "cpu")
+        d = _post(client, bundle, {"use_gpu": [True]})
+        assert d["ok"] is True and d["kept"] == 0, d
         assert d["cells"] and all(c["why"] for c in d["cells"])
+        assert all(_queues(c) == {"cpu": False} for c in d["cells"])
 
     def test_a_bench_that_is_not_an_object_is_refused(self, client, bundle):
         r = client.post("/api/task-setup/bench-grid",
@@ -276,13 +327,12 @@ class TestPickingThisMachineIsAnAnswer:
                        "use_gpu": [False]}, target=target)
             assert d["ok"] is True, (target, d)
             assert d["cells"], "a picked machine must yield cells"
-            # ...checked against the PICKED machine's queues: with several
-            # machines on file and nothing snapshotted, the folder names no
-            # menu, and every cell was checked against none (the W52 fix-6
-            # review: the card's "fits" came back empty)
-            assert set(d["cells"][0]["fits"]) == {"sol-short",
-                                                  "sol-public"}, (
-                target, d["cells"][0])
+            # ...fit on the PICKED machine's queues: with several machines
+            # on file and nothing snapshotted, the folder names no menu, and
+            # every cell was fit on none (the W52 fix-6 review: the card's
+            # fits came back empty)
+            assert set(_queues(d["cells"][0])) == {
+                "sol-short", "sol-public", "sol-cpu"}, (target, d["cells"][0])
             assert not (bundle / "environment.json").exists(), (
                 "the card snapshotted the machine into the calculation")
 
@@ -307,7 +357,7 @@ class TestPickingThisMachineIsAnAnswer:
                    "gpu_count": [1]},
                   target="(this machine)")
         assert d["ok"] is True, d
-        assert set(d["cells"][0]["fits"]) == {"short", "public"}, (
+        assert set(_queues(d["cells"][0])) == {"short", "public", "cpu"}, (
             d["cells"][0])
 
 
@@ -523,37 +573,3 @@ def test_the_attempts_door_answers_from_the_DECLARED_shape(client, bundle):
     assert row["dir"] == "01_" + first
     assert row["attempts"] == 0, "nothing is prepared in this fixture"
 
-
-def test_a_cell_this_box_cannot_hold_says_why_on_a_machine_with_no_queues():
-    """THE NO-SCHEDULER PATH IS A PATH, and until 2026-09-11 it crashed.
-
-    `admits` became `Refusal` findings on 2026-09-09 -- "which refusal is
-    this" is a FIELD, so callers stop reading numbers back out of prose.
-    `_local_refusals`, the answer for a box with no queues at all, kept
-    appending f-strings. Everything downstream reads the fields:
-    `_rank_reasons` dedups on `(limit, message)`, and the card renders
-    `.message` per cell. So on a workstation -- the commonest local case --
-    the first cell too wide for the box raised
-    `AttributeError: 'str' object has no attribute 'message'`, and
-    `/api/task-setup/bench-grid` handed that sentence to the screen as the
-    machine-fit verdict.
-
-    Found by walking the UI, not by a test: nothing exercised a grid whose
-    cells exceed a queue-less machine's width.
-    """
-    from molbuilder.jobset.prep_inputs import _local_refusals
-
-    why = _local_refusals((0, 8, 2), fam=False,
-                          cores_total=4, gpus_per_node=0)
-    assert why, "8 ranks x 2 cores does not fit 4 cores; that is a refusal"
-    r = why[0]
-    assert not isinstance(r, str), (
-        "a refusal is a finding, not a sentence — `_rank_reasons` and the "
-        "bench-grid card both read its fields"
-    )
-    assert r.limit == "cores" and r.asked == 16 and r.allowed == 4, (
-        f"the numbers are the answer and must stay fields: {r}"
-    )
-    assert "16" in r.message and "4" in r.message, (
-        f"the sentence still renders both numbers: {r.message!r}"
-    )

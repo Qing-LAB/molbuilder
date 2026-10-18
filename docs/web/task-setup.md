@@ -513,10 +513,12 @@ each other.
 > **This is about CATALOGUE ITEMS, and the tab also holds something else**
 > *(2026-08-24)*. The queue card ("Where it runs, and what it may use") sets
 > `task.json`'s `allocation` — `domain` / `time` / `mem`, and the GPU binding —
-> choosing a queue names it and fills neither the wall nor the memory: the
-> queue's limits are shown under each field, which stays empty until it is
-> stated (`submission.md` S5; it wrote the ceilings in until 2026-10-05,
-> D13) — and those are **not**
+> choosing a queue names it and fills neither the wall nor the memory: each
+> queue is shown with the range of its machines — cores, memory, devices —
+> and under each field that queue's range for it, never marking what is typed
+> invalid; the fit of the whole request is the Preview's, the prep entry's own
+> (`scheduler.md` R6). A field stays empty until it is stated
+> (`submission.md` S5) — and those are **not**
 > points to try. The distinction is the one § 6.8a of
 > [`stages.md`](?doc=engines/stages.md) draws: `max_memory_mb` above is a
 > per-rank `ulimit` the *deck* carries, a machine-answered template parameter;
@@ -577,14 +579,18 @@ would actually **run**, and it updates as the points are edited *(user,
 2026-08-30: "can't this list be just updated in the same card where the
 parameters are set… this does not need to be a message with a window")*.
 
-The heading counts them — *"6 combination(s) — 4 fit a queue, 2 do not"* —
-and each surviving cell shows its label (the same token its trial directory
-will carry), its shape, and the queues that would take it.  **"a queue", not
-"this machine":** the menu is the target's, and preparing for a machine you
-are not standing on is ordinary here. Cells no queue
-here can hold are shown **struck, with the numbers** rather than dropped:
-a point that silently vanished is the thing that sent someone to the CLI
-to find out why.
+The heading counts them — *"6 combination(s) — 4 kept, 2 left out"* — and
+each kept cell shows its label (the same token its trial directory will
+carry), its shape, and its fit on the benchmark's queue — the one picked
+on the page, as the description will name it
+([`generator.md`](?doc=execution/generator.md) § 4.3a) — or, while none is
+picked, on each queue of the target's record, so the person sees every
+queue's while choosing one. **The target's queues, not "this machine":**
+preparing for a machine you are not standing on is ordinary here. A declared
+cell is kept whatever its fit says ([`scheduler.md`](?doc=execution/scheduler.md)
+R6); a proposed cell no node holds is shown **struck, with the numbers**
+rather than dropped: a point that silently
+vanished is the thing that sent someone to the CLI to find out why.
 
 Three rules make it trustworthy rather than merely convenient:
 
@@ -601,16 +607,16 @@ Three rules make it trustworthy rather than merely convenient:
   to resolve against yet.)
 - **It is a nicety, and behaves like one.** A stale answer is dropped (a
   sequence guard — typing outruns the network), the request is debounced
-  to one call per pause, and a failed fetch hides the block and leaves the
-  card working. **A surface that cannot get its nicety shows what it has;
+  to one call per pause, and a failed fetch says the check could not run,
+  with the server's reason, and leaves the card working. **A surface that cannot get its nicety shows what it has;
   only one that cannot get its *substance* may refuse** — the rows are the
   substance here. That rule was learned the hard way on 2026-08-23, when
   an unguarded label fetch left the whole bench card absent and the report
   was "the bench setup is gone".
 
-It shows **what the scheduler would accept** — a wall, a core count, a
-gres type, a device count, a policy cap. It does not predict whether the
-calculation will fit in the card it asked for; that is a runtime failure
+It shows **what the scheduler decides on** — a wall, a core count, memory,
+a GPU count, a policy cap. It does not predict whether the calculation will
+fit on the GPU it lands on; that is a runtime failure
 the person deals with, and [`scheduler.md § 0`](?doc=execution/scheduler.md)
 says why submission must not answer it.
 
@@ -728,12 +734,13 @@ inherited value shown as text is indistinguishable from one you typed, and
 clearing to blank writes this rung's own block — so with the merged value in
 the field it would write nothing and the field would snap back.
 
-**Whether it fits the machine is the preview's to say** (§ 11.1): the one
-prep entry, stopped before the save, admits the run the stage resolves to on
-the queue it names — its cores, GPUs, memory and wall, on the target's record
-([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4) — and
-answers the plan, or the refusal naming what was asked and what the queue
-offers.
+**How it fits the machine is the preview's to say** (§ 11.1): the one prep
+entry, stopped before the save, places the run the stage resolves to on the
+queue it names and answers the plan with its fit — its cores, GPUs, memory
+and wall on the target's record, the nodes that hold it and each limit it is
+over ([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4;
+[`scheduler.md`](?doc=execution/scheduler.md) R6) — never a refusal for
+it.
 
 > **A check that cannot run says so.** *"I don't know, and here is why"* is
 > one of the three answers, beside *fits* and *does not fit* — never a blank.
@@ -1365,10 +1372,8 @@ prints, you can type*): the calculation named from the projects root, what the
 rung continues from and the machine as chosen, and a launch line per mode
 the calculation's machine takes where this machine's `molbuilder.json` sets no
 `launch.mode` — the queue's only where that machine names one. **A stage already prepared** — a benchmark's — shows the prep entry's
-own sentence under its two buttons, neither enabled — the way back in it —
-and, for one prepared for a queue, where it was admitted and where each value
-came from, read from its job's record ([`job-system.md`](?doc=execution/job-system.md)
-§ 6.0); its lines are its launch, as `jobset status` prints them; a prep of it would be refused
+own sentence under its two buttons, neither enabled — the way back in it;
+its lines are its launch, as `jobset status` prints them; a prep of it would be refused
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 **The directory names come from the producer.** Flat and hierarchical name
@@ -1383,8 +1388,8 @@ that wants a shorter wall states it at its own `prep bench --time`, where it
 applies to that prep and no other. A thirty-second measurement queued behind a
 two-day reservation is the cost of forgetting that, not a missing field.
 
-**It works the same on a workstation and against a cluster.** The admission
-check is the target's, *which* machine is § 6's question, answered once above,
+**It works the same on a workstation and against a cluster.** The fit is
+the target's, *which* machine is § 6's question, answered once above,
 and the launch line is the terminal's: one, in this machine's `launch.mode`, or
 one per mode the calculation's machine takes where it sets none.
 
@@ -1421,7 +1426,7 @@ from the same answer:
 
 * **the description's preflight notes**, each with its severity — an error
   refuses, in its own words, and nothing is written;
-* **what the inputs said** — a bench's grid: enumerated, crossed out, kept;
+* **what the inputs said** — a bench's grid: enumerated, left out, kept;
 * **the state saved first** — prep saves the folder's state once its checks
   have passed and before it writes, always
   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
@@ -1438,6 +1443,12 @@ from the same answer:
 * **what each stage's first launch will take** — the stage before it's newest
   run, a transport rung's gather, a force-constant stage's `relax` run (whose
   geometry its deck holds) — copied at that launch, never at prep;
+* **where it was placed, and the fit of what it sends** — the queue and
+  where each value came from, then the job sent with its header in one line
+  and its fit on that queue's machines: a run's own, a run of points' one
+  walk, each benchmark shelf, a group's one job once after its last member
+  ([`scheduler.md`](?doc=execution/scheduler.md) R4, R6) — the lines the
+  terminal prints;
 * **the resources** the stage will launch with, and **whether the deck
   agrees**: a deck rendered for another width is said here, before `launch`
   refuses it — and redone by preparing its group again, never launched;
@@ -1447,8 +1458,8 @@ from the same answer:
   terminal.
 
 **A refusal shows what it had found** — the preflight's notes and what the
-inputs said — beside its own sentence: a bench refused because *no cell
-survived* points at its crossed-out cells, and they are there. A refused prep
+inputs said — beside its own sentence: a bench refused because *no cell is
+left* points at its cells left out and those dropped, and they are there. A refused prep
 wrote nothing ([`job-system.md`](?doc=execution/job-system.md) § 5.0, rule 3).
 
 **The bench is offered on every stage `prep bench` takes**, with or without

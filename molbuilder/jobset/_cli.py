@@ -1300,11 +1300,10 @@ def _ask_which_groups(base, named) -> tuple:
 
 
 def _header_said(lines) -> str:
-    """A header's request in one line, as its directive lines carry it
-    (`Directives.lines_of`) -- every value of what a launch sends, said
-    where a person approves it (`submission.md` S4): each line's directive,
-    after its kind's prefix (`scheduler/kinds.toml`)."""
-    return "header: " + "  ".join(ln.split(None, 1)[1] for ln in lines)
+    """A header's request in one line -- `Directives.said`, the one
+    rendering both doors show."""
+    from ..scheduler.emit import Directives
+    return Directives.said(lines)
 
 
 def _echo_prep_answer(ans, base, *, first: bool = True,
@@ -1354,14 +1353,16 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
             # 2026-08-28)
             click.echo(f"  {_rel(base, d)}")
         if ans.placement:
-            # THE ONE QUEUE IT MEASURES ON, admitted at prep and recorded on
+            # THE ONE QUEUE IT MEASURES ON, placed at prep and recorded on
             # every trial (`job-system.md` § 6.0) -- said as a run's is.
             from .placement import placement_line
             click.echo("  " + placement_line(ans.placement))
         for shelf in ans.shelves:
             # EACH SHELF AS ITS HEADER ASKS IT -- the one job its launch
             # sends (`shelves.shelves_of`).
-            click.echo(f"  {shelf['name']}  {_header_said(shelf['header'])}")
+            click.echo(f"  {shelf['name']}  {shelf['said']}")
+            if shelf["fit"]:
+                click.echo(f"    {shelf['fit']}")
         if ans.continuation is not None:
             # A FORCE-CONSTANT STAGE'S TRIALS are written at the geometry of
             # the relax run it builds on -- which one, said (§ 5.2a).
@@ -1408,9 +1409,12 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                       " (the first stage, or one that starts clean)"))
     from .placement import placement_line, stated_line
     if ans.placement:
-        # WHERE IT WAS ADMITTED, and where each value came from
-        # (`job-system.md` § 6.0) -- the line the tab shows too.
+        # WHERE IT WAS PLACED, where each value came from, and the FIT of
+        # what it sends -- a run of points', its walk's (`job-system.md`
+        # § 6.0; `scheduler.md` R6) -- the lines the tab shows too.
         click.echo("  " + placement_line(ans.placement))
+        if ans.fit:
+            click.echo("  " + ans.fit)
     elif stated_line(ans.sources):
         # NO HEADER -- where each value it states came from, all the same.
         click.echo("  " + stated_line(ans.sources))
@@ -1421,7 +1425,7 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         # group's one job, said after its last member.
         click.echo("  " + (f"one job walking its {len(ans.points)} points "
                            f"(their walls summed) -- " if ans.points else "")
-                   + _header_said(ans.launch["header"]))
+                   + ans.launch["said"])
     for line in ans.notes:
         # WHAT ITS REQUEST MEANS, said where a value can still change -- its
         # ranks over its GPUs (`ask.gpu_share_notes`).
@@ -1466,7 +1470,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                    f"walls summed, the largest memory)"
                    + (f"; its header: {g['header']}" if g["header"] else ""))
         if g["launch"]["header"]:
-            click.echo("  " + _header_said(g["launch"]["header"]))
+            click.echo("  " + g["launch"]["said"])
+            click.echo("  " + g["launch"]["fit"])
     if not last:
         return
     say_next("next -- launch the group that can go, each group one job:\n"

@@ -67,7 +67,7 @@ def _going(job, here: _Here):
                        None: (f"on {job.host}: ask there"
                               if job.host != this_host() else
                               "this machine cannot tell")}[going]
-    from .scheduler.queue import lists
+    from .scheduler.queue import listed
     scheduler = _scheduler_of(job)
     if scheduler is None:
         from .scheduler.record import UnknownTarget, calculation_record
@@ -83,10 +83,19 @@ def _going(job, here: _Here):
         return None, (f"sent to cluster {job.cluster}: ask there"
                       if answers is not None else
                       "the scheduler cannot be asked here")
-    going = lists(scheduler, job.job_id)
-    return going, {True: "the scheduler lists it",
-                   False: "the scheduler no longer lists it",
-                   None: "the scheduler cannot be asked here"}[going]
+    # THE SCHEDULER'S OWN WORDS for a job it holds -- its state and reason,
+    # so a job it took and will never start says why (`job-system.md`
+    # § 6.0a; `scheduler.md` R6).
+    answer = listed(scheduler, job.job_id)
+    if answer is None:
+        return None, "the scheduler cannot be asked here"
+    going, said = answer
+    if going:
+        return True, "the scheduler lists it" + (f": {said}" if said else "")
+    # ENDED, in its words while it still lists the job -- ``FAILED
+    # (NonZeroExitCode)`` -- and only then forgotten.
+    return False, (f"the scheduler lists it ended: {said}" if said
+                   else "the scheduler no longer lists it")
 
 
 def _shown(job, said: str) -> list:

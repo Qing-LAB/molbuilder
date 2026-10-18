@@ -1,0 +1,417 @@
+# THE FIT, CASE BY CASE -- `docs/execution/scheduler.md` § 3 (R0, R2-R4,
+# R2a, R10, R13) and § 4 (*Fit*, *Placement*).
+#
+# Each case is a request asked of one queue of a record written out below,
+# and what the fit must answer: the nodes that hold the whole of it, of how
+# many, and each limit it is over with its numbers -- never a refusal (R6).
+# `tests/test_the_fit.py` runs every row.
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+#
+# Keys of a [[case]]: `queue`; `request` -- `ranks`, `cpus_per_task`, `gpus`,
+# `mem_gb`, `walltime_s`, each unasked left out (R7); `nodes` and `of`,
+# absent when the record lists no machines (nodes cannot be counted then);
+# `over` -- each limit as [limit, asked, allowed], "" where the limit has no
+# numbers; `note` -- what a limit with no numbers must say (R10); `holding`
+# -- the machines that hold it, one per size (R4); `line_has` -- what the one
+# rendering must say (R4).
+
+# THE QUEUES, as a probed record holds them (the shape of ASU Sol's `htc`,
+# `debug`, `public` and `lightwork`), and the rows a record may carry with
+# less: no machines listed, nothing stated, a value that cannot be read.
+[[queues]]
+name = "htc"
+partition = "htc"
+qos = "public"
+max_time = "4:00:00"
+gpu = { a100 = 4, "a100.20gb" = 16, h100 = 8 }
+node_types = [
+    { cores = 48, nodes = 51, mem_gb = 503.5, gpu = { a100 = 4 } },
+    { cores = 64, nodes = 3, mem_gb = 503.5, gpu = { "a100.20gb" = 16 } },
+    { cores = 96, nodes = 2, mem_gb = 1007.4, gpu = { h100 = 8 } },
+    { cores = 128, nodes = 134, mem_gb = 503.2 },
+    { cores = 128, nodes = 1, mem_gb = 1511.2 },
+]
+
+[[queues]]
+name = "debug"
+partition = "htc"
+qos = "debug"
+max_time = "00:15:00"
+node_types = [{ cores = 128, nodes = 2, mem_gb = 503.2 }]
+
+[[queues]]
+name = "public"
+partition = "public"
+qos = "public"
+max_time = "7-00:00:00"
+gpu = { a100 = 4 }
+node_types = [
+    { cores = 128, nodes = 107, mem_gb = 503.2 },
+    { cores = 48, nodes = 52, mem_gb = 503.5, gpu = { a100 = 4 } },
+]
+
+[[queues]]
+name = "lightwork"
+partition = "lightwork"
+qos = "public"
+max_time = "1-00:00:00"
+max_cpus_per_job = 8
+node_types = [{ cores = 64, nodes = 1, mem_gb = 503.5 }]
+
+[[queues]]
+name = "cpu"
+partition = "cpu"
+qos = "public"
+max_time = "7-00:00:00"
+node_types = [{ cores = 128, nodes = 10, mem_gb = 503.2 }]
+
+# A policy cap per node, beside the machines.
+[[queues]]
+name = "capped"
+partition = "capped"
+qos = "public"
+max_cpus_per_node = 16
+node_types = [{ cores = 128, nodes = 4, mem_gb = 503.2 }]
+
+# Nearly every node one size.
+[[queues]]
+name = "big"
+partition = "big"
+qos = "public"
+node_types = [{ cores = 128, nodes = 211, mem_gb = 503.2 },
+              { cores = 48, nodes = 1, mem_gb = 503.5 }]
+
+# One machine type carrying two kinds of card on each node.
+[[queues]]
+name = "mixed"
+partition = "mixed"
+qos = "public"
+gpu = { h200 = 1, "h200.35gb" = 4 }
+node_types = [{ cores = 128, nodes = 3, mem_gb = 1511.2, gpu = { h200 = 1, "h200.35gb" = 4 } }]
+
+# Machines listed with their cores alone.
+[[queues]]
+name = "site"
+partition = "site"
+qos = "public"
+node_types = [{ cores = 32, nodes = 4 }, { cores = 96, nodes = 2 }]
+
+# A record that lists no machines: its largest machine's figures.
+[[queues]]
+name = "old"
+partition = "old"
+qos = "public"
+max_time = "1-00:00:00"
+max_cores = 48
+max_mem_gb = 256.0
+gpu = { a100 = 4 }
+
+[[queues]]
+name = "silent"
+partition = "silent"
+qos = "public"
+
+[[queues]]
+name = "unread"
+partition = "unread"
+qos = "public"
+max_time = "whenever"
+gpu = { a100 = "four" }
+
+# ===================================================================== #
+#  1 · MACHINE BY MACHINE (R0, R3, R4)                                  #
+# ===================================================================== #
+
+[[case]]
+name = "a request is fit machine by machine: 64 cores fits the nodes of 64 cores or more"
+queue = "htc"
+request = { ranks = 64 }
+nodes = 140
+of = 191
+
+[[case]]
+name = "the low end is not a floor: 4 cores fits every node"
+queue = "htc"
+request = { ranks = 4 }
+nodes = 191
+of = 191
+
+[[case]]
+name = "ranks times cores per rank are what one node holds"
+queue = "htc"
+request = { ranks = 16, cpus_per_task = 8 }
+nodes = 135
+of = 191
+
+[[case]]
+name = "past every machine fits no node, the largest machine named"
+queue = "htc"
+request = { ranks = 129 }
+nodes = 0
+of = 191
+over = [["cores", "129", "128"]]
+
+[[case]]
+name = "memory is read per machine: 900 GB fits the nodes that have it, named one per size"
+queue = "htc"
+request = { mem_gb = 900.0 }
+nodes = 3
+of = 191
+holding = ["96 cores · 1007.4 GB", "128 cores · 1511.2 GB"]
+
+[[case]]
+name = "memory past every machine names the largest"
+queue = "htc"
+request = { mem_gb = 2000.0 }
+nodes = 0
+of = 191
+over = [["mem", "2000", "1511.2"]]
+
+[[case]]
+name = "past every machine on several limits, each is named with the largest there is"
+queue = "htc"
+request = { ranks = 200, mem_gb = 2000.0, gpus = 20 }
+nodes = 0
+of = 191
+over = [["cores", "200", "128"], ["mem", "2000", "1511.2"], ["gpus", "20", "16"]]
+
+[[case]]
+name = "a share under one percent is said as under one, never as none"
+queue = "htc"
+request = { mem_gb = 1200.0 }
+nodes = 1
+of = 191
+line_has = ["fits 1 of 191 nodes of htc (<1%)"]
+
+[[case]]
+name = "machines listed with their cores alone bound the cores"
+queue = "site"
+request = { ranks = 97 }
+nodes = 0
+of = 6
+over = [["cores", "97", "96"]]
+
+[[case]]
+name = "a machine listed without its memory is not counted against memory"
+queue = "site"
+request = { ranks = 96, mem_gb = 5000.0 }
+nodes = 2
+of = 6
+
+# ===================================================================== #
+#  2 · GPUs: COUNTED, NO CARD (R2a, R10)                                #
+# ===================================================================== #
+
+[[case]]
+name = "a GPU request fits the nodes that carry that many, whatever the card -- the cards at each size named"
+queue = "htc"
+request = { ranks = 4, gpus = 4 }
+nodes = 56
+of = 191
+holding = ["48 cores · 503.5 GB · a100", "64 cores · 503.5 GB · a100.20gb", "96 cores · 1007.4 GB · h100"]
+
+[[case]]
+name = "cores and GPUs on one node: 64 cores with a GPU fits no node of public, what each kind of machine lacks named"
+queue = "public"
+request = { ranks = 64, gpus = 1 }
+nodes = 0
+of = 159
+over = [["machines", "", ""]]
+note = ["the 48-core machines have 48 cores", "the 128-core machines have no GPU"]
+
+[[case]]
+name = "a node's GPUs are every card it carries, counted together, as the scheduler counts an ask that names none"
+queue = "mixed"
+request = { gpus = 5 }
+nodes = 3
+of = 3
+
+[[case]]
+name = "what each kind of machine lacks is said once, with the range they have"
+queue = "htc"
+request = { mem_gb = 1100.0, gpus = 2 }
+nodes = 0
+of = 191
+over = [["machines", "", ""]]
+note = ["the 48/64/96-core machines and the 128-core · 503.2 GB machines have 503.2-1007.4 GB; the 128-core machines have no GPU"]
+
+[[case]]
+name = "more GPUs than any node carries names the most there is"
+queue = "public"
+request = { ranks = 8, gpus = 8 }
+nodes = 0
+of = 159
+over = [["gpus", "8", "4"]]
+
+[[case]]
+name = "a queue whose record lists no GPUs has no node that holds a GPU request"
+queue = "cpu"
+request = { ranks = 1, gpus = 1 }
+nodes = 0
+of = 10
+over = [["gpus", "1", "0"]]
+
+[[case]]
+name = "...and the cores and memory past every machine are said beside it"
+queue = "cpu"
+request = { ranks = 200, mem_gb = 5000.0, gpus = 1 }
+nodes = 0
+of = 10
+over = [["gpus", "1", "0"], ["cores", "200", "128"], ["mem", "5000", "503.2"]]
+
+[[case]]
+name = "a GPU count the record does not state is not counted"
+queue = "unread"
+request = { gpus = 2 }
+
+# ===================================================================== #
+#  3 · THE QUEUE'S OWN RULES -- over them on every machine (R2, R13)    #
+# ===================================================================== #
+
+[[case]]
+name = "a wall past the queue's is over it, the machines still counted"
+queue = "debug"
+request = { ranks = 4, walltime_s = 2280 }
+nodes = 2
+of = 2
+over = [["walltime", "38m", "00:15:00"]]
+
+[[case]]
+name = "a wall equal to the queue's fits"
+queue = "debug"
+request = { walltime_s = 900 }
+nodes = 2
+of = 2
+
+[[case]]
+name = "a policy cap per job is over on every machine"
+queue = "lightwork"
+request = { ranks = 16 }
+nodes = 1
+of = 1
+over = [["cpus_per_job", "16", "8"]]
+line_has = ["16 cores fits the one node of lightwork"]
+
+[[case]]
+name = "a policy cap per node is over on every machine"
+queue = "capped"
+request = { ranks = 32 }
+nodes = 4
+of = 4
+over = [["cpus_per_node", "32", "16"]]
+
+[[case]]
+name = "a share just short of all is said as short of all, never as all"
+queue = "big"
+request = { ranks = 64 }
+nodes = 211
+of = 212
+line_has = ["fits 211 of 212 nodes of big (>99%)"]
+
+[[case]]
+name = "a wall the record cannot read is not a limit"
+queue = "unread"
+request = { walltime_s = 1000000000 }
+
+# ===================================================================== #
+#  4 · A RECORD THAT LISTS NO MACHINES (R3)                             #
+# ===================================================================== #
+
+[[case]]
+name = "every limit a request is over is said at once, each with its numbers"
+queue = "old"
+request = { ranks = 64, mem_gb = 390.0, gpus = 8, walltime_s = 90000 }
+over = [["walltime", "25h", "1-00:00:00"], ["cores", "64", "48"],
+        ["mem", "390", "256"], ["gpus", "8", "4"]]
+
+[[case]]
+name = "within its largest machine's figures it fits"
+queue = "old"
+request = { ranks = 48, mem_gb = 256.0, gpus = 4 }
+
+[[case]]
+name = "a queue that states nothing counts no wall, cores or memory -- and lists no GPUs, so no node holds a GPU request (R2a)"
+queue = "silent"
+request = { ranks = 100000, mem_gb = 99999.0, gpus = 64, walltime_s = 1000000000 }
+over = [["gpus", "64", "0"]]
+
+# ===================================================================== #
+#  5 · PLACEMENT -- the queue the job names, bound with its fit (§ 5)   #
+# ===================================================================== #
+#
+# Keys of a [[placed]]: `queues` (default: every queue above), `named`,
+# `request`; `bound` -- [partition, qos] -- and `over` as above; or
+# `refused`, what the refusal must say; or `none`, nothing to bind.
+
+[[placed]]
+name = "the named queue is bound with its fit, never refused for it (R6)"
+named = "debug"
+request = { walltime_s = 2280 }
+bound = ["htc", "debug"]
+over = [["walltime", "38m", "00:15:00"]]
+
+[[placed]]
+name = "a queue the record does not list is refused, naming the record's queues"
+named = "nope"
+refused = ["nope: this machine offers htc, debug, public"]
+
+[[placed]]
+name = "a job that names no queue on a machine with queues is refused, naming them"
+refused = ["this job names no queue", "this machine offers htc, debug"]
+
+[[placed]]
+name = "no queues and none named: nothing was promised, nothing to bind"
+queues = []
+request = { walltime_s = 1000000 }
+none = true
+
+[[placed]]
+name = "a queue named on a machine with no queues is refused"
+queues = []
+named = "debug"
+refused = ["debug: this machine's record lists no queues"]
+
+# ===================================================================== #
+#  6 · WHAT A QUEUE SHOWS -- the ranges and its machines by size (R0)   #
+# ===================================================================== #
+#
+# Keys of a [[shown]]: `queue`; `cores` and `memory`, the ranges; `machines`,
+# its machine lines in the queue table (none for one size); `machine_line`,
+# what one of them says.
+
+[[shown]]
+name = "a queue of several machines shows their ranges and one line per size"
+queue = "htc"
+cores = "48-128"
+memory = "503.2-1511.2 GB"
+machines = 4
+machine_line = ["128 cores  x135 node(s)  503.2-1511.2 GB"]
+
+[[shown]]
+name = "a queue of one machine size shows a number, and no machine lines"
+queue = "cpu"
+cores = "128"
+memory = "503.2 GB"
+machines = 0
+
+[[shown]]
+name = "a record that lists no machines shows its largest machine's figures"
+queue = "old"
+cores = "48"
+memory = "256 GB"
+machines = 0
+
+# ===================================================================== #
+#  7 · MEMORY IN THE RECORD'S UNIT (R2)                                 #
+# ===================================================================== #
+
+[[memory_text]]
+text = ["390G", "512M", "1T", "2048"]
+gb = [390.0, 0.5, 1024.0, 2.0]
+
+# `--mem=0` is all of a node's memory, and an unreadable value is not small
+# (R3): neither is a number to compare.
+[[memory_text]]
+text = ["0", "", "nonsense"]
+gb = []

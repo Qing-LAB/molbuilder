@@ -214,7 +214,7 @@ floor 1 doing the job it exists for.
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission; a queue job's cluster, whether the queue lists it, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, `job-system.md` § 6.0a) | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `queue.cluster` / `lists` / `cancel` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` | know what a calculation is — a stage, a ladder, a plan |
+| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, the fit; a queue job's cluster, whether the queue lists it and how, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, `job-system.md` § 6.0a) | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `fit` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `queue.cluster` / `listed` / `cancel` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` | know what a calculation is — a stage, a ladder, a plan |
 | **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template` · `jobset/migrate` · `runs` | `read_task` · `write_task` · `find_template` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `openable` · `transmission_point` · `folder_answer` | `task.json` · the template | **name a machine** |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** |
 | **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` | `stage_home` · `open_run` · `hand_over` · `job_dir_names` · `paths.attempts_in` · `latest_attempt` · `continuation_answer` · `usable` · `gather_sources` · `task_state` · `readiness` · `job_of` · `first_launch_takes` | the folder tree; `run-<n>/` | know about a queue |
@@ -373,7 +373,7 @@ classDiagram
 | **`RunLaunch`** | 1 | *was this run launched — how, where, from what?* — its `run.json`, read through `persist`, its schema checked | `launch_record` |
 | **`Ending`** | 1 | *did this run end on its own, and how?* — molbuilder's marker for that run (it carries the exit code); a run our wrapper did not run is not a run of ours | `ending` |
 | **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold, linked), what that run was, **and the files it carries** | `continuation_answer` |
-| **`Placement`** | 3 | *where does this job go, and what does it ask?* — queue, wall, memory, ranks, cores, GPUs, each with its source, admitted against the target's record | `placement` |
+| **`Placement`** | 3 | *where does this job go, and what does it ask?* — queue, wall, memory, ranks, cores, GPUs, each with its source, and its fit on the target's record | `placement` |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `open_run` — the one opener of a run folder (a stage's attempt, a trial's, a bias point's) |
 | **`Plan`** | the prep entry's | *what will this prep write?* — every file's text and every folder, decided with nothing written, then written in order by `Plan.carry_out` after the save | `jobset/planned.py` — made by the prep entry (`prep_task`, `prep_bench`), filled by `prep_calculation` through `plan_stage` |
 | **`LaunchPlan`** | the launch entry's | *what will this launch send?* — every submission, its members, their attempts and the exact lines | `plan_launch` |
@@ -452,8 +452,8 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, the files it carries included | 4 | a first launch — checked, written and ledgered as one object — a force-constant stage's prep, a re-launch, status, Task setup's *Continue from* |
 | **a stage launched again** | `relaunch(..., cold=)` → `Continuation` or `None` — warm, its own latest run, however it ended, when it continues from a run of its own (`Job.relaunch_continues`: its kind resumes and it takes something from a run); cold, or a stage that takes nothing, `None` | 4 | launch — opened, written and ledgered as prep's hand-over is — and status, which words what launching again will do from the same fact ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 3 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |
-| **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, prep's admission and its queue list, a benchmark's trials, their shelves and their report, the Task setup card |
-| **what a queue offers, and whether a job fits** | `Domain.devices` and the record's limits; `admits(row, request)` with the job's whole request | 1 | prep (the placement, and the one request of every job that walks several members), the queue list in its refusal, a benchmark's cells |
+| **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, prep's placement and its queue list, a benchmark's trials, their shelves and their report, the Task setup card |
+| **what a queue offers, and how a job fits it** | `Domain.devices`, `node_types` and the record's limits; `fit(row, request)` with the job's whole request — the nodes that hold it, each limit it is over; it refuses nothing ([`scheduler.md`](?doc=execution/scheduler.md) R6) | 1 | prep (the placement, and the one request of every job that walks several members), the queue list, a benchmark's cells, the Task setup card |
 | **`job-set.json`** | `JobSet.load` / `write` (`persist`) | 3 | everyone — the sweep reader the Results tab uses among them |
 | **the template** | `find_template(base, label)` — the one template, named for the label, or refused by name | 2 | prep, the preflight, continuation, the run inputs, Task setup, transport |
 | **the shape** | `Shape.named(task.shape)` — asked, never inferred from what is on disk | 1 | every reader of the layout |
@@ -770,7 +770,7 @@ from the text the plan holds: the header's `#SBATCH` lines
 run script takes its counts from the allocation there — and on a machine
 without one the run script's stated counts (`runwrap.stated_counts`), which it
 runs with. A transport bias scan shows its walk's one header — every point
-in one job, the points' walls summed, written and admitted at prep
+in one job, the points' walls summed, written and placed at prep
 (`prep.walk_header_of`) — and a benchmark each shelf's. A value stated
 nowhere is not shown blank: the preview is **the refusal prep will give**,
 naming where to state it.
@@ -786,10 +786,12 @@ them.**
 **The last three are the launch values, and every one of them is stated or
 refused** *(user, 2026-10-02: "explicit job config is the only way allowed")*.
 Nothing fills one in: not this machine's config (`molbuilder.json` holds no
-job value, `configuration.md` § 4), not the target's record (it **checks** an
-ask — does the queue exist, does a node hold this many cores or GPUs, does the
-wall fit — and never supplies one), not the run script. Prep refuses before it
-writes anything, and the refusal names every place the value may be stated.
+job value, `configuration.md` § 4), not the target's record (it **checks**
+that the queue named exists, and says the ask's fit — the nodes that hold its
+cores, memory and GPUs, and whether its wall is past the queue's — and never
+supplies a value), not the run script. A value stated nowhere is refused
+before prep writes anything, and the refusal names every place it may be
+stated.
 
 | kind | example | weakest → strongest | stated nowhere |
 |---|---|---|---|
@@ -834,10 +836,12 @@ After a benchmark, a run that does not name the winner in `execution` does
 one owner.** The person states it — whether a run uses a GPU and how many,
 its ranks and cores, whether its cores are bound to its GPUs. Prep checks it
 and writes it: a value stated nowhere, or two statements that disagree — a GPU
-run with no count ([`gpu.md`](?doc=execution/gpu.md) G5) — are refused, and so
-is what the target's record says its hardware cannot take — a GPU on a queue
-that lists none, more GPUs or cores than a node holds, a wall past the
-queue's. Launch sends what prep wrote. At run time the run script places it on
+run with no count ([`gpu.md`](?doc=execution/gpu.md) G5) — are refused; what
+the target's record says of the queue — a GPU on a queue that lists none,
+more GPUs, cores or memory than a node holds, a wall past the queue's — is
+shown as the job's fit, never a refusal: the scheduler decides
+([`scheduler.md`](?doc=execution/scheduler.md) R6). Launch sends what prep
+wrote. At run time the run script places it on
 what the job was given: the ranks spread over the GPUs the job holds, MPS
 where ranks share one; off a scheduler each rank bound to cores of its own,
 under one the ranks inside the cores it gave the job. **A placement that costs

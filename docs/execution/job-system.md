@@ -40,7 +40,7 @@ jobset status      every stage of the description: where it stands + the
 |---|---|---|
 | **floor 3 is derived** | `job-set.json` is computed at prep ON the target — never produced on one host and shipped to another | § 4 |
 | **one grouped job** | a bench sweep is ONE submission that runs trials in sequence, each recording its own `run.json` | § 7 |
-| **refuse before the scheduler** | a header the record says will bounce is not emitted (design decision #4 — the mechanism is `scheduler.md`) | § 6 |
+| **the record shown, the scheduler decides** | prep prepares what is asked and prints its fit on the queue it names; a refusal is the scheduler's, shown in its own words (`scheduler.md` R6) | § 6 |
 | **ladder = stages** | coarse feeds tight through declared warm files; the resume point is read, not guessed | § 3, § 5 |
 | **the task** | `prep task` shows the groups — each stage's number in `task.json` — and prepares the ones you pick, each one job; `launch task` sends the next group whose upstream has finished, taking what it builds on then | *The task* |
 | **runs are yours** | any stage launched again, warm or `--cold`, however it ended; molbuilder keeps every run, says how each ended, and saves the folder's state before every prep and before each group's first launch — going back or branching is a `checkpoint restore` | *Runs, stages and checkpoints* |
@@ -419,8 +419,8 @@ prep, two doors*); § 5.0 holds each checkpoint in full.
    line that picks them — nothing is prepared unseen.
 3. **Each group is one job.** Its members share one allocation — what they
    share is [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6's
-   — and **the group's request is admitted** against the queue it names, as
-   a run's is (§ 6.0). A group is matched to the description by **its
+   — and **the group's request is placed** on the queue it names, its fit
+   said, as a run's is (§ 6.0). A group is matched to the description by **its
    members**, never by its number: removing a stage above it shifts numbers and
    changes no job. A pick whose groups' members changed since they were
    prepared, never launched, prepares every such group again in the same
@@ -459,9 +459,9 @@ flowchart TD
     E -- no --> R4["R-P4 · R-P5 · R-P6 · R-P7"]
     E -- yes --> K["the description's preflight, the machine,<br/>which files answered — once<br/>prep.checked"]
     K -- "a refusal" --> R8["R-P8 · R-P9"]
-    K --> F["each member planned into the one plan, nothing written:<br/>its inputs · its launch values, admitted ·<br/>a force-constant stage's relax run · its decks and run-0<br/>prep.plan_stage"]
+    K --> F["each member planned into the one plan, nothing written:<br/>its inputs · its launch values, placed ·<br/>a force-constant stage's relax run · its decks and run-0<br/>prep.plan_stage"]
     F -- "a refusal" --> R10["R-P10 · R-P11 · R-P12 · R-P13 · R-P16 – R-P21"]
-    F --> G["each group of several: one allocation,<br/>its one header admitted on its queue<br/>(a run of points' walk and a benchmark's shelves<br/>are their member's, in F)"]
+    F --> G["each group of several: one allocation,<br/>its one header placed on its queue<br/>(a run of points' walk and a benchmark's shelves<br/>are their member's, in F)"]
     G -- "a refusal" --> R13["R-P13"]
     G --> H{"a preview?"}
     H -- yes --> P["the plan shown — nothing written"]
@@ -572,10 +572,10 @@ group's number — are said where they are typed, and written down too.
 | **R-P7** | `--from` at prep with no force-constant stage among the groups picked | its first launch's `--from`, for a stage in a group of its own | `prep._prep_groups` |
 | **R-P8** | the description fails its own checks — a stage sharing a group with one it builds on among them | the check's words: give it a new group — or, for an independent ladder's stage, set its run card's `restart` to `clean`, and it builds on nothing | `prep.checked` (`validation.task.preflight`) |
 | **R-P9** | the machine: no record answers, or its record states no activation | the record named, or re-probed | `prep.checked` (`machine.require_activation`) |
-| **R-P10** | a launch value not stated (processes; for a header, queue, wall and memory), or the request not admitted on the queue it names | the value to state, the queues listed with what each allows; or what was asked, what the queue offers and where each value is stated, and another of the record's queues | `prep.plan_stage` (`placement`) |
+| **R-P10** | a launch value not stated (processes; for a header, queue, wall and memory), or a queue the record does not list | the value to state, the record's queues listed with their machines and the fit of what is stated | `prep.plan_stage` (`placement`) |
 | **R-P11** | a force-constant stage's `relax` run has not finished, or there is none and the structure is not stated relaxed | `relax` launched and let finish; or `--from` names a run | `continuation.continuation_answer` |
 | **R-P12** | a deck's own checks refuse it; a data file it needs is missing | the check's words | `prep.plan_stage` (`prep_calculation`) |
-| **R-P13** | a job that walks several members — a group, a run of points, a benchmark's shelf — whose members cannot share one allocation, or whose one request (a group's and a run of points' walls summed) is not admitted on its queue | the same values for each, or groups of their own; what was asked, what the queue offers and where each refused value is stated, and another of the record's queues | `prep.walk_header_of` (`group.envelope`, `shelves.shelf_request`) |
+| **R-P13** | a job that walks several members — a group, a run of points, a benchmark's shelf — whose members cannot share one allocation | the same values for each, or groups of their own | `prep.walk_header_of` (`group.envelope`, `shelves.shelf_request`) |
 | **R-P14** | a Prep whose plan differs from the one previewed | preview again | `prep._prep_groups` |
 | **R-P15** | the folder's state cannot be saved | the save's words | `checkpoint.save_before` |
 | **R-P16** | the structure is missing, or not the one described | the structure put back, or the calculation described anew | `prep._structure_for` |
@@ -1507,13 +1507,13 @@ A calculation is described **once**, and prep only ever reads that description.
 | 2 | **the groups picked** | the groups shown (*The task*, at the top); the groups picked — `--group N`, repeatable, or the answer to the question — each one the description holds. Each group is one job, its members sharing one allocation ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6) — checked with its header at 4b; that no member builds on another is the description's own check, at 3 ([`engines/stages.md`](?doc=engines/stages.md) § 6.6). For `prep bench <stage>`, the stage named, a calculation the benchmark can measure, and no `--from` (a trial starts from its deck: the structure, or a force-constant stage's relaxed geometry, § 5.4) | refused, naming the groups and the line that picks them |
 | 2a | **not launched** | the calculation's plan holds no job for the group's stages, or holds them **never launched** — prepared again, the group whole (its rows replaced, its files rendered again, its first runs emptied); for `prep bench`, the stage's bench folder holds no sweep (one door, [`architecture.md`](?doc=execution/architecture.md) § 3.2) | refused: a launched stage is not prepared again — the refusal names the way back (*How the checkpoint supports you*) |
 | 3 | **the description's own checks** — the preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6), once per prep (`prep.checked`) | no error | refused, with the errors; warnings are shown and carried in the answer |
-| 4 | **the machine, and the job's placement** — the record read once per prep (`prep.checked`), each member placed by the one member planner (`prep.plan_stage`) | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); it says how a shell enters an environment there; the stage resolves — its parameters and the job they make, once ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0, steps 1–2: the record, the description and the template each read once, and every step after reads what was read); every launch value is stated; and a run **fits** the queue it names — wall, memory, ranks, cores, GPUs — admitted on the target's record (`placement.admitted`, § 6.0, *the placement*). A benchmark states its queue, wall and memory before its grid is enumerated; its cells are checked there, against the one queue it names and against this prep's own ask; a cell either refuses is crossed out by name ([`generator.md`](?doc=execution/generator.md) § 4.3a) | refused, naming what is missing or what does not fit: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the setting that does not resolve; the file and key where each value is stated; what was asked and what the queue offers |
+| 4 | **the machine, and the job's placement** — the record read once per prep (`prep.checked`), each member placed by the one member planner (`prep.plan_stage`) | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); it says how a shell enters an environment there; the stage resolves — its parameters and the job they make, once ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0, steps 1–2: the record, the description and the template each read once, and every step after reads what was read); every launch value is stated; and a run is **placed** on the queue it names, its fit on the target's record printed — wall, memory, ranks, cores, GPUs — and never refused for it (`placement.placed`, § 6.0, *the placement*; `scheduler.md` R6). A benchmark states its queue, wall and memory before its grid is enumerated; the cells it proposes are those a node of that queue holds, and the cells declared are kept, each with its fit ([`generator.md`](?doc=execution/generator.md) § 4.3a) | refused, naming what is missing: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the setting that does not resolve; the file and key where each value is stated; a queue the record does not list |
 | 4a | **a value hand-over** (§ 5.4) — a force-constant stage only: the `relax` run its deck is written at, one `Continuation` | `relax`'s newest attempt, which finished (the status door's answer: exit code 0, and its output saying no stop) — or the `relax` run you name with `--from` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table). **Every other stage's hand-over is files, taken at its first launch** (§ 6.0): prep reads no other stage's run | refused, naming what to do: launch it, let it finish, or name another run |
-| 4b | **the steps, planned** — the machine's copy, the structure, the decks, the wrappers, the directory ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3) | the structure loads and matches what was described; the data files are there; every deck passes its two gates — **validate** the resolved values, and **check** the text exactly as it will be written, the reader's own section merged in; every wrapper renders; the plan's new row merges; the run and what it receives are known — every member of the groups picked planned into **one plan** by the one member planner (`prep.plan_stage`), in the ladder's order, each seeing what the members before it plan (their rows in `job-set.json`); each job that walks several members, its one request admitted on its queue and its header in the plan too (`prep.walk_header_of`) — a group of several, its members sharing one allocation, the walls summed and the largest memory (`prep.group_header`); a run of points, one job walking every point, their walls summed; a benchmark's shelves, each its trials' shared request (`shelves.shelves_of`); a kind's own steps pass (a transport junction composed, a relaxed geometry read) | refused: the first that fails, in its own words |
+| 4b | **the steps, planned** — the machine's copy, the structure, the decks, the wrappers, the directory ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3) | the structure loads and matches what was described; the data files are there; every deck passes its two gates — **validate** the resolved values, and **check** the text exactly as it will be written, the reader's own section merged in; every wrapper renders; the plan's new row merges; the run and what it receives are known — every member of the groups picked planned into **one plan** by the one member planner (`prep.plan_stage`), in the ladder's order, each seeing what the members before it plan (their rows in `job-set.json`); each job that walks several members, its one request placed on its queue, its fit said, and its header in the plan too (`prep.walk_header_of`) — a group of several, its members sharing one allocation, the walls summed and the largest memory (`prep.group_header`); a run of points, one job walking every point, their walls summed; a benchmark's shelves, each its trials' shared request (`shelves.shelves_of`); a kind's own steps pass (a transport junction composed, a relaxed geometry read) | refused: the first that fails, in its own words |
 | | ***the save*** | | |
 | 5 | **the save** ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9) | the folder's state is saved, always, once the whole plan stands: a new state when anything changed since the one it stands at — its first when it has none — its note led by the time it was taken (`2026-10-03 14:05:12 · before prep task group 1 (coarse), group 2 (medium)`); nothing new when nothing changed, and the state it stands at is named. Both doors say which | refused when the state cannot be saved: that state is the one a redo restores |
 | | ***the writing — nothing is decided*** | | |
-| 6 | **the plan written** | the one plan, as it was made — nothing is planned again: every file of the plan; each stage's first run opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with the stage's own files — nothing from another stage's run, which its first launch copies in; at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepared; each job that walks several members, its one header (a group of several's in the calculation's `launch/` folder, a run of points' walk's in its stage's, a benchmark's shelves' in its own), rendered for its one request (admitted at 4b); a header this prep does not write, one a prep before left, taken away | — nothing here refuses. An error writing (a full disk) leaves the stage not prepared, and the state saved at 5 is the way back |
+| 6 | **the plan written** | the one plan, as it was made — nothing is planned again: every file of the plan; each stage's first run opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with the stage's own files — nothing from another stage's run, which its first launch copies in; at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepared; each job that walks several members, its one header (a group of several's in the calculation's `launch/` folder, a run of points' walk's in its stage's, a benchmark's shelves' in its own), rendered for its one request (placed at 4b); a header this prep does not write, one a prep before left, taken away | — nothing here refuses. An error writing (a full disk) leaves the stage not prepared, and the state saved at 5 is the way back |
 | 7 | **the record** | the ledger, after the save — so the state saved holds no line of this prep: the question that picked the groups and its answer, the preflight's notes, the save, the groups prepared, a force-constant stage's `relax` run (a benchmark of one: the relax run its trials are written at), the deck's agreement with its launch, *prepared* with which config files answered (as read at 4) | — |
 
 **What you get back** is the whole of what was found and decided — the table in
@@ -1866,7 +1866,7 @@ route — is this, for the whole verb.
 | in the answer | what it is |
 |---|---|
 | `findings` | the description's preflight notes (`engines/stages.md` § 6.6); an error refuses instead |
-| `notes` | what the inputs said: a bench's grid — enumerated, crossed out, kept |
+| `notes` | what the inputs said: a bench's grid — enumerated, left out, kept |
 | `saved` | the folder's state, saved before the five steps wrote (§ 5.0, checkpoint 5): the state saved now, or the one it already stood at, and its note |
 | `dirs` | the folders this prep's jobs run in — its stage's, or its trials' |
 | `provenance` | which configuration file supplied each setting, as read with the machine's record at checkpoint 4 (`configuration.md` § 2.2) — a preview's too |
@@ -1877,10 +1877,12 @@ route — is this, for the whole verb.
 | `takes` | what the stage's first launch will take, and from which stage — the line both doors print (§ 5.4); nothing is copied at prep |
 | `continuation` | a force-constant stage only: the `relax` run its deck is written at — by default or named — what it was (its conclusion, state and convergence); a benchmark of a force-constant stage, the relax run its trials are written at |
 | `points` | a transport bias scan's point folders instead — one per point |
-| `placement` | a stage prepared for a queue: the queue it was admitted on and where each value came from, as its job records it (§ 6.0), and the line both doors print |
+| `placement` | a stage prepared for a queue: the queue it was placed on and where each value came from, as its job records it (§ 6.0); `fit`, the fit of what it sends — a run's own, a run of points' walk's; none for a benchmark or a member of a group of several, whose shelves and group say theirs — said and recorded nowhere; and the lines both doors print |
+| `stated` | a stage prepared with no header (a machine with no scheduler, `--no-sbatch`): where each value it states came from, the line both doors print in place of a placement |
+| `shelves` | a benchmark's: each shelf's name, its header's lines and them in one line, and its fit on the benchmark's queue |
 | `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
 | `pipeline_log` | the step-by-step record of the plan and the writing — always written, whichever door called ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) |
-| `group` | a member of a group of several: the group's one job — its number, its members in order, its header in `launch/` and the lines it launches with, the files the group adds |
+| `group` | a member of a group of several: the group's one job — its number, its members in order, its header in `launch/`, the lines it launches with and them in one line, its fit on its queue, the files the group adds |
 | `preview` · `plan_id` · `writes` | a preview's: the plan, named, and every file it would write |
 
 **The save is the entry's own, and it asks nothing** — the one function every
@@ -1895,7 +1897,7 @@ refusal about that machine comes before the save. Every decision the entry makes
 
 **A refusal carries what the entry had found** (`PrepError`'s `findings` and
 `notes`): the preflight's notes and what the inputs said — a bench refused
-because *no cell survived* points at its crossed-out cells. A refused prep
+because *no cell is left* points at its cells left out. A refused prep
 wrote nothing (§ 5.0, rule 3), so there is nothing else to show. The command line prints them before the refusal's sentence;
 the tab's route returns them beside it. The plain
 `ValueError` / `KeyError` the steps raise for what is the person's to fix (a
@@ -2281,7 +2283,7 @@ anything is sent, and the send decides nothing.**
 
 | # | step | what happens |
 |:--:|---|---|
-| 1 | **the plan** — nothing is written | **the work** (`submit._the_group`): a prepared group, whole at its first launch, or one stage launched again; a benchmark's pending trials. **Its submissions**, from the submission builders (§ 9.1) — each one scheduler job, or one process here, walking one or more **members**: a run is one member; a group, its stages in the ladder's order ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6); a run of points, its points; a benchmark's resource shelf, its pending trials — each sending the one header its prep wrote for it. **Each member**, from the one member planner (`submit._plan_member`): the run it runs in — prep's first run, or the next one — and what it takes (*The task*, *What a stage takes, and when*), with the gates: every upstream it takes from has finished; the prepared stage is still what the description gives — at a first launch and at one that takes inputs anew, prep's member planner run again, quietly (`prep.plan_stage`), and its deck, scripts, header and job compared with the files, stamps masked; the deck agrees with its launch; a trial starts cold. **The placement** — the job's own, recorded at prep: its queue and every value prep stated, none admitted or chosen again; a submitted job's wall is the one value a launch may restate (`--time`). The exact lines and scripts to send. Every refusal is a row of *The task*'s table |
+| 1 | **the plan** — nothing is written | **the work** (`submit._the_group`): a prepared group, whole at its first launch, or one stage launched again; a benchmark's pending trials. **Its submissions**, from the submission builders (§ 9.1) — each one scheduler job, or one process here, walking one or more **members**: a run is one member; a group, its stages in the ladder's order ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6); a run of points, its points; a benchmark's resource shelf, its pending trials — each sending the one header its prep wrote for it. **Each member**, from the one member planner (`submit._plan_member`): the run it runs in — prep's first run, or the next one — and what it takes (*The task*, *What a stage takes, and when*), with the gates: every upstream it takes from has finished; the prepared stage is still what the description gives — at a first launch and at one that takes inputs anew, prep's member planner run again, quietly (`prep.plan_stage`), and its deck, scripts, header and job compared with the files, stamps masked; the deck agrees with its launch; a trial starts cold. **The placement** — the job's own, recorded at prep: its queue and every value prep stated, none placed or chosen again; a submitted job's wall is the one value a launch may restate (`--time`). The exact lines and scripts to send. Every refusal is a row of *The task*'s table |
 | 2 | **show** | the exact command of every submission and every value of the header it sends (S4, [`submission.md`](?doc=execution/submission.md)) |
 | 3 | **ask** | one question for the whole plan — a run here asked as a submission is *(user, 2026-10-05)*; `--yes` is the answer given in advance, and with nobody to ask (no terminal) nothing goes and the launch is refused, so a script is never told it went. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (its kind's ask, [`scheduler.md`](?doc=execution/scheduler.md) § 6a) and writes down what it asked |
 | 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it takes (launched again, how the run it continues ended), every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. **A group's first launch then saves the folder's state** — when and with which note is [`checkpointing.md`](?doc=execution/checkpointing.md) § 9's; the launch's questions and their answers are written after it, so it holds no line of this launch. Then the plan's writes are carried out — each run opened or filled through the one opener, a run opened and not launched emptied whole first ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2–1.6.3), with its `.continued-from` / `.gathered-from` (the one hand-over, § 5.4; a flat run's written with its `run.json`); a submission with several members gets its walk script; every script is on disk before anything goes — and each submission goes out, `sbatch` or the process here, through one function, each member's `run.json` written by the one writer |
@@ -2367,21 +2369,25 @@ frame starting from the seed, as every frame does (`engines/transport.md`
 Prep decides each job's queue — `prep --domain`, else the run card's `domain`,
 else `allocation.domain` (a benchmark's: `prep --domain`, else
 `allocation.domain`) — and its wall, memory, ranks, cores and GPUs, each value
-with its source, and **admits the whole request of every job it writes a
-header for** against the target's record: a stage's; a group's, its members'
-walls summed and their largest memory; a run of points', one job walking every
-point, their walls summed; a benchmark's shelf's, its trials' shared request,
-the benchmark's wall the shelf's (`shelves.shelf_request`). A GPU run naming a
-queue with no GPUs, a wall longer than the queue allows, more memory than its
-node holds is refused at prep, naming what was asked, what the queue offers
-and where each value was stated (checkpoint 4, `placement.admitted`). The
-answer and its sources are written on the job in `job-set.json` — its
-`placement`: the queue it was admitted on, bound on the record (name,
-partition, qos), and where each value came from, the flag, the run card or the
-description ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1) —
-and both doors say it, with every value of the header it renders (its
-`#SBATCH` lines). **Every header is prep's**: rendered at prep for the queue it
-admitted, binding no name a second time — a stage's beside its deck; a
+with its source, and **places the whole request of every job it writes a
+header for** on the queue it names, printing its fit on the target's record: a
+stage's; a group's, its members' walls summed and their largest memory; a run
+of points', one job walking every point, their walls summed; a benchmark's
+shelf's, its trials' shared request, the benchmark's wall the shelf's
+(`shelves.shelf_request`). A GPU run naming a queue with no GPUs, a wall
+longer than the queue allows, more memory than its nodes hold is prepared all
+the same, the fit naming each limit it is over with its numbers — the
+scheduler decides, and its answer is shown (`scheduler.md` R6; checkpoint 4,
+`placement.placed`). The answer and its sources are written on the job in
+`job-set.json` — its `placement`: the queue it was placed on, bound on the
+record (name, partition, qos), and where each value came from, the flag, the
+run card or the description
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1). The fit is
+said and recorded nowhere — it decides nothing: both doors say the placement,
+then the fit of the job each header sends — a run's own, a run of points'
+walk, each shelf's, a group's after its last member — with every value of
+that header (its `#SBATCH` lines). **Every header is prep's**: rendered at prep for the queue it placed,
+binding no name a second time — a stage's beside its deck; a
 group's, a run of points' walk and a benchmark's shelves in their `launch/`
 folder (`prep.walk_header_of`). One request is asked of a queue, by every
 caller (`placement.request_of`: a SIESTA run's ranks, a PySCF run's one
@@ -2389,7 +2395,7 @@ process, the cores each runs on, its GPUs, memory and wall). **Launch decides
 none of it** *(the user, 2026-10-17: "whether it's direct launch or
 submission, all the decision is already done at the prep … Launch means just
 run that script")*: it sends the header prep wrote — the question and a dry
-run show its every value — admits nothing and chooses no queue. What it
+run show its every value — places nothing again and chooses no queue. What it
 checks is prep's own files: at a first launch it plans the stage again as its
 prep did, on the calculation's own files — its description, its template and
 its copy of the target's record — and refuses a prep that is no longer what
@@ -2405,7 +2411,7 @@ of it — passed on the line in a job's own spelling (`D-HH:MM:SS`,
 ours: the scheduler answers. `run.json`'s `placed_on` keeps the queue, wall and memory
 the run was sent with, and the ledger's lines the flag as typed. **A benchmark
 measures on one queue**: the one its prep names (`prep --domain`, else
-`allocation.domain`), every trial checked against it alone and its placement
+`allocation.domain`), every trial fit on it alone and its placement
 recorded like a run's — measuring another queue is another benchmark. Where
 several members go as one job — a group, a run of points, a benchmark's shelf
 — launch writes the walk of the members still to run and sends the job's one
@@ -2441,7 +2447,13 @@ id, or beside a run left in the background, which is then named by its pid,
 **What it is doing is read fresh, each time** — one fact, one source: a run
 here is going while its process is (the same host, pid and start — a machine
 with no `/proc` says it cannot tell); a queue job while the scheduler lists
-it (its kind's query, run where the calculation's copy of its machine's
+it in a state not ended, said with that state and the scheduler's reason for
+it when it gives one (SLURM's `None` is none) — *the scheduler lists it:
+PENDING (QOSMaxWallDurationPerJobLimit)*, its
+own words, so a job it took and will never start says why
+([`scheduler.md`](?doc=execution/scheduler.md) R6); one it lists ended is
+said so with its state — *the scheduler lists it ended: FAILED
+(NonZeroExitCode)* — until the scheduler forgets it (its kind's query, run where the calculation's copy of its machine's
 record says the command is, asked on its own cluster — another cluster's job
 is said *sent to cluster C: ask there*, and a record naming no query
 command, a command that does not run here, or a copy that does not read here
@@ -2564,8 +2576,9 @@ system** adds is submission and routing:
   on `prep --domain`. A domain is a friendly name for a
   `(partition, qos)` pair of the target's record; an unknown name is refused
   at prep with the record's list — and a named one on a machine whose record
-  lists no queues at all. The framework refuses
-  to emit a header it knows will be rejected (design decision #4).
+  lists no queues at all. What the record says of a named queue is shown
+  as the job's fit, never a refusal: the scheduler decides
+  ([`scheduler.md`](?doc=execution/scheduler.md) R6).
 - **Render every job, then submit them.** A grouped submission (the bench
   sweep, § 7) writes **all** its shelf scripts before it sends the first one,
   and **one scheduler refusal does not cancel the rest**: the shelves are
@@ -2918,7 +2931,7 @@ flowchart TB
         LW["the group or the stage named, or offered<br/>(submit._the_group · ready.TaskState.launch_offer)"]
     end
     subgraph M["the member planner — one per verb"]
-        PM["prep.plan_stage<br/>inputs · resolve · admit · relax run · steps planned"]
+        PM["prep.plan_stage<br/>inputs · resolve · place · relax run · steps planned"]
         LM["submit._plan_member<br/>_first_launch · _launch_again · _plan_trial"]
     end
     subgraph F["the run filler — by the run's layout"]
@@ -2968,7 +2981,7 @@ flowchart TB
 | surface | collect what was said — the flags, a question's answer — and print the answer; decides nothing | `_cli.prep_cmd`, `POST /api/task-setup/prep` | `_cli.submit_cmd`, the `launch` verb (`_launch_unit` puts the question) |
 | entry | the verb's one function, whichever surface called; owns the save and the record | `prep.prep_task` (a task's groups), `prep.prep_bench` (one stage's benchmark) | `submit.plan_launch` (the plan, a refusal written down) → `submit.send_launch` |
 | the work | which members: by the description's groups, matched by their members | `_prep_groups`: the groups picked — a pick missing a group a changed job's members are in is refused, naming it (`group.formed_again`); a launched member refused first | `_the_group`: the group named or offered, or one stage launched again; a launched group's members fixed |
-| member planner | one member — what it is, what it takes, its checks, its run — planned with nothing written | `prep.plan_stage`: inputs, step 2 resolved, launch values stated and admitted, a force-constant stage's `relax` run, the steps planned (`prep_calculation`) | `submit._plan_member`: `_first_launch` (what it builds on, from the ready door; the prepared stage checked against `plan_stage`, quiet) or `_launch_again` (from `_newest_launched`); `_plan_trial` for a benchmark's trial |
+| member planner | one member — what it is, what it takes, its checks, its run — planned with nothing written | `prep.plan_stage`: inputs, step 2 resolved, launch values stated and placed, a force-constant stage's `relax` run, the steps planned (`prep_calculation`) | `submit._plan_member`: `_first_launch` (what it builds on, from the ready door; the prepared stage checked against `plan_stage`, quiet) or `_launch_again` (from `_newest_launched`); `_plan_trial` for a benchmark's trial |
 | run filler | fill the member's run by its layout | `prep_calculation` opens `run-0` with the stage's own files (`materialize.prepare_attempt`, `open_sweep_run`) — nothing taken from another run | the same openers, then prep's own files back (`_prep_files_back`) and what it takes, each one hand-over carried out by `materialize.hand_over` (§ 5.4): the run it continues from (`prepare_attempt`), a gather (`gather.gather_into`) or the one its last run was given (`_carry_the_gather`); a run of points' takeovers and starts (`_points_walk`); a flat run's record at the send (`_go`) |
 | submission builder | how the members are sent — it asks the member planner for each member, then builds the job | — (prep sends nothing; every job's one header is planned with its members — a group's, a run of points' walk's, a benchmark's shelves', `prep.walk_header_of`) | one job (`_plan_stage`, which hands a run of points to `_points_walk`); a group's walk (`_plan_group`); a benchmark's shelves (`_plan_shelves`, `_plan_bench_here`) |
 | save, write, send, record | only once the plan is whole | `checkpoint.save_before`, `Plan.carry_out`, `_record_prepared` | `send_launch`: the folder as planned, the save at a group's first launch, `Plan.carry_out`, `_go`, each member's `run.json` |
@@ -3011,7 +3024,7 @@ sequenceDiagram
         F-->>P: what it planned
         P-->>E: PrepAnswer (what its first launch takes)
     end
-    E->>E: each group of several — envelope, admitted, its header
+    E->>E: each group of several — envelope, placed, its header
     E->>E: rows carry their members — STAGE-PLAN.md once
     E->>X: save_before (once) — then carry_out — then the record
     E-->>S: the answers, the saved state, the next line
@@ -3062,7 +3075,7 @@ For someone extending the framework:
 | Lay out the materialized tree — job folders with their copies; a stage's number and folder, read off the disk (`stage_home`); the one opener of every run folder (`open_run`: a stage's attempt, a trial's, a bias point's — each stamped with the containers above it; a submission's `launch/` stamped by `open_container`); what a run takes from other runs, one hand-over (`HandOver`, carried out by `hand_over`, § 5.4) | `molbuilder/jobset/materialize.py` |
 | The prep verb's entries, which the command line and the Task setup tab both call (§ 5.3): `prep_task` (a task's groups — read and checked once, every member into one plan, each group's header `group_header`) and `prep_bench` (one stage's benchmark), each → `PrepAnswer`; the description read and checked (`read_description`, `checked`); the one member planner, `plan_stage` (launch asks it too, quiet), handing the steps to `prep_calculation` into a `jobset.planned.Plan` — [`script-preparation.md`](?doc=execution/script-preparation.md) § 3, decided with nothing written; the save (`checkpoint.save_before`), the writing (`Plan.carry_out`), the record; a benchmark prepared (`prepared_already`) and the stages that fix the shape (`prepared_stages`) | `molbuilder/jobset/prep.py` |
 | The engine seam — an engine's deck writer, its data files, its warm declaration and traits, its config class (one map for every caller) | `molbuilder/jobset/engines.py` |
-| A job's placement — queue, wall, memory, ranks, cores, GPUs with their sources, admitted (§ 6.0); the launch-value check | `molbuilder/jobset/placement.py` |
+| A job's placement — queue, wall, memory, ranks, cores, GPUs with their sources — and its fit, said (§ 6.0); the launch-value check | `molbuilder/jobset/placement.py` |
 | A benchmark's shelves — its trials by side and exact ask, widest first (`shelves_of`), and each shelf's one request (`shelf_request`), which prep writes each shelf's header from and launch walks | `molbuilder/jobset/shelves.py` |
 | The refusal type every floor raises (`PrepError`), and the person's errors said as one (`user_error_as_prep`) | `molbuilder/jobset/errors.py` |
 | A transport rung built from the description as it reads now — its junction composed (`composed_for_prep`), resolved (`resolve_transport`), its structure and electronic state (`transport_parts`), each deck's spec at its point (`transport_spec`, `at_frame`, `at_point`), its pseudopotentials (`provide_pseudos`): prep's conductor writes it, the gather renders it to compare | `molbuilder/jobset/transport_rung.py` |

@@ -532,8 +532,12 @@ async function refreshFit() {
         const r = await fetch("/api/task-setup/bench-grid", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            // ...AND THE QUEUE PICKED, the model's too: the cells are fit
+            // on the queue the page shows chosen.
             body: JSON.stringify({ dest: _dir, target: _machine || "",
-                                   bench: bench }),
+                                   bench: bench,
+                                   domain: ((_task && _task.allocation)
+                                            || {}).domain || "" }),
         });
         body = await r.json();
     } catch (e) {
@@ -579,20 +583,21 @@ function paintFit(host, body) {
     host.hidden = false;
 
     host.appendChild(el("div", { class: "ts-fit-head" },
-        /* "this machine" would be wrong: the queues these were checked
-         * against are the TARGET's, and preparing for another machine is
-         * an ordinary thing to do here. */
-        cells.length + " combination(s) \u2014 " + kept.length
-        + " fit a queue"
-        + (crossed.length ? ", " + crossed.length + " do not" : "")));
+        /* "this machine" would be wrong: the queue these are fit on is the
+         * TARGET's, and preparing for another machine is an ordinary thing
+         * to do here. */
+        cells.length + " combination(s) \u2014 " + kept.length + " kept"
+        + (crossed.length ? ", " + crossed.length + " left out" : "")));
 
     for (const c of kept) {
+        // EACH CELL'S FIT on its queue -- the server's lines, one per queue
+        // it was fit on (`scheduler.md` R4): a declared cell is kept
+        // whatever they say.
         host.appendChild(el("div", { class: "ts-fit-row" },
             el("code", { class: "ts-fit-label" }, c.label),
             el("span", { class: "ts-fit-shape" }, c.shape),
             el("span", { class: "ts-fit-where" },
-               (c.fits || []).slice(0, 4).join(", ")
-               + ((c.fits || []).length > 4 ? " \u2026" : ""))));
+               ...(c.fit || []).map((f) => el("div", {}, f.line)))));
     }
     for (const c of crossed) {
         host.appendChild(el("div", { class: "ts-fit-row ts-fit-row--out" },
@@ -601,7 +606,7 @@ function paintFit(host, body) {
             // THE NUMBERS, not a verdict word (scheduler.md R4): the reason
             // says what to change, which is the whole point of showing the
             // struck rows rather than silently dropping them.
-            el("span", { class: "ts-fit-why" }, (c.why || [])[0] || "")));
+            el("span", { class: "ts-fit-why" }, (c.why || []).join("; "))));
     }
     /* A `note` means the grid resolved this far and then stopped -- the
      * rows above are still the honest answer, and the reason belongs with
@@ -610,8 +615,7 @@ function paintFit(host, body) {
         host.appendChild(el("p", { class: "status warn" }, body.note));
     } else if (!kept.length) {
         host.appendChild(el("p", { class: "status warn" },
-            "No queue on the chosen machine takes any of these \u2014 "
-            + "adjust the points above, or choose a different machine."));
+            "None of these is kept \u2014 each row above says why."));
     }
 }
 
@@ -3225,7 +3229,7 @@ function _showPrepAnswer(wrap, say, r, head) {
     }
     if (!r.ok) {
         /* A REFUSAL SHOWS WHAT IT POINTS AT: the preflight's notes and what
-         * the inputs said -- a bench's crossed-out cells -- beside its own
+         * the inputs said -- a bench's cells left out -- beside its own
          * sentence.  A refused prep wrote nothing (`job-system.md` § 5.0). */
         say.textContent = r.error;
         say.setAttribute("data-state", "bad");
@@ -3271,9 +3275,36 @@ function _showPrepAnswer(wrap, say, r, head) {
         line("takes nothing from another run"
              + (r.linked ? "" : " (the first stage, or one that starts clean)"));
     }
-    /* WHERE IT WAS ADMITTED, and where each value came from -- the
-     * server's line, the one the terminal prints (`job-system.md` § 6.0). */
+    /* WHERE IT WAS PLACED, where each value came from, and the FIT of what
+     * it sends -- a run of points', its walk's -- then the header that job
+     * is sent with: the server's lines, the ones the terminal prints
+     * (`job-system.md` § 6.0; `scheduler.md` R6: shown, never a veto).  A
+     * member of a group of several is sent in the group's one job, said
+     * after its last member. */
     if (r.placement && r.placement.line) line(r.placement.line);
+    if (r.placement && r.placement.fit) line(r.placement.fit);
+    // NO HEADER: where each value it states came from, in its place.
+    if (!r.placement && r.stated) line(r.stated);
+    if (r.launch && r.launch.said && !r.group) {
+        line(((r.points || []).length
+              ? "one job walking its " + r.points.length
+                + " points (their walls summed) -- " : "") + r.launch.said);
+    }
+    /* A BENCHMARK'S SHELVES, each the one job its launch sends, with its
+     * fit on the benchmark's queue. */
+    for (const sh of (r.shelves || [])) {
+        line(sh.name + "  " + sh.said);
+        if (sh.fit) line(sh.fit);
+    }
+    /* A GROUP'S ONE JOB, once, after its last member. */
+    const grp = r.group;
+    if (grp && r.stage === grp.members[grp.members.length - 1]) {
+        line("group " + grp.number + " -- one job: " + grp.members.join(", ")
+             + ", one after another (their walls summed, the largest memory)"
+             + (grp.header ? "; its header: " + grp.header : ""));
+        if (grp.launch.said) line(grp.launch.said);
+        if (grp.launch.fit) line(grp.launch.fit);
+    }
     if (r.resources) {
         const rs = r.resources;
         // WHAT IS STATED, and nothing else -- the terminal's line
@@ -3654,9 +3685,12 @@ function renderQueues() {
         b.setAttribute("data-queue", d.name);
         b.setAttribute("aria-pressed", d.name === _fs.queue ? "true" : "false");
         const bits = [];
+        // THE QUEUE'S MACHINES AS RANGES -- the server's spelling
+        // (`Domain.core_range`, `Domain.mem_range`), never a single figure
+        // over a mixture (`scheduler.md` R0).
         if (d.max_time) bits.push(d.max_time);
-        if (d.max_cores) bits.push(d.max_cores + " cores");
-        if (d.max_mem_gb) bits.push(_fmtGB(d.max_mem_gb));
+        if (d.cores && d.cores !== "-") bits.push(d.cores + " cores");
+        if (d.memory && d.memory !== "-") bits.push(d.memory);
         if (d.gpu) bits.push("GPU");
         // The SAME shape the machine buttons use -- <b> is what the
         // chosen-tick hooks (style.css `.ts-choice .opt b::before`), so a
@@ -3674,8 +3708,8 @@ function renderQueues() {
 }
 
 function _fmtGB(gb) {
-    /* Never rounds UP: this renders a CEILING, and a ceiling shown larger
-     * than it is invites an ask the queue will refuse. */
+    /* Never rounds UP: a node's memory shown larger than it is says it
+     * holds what it does not. */
     if (gb >= 1024) return (Math.floor(gb / 102.4) / 10) + " TB";
     return Math.floor(gb) + " GB";
 }
@@ -3692,53 +3726,51 @@ function setQueue(name) {
     paintAskNotes();
     applyAsksToDoc();
     refreshSave();
+    // THE GRID IS FIT ON THE QUEUE PICKED, so a pick refreshes it.
+    if (_fs.fitBench) scheduleFitRefresh(_fs.fitBench);
 }
 
-/** Say, under each field, what the queue allows and whether this ask
- *  fits -- while changing it is still free. */
+/** Say, under each field, what the queue's machines and rules are -- never
+ *  marking what is typed invalid: the record is shown, the scheduler
+ *  decides, and the fit of the whole request is the Preview's
+ *  (`scheduler.md` R6; `task-setup.md` § 6.2). */
 function paintAskNotes() {
     const d = _queuesOf(_machine).find((x) => x.name === _fs.queue);
-    // A machine that states no queues: its own RAM is the memory ceiling.
+    // A machine that states no queues: its own RAM is what it has.
     const _me = _machines.find((x) => x.name === _machine);
     const _nodeMem = (!d && _me && !(_me.domains || []).length)
         ? _me.mem_total_gb : null;
-    const pairs = [
-        ["ts-ask-time", "ts-ask-time-note", _parseTime,
-         d && d.max_time_s, (v) => _humanTime(Math.round(v)),
-         "this queue states no time ceiling"],
-        ["ts-ask-mem", "ts-ask-mem-note", _parseMem,
-         (d && d.max_mem_gb) || _nodeMem, (v) => _fmtGB(v),
-         "this queue states no memory ceiling"],
-    ];
-    for (const [inId, noteId, parse, cap, fmt, noCap] of pairs) {
+    const said = {
+        "ts-ask-time": d ? (d.max_time_s
+                              ? d.name + "'s wall: "
+                                + _humanTime(Math.round(d.max_time_s))
+                              : "this queue states no wall")
+                         : "no queue chosen",
+        "ts-ask-mem": d ? (d.memory && d.memory !== "-"
+                             ? d.name + "'s machines: " + d.memory
+                             : "this queue states no memory")
+                        : (_nodeMem ? "its probed node has " + _fmtGB(_nodeMem)
+                                    : "no queue chosen"),
+    };
+    const pairs = [["ts-ask-time", "ts-ask-time-note", _parseTime],
+                   ["ts-ask-mem", "ts-ask-mem-note", _parseMem]];
+    for (const [inId, noteId, parse] of pairs) {
         const el = $(inId);
         const note = $(noteId);
         if (!el || !note) continue;
-        const raw = el.value;
-        const val = parse(raw);
+        const val = parse(el.value);
         let state = "ok";
-        let msg;
+        let msg = said[inId];
         if (Number.isNaN(val)) {
             state = "bad";
             msg = "not a value I can read";
         } else if (val === null) {
-            // EMPTY, AND THE LIMIT STILL SHOWN: what the queue allows is
-            // what helps choose a value (`submission.md` S5).
+            // EMPTY, AND THE QUEUE STILL SHOWN: what it offers is what
+            // helps choose a value (`submission.md` S5).
             state = "unset";
             msg = "left blank \u2014 stated nowhere"
                 + (d ? ", prep refuses it for a job sent to a queue" : "")
-                + (cap ? "; " + (d ? _fs.queue + " allows"
-                                  : "this machine has")
-                       + " up to " + fmt(cap) : "");
-        } else if (cap && val > cap) {
-            state = "bad";
-            msg = (d ? "more than " + _fs.queue + " allows"
-                     : "more than this machine has")
-                + " (" + fmt(cap) + ")";
-        } else if (cap) {
-            msg = "allowed here: up to " + fmt(cap);
-        } else {
-            msg = d ? noCap : "no queue chosen";
+                + "; " + said[inId];
         }
         note.textContent = msg;
         note.setAttribute("data-state", state);

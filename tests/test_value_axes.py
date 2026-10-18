@@ -7,9 +7,9 @@ Sol-shaped record — a login node with NO local GPU, a menu whose
 gpu-capable row carries the sinfo inventory and the probed 48-core cap
 (the GPU node group's own core count; hand-editable).
 Every rule the section states is pinned here: the family split, the
-inventory fallback, the cap drop BY NAME, the per-trial coordinates in the
-decks and in ``job-set.json``, and the per-side grouped submission, every
-shelf to the benchmark's one queue.
+inventory fallback, each declared cell kept with its fit said, the
+per-trial coordinates in the decks and in ``job-set.json``, and the
+per-side grouped submission, every shelf to the benchmark's one queue.
 """
 from __future__ import annotations
 
@@ -76,11 +76,13 @@ def sol_calc(tree):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
-    # The wall and memory every job sent to this scheduler states -- the
-    # trials share the calculation's (`architecture.md` § 5.2).
+    # The queue, wall and memory every job sent to this scheduler states --
+    # the trials share the calculation's (`architecture.md` § 5.2); a
+    # benchmark measures on the one queue it names (`generator.md` § 4.3a).
     tj = dest / "task.json"
     d = json.loads(tj.read_text())
-    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    d["allocation"] = {"domain": "general", "time": "0-01:00:00",
+                       "mem": "8G"}
     tj.write_text(json.dumps(d, indent=2))
     env = Environment(
         scheduler=SLURM,
@@ -110,9 +112,13 @@ def _declare(calc, axes):
 # --------------------------------------------------------------------- #
 
 def test_the_users_matrix_enumerates_both_families(sol_calc):
-    """The acceptance matrix: 18 CPU trials (every declared rank count)
-    and 18 GPU trials (only np32 survives the 48-core cap; its G ranges
-    over the divisors 1/2/4) — and the dropped cells are said BY NAME."""
+    """The acceptance matrix on `general`: 18 CPU trials, every declared
+    rank count kept whatever the record says (declared whole, `generator.md`
+    § 4.3a), and 18 GPU trials -- the device count is the machine's
+    proposal here, its divisors 1/2/4 of the inventory's four GPUs, so only
+    np32 is proposed: np64 and np128 are over the GPU nodes' 48 cores, left
+    out with the numbers (`scheduler.md` R4).  Both prep doors show these
+    notes (`prep.prep_bench`)."""
     _declare(sol_calc, USERS_MATRIX)
     notes: list = []
     points, pins, tr = bench_inputs(sol_calc, None, notes=notes)
@@ -122,20 +128,16 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     assert len(cpu) == 18 and len(gpu) == 18
     assert sorted({p["K"] for p in cpu}) == [32, 64, 128]
     assert all(p["G"] * p["K"] == 32 for p in gpu), \
-        "np64/np128 exceed the gpu domain's 48 cores/node"
+        "np64/np128 GPU cells exceed the GPU nodes' 48 cores"
+    assert {p["G"] for p in gpu} == {1, 2, 4}
     assert all(p["use_gpu"] is False for p in cpu)
     assert all(p["use_gpu"] is True for p in gpu)
     # every point carries the full value coordinate
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
-    # The struck cells are named, with the queue and the number that
-    # struck them: the machine prints the whole grid, kept and crossed out,
-    # each struck row carrying its own reason.  Nothing is dropped
-    # silently -- the notes say it, which both prep doors show
-    # (`prep.prep_bench`).
     out = "\n".join(notes)
-    assert "crossed out" in out
-    assert "general" in out and "48" in out
+    assert "left out (6)" in out, out
     assert "G1K64C1" in out and "G1K128C1" in out
+    assert "64 cores is over general's largest machine (48 cores)" in out
     # an axis is never a pin; the measurement pins still ride
     assert "block_size" not in pins and pins["max_scf_iter"] == 3
 
@@ -400,13 +402,17 @@ def test_uneven_split_is_dropped_by_name(sol_calc):
     assert "do not split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
 
 
-def test_gpu_count_beyond_the_record_is_refused(sol_calc):
+def test_a_gpu_count_past_the_record_is_kept_with_its_fit(sol_calc):
+    """`scheduler.md` R6: a declared device count past what the record
+    says a node carries is prepared as declared, its fit naming the most a
+    node there carries -- the scheduler decides."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
                         "gpu_count": [8]})
-    with pytest.raises(PrepError) as e:
-        bench_inputs(sol_calc, None)
-    assert "gpu_count = [8]" in str(e.value)
-    assert "4 device(s)" in str(e.value)
+    notes: list = []
+    points, _pins, _tr = bench_inputs(sol_calc, None, notes=notes)
+    assert {(p["G"], p["K"]) for p in points} == {(8, 4)}
+    assert "8 GPUs is over general's most GPUs on a node (4 GPUs)" \
+        in "\n".join(notes)
 
 
 def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
@@ -422,19 +428,19 @@ def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
                         "gpu_count": [3]})
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
-    assert "no GPU cell survived" in str(e.value)
-    assert "crossed-out list" in str(e.value), (
-        "the refusal must point at the list that names each struck cell "
-        "and why -- not merely say that everything went")
+    assert "no GPU cell is left" in str(e.value)
+    assert "even-split rule" in str(e.value), (
+        "the refusal must point at the rule that dropped each cell -- not "
+        "merely say that everything went")
 
 
 def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
     """tuning.md § 2.12's own worked declaration, end to end: gpu_count
     filters ONLY the GPU family (the CPU family keeps every declared rank
     count); use_gpu as a two-point axis beside gpu_count does NOT
-    trigger the cpu-only refusal; and the probed 48-core cap drops a
-    DECLARED count by name (np64 × G1 = 64 cores) — the cap lane, distinct
-    from the even-split lane."""
+    trigger the cpu-only refusal; and a declared cell wider than the GPU
+    nodes' 48 cores (np64 × G1 = 64 cores) is kept, its fit naming the
+    numbers (`scheduler.md` R6)."""
     _declare(sol_calc, {"mpi_np": [32, 64], "omp_threads": [1],
                         "use_gpu": [True, False],
                         "gpu_count": [1, 2, 4]})
@@ -444,16 +450,15 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
     gpu = [p for p in points if p["G"]]
     assert sorted({p["K"] for p in cpu}) == [32, 64], \
         "gpu_count must not touch the CPU family's rank counts"
-    # the cap bounds a trial's TOTAL cores (ranks × cores-per-rank ≤ the
-    # GPU nodes' 48 — § 4.3a's "ranks × cores"), so EVERY np64 GPU cell
-    # drops whatever its G (a 64-rank single-node trial cannot fit a
-    # 48-core node), each named in the echo; np32 keeps all three counts
+    # a trial's TOTAL cores (ranks × cores-per-rank) are what a node must
+    # hold, so EVERY np64 GPU cell is over the GPU nodes' 48 whatever its
+    # G -- kept as declared, each named with its fit
     assert sorted((p["G"], p["K"]) for p in gpu) == \
-        [(1, 32), (2, 16), (4, 8)]
+        [(1, 32), (1, 64), (2, 16), (2, 32), (4, 8), (4, 16)]
     out = "\n".join(notes)
-    assert "crossed out" in out
+    assert "64 cores is over general's largest machine (48 cores)" in out
     for cell in ("G1K64C1", "G2K32C1", "G4K16C1"):
-        assert cell in out, f"the struck cell {cell} must be named"
+        assert cell in out, f"the kept cell {cell} must be named"
 
 
 def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
@@ -525,11 +530,13 @@ def flat_sol_calc(tree):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
-    # The wall and memory every job sent to this scheduler states -- the
-    # trials share the calculation's (`architecture.md` § 5.2).
+    # The queue, wall and memory every job sent to this scheduler states --
+    # the trials share the calculation's (`architecture.md` § 5.2); a
+    # benchmark measures on the one queue it names (`generator.md` § 4.3a).
     tj = dest / "task.json"
     d = json.loads(tj.read_text())
-    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    d["allocation"] = {"domain": "general", "time": "0-01:00:00",
+                       "mem": "8G"}
     tj.write_text(json.dumps(d, indent=2))
     env = Environment(
         scheduler=SLURM,

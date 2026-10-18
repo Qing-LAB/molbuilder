@@ -134,8 +134,9 @@ class JobResult:
     domain:     Optional[str] = None
     #: THE REQUEST THE LINE SENDS, as the header its prep wrote carries it
     #: -- its directive lines, read back by the header's reader
-    #: (`Directives.lines_of`): what the question and a dry run show
-    #: (`submission.md` S4).  ``()`` for a run here.
+    #: (`Directives.lines_of`), the wall the line restates in its place:
+    #: what the question and a dry run show (`submission.md` S4).  ``()``
+    #: for a run here.
     request:    Tuple[str, ...] = ()
     #: The sentence shown beside the status, when it has one -- what a
     #: member takes, what a member rides, how a trial was passed over.
@@ -621,13 +622,25 @@ class Submission:
 
     def request(self) -> Tuple[str, ...]:
         """The request the line sends -- its header's directive lines, as
-        its prep wrote them (`Directives.lines_of`); ``()`` for a run here,
-        or a header not written."""
+        its prep wrote them (`Directives.lines_of`), with the wall the line
+        restates in place of the header's, said so: the scheduler takes the
+        line's over the header's, so that is the wall sent (`scheduler.md`
+        R9); ``()`` for a run here, or a header not written."""
         from ..scheduler.emit import Directives
         if self.direct or self.header is None or not self.header.is_file():
             return ()
-        return tuple(Directives.lines_of(
-            self.header.read_text(errors="replace"), self.machine.kind))
+        kind = self.machine.kind
+        lines = Directives.lines_of(self.header.read_text(errors="replace"),
+                                    kind)
+        sent = getattr(self.sent, "time", None)
+        if sent:
+            said = kind.directive("wall", wall=sent)[0]
+            head = kind.directive("wall", wall="\0")[0].split("\0")[0]
+            for i, line in enumerate(lines):
+                if line.startswith(head) and line != said:
+                    lines[i] = (f"{said} (this launch's --time; the header "
+                                f"says {line[len(head):]})")
+        return tuple(lines)
 
 
 @dataclass
@@ -1920,7 +1933,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     by each trial's GPU request, then by its exact ask, each named in full,
     ``bench-group-<side>-<cell>`` -- so the CPU shelf asks no GPU and
     devices are never held while CPU trials run -- each side's widest first,
-    and each with the one header prep wrote and admitted on the benchmark's
+    and each with the one header prep wrote and placed on the benchmark's
     one queue.  ``side`` (``"cpu"``/``"gpu"``) sends one side, the other
     staying pending for a later `launch bench`.
 
@@ -2410,7 +2423,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
             log=stage_dir / log))
         return
     # ---- submit / ask: one scheduler job walking the points ------------ #
-    # THE WALK'S ONE HEADER, as its prep wrote and admitted it: one
+    # THE WALK'S ONE HEADER, as its prep wrote and placed it: one
     # allocation walking every point, their walls summed (`group.envelope`,
     # `prep.prep_calculation`) -- or no queue to send to, said by the one
     # answer (`_no_sbatch`); asked about, the same.
@@ -2645,7 +2658,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                                machine_record(base, None))
         except PrepError as exc:
             raise SubmitError(str(exc)) from None
-        if now is None or without_stamps(now[1].encode("utf-8")) != \
+        if now is None or without_stamps(now.text.encode("utf-8")) != \
                 without_stamps(header.read_bytes()):
             raise SubmitError(
                 f"group {number}'s header, {LAUNCH_DIR}/{header.name}, is "

@@ -88,7 +88,10 @@ steps:
    (`launch task --mode ask`): asked once with its kind's ask, the answer read
    as a start time, nothing submitted or recorded — the record's submit command
    declared as a gate that passes a question to the probed one and refuses
-   anything else (`test_ask_the_target.py`). `tests/field/` is collected only
+   anything else (`test_ask_the_target.py`); and it asks the scheduler about a
+   job it holds, whoever's, and reads its state with the scheduler's reason
+   for it, as `molbuilder jobs status` says it, and about an id it has
+   forgotten (`test_the_queue_says_why.py`). `tests/field/` is collected only
    when a record is named; tier 1 never sees it, and its scheduler's submit
    command — where the record says it is, off PATH — writes each call down and
    refuses it: what a scheduler answers is read here, never typed into a basic
@@ -838,14 +841,20 @@ quarter of the cores and at most 8; `--workers 1` is one process. Two rules
 decide what may run beside what, and `tests/conftest.py` applies both as the
 tests are collected:
 
-1. **A file runs whole, in order, in one worker.** Its module fixtures are built
-   once and its tests meet each other exactly as in one process, so spreading a
-   run changes *when* a file runs, never *how*. pytest itself moves the tests
-   of a session-scoped parametrized fixture together across files — every
-   browser test, by pytest-playwright's `browser_name` — so the collection
-   hook puts each file back together after it, in the order pytest gave its
-   tests *(found 2026-10-16: the e2e batch ran the junction's file in two
-   pieces and made its real runs twice; ten files of the suite were split)*.
+1. **A file whose tests share a fixture runs whole, in order, in one
+   worker** — one with a fixture wider than a test (module, class or package
+   scoped), and every e2e file. Its shared fixtures are built once and its
+   tests meet each other exactly as in one process, so spreading a run changes
+   *when* such a file runs, never *how*. pytest itself moves the tests of a
+   session-scoped parametrized fixture together across files — every browser
+   test, by pytest-playwright's `browser_name` — so the collection hook puts
+   each file back together after it, in the order pytest gave its tests
+   *(found 2026-10-16: the e2e batch ran the junction's file in two pieces and
+   made its real runs twice; ten files of the suite were split)*. **Every other
+   test runs on whichever worker is free**: its fixtures are its own, so where
+   it runs changes nothing — a contract table's rows, each preparing its own
+   calculation, run side by side *(the user, 2026-10-18: a 40-row table took a
+   minute on one worker while seven sat idle)*.
 2. **A file that runs a real engine runs alone among those that do.** A test
    that starts SIESTA, TranSIESTA or PySCF — itself or through a fixture —
    carries `@pytest.mark.engine` (§ 1), on itself or on its module, and every

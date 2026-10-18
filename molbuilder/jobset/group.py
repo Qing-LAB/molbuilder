@@ -188,7 +188,7 @@ def envelope(jobs: Sequence) -> "Resources":
     first = jobs[0]
 
     def shape(j):
-        # the queue the placement admitted, else the one stated; no GPU
+        # the queue the placement bound, else the one stated; no GPU
         # and GPU use off are one answer each
         r = j.resources
         got = {w: getattr(r, f) for f, w in SHARED.items()}
