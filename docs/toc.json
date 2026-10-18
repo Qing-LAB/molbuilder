@@ -29,6 +29,16 @@
         {
           "path": "plans/plan.md",
           "label": "The plan (one file)"
+        },
+        {
+          "path": "plans/rename-benchmate/README.md",
+          "label": "Renaming to Benchmate",
+          "children": [
+            {
+              "path": "plans/rename-benchmate/inventory.md",
+              "label": "Rename inventory"
+            }
+          ]
         }
       ]
     },
