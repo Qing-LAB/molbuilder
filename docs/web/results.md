@@ -765,7 +765,10 @@ its curve — Plotly's own legend, nothing built. **The selected frame's
 `customized` rows** are MolView's Info page's, which follows the frame bar
 ([`molview.md`](?doc=web/molview.md) § 6.4) — never a second copy here.
 **The PDOS of a selection** is asked at the selected frame and voltage
-(`/api/transport/pdos`, its `frame`). **One selection model, one lookup,
+(`/api/transport/pdos`, its `frame`) — once the frame has settled: while
+MolView's movie plays the charts follow each frame from the record and no
+PDOS is asked, and its stop asks at the frame it stopped on
+([`molview.md`](?doc=web/molview.md) § 9.2). **One selection model, one lookup,
 one wording**: the frame is MolView's and the voltage the report's, a point is
 found by the pair of them and nothing else, and every place a point is named
 — the legend, the table, the ladder — says it as `lib/results/point-words.js`

@@ -1133,7 +1133,17 @@ const WORKSPACE_TAG = "results:transport";
             state.frames.setCurrentFrame(state.pendingFrame);
             state.pendingFrame = null;
         }
-        state.unsubFrame = state.frames.onFrameChange(() => _loadPdos(state));
+        /* ...EXCEPT WHILE THE MOVIE PLAYS: a frame it passes through is not
+         * one being looked at, so the charts follow it -- drawn here, from
+         * the record -- and each selection's PDOS is asked once, at the
+         * frame playback stops on (`results.md` § 2.5). */
+        state.unsubFrame = state.frames.onFrameChange(() => {
+            if (handle.isPlaying()) _redraw(state);
+            else _loadPdos(state);
+        });
+        state.unsubPlay = handle.onPlaybackChange((on) => {
+            if (!on) _loadPdos(state);
+        });
         _redraw(state);
     }
 
@@ -1157,7 +1167,7 @@ const WORKSPACE_TAG = "results:transport";
         mount(host, file, ctx) {
             const state = { bias: null, points: [], pdos: [], nodes: {},
                             conv: null, handle: null, frames: null,
-                            unsubFrame: null, drawn: false,
+                            unsubFrame: null, unsubPlay: null, drawn: false,
                             disposed: false, file: file, dir: _dirOf(file),
                             nFrames: 1, average: {}, pendingFrame: null,
                             frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
@@ -1209,6 +1219,7 @@ const WORKSPACE_TAG = "results:transport";
                 dispose() {
                     state.disposed = true;
                     try { state.unsubFrame && state.unsubFrame(); } catch (_) { /* gone */ }
+                    try { state.unsubPlay && state.unsubPlay(); } catch (_) { /* gone */ }
                     try { state.handle && state.handle.dispose(); } catch (_) { /* gone */ }
                     host.querySelectorAll(".plot-box").forEach(
                         (p) => root.molbuilder.plotBox.release(p));

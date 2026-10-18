@@ -1902,7 +1902,7 @@ module is importable, and this is the only import a consumer ever writes.
 |---|---|
 | find out whether it got a viewer, and tear it down | reaching the 3Dmol object, or the DOM inside the card |
 | reach everything this viewer holds — the structure, the selection, the frames, the drawing settings | reaching *another* viewer's; or reaching any of it except through the model, which is where the rules and the read-only gate live |
-| run the movie — play, pause, ask whether it is playing | owning the timer. Playback lives in the mount layer and moves the frame through the same write everyone else uses (§ 6.4) |
+| run the movie — play, pause, ask whether it is playing, hear it start and stop (`onPlaybackChange(fn)`, `fn(playing)`) | owning the timer. Playback lives in the mount layer and moves the frame through the same write everyone else uses (§ 6.4) |
 | hear that something changed | polling for it |
 | change what the viewer shows — the data, a switch, a drawing setting (§ 10.1) | hand in a finished appearance. There is no "set the arrows", "set the atom-number labels", "show a busy state", "add a toggle". Arrows, labels and the highlight are **worked out from the data** by the renderEngine, never given to it |
 
@@ -1922,10 +1922,21 @@ In the examples below that one route is written `viewer.data` — the handle is 
 viewer, and `viewer.data` is that viewer's model. There is no other way to it,
 and no other viewer's model is reachable from it.
 
-**This is true of the code today.** The handle carries thirteen names and not one
+**This is true of the code today.** The handle carries sixteen names and not one
 of them mirrors the model: `ok` and `error`, `dispose`, `data`, `play` / `pause`
-/ `isPlaying` / `setLoop` / `getLoop` / `setSpeed` / `getSpeed`, `onChange`, and
-`resetView`. There is no forwarded read left to retire.
+/ `isPlaying` / `onPlaybackChange` / `setLoop` / `getLoop` / `setSpeed` /
+`getSpeed`, `onChange`, and the window's actions `resetView`, `lookAlong` and
+`capture`. There is no forwarded read left to retire.
+
+**A frame the movie passes through is not one being looked at.** Playback
+moves the frame through the one write (§ 6.4), so everything following the
+frame redraws at each — drawing is local. What asks the SERVER about the frame
+shown waits for the frame playback stops on: the view context writes nothing
+while the movie plays and writes once when it stops (§ 11.2b), and a tab's
+per-frame question — the transport report's PDOS of a selection
+([`results.md`](?doc=web/results.md) § 2.5) — is asked once, there. Playback
+is announced once per start and once per stop (`onPlaybackChange`), never on a
+restart at a new speed.
 
 **Playback's settings are set and read; playback itself is just done.** `play`
 takes **no arguments** — speed is `setSpeed(ms)` / `getSpeed()`, beside `setLoop`
@@ -3564,7 +3575,9 @@ a viewer keeps what § 11.2 deliberately keeps out of the truth:
 | `match` | the structure this context belonged to (atom + frame counts) |
 
 **Writing it is never an edit.** The lane's writer is MolView's own, debounced,
-triggered by view/switch/frame changes and by the end of a camera gesture — and
+triggered by view/switch/frame changes and by the end of a camera gesture — a
+frame the movie passes through excepted: while it plays nothing is written, and
+its stop writes the frame it stopped on (§ 9.2) — and
 it does not touch the timeline, does not rewrite the draft, and does not raise
 the badge. That is the whole of the user's rule: *looking is not changing.*
 A saved state, the draft, and both exports read nothing from it.

@@ -315,6 +315,74 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses():
     assert out["playing"] is False, "pause must stop the timer"
 
 
+def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
+    """§ 9.2, § 11.2b: "a frame the movie passes through is not one being
+    looked at" -- while it plays the view context writes nothing, and its stop
+    writes once, the frame it stopped on; playback is announced once per start
+    and once per stop, never on a restart at a new speed.
+
+    THE SILENT FAILURE: a slow movie -- a frame each 450 ms, past the lane's
+    400 ms wait -- saves the view to the server at every frame it passes; or a
+    stopped movie saves nothing and the page comes back on the frame it started
+    from.  Through the real mount: its playback, its model, its lane.
+    """
+    out = _run(
+        """
+        const writes = [];
+        const files = new Map();
+        const door = {
+            read: async () => null, write: async () => {},
+            workspaceId: (tag) => "id-" + tag,
+            persist(tag, bytes, identity) {
+                files.set(identity.workspace_id, bytes);
+                writes.push({ tag, frame: bytes && bytes.frame });
+                return true;
+            },
+            readState: async () => null,
+            pruneStatesAbove: () => {},
+        };
+        const host = globalThis.__makeHost();
+        const viewer = await MV.mount(host, door, { owner: "test" });
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]],
+                                  [[4,0,0],[5,0,0]]]);
+        await new Promise(r => setTimeout(r, 600));    // the load's own write
+        const lane = () => writes.filter((w) => w.tag === "test:ui");
+        const before = lane().length;
+
+        const told = [];
+        viewer.onPlaybackChange((on) => told.push(on));
+        const passed = [];
+        viewer.data.onFrameChange((f) => passed.push(f));
+        viewer.setSpeed(450);
+        viewer.play();
+        await new Promise(r => setTimeout(r, 700));
+        viewer.setSpeed(450);                         // a restart, mid-movie
+        await new Promise(r => setTimeout(r, 1000));
+        const during = lane().slice(before);
+        viewer.pause();
+        const stoppedOn = viewer.data.currentFrame();
+        await new Promise(r => setTimeout(r, 600));
+        console.log(JSON.stringify({
+            passed, during, told,
+            after: lane().slice(before + during.length), stoppedOn,
+        }));
+        """
+    )
+    assert len(out["passed"]) >= 2, f"the movie never moved: {out['passed']}"
+    assert out["during"] == [], (
+        f"the playing movie saved the view at frames it passed: {out['during']}"
+    )
+    assert out["after"] == [{"tag": "test:ui", "frame": out["stoppedOn"]}], (
+        f"its stop must save once, the frame it stopped on "
+        f"({out['stoppedOn']}): {out['after']}"
+    )
+    assert out["told"] == [True, False], (
+        f"playback is told once as it starts and once as it stops, the "
+        f"restart at a new speed not at all: {out['told']}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # § 8.3 / § 8.5 — the card's own controls
 # ---------------------------------------------------------------------------

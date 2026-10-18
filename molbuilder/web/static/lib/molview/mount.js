@@ -174,17 +174,6 @@ export async function mount(hostEl, workspace, opts) {
     engine.drawingChanged(model.view.get());
     parts.push(model.view.subscribe((settings) => engine.drawingChanged(settings)));
 
-    /* The view context (§ 11.2b): how the user was looking, restored on the
-     * first structure and written back debounced -- never a state, never the
-     * badge, never the draft.  A read-only viewer has no truth lane, so the
-     * lane carries its selection too. */
-    parts.push(attachUiContext({
-        model, engine, workspace,
-        owner: opts.owner,
-        canvasEl: card.canvas,
-        hasTruthLane: opts.mode !== "readonly",
-    }));
-
     /* A click in the window arrives at the bottom and is the data's business,
      * not the drawing's (§ 9.5).  WHICH TRACK it lands in — the selection or
      * the measurement — is `model.pickAtom`'s to decide, and this file does not
@@ -229,17 +218,41 @@ export async function mount(hostEl, workspace, opts) {
     // setInterval. § 1.1 fixes the range and the default.
     let speedMs = SPEED_DEFAULT_MS;
 
-    function stop() {
-        if (timer !== null) { clearInterval(timer); timer = null; }
+    /* WHO HEARS PLAYBACK START AND STOP (§ 9.2): what asks the server about
+     * the frame shown -- the view lane, a tab's per-frame question -- waits
+     * for the frame playback stops on rather than asking at each one it
+     * passes.  Told once per change, never on a restart at a new speed. */
+    const playbackHeard = new Set();
+    function announce() {
+        const on = timer !== null;
+        for (const fn of Array.from(playbackHeard)) {
+            try { fn(on); } catch (_) { /* a listener's error is its own */ }
+        }
     }
-    parts.push(stop);
+    function halt() {
+        if (timer === null) return false;
+        clearInterval(timer);
+        timer = null;
+        return true;
+    }
+    function stop() {
+        if (halt()) announce();
+    }
+    parts.push(() => { halt(); playbackHeard.clear(); });
+    const playback = {
+        isPlaying: () => timer !== null,
+        onChange(fn) {
+            playbackHeard.add(fn);
+            return () => playbackHeard.delete(fn);
+        },
+    };
 
     /* PLAY TAKES NO ARGUMENTS: speed is SET (below) and then played at. § 9.2 —
      * the handle exposes what a viewer does, never the knobs it does it with. */
     function play() {
-        stop();
+        const was = halt();
         const count = model.frameCount();
-        if (count < 2) return;
+        if (count < 2) { if (was) announce(); return; }
         timer = setInterval(() => {
             const n = model.frameCount();
             const next = model.currentFrame() + 1;
@@ -250,7 +263,20 @@ export async function mount(hostEl, workspace, opts) {
             }
             model.setCurrentFrame(next);
         }, speedMs);
+        if (!was) announce();
     }
+
+    /* The view context (§ 11.2b): how the user was looking, restored on the
+     * first structure and written back debounced -- never a state, never the
+     * badge, never the draft.  A read-only viewer has no truth lane, so the
+     * lane carries its selection too.  After playback, which it hears. */
+    parts.push(attachUiContext({
+        model, engine, workspace,
+        owner: opts.owner,
+        canvasEl: card.canvas,
+        hasTruthLane: opts.mode !== "readonly",
+        playback,
+    }));
 
     /* ── The handle (§ 9.2) ────────────────────────────────────────────────
      *
@@ -338,6 +364,9 @@ export async function mount(hostEl, workspace, opts) {
         play,
         pause: stop,
         isPlaying() { return timer !== null; },
+        // Hear playback start and stop, rather than polling `isPlaying`:
+        // `fn(playing)`; returns its disposer.
+        onPlaybackChange(fn) { return playback.onChange(fn); },
         setLoop(on) { loop = !!on; },
         getLoop()   { return loop; },
 

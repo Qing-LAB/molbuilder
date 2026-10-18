@@ -24,7 +24,9 @@ const WRITE_DELAY_MS = 400;
 /**
  * Wire the lane onto a mounted viewer.  Returns a disposer.
  *
- * @param deps  {model, engine, workspace, owner, canvasEl, hasTruthLane}
+ * @param deps  {model, engine, workspace, owner, canvasEl, hasTruthLane,
+ *              playback} -- ``playback`` the mount's {isPlaying, onChange},
+ *              so a movie's passing frames write nothing
  *              `hasTruthLane` is true for an editable viewer, whose draft
  *              already owns the selection (§ 11.2b: two lanes restoring one
  *              fact is § 5.2's drift).
@@ -151,11 +153,18 @@ export function attachUiContext(deps) {
 
     // The writers: any view setting, any switch or selection change, the
     // displayed frame, and the end of a camera gesture.  All debounced into
-    // one write; the pose is read AT the write, never tracked.
+    // one write; the pose is read AT the write, never tracked.  A frame the
+    // movie passes through is not one the user stopped at: while it plays
+    // nothing is written, and its stop writes the frame it stopped on.
+    const playback = deps.playback || null;
+    const playing = () => !!(playback && playback.isPlaying());
     offs.push(model.view.subscribe(schedule));
     offs.push(model.selection.subscribe(schedule));
     offs.push(model.measurement.subscribe(schedule));
-    offs.push(model.onFrameChange(schedule));
+    offs.push(model.onFrameChange(() => { if (!playing()) schedule(); }));
+    if (playback) {
+        offs.push(playback.onChange((on) => { if (!on) schedule(); }));
+    }
     if (canvasEl && typeof canvasEl.addEventListener === "function") {
         const onGesture = () => schedule();
         canvasEl.addEventListener("pointerup", onGesture);
