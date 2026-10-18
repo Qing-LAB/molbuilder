@@ -439,6 +439,9 @@ Set on every response by an `after_request` hook (`app.py`):
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: same-origin`, and — over HTTPS only —
   `Strict-Transport-Security`.
+- **The one exception is the notebook passed through at `/jupyter/…`**: its
+  answers carry Jupyter's own policy and `X-Frame-Options: SAMEORIGIN`, so the
+  JupyterNB page may frame them (`web/jupyter.md` § 2).
 - **CSRF** — there is no token layer. The defense is `connect-src 'self'` (the
   CSP blocks cross-origin fetches) plus `SameSite=Lax` session cookies on
   auth-enabled deployments. No CORS headers are sent (same-origin only). The
@@ -647,12 +650,15 @@ auth routes.
 `/results`, `/documents`, `/jupyternb`, `/molview-demo` (tab pages);
 `GET /api/health` → `{ ok, version }`;
 `GET /api/jupyter/status` → the notebook tab's whole state — env installed,
-process up, answering, the open notebooks' paths, and **the token, only when
-the caller may control it** (`web/jupyter.md` § 6); `POST /api/jupyter/start`
+process up, answering, and the open notebooks' paths **only when the caller
+may control it** (`web/jupyter.md` § 5.1); `POST /api/jupyter/start`
 · `POST /api/jupyter/stop` → **404** with no supervisor to ask (a button that
 cannot work is worse than an absent one), **403** for a caller who may not run
 code on this machine, **202** when the signal is delivered, **409** when the
-supervisor refuses it;
+supervisor refuses it; **`/jupyter/…`** → the notebook itself, passed through
+to Jupyter on `127.0.0.1` — every method, and the kernel's WebSocket joined —
+behind the same 404 and 403, **502** when no notebook answers
+(`web/jupyter.md` § 2, § 6);
 `GET /api/backends` → `{ ok, available, auto_name }`;
 `GET /vendor/plotly.min.js` (the Plotly bundle, 404 if absent).
 

@@ -2446,17 +2446,11 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # THE NOTEBOOK'S COMMAND LINE, built here and handed over -- the
     # supervisor holds a list of strings and imports nothing of the
     # application (docs/web/jupyter.md § 3.4).  Nothing starts yet: the tab
-    # or `molbuilder jupyter start` asks for it.
-    #
-    # RESOLVED TLS, not the raw flags.  The server CHILD resolves its own
-    # (`cmd_serve`'s `_resolve_tls`, which also reads the `tls` block in
-    # molbuilder.json), and the tab builds the frame URL from
-    # `location.protocol`, so a notebook on the other scheme dies as mixed
-    # content.  The two schemes must agree, and this is where they are made
-    # to.
-    _nb_cert, _nb_key = _resolve_tls(cert, key)
+    # or `molbuilder jupyter start` asks for it.  It listens on 127.0.0.1 and
+    # the browser reaches it through this server (`jupyter.md` § 2), so it
+    # takes no address and no certificate of this one's.
     from .jupyter import port_clash, shepherd_argv
-    notebook = shepherd_argv(port, host=host, cert=_nb_cert, key=_nb_key)
+    notebook = shepherd_argv(port)
     # SAY IT BEFORE DETACHING.  This is the last moment anything reaches the
     # terminal, and a clash is knowable now (`jupyter.port_clash`).  A
     # WARNING, not a refusal: the web server on this port is perfectly
@@ -2727,10 +2721,11 @@ def cmd_jupyter_status(port):
     for _nb in (st["open"] or []):
         click.echo(f"open       {_nb.get('path', '?')}"
                    f"   ({_nb.get('state') or 'unknown'})")
-    # THE TOKEN IS NOT PRINTED.  It authenticates a browser to a live kernel,
-    # which is code execution as this account; the tab reads it server-side.
+    # THE TOKEN IS NOT PRINTED.  It authenticates to a live kernel, which is
+    # code execution as this account, and molbuilder never hands it out.
     if st["url"]:
-        click.echo(f"url        {st['url']}  (the tab adds the token)")
+        click.echo(f"url        {st['url']}  (on this machine; the tab "
+                   f"reaches it through molbuilder at /jupyter/)")
     raise SystemExit(0 if st["answering"] else 1)
 
 
@@ -2781,10 +2776,7 @@ def _survey_notebooks() -> int:
 
 @jupyter_group.command("_shepherd", hidden=True)
 @click.option("--serve-port", type=int, required=True)
-@click.option("--host", default="127.0.0.1")
-@click.option("--cert", default=None)
-@click.option("--key", default=None)
-def cmd_jupyter_shepherd(serve_port, host, cert, key):
+def cmd_jupyter_shepherd(serve_port):
     """NOT FOR PEOPLE -- the process the supervisor launches.
 
     Hidden because running it by hand gets the parentage wrong: started from a
@@ -2793,7 +2785,7 @@ def cmd_jupyter_shepherd(serve_port, host, cert, key):
     the verb.
     """
     from .jupyter import run_shepherd
-    raise SystemExit(run_shepherd(serve_port, host=host, cert=cert, key=key))
+    raise SystemExit(run_shepherd(serve_port))
 
 
 def _probe_health(port: int, *, timeout: float = 5.0):

@@ -86,7 +86,7 @@ wrong for at least one of them.
 | **Does this traffic look hostile?** | the rate limiter | empty `429`, `Connection: close`, 1 h | `web/rate_limit.py` |
 | **May this person read and clear the block list?** | the `admin` list | `403` | `web/admin.py` |
 | **May this person stop the process everyone shares?** | supervisor **and** the `admin` list | the route **does not exist** — `404` | `web/app.py` |
-| **May this person run arbitrary code on this machine?** | supervisor **and** the `admin` list — *or* loopback on a server with no sign-in | `404` with no supervisor to ask, `403` with one | `web/blueprints/jupyter.py` |
+| **May this person run arbitrary code on this machine?** | supervisor **and** the `admin` list — *or*, on a server with no sign-in, loopback asked by a loopback name | `404` with no supervisor to ask, `403` with one | `web/blueprints/jupyter.py` |
 
 Read rows three to five together: **one list answers all of them**, and they
 refuse in different ways — a 403 for the block list, an absent route for the
@@ -95,8 +95,8 @@ restart, and 404-then-403 for the notebook. § 5 and § 6 are why.
 ### 2.0 The fifth gate — a live kernel *(added 2026-09-15)*
 
 **This document listed four gates while a fifth had shipped**, and the fifth is
-the one that hands out arbitrary code execution: `POST /api/jupyter/start` and
-`/stop`. The blueprint said so in its own docstring — *"a live kernel is
+the one that hands out arbitrary code execution: `POST /api/jupyter/start`,
+`/stop`, and the notebook itself, passed through at `/jupyter/…`. The blueprint said so in its own docstring — *"a live kernel is
 arbitrary code execution as the account running the server — the same
 capability `POST /api/admin/reload` guards, arrived at from the other
 direction"* — and then cited `jupyter.md` § 6 rather than this page, which
@@ -125,11 +125,15 @@ Three things make it differ from the restart gate, and each is deliberate:
    loopback, and a server without sign-in gives nobody off-machine the button —
    which matters, because "no providers" does not force a loopback bind.
 
-**And the token is the same capability.** Reaching a running kernel is the same
-code execution as starting one, so `GET /api/jupyter/status` withholds the
-notebook's token — and the paths of the open notebooks — from any caller who
-may not control it, by never producing them. `web/jupyter.md` § 5.1 is the
-payload contract; § 6 there is the exposure rule.
+**And reaching the notebook is the same capability.** Using a running kernel is
+the same code execution as starting one, so the `/jupyter/…` pass-through asks
+this gate on every request before anything reaches Jupyter — refusing another
+page's request (`Origin`) as well as another person — and presents the
+notebook's token itself; molbuilder never hands it to the browser. `GET
+/api/jupyter/status` withholds the paths of the open notebooks from any
+caller who may not control it, by never producing them. `web/jupyter.md`
+§ 5.1 is the payload contract; § 2 and § 6 there are the pass-through and the
+exposure rule.
 
 ### 2.1 A request, walking through them
 

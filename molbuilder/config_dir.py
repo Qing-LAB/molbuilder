@@ -314,9 +314,9 @@ def serve_pidfile(port: int) -> Path:
 def ports_with_pidfile(prefix: str = "serve") -> List[int]:
     """Every port that has a pidfile -- `serve_pidfile` INVERTED.
 
-    One home for the ``<prefix>-<port>.pid`` shape, in both directions, for
-    the reason `jupyter.serve_port_of` exists: a second place that knows how
-    to take the name apart drifts the day the name changes.
+    One home for the ``<prefix>-<port>.pid`` shape, in both directions: a
+    second place that knows how to take the name apart drifts the day the
+    name changes.
 
     **This is what lets `serve status` answer without being told a port**:
     the port is on disk (`plan.md` § 5n, J14).

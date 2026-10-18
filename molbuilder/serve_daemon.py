@@ -351,11 +351,11 @@ def supervise(port: int, child_argv: List[str], *,
 
     **``SIGUSR1`` / ``SIGUSR2`` start and stop the NOTEBOOK server**
     (`docs/web/jupyter.md` § 3.4).  It is parented HERE, one level above the
-    server child, and the reason is the reload: this loop respawns that child
-    on `RELOAD_EXIT_CODE`, so a Jupyter parented to it would be killed by
-    every unrelated code change -- destroying notebook state for a reason that
-    had nothing to do with notebooks.  Parented here it survives a reload and
-    goes when the daemon goes.
+    server child: this process holds its start command and outlives the
+    child.  **A restart of the server stops it** -- ``SIGHUP`` (`serve
+    restart`) or the child's `RELOAD_EXIT_CODE` (the page's Reload) -- so no
+    notebook runs on code its server no longer runs; a crashed child
+    respawned leaves it running, and it goes when the daemon goes.
 
     That is also why the web tab cannot start it directly: the tab runs IN the
     server child.  It signals this process instead, and so does
@@ -563,6 +563,13 @@ def supervise(port: int, child_argv: List[str], *,
     code = 0
     try:
         while True:
+            # A STOP OR A RESTART ASKED WHILE THE LAST ONE WAS HANDLED -- the
+            # notebook's stop above can take seconds: a stop is honoured
+            # before any child starts, and a restart is the child about to.
+            if state["term"]:
+                _note(roll, "stopped on request")
+                return 0
+            state["hup"] = False
             _note(roll, f"starting child: {' '.join(child_argv)}")
             child = subprocess.Popen(child_argv, env=env,
                                      stdout=subprocess.PIPE,
@@ -583,6 +590,9 @@ def supervise(port: int, child_argv: List[str], *,
             if state["hup"]:
                 state["hup"] = False
                 _note(roll, "restart requested -- starting a fresh server")
+                # A RESTART OF THE SERVER STOPS ITS NOTEBOOK (`jupyter.md`
+                # § 3.4): no notebook runs on code its server no longer runs.
+                _notebook_action("stop")
             else:
                 action = child_exit_action(code)
                 if action == "exit":
@@ -599,6 +609,7 @@ def supervise(port: int, child_argv: List[str], *,
                                 f"respawning (the hung-child repair)")
                 else:
                     _note(roll, "reload requested -- starting a fresh server")
+                    _notebook_action("stop")
             restarts += 1
             if max_restarts is not None and restarts > max_restarts:
                 return code

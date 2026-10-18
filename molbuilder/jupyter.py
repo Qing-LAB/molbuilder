@@ -1,8 +1,8 @@
 """The live-notebook process: start it, stop it, and leave nothing behind.
 
-Contract: `docs/web/jupyter.md`.  The shape in one line -- **Flask cannot carry
-the kernel**, so the tab is an iframe pointed at a Jupyter server molbuilder
-starts and stops, and the WebSocket goes browser -> Jupyter directly.
+Contract: `docs/web/jupyter.md`.  The shape in one line -- a Jupyter server
+molbuilder starts and stops, listening on 127.0.0.1 under `/jupyter/`, which
+molbuilder's own server passes through on its one port (§ 2).
 
 THE LIFECYCLE IS THE HARD HALF.  Three layers, because no single one covers
 every way a parent can die -- and **this module owns the first two.**  The
@@ -43,12 +43,10 @@ anything here (`serve_daemon.stop_by_pidfile`).
    REPORTED stale, never signalled.  **That code is in `serve_daemon`, not
    here** -- see above.
 
-**PARENTED TO THE SUPERVISOR, not to the server child** (`jupyter.md` § 3.4 --
-the user's decision against two alternatives, reaffirmed 2026-09-14).  The
-supervisor respawns the server child on `RELOAD_EXIT_CODE`, so a Jupyter
-parented there would be killed by every unrelated code reload, destroying
-notebook state for a change that had nothing to do with it.  One level up it
-survives a reload and dies with the daemon.
+**PARENTED TO THE SUPERVISOR, not to the server child** (`jupyter.md` § 3.4):
+the supervisor holds its start command and answers the Start and Stop
+buttons.  A restart of the server stops it -- no notebook runs on code its
+server no longer runs -- and it dies with the daemon.
 
 **WHY A SHEPHERD PROCESS AT ALL**, rather than the supervisor running
 ``<mgr> run -n molbuilder-jupyternb jupyter lab`` itself:
@@ -101,26 +99,24 @@ _STOP_GRACE_S = 4.0
 SCHEMA = "molbuilder/jupyter@1"
 
 
-def jupyter_port(serve_port: int) -> int:
-    """The port the notebook listens on for a molbuilder serving on
-    ``serve_port``.
+#: WHERE THE NOTEBOOK IS, ON MOLBUILDER'S OWN ADDRESS (`jupyter.md` § 2):
+#: Jupyter's ``ServerApp.base_url``, the path molbuilder passes through to
+#: it, and the base the tab frames -- one value, read by all three.
+BASE_PATH = "/jupyter"
 
-    **Derived, not configured.**  One number to remember, and the pair moves
-    together when a second molbuilder runs on another port -- the case a fixed
-    default would break.
+#: Where Jupyter listens: this machine only.  The browser reaches it through
+#: molbuilder's pass-through, never directly (`jupyter.md` § 2, § 6).
+LOOPBACK = "127.0.0.1"
+
+
+def jupyter_port(serve_port: int) -> int:
+    """The port the notebook listens on, on :data:`LOOPBACK`, for a
+    molbuilder serving on ``serve_port``.
+
+    **Derived, not configured.**  The pair moves together when a second
+    molbuilder runs on another port -- the case a fixed default would break.
     """
     return serve_port + 1
-
-
-def serve_port_of(notebook_port: int) -> int:
-    """The serve port a notebook port belongs to -- `jupyter_port` inverted.
-
-    One home for the pairing, in both directions.  The CSP grant in
-    `notebook_argv` names molbuilder's own port through this; a security
-    header is the last place two copies of one derivation should be allowed
-    to disagree.
-    """
-    return notebook_port - 1
 
 
 def port_clash(serve_port: int) -> Optional[str]:
@@ -137,8 +133,8 @@ def port_clash(serve_port: int) -> Optional[str]:
     measured 2026-09-15 against a live notebook on 6007: *"ERROR: the Jupyter
     server could not be started because port 6007 is not available"*, exit 1.
     Without it jupyter-server picks a random free port out of fifty while the
-    runtime file, the `frame-ancestors` grant and `answering()` all keep
-    naming ``p + 1``, and the tab reports "wedged" over a healthy notebook.
+    runtime file, the pass-through and `answering()` all keep naming
+    ``p + 1``, and the tab reports "wedged" over a healthy notebook.
 
     So the gap this closes is not the crash; it is that **nothing said so in
     advance when it was knowable**.  Two questions, in order of how much they
@@ -189,7 +185,7 @@ def port_clash(serve_port: int) -> Optional[str]:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("127.0.0.1", nb))
+            s.bind((LOOPBACK, nb))
     except OSError:
         return (f"something is already listening on port {nb}, which is the "
                 f"port this molbuilder's notebook needs ({serve_port} + 1).  "
@@ -197,22 +193,15 @@ def port_clash(serve_port: int) -> Optional[str]:
     return None
 
 
-def shepherd_argv(serve_port: int, *, host: str,
-                  cert: Optional[str] = None,
-                  key: Optional[str] = None) -> List[str]:
+def shepherd_argv(serve_port: int) -> List[str]:
     """The command line the SUPERVISOR launches, spelled once.
 
     Built by the `serve` verb and handed to `supervise`, exactly as the server
     child's own argv is -- so the supervisor holds a list of strings and never
     imports what runs at the other end.
     """
-    argv = [sys.executable, "-m", "molbuilder", "jupyter", "_shepherd",
-            "--serve-port", str(serve_port), "--host", host]
-    if cert:
-        argv += ["--cert", cert]
-    if key:
-        argv += ["--key", key]
-    return argv
+    return [sys.executable, "-m", "molbuilder", "jupyter", "_shepherd",
+            "--serve-port", str(serve_port)]
 
 
 # WHERE THE FILES ARE: `config_dir`, asked directly.
@@ -276,20 +265,16 @@ def answering(serve_port: int, *, timeout: float = 1.5) -> bool:
 
     The SECOND question (`deployment.md` § 1.0b's rule): a process that is up
     and not answering is exactly the failure a single word would call healthy.
-    TLS is not verified here -- molbuilder gave Jupyter the certificate, and
-    what is being asked is *"is it answering"*, not *"is it trusted"*.
     """
     import urllib.error
     import urllib.request
 
-    from .serve_daemon import unverified_ctx
     runtime = read_runtime(serve_port)
     url = str(runtime.get("url") or "")
     if not url:
         return False
     try:
-        with urllib.request.urlopen(url, timeout=timeout,
-                                    context=unverified_ctx()):
+        with urllib.request.urlopen(url, timeout=timeout):
             return True
     except urllib.error.HTTPError:
         # It answered -- with a refusal, because no token was presented.
@@ -316,7 +301,6 @@ def open_notebooks(serve_port: int, *,
     import json
     import urllib.request
 
-    from .serve_daemon import unverified_ctx
     runtime = read_runtime(serve_port)
     base  = str(runtime.get("base") or "")
     token = str(runtime.get("token") or "")
@@ -327,8 +311,7 @@ def open_notebooks(serve_port: int, *,
         headers={"Authorization": f"token {token}"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout,
-                                    context=unverified_ctx()) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             sessions = json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001 - a decoration, never a failure
         return []
@@ -349,13 +332,12 @@ def status(serve_port: int, *, include_private: bool = True
     """**Two questions, answered separately**, for `deployment.md` § 1.0b's
     reason: the wedge worth catching is up-and-not-answering.
 
-    `include_private=False` withholds the two things a caller who may not
-    CONTROL the notebook has no business with: the token, which authenticates
-    a browser to a live kernel, and the paths of the notebooks currently open,
-    which are somebody's project tree.  Withholding them here rather than
-    deleting them afterwards is the difference between a credential that was
-    never produced and one whose safety depends on a later statement in a
-    function that will grow.
+    `include_private=False` withholds what a caller who may not CONTROL the
+    notebook has no business with: the paths of the notebooks currently
+    open, which are somebody's project tree -- never produced, rather than
+    deleted afterwards.  The token is not in it at all: the pass-through
+    presents it, and molbuilder never hands it to the browser (`jupyter.md`
+    § 2).
     """
     pid = read_pid(serve_port)
     state = pid_state(pid)
@@ -369,8 +351,6 @@ def status(serve_port: int, *, include_private: bool = True
         "port": jupyter_port(serve_port),
         "answering": up,
         "url": str(runtime.get("url") or ""),
-        "token": (str(runtime.get("token") or "")
-                  if include_private else ""),
         # Only when there is something to ask: one HTTP call, and asking a
         # server that is not answering is a timeout on every poll.
         "open": (open_notebooks(serve_port)
@@ -739,9 +719,8 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
     return out
 
 
-def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
+def notebook_argv(conda: str, env_name: str, *, port: int,
                   root_dir: str,
-                  cert: Optional[str], key: Optional[str],
                   lab_dirs: Optional[Dict[str, str]] = None) -> List[str]:
     """The ``jupyter lab`` command line, as the door will carry it.
 
@@ -761,52 +740,29 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     default, so the flag has to be ABSENT rather than duplicated -- an
     explicit trait would win over the default and the environment would be
     ignored.
-    * ``tornado_settings`` -- the ``frame-ancestors`` grant.  Jupyter refuses
-      to be framed by default and the tab is an iframe (§ 2).
-    * ``ip`` / ``port`` / ``root_dir`` -- the bind address, the derived port,
-      the projects tree.
-    * ``certfile`` / ``keyfile`` -- only when `serve` itself has TLS.
+    * ``ip`` / ``port`` / ``base_url`` -- :data:`LOOPBACK`, the derived
+      port, and :data:`BASE_PATH`, the path molbuilder passes through to it
+      (§ 2): every URL Jupyter writes is then a path on molbuilder's own
+      address.
+    * ``root_dir`` -- the projects tree.
     * ``lab_dirs`` -- what `prepare_lab_home` generated, keyed by the option
       each answers, so a new generated path is a row in the table and
       nothing here.
     """
-    import json
     from .envs.builds import conda_run_argv
-    # WHO MAY FRAME THIS.  Jupyter refuses framing by default (§ 2), and the
-    # parent is molbuilder's page -- whose ORIGIN is whatever the person
-    # reached it at, which this process cannot know: it knows the address it
-    # BOUND to, and a browser may arrive through a tunnel or a name.  So the
-    # grant is bounded by PORT rather than by host -- molbuilder's own serve
-    # port, both schemes.  An attacker would have to be serving on that exact
-    # port of some host the victim visits, and the notebook still refuses
-    # every request without the token.  Naming a single host here instead
-    # would break the frame for every browser that is not on this machine.
-    # THE INVERSE OF `jupyter_port`, asked of it rather than re-derived.  A
-    # second `port - 1` here would let the two drift the day the derivation
-    # changes, and the drift would land in a SECURITY header -- the grant
-    # would silently name a port that is not molbuilder's.
-    serve_port = serve_port_of(port)
-    frame_ancestors = (f"frame-ancestors 'self' "
-                       f"http://*:{serve_port} https://*:{serve_port}")
     settings: Dict[str, object] = dict(load_rules().server)
     settings.update({
-        "ServerApp.ip": host,
+        "ServerApp.ip": LOOPBACK,
         "ServerApp.port": port,
+        "ServerApp.base_url": f"{BASE_PATH}/",
         "ServerApp.root_dir": root_dir,
-        "ServerApp.tornado_settings": json.dumps(
-            {"headers": {"Content-Security-Policy": frame_ancestors}}),
     })
     settings.update(lab_dirs or {})
-    if cert and key:
-        settings["ServerApp.certfile"] = cert
-        settings["ServerApp.keyfile"] = key
     inner = ["jupyter", "lab", "--no-browser", *option_argv(settings)]
     return list(conda_run_argv(conda, env_name, *inner))
 
 
-def run_shepherd(serve_port: int, *, host: str,
-                 cert: Optional[str] = None,
-                 key: Optional[str] = None) -> int:
+def run_shepherd(serve_port: int) -> int:
     """Be the notebook's parent: start it through the door, and take the
     whole group down when told.
 
@@ -857,22 +813,14 @@ def run_shepherd(serve_port: int, *, host: str,
     # AND THE REST OF IT.  `projects_root()` reads `molbuilder.json` and
     # `notebook_argv` reads `data/jupyter.toml` (through `load_rules`) --
     # both can raise.
-    argv = notebook_argv(caps.conda_binary, env_name, host=host, port=port,
-                         root_dir=str(projects_root()),
-                         cert=cert, key=key, lab_dirs=lab_dirs)
-    scheme = "https" if (cert and key) else "http"
-    # BRACKET AN IPv6 LITERAL.  Unbracketed, `--host ::1` gives
-    # `http://::1:8001/lab`, which `urlopen` cannot parse, and `answering()`
-    # would report down forever.  (The browser rebuilds the base from
-    # `location.hostname`.)
-    _hostpart = f"[{host}]" if ":" in host else host
+    argv = notebook_argv(caps.conda_binary, env_name, port=port,
+                         root_dir=str(projects_root()), lab_dirs=lab_dirs)
+    base = f"http://{LOOPBACK}:{port}{BASE_PATH}"
     ensure_runtime_dir()
     jupyter_pidfile(serve_port).write_text(f"{os.getpid()}\n")
     # 0600: the token authenticates a browser to a live kernel.
     write_json(jupyter_runtime(serve_port),
-               {"url": f"{scheme}://{_hostpart}:{port}/lab",
-                "base": f"{scheme}://{_hostpart}:{port}",
-                "token": token},
+               {"url": f"{base}/lab", "base": base, "token": token},
                mode=PRIVATE_FILE_MODE)
 
     def _on_stop(*_):

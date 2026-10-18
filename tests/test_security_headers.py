@@ -35,10 +35,9 @@ _POLICY = {
 @pytest.mark.parametrize("path,more", [
     ("/api/health", {}),
     ("/results", {}),
-    # The JupyterNB tab frames the notebook, another origin: the same
-    # policy with `frame-src` added (`web/jupyter.md`), `'none'` when the
-    # server was started on no port this request knows.
-    ("/jupyternb", {"frame-src": ["'none'"]}),
+    # The JupyterNB tab frames the notebook from its own origin, at
+    # `/jupyter/` (`web/jupyter.md` § 2): every page's policy, unchanged.
+    ("/jupyternb", {}),
 ])
 def test_every_response_carries_the_security_headers(client, path, more):
     """`app.py`'s `_add_security_headers`, on an API answer and on pages:
@@ -48,8 +47,7 @@ def test_every_response_carries_the_security_headers(client, path, more):
     the one that frames the notebook included.
 
     MUTATIONS THIS MUST FAIL AGAINST: a directive loosened in the policy
-    every page carries; the notebook page's policy written apart from it,
-    and loosened there."""
+    every page carries; the notebook page given a policy of its own."""
     r = client.get(path)
     assert r.status_code == 200, (path, r.status_code)
     csp = r.headers.get("Content-Security-Policy", "")

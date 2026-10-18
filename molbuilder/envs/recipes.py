@@ -2623,18 +2623,13 @@ _JUPYTER = Recipe(
                  "print('jupyternb OK')\""),
     verify_expect_contains="jupyternb OK",
     system_preconditions=(
-        "Nothing beyond what `serve` already has.  The notebook takes the "
-        "SAME scheme the app page is served with -- it reuses `serve`'s "
-        "cert and key when there are any, and runs plain http when there "
-        "are not.  It has to: the tab is an IFRAME, so an http notebook "
-        "under an https page is blocked by the browser as mixed content "
-        "(docs/web/jupyter.md § 2).  It does NOT refuse to start without "
-        "TLS.",
-        "A free TCP port at <serve port> + 1 on this machine, bound to "
-        "loopback unless you say otherwise.  A live kernel is arbitrary "
-        "code execution as the account running the server, which is why "
-        "starting and stopping it -- and the token that reaches it -- are "
-        "admin actions (docs/web/jupyter.md § 6).",
+        "Nothing beyond what `serve` already has: the notebook listens on "
+        "127.0.0.1 only, and the browser reaches it through molbuilder's "
+        "own port, at /jupyter/ (docs/web/jupyter.md § 2).",
+        "A free TCP port at <serve port> + 1 on 127.0.0.1.  A live kernel "
+        "is arbitrary code execution as the account running the server, "
+        "which is why starting, stopping and reaching it are admin actions "
+        "(docs/web/jupyter.md § 6).",
     ),
 )
 

@@ -12,19 +12,17 @@
 # through the same writer, so the shape on the command line is identical
 # either way.  What that excludes, and why, so the line can be checked:
 #
-#   ServerApp.ip                a CLI argument
+#   ServerApp.ip                `jupyter.LOOPBACK` -- with base_url below,
+#                               the pass-through reads the same constants
 #   ServerApp.port              derived -- `jupyter_port(serve_port)`
+#   ServerApp.base_url          `jupyter.BASE_PATH`, the path molbuilder
+#                               passes through and the tab frames
 #   ServerApp.token             NOT emitted: it rides
 #                               JUPYTER_TOKEN in the child's environment
 #                               instead -- /proc keeps environ owner-only and
 #                               cmdline world-readable.  A token row here
 #                               would put it back on the command line.
 #   ServerApp.root_dir          the projects root
-#   ServerApp.tornado_settings  the `frame-ancestors` grant, DERIVED from
-#                               `serve_port_of(port)`.  A security header
-#                               stays a computation with its reasoning
-#                               beside it
-#   ServerApp.certfile/keyfile  present only when `serve` has TLS
 
 schema = "molbuilder/jupyter@1"
 
@@ -40,11 +38,24 @@ schema = "molbuilder/jupyter@1"
 # A TAKEN PORT IS A REFUSAL, NOT A SILENT MOVE.  jupyter-server defaults
 # `port_retries` to 50 and then picks a RANDOM free port in that range -- so
 # if `serve_port + 1` were busy, Jupyter would start happily somewhere nobody
-# recorded, while the runtime file, the `frame-src` CSP, the `frame-ancestors`
-# grant and `answering()` all kept naming the port it was asked for.  The tab
-# would say "wedged" over a perfectly healthy notebook.  Zero makes the clash
-# an error molbuilder can see and report.
+# recorded, while the runtime file, the pass-through and `answering()` all
+# kept naming the port it was asked for.  The tab would say "wedged" over a
+# perfectly healthy notebook.  Zero makes the clash an error molbuilder can
+# see and report.
 "ServerApp.port_retries" = 0
+# THE HOST A REQUEST NAMES IS MOLBUILDER'S.  Jupyter listens on 127.0.0.1 and,
+# so bound, refuses a request whose `Host` is not a local name -- a guard
+# against a web page reaching a notebook on the visitor's own machine.  Every
+# request here comes through molbuilder's pass-through, which forwards the
+# `Host` the browser sent; the guard's job is done by the loopback bind and
+# the pass-through's gate, which refuses a request from another page
+# (`jupyter.md` § 2, § 6).
+"ServerApp.allow_remote_access" = true
+# AND THE SCHEME THE BROWSER USED.  The hop from molbuilder is plain HTTP on
+# this machine, while the browser reached molbuilder over HTTPS: the
+# pass-through says which in `X-Forwarded-Proto`, and Jupyter believes it --
+# safe for the same reason, nothing but the pass-through reaches it.
+"ServerApp.trust_xheaders" = true
 
 # JUPYTER'S OWN IDLE REAPING, in seconds -- its settings, not a timer of ours.
 # A hand-rolled one would be a second opinion about when a notebook is idle,

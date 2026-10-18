@@ -61,8 +61,8 @@ function button(label, onClick, opts = {}) {
   return b;
 }
 
-/** WHAT IS IN THE FRAME, by identity -- port and token, and only those:
- *  they are what "is the frame pointing at a live server?" means. */
+/** WHAT IS IN THE FRAME, by identity -- the notebook's port and its
+ *  shepherd's pid: what "is the frame pointing at this live server?" means. */
 let framedKey = null;
 
 /** Set when the person clicks Start, cleared the moment something is running.
@@ -74,43 +74,6 @@ let framedKey = null;
  *  broken env) reads the same.  Without this the tab just redrew the Start
  *  button: click, nothing, click, nothing. */
 let startAsked = false;
-
-/** Set when THIS BROWSER cannot reach the notebook's port, whatever the
- *  server says about it.  Read by state 4a's `when`. */
-let frameUnreachable = false;
-/** The `port|token` the reachability probe has already answered for, so it
- *  runs once per server and not once per poll. */
-let probedKey = null;
-
-/** CAN THIS BROWSER REACH THE NOTEBOOK AT ALL?
- *
- *  **The server's own probe cannot answer this** (`plan.md` § 5n.8).
- *  `answering()` runs on the machine molbuilder is on; the FRAME runs in
- *  somebody's browser, and the two are not the same host through an ssh
- *  tunnel or behind a reverse proxy.  The tab builds the frame URL from
- *  `location.hostname` and `st.port` -- this page's host, one port up --
- *  and through `ssh -L 8000:server:8000` that is the LAPTOP's 8001, which
- *  nothing is listening on.  There is no load or error detection on an
- *  iframe that can be relied on cross-origin.
- *
- *  So the page asks the network directly.  A `no-cors` fetch cannot read
- *  the response -- that is the point -- but it distinguishes the two cases
- *  that matter: a reachable port RESOLVES (opaquely, CORS or not), and a
- *  refused connection or an unresolvable host REJECTS.  One request per
- *  server, not per poll.
- */
-async function probeFrameReachable(base, key) {
-  if (probedKey === key) return;
-  probedKey = key;
-  try {
-    await fetch(`${base}/lab`, { mode: "no-cors", cache: "no-store" });
-    frameUnreachable = false;
-  } catch (_) {
-    frameUnreachable = true;
-    currentState = null;               // 4b is a different state; fresh clock
-    refresh();
-  }
-}
 
 /** Set when the projects root could not be resolved in time.  Once true,
  *  `opening` never matches again and `framed` opens at the projects root --
@@ -151,25 +114,15 @@ function selectedRelative() {
   return dir.slice(root.length).replace(/^\/+/, "");
 }
 
-/** THE ONE BASE the frame and the reachability probe both use -- this
- *  page's host, one port up.  Two spellings would let the probe answer for
- *  an address the frame does not visit. */
-const frameBase = (st) =>
-  `${location.protocol}//${location.hostname}:${st.port}`;
-
-
 function labUrl(st, rel) {
-  // `/lab/tree/<path>` is JupyterLab's own "open here" URL, and the token is
-  // how Jupyter authenticates the browser.  Both are Jupyter's shapes; this
-  // composes them and invents nothing.
+  // `/lab/tree/<path>` is JupyterLab's own "open here" URL.  No token: the
+  // pass-through presents it to Jupyter itself (`jupyter.md` § 2).
   //
-  // THE HOST IS THIS PAGE'S, NOT THE SERVER'S BIND ADDRESS.  The status
-  // payload carries an absolute url built from what the notebook BOUND to
-  // (127.0.0.1 here), and `127.0.0.1` in a browser means the BROWSER's own
-  // machine -- so through a tunnel, or from any other host, the frame asked
-  // its own laptop for port 6007 and got "refused to connect" (measured
-  // 2026-09-14).  The notebook is always on this same host, one port up, so
-  // the only honest base is the one this page was reached at.
+  // ON THIS PAGE'S OWN ADDRESS: `st.base` is the path molbuilder passes
+  // through to the notebook (`jupyter.md` § 2), so the frame is the page's
+  // own origin -- through a tunnel or a portal that forwards molbuilder's
+  // one port, the notebook comes with it.  `st.url` is where the notebook
+  // listens on the server's own machine, and is not used here.
   //
   // CLEAN ON A NEW SERVER, PERSISTENT WHILE ONE RUNS (user, 2026-09-15).
   //
@@ -188,12 +141,10 @@ function labUrl(st, rel) {
   // flag read the same directory.  It also means the tree path and a restore
   // are never sent together, so Lab's own precedence between them -- which
   // molbuilder has not measured -- cannot decide anything here.
-  const base = frameBase(st);
   const path = (rel && !st.workspace_saved)
     ? `/tree/${rel.split("/").map(encodeURIComponent).join("/")}`
     : "";
-  const query = st.token ? `?token=${encodeURIComponent(st.token)}` : "";
-  return `${base}/lab${path}${query}`;
+  return `${st.base}/lab${path}`;
 }
 
 async function post(path) {
@@ -272,15 +223,13 @@ const STATES = [
     pollMs: 60000,
   },
   {
-    // (2) Running, but this caller was not given the token.
+    // (2) Running, and this viewer may not control it.
     //
-    // NO TOKEN, NO FRAME.  The token authenticates this browser to a live
-    // kernel, and the server withholds it from a caller who may not control
-    // the notebook (`blueprints/jupyter.py`).  Framing Lab anyway would put
-    // Jupyter's own login page inside the tab, which reads as molbuilder
-    // being broken rather than as a refusal.
-    name: "no-token",
-    when: (st) => st.running && st.answering && !st.token,
+    // NOT YOURS, NO FRAME.  Every `/jupyter/` request from this viewer would
+    // be refused by the same gate as the buttons (`jupyter.md` § 6), so a
+    // frame would show only refusals.
+    name: "not-yours",
+    when: (st) => st.running && st.answering && !st.may_control,
     enter: () => say(
       "A notebook server is running on this machine, but using it means "
       + "running code as the account serving this page — so it is an admin "
@@ -316,31 +265,7 @@ const STATES = [
     expired: (st) => { rootIsLost = true; render(st); },
   },
   {
-    // (4a) Answering on the SERVER, unreachable from THIS BROWSER.
-    //
-    // The one state that is about the viewer's network rather than the
-    // server's.  It exists because the frame URL is `this page's host, one
-    // port up` -- true on the machine, false through a tunnel that forwards
-    // only molbuilder's port, and false behind a reverse proxy that
-    // terminates TLS and proxies one port (`plan.md` § 5n.8, and
-    // `jupyter.md` § 2.1a).
-    name: "frame-unreachable",
-    when: (st) => st.running && st.answering && frameUnreachable,
-    enter: (st) => {
-      const base = frameBase(st);
-      say("JupyterLab is running on the server, but this browser cannot "
-          + "reach it. The notebook has its own port — the kernel talks to "
-          + "it directly, so molbuilder cannot carry that traffic for you. "
-          + "Make ",
-          code(base),
-          " reachable from here: forward that port too if you are "
-          + "tunnelling (it is molbuilder's port plus one), or proxy it "
-          + "beside molbuilder's own.");
-      actions.appendChild(recheckButton("Try the frame again"));
-    },
-  },
-  {
-    // (4b) Up and answering -- frame it.
+    // (4) Up and answering -- frame it.
     name: "framed",
     when: (st) => st.running && st.answering,
     frame: true,
@@ -353,15 +278,11 @@ const STATES = [
       // state (3) owns that -- except when it gave up, where null now means
       // the projects root itself.
       const rel = selectedRelative();
-      const key = `${st.port}|${st.token}`;
+      const key = `${st.port}|${st.pid}`;
       if (framedKey !== key) {
         framedKey = key;
         frame.src = labUrl(st, rel === null ? "" : rel);
       }
-      // ASK THE NETWORK, ONCE PER SERVER.  Not awaited: the frame is
-      // already pointed and a reachable notebook must not wait on a probe.
-      // If it fails, `frameUnreachable` flips and state 4a takes over.
-      probeFrameReachable(frameBase(st), key);
       // WHAT IS OPEN, AND WHERE -- Jupyter's own answer (`open_notebooks`),
       // not a guess: the row states the full path of every notebook Lab has
       // open and names the control that decides where the next one lands.
@@ -520,7 +441,6 @@ function recheckButton(label = "Check again") {
   return button(label, () => {
     say("Checking…");
     currentState = null;        // a fresh entry, so budgets start over
-    frameUnreachable = false;
     refresh();
   }, { primary: true });
 }

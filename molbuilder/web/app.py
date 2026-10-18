@@ -32,8 +32,8 @@ import os
 import threading
 import time
 
-from flask import (Flask, abort, current_app, jsonify, make_response,
-                   redirect, render_template, request, send_file)
+from flask import (Flask, abort, current_app, jsonify, redirect,
+                   render_template, request, send_file)
 
 from .tabs import TABS, landing_path
 # The supervisor protocol -- a leaf module that imports nothing, so the
@@ -184,9 +184,8 @@ def serve_port() -> int:
     """Which molbuilder is this, by port -- the ONE answer.
 
     **A property of the process, not of the request.**  It keys the serve and
-    notebook pidfiles, the notebook's runtime file, the `frame-src` CSP, the
-    `frame-ancestors` grant Jupyter is given, and which supervisor a start
-    signal reaches.
+    notebook pidfiles, the notebook's runtime file, the port the `/jupyter/`
+    pass-through forwards to, and which supervisor a start signal reaches.
 
     Three sources, in order of how much they know:
 
@@ -219,8 +218,7 @@ def serve_port() -> int:
 
 
 #: THE Content-Security-Policy (`web-api.md` § 2), as its directives -- one
-#: list: a page that needs one more is this policy with it added
-#: (:func:`content_security_policy`), never a second copy.
+#: list, one policy for every page.
 #:
 #: ``default-src 'self'``: scripts, styles and fonts load from molbuilder's
 #: own origin.  No ``script-src 'unsafe-inline'``: the pages carry no inline
@@ -244,11 +242,9 @@ _CSP = (
 )
 
 
-def content_security_policy(**more: str) -> str:
-    """The policy, with ``more`` directives added -- each keyword its
-    directive with ``_`` for ``-`` (``frame_src="..."``)."""
-    pairs = list(_CSP) + [(k.replace("_", "-"), v) for k, v in more.items()]
-    return "; ".join(f"{name} {value}" for name, value in pairs)
+def content_security_policy() -> str:
+    """The policy, as the header spells it."""
+    return "; ".join(f"{name} {value}" for name, value in _CSP)
 
 
 def create_app(*, config=None) -> Flask:
@@ -593,20 +589,10 @@ def create_app(*, config=None) -> Flask:
         # stops.  Contract: docs/web/jupyter.md.  The route spells the tab's
         # label, as every route here does (`tabs.md` 1).
         #
-        # THE POLICY WITH ONE DIRECTIVE MORE, `frame-src`: the global one
-        # lets it fall back to `default-src 'self'`, and the notebook is a
-        # DIFFERENT ORIGIN (this host, the next port up).  Added here rather
-        # than globally: every other page in this app frames nothing, and a
-        # `frame-src` that admitted another origin everywhere would be a hole
-        # opened for one page.  `_add_security_headers` uses `setdefault`,
-        # so this one stands.
-        from ..jupyter import jupyter_port
-        resp = make_response(render_template("jupyternb.html"))
-        port = serve_port()
-        frame = f"{request.scheme}://*:{jupyter_port(port)}" if port else "'none'"
-        resp.headers["Content-Security-Policy"] = content_security_policy(
-            frame_src=frame)
-        return resp
+        # EVERY PAGE'S SECURITY POLICY: the notebook is framed from this
+        # page's own origin, at `/jupyter/` (`jupyter.md` § 2), which
+        # `default-src 'self'` already allows.
+        return render_template("jupyternb.html")
 
     @app.route("/this-machine")
     def this_machine_page():

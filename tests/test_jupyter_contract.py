@@ -15,7 +15,7 @@ the code broken, the right test watched to fail, the code restored:
 2. an unknown section, refused by name                  `data/jupyter.toml`
 3. every authored setting reaches the command line      `jupyter.md` § 4
 4. a notebook saved leaves no checkpoint beside it    `jupyter.md` § 4.2
-5. the control routes' 404 and 403                      `jupyter.md` § 5.2
+5. the gated routes' 404 and 403            `jupyter.md` § 5.2, § 6
 6. the stop grace stays under the supervisor's          `jupyter.py`
 7. a start forgets the workspace and keeps the settings `jupyter.md` § 4.1
 8. one server's start keeps another server's layout   `jupyter.md` § 4.1
@@ -98,8 +98,7 @@ def test_every_authored_setting_reaches_the_argv():
     row that stops being emitted fails here.
     """
     rules = J.load_rules()
-    argv = J.notebook_argv("conda", "env", host="127.0.0.1", port=6007,
-                           root_dir="/p", cert=None, key=None,
+    argv = J.notebook_argv("conda", "env", port=6007, root_dir="/p",
                            lab_dirs={})
     assert rules.server, "the table declares no [server] settings at all"
     for trait, value in rules.server.items():
@@ -113,12 +112,9 @@ def test_a_runtime_setting_reaches_the_argv_through_the_same_emitter():
     value only this process knows comes out in the same `--trait=value`
     spelling.
     """
-    argv = J.notebook_argv("conda", "env", host="1.2.3.4", port=6007,
-                           root_dir="/p", cert=None, key=None,
+    argv = J.notebook_argv("conda", "env", port=6007, root_dir="/p",
                            lab_dirs={"LabApp.workspaces_dir": "/w"})
-    # `ip` and `workspaces_dir` are computed at run time; the token is not
-    # emitted at all -- see the test below.
-    assert "--ServerApp.ip=1.2.3.4" in argv
+    # The token is not emitted at all -- see the test below.
     assert "--LabApp.workspaces_dir=/w" in argv
 
 
@@ -131,8 +127,8 @@ def test_the_notebook_token_never_reaches_the_command_line():
     to fail here too.
     """
     secret = "tok-must-not-appear-on-the-command-line"
-    argv = J.notebook_argv("conda", "env", host="127.0.0.1", port=6007,
-                           root_dir="/p", cert=None, key=None, lab_dirs={})
+    argv = J.notebook_argv("conda", "env", port=6007, root_dir="/p",
+                           lab_dirs={})
     assert not any(secret in part for part in argv), argv
     assert not any("token" in part.lower() for part in argv), argv
 
@@ -194,7 +190,7 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
     folder.mkdir(parents=True)
     env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"))
     shepherd = subprocess.Popen(
-        J.shepherd_argv(serve_port, host="127.0.0.1"), env=env,
+        J.shepherd_argv(serve_port), env=env,
         stdout=open(tmp_path / "notebook.log", "w"), stderr=subprocess.STDOUT,
         start_new_session=True)
     try:
@@ -245,9 +241,22 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
 #  5. The control routes                                                 #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("route", ["/api/jupyter/start", "/api/jupyter/stop"])
-def test_no_supervisor_answers_404_on_both_control_routes(route, monkeypatch):
-    """404, not a missing route and not a 403.
+#: The two control routes and the pass-through's two -- an ordinary request
+#: and the kernel's WebSocket handshake -- one gate (`jupyter.md` § 5.2,
+#: § 6).
+_UPGRADE = {"Upgrade": "websocket", "Connection": "Upgrade"}
+_GATED = [("POST", "/api/jupyter/start", {}),
+          ("POST", "/api/jupyter/stop", {}),
+          ("GET", "/jupyter/lab", {}),
+          ("GET", "/jupyter/api/kernels/k/channels", _UPGRADE)]
+
+
+@pytest.mark.parametrize("method,route,headers", _GATED)
+def test_no_supervisor_answers_404_on_every_gated_route(method, route,
+                                                        headers,
+                                                        monkeypatch):
+    """404, not a missing route and not a 403 -- on the control routes and
+    on the notebook passed through at ``/jupyter/``, its WebSocket included.
 
     A misconfiguration must read as *the button is missing* -- which is what
     it is -- and never as *anyone may start a kernel here* (`jupyter.md`
@@ -259,19 +268,21 @@ def test_no_supervisor_answers_404_on_both_control_routes(route, monkeypatch):
     from molbuilder.web.app import create_app
     app = create_app(config={})
     app.config["MOLBUILDER_SERVE_PORT"] = 8000
-    r = app.test_client().post(route)
+    r = app.test_client().open(route, method=method, headers=headers)
     assert r.status_code == 404
     assert r.get_json()["ok"] is False
 
 
-@pytest.mark.parametrize("route", ["/api/jupyter/start", "/api/jupyter/stop"])
-def test_a_caller_who_may_not_control_gets_403_not_404(route, monkeypatch):
-    """With a supervisor present, the refusal changes meaning.
+@pytest.mark.parametrize("method,route,headers", _GATED)
+def test_a_caller_who_may_not_control_gets_403_not_404(method, route,
+                                                       headers, monkeypatch):
+    """With a supervisor present, the refusal changes meaning -- and
+    reaching the notebook through ``/jupyter/``, its kernel's WebSocket
+    included, is refused as starting one is (`jupyter.md` § 6).
 
     404 says *there is no button*; 403 says *there is one and it is not
-    yours*. Both routes answer with the SAME sentence -- they answered with
-    two different ones until 2026-09-15, and the shorter told a person
-    nothing they could act on (`plan.md` § 5n, J4).
+    yours*. Every gated route answers with the SAME sentence (`plan.md`
+    § 5n, J4).
     """
     from molbuilder.web.app import create_app
     from molbuilder.web.blueprints import jupyter as bp
@@ -279,9 +290,64 @@ def test_a_caller_who_may_not_control_gets_403_not_404(route, monkeypatch):
     monkeypatch.setattr(bp, "_may_control", lambda: False)
     app = create_app(config={})
     app.config["MOLBUILDER_SERVE_PORT"] = 8000
-    r = app.test_client().post(route)
+    r = app.test_client().open(route, method=method, headers=headers)
     assert r.status_code == 403
     assert "admin" in r.get_json()["error"]
+
+
+@pytest.mark.parametrize("asked_by,passes", [
+    ("127.0.0.1:5050", True),
+    ("localhost:5050", True),
+    ("[::1]:5050", True),
+    ("rebind.example.org:5050", False),
+])
+def test_with_no_sign_in_this_machine_passes_by_a_loopback_name_only(
+        asked_by, passes, monkeypatch):
+    """`jupyter.md` § 6, rule 3: with no sign-in configured, a request from
+    this machine reaches the notebook when the page was asked for by a
+    loopback name -- and is refused, from the same loopback address, when
+    asked for by a name of its own: a web page whose owner points its name
+    at 127.0.0.1 is fetched by the browser on this machine (DNS rebinding).
+    Passing shows as the pass-through's own answer with no notebook running,
+    502; refused, the gate's 403.
+
+    MUTATION THIS MUST FAIL AGAINST: rule 3 asking the peer address alone."""
+    from molbuilder.web.app import create_app
+    from molbuilder.web.blueprints import jupyter as bp
+    monkeypatch.setattr(bp, "_supervised", lambda: True)
+    app = create_app(config={})
+    app.config["MOLBUILDER_SERVE_PORT"] = _free_serve_port()
+    r = app.test_client().get("/jupyter/lab", headers={"Host": asked_by},
+                              environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    assert r.status_code == (502 if passes else 403), (asked_by, r.status_code)
+
+
+@pytest.mark.parametrize("origin,passes", [
+    (None, True),
+    ("http://127.0.0.1:5050", True),
+    ("http://elsewhere.example.org", False),
+    ("http://127.0.0.1:5051", False),
+])
+def test_the_gate_refuses_another_pages_request(origin, passes,
+                                                monkeypatch):
+    """`jupyter.md` § 6: a request whose ``Origin`` names any page but this
+    one is refused before it reaches the notebook -- Jupyter skips its own
+    cross-site checks for the token the pass-through presents, so the gate
+    makes them.  Passing shows as the pass-through's own answer with no
+    notebook running, 502; refused, the gate's 403.
+
+    MUTATION THIS MUST FAIL AGAINST: the gate asking no ``Origin``."""
+    from molbuilder.web.app import create_app
+    from molbuilder.web.blueprints import jupyter as bp
+    monkeypatch.setattr(bp, "_supervised", lambda: True)
+    app = create_app(config={})
+    app.config["MOLBUILDER_SERVE_PORT"] = _free_serve_port()
+    headers = {"Host": "127.0.0.1:5050"}
+    if origin:
+        headers["Origin"] = origin
+    r = app.test_client().post("/jupyter/api/kernels", headers=headers,
+                               environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    assert r.status_code == (502 if passes else 403), (origin, r.status_code)
 
 
 # --------------------------------------------------------------------- #

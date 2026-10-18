@@ -13,26 +13,27 @@ means; [`overview.md`](?doc=web/overview.md) — the tab registry.
 
 | rule | where |
 |---|---|
-| **Flask cannot carry the kernel.** The server is plain WSGI; Jupyter kernels talk WebSocket. The tab is an **iframe to a separately-run Jupyter**, and the socket goes browser→Jupyter directly | § 2 |
+| **One port.** The browser reaches JupyterLab only through molbuilder's own address, under `/jupyter/`: molbuilder passes each request through and joins the kernel's WebSocket through the same connection. Jupyter listens on `127.0.0.1` only | § 2 |
 | **Stopping means stopping the SERVER.** The tree is supervisor → shepherd → the manager's `run` → jupyter-server, so a stop takes the shepherd's whole process group. The kernels are not in that group and do not need to be: Jupyter collects its own | § 3.2 |
 | **`kill -9` runs no handler.** `PR_SET_PDEATHSIG` is the only mechanism that survives it; the pidfile reconciliation is what catches the rest | § 3.1, § 3.3 |
-| **Parented to the SUPERVISOR, not the server child.** A code reload must not kill your notebook; stopping molbuilder must | § 3.4 |
-| **The notebook port is `serve + 1`.** Two molbuilders on adjacent ports collide by construction, and molbuilder says so before it starts rather than after | § 2.1 |
+| **Parented to the SUPERVISOR, and stopped with the server.** A restart of the server — `serve restart`, the page's Reload — stops a running notebook; stopping molbuilder stops it too | § 3.4 |
+| **Jupyter's own port is `serve + 1`, on loopback.** Two molbuilders on adjacent ports collide by construction, and molbuilder says so before it starts rather than after | § 2.1 |
 | **Nothing runs until asked.** No kernel on page load; idle kernels are culled by Jupyter's own timeouts | § 4 |
-| **A live kernel is arbitrary code execution on a network port.** That is a decision, not a side effect of adding a tab | § 6 |
+| **A live kernel is arbitrary code execution.** Starting one, stopping one and reaching one through `/jupyter/` are one privilege. That is a decision, not a side effect of adding a tab | § 6 |
 
 ```
-   browser ──HTTP──▶ molbuilder (Flask/WSGI, :8888)   tab shell, control API
-      │                       │
-      │                       └── shepherd ── <mgr> run ── jupyter server
-      │                           └───────────────────────────┘
-      │                             one process group: a stop takes all three
-      │
-      └──WebSocket──▶ jupyter server (:8889)  ◀── started/stopped by molbuilder
-                            │
-                            └── ipykernel, ipykernel, …
-                                each in its OWN session -- Jupyter collects
-                                them, molbuilder's signal does not reach them
+   browser ──HTTP(S)─▶ molbuilder (:8888)   the tab, its control API, and
+                           │                /jupyter/… passed through
+                           │
+                           ├──HTTP + WebSocket──▶ jupyter server (127.0.0.1:8889)
+                           │                           │
+                           │                           └── ipykernel, ipykernel, …
+                           │                               each in its OWN session --
+                           │                               Jupyter collects them
+                           │
+                           └── shepherd ── <mgr> run ── jupyter server
+                               └───────────────────────────┘
+                                 one process group: a stop takes all three
 ```
 
 ---
@@ -44,43 +45,56 @@ stops what, and what must be true when molbuilder exits. It does not own
 Jupyter's own configuration surface, nor the recipe's package list — that is
 `recipes.py` and `installation.md`.
 
-## 2. Why an iframe, and not a proxy
+## 2. Through molbuilder's port
 
-molbuilder serves through Werkzeug's `ThreadedWSGIServer`
-(`cli.py`, `app.run(ssl_context=…)`). **WSGI has no WebSocket**, and there is
-no `flask-sock`, socketio or gevent in the tree. Jupyter's kernel protocol is
-WebSocket. So Flask cannot proxy the kernel connection, and the tab must point
-a frame at Jupyter directly.
+*(The user, 2026-10-17: "the jupyternb never need an extra port from the
+outside and the embedded frame talk through the same webui of molbuilder".)*
 
-Two consequences that are not optional:
+**The browser talks to molbuilder and to nothing else.** Four parts, each
+with one job:
 
-* **The notebook takes the SAME scheme the app page is served with.** A
-  browser blocks an `http://` frame inside an `https://` page as mixed
-  content, so the two must match — Jupyter reuses the cert and key `serve`
-  resolved, and runs plain http when `serve` has none. It does **not** refuse
-  to start without TLS; this section said it did until 2026-09-14, while a
-  plain-http molbuilder had been running one the whole time. What the rule
-  does require is that the resolution be the SAME on both sides: `serve start`
-  resolves TLS from the `tls` block in `molbuilder.json` as well as the
-  command line, and until the same day it handed the notebook only the raw
-  flags — so a machine configured in the file served an https page and framed
-  an http notebook.
-* **Framing must be allowed.** Jupyter sends `X-Frame-Options` / a CSP
-  `frame-ancestors` by default and will refuse to be framed;
-  `ServerApp.tornado_settings` has to name molbuilder's origin.
+| part | owns |
+|---|---|
+| **molbuilder's server** — the front door | the one public port and its TLS; the pages; `/jupyter/…` passed to the notebook |
+| **the gate** — `_refuse` (`web/blueprints/jupyter.py`) | who may reach the notebook: § 6's rule, asked of every `/jupyter/` request before anything is passed on |
+| **the notebook** — JupyterLab, in its own env | notebooks and kernels; it listens on `127.0.0.1` only, under `/jupyter/` (`ServerApp.base_url`), its token auth on |
+| **the supervisor** | starting and stopping the notebook (§ 3) |
 
-The rejected alternative — replacing the WSGI server with gunicorn+gevent or an
-ASGI stack — collides with the TLS hardening bolted onto `ThreadedWSGIServer`
-(`cli.py`, `_molbuilder_tls_hardened`), and buys nothing the iframe does not.
+**The pass-through** is two routes on one path, because the server routes a
+WebSocket handshake only to a rule declared for one (Werkzeug's
+`websocket=True`):
 
-### 2.1 The notebook port, and what collides with it
+* **an ordinary request** is forwarded to Jupyter — its method, path, query,
+  body and headers — and the answer streamed back with its status and
+  headers;
+* **the kernel's WebSocket** is joined: the server hands the route the
+  request's own connection (Werkzeug's `werkzeug.socket`), the route opens one
+  to Jupyter, sends it the same handshake, and copies bytes both ways until
+  either end closes.
 
-`jupyter_port(p) = p + 1` — **derived, not configured**, so there is one
-number to remember and the pair moves together when a second molbuilder runs
-on another port. `serve_port_of` is the same derivation inverted, because the
-`frame-ancestors` grant has to name molbuilder's own port and a second
-`p - 1` in a security header is the last copy that should be allowed to
-drift.
+On the way in, the pass-through **speaks for itself**: molbuilder's own
+session cookie and any `Authorization` or forwarding header the browser sent
+are dropped, and in their place it presents the notebook's token and says the
+scheme the browser used (`X-Forwarded-Proto`, which Jupyter trusts: nothing
+but the pass-through reaches it). **molbuilder never hands the browser the
+token** — not in its pages, not in the frame's address, not in its log;
+JupyterLab's own page carries it for Lab's scripts, and only a viewer past
+the gate is served that page. On the way out, Jupyter's `Access-Control-*`
+headers are dropped: nothing outside the page is answered.
+
+**The frame is the page's own origin**: `<base>/lab/tree/<folder>`, `<base>`
+being `/jupyter`. Every answer passed through carries `X-Frame-Options:
+SAMEORIGIN`, in place of the `DENY` molbuilder's own pages send, and
+`frame-ancestors 'self'` where Jupyter sent no policy of its own — so the page
+may frame it and nothing else may. The JupyterNB page's security policy is
+every page's.
+
+### 2.1 Jupyter's own port, and what collides with it
+
+`jupyter_port(p) = p + 1` — **derived, not configured**, so the pair moves
+together when a second molbuilder runs on another port. It is a port on
+`127.0.0.1`: molbuilder's pass-through and `answering()` reach it there, and
+nothing outside the machine does.
 
 **The cost of deriving it is that adjacent ports collide.** A molbuilder on
 6006 wants 6007 for its notebook; a molbuilder on 6007 wants 6007 for its
@@ -91,9 +105,8 @@ Three things make that honest rather than mysterious:
 
 1. **`ServerApp.port_retries = 0`** (`data/jupyter.toml`). jupyter-server
    otherwise tries fifty more ports and picks a random free one, while the
-   runtime file, the CSP, the `frame-ancestors` grant and `answering()` all
-   keep naming `p + 1` — so the tab would report *wedged* over a perfectly
-   healthy notebook. Measured 2026-09-15 against a live notebook on 6007:
+   runtime file, the pass-through and `answering()` all keep naming `p + 1` —
+   so the tab would report *wedged* over a perfectly healthy notebook. Measured 2026-09-15 against a live notebook on 6007:
    *"ERROR: the Jupyter server could not be started because port 6007 is not
    available"*, exit 1.
 2. **It is said in advance where it is knowable.** `jupyter.port_clash()`
@@ -109,36 +122,9 @@ Three things make that honest rather than mysterious:
 
 **The derivation does not change.** `p + 1000` moves the collision without
 removing it, and letting Jupyter choose freely makes the runtime file
-authoritative for a port that four other places derive — which is the design
+authoritative for a port the pass-through derives — which is the design
 `port_retries = 0` was chosen against. *(User question 2026-09-15;
 `plan.md` § 5n, J15.)*
-
-### 2.1a The frame is the BROWSER's problem, and only the browser can answer it
-
-**`answering()` cannot tell you whether the frame will load.** It runs on the
-machine molbuilder is on; the frame runs in somebody's browser, and through an
-ssh tunnel or behind a reverse proxy those are not the same host. The tab
-builds the frame URL from **this page's** host and `st.port` — *this host, one
-port up* — which is true on the machine and false the moment only molbuilder's
-port is forwarded. Three separate places assume it, each individually right:
-the frame URL (`index.js`), the `frame-src` CSP (`web/app.py`, built from the
-request's scheme), and the `frame-ancestors` grant (`jupyter.py`, built from
-the port molbuilder BOUND to).
-
-Before 2026-09-15 every one of those failures landed in the *framed* state,
-whose message says the kernel is ready — the iframe showed the browser's
-connection-refused page under a sentence claiming all was well, and **no state
-covered a frame that failed**. There is no load or error event on a
-cross-origin iframe that can be relied on, so the page asks the network
-instead: one `no-cors` fetch per server, which resolves opaquely when the port
-is reachable and rejects when the connection is refused or the host will not
-resolve. That is state **4a**.
-
-**The requirement, stated once:** the browser must be able to reach
-`<this page's scheme>://<this page's host>:<molbuilder's port + 1>`. Forward
-that port too, or proxy it beside molbuilder's own. molbuilder cannot carry
-the traffic itself — § 2 is why: WSGI has no WebSocket, and the kernel
-connection is one. *(`plan.md` § 5n.8.)*
 
 ## 3. The lifecycle
 
@@ -200,18 +186,23 @@ a server slow to go would read *forced*; so the shepherd's stays strictly
 under (both were 5.0 until 2026-09-14, `test_jupyter_contract.py` keeps them
 apart).
 
-### 3.4 Parented to the supervisor
+### 3.4 Parented to the supervisor, stopped with the server
 
-molbuilder's supervisor **respawns the server child on `RELOAD_EXIT_CODE`**. If
-Jupyter were a child of that server process, `PDEATHSIG` would kill it on every
-reload — an unrelated code change would silently destroy a notebook's state.
+Jupyter is parented to molbuilder's **supervisor**, the process that holds
+the notebook's start command and answers the Start and Stop buttons — the
+server child runs the page and cannot hold a process past its own restart.
 
-So Jupyter is parented to the **supervisor**:
+**A restart of the server stops the notebook** *(the user, 2026-10-17:
+"restart server should restart notebook with it or shutdown notebook
+associated with it")*: a restart is how new code takes effect, and a
+notebook left running would be one the server no longer started. The tab
+then offers Start, on the code the server now runs.
 
-| stopping | Jupyter |
+| what happens to the server | Jupyter |
 |---|---|
-| a code reload | **survives** |
-| `serve stop` / supervisor exit | **dies** |
+| `serve restart`, or the page's Reload | **stopped** — its kernels end with it |
+| its child crashed and was respawned (the hung-child repair) | **runs on** — nothing was restarted on purpose |
+| `serve stop` / supervisor exit | **stopped** |
 | `kill -9` of the supervisor | **dies** (§ 3.1) |
 
 ## 4. Nothing runs until asked — **not even by looking**
@@ -234,10 +225,9 @@ is the contract.
 | # | State | When | Shows | Waits |
 |---|---|---|---|---|
 | 1 | **env-missing** | the env is not installed | the install command — the env is **opt-in**, so this is ordinary and not an error | 60 s |
-| 2 | **no-token** | running and answering, but the token was withheld | that using a kernel is an admin action (§ 6). Nothing is framed: framing anyway would put Jupyter's own login page in the tab, which reads as molbuilder being broken | 30 s |
-| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4b at the projects root |
-| 4a | **frame-unreachable** | answering on the server, but **this browser** cannot reach the notebook's port | which address to make reachable, and why molbuilder cannot carry it for you (§ 2.1a) | a **Try the frame again** button |
-| 4b | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button *if this viewer may control it* | 30 s heartbeat |
+| 2 | **not-yours** | running and answering, and this viewer may not control it | that using a kernel is an admin action (§ 6). Nothing is framed: every `/jupyter/` request would be refused | 30 s |
+| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4 at the projects root |
+| 4 | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button *if this viewer may control it* | 30 s heartbeat |
 | 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with **Check again** and Stop |
 | 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → the port clash if there is one (§ 2.1), else *"none started"* naming **both** logs, with **Check again** |
 | 7 | **unsupervised** | no supervisor to hold a notebook | that `serve start` is what gives it one. **Not** `jupyter start` — that verb signals the supervisor, so it is the one command guaranteed to fail here | 30 s |
@@ -335,7 +325,7 @@ written.)*
 **The folder is carried exactly once.** `status` reports `workspace_saved`,
 and the tab uses it to decide the URL: with no workspace this is the first
 framing since the server started, so the URL carries the selected folder
-(`/lab/tree/<folder>`) and Lab opens there; with one, the URL carries no tree
+(`<base>/lab/tree/<folder>`) and Lab opens there; with one, the URL carries no tree
 path at all and nothing competes with the restore. Asking the **server** —
 rather than remembering in the browser — is what keeps the two halves from
 disagreeing: the wipe and the flag read the same directory, and nothing has
@@ -394,7 +384,7 @@ starts it, by `test_jupyter_contract.py`.)*
 creates in, and molbuilder cannot see or set it once the frame is live —
 re-pointing the frame means reloading it, which discards every open document.
 The projects sidebar still chooses where Lab *opens* (the frame URL is
-`/lab/tree/<selected folder>`), and after that the person is driving.
+`<base>/lab/tree/<selected folder>`), and after that the person is driving.
 
 So the tab states the fact it can know rather than the one it would like to.
 `jupyter.open_notebooks` asks Jupyter's own `GET /api/sessions` and the control
@@ -441,12 +431,11 @@ keeps for the server ([`ops/deployment.md`](?doc=ops/deployment.md) § 1.0b).
 
 ### 5.1 `GET /api/jupyter/status` — the payload, stated once
 
-**Sixteen keys, authored in two modules and read by a third, and until
-2026-09-15 written down nowhere** (`plan.md` § 5n, J5). `jupyter.status()`
-produces nine, the blueprint adds six in one expression, `ok` is the
-envelope. `jupyternb/index.js` reads **thirteen** of them — `pid`,
-`pid_state` and `url` are produced for the CLI's `jupyter status`, and the
-tab deliberately ignores `url` (see its row). This table is the
+**Sixteen keys, authored in two modules and read by a third**
+(`plan.md` § 5n, J5). `jupyter.status()` produces eight, the blueprint adds
+seven in one expression, `ok` is the envelope. `jupyternb/index.js` reads
+**fourteen** of them — `pid_state` and `url` are produced for the CLI's
+`jupyter status`, and the tab deliberately ignores `url` (see its row). This table is the
 contract; the assembly at the end of `api_jupyter_status` is the one place
 the shape is built.
 
@@ -455,26 +444,23 @@ the shape is built.
 | `ok` | blueprint | the envelope. `false` never happens here — the tab treats its absence as *unreachable* |
 | `running` | `status()` | a pidfile naming a live shepherd of ours |
 | `pid` · `pid_state` | `status()` | which process, and `ours` / `foreign` / `dead` |
-| `port` | `status()` | the notebook's own port — `serve + 1` (§ 2.1) |
+| `port` | `status()` | Jupyter's own port on `127.0.0.1` — `serve + 1` (§ 2.1) |
 | `answering` | `status()` | the **second** question: it replied over HTTP |
-| `url` | `status()` | where it bound. The tab does **not** use this to frame — see § 4.1 |
-| `token` | `status()` | **withheld unless `may_control`** |
+| `url` | `status()` | where it listens on this machine, for `molbuilder jupyter status`. The tab frames `/jupyter/` (§ 2) and does **not** use it |
 | `open` | `status()` | the paths Jupyter says are open. **Withheld unless `may_control`** |
 | `workspace_saved` | `status()` | has Lab saved a layout since this server started (§ 4.1) |
+| `base` | blueprint | the path the notebook is passed through at — `/jupyter`, `jupyter.BASE_PATH` (§ 2); the tab frames `<base>/lab…` |
 | `supervised` | blueprint | is there a supervisor that can be asked at all |
 | `may_control` | blueprint | may **this request** start and stop it |
 | `env_name` · `env_installed` | blueprint | the opt-in env, probed — the browser cannot ask conda |
 | `install_command` | blueprint | what to run when it is not installed |
 | `port_clash` | blueprint | why a start will fail, before it is tried (§ 2.1). **Withheld unless `may_control`** |
 
-**Three are withheld, and by never being produced.** `include_private=False`
-means `token` and `open` are not built at all for a caller who may not
-control the notebook — the difference between a credential that never
-existed and one whose safety depends on a later line in a function that will
-grow. The token reaches a **live kernel**, which is the same arbitrary code
-execution the Start button hands out; returning it to everyone while
-refusing them the button inverted the gate. `port_clash` is withheld for a
-smaller reason: it names another server on this machine.
+**Two are withheld, and by never being produced.** `include_private=False`
+means `open` is not built at all for a caller who may not control the
+notebook — somebody's project paths. `port_clash` names another server on
+this machine. **The token is not in the payload at all**: it never leaves the
+server (§ 2).
 
 ### 5.2 The two control routes
 
@@ -496,41 +482,46 @@ measured (`plan.md` § 5n, J3/J4).
 
 ## 6. What this exposes
 
-A live kernel is **arbitrary code execution** as the account serving the page,
-reachable on a network port. That is a deliberate decision, not an implication
-of having added a tab, so here is the rule that ships.
+A live kernel is **arbitrary code execution** as the account serving the page.
+That is a deliberate decision, not an implication of having added a tab, so
+here is the rule that ships.
 
-**Starting one, stopping one, and being handed the token that reaches one are
-the same privilege**, and `_may_control` (`web/blueprints/jupyter.py`) grants
-all three together:
+**Starting one, stopping one and reaching one through `/jupyter/` are the
+same privilege**, and `_may_control` (`web/blueprints/jupyter.py`) grants all
+three together:
 
 1. an **admin** request may (`web/admin.py` — with no `admin` section
    configured, that is anyone who can sign in, per `access-control.md` § 5);
 2. otherwise, if **sign-in is configured at all**, nobody else may;
-3. otherwise — an unauthenticated molbuilder — a **loopback** peer may.
+3. otherwise — an unauthenticated molbuilder — a **loopback** peer that asked
+   for the page by a **loopback name** (`localhost`, `127.0.0.1`, `::1`) may.
 
-Rule 3 is the one worth reading twice: "no sign-in configured" does not imply
-a loopback bind, so an unauthenticated molbuilder can legitimately be listening
-on a network interface, and there the check is the peer address and nothing
-else.
+Rule 3 is the one worth reading twice. "No sign-in configured" does not imply
+a loopback bind, so an unauthenticated molbuilder can legitimately be
+listening on a network interface, and there the check is the peer. And the
+peer alone is not enough: a web page from anywhere whose name its owner
+points at `127.0.0.1` is fetched by the browser on this machine, so it
+arrives from loopback too — the name it was asked by is that page's own, and
+is what refuses it.
 
-**The token follows the same rule.** `/api/jupyter/status` is readable by
-anyone who can reach the page — it has to be, the tab draws itself from it —
-but it returns `token: ""` to a caller who may not control the notebook, and
-the tab then refuses to frame Lab rather than showing Jupyter's login page.
-Until 2026-09-14 the token went to every caller while the Start button was
-gated: the gate was inverted, since *using* a running kernel is the same code
-execution as starting one.
+**The pass-through asks the same gate as the buttons** — `404` with no
+supervisor to hold a notebook, `403` for a caller who may not control it — on
+every request, before anything reaches Jupyter, and answers `502` when no
+notebook is running. Behind it Jupyter's token auth stays on, presented by
+the server (§ 2), and Jupyter listens on `127.0.0.1` only.
 
-Jupyter's own token auth stays on, and the server binds to loopback unless the
-operator says otherwise.
+**And the gate refuses another page's request.** A request whose `Origin`
+names any page but this one is refused, `403`. A request Jupyter sees as
+token-authenticated skips its own cross-site checks — the `Origin` and XSRF
+checks — and the pass-through presents the token on every request, so the
+gate makes the check Jupyter would have made: without it, a page elsewhere
+visited by someone who may control the notebook could drive the kernel in
+their name.
 
-**The token travels in the environment, not on the command line**
-*(2026-09-20)*. It was `--ServerApp.token=…` until then; `/proc` keeps
-`environ` owner-only and `cmdline` world-readable, so `JUPYTER_TOKEN` is the
-cheaper place for it. The flag had to be REMOVED rather than duplicated — an
-explicit trait beats jupyter-server's default, so leaving it would have kept
-the command line authoritative and the environment ignored.
+**The token travels in the environment, not on the command line**: `/proc`
+keeps `environ` owner-only and `cmdline` world-readable, so it is
+`JUPYTER_TOKEN`, and no `--ServerApp.token` flag — an explicit trait would
+beat the environment.
 `test_jupyter_contract.py` asserts the token appears nowhere in the argv, over
 the whole list rather than one spelling, so a row reintroducing it under
 another trait name fails too.
@@ -582,7 +573,8 @@ Where it lives: `molbuilder/jupyter.py` (the lifecycle, the shepherd, and the
 generated Lab settings), `serve_daemon` (the two signals, the stop-on-exit,
 and the startup reconciliation — done with its own helpers, because it may
 import nothing of the application), `web/blueprints/jupyter.py` (status ·
-start · stop), and the **JupyterNB** tab at `/jupyternb`.
+start · stop · the `/jupyter/` pass-through), and the **JupyterNB** tab at
+`/jupyternb`.
 
 There is deliberately **no kernel search path**. One stood here until
 2026-09-14, from the design where every env offered itself as a kernel; once
@@ -592,9 +584,10 @@ a `jupyterlab-plotly` extension built against a `plotly` the notebook env does
 not have. The kernel lives in the same prefix the server runs in, so Jupyter
 finds it through `sys.prefix` with no search path at all.
 
-Verified in a browser on 2026-09-14: Start → supervisor → shepherd → the
-manager's own `run` → `jupyter lab`, framed, rooted at the projects tree, and
-Stop taking the whole process group with it.
+Held on the road by `tests/test_notebook_through_one_port_e2e.py`: `serve
+start` and `jupyter start` as a person types them, then a real browser on
+molbuilder's one port — the tab frames JupyterLab from its own origin and a
+cell run in it answers, and Jupyter's own port answers this machine only.
 
 **Known gap.** An env built before the analysis stack was added to the recipe
 has a kernel that cannot `import numpy`. The verb is

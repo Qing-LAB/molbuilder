@@ -261,7 +261,7 @@ counters.
 > **If you wrap it, set `MOLBUILDER_SERVE_PORT`** to the port molbuilder's own
 > supervisor was started on. The app needs to know *which molbuilder it is* by
 > port — it keys the serve and notebook pidfiles, the notebook's runtime file,
-> the `frame-src` CSP and the `frame-ancestors` grant. `molbuilder serve` tells
+> and the port the `/jupyter/` pass-through forwards to. `molbuilder serve` tells
 > the app directly; an embedding caller never touches `app.config`, so without
 > the variable the app falls back to the `Host:` header and reads the **public**
 > port — which behind nginx is 443, and the notebook feature then addresses
