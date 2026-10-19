@@ -1795,7 +1795,8 @@ swapped at run time, and no half-resolved directory ever sits on a queue.
 **Nothing after the copy has to be told.** Once `bdt_au.XV` is in the attempt
 directory, SIESTA finds it **by itself**, because it looks for warm files keyed
 to its `SystemLabel` — and every stage of one calculation shares that label by
-design (`run-identity.md`). *Continuing is not something molbuilder does; it is
+design (`run-identity.md`; a transport lead's stage is on its own stem,
+`job-contracts.md` § 2.1 rule 2). *Continuing is not something molbuilder does; it is
 what the engine does when it finds state under the name it was given.* All
 molbuilder contributes is putting the right file in the right place under the
 right name.

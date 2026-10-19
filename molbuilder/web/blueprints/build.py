@@ -1873,6 +1873,21 @@ def _folder_provenance(dest) -> dict:
     }
 
 
+def _row_kinds(dest, bench) -> dict:
+    """``{name: "chosen" | "machine" | "measured"}`` for the bench as it is
+    being edited, from prep's own split of the lane."""
+    from molbuilder.jobset.prep_inputs import _declared_execution_pins
+    from molbuilder.task import read_task
+    try:
+        task = read_task(dest)
+        pins, axes, value_axes = _declared_execution_pins(task, bench)
+    except Exception:                                  # noqa: BLE001
+        # A description mid-edit may not read; the cells above still say.
+        return {}
+    return {**{n: "chosen" for n in pins}, **{n: "machine" for n in axes},
+            **{n: "measured" for n in value_axes}}
+
+
 @bp.route("/api/task-setup/bench-grid", methods=["POST"])
 def api_task_setup_bench_grid():
     """The bench grid this description would produce, cell by cell, each
@@ -1945,8 +1960,14 @@ def api_task_setup_bench_grid():
                             "kept": sum(1 for r in rows if not r["why"]),
                             "note": str(exc)})
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # EACH ROW'S CLASS, by the one rule prep splits the lane with
+    # (`prep_inputs._declared_execution_pins`, `generator.md` § 4.3a): a
+    # one-point non-machine entry is CHOSEN (the trials' value), a
+    # machine-answered one the grid's axis, a multi-point one MEASURED.  The
+    # page paints what this says and decides nothing (2026-10-19).
     return jsonify({"ok": True, "cells": rows,
-                    "kept": sum(1 for r in rows if not r["why"])})
+                    "kept": sum(1 for r in rows if not r["why"]),
+                    "rows": _row_kinds(dest, bench)})
 
 
 @bp.route("/api/task-setup/prep-plan", methods=["POST"])
@@ -2137,7 +2158,6 @@ def _folder_attempts(dest) -> dict:
     """How many attempts each stage has on disk -- the payload."""
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.paths import Shape, attempts_in
-    from molbuilder.runfiles import RunNames
     from molbuilder.runrecord import newest_run
     from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import read_task
@@ -2152,7 +2172,8 @@ def _folder_attempts(dest) -> dict:
 
     stages = {}
     for st in task.stages:
-        token = stage_home(dest, task, st.name).token
+        home = stage_home(dest, task, st.name)
+        token = home.token
         sd = shape.stage_dir(token)
         where = dest if sd == "." else dest / sd
         if shape.keeps_attempts_as_directories:
@@ -2164,8 +2185,7 @@ def _folder_attempts(dest) -> dict:
             # FLAT: the runs LAUNCHED, by their launch records -- the one
             # rule (`runrecord.newest_run`); a run index on a file is not a
             # launch: prep seeds the first run's progress log before any.
-            newest = newest_run(where, RunNames.of(task.label, token,
-                                                   task.shape))
+            newest = newest_run(where, home.names(task.shape))
             n = 0 if newest is None else newest + 1
         stages[st.name] = {"token": token, "dir": sd, "attempts": n}
     return {"ok": True, "shape": task.shape, "stages": stages}
@@ -2372,11 +2392,8 @@ def _folder_ladder(folder) -> dict:
     whether its prepared jobs hold its members (`web-api.md`).  Fail-soft, like the
     folder's other parts."""
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.group import (linked, shared_card_keys, upstream_of,
-                                         why_not_join)
+    from molbuilder.jobset.group import linked, upstream_of, why_not_join
     from molbuilder.jobset.ready import task_state
-    from molbuilder import template as _T
-    from molbuilder.task import LANE_ASKS
     try:
         state = task_state(folder)
         task, text = state.task, state.template_text
@@ -2409,15 +2426,10 @@ def _folder_ladder(folder) -> dict:
                                    "state": a.state, "detail": a.detail,
                                    "why": a.why} for a in answers],
                        "offer": state.prep_offer},
-            # THE ROWS A GROUP'S CARD WRITES INTO EVERY MEMBER -- of the
-            # run card's vocabulary (the kind's execution items and the
-            # run's own two asks), those one job shares (`group.SHARED`).
-            "groups": {"stages": rows, "shared": shared_card_keys(
-                [it.name for it in _T.select(_T.catalogue(),
-                                             engine=str(task.engine),
-                                             calculation=task.calculation)
-                 if "execution" in (it.category or ())]
-                + list(LANE_ASKS)), "groups": [
+            # A GROUP'S CARD WRITES EVERY ROW INTO EVERY MEMBER THAT READS IT
+            # (`task-setup.md` § 6.2b); it carried a `shared` list no reader
+            # used until 2026-10-19.
+            "groups": {"stages": rows, "groups": [
                 {"number": g.number, "members": g.members,
                  "state": ("launched" if g.launched else
                            "prepared" if g.prepared or g.changed

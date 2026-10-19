@@ -554,7 +554,7 @@ def is_ours(name: str, label: str) -> bool:
 
 
 def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
-                 what: str = "name") -> str:
+                 what: str = "name", label_tail: int = 0) -> str:
     """§ 3's normalisation, and its three rules. Refuses rather than guessing.
 
     ``raw`` is what a person typed. The result is the ``SystemLabel`` / ``JOB``
@@ -601,7 +601,7 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
             f"nothing is left to name the calculation "
             f"(run-identity.md § 3, rule 3)")
 
-    cap = _cap_for(stage_names)
+    cap = _cap_for(stage_names) - label_tail
     if len(out.encode("utf-8")) > cap:
         raise ValueError(
             f"{raw!r} is not a usable {what}: it normalises to {len(out)} "
@@ -612,7 +612,10 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
 
 
 def _cap_for(stage_names: Sequence[str]) -> int:
-    """The cap, derived against a real ladder where one is known."""
+    """The cap, derived against a real ladder where one is known.  A rung
+    that lengthens the label before its stage token -- a transport lead's
+    ``_L-electrode`` -- is budgeted by the caller's ``label_tail``
+    (`normalise_id`), since this module imports no engine."""
     if not stage_names:
         return MAX_LABEL_BYTES
     longest = max(len(n) for n in stage_names)

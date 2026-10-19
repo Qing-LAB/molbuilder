@@ -145,3 +145,60 @@ M9 (a lone frame's derived box corner: whose), M10 (a known row name's unit vs a
 - P4 — not built (plan § 2, its own row): the two second readers of SIESTA's output stay until the grammar rows are written.
 - K5 — the empty-row birth was tried and reverted the same night: the reader takes no empty row; brought to the user (REV-D).
 - S3 — brought to the user (REV-D): the thermal-spread rule's home.
+
+
+## Built 2026-10-19 (2.17.0) — the design calls and the open rows
+
+The user, 2026-10-19: "go ahead and validate every finding, then fix them".
+Each row below is the plan's, verbatim as it stood, and what was built:
+
+| **REV-D** | design | **The seven-lane review's decisions for the user** (2026-10-18; each verified at its line, none changed — `archive/2026-10-18-review-findings.md`): **M9** a frame taken from a set (`Structure.frame_at`, f > 0) carries frame 0's engine offset with `offset_by` unset — a fourth state; state the rule (a frame keeps its set's placement) and whose the offset is. **M10** a known row name's unit is the vocabulary's on the card while a differing written `unit` goes to the data file; decide: the name's unit is the name's (said in § 2.2f), or a differing written unit is said beside the row. **S3** the thermal-spread rule lives in the page (`spectra/core.js` `_physicalAmplitude`) and an unused Python twin (`derived.thermal_spread_amu12_ang`); `spectra.md` § 4.1 and `vibrationview.md` § 12.2 assign it to the tab — recommend: served per mode at the request's temperature by the load door, the JS arithmetic deleted. **E2** a benchmark proposes its GPU count from the probed node first (`gpu_contract.toml`, `generator.md` § 4.3a) though `gpu.md` § 1.3 says the sample is never the cluster's — a 4-GPU sample proposes no 8-GPU cell on an 8-GPU queue; recommend: the named queue's node types first, the sample only with no queue. **E3** the probe records one domain per partition with a QoS it prefers (`public`, else the first allowed), and assumes `public` when `sacctmgr` answers nothing — a preference written by a probe (M-1); recommend: one domain per allowed (partition, QoS) pair, no QoS recorded when unreadable. **E13** prep refuses a SIESTA GPU run whose target record lists no `molbuilder-siesta-gpu` env (`gpu.md` G6) against *the record is shown, not a veto* — keep, or show it as the fit and let the run script refuse. **P2** a flat root with two prepared, unlaunched stages answers no state and no ladder (`runs.speaking` answers with one deck only); `results.md` § 2.4 says both *no ladder* and *lists its stages' runs*; recommend: pending for the first stage, its runs by number. **K14** the folder answer's `groups.shared` names rows no reader uses; `web-api.md` and `task-setup.md` § 6.2b describe two card behaviours; recommend: the card writes every row to every reader (built), `shared` deleted. **K19** a pre-rule `enabled` is rewritten silently on Save while two sibling cases refuse naming `migrate`; recommend: refuse naming `migrate`, `stages.md` § 2 amended. **O6** a vibration's relax rung continues by `restart`'s default, but the item is optimization-only, so the value is on no card and in no provenance block; offer `restart` to the vibration kind, or record the kind-fixed value in the deck's provenance. **K5** a bench row added for a setting with no value in force (no template value, no catalogue default) is born at `1`, an invented number (`task-setup/viewer.js` `valueInForce`); the reader takes no empty row (`task.py`: a non-empty list), so the row cannot be born empty — decide what a valueless setting's first point is (typed before the row exists; the item's `null_label`; refused). **T13** the leads' decks carry `SystemLabel <label>_L-electrode` while named on the description's label, so the run door cannot see a lead run's own `.TSHS`/`.DM`/`.XV` and § 2.1's one-basename rule does not hold for two rungs; decide: the lead's files on its own stem, or a run door that knows a rung's engine label | the review, 2026-10-18 | **decisions owed** — each a design change; none built unasked |
+
+- **M9** — `Structure.frame_at(f)` states `offset_by = "engine"` for a frame
+  derived from a set's engine offset (`structure-periodicity.md`).
+- **M10** — a vocabulary row name written with a differing unit is refused by
+  name (`frame_average._said`; `structure.md` § 2.2f).
+- **S3** — the load door serves each mode's `thermal_spread_amu12_ang` at the
+  request's `temperature_k` (`spectra.derived.thermal_spread_of`); the page's
+  arithmetic and its served constant deleted; the tab asks again when the
+  number changes (`web/spectra.md` § 4.1, `vibrationview.md` § 12.2).
+- **E2** — a benchmark's GPU count from the named queue's node types first,
+  the probed node only with no queue (`prep_inputs`; `generator.md` § 4.3a).
+- **E3** — one domain per allowed (partition, QoS) pair from `sacctmgr show
+  assoc`'s partition and QoS columns, named `<partition>` for `public` or the
+  partition's own name and `<partition>-<qos>` else; no QoS recorded when the
+  list is unreadable (`qos: null`, no QoS line in the header); the `debug`
+  domain on the cheapest partition and the assumed `public` gone
+  (`probe.derive_domains`; `scheduler.md` § 4).
+- **E13** — prep prepares the job and says in its notes that the target's
+  record lists no `molbuilder-siesta-gpu`, that the run script enters it at
+  start and stops without it, and the install command (`RenderedWrapper.notes`,
+  carried to `PrepAnswer.notes`); `gpu.md` G6/G8; the protocol row that used
+  the refusal as its last-step example retired with the road's `reprobed` hook.
+- **P2** — a flat root with no run yet speaks for its first stage by ladder
+  order (`runs.speaking`; `results.md` § 2.4).
+- **K14** — `groups.shared` deleted; the card writes every row to every reader.
+- **K19** — a pre-rule `enabled` is refused naming `jobset migrate`, which
+  strips it (`stages.md` § 2).
+- **O6** — the catalogue's `restart` item is offered to the vibration kind
+  (`[item.restart] calculations`), so a relax rung's value is on its card and
+  in its provenance.
+- **K5** — a setting with no value in force is born from a typed first point
+  (the add-setting box; the reader still takes no empty row).
+- **T13** — a lead's files are on its own stem, `<label>_L-electrode`, the one
+  door `transport.stages.rung_label` asked by the element's label, the job's
+  run names and the run door's position reader; the label cap budgets the
+  tail (`identity.normalise_id(label_tail=)`); rule 2 holds for every rung.
+
+| **P4** | parse | **Two second readers of SIESTA's output**: `parse/engines/siesta.py:93-104, 107-187` keeps its own regexes and a second walk of the `.out` for the held set (`siesta: Constraint (N): pos`), and `siesta_mdnc.py:364-379` a third walk for the SystemLabel (`reinit: System Label:`), against `parse.md` § 4a (one reader per line: the reading pass, through the grammar). No surface wrong today (the pass carries neither fact, so nothing asks it). Fix shape: two grammar rows read by the pass; the parser and `sibling_md_nc` take both from `finish()` | the review, 2026-10-18 | open — step 3 |
+
+- **P4** — grammar rows `CONSTRAINT_LINE`/`CONSTRAINT_RANGES` and the
+  `system_label` rule in the one pass; `finish()` carries `held` (1-based) and
+  `runtime_info["system_label"]`; the parser translates the held set through
+  the engine index API and hands the label to `sibling_md_nc`; the two second
+  walks of the output deleted, with the test that read one.
+
+| **K22** | Task setup | **A bench row's class is decided on the page** (`task-setup/viewer.js` `renderBench`: `chosen` = one point and not machine-answered; `machine`; `measured`) — the one-point rule of `generator.md` § 4.3a, copied; `bench_inputs` reports cells, not the row's class. Fix shape: the bench-grid door (called on every edit with the axes) says each row's class | the review, 2026-10-18 | open — step 3 |
+
+- **K22** — the bench-grid door says each row's class (`rows`), the page
+  paints it (`_declared_execution_pins`, `_rowKinds`).

@@ -56,6 +56,31 @@ function _handoverEngine(over) {
     return String(from(over) || from(_handover));
 }
 
+/* Each bench row's class -- chosen / machine / measured -- as the grid
+ * door last answered (`/api/task-setup/bench-grid` `rows`); empty until it
+ * has. */
+let _rowKinds = {};
+
+/** Repaint the rows' class badges from `_rowKinds` without rebuilding the
+ *  card: each row's `data-kind` and its verdict line. */
+function paintRowKinds() {
+    for (const row of document.querySelectorAll("[data-bench-row]")) {
+        const name = row.getAttribute("data-bench-row");
+        const kind = _rowKinds[name] || "pending";
+        row.setAttribute("data-kind", kind);
+        const v = row.querySelector("[data-bench-verdict]");
+        if (v) v.textContent = _benchVerdict(kind, row.getAttribute("data-bench-points"));
+    }
+}
+
+/** The verdict line under a bench row's name, by its class. */
+function _benchVerdict(kind, nPoints) {
+    const n = Number(nPoints) || 0;
+    if (kind === "chosen") return "every trial \u00b7 1 point";
+    if (kind === "pending") return "\u2026";
+    return `measured \u00b7 ${n} point${n === 1 ? "" : "s"}`;
+}
+
 function machineAnswers(name) {
     return (_sweep || []).some(i => i.name === name && i.machine_answers);
 }
@@ -535,7 +560,11 @@ async function refreshFit() {
         sayUnknownFit(host, body && body.error);
         return;
     }
+    // EACH ROW'S CLASS is the door's word (`rows`); the card repaints its
+    // rows with it and decides none itself.
+    _rowKinds = body.rows || {};
     paintFit(host, body);
+    paintRowKinds();
 }
 
 /** SAY WHAT IS NOT KNOWN.  A check that could not run shows that it could
@@ -973,16 +1002,15 @@ function renderMachine(task) {
         /* `machine` rows are tinted because WHICH KIND of setting it is
          * stays worth seeing, and it is a fact about the item rather than
          * about the points. */
-        const chosen = pts.length === 1 && !machineAnswers(name);
-        const kind = machineAnswers(name) ? "machine"
-                                          : (chosen ? "chosen" : "measured");
+        // THE ROW'S CLASS is the grid door's answer (`rows`, from prep's own
+        // split of the lane); until it answers, the row says so.
+        const kind = _rowKinds[name] || "pending";
+        const chosen = kind === "chosen";
         // A ONE-POINT ROW IS THE TRIALS' VALUE, NEVER THE RUN'S.  `mpi_np:
         // [8]` is *measure eight*; `use_gpu: [true]` is what every trial
         // runs with (`stages.md` § 6.8) -- neither is read by `prep task`:
         // what the run uses is the card in the rung's own tab (§ 6.8d).
-        const verdict = chosen
-            ? "every trial · 1 point"
-            : `measured · ${pts.length} point${pts.length === 1 ? "" : "s"}`;
+        const verdict = _benchVerdict(kind, pts.length);
 
         const chips = pts.map((p, i) => {
             const drop = el("button", { type: "button", class: "ts-pt-x",
@@ -1044,11 +1072,14 @@ function renderMachine(task) {
                       + "winning combination is REPORTED, for you to "
                       + "write here."))
             : null;
-        host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
+        host.appendChild(el("div", { class: "ts-row", "data-kind": kind,
+                                     "data-bench-row": name,
+                                     "data-bench-points": String(pts.length) },
             el("div", { class: "ts-row-name", title: helpText(name) }, name,
                 el("small", null, rowNote(name)), _tooMany),
             el("div", { class: "ts-points" }, ...chips, add),
-            el("div", { class: "ts-verdict" }, verdict, dropRow)));
+            el("div", { class: "ts-verdict" },
+               el("span", { "data-bench-verdict": "" }, verdict), dropRow)));
     }
     const acts = $("ts-machine-actions");
     if (acts) acts.hidden = false;
@@ -1923,11 +1954,9 @@ function valueInForce(name) {
     if (name in _tmpl.values) return _tmpl.values[name];
     const m = _meta[name] || {};
     if (m.default !== undefined && m.default !== null) return m.default;
-    // NO VALUE IN FORCE: the row is still born with one point, 1 -- an
-    // invented number (the review of 2026-10-18, K5), kept until the
-    // user decides what a valueless setting's first point is (plan REV-D):
-    // the reader takes no empty row (`task.py`: a non-empty list).
-    return 1;
+    // NO VALUE IN FORCE: nothing is proposed -- the first point is typed
+    // before the row exists (the add control's box; 2026-10-19).
+    return undefined;
 }
 
 /** Fill a <select> with what is NOT already used. */
@@ -4485,9 +4514,32 @@ function start(projects) {
         // (template, else catalogue default); a setting with no value in
         // force starts EMPTY, the first point typed (`task-setup.md`
         // § 6.2b: blank until stated, nothing proposed).
-        addPoint(sel.value, String(valueInForce(sel.value)));
+        // THE FIRST POINT IS THE BOX'S: the value in force, offered there
+        // when there is one, or what the person typed -- never a number
+        // invented here (`task-setup.md` § 6.2a; the row was born at 1
+        // for a valueless setting until 2026-10-19).
+        const box = $("ts-add-setting-value");
+        const first = String((box && box.value) || "").trim();
+        if (!first) {
+            setState("refuse", sel.value + " has no value in force",
+                     "Type its first point in the box beside the setting, "
+                     + "then add it.");
+            return;
+        }
+        addPoint(sel.value, first);
+        if (box) box.value = "";
         sel.value = "";
     };
+    // PICKING A SETTING OFFERS ITS VALUE IN FORCE in the box (template,
+    // else catalogue default), or leaves it blank for the person to type.
+    const pick = $("ts-add-setting");
+    const firstBox = $("ts-add-setting-value");
+    if (pick && firstBox) {
+        pick.addEventListener("change", () => {
+            const v = pick.value ? valueInForce(pick.value) : undefined;
+            firstBox.value = v === undefined ? "" : String(v);
+        });
+    }
     const goBtn = $("ts-add-setting-go");
     if (goBtn) goBtn.addEventListener("click", addSetting);
     const addBtn = $("ts-add-stage");

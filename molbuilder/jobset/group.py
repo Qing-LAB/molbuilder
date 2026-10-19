@@ -52,14 +52,6 @@ SHARED = {"domain": "queue", "mpi_np": "ranks",
           "use_gpu": "GPU use", "gpu_binding": "GPU binding"}
 
 
-def shared_card_keys(names) -> List[str]:
-    """Of the run-card ``names`` (`stages.md` § 6.8d), those one job's
-    members share (:data:`SHARED`, read through the exchange map) -- the
-    rows Task setup's group card writes into every member
-    (`web/task-setup.md` § 6.2b)."""
-    from .model import AS_RESOURCE
-    return [n for n in names if AS_RESOURCE.get(n, n) in SHARED]
-
 
 def card_shares(task, stage: str) -> dict:
     """``stage``'s run card (`Task.run_condition`) on what a job's members
@@ -441,7 +433,7 @@ def names_for(base, task, members: Sequence[str]) -> GroupNames:
                                              for n in members])
 
 
-__all__ = ["GroupError", "SHARED", "shared_card_keys", "card_shares",
+__all__ = ["GroupError", "SHARED", "card_shares",
            "upstream_of", "linked", "may_join",
            "default_groups", "numbered",
            "check_groups", "envelope", "number_of", "named", "members_of",

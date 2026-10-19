@@ -623,8 +623,9 @@ picks from what survives.
 > either way.
 
 The `use_gpu` toggle is a *script-input* contract — it never queries env
-presence; `runwrap` gates env presence at generation time with a clear install
-hint. (How the `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA source
+presence; prep reads the target's record for the env and, when it lists none,
+says so with the install command and prepares the job as asked
+([`execution/gpu.md`](?doc=execution/gpu.md) G6). (How the `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA source
 build, CMake flags, toolchain pinning — is a deployment concern documented under
 `ops/`, not here.)
 

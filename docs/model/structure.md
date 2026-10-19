@@ -635,7 +635,11 @@ post-process, `molbuilder/frame_average.py` (`ROWS`, `MASS_CHANNEL`,
 `INFO_KEY`): the names a page says in words, the frame rows the data file keeps
 as variables of their own, the structure rows as its attributes. The names
 carry their units; a row's `unit` field, when written, spells the same unit in
-ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`:
+ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom` — and one of these names
+written with another unit is refused by name when the rows are read for a
+record, a data file or a page (`frame_average`, 2026-10-19): the one check
+made on a maker's rows, because the name itself is a claim about the unit.
+Any other name's unit is carried as written:
 
 | where | name | kind | meaning | unit | on a page |
 |---|---|---|---|---|---|

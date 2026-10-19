@@ -518,17 +518,17 @@ def test_duplicate_stage_names_are_refused_by_the_codec():
         _ladder_task((Stage("a"), Stage("a")))
 
 
-def test_a_description_written_before_reads_its_enabled_by_the_rule(example):
-    """`engines/stages.md` § 2: a description an older molbuilder wrote
-    carries `"enabled": true` on every stage -- read and ignored -- and
-    `"enabled": false` is refused, saying to remove the stage instead.
-    API-level: molbuilder no longer writes the key, so the road cannot
-    produce such a file."""
+def test_a_description_written_before_is_refused_naming_migrate(example):
+    """`engines/stages.md` § 2: a stage has no on/off switch since
+    2026-10-03, and a description an older molbuilder wrote with `enabled`
+    on a stage is refused by name, naming `jobset migrate`, which removes
+    it -- one policy for a state against the design, never a silent rewrite
+    on Save (a `true` was read and dropped until 2026-10-19).  API-level:
+    molbuilder no longer writes the key, so the road cannot produce such a
+    file."""
     import pytest
     from molbuilder.task import Task
     for st in example["stages"]:
         st["enabled"] = True
-    assert "enabled" not in Task.from_dict(example).to_dict()["stages"][0]
-    example["stages"][0]["enabled"] = False
-    with pytest.raises(ValueError, match="Remove the stage instead"):
+    with pytest.raises(ValueError, match="jobset migrate"):
         Task.from_dict(example)

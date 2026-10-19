@@ -52,7 +52,7 @@ accurate/accommodating" — "and which part is none of your business".)*
 | **Which rungs take the calculation's GPU?** | the catalogue — the rungs whose role reads `use_gpu` | a calculation-wide `use_gpu` and `gpu_count` reach only those rungs: never a transport ladder's transmission, whose `tbtrans` has no GPU path ([`stages.md`](?doc=engines/stages.md) § 6.8d); a rung's own card stating one there is refused |
 | **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `task.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
 | **How do the ranks share the GPUs?** | molbuilder's launch script, at run time | spreads the ranks over the GPUs the job was GIVEN (counted from `CUDA_VISIBLE_DEVICES`), starts MPS when ranks outnumber GPUs and says so as decided, binds each rank to cores of its own off a scheduler and runs the ranks inside the cores a scheduler gave ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.3) — a rank whose cores lie on another socket than its GPU is warned about in the run's log, never refused (G10). The rank and thread counts are the stated ones — a GPU job that states none is refused at prep, like any job ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
-| **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: refused at prep when the target has no GPU build of SIESTA; PySCF: checked at run start, because a login node cannot see a device (G6, G8) |
+| **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: said at prep when the target's record lists no GPU build of SIESTA — the job is prepared, the note names the env and its install; PySCF: checked at run start, because a login node cannot see a device (G6, G8) |
 
 **Every fact comes from the target's own record.** A target is known only
 through its `environment.json`, written by `jobset probe` on that machine —
@@ -155,11 +155,17 @@ shelves and their report, the Task setup card, which shows a request prep refuse
 not a run: a bench that names no `gpu_count` measures the counts § 3.1
 describes.
 
-**G6 — No silent fallback, in either direction.** A GPU deck that cannot
-run on a GPU **refuses**: SIESTA at prep (the wrapper gates env presence and
-names the install), PySCF at run start (the script exits with the reason).
-A CPU-ELPA deck writes `Diag.ELPA.GPU .false.` **explicitly**, never left to the
-engine's default — omitted, it crashes a CPU-ELPA run
+**G6 — No silent fallback, in either direction.** A GPU deck never runs on
+the CPU build, and a CPU deck never on the GPU one. SIESTA's GPU build is an
+environment, and whether the target has it is the target's record's to say —
+the record is shown, never a veto (the user, 2026-10-17): when the record lists no `molbuilder-siesta-gpu`, **prep prepares the job as
+asked and says so** in its notes — the env the run script enters at its
+start and stops without, and the command that installs it
+(`python -m molbuilder envs install molbuilder-siesta-gpu`); the person
+installs it, or turns `Use GPU` off and preps again. PySCF's GPU is a device,
+checked at run start: the script exits with the reason. A CPU-ELPA deck
+writes `Diag.ELPA.GPU .false.` **explicitly**, never left to the engine's
+default — omitted, it crashes a CPU-ELPA run
 ([`engines/siesta.md`](?doc=engines/siesta.md) § 7).
 
 **G7 — The value travels; the deck is not re-read for it.** `use_gpu`
@@ -170,9 +176,10 @@ onto the job's resources, and the GPU request is read off them (G5's one door).
 GPU run at all: its deck carries no SIESTA keyword.*
 
 **G8 — Capability is checked where it can be seen.** SIESTA's GPU capability
-is an **environment** — visible in the target's record, so checked at prep.
-PySCF's is a **device** — not visible from a login node, so checked at run
-start. This asymmetry is a fact about the two stacks, not an inconsistency.
+is an **environment** — visible in the target's record, so read at prep and
+said there (G6). PySCF's is a **device** — not visible from a login node, so
+checked at run start. This asymmetry is a fact about the two stacks, not an
+inconsistency.
 
 **G9 — The job's cores are bound to its GPUs, unless the calculation says
 not.** Every GPU ask carries `--gres-flags=enforce-binding`: the scheduler is
@@ -219,8 +226,9 @@ flowchart TB
     Q3 -->|yes| DECK["deck: Diag.ELPA.GPU .true."]
     Q2 -->|PySCF| PYDECK["deck: _mb_to_gpu(mf)<br/><i>capability checked at RUN start (G8)</i>"]
 
-    DECK --> ENV{"molbuilder-siesta-gpu<br/>present?"}
-    ENV -->|no| REFUSE2["<b>wrapper refuses to emit</b><br/>names the env + install (G6, G8)"]
+    DECK --> ENV{"molbuilder-siesta-gpu<br/>in the target's record?"}
+    ENV -->|no| SAID2["<b>prep says so</b>, the job prepared<br/>names the env + install (G6, G8)"]
+    SAID2 --> RT
     ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · binding (G9) · MPS · NUMA pin<br/>ranks, threads, --mem = what the person stated"]
 
     COUNT --> RT
@@ -236,7 +244,7 @@ flowchart TB
     PYDECK --> OUT
 
     classDef refuse fill:#7f1d1d,stroke:#ef4444,color:#fff
-    class REFUSE1,REFUSE2 refuse
+    class REFUSE1 refuse
 ```
 
 ### 3.1 The bench walks the same graph, once per family

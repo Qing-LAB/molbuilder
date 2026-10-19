@@ -757,14 +757,17 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
 def test_the_run_card_offers_only_what_the_kind_carries(web_client):
     """A kind's run card offers the run settings that kind carries
     (`template.md` § 6.3's sibling rule, as the columns are narrowed):
-    `restart` is an optimization's, and a vibration's card offered it -- a
-    value its deck would ignore (the K5 review's C2, 2026-09-30)."""
+    `restart` is a relaxation rung's -- an optimization's, and since
+    2026-10-19 a vibration's (`vibration.md`, *the start state is stated
+    where it is read*) -- and a transport's card does not carry it (the
+    item's `calculations`; a value its decks would ignore)."""
     def names(kind):
         j = web_client.get("/api/task-setup/sweepable?engine=siesta"
                            f"&calculation={kind}").get_json()
         return {i["name"] for i in j["items"]}
     assert "restart" in names("optimization")
-    assert "restart" not in names("vibration")
+    assert "restart" in names("vibration")
+    assert "restart" not in names("transport")
     assert "use_gpu" in names("vibration")
 
 

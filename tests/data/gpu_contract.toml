@@ -72,10 +72,12 @@ prep = ["--gpus", "a100:1"]
 refused = "names no card"
 
 [[case]]
-name = "SIESTA on a GPU is refused when the target has no GPU build of it"
+name = "SIESTA on a GPU whose target's record lists no GPU build of it is prepared as asked, the note naming the env and its install (gpu.md G6)"
 run = { use_gpu = true, gpu_count = 1 }
 record = { conda_envs = ["molbuilder-siesta"] }
-refused = "env is not installed"
+said = ["lists no ``molbuilder-siesta-gpu`` environment",
+        "python -m molbuilder envs install molbuilder-siesta-gpu"]
+run_sh = ["molbuilder-siesta-gpu"]
 
 [[case]]
 name = "a GPU job on a queue that lists no GPUs is prepared as asked, its fit saying so (scheduler.md R2a, R6)"

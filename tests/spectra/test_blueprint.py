@@ -284,6 +284,46 @@ class TestLoadEndpoint:
         assert body["results"]["engine"] == "pyscf"
         assert len(body["results"]["modes"]) == 1
 
+    def test_the_thermal_spread_is_served_at_the_temperature_asked(
+            self, web_client, tmp_path):
+        """`web/spectra.md` § 4.1: the load door serves each mode's thermal
+        spread at the request's `temperature_k`; the tab computes nothing.
+        The contract's own table: at 298 K a 100 cm-1 mode swings 2.1x its
+        zero-point, a 3000 cm-1 mode 1.00x; asked for no temperature, no
+        mode carries the key.  Silent failure otherwise: a page drawing a
+        thermal size the server never derived."""
+        import dataclasses
+        base = _make_minimal_results()
+        soft = dataclasses.replace(base.modes[0], index_1based=1,
+                                   frequency_cm1=100.0)
+        stiff = dataclasses.replace(base.modes[0], index_1based=2,
+                                    frequency_cm1=3000.0)
+        results = dataclasses.replace(base, modes=[soft, stiff])
+        p = tmp_path / "t.spectra.json"
+        dump_spectra_json(results, p)
+
+        def load(**extra):
+            r = web_client.post("/api/spectra/load",
+                                data=json.dumps({"path": str(p), **extra}),
+                                content_type="application/json")
+            return r.status_code, r.get_json()
+
+        code, body = load(temperature_k=298)
+        assert code == 200, body
+        modes = body["results"]["modes"]
+        ratios = [m["thermal_spread_amu12_ang"]
+                  / m["zero_point_amplitude_amu12_ang"] for m in modes]
+        assert abs(ratios[0] - 2.1) < 0.05, ratios
+        assert abs(ratios[1] - 1.00) < 0.005, ratios
+
+        code, body = load()
+        assert code == 200, body
+        assert all("thermal_spread_amu12_ang" not in m
+                   for m in body["results"]["modes"])
+
+        code, body = load(temperature_k="warm")
+        assert code == 400 and "temperature_k" in body["error"], body
+
     def test_path_input(self, web_client, tmp_path):
         original = _make_minimal_results()
         p = tmp_path / "y.spectra.json"

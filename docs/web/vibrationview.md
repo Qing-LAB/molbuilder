@@ -294,7 +294,7 @@ on every tick. It is **not** carried on a mode.
 That matters because the two normalizations want different amplitudes and would
 otherwise each need their own door: a display animation uses one amplitude for
 every mode, while a physical animation uses an amplitude that depends on the
-mode's own frequency (§ 12.2). Both are the caller's arithmetic. It sets the
+mode's own frequency (§ 12.2). Both are the caller's to supply. It sets the
 number before it shows the mode, and there is still exactly one place the number
 lives.
 
@@ -920,8 +920,10 @@ and the per-atom Cartesian displacement is `Q_rms × L_canonical`, where
 the zero-point form as T → 0, which is the check that they are one expression and
 not two.
 
-Both are computed by the **tab**, from the frequency and the canonical eigenvector
-the backend already ships. VibrationView receives displacements and a number and
+Both are the **server's**: the zero-point amplitude is written in the result
+file, and the thermal spread is served by the spectrum tab's load door at the
+temperature the tab asked ([`web/spectra.md`](?doc=web/spectra.md) § 4.1). The
+tab passes the number on; VibrationView receives displacements and a number and
 animates them; the physics of how big a vibration is belongs with the spectrum,
 not with the viewer (§ 2).
 
@@ -1127,7 +1129,7 @@ the day it is crossed.
 | § 12.3 — the caption is in the file | a caption shown on screen appears in every exported frame; hidden, it appears in none — the export is not asked separately |
 | § 12.3 — the caption is text | a mode's label is drawn exactly as given: no rounding, no unit added, no sign reinterpreted |
 | § 12.1 — the zip explains itself | the manifest's frame count equals the number of PNGs in the zip |
-| § 12.2 — the two amplitudes are the caller's arithmetic | the module contains no frequency, no temperature and no physical constant |
+| § 12.2 — the two amplitudes are supplied by the caller | the module contains no frequency, no temperature and no physical constant |
 
 ---
 

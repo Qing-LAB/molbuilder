@@ -379,9 +379,7 @@ def calls_made(calls: Path):
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, the sentence the folder answer gave the shape card
-# before (`shape_fixed`), or taken.  A REFUSED prep, its remedy done: this
-# machine re-probed holding `reprobed` (its record's fields), the same prep
-# is typed again and taken.
+# before (`shape_fixed`), or taken.
 #
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
@@ -606,16 +604,6 @@ def _road_saved(case, bundle) -> None:
         assert words in said, said
     assert card["shape_fixed"] == {"shape": shape, "why": said}, (
         card["shape_fixed"])
-
-
-def _reprobed(fields) -> None:
-    """This machine's record written anew, with ``fields`` -- what `jobset
-    probe --write` writes once the machine has changed."""
-    import dataclasses
-    from molbuilder.scheduler import (machine_scope_path, read_environment,
-                                      write_environment)
-    at = machine_scope_path()
-    write_environment(dataclasses.replace(read_environment(at), **fields), at)
 
 
 def _road_own_warm_files(case, bundle) -> None:
@@ -1116,14 +1104,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             assert words in r.output, _one_line(r)
         _road_after_prep(case, bundle)
         _road_saved(case, bundle)
-        if "reprobed" in case:
-            # WHAT THE REFUSAL SAYS TO DO, DONE -- the machine probed again,
-            # holding what it lacked -- and the same prep is taken.
-            _reprobed(case["reprobed"])
-            r = jobset("prep", kind, *named,
-                       "--bundle", bundle,
-                       "--target", target, *case.get("prep", []))
-            assert r.exit_code == 0, _one_line(r)
         return
     assert r.exit_code == 0, _one_line(r)
     for words in case.get("said", []):

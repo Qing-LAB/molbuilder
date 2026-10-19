@@ -249,28 +249,49 @@ def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
             for pt in rung_points(task, stage, frames=frames_of(base))]
 
 
+#: The regions a lead rung is cut on -- its stage name to its region label.
+_LEAD_REGION_OF = {"electrode_L": "L-electrode", "electrode_R": "R-electrode"}
+
+
+def rung_label(task_label: str, stage: Optional[str]) -> str:
+    """THE LABEL A RUNG'S FILES ARE NAMED ON (`job-contracts.md` § 2.1, rule
+    2): the calculation's own for every rung but a lead's, whose files --
+    the engine's ``.TSHS``, ``.DM``, ``.XV`` and ours alike -- are on the
+    lead's own stem, its ``SystemLabel`` (`transiesta.electrode_hs_stem`),
+    which the device deck's ``TS.Elec.<name> HS`` line names.  Asked by the
+    element's label (`resolve._label_for`), the job's names
+    (`materialize.run_names`) and the run door's reading of a folder
+    (`runs._position`), so no reader composes a lead's name a second way.
+    ``stage`` is the rung's name; ``None`` -- no ladder -- is the label."""
+    from .transiesta import electrode_hs_stem
+    region = _LEAD_REGION_OF.get(stage or "")
+    return electrode_hs_stem(task_label, region) if region else task_label
+
+
+def lead_tail_bytes() -> int:
+    """How much longer a lead's stem is than the calculation's label -- what
+    the label cap budgets for a transport calculation (`identity._cap_for`)."""
+    from .transiesta import electrode_hs_stem
+    return max(len(electrode_hs_stem("", r).encode("utf-8"))
+               for r in _LEAD_REGION_OF.values())
+
+
 def stage_inputs(stage: str, task_label: str):
     """The ladder's DAG (§ 1, § 6.1), as data: ``[(upstream stage, filename)]`` this
     stage CONSUMES from the concluded attempts of the stages before it.
 
     The filenames are derived from the SystemLabel rules the renderers
     already fixed — the seed and device share the task's label, each
-    electrode's label IS its ``.TSHS`` stem (`electrode_hs_stem`, one
-    spelling) — so producer and consumer cannot disagree about a name.
+    electrode's label IS its ``.TSHS`` stem (`rung_label`, one spelling) —
+    so producer and consumer cannot disagree about a name.
 
     The seed's density starts the device's SCF (user, 2026-10-12: every
     ladder keeps its seed); the electrode and device rows are the physics
     (the self-energies, and the converged H the transmission reads).
     """
-    from .sort import REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
-    from .transiesta import electrode_hs_stem
     from ..runfiles import compose
-    elec = [
-        ("electrode_L", compose(electrode_hs_stem(
-            task_label, REGION_LEFT_ELECTRODE), _G.TSHS)),
-        ("electrode_R", compose(electrode_hs_stem(
-            task_label, REGION_RIGHT_ELECTRODE), _G.TSHS)),
-    ]
+    elec = [(s, compose(rung_label(task_label, s), _G.TSHS))
+            for s in ("electrode_L", "electrode_R")]
     if stage == "device":
         return [("seed", compose(task_label, _G.DM))] + elec
     if stage == "transmission":

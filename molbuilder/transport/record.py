@@ -185,10 +185,10 @@ def point_transmission(where, label: str, spin: str) -> Dict:
     polarized deck whose run wrote one channel is not done
     (`engines/transport.md` § 2a.12)."""
     from ..parse.engines.tbtrans import transmission_files
-    from .transiesta import LEAD_NAMES
+    from .transiesta import LEAD_PAIR
     # THE PAIR, from the leads' own block names (`TS.Elecs`), left to
     # right: the file TBtrans writes for it, never the first of a glob.
-    files = transmission_files(where, label, "-".join(LEAD_NAMES))
+    files = transmission_files(where, label, LEAD_PAIR)
     if spin == "polarized":
         missing = [c for c in ("up", "down") if not files.get(c)]
         if missing:
@@ -447,10 +447,10 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         if run is not None and s.attempt and s.dir \
                 and run != base / s.dir / s.attempt and s.points:
             from ..jobset.runstatus import point_rows
-            from ..runfiles import RunNames
             from ..runrecord import launch_record
             from .stages import products_of
-            _names = RunNames.of(task.label, token, task.shape)
+            from ..jobset.materialize import stage_home
+            _names = stage_home(base, task, name).names(task.shape)
             try:
                 points, _ = point_rows(
                     run, _names, task, name, launch=launch_record(run, _names),
@@ -663,8 +663,8 @@ def _rung_points(base: Path, task, name: str, token: str,
     (`run_status`) and its own answer (:func:`_science`); ``run`` names the
     run to read instead of the latest."""
     from ..parse.dirs.rundir import run_state_of
-    from ..runfiles import RunNames
-    names = RunNames.of(task.label, token, task.shape)
+    from ..jobset.materialize import stage_home
+    names = stage_home(base, task, name).names(task.shape)
     out: List[Dict] = []
     for pt, where, run in result_folders(base, task, name, run=run):
         entry: Dict = {**pt.to_wire(), "point": pt.words()}
@@ -747,7 +747,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..parse.dirs.rundir import run_state_of
     from ..parse.engines._run_ending import keep_reading, version_of
     from ..parse.engines.siesta_reader import read_output
-    from ..runfiles import JUNCTION_FILE, RunNames
+    from ..runfiles import JUNCTION_FILE
     from ..frame_average import AverageError, average_block
     from ..frameset import read as read_frame_set
     from .compose import read_provenance, recorded_junction
@@ -763,8 +763,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     points_out: List[Dict] = []
     pending: List[Dict] = []
     failed: List[Dict] = []
-    token = stage_home(base, task, "transmission").token
-    names = RunNames.of(task.label, token, task.shape)
+    home = stage_home(base, task, "transmission")
+    token, names = home.token, home.names(task.shape)
     regions = device_regions(junction)
     stages = _stage_facts(base, task, task.label)
     # A POINT NOT OPENED stands where its rung does -- the ready door's

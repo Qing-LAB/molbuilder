@@ -132,7 +132,10 @@ class Domain:
     """
     name:      str
     partition: str
-    qos:       str
+    #: ``None`` when the probe could not read the account's QoS list: the
+    #: pair is the partition alone, and a header written for it carries no
+    #: QoS line (`probe.derive_domains`).
+    qos:       Optional[str]
     max_time:  Optional[str] = None
     max_cores: Optional[int] = None
     max_mem_gb: Optional[float] = None
@@ -185,7 +188,7 @@ class Domain:
     #: real answer here and lands as ``null``; only ``UNSET`` stays off
     #: the disk.  Every other ``_KNOWN`` column keeps the record style --
     #: ``None`` says nothing and is not written.
-    _NULLABLE = ("max_cpus_per_job", "max_cpus_per_node",
+    _NULLABLE = ("qos", "max_cpus_per_job", "max_cpus_per_node",
                  "max_submit_jobs", "default_mem_per_core_gb")
 
     @classmethod
@@ -899,7 +902,7 @@ def _probe_slurm_queues(env: Environment, user: str
     qos = parse_qos(qos_txt or "")
     allowed = parse_allowed_qos(
         _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
-              "format=QOS"]) or "")
+              "format=Partition,QOS"]) or "")
     # THE SECOND COMMAND, and it needs one: `sinfo` has no format code for
     # DefMemPerCPU, and that is the number SLURM grants per core when a job
     # states no --mem.  Absent scontrol, the rows simply carry no per-core default, which

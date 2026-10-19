@@ -96,20 +96,6 @@ bench = { mpi_np = [2], omp_threads = [1] }
 before = [["prep", "bench", "coarse"]]
 refused = ["the benchmark of stage 'coarse' is already prepared", "molbuilder checkpoint list"]
 
-[[case]]
-name = "a first prep refused at its last step writes nothing -- no stage folder, no data files, no copy of the machine's record, no plan, no log; not counted prepared, not recorded as prepared, its shape still free: the build installed and the machine re-probed, as the refusal says, the prep is taken"
-template = { diag_algorithm = "ELPA-1STAGE" }
-run = { use_gpu = true, gpu_count = 1 }
-allocation = { domain = "gpu" }
-record = { conda_envs = ["molbuilder-siesta"] }
-refused = ["env is not installed", "re-probe that machine"]
-made_lacks = ["01_coarse", "pseudos", "environment.json", "job-set.json",
-              "STAGE-PLAN.md", "H2_01_coarse.siesta.hierarchical.pipeline.log"]
-status_says = ["group 1  coarse", "not prepared -- next:"]
-ledger_lacks = ["prepared"]
-saved = { shape = "flat" }
-reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
-
 # ===================================================================== #
 #  LAUNCH ACTS ON A PREPPED STAGE                                       #
 # ===================================================================== #

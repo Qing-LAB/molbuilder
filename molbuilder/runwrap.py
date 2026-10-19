@@ -35,7 +35,7 @@ from .runfiles import (RANK_LAUNCHER, RUN_COUNTER_GLOB, deck_roles,
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them.
-from .identity import checkpoint_words, way_back_words
+from .identity import way_back_words
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
 from .runtime_info import THREAD_SOURCES
@@ -1798,8 +1798,13 @@ def render_run_wrapper(script_path: Path, *,
                         finish: Optional[str] = None,
                         resumes: bool = True,
                         warm: Optional[Sequence[str]] = None,
-                        deck_text: Optional[str] = None) -> str:
+                        deck_text: Optional[str] = None,
+                        notes: Optional[list] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
+
+    ``notes`` receives what the rendering has to say and does not refuse
+    (`gpu.md` G6: the target's record lists no GPU build of SIESTA) -- the
+    same out-list `prep` hands every step, so a sentence reaches its answer.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.
     With the object passed whole there is no subset to choose, and *which*
@@ -1967,15 +1972,15 @@ def render_run_wrapper(script_path: Path, *,
             f"molbuilder.diagnostics.DEFAULT_ENV_NAMES."
         )
 
-    # GPU-env presence gate.  When the .fdf opted into GPU diagonalization
-    # at generate time but ``molbuilder-siesta-gpu`` isn't installed,
-    # ``source activate molbuilder-siesta-gpu`` would fail at run time
-    # with a conda-side error -- the user-facing message would not point
-    # at the real fix (install the env or turn the toggle off).  Raise
-    # here with the install hint so the wrong env is caught at script-
-    # generation time.  Only fires when we AUTO-routed (env not user-
-    # passed) AND the host snapshot lists at least one env (an empty
-    # snapshot means the conda probe never ran -- can't gate on that).
+    # THE GPU BUILD'S PRESENCE IS SAID, NEVER A VETO (`gpu.md` G6; the
+    # user, 2026-10-17: the record is shown, the person decides).  When the
+    # .fdf opted into GPU diagonalization and the target's record lists no
+    # ``molbuilder-siesta-gpu``, the run script's ``activate`` would stop
+    # the run at its start with a conda-side error that names no fix.  So
+    # prep says it here -- the env, that the run stops without it, and the
+    # command that installs it -- and prepares the job as asked.  Only when
+    # we AUTO-routed (env not user-passed) AND the inventory lists at least
+    # one env (an empty inventory means the conda probe never ran).
     # WHICH MACHINE IS ASKED WHETHER THE ENV EXISTS.
     #
     # *Which* env you want is a preference and comes from your own config
@@ -2008,30 +2013,32 @@ def render_run_wrapper(script_path: Path, *,
             and env_lookup_category == "siesta-gpu"
             and _env_is_known
             and not _env_present):
-        # Only ONE ask reaches here: GPU diagonalization.  Name what is
-        # actually missing, and the way out
-        # that does not require compiling anything.
-        raise WrapperError(
-            f"`{script_path.name}` requests GPU diagonalization "
-            f"(``Diag.ELPA.GPU .true.``) but the ``{target_env}`` env is "
-            f"not installed "
-            + ("on the machine this bundle is being prepared FOR (read "
-               "from its probed record.  If you installed the env since, "
-               "re-probe that machine and prep again -- a calculation is "
-               "set to the record of its first prep, so one prepared "
-               "before goes back to the state saved before that prep "
-               "first: " + checkpoint_words(project_dir) + ").  "
-               if _rec_envs else "on this machine.  ")
-            + f"GPU support is the one thing the packaged "
-            f"SIESTA does not have -- its ELPA is built without the GPU "
-            f"entry -- so it lives only in that source build.  Either "
-            f"install it with ``python -m molbuilder envs install "
-            f"{target_env}`` (source build, ~10 minutes; some HPC sites "
-            f"do not allow it), or turn off the SIESTA ``Use GPU`` "
-            f"toggle and regenerate the .fdf.  Keeping ``Diag.Algorithm "
-            f"ELPA-1stage/ELPA-2stage`` is fine either way: the packaged "
-            f"env runs both on CPU."
-        )
+        # Only ONE ask reaches here: GPU diagonalization.  Name what the
+        # record lacks, what a run does without it, and the way out that
+        # does not require compiling anything.
+        if _rec_envs:
+            _probed = getattr(machine_record, "detected_at", None)
+            _where = (f"the record of "
+                      f"{getattr(machine_record, 'machine', None) or 'the target machine'}"
+                      + (f" (probed {_probed})" if _probed else ""))
+            _there = ("on " + (getattr(machine_record, 'machine', None)
+                                or "that machine"))
+        else:
+            _where = "this machine"
+            _there = "here"
+        _said = (
+            f"`{script_path.name}` asks for GPU diagonalization "
+            f"(``Diag.ELPA.GPU .true.``), and {_where} lists no "
+            f"``{target_env}`` environment.  The run script enters it at "
+            f"its start and stops there if it is absent -- so install it "
+            f"before launching, {_there}: ``python -m molbuilder envs install "
+            f"{target_env}`` (a source build, ~10 minutes; the packaged "
+            f"SIESTA's ELPA has no GPU entry, and some HPC sites allow no "
+            f"build) -- or turn off the SIESTA ``Use GPU`` toggle and prep "
+            f"again.  ``Diag.Algorithm ELPA-1stage/ELPA-2stage`` is fine "
+            f"either way: the packaged env runs both on CPU.")
+        if notes is not None and _said not in notes:
+            notes.append(_said)
 
     # What this deck instructs about prior state -- read from the deck, so the
     # wrapper's own help cannot contradict the file it ships beside.
@@ -3997,6 +4004,9 @@ class RenderedWrapper:
     executable: Tuple[str, ...] = ()
     #: Named BYTES -- the bundles, which are zips and no text.
     blobs: Tuple[Tuple[str, bytes], ...] = ()
+    #: WHAT THE RENDERING SAYS AND DOES NOT REFUSE (`gpu.md` G6): sentences
+    #: for prep's answer, printed with its other notes.
+    notes: Tuple[str, ...] = ()
 
     @property
     def wrapper_name(self) -> str:
@@ -4068,10 +4078,12 @@ def render_wrappers(script_path: Path, *,
     # scripts, not structures.
     if n_atoms is None and script_path.suffix.lower() == ".fdf":
         n_atoms = _fdf_n_atoms(deck_text)
+    _notes: list = []
     text = render_run_wrapper(
         script_path, names=names, resources=r, env=env, n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
-        finish=finish, resumes=resumes, warm=warm, deck_text=deck_text)
+        finish=finish, resumes=resumes, warm=warm, deck_text=deck_text,
+        notes=_notes)
     _validate_rendered_wrapper(text, script_path)
     # THE STAGE'S NAMES NAME IT (`runfiles.RunNames`), as every file of it.
     files = [(names.name(".run.sh"), text)]
@@ -4101,7 +4113,7 @@ def render_wrappers(script_path: Path, *,
             files.append((names.name(".sbatch"), sbatch))
 
     return RenderedWrapper(files=tuple(files), executable=(files[0][0],),
-                           blobs=blobs)
+                           blobs=blobs, notes=tuple(_notes))
 
 
 def _warm_in_effect(engine: str, warm: Optional[Sequence[str]]
@@ -4130,12 +4142,13 @@ def write_run_wrapper(script_path: Path, *,
                       finish: Optional[str] = None,
                       resumes: bool = True,
                       warm: Optional[Sequence[str]] = None,
-                      plan=None) -> Path:
+                      plan=None, notes: Optional[list] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     ``plan`` (`jobset.planned.Plan`) receives the files instead of the disk,
     rendered from the deck the plan holds: `prep` decides everything before
-    it writes (`job-system.md` § 5.0).
+    it writes (`job-system.md` § 5.0).  ``notes`` receives what the
+    rendering said (`RenderedWrapper.notes`), each sentence once.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
     beside the rendering half so every writer of a wrapper set -- `jobset/prep`
@@ -4161,6 +4174,8 @@ def write_run_wrapper(script_path: Path, *,
                                resumes=resumes, warm=warm,
                                deck_text=(plan.read_text(script_path)
                                           if plan is not None else None))
+    if notes is not None:
+        notes.extend(n for n in rendered.notes if n not in notes)
     parent = Path(script_path).resolve().parent
     for name, text in rendered.files:
         _sc_write.write_script(
@@ -4266,7 +4281,7 @@ def walk_header(base: Path, names, *, resources: "Resources",
 
 
 def render_sbatch(names, *, scheduler,
-                  partition: str, qos: str,
+                  partition: str, qos: Optional[str],
                   ntasks: int, cpus_per_task: int,
                   time: str, mem: str,
                   gpus: "Optional[GpuRequest]" = None,
@@ -4309,12 +4324,19 @@ def render_sbatch(names, *, scheduler,
             raise WrapperError(
                 f"render_sbatch: {name} must be a positive int; got "
                 f"{value!r}.")
-    for name, value in (("partition", partition), ("qos", qos),
-                        ("time", time), ("mem", mem)):
+    # THE QoS IS THE PAIR'S: a domain the record states no QoS for writes no
+    # QoS line, and the scheduler applies the account's default
+    # (`scheduler.md` § 4; `probe.derive_domains`).
+    for name, value in (("partition", partition), ("time", time),
+                        ("mem", mem)):
         if not (isinstance(value, str) and value.strip()):
             raise WrapperError(
                 f"render_sbatch: {name} is required and was not stated "
                 f"(docs/execution/architecture.md § 5.2).")
+    if qos is not None and not (isinstance(qos, str) and qos.strip()):
+        raise WrapperError(
+            "render_sbatch: qos is the domain's, a name or None; got "
+            f"{qos!r}.")
 
     basename = names.stem
     if not _SAFE_WRAPPER_NAME_RE.fullmatch(basename):

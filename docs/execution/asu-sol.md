@@ -126,8 +126,8 @@ that is not an abstraction:**
 
 | | domain | why |
 |---|---|---|
-| **the benchmark** | `htc` + `public` (4 h, uninterrupted), or `debug` (15 min) for a quick look | trials are minutes; the 4 h cap is no constraint and the queue is fast |
-| **the real run** | `public` or `general` (7 days), `highmem` for big cells, `long` if granted | the calculation needs the time, and asking for more waits longer |
+| **the benchmark** | `htc` (the htc partition with the public QoS, 4 h, uninterrupted), or `htc-debug` (15 min) for a quick look | trials are minutes; the 4 h cap is no constraint and the queue is fast |
+| **the real run** | `public` or `general` (7 days), `highmem` for big cells, `general-long` if the `long` QoS is granted | the calculation needs the time, and asking for more waits longer |
 
 ### 5.2 On Sol, transfer is decided per MACHINE — the partition cannot answer
 

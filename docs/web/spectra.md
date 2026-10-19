@@ -286,8 +286,13 @@ works in — a wavenumber ν̃ in cm⁻¹, since ω = 2πcν̃ — this evaluate
 as `zero_point_amplitude_amu12_ang`, derived from the one constant in
 `constants.py` by the one function both engines write it with, and checked on
 read ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3, § 6.6; a file
-before schema 7 gains it on read); the animation reads it and applies only the thermal factor
-below. *(A second spelling of the constant lived in the tab until
+before schema 7 gains it on read); the animation reads it. The thermal factor
+below is served the same way: the load door derives each mode's
+`thermal_spread_amu12_ang` at the temperature the tab sends with its ask
+(`temperature_k`, the request's), from the one function
+(`spectra.derived.thermal_spread_of`); when the number in the box changes, the
+tab asks the door again and takes what it says. The tab holds no constant and
+computes neither size. *(A second spelling of the constant lived in the tab until
 2026-09-24.)*
 
 and the Cartesian displacement of atom *i* is `Q_rms × L_i`, with **L** the

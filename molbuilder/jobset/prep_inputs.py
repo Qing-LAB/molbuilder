@@ -595,9 +595,17 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         named = None
     topo = getattr(environment, "topology", None)
     # GPUs per node as the record states them -- None when it does not say,
-    # never read as 0 (`configuration.md` M-2).
+    # never read as 0 (`configuration.md` M-2).  WHERE THE RECORD LISTS
+    # QUEUES, THE QUEUES' NODE TYPES ANSWER -- the one named first, else the
+    # most any of the record's GPU queues holds, so a GPU cell proposed on
+    # a CPU queue is shown left out by that queue's numbers (R6); the probed
+    # node is one sampled node, never read as the cluster's (`gpu.md`
+    # § 1.3; until 2026-10-19 the sample was asked first, so a 4-GPU login
+    # sample proposed no 8-GPU cell).  A record with no queue is the
+    # machine itself: its own count.
     node_gpus = getattr(topo, "gpus_per_node", None)
-    gpn = node_gpus or 0
+    gpn = ((_gpus_per_node(menu) or _gpus_per_node(every))
+           if every else node_gpus) or 0
     cps = getattr(topo, "cores_per_socket", None)
 
     if template_text is None:
@@ -664,8 +672,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # to PROPOSE the device counts: declared counts are kept whatever the
     # record says, each cell's fit saying so (R6).
     if any(families) and not gpn:
-        gpn = _gpus_per_node(every) or 0
-        if not gpn and not declared_axes.get("gpu_count"):
+        if not declared_axes.get("gpu_count"):
             # NAMED BY THE RECORD THAT ANSWERED, renewed in its own two
             # steps -- `record_and_renewal`, the one spelling.
             from ..scheduler.record import record_and_renewal

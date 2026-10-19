@@ -72,6 +72,11 @@ _BLOCK_NAME = {REGION_LEFT_ELECTRODE: "L", REGION_RIGHT_ELECTRODE: "R"}
 #: `sort.ELECTRODE_LABELS`' order: what its outputs key each lead by.
 LEAD_NAMES = tuple(_BLOCK_NAME[label] for label in ELECTRODE_LABELS)
 
+#: THE PAIR TBtrans names a transmission file by -- the two leads, left to
+#: right, as its ``.AVTRANS`` names them (``L-R``): the one spelling the
+#: record and every reader of a transmission file ask for.
+LEAD_PAIR = "-".join(LEAD_NAMES)
+
 
 def electrode_hs_stem(job_name: str, label: str) -> str:
     """The ONE spelling of an electrode run's identity — its SystemLabel,

@@ -97,7 +97,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             from ..parse.dirs import run_status
             from ..parse.dirs.job import LIVE_STATES
             from ..runrecord import LaunchRecordError, launch_record
-            _names = RunNames.of(task.label, token, task.shape)
+            _names = home.names(task.shape)
             try:
                 _launch = launch_record(newest, _names)
             except LaunchRecordError as exc:

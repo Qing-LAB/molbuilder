@@ -346,6 +346,14 @@ def _migrate_records(base: Path):
         if key not in obj:
             obj[key] = meant
             lines.append(f"{key} = {meant!r} (it was left out)")
+    # `enabled` ON A STAGE, retired 2026-10-03 (`engines/stages.md` § 2): a
+    # stage is in the description or it is not; the reader refuses the key
+    # naming this step.
+    for st in obj.get("stages") or ():
+        if isinstance(st, dict) and "enabled" in st:
+            st.pop("enabled")
+            lines.append(f"stages[{st.get('name', '?')}].enabled removed "
+                         f"(2026-10-03: a stage has no on/off switch)")
     retired = obj.pop("centre_junction", None) is not None
     if retired:
         # RETIRED IN 2.6.0: the junction enters its calculation centred
@@ -503,6 +511,9 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
     said: List[str] = []
     moves: List[Tuple[Path, Path]] = []
     for home in ladder_homes(base, task):
+        # AN OLDER RELEASE'S FILES, which were on the calculation's label
+        # for every stage -- read as they were written, not as `home.names`
+        # names them now.
         names = RunNames.of(task.label, home.token, task.shape)
         newest = latest_run(base, task.label, stage=home.token)
         n = FIRST_ATTEMPT if newest is None else newest

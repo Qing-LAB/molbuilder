@@ -618,7 +618,7 @@ flowchart LR
 | reads | a SIESTA-family `.out` | a `.molwatch.log`; `stage` picks a staged header's targets |
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
-| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` — `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar` | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
+| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, held, warnings}` — `held`, the 1-based atoms the output says the run held; `runtime_info.system_label`, the label the run read; `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar` | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
 | also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
 
 **What each SCF row measures is declared once an engine** — `siesta_grammar.
@@ -1800,6 +1800,8 @@ ts-scf:    1  -498887.159627  -501136.521108  -501136.521108 28.835878 -2.408334
 | line | reader | yields |
 |---|---|---|
 | `* Running on 10 nodes …` · `>> Start of run: …` | `read_launch_line` | `n_mpi_processes` 10 · `run_start_local` `2026-09-25T19:49:36` |
+| `reinit: System Label: H2` | `SYSTEM_LABEL` · the `system_label` rule | `runtime_info["system_label"]` `H2` — the label SIESTA names its own files from, which the history's sibling is read with (§ 5.3) |
+| `siesta: Constraint (1): pos`, then `[ 1 -- 4, 7 ]` | `CONSTRAINT_LINE` · the `constraint` rule, its ranges line read by `constraint_atoms` | `held` {1, 2, 3, 4, 7} — 1-based as SIESTA echoes them; the parser translates through `engine_atom_index` into `runtime_info["frozen_atoms"]` |
 | the `iscf` names row, then `scf:    7 …` | `scf_header`, then `scf_row` → `cycle_from_header` | `{cycle 7, energy −437029.337796, dDmax 7e-06, ef −2.408334, dHmax 0.000279, phase "periodic"}` |
 | `SCF Convergence by DM+H criterion` | the reading pass · the ending scan | the periodic phase converged: `phase_converged["periodic"]` · `RunEnding.phases["periodic"]` = True |
 | the `ts-q:` pair · `ts-Vha:` | `ts_q_line` + `ts_q_row` · `TS_VHA` | held for the next row: `charges` {D 1091.437, E1 509.494, C1 −25.472, …}, `dq` −29.1 · `vha_ev` −18.66 |

@@ -13,7 +13,9 @@ ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         (`science/vibrational-averaging.md` § 2)
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
-        the reader's check (`SpectraResults.from_dict`)
+        the reader's check (`SpectraResults.from_dict`); the spectrum tab's
+        load door, which serves each mode's thermal spread at the
+        temperature the tab asked (`web/spectra.md` § 4.1)
 TRAVELS in both bundles -- `runwrap.PYSCF_COMPANIONS` and
         `VIBRATION_COMPANIONS` -- so it imports its siblings two ways and
         nothing else of molbuilder
@@ -77,6 +79,20 @@ def thermal_spread_amu12_ang(zero_point_amplitude_amu12_ang: float,
     x = float(frequency_cm1) * CM1_KELVIN / (2.0 * float(temperature_k))
     return float(zero_point_amplitude_amu12_ang) * math.sqrt(
         1.0 / math.tanh(x))
+
+
+def thermal_spread_of(mode: Mapping[str, Any],
+                      temperature_k: float) -> Optional[float]:
+    """A mode row's thermal spread at ``temperature_k``, from the values the
+    row states -- its zero-point amplitude and its frequency -- or ``None``
+    for a mode with no zero-point amplitude (imaginary, or a row written
+    before the key).  What the spectrum tab's load door serves per mode
+    (`web/spectra.md` § 4.1): the tab draws it and derives nothing."""
+    q = mode.get("zero_point_amplitude_amu12_ang")
+    if q is None:
+        return None
+    return thermal_spread_amu12_ang(float(q), float(mode["frequency_cm1"]),
+                                    float(temperature_k))
 
 
 def mode_derivations(modes: Sequence[Mapping[str, Any]]

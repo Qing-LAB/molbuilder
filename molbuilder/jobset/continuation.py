@@ -253,12 +253,11 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     conclusion, not a parse of each output."""
     from ..parse.contract import relaxation_of
     from ..parse.dirs.rundir import run_state_of
-    from ..runfiles import RunNames
     from ..runs import run_of
     from ..runrecord import ending, newest_run
     from .materialize import stage_home
-    token = stage_home(base, task, stage).token
-    names = RunNames.of(task.label, token, task.shape)
+    home = stage_home(base, task, stage)
+    token, names = home.token, home.names(task.shape)
     run = run if run is not None else newest_run(attempt, names)
     concluded = ending(attempt, names.stem, run).line
     # ITS STATE, through the one door, asked with its launch record -- a
@@ -513,9 +512,9 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     from ..paths import attempts_in
     from .materialize import latest_attempt, stage_home
     sh = Shape.named(task.shape)
-    # THE STAGE BEFORE'S HOME, from the one door: its token and its folder.
+    # THE STAGE BEFORE'S HOME, from the one door: its names and its folder.
     home = stage_home(base, task, prev)
-    token, container = home.token, home.dir
+    container = home.dir
     flat = not sh.keeps_attempts_as_directories
 
     # THE COMMANDS, from the one composer (`commands`): each names the
@@ -572,9 +571,8 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
         # THE RUN BY ITS NAME, which every file of it carries -- the
         # stage's newest, by the one rule (`runrecord.newest_run`), as its
         # state is read.
-        from ..runfiles import RunNames
         from ..runrecord import newest_run
-        names = RunNames.of(task.label, token, task.shape)
+        names = home.names(task.shape)
         n = newest_run(base, names)
         run = names.run_name(n) if n is not None else None
     else:
@@ -642,7 +640,6 @@ def relaunch(base, task, job, *, cold: bool = False, ran=None
     nothing, continues from nothing: ``None``.  How that run ended is read
     in the run door's order (:func:`read_run`) and said, never judged."""
     from ..paths import Shape
-    from ..runfiles import RunNames
     from ..runrecord import newest_run
     from .materialize import stage_home
     base = Path(base)
@@ -656,7 +653,7 @@ def relaunch(base, task, job, *, cold: bool = False, ran=None
                             source=str(Path(ran).relative_to(base)),
                             by_default=True, concluded=concluded, state=state,
                             converged=converged, own=True)
-    names = RunNames.of(task.label, home.token, task.shape)
+    names = home.names(task.shape)
     n = newest_run(base, names)
     concluded, state, converged, _ = read_run(base, task, stage, base)
     return flat_files(base, task, Continuation(

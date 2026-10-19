@@ -284,45 +284,70 @@ def parse_qos(text: str) -> Dict[str, "QosLimit"]:
     return out
 
 
-def parse_allowed_qos(text: str) -> Set[str]:
-    """Parse ``sacctmgr -nP show assoc user=$USER format=QOS`` (the QOS field
-    is a comma-separated list; may span several association rows) -> the union
-    set of QoS names the user may submit to.  Drops the ``no_submit`` marker."""
-    allowed: Set[str] = set()
+def parse_allowed_qos(text: str) -> Dict[str, Set[str]]:
+    """Parse ``sacctmgr -nP show assoc user=$USER format=Partition,QOS`` --
+    one association per row, its partition (blank: the association holds on
+    every partition) and its comma-separated QoS list -> ``{partition: the
+    QoS names the account may submit with there}``, the blank partition
+    under ``""``.  Drops the ``no_submit`` marker.  Empty when the command
+    answered nothing: the record then states no QoS (`derive_domains`)."""
+    allowed: Dict[str, Set[str]] = {}
     for line in (text or "").splitlines():
-        for q in line.split("|")[-1].split(","):   # QOS is the last field
+        if "|" not in line:
+            continue
+        part, qos_field = line.rsplit("|", 1)       # QOS is the last field
+        part = part.split("|")[-1].strip()
+        for q in qos_field.split(","):
             q = q.strip()
             if q and q != "no_submit":
-                allowed.add(q)
+                allowed.setdefault(part, set()).add(q)
     return allowed
+
+
+def _qos_on(allowed: Dict[str, Set[str]], partition: str) -> Set[str]:
+    """The QoS names the account may submit with on ``partition``: the
+    associations that name it, and the ones that name every partition."""
+    return set(allowed.get("", set())) | set(allowed.get(partition, set()))
+
+
+def _domain_name(partition: str, qos: Optional[str],
+                 qos_on: Set[str]) -> str:
+    """The handle a description names a pair by (`allocation.domain`).  The
+    bare partition name goes to ONE pair of the partition: the one whose
+    QoS is ``public``, else the one named like the partition -- the two
+    spellings sites give an account's ordinary QoS -- or the pair the record
+    states no QoS for; every other pair is ``<partition>-<qos>``, so two
+    pairs never share a name.  A name, not a preference: every pair is
+    recorded, and the header is written from the pair's partition and QoS,
+    never from the name (`scheduler.md` § 4)."""
+    bare = ("public" if "public" in qos_on
+            else partition if partition in qos_on else None)
+    if qos is None or qos == bare:
+        return partition
+    return f"{partition}-{qos}"
 
 
 # --------------------------------------------------------------------- #
 #  derivation (pure)                                                     #
 # --------------------------------------------------------------------- #
 
-def _pick_qos(allowed: Set[str], partition_name: str) -> Optional[str]:
-    """Choose a submit QoS: prefer ``public`` -> the partition-named QoS ->
-    the first allowed QoS that is not ``debug``/``private``.  None if the
-    user has no usable QoS."""
-    if "public" in allowed:
-        return "public"
-    if partition_name in allowed:
-        return partition_name
-    for q in sorted(allowed):
-        if q not in ("debug", "private"):
-            return q
-    return next(iter(sorted(allowed)), None)
-
-
-
 def derive_domains(
     partitions: List[Partition],
     qos: Dict[str, Tuple[Optional[str], Optional[int]]],
-    allowed: Set[str],
+    allowed: Dict[str, Set[str]],
 ) -> Tuple[List["Domain"], List[str]]:
     """Live probes -> **every (partition, qos) this account may submit to**,
     with the wall each allows, plus human notes.  Facts only.
+
+    **One domain per allowed pair, and no QoS preferred** (`configuration.md`
+    § 5 M-1; the user, 2026-10-17: the record is shown, never a veto): a
+    partition the account holds three QoS on is three domains, each with
+    the wall its pair allows, named by `_domain_name`.  When the account's
+    QoS list could not be read (``allowed`` empty), every partition is one
+    domain stating no QoS -- the header then carries no QoS line and the
+    scheduler applies the account's default -- and a note says so.  *(Until
+    2026-10-19 the probe chose one QoS per partition, ``public`` first, and
+    assumed ``public`` when the list was unreadable.)*
 
     **No GPU filter**: every reachable partition is listed; what a
     partition *has* is the topology's answer, and what a run *wants* is the
@@ -343,16 +368,14 @@ def derive_domains(
         notes.append("sinfo listed no partitions.")
         return [], notes
     if not allowed:
-        notes.append("could not read your allowed QoS (sacctmgr assoc); "
-                     "assuming 'public'. Verify with sacctmgr show assoc "
-                     "user=$USER.")
-        allowed = {"public"}
+        notes.append("could not read your allowed QoS (sacctmgr show assoc "
+                     "user=$USER): the record states no QoS for any queue, "
+                     "and a job's header carries no QoS line -- the "
+                     "scheduler applies your account's default.")
 
     parts = sorted(partitions, key=lambda p: p.timelimit_secs)
     domains: List[Domain] = []
 
-    # A debug domain iff the user actually holds the debug QoS.  It rides on
-    # the cheapest partition because a debug QoS is a wall, not a place.
     def _row(name, max_time, part):
         kw: Dict[str, Any] = {}
         # The partition's GPU INVENTORY rides the row (`generator.md`
@@ -405,24 +428,11 @@ def derive_domains(
         return Domain(name=name, max_time=max_time, partition=part.name,
                       qos=None, **kw)
 
-    if "debug" in allowed and "debug" in qos:
-        mw_str = qos["debug"].maxwall_str
-        row = _row("debug", mw_str or "0-00:15:00", parts[0])
-        row.qos = "debug"
-        # Same absent-vs-null rule as the loop below -- and unconditional
-        # here, because this arm's own guard just proved the QoS table
-        # answered for ``debug``.
-        row.max_cpus_per_job = qos["debug"].max_cpus_per_job
-        # R14: HOW MANY JOBS this QoS lets one user submit at once (ASU
-        # Sol caps `debug` at 2).
-        row.max_submit_jobs = qos["debug"].max_submit_jobs_pu
-        domains.append(row)
-
-    for p in parts:
-        q = _pick_qos(allowed, p.name)
-        if not q:
-            continue
-        q_secs = qos.get(q, QosLimit()).maxwall_secs
+    # EVERY PAIR, or the partition alone when no QoS could be read.
+    pairs = [(p, q) for p in parts
+             for q in (sorted(_qos_on(allowed, p.name)) or [None])]
+    for p, q in pairs:
+        q_secs = qos.get(q, QosLimit()).maxwall_secs if q else None
         # the wall is the SMALLER of the partition limit and the QoS ceiling
         if q_secs is not None and q_secs < p.timelimit_secs:
             max_time = qos[q].maxwall_str
@@ -437,12 +447,14 @@ def derive_domains(
                 notes.append(f"partition {p.name!r} has no time limit "
                              f"(infinite); the record states no wall for "
                              f"it, and a job there is fit against none.")
-        row = _row(p.name, max_time, p)
+        row = _row(_domain_name(p.name, q, _qos_on(allowed, p.name)),
+                   max_time, p)
         row.qos = q
         # Same absent-vs-null rule as ``max_cpus_per_node`` above: the key
         # rides whenever the QoS table answered for this QoS, null meaning
-        # *asked; it states no cpu cap*.
-        if q in qos:
+        # *asked; it states no cpu cap* -- and R14, how many jobs the QoS
+        # lets one user submit at once (ASU Sol caps `debug` at 2).
+        if q is not None and q in qos:
             row.max_cpus_per_job = qos[q].max_cpus_per_job
             row.max_submit_jobs = qos[q].max_submit_jobs_pu
         domains.append(row)
@@ -457,13 +469,13 @@ def derive_domains(
         uniq.append(d)
     uniq.sort(key=lambda d: _to_secs(d.max_time or ""))
 
-    notes.append(
-        "ASSUMPTION: a QoS allowed to your account is valid on any reachable "
-        "partition (preferred 'public'). sinfo/assoc do not give the "
-        "per-partition QoS list -- confirm each with `scontrol show "
-        "partition` and its name (AllowQos), and drop any domain you cannot "
-        "actually submit "
-        "to (e.g. a privately-owned partition).")
+    if allowed.get(""):
+        notes.append(
+            "an association that names no partition is taken to hold on "
+            "every one sinfo lists (SLURM's own reading of a blank "
+            "Partition); a partition that also limits its QoS (AllowQos in "
+            "`scontrol show partition`) refuses such a pair at submission, "
+            "and the refusal is shown as the scheduler's.")
     return uniq, notes
 
 

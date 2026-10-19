@@ -17,6 +17,44 @@ def test_empty_probe_is_safe():
     assert any("no partitions" in n for n in notes)
 
 
+def test_one_domain_per_allowed_pair_and_no_qos_when_unread():
+    """`scheduler.md` § 4, `configuration.md` § 5 M-1: the record lists every
+    (partition, QoS) pair the account's associations allow -- an
+    association naming no partition holds on every one -- named by the
+    partition for `public` or its own name and `<partition>-<qos>` else;
+    with no readable list, one domain per partition stating no QoS, and a
+    note.  Silent failure otherwise: a probe choosing a QoS for the person
+    (one domain per partition, `public` assumed), the preference 2.17.0
+    took out."""
+    from molbuilder.scheduler.probe import Partition
+    parts = [Partition(name="general", timelimit_str="7-00:00:00",
+                       timelimit_secs=7 * 86400),
+             Partition(name="htc", timelimit_str="4:00:00",
+                       timelimit_secs=4 * 3600)]
+    allowed = {"": {"public", "debug"}, "htc": {"private", "htc"}}
+    domains, notes = derive_domains(parts, parse_qos(""), allowed)
+    assert sorted((d.name, d.partition, d.qos) for d in domains) == [
+        ("general", "general", "public"),
+        ("general-debug", "general", "debug"),
+        ("htc", "htc", "public"),
+        ("htc-debug", "htc", "debug"),
+        ("htc-htc", "htc", "htc"),
+        ("htc-private", "htc", "private"),
+    ]
+    assert len({d.name for d in domains}) == len(domains)
+    assert any("names no partition" in n for n in notes)
+
+    domains, notes = derive_domains(parts, parse_qos(""), {})
+    assert [(d.name, d.qos) for d in domains] == [("htc", None),
+                                                  ("general", None)]
+    assert any("states no QoS" in n for n in notes)
+    # ...AND THE RECORD KEEPS SUCH A PAIR: `qos: null` on disk, read back as
+    # the same domain (a row with no `qos` key is no domain, and was dropped
+    # on the read until 2026-10-19).
+    from molbuilder.scheduler.record import Domain
+    assert all(Domain.from_row(d.to_row()) == d for d in domains)
+
+
 # --------------------------------------------------------------------- #
 #  The probe VERB — declared facts and per-difference consent           #
 #  (roadmap § 0.2, N3+; configuration.md § 5 M-1/M-6)                   #
@@ -48,7 +86,7 @@ _DESK_ENTERS = {"activation": "conda activate"}
 
 
 def _two_envs():
-    from molbuilder.scheduler import Domain, Environment, Topology
+    from molbuilder.scheduler import Environment, Topology
     before = Environment(scheduler=WORKSTATION,
                          topology=Topology(gpus_per_node=4, gpu_type="a100"),
                          env_init=dict(_SOL_ENTERS),

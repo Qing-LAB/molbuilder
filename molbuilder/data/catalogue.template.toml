@@ -682,15 +682,16 @@ Ignored by CG / Broyden / FIRE geometry relaxation, which do not integrate time.
 kind = "deck"
 category = ["convergence", "execution"]
 engines = ["siesta", "pyscf"]
-# A vibration is not offered this field.  PySCF's decks neither read nor
-# write deck-level restart state (they recompute from their own
-# relaxation, or your already_relaxed assertion); SIESTA's force-constant
-# deck fixes its own start state by the kind -- the density is read when
-# present, the geometry never, because an FC run leaves its last
-# displacement in .XV (siesta/vibration_deck.py::start_state_lines); and
-# SIESTA's relaxation rung is the ordinary relaxation deck, which reads the
-# field's default, continue (engines/vibration.md 5.3).
-calculations = ["optimization"]
+# A vibration's RELAXATION rung reads it too (2026-10-19): SIESTA's relax
+# rung is the ordinary relaxation deck, which writes the group from this
+# field, so the field is offered where it is read -- on that rung's cell,
+# in its deck's provenance -- and never silently fixed.  The force-constant
+# rung is not offered it: an FC run fixes its own start state by the kind
+# (siesta/vibration_deck.py::start_state_lines).  PySCF's vibration deck
+# relaxes in-process and has no relaxation rung, so the marker never
+# reaches it.
+calculations = ["optimization", "vibration"]
+stages = ["relaxation"]
 expands = ["DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"]
 engine_key = "(molbuilder: one field, one mechanism per engine -- SIESTA expands it to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; PySCF emits control flow that reads <JOB>.chk and <JOB>_optimized.xyz.  Not a single engine key on either)"
 manual = "SIESTA 5.4.2 §6.9.5 'Initialization of the density-matrix' + §6.4.4 'Input of structural information from external files' + §7.2.1 'Conjugate-gradients optimization'"

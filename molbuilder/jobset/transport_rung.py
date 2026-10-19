@@ -17,7 +17,6 @@ import dataclasses
 from pathlib import Path
 
 from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import RunNames
 from .engines import pseudo_dir, screen_pseudos
 from .errors import PrepError, user_error_as_prep
 from .materialize import stage_home
@@ -137,7 +136,7 @@ def transport_parts(task, stage: str, composed, config):
     upstream rung NOW (:func:`transport_rung`, plan § 5w K11, T-F30).
     """
     from ..transport.deck import SHAPE_OF_RUNG
-    from ..transport.transiesta import electrode_hs_stem
+    from ..transport.stages import rung_label
     # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
     # junction, and the lead taken out of it by its region label -- same
     # atoms, same relaxation, a subset rather than a geometry derived from
@@ -148,8 +147,8 @@ def transport_parts(task, stage: str, composed, config):
                  else composed.electrode_right)
         struct = model.as_structure()
         # The lead's identity IS the .TSHS stem the device deck names --
-        # one spelling, `electrode_hs_stem`, read by both writers.
-        label = electrode_hs_stem(task.label, model.label)
+        # one door, `rung_label`, which names its files too.
+        label = rung_label(task.label, stage)
     else:
         # The junction -- and for the device it carries the region
         # partition the NEGF block is built from.
@@ -164,9 +163,9 @@ def transport_parts(task, stage: str, composed, config):
     def labelled(cfg):
         # THE RUNG FIXES ITS LABEL (C2): every rung's `SystemLabel` is spelt
         # from `task.label` -- the junction's rungs by it, a lead by
-        # `electrode_hs_stem` -- so the device deck's `TS.Elec.<name> HS`
-        # line and the gather name the file the lead wrote.  The template's
-        # `system_label` never reaches a transport deck.
+        # `rung_label` -- so the device deck's `TS.Elec.<name> HS` line, the
+        # gather and the run door name the files the lead wrote.  The
+        # template's `system_label` never reaches a transport deck.
         return dataclasses.replace(cfg, system_label=label)
     # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
     # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
@@ -361,10 +360,9 @@ def transport_spec(task, stage: str, struct, config, state, volts=None, *,
     § 6.4; a single-bias rung keeps the 0 V `resolve` laid on)."""
     from ..siesta.input import spec_for as _siesta_spec_for
     cfg = at_bias(config, volts)
-    # THE RUNG'S NAMES -- a transport rung's deck is named on the
-    # calculation's label, as prep's own loop names it.
-    names = RunNames.of(task.label, stage_home(base, task, stage).token,
-                        task.shape)
+    # THE RUNG'S NAMES -- the one composer (`StageHome.names`): a lead's
+    # on its own stem, the junction's rungs on the calculation's label.
+    names = stage_home(base, task, stage).names(task.shape)
     with user_error_as_prep():
         try:
             spec = _siesta_spec_for(struct, cfg, names=names,

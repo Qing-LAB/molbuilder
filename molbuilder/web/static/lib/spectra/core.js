@@ -368,6 +368,10 @@
         if (state.fileState.results) {
             try { renderResults(state.fileState.results, state.fileState.path); }
             catch (_) {}
+            // A SAVED TEMPERATURE is a changed one: the first load asked the
+            // door at the default, so ask it again at the saved number
+            // (web/spectra.md § 4.1) -- setting the box fires no event.
+            if (state.fileState.path) _refreshThermal();
         }
     }
 
@@ -1070,7 +1074,10 @@
         const r = await fetch("/api/spectra/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ path: path }),
+            // THE TEMPERATURE RIDES WITH THE ASK: each mode comes back with
+            // its thermal spread at it (web/spectra.md § 4.1).
+            body:    JSON.stringify({ path: path,
+                                      temperature_k: state.animTemperature }),
             signal:  signal,
         });
         return { path: path, body: await r.json() };
@@ -2522,17 +2529,18 @@
      *     The thermal form reduces to the zero-point one as T → 0, which is the
      *     check that they are one expression and not two.
      *
-     * THIS IS THE TAB'S ARITHMETIC, not the viewer's. VibrationView holds no
-     * frequency, no temperature and no physical constant (§ 12.2); it is handed a
-     * displacement array and a number and animates their product.
+     * THE ARITHMETIC IS THE SERVER'S (`spectra.derived`), not the tab's and not
+     * the viewer's. VibrationView holds no frequency, no temperature and no
+     * physical constant (§ 12.2); it is handed a displacement array and a number
+     * and animates their product.
      */
 
-    // The zero-point amplitude is READ FROM THE FILE, never recomputed here:
-    // every mode carries `zero_point_amplitude_amu12_ang`, derived at every
-    // serialisation from the one constant in constants.py (vibration.md
-    // § 6.3, § 6.6).
-    // ħω / k_B per cm⁻¹, in kelvin -- the temperature at which a mode's
-    // quantum is comparable to kT -- is `K.cm1_kelvin`, served (see `K`).
+    // BOTH PHYSICAL SIZES ARE SERVED, never computed here (web/spectra.md
+    // § 4.1): every mode carries `zero_point_amplitude_amu12_ang`, derived at
+    // every serialisation from the one constant in constants.py
+    // (vibration.md § 6.3, § 6.6), and `thermal_spread_amu12_ang`, which the
+    // load door derives at the temperature this page asked for
+    // (`fetchResults` sends it; `_refreshThermal` asks again when it changes).
 
     /* Above this, calling a nearest neighbour a "bond" would be a claim rather
      * than a label, so the readout says "nearest contact" instead.  Generous on
@@ -2541,24 +2549,13 @@
      * chemistry, not what is drawn. */
     const BOND_LIKE_ANG = 3.0;
 
-    function _physicalAmplitude(modeRow, mode, temperatureK) {
-        const nu = Math.abs(Number(modeRow && modeRow.frequency_cm1));
-        const qzp = Number(modeRow && modeRow.zero_point_amplitude_amu12_ang);
+    function _physicalAmplitude(modeRow, mode) {
         // An imaginary or zero mode carries null, and a file older than the
         // key carries nothing: no physical amplitude, the display form stays.
-        if (!isFinite(nu) || nu <= 0 || !isFinite(qzp) || qzp <= 0) return null;
-        let q = qzp;
-        if (mode === "thermal") {
-            const t = Number(temperatureK);
-            if (isFinite(t) && t > 0) {
-                const x = K.cm1_kelvin * nu / (2 * t);
-                // coth(x); at large x this is 1 and the mode is in its ground
-                // state, which is why a stiff mode at room temperature comes back
-                // barely different from zero-point.
-                q *= Math.sqrt(1 / Math.tanh(x));
-            }
-        }
-        return q;
+        const q = Number(modeRow && (mode === "thermal"
+            ? modeRow.thermal_spread_amu12_ang
+            : modeRow.zero_point_amplitude_amu12_ang));
+        return (isFinite(q) && q > 0) ? q : null;
     }
 
     /* THE ONE CUT (vibrationview.md § 11).
@@ -2628,7 +2625,7 @@
          * bug. */
         const wantPhysical = state.animAmplitudeMode !== "display";
         const physical = wantPhysical
-            ? _physicalAmplitude(mode, state.animAmplitudeMode, state.animTemperature)
+            ? _physicalAmplitude(mode, state.animAmplitudeMode)
             : null;
         const usePhysical = physical !== null
             && Array.isArray(mode.eigenvector_canonical);
@@ -3101,11 +3098,38 @@
     /* Only the SIZE changes with temperature -- the eigenvector is the same one
      * -- so this is a live amplitude write and not a new mode.  Re-showing the
      * mode would restart the cycle from its peak, which on a number box means
-     * restarting once per keystroke while somebody types "298". */
+     * restarting once per keystroke while somebody types "298".
+     *
+     * THE SIZE AT THE NEW TEMPERATURE IS THE SERVER'S (web/spectra.md § 4.1):
+     * the load door is asked again with it, and what it says of each mode's
+     * spread replaces what the page holds -- the file has not changed, so
+     * nothing else is repainted.  Debounced, so typing "298" asks once. */
+    let _thermalTimer = null, _thermalAbort = null;
     function onTemperatureChange() {
         const t = parseFloat(els.animTemperature.value);
         if (!Number.isFinite(t) || t <= 0) return;
         state.animTemperature = t;
+        clearTimeout(_thermalTimer);
+        _thermalTimer = setTimeout(_refreshThermal, 250);
+    }
+
+    async function _refreshThermal() {
+        const path = state.fileState.path, held = state.fileState.results;
+        if (!path || !held || !Array.isArray(held.modes)) return;
+        if (_thermalAbort) _thermalAbort.abort();
+        _thermalAbort = new AbortController();
+        let body;
+        try {
+            body = (await fetchResults(path, _thermalAbort.signal)).body;
+        } catch (exc) {
+            return;     // aborted by a newer ask, or the network -- the watch says so
+        }
+        if (path !== state.fileState.path || !body.ok
+            || !body.results || !Array.isArray(body.results.modes)) return;
+        body.results.modes.forEach((m, i) => {
+            if (held.modes[i])
+                held.modes[i].thermal_spread_amu12_ang = m.thermal_spread_amu12_ang;
+        });
         const inputs = _animationInputs();
         if (!inputs.ready || !state.vib) return;
         // The size and the label naming its setting go together, so a saved

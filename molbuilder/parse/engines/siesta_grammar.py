@@ -588,6 +588,37 @@ UNRELAXED_MARKER = "outcoor: final (unrelaxed) atomic coordinates"
 #: line 36 of both recorded H2 outputs, among the setup lines.
 SYSTEM_LABEL = re.compile(r"^reinit:\s*System Label:\s*(\S+)")
 
+#: THE ATOMS THE RUN HELD, as the output echoes them (`model/parse.md`
+#: § 5.3): ``siesta: Constraint (N): pos`` and, on the line below, the
+#: 1-based ranges -- ``[ 1 -- 4, 7 ]``.  SIESTA 5.4.2 heads several such
+#: blocks with ``siesta: Constraints applied in the following order:`` and
+#: a single one with nothing (measured: the H2 runs' one block bare, the
+#: Au-BDT-Au runs' eight and eleven under the header), so the row is the
+#: constraint line itself.  Matched case-insensitively.
+CONSTRAINT_LINE = re.compile(
+    r"^\s*siesta:\s+Constraint\s*\(\d+\)\s*:\s*pos\s*$", re.IGNORECASE)
+CONSTRAINT_RANGES = re.compile(r"^\s*\[\s*(.+?)\s*\]\s*$")
+CONSTRAINT_RANGE_PIECE = re.compile(r"(\d+)\s*--\s*(\d+)")
+
+
+def constraint_atoms(ranges_line: str) -> "set[int]":
+    """The 1-based atom numbers a ``[ ... ]`` ranges line names -- each
+    ``a -- b`` whole, each bare number itself; empty for a line that is no
+    ranges line."""
+    m = CONSTRAINT_RANGES.match(ranges_line)
+    if not m:
+        return set()
+    out: "set[int]" = set()
+    for part in m.group(1).split(","):
+        part = part.strip()
+        rng = CONSTRAINT_RANGE_PIECE.search(part)
+        if rng:
+            start, end = int(rng.group(1)), int(rng.group(2))
+            out.update(range(start, end + 1))
+        elif part.isdigit():
+            out.add(int(part))
+    return out
+
 
 # ---- The launch lines, SIESTA and TBtrans alike -------------------------------
 #: ``Src/runinfo_m.F90``, which TBtrans's ``tbt_init.F90`` calls too: the

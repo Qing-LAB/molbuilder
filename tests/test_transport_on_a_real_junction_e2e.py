@@ -1063,12 +1063,11 @@ def _prepared_decks(run, stage):
     each point's (`transport.stages.point_folders`) -- named by the run's
     one naming door (`runfiles.RunNames`)."""
     from molbuilder.jobset.materialize import stage_home
-    from molbuilder.runfiles import RunNames
     from molbuilder.task import read_task
     from molbuilder.transport.stages import point_folders
     task = read_task(run.bundle / "task.json")
     home = stage_home(run.bundle, task, stage)
-    names = RunNames.of(task.label, home.token, task.shape)
+    names = home.names(task.shape)
     folders = [f for f, _v in point_folders(run.bundle, task, stage)]
     return [f / names.name(".fdf") for f in (folders or [home.dir])]
 
@@ -1703,10 +1702,12 @@ def _frame_curves(run, label, volts):
     wrote at that frame's point, through its parser."""
     from molbuilder.parse.engines.tbtrans import transmission_files
     from molbuilder.transport.record import parse_avtrans
+    from molbuilder.transport.transiesta import LEAD_PAIR
     curves = []
     for f in range(_N_FRAMES):
         files = transmission_files(
-            _frame_point(run, "05_transmission", f, volts), label)
+            _frame_point(run, "05_transmission", f, volts), label,
+            LEAD_PAIR)
         energies, t = parse_avtrans(files["unpolarized"][0].read_text())
         curves.append(np.asarray(t, dtype=float))
     return np.asarray(energies, dtype=float), curves
@@ -1912,6 +1913,9 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         "weights": list(_WEIGHTS),
         "weight_sum": pytest.approx(1.0, abs=1e-12),
         "warnings": [],
+        # THE FRAMES STATE A MODE, said by the door so the card keeps no
+        # list of the rows that decide it (`transport.md` § 3.8.1).
+        "mode": True,
     }
     # ...and those rows the script's own: its weights, its nodes, its
     # temperature.

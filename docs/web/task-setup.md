@@ -645,7 +645,7 @@ Whatever the grid varies appears here as a row, because the thing you measured
 is the thing you are deciding about — and the grid's points sit beside each
 field in grey (*measuring: 4, 8, 16*) as **information that fills nothing**.
 It carries its own *+ Add setting* for a knob no benchmark touched, since a
-run may want one a measurement did not.
+run may want one a measurement did not. **The first point is typed before the row exists**: picking a setting offers its value in force in the box beside it (the template's value, else the catalogue's default) and a setting with neither leaves the box blank for the person to type; *+ Add setting* with an empty box is refused, saying so, and no number is invented (until 2026-10-19 a valueless setting's row was born at `1`). **Each row's class** — *chosen* (one point, the trials' value), *machine* (the grid's axis), *measured* (several points) — is the grid door's word (`/api/task-setup/bench-grid` `rows`, from prep's own split of the lane, `prep_inputs._declared_execution_pins`); the page paints it and decides none.
 
 **The launch rows stand on every rung's card from the start** *(user,
 2026-10-11: "show them and leave blank - explicit setting is better than

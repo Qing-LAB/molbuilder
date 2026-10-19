@@ -463,8 +463,9 @@ frequencies-only run turns both off. Their meaning is
 [`engines/siesta.md`](?doc=engines/siesta.md); the SCF knobs reach every mean
 field the PySCF deck builds through one generated dresser (§ 4.3).
 
-**Items the kind does NOT show, and why:** `restart` (the SIESTA start state
-is the kind's own, § 5.3; the PySCF deck carries no deck-level restart state);
+**Items the kind does NOT show, and why:** `restart` on a force-constant rung
+(its start state is the kind's own, § 5.3; the relaxation rung reads it, § 5.3a,
+and offers it; the PySCF deck carries no deck-level restart state);
 `frozen_indices` (retired, § 2.3); `SpectraConfig` (a 33-field class
 nothing constructed, retired 2026-08-22 — the kind's science is the kind's);
 and **no "how many layers should move" question** (withdrawn 2026-09-21: the
@@ -1348,14 +1349,16 @@ marks' — and read by `deck_record.extract_vibration_record`, beside the
 `engine-offset` reader; the spec also names the finish, `DeckSpec.finish`,
 which `prep` copies onto the stage's job (`Job.finish`).
 
-**The start state is the kind's, not the description's.** The catalogue offers
-`restart` to optimisations only. **A vibration's relaxation rung** is the
-ordinary relaxation deck (§ 5.2a), so it starts as a relaxation does by
-default — it continues from what its folder holds (`restart`'s default,
-`continue`, which this kind does not offer to change), and a relaxation
-launched again picks up where its latest attempt stopped; its deck names the
-field, and no longer says the description
-holds it *(plan § 5w K10, the M11 review's SS-C14)*. **A force-constant run**
+**The start state is stated where it is read.** The catalogue offers
+`restart` to optimisations and, since 2026-10-19, to **a vibration's
+relaxation rung** (`[item.restart]`, `stages = ["relaxation"]`): that rung is
+the ordinary relaxation deck (§ 5.2a), which writes the restart group from
+the field, so the field stands on the rung's cell and in its deck's
+provenance like any other — its default `continue` (a relaxation launched
+again picks up where its latest attempt stopped), `clean` if chosen. Until
+then the kind fixed it silently: the deck wrote the group from a value no
+card and no provenance block showed *(plan § 5w K10, the M11 review's
+SS-C14; the review of 2026-10-18, O6)*. **A force-constant run**
 has no optimiser history to
 resume. The density is read when present — the reference step's
 SCF starts from it — and SIESTA saves the reference step's converged density and

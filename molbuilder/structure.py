@@ -1670,7 +1670,10 @@ class Structure:
         frame 0's offset -- the stated one, or the rule's computed on frame 0
         -- so every frame reaches the engine through ``cell.to_engine`` with
         the same one and no electrode atom moves between frames.  The rule's
-        offset is nobody's choice: its ``offset_by`` stays None.  Where the
+        offset is the ENGINE'S origin -- the rule's placement of frame 0,
+        nobody's choice -- so a frame taken out states ``offset_by:
+        "engine"`` as a run's box does (`deck_record.box_of_run`), never the
+        unnamed fourth state it stated until 2026-10-19.  Where the
         rule cannot place frame 0 -- no cell to place it in -- there is no
         offset to state, and the door that acts refuses the cell itself."""
         f = self._frame_index(i)
@@ -1692,7 +1695,10 @@ class Structure:
             except ValueError:
                 offset = None
         return self.replace(frames=None, positions=self.frames[f].copy(),
-                            customized=customized, engine_offset=offset)
+                            customized=customized, engine_offset=offset,
+                            **({"offset_by": "engine"}
+                               if f > 0 and offset is not None
+                               and self.engine_offset is None else {}))
 
     def with_frames(self, coordinates: Any,
                     frame_rows: Optional[Sequence[Sequence[dict]]] = None

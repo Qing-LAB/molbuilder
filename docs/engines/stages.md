@@ -596,8 +596,10 @@ them untouched and keeps its number taken
 ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2); a transport
 ladder keeps every rung, its seed among them — the leads and the device start
 from its density (user, 2026-10-12; `task.fixed_by_kind`). A description written before carries
-`"enabled": true` on every stage — read and ignored; `"enabled": false` is
-refused by name, saying to remove the stage instead. A shipped ladder's
+`"enabled"` on every stage — refused by name, naming `jobset migrate`, which
+removes it (one policy for a state against the design: an explicit error,
+never a silent rewrite; until 2026-10-19 a `true` was read and dropped on
+Save). A shipped ladder's
 strategy writes the stages it runs; a tier it leaves out is added later from
 the tier presets, its values filled in ([`web/task-setup.md`](?doc=web/task-setup.md)
 § 9). *(Until 2026-10-03 a stage carried `enabled`, and a strategy wrote a
@@ -875,13 +877,13 @@ Two consequences:
   stage on CPU and a tight stage on ELPA-GPU is an ordinary thing to want,
   and it works: routing is per script, so each deck's own wrapper activates its
   own environment. Nothing about the folder has to change.
-- **It is a correctness gate, and it fires late.** If a stage opts into a build
-  whose environment is not installed, generation raises with an install hint
-  (`running-a-job.md § 2.3`) — but that check belongs to *wrapper* generation,
-  which happens after the decks are rendered, and § 6.6 deliberately does not
-  duplicate it in the preflight. So the refusal arrives with some decks already
-  written, which is why § 7 requires the whole folder to be produced
-  transactionally (§ 7.2).
+- **A build the target lacks is said, not refused.** If a stage opts into a
+  build whose environment the target's record does not list, prep says so in
+  its notes — the env and its install command — and prepares the stage as
+  asked ([`execution/gpu.md`](?doc=execution/gpu.md) G6); the run script
+  enters that environment at its start and stops there without it. The
+  reading belongs to *wrapper* rendering, after the decks, and § 6.6 does not
+  duplicate it in the preflight.
 
 ### 5.2 A deck line may depend on the launch
 
@@ -1542,7 +1544,7 @@ gaps almost at once, so a benchmark that asks for two days waits a day to
 start — and a benchmark is the thing you run to *save* time.
 
 ```json
-"allocation": { "time": "0-04:00:00", "domain": "debug", "mem": "256G" },
+"allocation": { "time": "0-04:00:00", "domain": "htc-debug", "mem": "256G" },
 
 "stages": [{ "name": "tight",
              "execution": { "mpi_np": 64,
@@ -1987,9 +1989,8 @@ what happened to run. `clean` carries nothing.
 
 ### 7.2 The folder appears whole, or not at all
 
-Rendering a description can fail after it has started: a stage asks for an
-environment that is not installed (§ 5.1), a pseudopotential does not resolve, a
-disk fills. **A half-written folder is worse than none**, because every rule in
+Rendering a description can fail after it has started: a pseudopotential does
+not resolve, a disk fills. **A half-written folder is worse than none**, because every rule in
 this contract about what a folder contains stops being true of it, and the run
 directory it half-occupies may already hold warm files from a previous
 calculation.

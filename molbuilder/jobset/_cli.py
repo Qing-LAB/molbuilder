@@ -1435,7 +1435,8 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                    + ans.launch["said"])
     for line in ans.notes:
         # WHAT ITS REQUEST MEANS, said where a value can still change -- its
-        # ranks over its GPUs (`ask.gpu_share_notes`).
+        # ranks over its GPUs (`ask.gpu_share_notes`) -- and what a rendering
+        # says and does not refuse (`gpu.md` G6).
         click.echo("  " + line)
     if ans.resources is not None:
         r = ans.resources
@@ -2699,7 +2700,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
                    "allocation.domain, or prep --domain):")
         for d in env.domains:
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
-                       f"{d.partition}/{d.qos}")
+                       f"{d.partition}/{d.qos or '-'}")
     # AFTER the queue probe, whose notes this extends (`record.probe_queues`
     # builds them after `derive_domains`, which reassigns its list).
     notes.extend(facts_notes)

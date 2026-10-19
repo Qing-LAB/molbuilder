@@ -162,7 +162,6 @@ def collect_sweep(base_dir, task, *,
     from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt, stage_home
     from ..parse.dirs.rundir import run_state_of
-    from ..runfiles import RunNames
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
     from ..parse.errors import ParseError
@@ -218,8 +217,7 @@ def collect_sweep(base_dir, task, *,
             # THE RUN'S STATE, through the one door -- a launch record that
             # does not read is the state `unreadable`, said (`rundir.
             # run_state_of`).
-            st = run_state_of(attempt,
-                              RunNames.of(task.label, token, task.shape))
+            st = run_state_of(attempt, home.names(task.shape))
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):

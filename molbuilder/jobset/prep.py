@@ -63,10 +63,12 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 machine_record, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, render=None, points=None,
-                this_prep=None) -> List[Path]:
+                this_prep=None, notes: Optional[list] = None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir`` --
     steps 4 and 5 of :func:`prep_calculation`, its one caller, which hands
-    over what the prep entry read and decided.
+    over what the prep entry read and decided.  ``notes`` is the answer's
+    list: what a wrapper's rendering says and does not refuse goes there
+    (`runwrap.write_run_wrapper`).
 
     ``plan`` (`jobset.planned.Plan`) receives what this writes, and is read
     for the decks it already holds (`job-system.md` § 5.0).
@@ -198,6 +200,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 # (`running-a-job.md` § 3.5).
                 resumes=job.resumes,
                 plan=plan,
+                # WHAT THE RENDERING SAYS (`gpu.md` G6), onto the answer.
+                notes=notes,
             )
         with user_error_as_prep():
             for _deck in _decks:
@@ -872,9 +876,11 @@ def prep_calculation(base_dir, stage: Optional[str], *,
                      opened: Optional[list] = None,
                      findings: Optional[list] = None,
                      continuation=None, quiet: bool = False,
-                     walks: Optional[dict] = None) -> List[Path]:
+                     walks: Optional[dict] = None,
+                     notes: Optional[list] = None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
-    the order it calls *forced rather than chosen*.
+    the order it calls *forced rather than chosen*.  ``notes`` is the
+    planner's list, handed down to step 4 for what a rendering says.
 
     ``continuation`` is the `relax` run a force-constant stage's deck is
     written at, as :func:`plan_stage` decided it at checkpoint 4a
@@ -932,7 +938,8 @@ def prep_calculation(base_dir, stage: Optional[str], *,
         return _plan_calculation(
             base, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
-            continuation=continuation, plan=plan, quiet=quiet, walks=walks)
+            continuation=continuation, plan=plan, quiet=quiet, walks=walks,
+            notes=notes)
     finally:
         PLANNED.reset(scope)
 
@@ -944,7 +951,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                       findings: Optional[list] = None,
                       continuation=None,
                       plan, quiet: bool = False,
-                      walks: Optional[dict] = None) -> List[Path]:
+                      walks: Optional[dict] = None,
+                      notes: Optional[list] = None) -> List[Path]:
     """The steps of :func:`prep_calculation`, planned into ``plan``: nothing
     is written here.  Steps 1 and 2 arrive answered (``resolved``): this
     snapshots the machine's record it was handed and plans the rest -- it
@@ -1328,7 +1336,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                                else {j.name for j in jobs}),
                        points={j.name: _points for j in jobs}, plan=plan,
                        shape=resolved.shape, this_prep=this_prep,
-                       provenance=resolved.provenance)
+                       provenance=resolved.provenance, notes=notes)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
     # Opening the attempt is design, none of it spending a queue slot;
@@ -1826,7 +1834,9 @@ class PrepAnswer:
     #: The description's preflight notes (an error refuses instead).
     findings: list = dataclasses.field(default_factory=list)
     #: What the inputs said: a bench's grid -- enumerated, left out,
-    #: kept (`prep_inputs.bench_inputs`).
+    #: kept (`prep_inputs.bench_inputs`); a run's GPUs over its ranks
+    #: (`ask.gpu_share_notes`); what a rendering says and does not refuse
+    #: -- a GPU build the target's record lacks (`gpu.md` G6).
     notes: List[str] = dataclasses.field(default_factory=list)
     #: The folder's state saved before the five steps wrote, or the one it
     #: stood at -- `checkpoint.Kept.said` (`checkpointing.md` § 9).
@@ -2358,7 +2368,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     dirs = prep_calculation(base, stage, env=env, emit_sbatch=emit_sbatch,
                             opened=opened, findings=deck_findings,
                             continuation=continuation, plan=plan,
-                            resolved=resolved, quiet=quiet, walks=walks)
+                            resolved=resolved, quiet=quiet, walks=walks,
+                            notes=notes)
     flat = not resolved.shape.keeps_attempts_as_directories
 
     # THE ANSWER, from the plan -- what a preview shows and a prep records

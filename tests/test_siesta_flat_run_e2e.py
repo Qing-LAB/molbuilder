@@ -606,8 +606,8 @@ def test_the_history_is_found_by_the_output_s_own_name(flat):
     """The output carries the stage and the run index, ``H2_01_coarse-run0
     .out``, and the run's history the same, ``H2_01_coarse-run0.MD.nc`` --
     which is how the output finds its own, read back with the label it prints
-    (`siesta_mdnc.sibling_md_nc`, § 5.3) -- and the output's frames are
-    upgraded from it.
+    as the reading pass read it (`siesta_mdnc.sibling_md_nc`, § 4a, § 5.3)
+    -- and the output's frames are upgraded from it.
 
     MUTATION THIS MUST FAIL AGAINST: the run's file not composed from the
     output's name -- the trajectory keeps the output's four-decimal

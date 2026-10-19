@@ -261,7 +261,12 @@ sends — a group of stages.)*
 **Rule 2 — every file shares one basename.** Each file the generator writes
 and a reader later opens carries the same **basename**:
 
-- **SIESTA** — the basename **is** the `.fdf`'s `SystemLabel`.
+- **SIESTA** — the basename **is** the `.fdf`'s `SystemLabel`. A transport
+  lead's is its own: `<label>_L-electrode` / `<label>_R-electrode`, the stem
+  the device deck's `TS.Elec.<name> HS` line names, so a lead run's `.TSHS`,
+  `.DM`, `.XV`, deck and output all share it (`transport.stages.rung_label`,
+  the one door prep, the gather and the run door ask; `engines/transport.md`
+  § 1).
 - **PySCF** — the basename **is** the script's `JOB = "…"` literal.
 
 **Same kind, one validator, two mechanisms — and the difference decides how

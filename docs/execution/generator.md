@@ -528,7 +528,7 @@ framework rule, not a script patch)*:
   coordinate — so the deck's answer and the point's family agree by
   construction, and the shelves (below) need no new declaration.
   The GPU family's device count is the target's GPUs per node: the probed
-  node's own, else the most a node of a GPU queue holds — the **domain menu's
+  queue it measures on — the one its prep names, else the most a node of any of the record's GPU queues holds — and the probed node's own only where the record lists no queue (2026-10-19; the sample was asked first before) — the **domain menu's
   GPU inventory** (`jobset probe` records each partition's `gres` on its
   domain row) — so a login node can enumerate the GPU family for the cluster
   behind it.  A trial asks `gpu:G`, a count, and no card: which card a node

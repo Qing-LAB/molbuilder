@@ -83,13 +83,39 @@ def _page_constants():
     return {
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
         "hartree_kcal_mol":    C.HARTREE_EV / C.KCAL_MOL_EV,  # 1 Eh in kcal/mol
-        "cm1_kelvin":          C.CM1_KELVIN,               # hc/k_B, K per cm-1
     }
 
 
-def _loaded(results, run: Optional[Dict[str, Any]] = None):
+def _temperature_k(body, form):
+    """The temperature the tab asks its thermal spreads at -- ``temperature_k``
+    in the JSON body or the upload's form -- as a float, ``None`` when the
+    request names none; a value that is not a positive number is refused
+    with the reason (a 400, `web-api.md` § 2)."""
+    raw = (body or {}).get("temperature_k")
+    if raw is None and form is not None:
+        raw = form.get("temperature_k")
+    if raw is None or raw == "":
+        return None
+    try:
+        t = float(raw)
+    except (TypeError, ValueError):
+        t = float("nan")
+    if not (t > 0):
+        raise ValueError(f"temperature_k must be a positive number of "
+                         f"kelvin; got {raw!r}")
+    return t
+
+
+def _loaded(results, run: Optional[Dict[str, Any]] = None,
+            temperature_k: Optional[float] = None):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
+
+    ``temperature_k`` is the temperature the tab asked for: each mode is
+    served its ``thermal_spread_amu12_ang`` at it, from the one derivation
+    (`spectra.derived.thermal_spread_of`, `web/spectra.md` § 4.1) -- the
+    tab holds no constant and derives nothing.  Asked for none, no mode
+    carries the key.
 
     WHY THE PAYLOAD IS NOT SIMPLY ``to_dict()``.  ``to_dict`` is the ON-DISK
     format: ``from_dict(to_dict(x)) == x``, byte-equal modulo float
@@ -156,6 +182,11 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
                 elements, rows, free, masses_amu=masses)
         except (ValueError, KeyError):
             pass
+    if temperature_k is not None:
+        from molbuilder.spectra.derived import thermal_spread_of
+        for mode in payload.get("modes") or []:
+            mode["thermal_spread_amu12_ang"] = thermal_spread_of(
+                mode, temperature_k)
     # HOW THE RUN THE FILE BELONGS TO IS DOING -- the one door's answer, which
     # the viewer follows; ``None`` for an upload or an inline result, which
     # belong to no run (`web/results.md` § 4.1).
@@ -195,6 +226,13 @@ def api_spectra_load():
       * SpectraJsonMalformedError -> 400
       * SpectraJsonFieldError     -> 400
     """
+    # THE TEMPERATURE THE TAB ASKS ITS THERMAL SPREADS AT, whichever way the
+    # result arrives (`_temperature_k`).
+    try:
+        temperature_k = _temperature_k(request.get_json(silent=True),
+                                       request.form)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     # ---- multipart upload ---------------------------------------- #
     if request.files.get("file"):
         upload = request.files["file"]
@@ -217,7 +255,7 @@ def api_spectra_load():
             results = parse_spectra_json_dict(d)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return _loaded(results)
+        return _loaded(results, temperature_k=temperature_k)
 
     # ---- JSON body (path or inline JSON) ------------------------- #
     body = request.get_json(silent=True) or {}
@@ -248,7 +286,7 @@ def api_spectra_load():
                 results = parse_spectra_json(path)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return _loaded(results, run=run)
+        return _loaded(results, run=run, temperature_k=temperature_k)
     if inline is not None:
         if not isinstance(inline, dict):
             return _err_load(SpectraJsonMalformedError(
@@ -258,7 +296,7 @@ def api_spectra_load():
             results = parse_spectra_json_dict(inline)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return _loaded(results)
+        return _loaded(results, temperature_k=temperature_k)
 
     return jsonify({
         "ok":    False,

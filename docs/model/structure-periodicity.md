@@ -642,8 +642,10 @@ that block's.
 `model/structure.md` § 2.2e)*. The cell is a fact the frames share, and a
 transport frame set promises identical electrode atoms besides
 (`engines/transport.md` § 2a.9). The offset is computed from frame 0 and
-applied to every frame — frames 1…N state frame 0's offset — so no electrode
-atom moves between frames in the engine's coordinates either. A set that states
+applied to every frame — frames 1…N state frame 0's offset, and where the
+rule computed it the frame taken out says whose it is, `offset_by: "engine"`,
+as a run's box does (2026-10-19; it had stated the offset with no owner) — so
+no electrode atom moves between frames in the engine's coordinates either. A set that states
 no cell shares no box: each frame's is derived from its own atoms (§ 4), while
 it still takes frame 0's offset.
 

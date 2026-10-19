@@ -36,9 +36,8 @@ Tolerant to in-progress + malformed files (Level 3 contract):
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import List, Set
+from typing import List
 
 import numpy as np
 
@@ -83,109 +82,6 @@ from .siesta_reader import read_output
 # ``runtime_info['siesta_diag']``.
 # The solver lines are `siesta_grammar`'s (``read_diag_line``), which
 # `bench/result.py` reads too.
-
-# ---- the atoms the run held: the .out's own echo -------------------------
-#
-# THE .OUT STATES THEM, so the parser reads them as its own content
-# (`model/parse.md` § 5.3) -- what the engine applied, in the file being
-# parsed, so no name can point it at another run.
-
-_SIESTA_CONSTRAINTS_HEADER_RE = re.compile(
-    r"siesta:\s+Constraints\s+applied\s+in\s+the\s+following\s+order:",
-    re.IGNORECASE,
-)
-_SIESTA_CONSTRAINT_LINE_RE = re.compile(
-    r"^\s*siesta:\s+Constraint\s*\(\d+\)\s*:\s*pos\s*$",
-    re.IGNORECASE,
-)
-_SIESTA_CONSTRAINT_RANGES_RE = re.compile(
-    r"^\s*\[\s*(.+?)\s*\]\s*$"
-)
-_RANGE_PIECE_RE = re.compile(r"(\d+)\s*--\s*(\d+)")
-
-
-def read_frozen_atoms_from_siesta_out(out_path: str) -> Set[int]:
-    """Return 0-based frozen-atom indices from the .out's own echo of
-    them -- ``siesta: Constraint (N): pos`` and the ranges below it.  SIESTA
-    5.4.2 heads several such blocks with ``siesta: Constraints applied in the
-    following order:`` and a single one with nothing (measured: the H2 runs'
-    one block bare, the Au-BDT-Au runs' eight and eleven under the header),
-    so the section starts at whichever comes first.
-
-    AUTHORITATIVE source of truth for SIESTA constraints — the data
-    lives in the same file the Results-tab UI reads, so there's no
-    filename-pairing heuristic between the .out and a sibling .fdf.
-
-    Streams the file line-by-line and stops at the first non-
-    constraints line after the section, so for the typical case
-    (constraints near the top of the .out) we only touch the first
-    few hundred KB regardless of total file size.
-    """
-    one_based: Set[int] = set()
-    state = "before_header"
-    expecting_data = False
-    just_blanked = False
-    try:
-        fh = open(out_path, encoding="utf-8", errors="replace")
-    except OSError:
-        return set()
-    try:
-        for raw_line in fh:
-            line = raw_line.rstrip("\n")
-
-            if state == "before_header":
-                if _SIESTA_CONSTRAINTS_HEADER_RE.search(line):
-                    state = "in_section"
-                elif _SIESTA_CONSTRAINT_LINE_RE.match(line):
-                    # 5.4.2: the constraint lines with no header above
-                    # them -- the section starts at the first one.
-                    state = "in_section"
-                    expecting_data = True
-                continue
-
-            if expecting_data:
-                m_data = _SIESTA_CONSTRAINT_RANGES_RE.match(line)
-                if m_data is None:
-                    break
-                body = m_data.group(1)
-                for part in body.split(","):
-                    part = part.strip()
-                    if not part:
-                        continue
-                    m_range = _RANGE_PIECE_RE.match(part)
-                    if m_range is not None:
-                        start = int(m_range.group(1))
-                        end = int(m_range.group(2))
-                        if end >= start:
-                            for n in range(start, end + 1):
-                                one_based.add(n)
-                    elif part.isdigit():
-                        one_based.add(int(part))
-                expecting_data = False
-                just_blanked = False
-                continue
-
-            if _SIESTA_CONSTRAINT_LINE_RE.match(line):
-                expecting_data = True
-                just_blanked = False
-                continue
-
-            if not line.strip():
-                if just_blanked:
-                    break
-                just_blanked = True
-                continue
-
-            break
-    finally:
-        fh.close()
-
-    # SIESTA echoes constraints 1-based; translate back to the 0-based
-    # Structure identity through the engine index API (never a bare n - 1,
-    # which would be wrong for a 0-based engine).
-    from ...engine_atom_index import from_engine_index
-    return {from_engine_index(n, "siesta") for n in one_based}
-
 
 # The reading pass -- every rule, the runtime-info probes, the end-of-output
 # judgement -- is `siesta_reader`'s, and this parser builds Frames from what it
@@ -342,10 +238,14 @@ class SiestaParser:
                 in_progress = True,
             ))
 
-        # THE ATOMS THE RUN HELD, as its own .out echoes them (above).
-        frozen_set = read_frozen_atoms_from_siesta_out(path)
-        if frozen_set:
-            runtime_info["frozen_atoms"] = sorted(frozen_set)
+        # THE ATOMS THE RUN HELD, as its own .out echoes them -- the pass
+        # read them (`siesta_grammar.CONSTRAINT_LINE`), 1-based as SIESTA
+        # prints; translated through the engine index API, never a bare
+        # n - 1 (wrong for a 0-based engine).
+        if read["held"]:
+            from ...engine_atom_index import from_engine_index
+            runtime_info["frozen_atoms"] = sorted(
+                from_engine_index(n, "siesta") for n in read["held"])
 
         _scan_log.info(
             f"parsed {len(frames)} frames, run_state={read['run_state']}, "
@@ -419,7 +319,9 @@ class SiestaOutFileParser(FileParser):
         # in the same order when there is no sibling, when it is
         # unreadable, or when nothing matches.
         from .siesta_mdnc import upgrade_frames
-        traj.frames, _mdnc_info = upgrade_frames(traj.frames, Path(path))
+        traj.frames, _mdnc_info = upgrade_frames(
+            traj.frames, Path(path),
+            label=(traj.runtime_info or {}).get("system_label"))
         if _mdnc_info:
             traj.runtime_info = dict(traj.runtime_info or {})
             traj.runtime_info.update(_mdnc_info)

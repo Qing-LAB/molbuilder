@@ -88,6 +88,7 @@ def _position(folder: Path, place: Place
     layout made (`paths`, `identity`): ``<NN>_<stage>/`` in the hierarchy,
     ``bench_<NN>_<stage>/`` at a flat root, a trial's ``bench-<point>/``
     relabelling its files (`paths.trial_label`)."""
+    from molbuilder.transport.stages import rung_label
     label, stage, trial = place.task.label, None, False
     try:
         parts = folder.resolve().relative_to(place.root.resolve()).parts
@@ -99,9 +100,13 @@ def _position(folder: Path, place: Place
             stage = bench_of
         elif parse_token(part):
             stage = part
+        if stage is not None and (bench_of or parse_token(part)):
+            # A LEAD'S FILES ARE ON ITS OWN STEM (`rung_label`, the one
+            # door prep named them by).
+            label = rung_label(place.task.label, parse_token(stage)[1])
         point = trial_point(part)
         if point:
-            label, trial = trial_label(place.task.label, point), True
+            label, trial = trial_label(label, point), True
     return label, stage, trial
 
 
@@ -127,11 +132,12 @@ def speaking(folder, label: str) -> Optional[str]:
     § 3.2, `model/parse.md` § 5.1): where the calculation's stages share it,
     its last run's -- the run whose results lie there, by its record
     (`runrecord.last_run`); else the highest stage that was launched -- one
-    with a launch record -- and with none launched yet, the folder's one
-    stage with a deck; its run is that stage's newest
-    (`runrecord.newest_run`, asked by :func:`run_of`).  A file's time
-    decides nothing: a copied or restored folder reorders times, never
-    runs."""
+    with a launch record -- and with none launched yet, the FIRST stage with
+    a deck in ladder order (a flat root with two prepared stages answered
+    nothing until 2026-10-19; `web/results.md` § 2.4); its run is that
+    stage's newest (`runrecord.newest_run`, asked by :func:`run_of`).  A
+    file's time decides nothing: a copied or restored folder reorders times,
+    never runs."""
     last = _last_here(folder, label)
     if last is not None:
         return last[0]
@@ -145,8 +151,8 @@ def speaking(folder, label: str) -> Optional[str]:
             decks.add(rec.stage)
     if ran:
         return max(ran, key=_ordinal)
-    if len(decks) == 1:
-        return next(iter(decks))
+    if decks:
+        return min(decks, key=_ordinal)
     return None
 
 

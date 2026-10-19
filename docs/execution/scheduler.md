@@ -307,7 +307,7 @@ machines` shows it — and nothing compares it.
 **R4 — The fit names the numbers.** *"900 GB fits 3 of 212 nodes of htc
 (1%): 96 cores · 1007.4 GB; 128 cores · 1511.2 GB"*, *"2000 GB fits no node of
 htc -- 2000 GB is over htc's largest machine (1511.2 GB)"*, *"4 cores · 38m
-fits all 212 nodes of debug -- 38m is over debug's wall (00:15:00)"* — never
+fits all 212 nodes of htc-debug -- 38m is over htc-debug's wall (00:15:00)"* — never
 *"does not fit"*. The machines that hold it are named one per size, as the
 queue table groups them (R0), with the cards at each size when it asks GPUs;
 a share is never rounded to none or all (*"<1%"*, *">99%"*); and every limit
@@ -434,8 +434,9 @@ at once *by construction*, so it is the one limit a sweep reliably meets.
 > *submit this?*, and every check it could run had passed — because the limit
 > that decided the outcome was not among the facts the record holds.
 >
-> **And the preview named no domain**, only `-p htc -q debug`. On Sol `debug`
-> *is* (htc, debug) while `htc` is (htc, public) — two domains, one partition —
+> **And the preview named no domain**, only `-p htc -q debug`. On Sol the pair
+> (htc, debug) is the domain `htc-debug` while `htc` is (htc, public) — two
+> domains, one partition —
 > so the flags read as *htc* to anyone scanning them, and the run was believed
 > to have gone to the wrong queue entirely. It had not; the 15-minute walltime
 > in every line was `debug`'s own. **A rendering that cannot be read back to the
@@ -573,7 +574,21 @@ already running where the answer is.
   Persisted as `environment.json` (`configuration.md` § 5).
 - **Domain** — one reachable `(partition, qos)` pair and what it allows:
   `max_time`, the policy caps, `gpu`. *A fact, never a preference — it says
-  "you may submit here, for this long", never "submit here".* `node_types`
+  "you may submit here, for this long", never "submit here".* The probe
+  records **every pair** the account's associations allow (`sacctmgr show
+  assoc`, its partition and QoS columns; an association naming no partition
+  holds on every one), each with the wall its pair allows — a partition the
+  account holds three QoS on is three domains. The name a description uses
+  (`allocation.domain`) is the partition's for one pair of it — the one
+  whose QoS is `public`, else the one named like the partition — and
+  `<partition>-<qos>` for every other; the header is written from the pair,
+  never from the name. When the
+  account's QoS list cannot be read, each partition is one domain with
+  `qos: null`, its header carries no QoS line, and the probe's note says so.
+  *(Until 2026-10-19 the probe chose one QoS per partition and assumed
+  `public` when it could not read the list — a preference written by a
+  probe, against `configuration.md` § 5 M-1; a `debug` domain rode the
+  cheapest partition the same way.)* `node_types`
   describes the machines it draws from — every distinct one, with its count,
   cores, memory and GPUs (R0) — and is what the fit reads
   (R3) and the only place a machine can be named (R11); `max_cores` and

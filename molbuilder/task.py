@@ -732,6 +732,15 @@ class Task:
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
 
+    def _label_tail(self) -> int:
+        """What a rung adds to the label before its stage token -- a
+        transport lead's own stem (`transport.stages.lead_tail_bytes`);
+        nothing for every other calculation."""
+        if str(self.calculation) != "transport":
+            return 0
+        from .transport.stages import lead_tail_bytes
+        return lead_tail_bytes()
+
     def _stage_names(self) -> Tuple[str, ...]:
         """The ladder, for the cap -- see :func:`~molbuilder.identity._cap_for`.
 
@@ -750,7 +759,7 @@ class Task:
         about what the user's name normalises to, and ``__post_init__`` has
         already proved it."""
         return normalise_id(self.run.name, stage_names=self._stage_names(),
-                            what="name")
+                            what="name", label_tail=self._label_tail())
 
     def _check_id(self) -> None:
         """``run.id`` is what ``run.name`` and ``structure.formula`` derive.
@@ -1244,16 +1253,14 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     name = str(obj.get("name", ""))
     where = f"stage {name!r}" if name else where
     # NO ON/OFF (`engines/stages.md` § 2): a description written before
-    # carries `"enabled": true` on every stage -- read and ignored -- and
-    # `"enabled": false` is refused, saying to remove the stage instead.
+    # 2026-10-03 carries `"enabled"` on every stage -- refused by name,
+    # naming `jobset migrate`, which removes it (one policy; a `true` was
+    # read and dropped on Save until 2026-10-19).
     if "enabled" in obj:
-        if obj["enabled"] is not True:
-            _refuse("\"enabled\": false -- a stage has no on/off switch: it "
-                    "is in the description or it is not.  Remove the stage "
-                    "instead (Task setup's stage table), and its folder is "
-                    "kept (engines/stages.md 2)",
-                    where=where)
-        obj = {k: v for k, v in obj.items() if k != "enabled"}
+        _refuse("\"enabled\" -- a stage has no on/off switch since 2026-10-03: "
+                "it is in the description or it is not (engines/stages.md 2).  "
+                "A description written before carries the key: `jobset "
+                "migrate` removes it", where=where)
     _check_keys(obj, STAGE_FIELDS, where=where)
     if "name" not in obj:
         _refuse("missing required key 'name'", where=where)

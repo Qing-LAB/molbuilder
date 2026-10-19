@@ -422,7 +422,9 @@ among them (`described`), the prepared ones not launched *ready to launch* or *w
 for* ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*),
 before anything is prepared too — and `null` for anything else (a rung's directory). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory
-(§ 3a), and no ladder. A bias sweep's rung is one run: *finished* once every
+(§ 3a) — before any stage has run, its first stage's (*pending*, by ladder
+order; two prepared stages answered nothing until 2026-10-19) — and its
+stages' runs are listed by run number (below), not as a ladder of folders. A bias sweep's rung is one run: *finished* once every
 point's run finished, converged or not — its converged column says *SCF NO*
 when one did not — and its detail counts the points done and names the first
 not done ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).

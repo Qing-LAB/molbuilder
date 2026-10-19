@@ -356,40 +356,17 @@ def align_to_reference(reference: Sequence, candidate: Sequence, *,
 #  The merge — what the .out parser calls                               #
 # --------------------------------------------------------------------- #
 
-#: How far into an output its setup lines -- the SystemLabel among them --
-#: can sit.  Measured at line 36; the setup is short and comes first.
-_LABEL_WINDOW = 2000
-
-
-def _system_label_of(out_path: Path) -> Optional[str]:
-    """The SystemLabel the output states on its own ``reinit: System
-    Label:`` line (`siesta_grammar.SYSTEM_LABEL`), read from its head, or
-    ``None`` when it states none."""
-    from .siesta_grammar import SYSTEM_LABEL
-    try:
-        with open(out_path, "r", encoding="utf-8", errors="replace") as fh:
-            for n, line in enumerate(fh):
-                m = SYSTEM_LABEL.match(line)
-                if m:
-                    return m.group(1)
-                if n >= _LABEL_WINDOW:
-                    break
-    except OSError:
-        return None
-    return None
-
-
-def sibling_md_nc(out_path: Path) -> Optional[Path]:
+def sibling_md_nc(out_path: Path, label: Optional[str]) -> Optional[Path]:
     """The run's own history beside *out_path*, or None: the output's name
     with the history's role, ``<label>_<token>-run<N>.MD.nc`` -- the name the
     run script points SIESTA's at while the engine runs (`job-contracts.md`
-    § 2.2) -- read back with the SystemLabel the output states itself
-    (:func:`_system_label_of`), never the lone ``.MD.nc`` of a folder; an
-    output that names no run reads only itself (`model/parse.md` § 5.3).
+    § 2.2) -- read back with ``label``, the SystemLabel the output states
+    itself, as the reading pass read it (``runtime_info["system_label"]``,
+    `model/parse.md` § 4a), never the lone ``.MD.nc`` of a folder; an
+    output that names no run, or no label, reads only itself (§ 5.3).
     """
     from molbuilder.runfiles import compose, parse
     out_path = Path(out_path)
-    label = _system_label_of(out_path)
     own = parse(out_path.name, label) if label else None
     if own is None or own.run is None:
         return None
@@ -398,9 +375,10 @@ def sibling_md_nc(out_path: Path) -> Optional[Path]:
 
 
 def upgrade_frames(frames: Sequence, out_path: Path, *,
-                   tol: float = 1e-4) -> tuple:
+                   label: Optional[str], tol: float = 1e-4) -> tuple:
     """Return ``(frames, info)`` with text-derived values replaced by netCDF
-    ones wherever a sibling ``.MD.nc`` describes the same geometry.
+    ones wherever a sibling ``.MD.nc`` describes the same geometry --
+    ``label`` the SystemLabel the output stated, which names the sibling.
 
     **STRICTLY AN UPGRADE — never a regression.**  Every path that cannot
     improve a frame leaves it exactly as the text parser produced it: no
@@ -419,7 +397,7 @@ def upgrade_frames(frames: Sequence, out_path: Path, *,
     import dataclasses
 
     info: Dict[str, object] = {}
-    nc_path = sibling_md_nc(out_path)
+    nc_path = sibling_md_nc(out_path, label)
     if nc_path is None:
         return list(frames), info
     try:

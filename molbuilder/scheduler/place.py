@@ -30,7 +30,8 @@ class Placement:
     decision (R1), made at prep and rendered once, in the header."""
     domain: "object"
     partition: str
-    qos: str
+    #: ``None`` for a domain the record states no QoS for (`probe.derive_domains`).
+    qos: Optional[str]
     fit: Fit
 
     @property

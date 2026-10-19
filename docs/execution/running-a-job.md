@@ -172,8 +172,9 @@ clean-shell bootstrap, then launches the engine.
   node's modules are not the compute node's.
 - **Doctor (every target).** Verifies prerequisites — the engine env exists, the
   tool is present — and reports what is missing. It **never installs**; a
-  missing GPU env, for instance, raises at generate time with an install hint
-  rather than silently degrading.
+  GPU env the target's record lacks, for instance, is said at prep with its
+  install command ([`gpu.md`](?doc=execution/gpu.md) G6), never degraded to
+  the CPU build in silence.
 
 ### 2.2a What the wrapper may do — bash is a bootstrap, not a program
 
@@ -271,8 +272,10 @@ generate time (`molbuilder/diagnostics.py`, `molbuilder/runwrap.py`):
   **provenance** — one installs from packages anywhere, the other must be built
   from source — so routing CPU-ELPA to the source build used to refuse a
   runnable calculation wherever compiling is not allowed. If the `.fdf` opts
-  into GPU but that env is not installed, generation raises with an install
-  hint. An env named explicitly always wins over the route.
+  into GPU and the target's record lists no such env, prep says so with the
+  install command and prepares the job as asked (`gpu.md` G6): the run script
+  enters the env at its start and stops there without it. An env named
+  explicitly always wins over the route.
 
 The env **names** are overridable per category in `molbuilder.json` (`envs`,
 § 5.4); the categories and their defaults are

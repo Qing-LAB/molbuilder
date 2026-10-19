@@ -245,7 +245,7 @@ def placement_line(placement) -> str:
         return ""
     said = _sources_said(placement.get("from"))
     return (f"placed on {placement.get('domain')} "
-            f"({placement.get('partition')}/{placement.get('qos')})"
+            f"({placement.get('partition')}/{placement.get('qos') or '-'})"
             + (f" -- {said}" if said else ""))
 
 

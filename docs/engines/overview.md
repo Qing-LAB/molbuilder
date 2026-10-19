@@ -230,8 +230,8 @@ is decided by where the capability lives rather than by preference.
 | the item | `use_gpu` — **one merged item since 2026-08-23**, `kind="deck"`; it was `enable_gpu` here | `use_gpu` |
 | what the flag turns on | `Diag.ELPA.GPU .true.` in the deck, and only with an ELPA solver — GPU + ScaLAPACK is refused by the **emitter** | the script's SCF object moved onto the device after it is fully assembled (`runtime_info.to_gpu`, imported from `mb_pyscf.pyz`); a vibration script builds its SCF objects from gpu4pyscf's classes instead |
 | **where the capability lives** | in the **environment** — only `molbuilder-siesta-gpu`'s ELPA has the GPU codepath | in the **device**, plus `gpu4pyscf` + `cupy` |
-| **when it is checked** | **at `prep`** — an env is a fact the preparing machine can see | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
-| **what happens if it is missing** | **the wrapper refuses to generate** — `WrapperError`, naming the env and how to install it | **the script exits** — `SystemExit` with the reason and the two ways out |
+| **when it is checked** | **at `prep`** — an env is a fact the target's record states | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
+| **what happens if it is missing** | **prep says so and prepares the job** — a note naming the env and how to install it; the run script stops at its start without it (`gpu.md` G6) | **the script exits** — `SystemExit` with the reason and the two ways out |
 
 **Neither engine can check at the other's moment**, which is why this is not an
 inconsistency to be flattened: SIESTA's env is knowable before queueing and its

@@ -83,7 +83,7 @@ def queue_table(rows: Sequence, request: "Request") -> str:
         dev = ", ".join(x.type + (f" x{x.per_node}" if x.per_node else "")
                         for x in d.devices) or "-"
         lines.append(
-            f"  {i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
+            f"  {i:<2} {d.name:<12} {d.partition + '/' + (d.qos or '-'):<22} "
             f"{wall:>9} {d.core_range:>8} {d.mem_range:>14}  {dev}")
         for shape in _machine_lines(d):
             lines.append(f"       {shape}")

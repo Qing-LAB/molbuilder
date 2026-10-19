@@ -149,6 +149,10 @@ class SiestaReader:
         #: ``Relaxed`` (True) or ``Final (unrelaxed)`` (False); ``None`` for
         #: a run that relaxes nothing, or has not got there.
         self.relaxed: Optional[bool] = None
+        #: THE ATOMS THE RUN HELD, 1-based as the output echoes them
+        #: (`siesta_grammar.CONSTRAINT_LINE`); empty for a run that held
+        #: none.  Translated to the structure's indices by the parser.
+        self.held: set = set()
         self._scf_criteria: Dict[str, Dict[str, Any]] = {}
         self.ts_info: Dict[str, Any] = {}
         self._ts_echo_open = False
@@ -463,6 +467,22 @@ class SiestaReader:
             return END_BUBBLE
         self._step_frame.append([parts[-1], x, y, z])
         return CONTINUE
+
+    def _on_system_label(self, line: str, line_no: int) -> None:
+        m = _G.SYSTEM_LABEL.match(line.strip())
+        if m:
+            self.runtime_info["system_label"] = m.group(1)
+
+    def _consume_constraint(self, line: str, line_no: int) -> str:
+        # The ranges line follows the constraint line, blank lines between
+        # allowed; anything else ends the block and is read as itself.
+        if not line.strip():
+            return CONTINUE
+        atoms = _G.constraint_atoms(line)
+        if not atoms:
+            return END_BUBBLE
+        self.held.update(atoms)
+        return END_SECTION
 
     def _on_cell_start(self, line: str, line_no: int) -> None:
         self._pending_lattice = []
@@ -990,6 +1010,17 @@ class SiestaReader:
                         start=contains_ci(_G.FORCES_BEGIN),
                         on_start=self._on_forces_start,
                         consume=self._consume_forces),
+            # THE SETUP LINES: the SystemLabel the run read, and each held
+            # block -- the constraint line, then its ranges line (the one
+            # reader of both, `model/parse.md` § 4a).
+            SectionRule(name="system_label",
+                        aliases=["reinit: System Label:"],
+                        start=matches_regex_ci(_G.SYSTEM_LABEL.pattern),
+                        on_start=self._on_system_label),
+            SectionRule(name="constraint",
+                        aliases=["siesta: Constraint (N): pos"],
+                        start=matches_regex_ci(_G.CONSTRAINT_LINE.pattern),
+                        consume=self._consume_constraint),
             SectionRule(name="scf_header", aliases=["iscf <columns>"],
                         start=matches_regex_ci(_G.SCF_HEADER.pattern),
                         on_start=self._on_scf_header),
@@ -1281,8 +1312,10 @@ class SiestaReader:
         """The end of the output: the torn step dropped, the step in flight
         committed and flagged, the run's facts summed.  Returns the reading
         -- ``{steps, live_scf, lattice, run_state, scf_converged, phases,
-        relaxed, cause, error_message, runtime_info, warnings}`` -- and the
-        reader is done.  The ending among them is THE answer to how a SIESTA
+        relaxed, cause, error_message, runtime_info, held, warnings}`` --
+        and the reader is done.  ``held`` is the 1-based atoms the output
+        says the run held; ``runtime_info["system_label"]`` the label it
+        read.  The ending among them is THE answer to how a SIESTA
         run ended; `_run_ending.ending_of` asks for it alone.
 
         ``live_scf`` is the SCF of a run still going that has no coordinates
@@ -1368,6 +1401,7 @@ class SiestaReader:
                 "relaxed": self.relaxed, "cause": self.cause,
                 "error_message": self.error_message,
                 "runtime_info": self.runtime_info,
+                "held": sorted(self.held),
                 "warnings": self.warnings, **self._forces_now()}
 
 

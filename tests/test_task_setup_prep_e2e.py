@@ -836,7 +836,13 @@ def _add_a_column(page):
 
 
 def _add_a_bench_point(page):
+    # AS A PERSON ADDS ONE (`task-setup.md` § 6.2a): the pick offers the
+    # setting's value in force in the box, and a setting with none is typed
+    # its first point -- never a number the page invents.
     _pick_first(page, "ts-add-setting")
+    page.dispatch_event("#ts-add-setting", "change")
+    if not page.input_value("#ts-add-setting-value").strip():
+        page.fill("#ts-add-setting-value", "1")
     page.click("#ts-add-setting-go")
 
 

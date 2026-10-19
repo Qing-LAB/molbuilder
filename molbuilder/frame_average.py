@@ -336,6 +336,16 @@ def _said(name: str, unit: Any, vocabulary: Dict[str, Row],
     row it knows where the row lives, else its name and unit as written."""
     known = vocabulary.get(name)
     if known is not None:
+        # THE NAME CARRIES ITS UNIT (`model/structure.md` § 2.2f): a row of
+        # the vocabulary written with another unit states a contradiction,
+        # refused by name -- never one unit on the page and another in the
+        # data file (2026-10-19).
+        if unit not in (None, "") and str(unit) != str(known.unit):
+            raise ValueError(
+                f"the frame set's row {name!r} is written with the unit "
+                f"{unit!r}; the vocabulary's name means {known.unit!r} "
+                f"(model/structure.md 2.2f) -- write the value in that unit, "
+                f"or give the row another name")
         return {"name": name, **value, "unit": known.unit,
                 "kind": known.kind, "words": known.words,
                 "page_unit": known.page_unit}
@@ -347,8 +357,9 @@ def _wire(rows, structure) -> Dict[str, Any]:
     """``{structure: [{name, value, unit, kind, words, page_unit}], columns:
     [{name, unit, kind, words, page_unit}], frames: [[a value per column,
     None where a frame states none] per frame], weights, weight_sum,
-    warnings}``, and ``masses_amu`` and ``vibration`` where the structure
-    carries them -- the vocabulary's rows first, in its order."""
+    warnings, mode}`` -- ``mode`` whether the frames state one -- and
+    ``masses_amu`` and ``vibration`` where the structure carries them; the
+    vocabulary's rows first, in its order."""
     order = {r.name: i for i, r in enumerate(STRUCTURE_ROWS)}
     srows = sorted(rows.structure,
                    key=lambda r: order.get(r["name"], len(order)))
