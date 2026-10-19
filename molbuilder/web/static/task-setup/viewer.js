@@ -649,7 +649,9 @@ function extraRunRows(stage) {
  * amount, so a second home for it would be a second place to look. */
 const LANE_ASKS = [
     { name: "time", label: "wall clock for this run",
-      help: "D-HH:MM:SS \u2014 the bench keeps the calculation's short one",
+      help: "D-HH:MM:SS \u2014 what the scheduler is asked for; in a group "
+            + "of stages each row is one stage's own, and the job asks for "
+            + "their sum (the bench keeps the calculation's short one)",
       placeholder: "2-00:00:00" },
     { name: "domain", label: "queue for this run",
       help: "the bench can stay on a short-turnaround queue",
@@ -796,14 +798,21 @@ function runCard(task, members) {
             unread: members.filter((m) => readers.indexOf(m) === -1),
             stray: stray, remove: removal(n) }));
     }
-    // THE WALL IS EACH MEMBER'S OWN; the job asks their sum, which the
-    // server works out (`group.envelope`) and the preview's header shows.
+    // THE WALL IS EACH MEMBER'S OWN, AND THE JOB ASKS FOR THEIR SUM
+    // (`task-setup.md` § 6.2b): the server works the sum out
+    // (`group.envelope`) and the preview's header shows it; the page sums
+    // nothing and says the rule where the rows are, so a day typed on each
+    // of three stages is not mistaken for a one-day job (the user,
+    // 2026-10-18).
     if (walls) {
         for (const m of members) rows.appendChild(runRow(task, "time", [m],
-            { label: "time \u00b7 " + m, remove: removal("time") }));
+            { label: "wall clock \u00b7 " + m, remove: removal("time") }));
         rows.appendChild(el("p", { class: "hint" },
-            "the job's wall is its members' summed \u2014 Preview shows the "
-            + "header it asks for"));
+            "One job, one wall: the stages of this group run one after "
+            + "another in a single job, so the scheduler is asked for the "
+            + "SUM of the rows above, not the longest \u2014 a day on each "
+            + "of three stages is a three-day job. Preview shows the "
+            + "--time line it sends."));
     }
     if (!names.length) {
         rows.appendChild(el("p", { class: "hint" },

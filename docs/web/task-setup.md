@@ -690,9 +690,15 @@ refuse an override on a rung that does not read it (`template.reads`, the one
 door; `validation.task`). A member whose value
 differs is shown beside the field (*electrode_L: 8*), never overwritten unasked,
 and for a value the job shares prep refuses the disagreement by name until it
-is settled. **The wall is the members' own** — a row per member, the job asking
-their sum, shown beneath — and the memory the calculation's (`allocation.mem`,
-the largest of what the job holds). *+ Add setting* offers what at least one
+is settled. **The wall is the members' own, and the job asks for their SUM** — a row
+per member, *wall clock · <stage>*, each that stage's own time, and beneath the
+rows the rule said in words: the group's stages run one after another in a
+single job, so the scheduler is asked for the sum of the rows, not the longest
+*(the user, 2026-10-18, on Sol: a day typed on each of three stages was a
+three-day job, and the card had not said so)*. The sum itself is the Preview's
+to show — its `--time` header line — and the page sums nothing (`group.envelope`
+is the one rule, `job-system.md` § 5.0). The memory is the calculation's
+(`allocation.mem`, the largest of what the job holds). *+ Add setting* offers what at least one
 member reads. **A row that stands has no ×** — a launch row, a benchmark's, or
 one the calculation states: its blank clears it (the select's blank option,
 an emptied box), one way to clear rather than two; a row added on the card and
