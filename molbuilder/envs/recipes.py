@@ -1510,7 +1510,12 @@ _MDTOOLS = Recipe(
     channels=("dacase", "conda-forge"),
     # git: uniform across every env -- see the _HOST recipe for why it is
     # everywhere.
-    conda_packages=(_PYTHON_SPEC, "dacase::ambertools-dac=26", "git"),
+    # netcdf4: EVERY ENVIRONMENT CARRIES IT (the user's decision -- the host
+    # 2026-10-10, the result-writing job envs 2026-10-14, the rest
+    # 2026-10-18), so a NetCDF file molbuilder writes opens wherever its
+    # python runs.
+    conda_packages=(_PYTHON_SPEC, "dacase::ambertools-dac=26", "git",
+                    "netcdf4"),
     # FEED IT A `quit`, SO IT STOPS BY ITSELF.  An empty script falls through
     # to tleap's interactive prompt, finds no terminal and exits 1 with
     # "*** Error: tl_getline(): not interactive".  With `quit` as the script
@@ -2621,6 +2626,9 @@ _JUPYTER = Recipe(
         # and writes the extended-XYZ a frame set is made of; sisl reads
         # the files SIESTA and TBtrans write.  Not engines.
         "ase", "sisl",
+        # netcdf4: every environment carries it (the user's decision); sisl
+        # brings it, listed for its own reason.
+        "netcdf4",
         # git: uniform across every env -- see the _HOST recipe for why it is
         # everywhere.  A notebook that inspects a calculation folder wants it.
         "git",
