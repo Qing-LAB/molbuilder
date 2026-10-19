@@ -37,6 +37,13 @@ from molbuilder.parse.types import EngineParamsResult, ParseResult, ParseWarning
 _NAME = re.compile(r"^fdf(?:\.(\d{8}T\d{6})\.\d+)?\.log$")
 
 
+def logs_in(directory) -> "list[Path]":
+    """Every fdf log in ``directory``, by the one name pattern above, sorted
+    -- the door `parse/dirs/record` asks instead of a glob of its own."""
+    d = Path(directory)
+    return sorted(p for p in d.iterdir() if _NAME.match(p.name))
+
+
 def stamp_of(path) -> Optional[str]:
     """``fdf.20260925T194936.695.log`` -> ``2026-09-25T19:49:36``, the moment
     SIESTA opened the log; ``None`` for ``fdf.log`` or any other name."""

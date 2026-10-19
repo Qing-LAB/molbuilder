@@ -60,8 +60,8 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
     § 1.1a): a list of :class:`~molbuilder.task.Stage`, each carrying that
     rung's values as ``overrides`` on the shared schema.  The two engines
     differ in which parameters those overrides name and in nothing else --
-    which is why this reads its per-tier science from a presets table and its
-    enable-mask from a strategy table, the way
+    which is why this reads its per-tier science from a presets table and the
+    tiers a strategy picks from a strategy table, the way
     ``siesta/stages.py::default_siesta_stages`` does, rather than carrying
     either inline.
 
@@ -78,7 +78,7 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
     """
     from ..config.pyscf import PYSCF_STAGE_PRESETS
     from ..config.stages import STAGE_STRATEGY_PRESETS
-    from ..config.siesta import SIESTA_STAGE_NAMES
+    from ..config.stages import STAGE_NAMES
     from ..task import Stage
 
     if strategy not in STAGE_STRATEGY_PRESETS:
@@ -96,7 +96,7 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
         # THE STAGES IT RUNS, and only those (`engines/stages.md` § 2): a
         # tier the strategy leaves out is not in the ladder.
         if i < len(enables) and enables[i]:
-            out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
+            out.append(Stage(name=STAGE_NAMES[tier],
                              overrides=overrides))
     return out
 

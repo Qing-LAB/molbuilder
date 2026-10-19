@@ -31,8 +31,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 #: ``c`` (A3).  The composition states it (`transport/compose.py` builds every
 #: junction's kinds as ``(across, across, "transport")``), and TranSIESTA's
 #: electrodes are semi-infinite along it.  The composition and the k-point
-#: grid read it here; `transport/sort.py` keeps a copy of its own and the
-#: transport writers index ``c`` directly (owed, plan § 5w K3).
+#: grid read it here, and so do `transport/sort.py` and `transport/compose.py`
+#: (their copies went 2026-10-18, K3).
 TRANSPORT_AXIS = 2
 
 #: The components' names -- the form's triple labels, and how a refusal names

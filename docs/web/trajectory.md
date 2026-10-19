@@ -78,6 +78,16 @@ PySCF run — draws one trace (`model/parse.md` § 5d.5).
 
 ## 3. Convergence targets
 
+**The targets reach the page as said** *(2026-10-18)*: every watch answer
+(`/api/watch/load`, `/api/watch/data`, an upload) carries `targets` —
+`{source, force_tol_ev_ang, said: [[label, text], …]}` — composed by the
+server from the run's `convergence_targets` through the log's one reader
+(`trajectory_log.emitter.targets_of`: the one stage's leaf of a nested block,
+or SIESTA's flat echo as it stands) and the one table of the keys' words and
+units (`emitter.LEAF_ROWS`: *max |F|* in eV/Å, *rms |F|*, *max displ* in Å,
+*rms displ*, *energy step* in eV, *MaxSCFIterations*, *geom steps cap*); the
+page draws the rows and the threshold line from that answer and spells no key.
+
 ### 3.0 What converged means — two levels, every test at each
 
 *(user, 2026-10-13: "contract document of what convergence conditions are

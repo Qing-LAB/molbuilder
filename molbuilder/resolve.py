@@ -740,7 +740,7 @@ def resolve(template_text: str, task, config_cls, *,
 
 
 def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any]]:
-    """``[(stage name, resolved config)]`` for every ENABLED stage, in
+    """``[(stage name, resolved config)]`` for every stage of the ladder, in
     ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
     § 6.6a), resolved by the SAME primitives as `prep task` step 2 (template
     ⊕ stage overrides ⊕ the rung's run card), so what the checks compare is

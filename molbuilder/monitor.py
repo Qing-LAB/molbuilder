@@ -118,6 +118,7 @@ try:                                        # inside molbuilder
     from .parse.engines.siesta_reader import SiestaReader
     from .parse.engines.tbtrans import loop_words
     from .parse.instruments.scf_timing_rows import timing_of
+    from .trajectory_log import emitter as _E
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_fields as _fields
@@ -427,7 +428,7 @@ class WatchedRun:
         if state.get("max_force") is not None:
             st.max_force = state["max_force"]
             st.max_force_tol = (state.get("targets") or {}).get(
-                "max_force_tol_eV_per_A")
+                _E.MAX_FORCE_TOL)
             every = state.get("max_force_all")
             # THE HELD ATOMS' FORCE, said only when it is the larger.
             st.max_force_held = (every if every is not None

@@ -51,10 +51,8 @@ def resolve_workflow_group(where: str, cfg) -> Optional[str]:
     concern: a ``config.mesh_cutoff`` finding belongs in the Stage
     card; ``config.spin_treatment`` belongs in the Run profile card;
     ``config.max_scf_iter`` belongs in the Budget card.  The mapping is
-    each dataclass field's ``metadata["workflow_group"]`` -- the class's
-    copy of the catalogue's ``group``, which the form draws its cards by;
-    `test_every_mirrored_fact_agrees` keeps the two equal
-    (`web/form-schema.md` § 1a).
+    the catalogue's ``group``, read through `template.items_of` -- the
+    form draws its cards by it (`web/form-schema.md` § 1a).
 
     Returns ``None`` for:
       * Issues that don't target a config field (where prefix isn't
@@ -635,7 +633,13 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
                  if calculation in it.shared
                  and (it.group != "setup" or it.name in asks)]
     elif surface == "rung":
-        items = [it for it in items if calculation not in it.shared]
+        # A RUNG'S TAB OFFERS NO RUN SETTING: those are the rung's run card's
+        # (`engines/stages.md` § 6.8d, `template.run_settings`, the marker);
+        # a locked echo of one stays, as every echo does (§ 6.6 obligation
+        # 3).  Asked here, so no blueprint keeps a second filter (2026-10-18).
+        _run = _T.run_settings(engine)
+        items = [it for it in items if calculation not in it.shared
+                 and (it.name not in _run or it.name in echoed)]
     elif surface is not None:
         raise ValueError(f"surface must be 'shared', 'rung' or None, "
                          f"not {surface!r}")

@@ -51,6 +51,8 @@ JSON shape:
 
 from __future__ import annotations
 
+import dataclasses
+
 import typing
 import json
 import pathlib
@@ -1095,7 +1097,7 @@ def api_task_setup_handover():
                 "findings": _issues_to_json(psml, cfg=cfg),
             }), 400
 
-    from molbuilder.identity import normalise_id, run_id
+    from molbuilder.identity import normalise_id
     from molbuilder.template import (template_filename as _template_filename,
                                      template_with_values)
 
@@ -1117,7 +1119,13 @@ def api_task_setup_handover():
     _placeholder = str(
         type(cfg).__dataclass_fields__[_group.field].default or "")
     typed = (_identity if _identity and _identity != _placeholder
-             else (str(body.get("name") or "") or "calculation"))
+             else str(body.get("name") or ""))
+    if not typed:
+        # REFUSED BY NAME, never defaulted (a hand-over was called
+        # "calculation" until 2026-10-19).
+        return jsonify({"ok": False,
+                        "error": "name: the calculation has no name -- the "
+                                 "parameter tab's identity field states it"}), 400
     label = normalise_id(typed)
     formula = str(getattr(struct, "formula", "") or "")
 
@@ -1186,8 +1194,20 @@ def api_task_setup_handover():
     geometry_name = next((f["name"] for f in structure_files
                           if not f["name"].endswith(".json")), "")
 
+    from molbuilder.jobset.group import numbered_fresh
+    from molbuilder.task import fresh_stages
+    from molbuilder.task import derive_run, fresh_varies
+    proposed = numbered_fresh(
+        fresh_stages(calculation, engine,
+                     already_relaxed=bool(getattr(cfg, "already_relaxed",
+                                                  False))),
+        engine=engine, calculation=calculation, template_text=template_text)
+    from molbuilder.task import SCHEMA as _TASK_SCHEMA
     handover = {
         "schema":    TASK_HANDOVER_SCHEMA,
+        # THE DESCRIPTION'S OWN SCHEMA STRING, for the page to write -- the
+        # page spells none (`task.SCHEMA`, one home; 2026-10-19).
+        "task_schema": _TASK_SCHEMA,
         # JSON has no comments, so the file carries a line that says what it
         # is.  It IS read by a person -- Task setup shows it in the editor --
         # and a file whose whole job is to be handed between two surfaces
@@ -1202,15 +1222,18 @@ def api_task_setup_handover():
                      "`shape` and `stages` on purpose -- Task setup asks for those, "
                      "and on a successful save writes the real task.json and deletes "
                      "this file. Nothing runs from it. The structure it is OF is the "
-                     "file named under `structure.files` in this same folder, written "
-                     "by the server's one codec: `structure.source` names the .xyz, "
+                     "file `structure.source` names in this same folder, written "
+                     "by the server's one codec: the .xyz, "
                      "which carries the coordinates and the cell, and the "
                      ".molstruct.json beside it carries the region labels and frozen "
                      "atoms.",
         "engine":    {"name": engine},
-        "run":       {"name": typed,
-                      "id": run_id(typed, formula),
-                      "created": datetime.now().astimezone().isoformat(timespec="seconds")},
+        # THE ID THROUGH THE CODEC (`task.derive_run`, the one place an id is
+        # made), with the proposed ladder's names, as the save derives it.
+        "run":       dataclasses.asdict(derive_run(
+                         typed, formula,
+                         created=datetime.now().astimezone().isoformat(timespec="seconds"),
+                         stage_names=tuple(st.name for st in proposed))),
         # WHAT THIS IS OF -- by NAME, pointing at files in this same folder.
         # These names come from the structure that was sent, so they cannot
         # disagree with it (`molview.md` § 9.3a).
@@ -1232,16 +1255,15 @@ def api_task_setup_handover():
     # the ordinary one-stage start otherwise) through the one numbering
     # rule (`jobset.group.numbered_fresh`), as `jobset init` makes it.
     # Task setup shows it as what will be written; it re-derives nothing.
-    from molbuilder.jobset.group import numbered_fresh
-    from molbuilder.task import fresh_stages
     handover["proposed_stages"] = [
         {"name": st.name, "group": st.group, "overrides": dict(st.overrides)}
-        for st in numbered_fresh(
-            fresh_stages(calculation, engine,
-                         already_relaxed=bool(getattr(cfg, "already_relaxed",
-                                                      False))),
-            engine=engine, calculation=calculation,
-            template_text=template_text)]
+        for st in proposed]
+    # ...AND WHAT THOSE STAGES VARY, by the one rule `jobset init` writes
+    # with (`task.varies_for` over their overrides -- nothing, for a fresh
+    # one-stage ladder): the page copies it and seeds no columns of its own
+    # (2026-10-18; the page had seeded every stage-group item, so the same
+    # hand-over made two descriptions by the door it went through).
+    handover["proposed_varies"] = list(fresh_varies(proposed))
 
     return jsonify({
         "ok":            True,
@@ -1625,7 +1647,7 @@ def api_task_setup_sweepable():
             # (`web/task-setup.md` § 6.2b), on the rungs that read it --
             # the catalogue's `run_card` and `stages`.
             "run_card":        it.run_card,
-            "stages":          list(it.stages) or None,
+            "stages":          list(it.stages),
             # THE VALUE SHAPE (user, 2026-08-20): the machine card births
             # a row at its value in force and offers an enum's choices or
             # a bool's two values from a dropdown -- it can only do either
@@ -1642,7 +1664,11 @@ def api_task_setup_sweepable():
             # so this payload is their only source).
             "unit":            it.unit or None,
         })
-    return jsonify({"ok": True, "engine": engine, "items": out})
+    # THE RUN'S OWN TWO ASKS, with their words (`task.LANE_ASK_ROWS`): the
+    # page offers them from here and keeps no table (`task-setup.md` § 6.2b).
+    from molbuilder.task import LANE_ASK_ROWS
+    return jsonify({"ok": True, "engine": engine, "items": out,
+                    "lane_asks": [dict(r) for r in LANE_ASK_ROWS]})
 
 
 def _column_items(engine: str, kind: str):
@@ -1964,8 +1990,17 @@ def api_task_setup_prep_plan():
     # shape the description CHOSE -- every machine-answered `bench` entry that
     # carries one point (`generator.md` § 4.3a).  Two reads because they are
     # two questions; neither is recomputed here.
-    alloc = {"domain": task.allocation.domain, "time": task.allocation.time,
-             "mem": task.allocation.mem}
+    from molbuilder.jobset.prep_inputs import fold_allocation
+    from molbuilder.task import LANE_ASKS
+    def _ask_of(stage: str) -> dict:
+        # THE EFFECTIVE ASK, by the one fold prep uses (`fold_allocation`):
+        # the run card's own asks over the calculation's -- one line per
+        # stage, said by the server (2026-10-18; the page had printed both
+        # and composed which the wrapper carries).
+        chosen = {k: v for k, v in task.run_condition(stage).items()
+                  if k in LANE_ASKS}
+        res, _src = fold_allocation(None, task.allocation, chosen)
+        return {"domain": res.domain, "time": res.time, "mem": res.mem}
     # The plan card reads the DESCRIPTION as posted, mid-edit, with no
     # machine resolved -- so it reports the condition as WRITTEN, without
     # asking the enumerator, which needs a target.  THE FOLDER, when the page
@@ -1984,10 +2019,12 @@ def api_task_setup_prep_plan():
         token = stage_home(folder, task, st.name).token
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
-                     "allocation": alloc,
+                     "ask": _ask_of(st.name),
                      # PER STAGE, because the condition is (§ 6.8d): the
                      # calculation's block with this rung's laid over it.
-                     "chosen": task.run_condition(st.name),
+                     "chosen": {k: v for k, v in
+                                task.run_condition(st.name).items()
+                                if k not in LANE_ASKS},
                      # AND WHAT THIS RUNG WILL BE NAMED (user, 2026-09-07).
                      # Every name comes out of the grammar (`runfiles`
                      # § 2.2a) with THIS rung's token, so the card cannot
@@ -2024,7 +2061,9 @@ def api_task_setup_prep_plan():
         # location for.
         from molbuilder.paths import bench_container
         bench = {"axes": {k: list(v) for k, v in task.bench.items()},
-                 "allocation": alloc,
+                 "allocation": {"domain": task.allocation.domain,
+                           "time": task.allocation.time,
+                           "mem": task.allocation.mem},
                  "rungs": [{"stage": r["stage"],
                             "dir": bench_container(shape, r["token"])}
                            for r in rows]}
@@ -2333,7 +2372,8 @@ def _folder_ladder(folder) -> dict:
     whether its prepared jobs hold its members (`web-api.md`).  Fail-soft, like the
     folder's other parts."""
     from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.group import linked, shared_card_keys, upstream_of
+    from molbuilder.jobset.group import (linked, shared_card_keys, upstream_of,
+                                         why_not_join)
     from molbuilder.jobset.ready import task_state
     from molbuilder import template as _T
     from molbuilder.task import LANE_ASKS
@@ -2344,12 +2384,26 @@ def _folder_ladder(folder) -> dict:
         # EACH STAGE'S LINKS, not a verdict: the page applies the rule to
         # the groups as edited (`task-setup.md` § 5), and the reader's
         # check (`group.check_groups`) refuses at Save.
-        rows = [{"stage": st.name, "group": st.group,
-                 "builds_on": sorted(upstream_of(folder, task, st.name,
-                                                 text)),
-                 "linked": linked(folder, task, st.name, text),
-                 "launched": a.launched}
-                for st, a in zip(task.stages, answers)]
+        rows = []
+        for i, (st, a) in enumerate(zip(task.stages, answers)):
+            # WHY THIS ROW MAY NOT JOIN THE GROUP ABOVE, as the description
+            # stands: the rule's own sentence (`group.why_not_join`), or
+            # the launched group's -- the page shows it and composes none.
+            above = [s.name for s in task.stages[:i]
+                     if i and s.group == task.stages[i - 1].group]
+            why_same = (why_not_join(folder, task, st.name, above, text)
+                        if above else None)
+            if why_same is None and above and any(
+                    b.launched for s, b in zip(task.stages, answers)
+                    if s.name in above):
+                why_same = (f"group {task.stages[i - 1].group} was launched "
+                            f"-- its members are fixed")
+            rows.append({"stage": st.name, "group": st.group,
+                         "builds_on": sorted(upstream_of(folder, task,
+                                                         st.name, text)),
+                         "linked": linked(folder, task, st.name, text),
+                         "launched": a.launched,
+                         "why_same": why_same})
         return {
             "ladder": {"stages": [{"stage": a.stage, "group": a.group,
                                    "state": a.state, "detail": a.detail,
@@ -2593,11 +2647,12 @@ def api_task_setup_presets():
         return _unstated(engine=engine, calculation=kind)
     out = []
     if engine == "siesta":
-        from molbuilder.config.siesta import (SIESTA_STAGE_NAMES,
+        from molbuilder.config.stages import STAGE_NAMES
+        from molbuilder.config.siesta import (
                                               SIESTA_STAGE_PRESETS)
         for tier in sorted(SIESTA_STAGE_PRESETS):
             out.append({"tier": tier,
-                        "name": SIESTA_STAGE_NAMES[tier],
+                        "name": STAGE_NAMES[tier],
                         "values": dict(SIESTA_STAGE_PRESETS[tier])})
     elif engine == "pyscf":
         # Same source as the shipped PySCF ladder, for the same reason the

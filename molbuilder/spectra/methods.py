@@ -389,27 +389,10 @@ def _frequency_window_clause(cfg: "VibrationConfigView") -> str:
 
 
 def _count_structure_atoms(struct: Structure) -> int:
-    """Total atom count from a Structure-like object.
-
-    Tries ``len(struct.elements)`` first (the canonical molbuilder
-    Structure exposes ``elements`` as a list of element symbols)
-    then falls back to ``len(struct.atoms)`` for duck-typed mocks.
-    Returns 0 when neither attribute is available -- the Methods
-    composer treats 0 as "skip the atom-count clause" rather than
-    raising, since this is a presentational concern."""
-    elements = getattr(struct, "elements", None)
-    if elements is not None:
-        try:
-            return len(elements)
-        except TypeError:
-            pass
-    atoms = getattr(struct, "atoms", None)
-    if atoms is not None:
-        try:
-            return len(atoms)
-        except TypeError:
-            pass
-    return 0
+    """The structure's atom count -- ``len(struct.elements)``, the one
+    shape a `Structure` has (a duck-typed fallback for mocks stood here
+    until 2026-10-18)."""
+    return len(struct.elements)
 
 
 
@@ -427,10 +410,7 @@ def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
     """
     from .normal_modes import rigid_motions
     n_free = _count_free_atoms(struct, cfg)
-    try:
-        positions = struct.positions
-    except AttributeError:                  # a duck-typed mock: no geometry
-        return max(0, 3 * n_free - 6), 6
+    positions = struct.positions
     frozen = [int(i) for i in (cfg.frozen_indices or [])
               if 0 <= int(i) < len(positions)]
     # ON THE AXES THE DECK COMPUTES ON -- the view's (`cell.engine_axis_kinds`).

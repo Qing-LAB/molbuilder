@@ -22,6 +22,8 @@ one stage**, so every verb that acts on a stage is given the stage's name.
 
 from __future__ import annotations
 
+from .model import KIND_SWEEP
+
 from pathlib import Path
 from typing import Optional
 
@@ -69,7 +71,7 @@ def _load(bundle: str) -> tuple:
         sweeps = []
         for _p in found:
             try:
-                if JobSet.load(_p).kind == "sweep":
+                if JobSet.load(_p).kind == KIND_SWEEP:
                     sweeps.append(str(_p.parent.relative_to(base)))
             except (OSError, ValueError):  # unreadable: not evidence of anything
                 pass
@@ -331,7 +333,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     from pathlib import Path as _P
 
     from ..describe import DescribeError
-    from ..task import Stage, Task, derive_run
+    from ..task import Stage, Task, derive_run, fresh_varies
     # The ladder is the transport module's fact (one door): five stages
     # in dependency order, every one (`task.fixed_by_kind`).
     from ..transport.stages import TRANSPORT_STAGES
@@ -404,7 +406,10 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     except ComposeError as exc:
         raise click.ClickException(str(exc))
 
-    bias = ()
+    # THE SINGLE BIAS IS STATED, `[0.0]` -- the one spelling both roads
+    # write (`engines/transport.md` § 2a.10; the tab writes the same), never
+    # an empty list a reader has to fill in (2026-10-18).
+    bias = (0.0,)
     if bias_opt:
         try:
             bias = tuple(float(v) for v in bias_opt.split(","))
@@ -423,7 +428,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=low_bias_approximation,
-            varies=(), stages=stages)
+            varies=fresh_varies(stages), stages=stages)
     except ValueError as exc:
         raise click.ClickException(str(exc))
 
@@ -784,7 +789,7 @@ def status_cmd(stage, bundle: str) -> None:
             raise click.ClickException(f"{_TASK_FILE}: {exc}")
     else:
         js, base = _load(bundle)
-        if js.kind == "sweep":
+        if js.kind == KIND_SWEEP:
             # A BENCH FOLDER is read against its calculation: its sweep names
             # its trials from there, and what it prints names that.
             from .materialize import bench_owner
@@ -855,7 +860,7 @@ def _check_kind(kind: str, js=None) -> None:
     """
     if js is None:
         return
-    actual = "bench" if js.kind == "sweep" else "task"
+    actual = "bench" if js.kind == KIND_SWEEP else "task"
     if kind != actual:
         raise click.ClickException(
             f"this bundle's job set is a {js.kind}, which the grammar calls "
@@ -1878,7 +1883,7 @@ def _how_runs_ended(results, plan, js, base):
     from .materialize import bench_owner
     from .runstatus import jobset_status
     at = base
-    if js.kind == "sweep":
+    if js.kind == KIND_SWEEP:
         owner = bench_owner(base)
         if owner is not None:
             at = owner[0]

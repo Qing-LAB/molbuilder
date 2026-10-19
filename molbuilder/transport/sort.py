@@ -67,10 +67,9 @@ ELECTRODE_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)
 #: bookkeeping that rides along untouched.
 PARTITION_LABELS = (*ELECTRODE_LABELS, REGION_BRIDGE, REGION_BUFFER)
 
-#: The transport axis is the THIRD cell axis (z) — the same convention
-#: the emitter already uses (electrode regions sorted by z-centroid,
-#: ``semi-inf-direction ±A3``).
-TRANSPORT_AXIS = 2
+#: The transport axis is the THIRD cell axis (z) -- the one home is
+#: `kmesh.TRANSPORT_AXIS` (a copy stood here until 2026-10-18, K3).
+from ..kmesh import TRANSPORT_AXIS  # noqa: E402
 
 #: How the two electrode blocks sit along transport, as one word.
 #: ONE door for the fact, because three places need it and they must not

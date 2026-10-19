@@ -26,9 +26,9 @@ from .quantities import parse_walltime
 
 # sinfo timelimit tokens that mean "no ceiling".
 _INFINITE = {"infinite", "unlimited", "n/a", ""}
-# A finite sentinel for an unbounded partition so a domain can still be built.
+# The threshold above which a partition's limit reads as none (sinfo's own
+# `infinite` token, or a limit past thirty days).
 _INFINITE_SECS = 30 * 24 * 3600
-_INFINITE_STR = "30-00:00:00"
 
 
 
@@ -94,8 +94,8 @@ class Partition:
 # --------------------------------------------------------------------- #
 
 def _to_secs(timelimit: str) -> int:
-    """SLURM partition TIMELIMIT -> seconds; 'infinite'/'unlimited' -> a big
-    finite sentinel so a domain can still be built (flagged by the caller)."""
+    """SLURM partition TIMELIMIT -> seconds; 'infinite'/'unlimited' -> a
+    sentinel past thirty days, which `derive_domains` records as no wall."""
     t = (timelimit or "").strip().lower()
     if t in _INFINITE:
         return _INFINITE_SECS
@@ -427,12 +427,16 @@ def derive_domains(
         if q_secs is not None and q_secs < p.timelimit_secs:
             max_time = qos[q].maxwall_str
         else:
+            # AN UNSTATED LIMIT IS NOT COUNTED (`scheduler.md` R3): an
+            # infinite partition's domain states no wall, and the fit asks
+            # no ceiling of it (`fit.domain_ceiling_s` answers None).  A
+            # 30-day cap was invented here until 2026-10-18.
             max_time = (p.timelimit_str
-                        if p.timelimit_secs < _INFINITE_SECS else _INFINITE_STR)
+                        if p.timelimit_secs < _INFINITE_SECS else None)
             if p.timelimit_secs >= _INFINITE_SECS:
                 notes.append(f"partition {p.name!r} has no time limit "
-                             f"(infinite); capped the domain at "
-                             f"{_INFINITE_STR} -- adjust if needed.")
+                             f"(infinite); the record states no wall for "
+                             f"it, and a job there is fit against none.")
         row = _row(p.name, max_time, p)
         row.qos = q
         # Same absent-vs-null rule as ``max_cpus_per_node`` above: the key
@@ -451,7 +455,7 @@ def derive_domains(
             continue
         seen.add(key)
         uniq.append(d)
-    uniq.sort(key=lambda d: _to_secs(d.max_time))
+    uniq.sort(key=lambda d: _to_secs(d.max_time or ""))
 
     notes.append(
         "ASSUMPTION: a QoS allowed to your account is valid on any reachable "

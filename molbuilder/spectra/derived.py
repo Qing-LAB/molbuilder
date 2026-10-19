@@ -13,8 +13,7 @@ ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         (`science/vibrational-averaging.md` § 2)
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
-        the reader's check (`SpectraResults.from_dict`); a mode's frame set's
-        check (`frameset`)
+        the reader's check (`SpectraResults.from_dict`)
 TRAVELS in both bundles -- `runwrap.PYSCF_COMPANIONS` and
         `VIBRATION_COMPANIONS` -- so it imports its siblings two ways and
         nothing else of molbuilder

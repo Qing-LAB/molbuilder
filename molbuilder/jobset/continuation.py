@@ -264,7 +264,8 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     # ITS STATE, through the one door, asked with its launch record -- a
     # record that does not read is the state `unreadable`, said, never taken
     # for a run that stopped (`rundir.run_state_of`).
-    st = run_state_of(attempt, names, run)
+    from ..paths import run_folder_of
+    st = run_state_of(attempt, names, run, launched_in=run_folder_of(attempt))
     state, detail = st.state, st.detail
     rec = None
     if verdict:
@@ -382,7 +383,7 @@ def unreadable() -> tuple:
 
 
 def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
-    """§ 5.2a's row *no enabled `relax`, the structure not stated relaxed*
+    """§ 5.2a's row *no `relax` stage, the structure not stated relaxed*
     (`engines/vibration.md`): the box says *relax first* and the ladder
     holds nothing that would, so the description contradicts itself -- refused
     with the two ways out rather than measured at a geometry nobody chose
@@ -392,7 +393,7 @@ def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
     if relax_stage_of(task) is not None or stated:
         return None
     return (f"the structure is not stated to be relaxed (already_relaxed is "
-            f"false in the template) and this ladder has no enabled "
+            f"false in the template) and this ladder has no "
             f"`{VIBRATION_RELAX_STAGE}` stage to relax it -- a harmonic "
             f"analysis off a stationary point reports the wrong frequencies "
             f"(engines/vibration.md 2.2).  Either add the "

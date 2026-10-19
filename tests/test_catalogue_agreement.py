@@ -1,37 +1,12 @@
-"""The two homes agree — the mechanism that lets the duplication exist.
+"""The one fact two homes still state agrees — a field's default.
 
 **The catalogue is the master** (`template.md` § 2.1, § 4.3). A parameter is
-defined there, and a config class carries a name, a type and its validators.
+defined there, and a config class carries a name, a type, a default and its
+validators -- nothing else since 2.15.4 (§ 2.1a, the debt paid 2026-10-18):
+every other fact is read through `template.items_of`.
 
-**But the live Build form still reads the facts off the dataclass fields** —
-:data:`MIRRORED`, which is the one place that set is named. Until the UI is
-rebuilt from the catalogue (the debt is measured at `template.md` § 2.1a),
-those facts live in **two** homes.
+Beside the default: category ORDER, declared TYPE, orphan items, and panel presence.
 
-**The size of the debt is stated in `template.md` § 2.1a**, a count held by
-review, and not typed here: a number in a docstring goes stale. The debt compounds with every parameter added, which is what makes deleting it
-worth scheduling rather than admiring.
-
-That breaks D3 (*each value is stored once*), and D3's own reasoning says what
-happens next: *"then a hand edit of one is silently ignored — the file
-disagreeing with itself."*
-
-**So this file is the interim contract**, and drift in the mirrored facts
-goes red naming the item and the key -- :func:`test_every_mirrored_fact_agrees`.
-
-Beside it: category ORDER, declared TYPE, orphan items, and panel presence.
-
-**A BLANKET agreement check would still be wrong**, and this one is
-deliberately not that. `restart` declares `kind = deck` in the shared catalogue
-row and `produce` in the PySCF dataclass, correctly, because it expands three
-keywords on SIESTA and none on PySCF; of 109 shared items that is the only
-`kind` disagreement, and no document states the exception. `kind` is not in
-:data:`MIRRORED`. The facts that ARE there have no legitimate exception --
-measured 2026-09-17, zero disagreements across both engines -- so the check
-needs to know about nothing.
-
-When the form moves onto the catalogue, the metadata is deleted and this file
-goes with it.
 """
 from __future__ import annotations
 
@@ -105,10 +80,8 @@ def test_every_catalogue_item_declares_a_panel():
 
 @pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
 def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
-    """The fact the mirrored-key guard could not see.
-
-    ``type`` is not metadata — it is derived from the annotation — so it is not
-    in :data:`MIRRORED`.  But the ⊕ operator asks the catalogue *"is this a
+    """``type`` is derived from the field's annotation, not declared on
+    it.  The ⊕ operator asks the catalogue *"is this a
     float?"* and the emitters act on the annotation, so a disagreement means
     one of them coerces a value the other does not.
 

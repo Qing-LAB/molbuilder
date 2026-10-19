@@ -799,6 +799,8 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
             # and its stages are its rungs (engines/transport.md § 3.8.2a)
             d["slots"] = {"junction": "p/optimization/relax"}
             d["run"]["id"] = "J_p_optimization_relax"
+            # THE SINGLE BIAS, STATED (`engines/transport.md` § 2a.10).
+            d["bias"] = {"voltages_v": [0.0]}
             d["stages"] = [{"name": n, "group": g, "overrides": {}}
                            for n, g in (("seed", 1), ("electrode_L", 1),
                                         ("electrode_R", 1), ("device", 2),

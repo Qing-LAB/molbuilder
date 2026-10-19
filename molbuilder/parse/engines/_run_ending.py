@@ -255,7 +255,9 @@ def _molwatch_ending(path) -> RunEnding:
     why an empty one must not outrank a real result.  `scan_conclusion`
     returns `"running"` for exactly that case.
     """
-    return RunEnding(_MG.scan_conclusion(path))
+    footer = _MG.read_conclusion(path)
+    return RunEnding(footer.get("run_state", "running"),
+                     relaxed=footer.get("relaxed"))
 
 
 #: ROLE -> the reader that knows how that file says it ended.

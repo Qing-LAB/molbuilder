@@ -40,8 +40,7 @@ What the USER must still verify (warned, not guaranteed)
   checked rather than averaged) so the
   slab tiles seamlessly under uniform spacing, and **warn** that the user
   must confirm it matches the real bulk lattice (e.g. the layer count is a
-  whole stacking period — a multiple of 3 for FCC(111) ABC).  ``z_period``
-  overrides it.
+  whole stacking period — a multiple of 3 for FCC(111) ABC).
 * **Thickness vs the principal layer (I11):** reported here;
   `transport/compose.py` gates on it.
 
@@ -65,12 +64,6 @@ from .transiesta import (
     _find_electrode_regions,
 )
 
-#: A heuristic advisory floor (Å) for the wizard's note below --
-#: nothing refuses on it.  The REAL principal-layer gate lives in
-#: `transport/compose.py` and compares the orbital interaction range
-#: (read from the citation's own ``.ion`` files, never guessed)
-#: against the lead's period (engines/transport.md § 3).
-MIN_ELECTRODE_THICKNESS_ANG = 12.0
 
 
 @dataclass
@@ -329,16 +322,14 @@ def extract_electrode_model(
     *,
     prior_positions: Optional[np.ndarray] = None,
     held_by_relaxation: Optional[Sequence[int]] = None,
-    z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
-    min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
 ) -> ElectrodeModel:
     """Build an :class:`ElectrodeModel` for one lead, ``L-electrode`` or
     ``R-electrode`` — and refuse the region outright if it is not a bulk lead.
 
     The lateral cell is the **device's** (a, b) — so the lead tiles the
     device cross-section (I6).  The z-period is derived from the layer
-    spacing unless ``z_period`` is given.
+    spacing.
 
     **This is the one gate.**  Three questions, in the order their
     answers depend on one another, each refusal naming what to do:
@@ -399,35 +390,14 @@ def extract_electrode_model(
     layer_z = [lz - float(min(layer_z)) for lz in layer_z] if layer_z else []
 
     notes: List[str] = []
-    if z_period is not None:
-        zper = float(z_period)
-        # Still report the detected layer structure for the thickness check --
-        # measured through the SAME derivation, with only the period overridden
-        # (science/junction-cell.md § 5).
-        if len(layer_z) >= 2:
-            _derived, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
-        else:
-            d_inter, n_layers = float("nan"), len(layer_z)
-        z_span = float(layer_z[-1] - layer_z[0]) if layer_z else 0.0
-        notes.append(
-            f"z-period set explicitly to {zper:.3f} Å (overriding the "
-            f"layer-spacing estimate).")
-    else:
-        zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
-        z_span = float(layer_z[-1] - layer_z[0])
-        notes.append(
-            f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
-            f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.")
+    zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
+    z_span = float(layer_z[-1] - layer_z[0])
+    notes.append(
+        f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
+        f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.")
 
     notes.append(_seam_note(pos, lat_a, lat_b, zper))
 
-    if z_span < min_thickness_ang:
-        notes.append(
-            f"electrode z-span {z_span:.2f} Å < ~{min_thickness_ang:.0f} Å: "
-            f"may be thinner than the electronic principal layer (§ 4.1).  "
-            f"The compose gate verifies the real condition against the "
-            f"basis's orbital ranges when .ion files sit beside the "
-            f"citation; consider more lead layers if it refuses.")
 
     # THE DEVICE'S OWN ANSWER, not a guess: the lead tiles the same
     # cross-section, so it is periodic across the wire exactly when the

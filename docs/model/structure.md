@@ -651,7 +651,7 @@ ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`:
 | | `q_amu12_ang` | derived | its position along the mode — ONE number for the whole mode, every atom displaced by `q · L_A`: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on | amu^½·Å | Position along the mode, q (amu½·Å) |
 | | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — | q in units of σ |
 | | `weight` | given | the frame's share of the mode's average (`engines/transport.md` § 2a.12) | — | Weight |
-| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the identity hash waits on M2m, as a cited pair's pin does, `structure-molstruct.md` § 3) | — | — |
+| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the geometry pin is a cited pair's, `structure-molstruct.md` § 3; a broad hash over the labels is V1.9's remainder) | — | — |
 
 *On a page* is how a page says the row (`frame_average.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;
 *measured* is computed from the coordinates alone, before any correction;

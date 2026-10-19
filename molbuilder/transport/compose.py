@@ -501,7 +501,8 @@ def _run_geometry(cited: CitedRun, kinds):
 
 
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
-                                 held_by_relaxation=None, ion_dir=None):
+                                 held_by_relaxation=None, ion_dir=None,
+                                 ion_why=None):
     """Extract both leads from the sorted device, then measure the one
     § 3 condition that needs files from outside the structure.
 
@@ -574,23 +575,20 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
               for el in elems}
         unread = sorted(el for el, r in rc.items() if r is None)
         if unread:
+            # THE CAUSE, NAMED: a citation that no longer resolves is said
+            # as that (`ion_why`), not as unreadable `.ion` files.
             model.notes.append(
                 f"principal-layer condition UNVERIFIED for the "
-                f"{model.label} block: no readable "
-                f"{', '.join(el + '.ion' for el in unread)} beside the "
-                f"citation to read the orbital ranges from.  TranSIESTA "
-                f"verifies lead connectivity itself at run time.")
+                f"{model.label} block: "
+                + (f"its citation could not be resolved -- {ion_why}"
+                   if ion_dir is None and ion_why else
+                   f"no readable {', '.join(el + '.ion' for el in unread)} "
+                   f"beside the citation to read the orbital ranges from")
+                + ".  TranSIESTA verifies lead connectivity itself at run "
+                f"time.")
         else:
             reach = 2.0 * max(rc.values())
             gap = 2.0 * model.z_period - model.z_span
-            # The wizard's ~12 A floor is a GUESS made before anything
-            # was read (wizard.py), and it is wrong about exactly the
-            # leads this measurement exists to judge -- a 3-layer Au
-            # block is 4.8 A and passes.  A measured verdict retires
-            # it: carrying both would leave one model saying "may be
-            # too thin" beside the numbers proving it is not.
-            model.notes[:] = [n for n in model.notes
-                              if "principal layer" not in n]
             if reach > gap:
                 raise ComposeError(
                     f"the orbital interaction range {reach:.2f} A "
@@ -635,8 +633,9 @@ def _with_swapped_leads(struct, source_name: str):
 
 
 #: THE TRANSPORT AXIS, lattice vector ``c`` -- z, as every junction states
-#: its axis kinds (:func:`junction_axis_kind`).
-_TRANSPORT_AXIS = 2
+#: its axis kinds (:func:`junction_axis_kind`): `kmesh.TRANSPORT_AXIS`, the
+#: one home (a third copy stood here until 2026-10-18, K3).
+from ..kmesh import TRANSPORT_AXIS as _TRANSPORT_AXIS  # noqa: E402
 
 
 def _refuse_outside(struct: Structure) -> None:
@@ -1124,11 +1123,13 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
         dev = dev.replace(atom_order=composed.junction.atom_order)
         order_found = True
     ion_dir = None
+    ion_why = None
     if tree_root is not None:
         try:
             cited_path, cited = resolve_citation(citation, Path(tree_root))
-        except ComposeError:
-            cited = None        # the citation moved: UNVERIFIED, honestly
+        except ComposeError as exc:
+            cited = None        # the citation moved: UNVERIFIED, and said why
+            ion_why = str(exc)
         if isinstance(cited, CitedPair):
             _pair_unchanged(cited, provenance, citation)
         elif cited is not None:
@@ -1139,7 +1140,8 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # the unmoved comparison ran when the record was written.  The frozen
     # DECLARATION is asked separately and does re-run here, as does
     # even-spacing.  Both need only the structure.
-    elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir)
+    elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir,
+                                                  ion_why=ion_why)
     deck_text = deck_path.read_text(encoding="utf-8") if kind == "run" else None
     return ComposedJunction(
         junction=dev,

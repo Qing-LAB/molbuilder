@@ -64,7 +64,7 @@ def test_the_siesta_form_schema_emits_no_stage_table():
 
 def test_default_ladder_is_three_named_stages():
     stages = default_siesta_stages("vib-quality")
-    # The tiers' NAMES, from SIESTA_STAGE_NAMES: decision 27 puts the ordinal
+    # The tiers' NAMES, from STAGE_NAMES: decision 27 puts the ordinal
     # in the artifact token (``01_coarse``), so a name that is itself a
     # position would say the number twice and the science none.
     assert [s.name for s in stages] == ["coarse", "medium", "tight"]

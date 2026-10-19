@@ -30,7 +30,7 @@ under ``already_relaxed`` with the post-SCF gradient check that WARNS and
 never refuses), the thermochemistry (headline at (T, P), the documented
 default temperature grid the viewer's G/H/S curves draw, and the regime
 word — ``rrho`` for a free molecule, ``vibrational-only`` when atoms are
-frozen: an anchored molecule does not rotate), and the IR-only
+frozen, `web/spectra.md` § 8), and the IR-only
 displacement loop (a dipole read per displacement — far cheaper than
 Raman).
 """
@@ -276,7 +276,8 @@ def _vib_relax_block(cfg, names) -> List[str]:
         "            _mx = None",
         "            if _g is not None:",
         "                _ga = np.abs(np.asarray(_g, dtype=float)).reshape(-1, 3)",
-        "                _mx = float(_ga[FREE_ATOM_IDXS].max()) if len(_ga) == N_ATOMS else float(_ga.max())",
+        "                # R5: judged on the free atoms, or not at all -- never over every atom",
+        "                _mx = float(_ga[FREE_ATOM_IDXS].max()) if len(_ga) == N_ATOMS else None",
         "        except Exception:",
         "            _mx = None",
         "        state['relaxation']['n_steps'] += 1",

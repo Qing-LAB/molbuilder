@@ -185,7 +185,10 @@ def point_transmission(where, label: str, spin: str) -> Dict:
     polarized deck whose run wrote one channel is not done
     (`engines/transport.md` § 2a.12)."""
     from ..parse.engines.tbtrans import transmission_files
-    files = transmission_files(where, label)
+    from .transiesta import LEAD_NAMES
+    # THE PAIR, from the leads' own block names (`TS.Elecs`), left to
+    # right: the file TBtrans writes for it, never the first of a glob.
+    files = transmission_files(where, label, "-".join(LEAD_NAMES))
     if spin == "polarized":
         missing = [c for c in ("up", "down") if not files.get(c)]
         if missing:
@@ -314,7 +317,9 @@ def linear_response_iv(energies: List[float], trans: List[float],
         short = window_short_of(lo, hi, v, kt_ev)
         if short:
             currents.append(None)
-            notes[f"{v:g}"] = short
+            # KEYED BY THE ROW (the voltage's index in `voltages_v`), never
+            # by a spelling of the number a page would have to reproduce.
+            notes[str(len(currents) - 1)] = short
             continue
         with np.errstate(over="ignore"):
             f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
@@ -1045,7 +1050,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
                     (None, None))
 
     if not any(same_volts(v, bias_v)
-               for v in (task.bias or (0.0,))):
+               for v in task.bias):
         raise RecordError(f"no transmission point at {bias_v:g} V")
     # THE SELECTION CROSSES INTO THE JUNCTION'S ORDER through its own order
     # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
@@ -1147,6 +1152,10 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                            else [None] * len(iv["current_a"]))
                     out[f"current_{spin}_a"].extend(
                         None if i is None else i / 2.0 for i in got)
+            # THE NOTES, KEYED BY THE ROW OF THE WHOLE TABLE: this frame's
+            # rows start at `base`, and a note keyed by its row within the
+            # frame's own list is re-keyed by that offset.
+            base = len(out["voltages_v"])
             for v, i in zip(iv["voltages_v"], iv["current_a"]):
                 out["frame"].append(f)
                 out["voltages_v"].append(v)
@@ -1154,7 +1163,8 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                 out["current_a_printed"].append(
                     zero["current_a_printed"] if same_volts(v, 0.0)
                     else None)
-            out["notes"].update(iv["notes"])
+            for k, note in (iv.get("notes") or {}).items():
+                out["notes"][str(base + int(k))] = note
             if out["kt_ev"] is None:
                 out["kt_ev"], out["window_ev"] = iv["kt_ev"], iv["window_ev"]
         return out
@@ -1317,10 +1327,12 @@ def iv_table_text(record: Dict) -> str:
                         if kt is not None else "")
                      + ":")
         from .stages import frame_token
-        for f, v, i in zip(iv.get("frame", ()), iv.get("voltages_v", ()),
-                           iv.get("current_a", ())):
+        for k, (f, v, i) in enumerate(zip(iv.get("frame", ()),
+                                          iv.get("voltages_v", ()),
+                                          iv.get("current_a", ()))):
             notes = iv.get("notes") or {}
-            note = notes.get(f"{v:g}") or (
+            # A VOLTAGE'S NOTE IS KEYED BY ITS ROW (`linear_response_iv`).
+            note = notes.get(str(k)) or (
                 notes.get(frame_token(f)) if f is not None
                 else notes.get("all"))
             lines.append(f"  {frame_token(f) if f is not None else '--':>5}  "

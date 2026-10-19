@@ -370,6 +370,10 @@ def _wire(rows, structure) -> Dict[str, Any]:
         "weights": list(rows.weights) if rows.weights is not None else None,
         "weight_sum": rows.weight_sum,
         "warnings": list(rows.warnings),
+        # WHETHER THE FRAMES STATE A MODE -- said here, so no page spells
+        # the row that decides it (`transport.md` § 3.8.1: the card keeps
+        # no list).
+        "mode": _states_a_mode(rows),
     }
     masses = _masses(structure)
     if masses is not None:

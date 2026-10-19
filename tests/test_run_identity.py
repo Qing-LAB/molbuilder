@@ -125,7 +125,7 @@ def test_the_timestamp_is_not_part_of_it():
 
 @pytest.mark.parametrize("raw", [
     "BDT/Au relax", "BDT  --  Au", "_relax_", "Relax.v2", "BDT-Au",
-    "a b c", "x" * 200,
+    "a b c", "x" * MAX_LABEL_BYTES,
 ])
 def test_every_id_this_makes_is_accepted_by_every_shipped_validator(raw):
     """§ 3: the set *"is not a new decision"*.
@@ -205,9 +205,14 @@ def test_nothing_left_is_refused_not_patched_with_a_digit():
 
 def test_the_cap_is_derived_from_what_gets_appended_to_the_id():
     """§ 3: ``<id>_<longest stage name>.<longest extension>`` must fit the
-    filesystem's limit. Asserted as arithmetic rather than as a magic number,
-    so a longer extension in `job-contracts.md § 4.2` moves the cap."""
-    assert MAX_LABEL_BYTES == 255 - 32 - len(".STRUCT_NEXT_ITER")
+    filesystem's limit. Asserted as arithmetic against the catalogue's own
+    longest role, so a longer role added to `runfiles.WRITTEN` moves the cap
+    (it was pinned to `.STRUCT_NEXT_ITER` until 2026-10-18, 8 bytes short of
+    `_optimized.molstruct.json`)."""
+    from molbuilder.runfiles import engines, longest_tail
+    longest = longest_tail(engines())
+    assert MAX_LABEL_BYTES == 255 - 32 - len(longest)
+    assert len(longest) >= len(".siesta.hierarchical.pipeline.log")
     assert normalise_id("x" * MAX_LABEL_BYTES)
     with pytest.raises(ValueError, match="refused rather than truncated"):
         normalise_id("x" * (MAX_LABEL_BYTES + 1))

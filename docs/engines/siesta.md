@@ -771,10 +771,11 @@ one spelling, no second regex.
 
 For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
 script next to the `.fdf` (§ 4). And each per-stage `.molwatch.log` carries
-`# stage: <name>` + `# convergence.<key>: <value>` headers
-(`max_force_tol_eV_per_A`, `max_geom_iter`) so the Results inspector draws the
-right threshold for the running stage, and `# frozen_atoms: <i> ...`, the atoms
-the run holds (`model/parse.md` § 5.3).
+`# convergence.<token>.<key>: <value>` lines — the stage's targets under its
+own token (`max_force_tol_eV_per_A`, `max_geom_iter`; the keys
+`trajectory_log/emitter.py`'s, one grammar) so the Results inspector draws the right threshold for the
+running stage, and `# frozen_atoms: <i> ...`, the atoms the run holds
+(`model/parse.md` § 5.3).
 
 A verbose "Run with" header names the managed way first — `molbuilder jobset
 launch task`, its group's first launch, and `launch task --stage <stage>`, the

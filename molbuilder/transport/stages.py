@@ -42,6 +42,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
 from ..paths import KIND_ROLES
+from ..parse.engines import siesta_grammar as _G
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
 #: dependency order.  ``jobset init`` writes exactly these into
@@ -266,12 +267,12 @@ def stage_inputs(stage: str, task_label: str):
     from ..runfiles import compose
     elec = [
         ("electrode_L", compose(electrode_hs_stem(
-            task_label, REGION_LEFT_ELECTRODE), ".TSHS")),
+            task_label, REGION_LEFT_ELECTRODE), _G.TSHS)),
         ("electrode_R", compose(electrode_hs_stem(
-            task_label, REGION_RIGHT_ELECTRODE), ".TSHS")),
+            task_label, REGION_RIGHT_ELECTRODE), _G.TSHS)),
     ]
     if stage == "device":
-        return [("seed", compose(task_label, ".DM"))] + elec
+        return [("seed", compose(task_label, _G.DM))] + elec
     if stage == "transmission":
         # TBtrans reads the device's converged H -- which SIESTA 5.x
         # writes as <label>.TS.HSX (the sparse container that replaced
@@ -279,7 +280,7 @@ def stage_inputs(stage: str, task_label: str):
         # plus the electrode .TSHS the TS.Elec blocks in the (shared)
         # deck text reference.  The .TSDE is NOT consumed: the TS.HSX
         # already carries the bias point's converged potential.
-        return [("device", compose(task_label, ".TS.HSX"))] + elec
+        return [("device", compose(task_label, _G.TS_HSX))] + elec
     return []
 
 
@@ -305,9 +306,9 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     if stage == "transmission":
         from ..parse.engines.siesta_grammar import TBT_CHANNELS
         tag = dict(TBT_CHANNELS)
-        out = [((compose(task_label, tag["unpolarized"] + "nc"),),
-                (compose(task_label, tag["up"] + "nc"),
-                 compose(task_label, tag["down"] + "nc")))]
+        out = [((compose(task_label, _G.tbt_nc(tag["unpolarized"])),),
+                (compose(task_label, _G.tbt_nc(tag["up"])),
+                 compose(task_label, _G.tbt_nc(tag["down"]))))]
     else:
         out = sorted({fn for downstream in TRANSPORT_STAGES
                       for up, fn in stage_inputs(downstream, task_label)

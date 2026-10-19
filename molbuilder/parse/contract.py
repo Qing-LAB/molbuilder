@@ -80,6 +80,30 @@ SCF_RECORD_KEYS = ("mixing_weight", "pulay_history", "dm_tolerance",
                    "scf_energy_converge")
 
 
+import functools as _functools
+
+
+@_functools.lru_cache(maxsize=None)
+def _every_cited_item_is_read_back() -> None:
+    """THE CATALOGUE'S `citation` TAG IS THE ONE SOURCE of what a citation
+    takes (`engines/template.md` § 5); the three tuples above partition it
+    by role.  An item tagged there and listed in none of them would be
+    written to the deck record by `template` and read back by nothing --
+    the citation silently short -- so the partition is checked against the
+    tag here, once, when this module loads (2026-10-18)."""
+    from ..template import catalogue, select
+    tagged = {it.name for it in select(catalogue(), citation="transport")}
+    read = set(RECORDED_FIELDS) | set(SCF_RECORD_KEYS) | set(K_MESH_RECORD_KEYS)
+    missing = sorted(tagged - read)
+    if missing:
+        raise ImportError(
+            f"parse/contract.py reads back no citation value for "
+            f"{', '.join(missing)}, which the catalogue tags `citation`: "
+            f"add each to RECORDED_FIELDS, SCF_RECORD_KEYS or "
+            f"K_MESH_RECORD_KEYS")
+
+
+
 def contract_fields_of(cfg, *, state=None, axis_kind=None,
                        kind: str = "optimization") -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the names the
@@ -127,17 +151,10 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     header, `parse.engines.molwatch_grammar.parse_convergence_line`).  One stage
     nested is the run's; several is a header this run did not write alone,
     and the answer is ``None`` rather than a pick."""
-    if not isinstance(targets, dict):
-        return None
-    flat = targets.get("max_force_tol_eV_per_A")
-    if isinstance(flat, (int, float)):
-        return float(flat)
-    nested = [v for k, v in targets.items()
-              if k != "source" and isinstance(v, dict)]
-    if len(nested) == 1:
-        v = nested[0].get("max_force_tol_eV_per_A")
-        return float(v) if isinstance(v, (int, float)) else None
-    return None
+    from ..trajectory_log import emitter as _E
+    leaf = _E.targets_of(targets) or {}
+    v = leaf.get(_E.MAX_FORCE_TOL)
+    return float(v) if isinstance(v, (int, float)) else None
 
 
 def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:

@@ -353,6 +353,14 @@ def _migrate_records(base: Path):
         lines.append("centre_junction removed (2.6.0: the junction enters "
                      "its calculation centred)")
     bias = obj.get("bias")
+    if (isinstance(bias, dict) and "voltages_v" in bias
+            and not bias.get("voltages_v")):
+        # THE SINGLE BIAS, STATED (`engines/transport.md` § 2a.10, 2.16.3):
+        # `jobset init` wrote an empty list for it before; the reader
+        # refuses one now, naming this step.
+        bias["voltages_v"] = [0.0]
+        lines.append("bias.voltages_v = [0.0] (the single bias, stated; "
+                     "it was written empty)")
     if isinstance(bias, dict) and len(bias.get("voltages_v") or []) > 1:
         # THE SWITCH, from the word it replaced (`engines/transport.md`
         # § 2a.10): `low-bias` was the approximation; `re-converged`, and a

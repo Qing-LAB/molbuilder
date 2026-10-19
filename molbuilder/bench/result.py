@@ -246,7 +246,7 @@ class BenchPoint:
     knobs:   Dict = field(default_factory=dict)
     metrics: Dict = field(default_factory=dict)      # s_per_iter, sm%, rss...
     bound:   Optional[str] = None                    # gpu | host | mixed
-    state:   str = "unknown"                         # completed|timeout|...
+    state:   str = "unknown"                         # the run door's: finished|failed|running|...
     #: What the run ACTUALLY used, read back from its own artifacts
     #: (:func:`parse_effective_run`).  Empty when nothing could be read.
     effective: Dict = field(default_factory=dict)
@@ -342,7 +342,7 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
     disagrees with its request, there is no winner -- the reason, rather
     than the least-wrong of them."""
     timed = [p for p in points
-             if p.state == "completed" and p.s_per_iter() is not None]
+             if p.state == "finished" and p.s_per_iter() is not None]
     ranked = [p for p in timed if not p.mismatch]
     excluded = [p for p in timed if p.mismatch]
     if not timed:
@@ -350,7 +350,7 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
         for p in points:
             by_state[p.state] = by_state.get(p.state, 0) + 1
         census = ", ".join(f"{n} {s}" for s, n in sorted(by_state.items()))
-        return {"none": f"no completed, timed trial to rank ({census}) -- "
+        return {"none": f"no finished, timed trial to rank ({census}) -- "
                         f"launch the trials and summarize again"}
     if not ranked:
         return {"none": "every timed trial ran something other than it was "

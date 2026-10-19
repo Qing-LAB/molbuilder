@@ -20,10 +20,10 @@ from typing import Any, Dict, List, Optional
 
 try:                                        # inside molbuilder
     from ...constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from ...pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+    from ...pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 except ImportError:                         # beside a job, in mb_monitor.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 
 # ---- The header ---------------------------------------------------------------
 HEADER = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
@@ -65,6 +65,8 @@ PREVIEW_KIND = "initial_preview"
 ERROR = re.compile("^" + re.escape(FOOTER_ERROR) + r"\s*(.+)$", re.IGNORECASE)
 CONCLUDED = re.compile("^" + re.escape(FOOTER_CONCLUDED) + r"\s*(.+)$",
                        re.IGNORECASE)
+RELAXED = re.compile("^" + re.escape(FOOTER_RELAXED) + r"\s*(yes|no)\s*$",
+                     re.IGNORECASE)
 
 
 def maybe_float(token: str) -> Optional[float]:
@@ -258,6 +260,12 @@ def parse_conclusion_line(line: str, out: Dict[str, Any]) -> bool:
     if CONCLUDED.match(line):
         if out.get("run_state") != "stopped":
             out["run_state"] = "ended"
+        return True
+    m = RELAXED.match(line)
+    if m:
+        # WHETHER THE RELAXATION CONVERGED, the deck's own word, a fact
+        # beside the run state (§ 2b P-S2's sibling for the geometry).
+        out["relaxed"] = m.group(1).lower() == "yes"
         return True
     return False
 

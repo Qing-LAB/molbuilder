@@ -374,8 +374,8 @@ file states no frame count and holds nothing indexed by frame.
 
 **What it is not.** It is not the identity of a structure across calculations
 — whether two runs ran the same atoms, labels aside. That second hash, over the
-labels and identity columns, and the check when two runs are joined, are W39's
-(plan V1.9); until then a frame-set citation is pinned by its two files' sha256,
+labels and identity columns, and the check when two runs are joined, are V1.9's
+remainder (plan § 2); until then a frame-set citation is pinned by its two files' sha256,
 as a cited run's files are (plan § 5z, Q17-c).
 
 ---

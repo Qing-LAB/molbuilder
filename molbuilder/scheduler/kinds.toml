@@ -43,7 +43,7 @@ cluster = "scontrol"
 # answers a send with.
 [slurm.send]
 line   = ["{submit}", "-J", "{job}", "{restated}",
-          "--export", "ALL,MB_LAUNCHED_BY={launched_by}", "{header}", "{args}"]
+          "--export", "ALL,{launch_claim_var}={launched_by}", "{header}", "{args}"]
 ask    = "--test-only"
 job_id = 'Submitted batch job (\d+)'
 

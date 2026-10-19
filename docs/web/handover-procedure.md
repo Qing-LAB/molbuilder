@@ -136,7 +136,7 @@ doing work (`stages.md` § 6.5a is the contract):
 
 **It names the structure, it does not summarise it.** `structure.source` is a
 **folder-relative** name — the `.xyz` beside it — plus `formula` and `atoms` as
-conveniences. Those three are `task.json`'s own `_STRUCTURE_KEYS`, so the
+conveniences, and `fingerprint`, the description's pin. Those four are `task.json`'s own `_STRUCTURE_KEYS`, so the
 hand-over and the description say the same thing in the same words.
 
 > **This is where the hole was.** `source` used to hold the projects sidebar's
@@ -230,7 +230,7 @@ The three prerequisites named here landed with the spectra migration
    `task.fresh_stages`, which `jobset init` asks too, through
    `jobset.group.numbered_fresh` — and Task setup shows it as what will be
    written, deriving nothing *(until 2.15.3 the page re-derived it in
-   JavaScript, a second copy of the rule)*.
+   JavaScript, a second copy of the rule)*. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the page copies it into `varies` and seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).
 
 **And the hand-over is now exactly what this section predicted**: a Send
 button on the same endpoint. One extension rode along — the body states

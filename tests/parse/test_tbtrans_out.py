@@ -16,6 +16,6 @@ def test_a_polarized_run_s_two_channels_are_found(tmp_path):
     for name in ("dev.TBT_UP.AVTRANS_L-R", "dev.TBT_DN.AVTRANS_L-R",
                  "other.TBT.AVTRANS_L-R"):
         (tmp_path / name).write_text("")
-    found = transmission_files(tmp_path, "dev")
+    found = transmission_files(tmp_path, "dev", "L-R")
     assert sorted(found) == ["down", "up"]
     assert found["up"][0].name == "dev.TBT_UP.AVTRANS_L-R"

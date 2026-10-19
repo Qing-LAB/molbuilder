@@ -58,19 +58,6 @@ def test_extract_clones_atoms_and_uses_device_lateral_cell():
     assert (m.cell_a, m.cell_b) == pytest.approx((a, b))
 
 
-def test_extract_explicit_z_period_overrides():
-    dev = _au_device()
-    m = extract_electrode_model(dev, "L-electrode", z_period=8.5)
-    assert m.z_period == pytest.approx(8.5)
-
-
-def test_extract_thin_electrode_notes_warning():
-    dev = _au_device()
-    m = extract_electrode_model(dev, "L-electrode", min_thickness_ang=12.0)
-    # 4 layers * 2.35 span ~7 Å < 12 -> a note is emitted
-    assert any("principal layer" in n for n in m.notes)
-
-
 # --------------------------------------------------------------------- #
 #  the gate: what disqualifies a labelled block from being a lead       #
 # --------------------------------------------------------------------- #

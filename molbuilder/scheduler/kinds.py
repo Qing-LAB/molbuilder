@@ -21,6 +21,16 @@ Stdlib-only.
 """
 from __future__ import annotations
 
+#: THE LAUNCH CLAIM -- the variable `jobset launch` sets on a job it sends,
+#: the value it sets it to, and the value a person sets by hand to run a
+#: script outside molbuilder (`job-contracts.md` § 2.6): one spelling of
+#: each, the scheduler's protocol (the send line names it, `kinds.toml`
+#: `{launch_claim_var}`), read by the run wrapper's gate and by
+#: `jobset/submit.py`.
+LAUNCH_CLAIM_VAR = "MB_LAUNCHED_BY"
+LAUNCH_CLAIM = "jobset-launch"
+MANUAL_CLAIM = "manual"
+
 import re
 import tomllib
 from dataclasses import dataclass
@@ -114,6 +124,7 @@ class Kind:
         line = _filled(self, self.line_words, where, {
             "job": job, "restated": list(restated),
             "launched_by": launched_by, "header": header,
+            "launch_claim_var": LAUNCH_CLAIM_VAR,
             "args": list(args)})
         if line is None:
             raise KindError(f"the machine's record names no command the "

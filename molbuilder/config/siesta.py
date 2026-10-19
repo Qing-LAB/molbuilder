@@ -539,7 +539,7 @@ SIESTA_RESTART_GROUP = RestartGroup(
 #:
 #: ONE table: the ladder builders, the build route and ``jobset init`` name
 #: tiers from it.
-SIESTA_STAGE_NAMES: Dict[int, str] = {1: "coarse", 2: "medium", 3: "tight"}
+
 
 
 # --------------------------------------------------------------------- #
@@ -593,6 +593,5 @@ SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
 
 __all__ = [
     "SiestaConfig",
-    "SIESTA_STAGE_NAMES",
     "SIESTA_STAGE_PRESETS",
 ]

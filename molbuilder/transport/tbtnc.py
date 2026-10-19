@@ -49,10 +49,10 @@ def tbt_name(label: str, spin: str) -> str:
     ``unpolarized``, ``up`` or ``down`` -- on the run's label, as the file
     catalogue composes a name on a label (`runfiles.compose`); the channel's
     tag is TBtrans's own (``siesta_grammar.TBT_CHANNELS``)."""
-    from ..parse.engines.siesta_grammar import TBT_CHANNELS
+    from ..parse.engines.siesta_grammar import TBT_CHANNELS, tbt_nc
     from ..runfiles import compose
     tag = dict(TBT_CHANNELS)[spin]
-    return compose(label, tag + "nc")
+    return compose(label, tbt_nc(tag))
 
 
 def tbt_files(run_dir: Path, label: str) -> Dict[str, Path]:
@@ -61,12 +61,11 @@ def tbt_files(run_dir: Path, label: str) -> Dict[str, Path]:
     there (`web/results.md` § 2.5): found through the file catalogue
     (`runfiles.find`, as `runs.Run.on_label` finds an engine's own file on
     the label), one role per channel (``siesta_grammar.TBT_CHANNELS``)."""
-    from ..parse.engines.siesta_grammar import TBT_CHANNELS
-    from ..runfiles import find
+    from ..parse.engines.siesta_grammar import TBT_CHANNELS, tbt_nc
+    from ..runfiles import find_on_label
     out = {}
     for spin, tag in TBT_CHANNELS:
-        hits = [p for p, rec in find(run_dir, label, role=tag + "nc")
-                if rec.stage is None]
+        hits = find_on_label(run_dir, label, tbt_nc(tag))
         if hits:
             out[spin] = hits[-1]
     return out

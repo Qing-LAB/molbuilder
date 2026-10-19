@@ -54,7 +54,15 @@ export function renderFrameSet(host, frameSet) {
     if (!host) return;
     const doc = host.ownerDocument;
     host.replaceChildren();
-    const n = frameSet ? Number(frameSet.n_frames) : 1;
+    // A CITATION THAT DOES NOT READ SAYS WHY (`task-setup.md` § 3): the
+    // answer's own sentence, and the folder still opens.
+    if (frameSet && frameSet.why) {
+        host.hidden = false;
+        host.appendChild(_el(doc, "p", "frameset-line",
+                             "The cited frames could not be read: " + frameSet.why));
+        return;
+    }
+    const n = frameSet && frameSet.n_frames != null ? Number(frameSet.n_frames) : 1;
     host.hidden = !(n > 1);
     if (host.hidden) return;
     const def = frameSet.definition;
@@ -65,7 +73,9 @@ export function renderFrameSet(host, frameSet) {
     }
     // THE MODE LINE: each row its words, its value and its unit -- "Mode 6
     // · Frequency 2548.37 cm⁻¹ · …" -- the stored name on hover.
-    const ofMode = def.structure.some((r) => r.name === "mode_index_1based");
+    // WHETHER THE FRAMES STATE A MODE is the answer's word (`mode`, from
+    // `frame_average._states_a_mode`); no row name is spelled here.
+    const ofMode = !!def.mode;
     const mode = _el(doc, "p", "frameset-line",
                      n + (ofMode ? " frames of one mode — " : " frames — "));
     def.structure.forEach((r, i) => {

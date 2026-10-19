@@ -28,6 +28,8 @@ element's resources.
 
 from __future__ import annotations
 
+from .model import KIND_LADDER, KIND_SWEEP
+
 import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
@@ -137,7 +139,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
         # THE NAMES OF THIS JOB'S FILES (`materialize.run_names`) -- what its
         # run script names every file of its runs by.
         _names = run_names(jobset, job, _sh)
-        if jobset.kind == "sweep":
+        if jobset.kind == KIND_SWEEP:
             # A TRIAL'S FOLDER, opened by the one opener (`open_run`).
             from .materialize import open_run, trial_work_dir
             _jd = open_run(base, trial_work_dir(_jd, _sh, _names), plan)
@@ -1247,12 +1249,12 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # is the RUN's plan and MERGES per stage, so preparing `tight` keeps
     # `coarse` — status, and the cross-stage ``--from`` carry whose
     # pair rule needs the source job on file, read the whole ladder.
-    kind = "sweep" if sweep is not None else "ladder"
+    kind = KIND_SWEEP if sweep is not None else KIND_LADDER
     js = JobSet(name=task.label, engine=task.engine, kind=kind,
                 shared=_shared_for(base, seam, engine=task.engine,
                                    plan=plan),
                 jobs=jobs)
-    if kind == "sweep":
+    if kind == KIND_SWEEP:
         plan.folder(record_dir)
     else:
         # A ROW WHOSE STAGE THE DESCRIPTION NO LONGER HOLDS leaves the plan
@@ -1290,7 +1292,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # WHAT ITS FIRST LAUNCH WILL TAKE, said under `STAGE-PLAN.md`'s table
     # (`job-system.md` § 5.4) -- the line both prep doors print.
     this_prep = None
-    if kind == "ladder" and stage:
+    if kind == KIND_LADDER and stage:
         this_prep = this_prep_lines(stage, _takes_at_launch(
             task, stage, js.job(stage),
             continuation, base=base, jobset=js,
@@ -1322,7 +1324,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment,
-                       render=(None if kind == "sweep"
+                       render=(None if kind == KIND_SWEEP
                                else {j.name for j in jobs}),
                        points={j.name: _points for j in jobs}, plan=plan,
                        shape=resolved.shape, this_prep=this_prep,
@@ -1334,7 +1336,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # no attempt open (C5) because opening one is not its job.  A bench
     # point's deck is rendered straight into its attempt (`trial_work_dir`
     # above).
-    if kind == "ladder" and stage and _points:
+    if kind == KIND_LADDER and stage and _points:
         # A SWEPT RUNG'S RUN (`engines/transport.md` § 2a.11): `run-<n>/`,
         # a folder per point inside it holding copies of the point's
         # prepared files -- the points of the junction composed in THIS
@@ -1384,12 +1386,12 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 run_names(js, job, resolved.shape).stem).name(".sbatch"))
             if _left.is_file():
                 plan.remove(_left)
-    elif kind == "ladder" and stage:
+    elif kind == KIND_LADDER and stage:
         reports = _open_attempts(js, base, stage, plan=plan,
                                  shape=resolved.shape)
         if opened is not None:
             opened.extend(reports)
-    elif kind == "sweep":
+    elif kind == KIND_SWEEP:
         # EACH SHELF'S ONE HEADER, written and placed here on the
         # benchmark's one queue (`generator.md` § 4.3a, `job-system.md`
         # § 6.0): its trials' shared request -- launch walks the trials
@@ -1653,22 +1655,23 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # tab's threshold line is THIS stage's and not the ladder's first.  They
     # come from the RESOLVED config, which is the whole point of resolving
     # before rendering: `coarse` and `tight` disagree about both of these.
-    # THE KEY NAMES ARE THE READER'S, not this writer's invention: the
-    # trajectory card asks for `max_force_tol_eV_per_A` and `max_geom_iter`
-    # (trajectory/core.js), which the other two producers of this same header
-    # emit too -- `trajectory_log/emitter.py`'s `_LEAF_KEYS` and the `.out`
-    # parser's `_set_conv_target`.
+    # THE KEY NAMES ARE THE LOG'S OWN (`trajectory_log.emitter`, one home
+    # for every writer and reader), and the block is nested by this rung's
+    # token as every writer writes it (`engines/pyscf.md` § 4; one shape,
+    # 2026-10-18).
     # ONLY A DECK THAT RELAXES HAS TARGETS -- the viewer draws "the targets
     # the run was chasing" (`web/trajectory.md` § 3), and a force-constant run
     # chases none: a threshold line over its steps called 115 nudges a
     # relaxation that never settles.  ``relaxes`` is the rung's render kind.
-    targets = {}
+    from ..trajectory_log import emitter as _E
+    leaf = {}
     for key, attr in (() if not relaxes else
-                      (("max_force_tol_eV_per_A", "relax_force_tol"),
-                       ("max_geom_iter", "relax_steps"))):
+                      ((_E.MAX_FORCE_TOL, "relax_force_tol"),
+                       (_E.MAX_GEOM_ITER, "relax_steps"))):
         value = getattr(cfg, attr, None)
         if value is not None:
-            targets[key] = value
+            leaf[key] = value
+    targets = {names.stage: leaf} if leaf else {}
     write_initial_preview(
         struct,
         base / names.name(".molwatch.log", FIRST_ATTEMPT),

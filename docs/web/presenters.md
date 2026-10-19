@@ -40,7 +40,7 @@ viewer for one kind of file. Today there are eight:
 | Presenter | The file you open | The viewer you get | Shows in the Results dropdown? |
 |---|---|---|---|
 | `structure` | `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
-| `trajectory` | `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
+| `trajectory` | `.molwatch.log`, `.out`, `_geom_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
 | `spectra` | `.spectra.json` | a modes table, the mode's animation and a **chart** — the spectrum where a strength was computed, the mode positions where none was (a SIESTA result; `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | a transport calculation's `task.json` (the registry's `transport-task` parser; `<label>.transport.json` is `summarize`'s copy, opened as a file) | the transport **report**, composed on read: T(E) per channel, DOS and PDOS, the I–V, each rung's convergence and the provenance chain ([`results.md`](?doc=web/results.md) § 2.5) | yes — *Transport* |
@@ -227,7 +227,7 @@ and stops there; their internals belong with the Results/Spectra tab docs.
 1. You pick `run_1.molwatch.log` in the Results file dropdown.
 2. The controller asks the registry "who handles this?". It checks each viewer's
    `match` in order; the **trajectory** viewer (registered before the generic
-   text viewer, so it wins) says yes, because the name ends in `.molwatch.log`.
+   text viewer, so it wins) says yes, because the directory's answer names the file's parser (§ 2) — a name alone matches nothing.
 3. The controller shows a "parsing…" cover, puts away whatever was mounted, and
    hands the panel to the trajectory viewer.
 4. That viewer is a thin wrapper: it fetches its panel layout and calls the

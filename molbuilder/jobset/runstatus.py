@@ -20,6 +20,8 @@ it inspects the tree, changes nothing.
 
 from __future__ import annotations
 
+from .model import KIND_SWEEP
+
 import dataclasses
 import textwrap
 from dataclasses import dataclass, field
@@ -328,7 +330,8 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             run = run_of(folder)
             if run is None or run.stage is None:
                 continue
-            got = run_state_of(run.folder, run.names, run.run)
+            got = run_state_of(run.folder, run.names, run.run,
+                               launched_in=run.launched_in)
             # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
             # report at -- its one point too, when the rung runs once.
             pt = transmission_point(folder) or pt
@@ -576,7 +579,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     finished."""
     from ..task import FILENAME as TASK_FILENAME, read_task
     base = Path(base_dir)
-    sweep = jobset is not None and jobset.kind == "sweep"
+    sweep = jobset is not None and jobset.kind == KIND_SWEEP
     task = (read_task(base / TASK_FILENAME)
             if not sweep and (base / TASK_FILENAME).is_file() else None)
     if jobset is None and task is None:
@@ -987,7 +990,8 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
         if ran is not None and ran.stage is not None:
             reached = (retried_to(ran.folder, ran.names, ran.run)
                        if ran.run is not None else None)
-            st = run_state_of(ran.folder, ran.names, reached)
+            st = run_state_of(ran.folder, ran.names, reached,
+                              launched_in=ran.launched_in)
             out.append((stage, run if reached == ran.run else
                         f"{run}, retried to {ran.names.run_name(reached)}",
                         _said(st.state, st.detail)))

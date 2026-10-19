@@ -50,7 +50,11 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional,
+                    Sequence, Tuple)
+
+if TYPE_CHECKING:
+    from ..scheduler.record import Environment
 
 # The record's one spelling for a wall, written in ONE place.  A second
 # formatter here would be a second answer to "what does a walltime look
@@ -62,7 +66,7 @@ from ..scheduler.quantities import slurm_time as _slurm_time
 # it locally beside the siblings they use.
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
-from .model import Job, JobSet, Resources
+from .model import KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources
 from .continuation import Continuation
 from .planned import Plan, found
 from ..paths import attempt_dir
@@ -70,6 +74,7 @@ from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           hand_over, open_container)
 from ..runrecord import LaunchRecordError, RunRef
+from ..scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
 from .commands import (block, command as _cmd, launch_lines, redo_launched,
                        rollback)
 
@@ -343,7 +348,7 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     # line wins over site defaults, so the claim reaches the job wherever it
     # runs (job-contracts.md § 2.6).
     cmd = kind.line(machine.scheduler.commands(), job=job_name,
-                    restated=restated, launched_by="jobset-launch",
+                    restated=restated, launched_by=LAUNCH_CLAIM,
                     header=script, args=run_args)
     return envelope, placement, cmd, os.path.dirname(script)
 
@@ -433,7 +438,7 @@ class _Member:
     #: its run script (``--run N``; `project-layout.md` § 1.6.1).
     run: int
     #: The set's kind.
-    kind: str = "ladder"
+    kind: str = KIND_LADDER
     #: What the results and the ledger call it when the job's name does not
     #: -- a bias point's ``<stage>@<point>``.
     label: Optional[str] = None
@@ -1477,7 +1482,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
     # A LADDER'S DESCRIPTION AND TEMPLATE, read once: what each member is
     # checked against and what its first launch takes are theirs.
     task = template_text = described = None
-    if jobset.kind == "ladder":
+    if jobset.kind == KIND_LADDER:
         task, template_text = _description(base)
         # AS PREP READS AND CHECKS IT, ONCE for the whole launch -- the first
         # member whose files are compared with prep's plan reads it.
@@ -1504,11 +1509,11 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
                            time_s=time_s, told=told, task=task,
                            template_text=template_text, number=number,
                            described=described)
-    elif jobset.kind == "sweep" and only is None and mode in ("submit", "ask"):
+    elif jobset.kind == KIND_SWEEP and only is None and mode in ("submit", "ask"):
         plan = _plan_shelves(jobset, base, mode=mode, side=side,
                              time_s=time_s, trial_timeout_s=trial_timeout_s,
                              told=told)
-    elif jobset.kind == "sweep" and only is None:
+    elif jobset.kind == KIND_SWEEP and only is None:
         plan = _plan_bench_here(jobset, base,
                                 trial_timeout_s=trial_timeout_s)
     else:
@@ -1807,7 +1812,7 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
     end it, and nothing attached to it, because everything its scripts print
     already goes to their own files (the run script's runwrap log, a walk's
     log) -- and the send does not wait."""
-    env = {**os.environ, "MB_LAUNCHED_BY": "jobset-launch"}
+    env = {**os.environ, LAUNCH_CLAIM_VAR: LAUNCH_CLAIM}
     names = [m.name for m in s.members]
     if s.direct:
         # The launch-door claim rides the child ENV here: inheritance
@@ -2149,15 +2154,6 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
         if isinstance(m, JobResult):
             plan.skipped.append(m)          # measured before
             continue
-        # ITS OWN COUNTS, STATED: a walk hands each trial its -np / -omp,
-        # the shield against what an allocation tells each run -- a trial
-        # that cannot state them is refused by name, never mis-measured.
-        if not (job.resources.mpi_np and job.resources.cpus_per_task):
-            raise SubmitError(
-                f"trial {job.name!r} states no rank or core count -- a "
-                f"benchmark's walk hands each trial its own (-np/-omp), "
-                f"and a prepared benchmark is not prepared again: "
-                + rollback("the benchmark's prep", base=base))
         # THE GATES GUARD EVERY DOOR (review 2026-08-21): a trial refused
         # when sent by name must not go silently by riding a walk.  And the
         # COLD gate (user, same day: "it is the submission that determines
@@ -2736,7 +2732,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             jobset, jobs=[j for j in jobset.jobs if j.name == only])
     # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a guard only a
     # surface applies is one the next surface forgets.
-    if jobset.kind == "ladder" and len(jobset.jobs) > 1:
+    if jobset.kind == KIND_LADDER and len(jobset.jobs) > 1:
         raise SubmitError(
             "a task's launch sends one job -- a group, or one stage "
             "launched again -- and names which; with nothing named, `launch "
@@ -2751,7 +2747,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     for job in jobset.jobs:
         m = (_plan_trial(jobset, base, job, mode=mode,
                          named=only is not None)
-             if jobset.kind == "sweep" else
+             if jobset.kind == KIND_SWEEP else
              _plan_member(jobset, base, job, task=task,
                           template_text=template_text, writes=plan.writes,
                           cold=cold, from_attempt=from_attempt,
@@ -2766,8 +2762,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
         try:
             # A NAMED TRIAL'S way back is its benchmark's, not a group's.
             check_launch_matches_deck(m.read_from, job,
-                                      bench=jobset.kind == "sweep")
-            if jobset.kind == "sweep":
+                                      bench=jobset.kind == KIND_SWEEP)
+            if jobset.kind == KIND_SWEEP:
                 # the cold gate rides the named-trial door too (user,
                 # 2026-08-21) -- one rule, every launch path
                 check_trial_starts_cold(m.read_from, job)
@@ -2788,7 +2784,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                     f"job {job.name!r}: {run_name} is not in "
                     f"{m.read_from}.  To write it, "
                     + (rollback("the benchmark's prep", base=base)
-                       if jobset.kind == "sweep"
+                       if jobset.kind == KIND_SWEEP
                        else _redo(base, task, jobset, job)))
             plan.submissions.append(Submission(
                 m.name, ["bash", run_name] + _run_sh_args(
@@ -2804,7 +2800,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             raise SubmitError(_no_sbatch(
                 f"job {job.name!r}", sbatch_name, base=base, told=told,
                 machine=machine,
-                redo=(None if jobset.kind == "sweep"
+                redo=(None if jobset.kind == KIND_SWEEP
                       else _redo(base, task, jobset, job))))
         sent, placement, cmd, outputs_in = _sbatch_request(
             envelope=job.resources, placement=_placed_by_prep([job]),

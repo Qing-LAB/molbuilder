@@ -2284,7 +2284,7 @@ table to specify.
 >
 > > ⚠ *And the premise of that second paragraph was false as well, found
 > > 2026-08-16.* The default stage names are the words `coarse` / `medium` /
-> > `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`), not `stage1` / `stage2` /
+> > `tight` (`config/stages.py::STAGE_NAMES`), not `stage1` / `stage2` /
 > > `stage3` — so the *"same information, differing by one character"* case never
 > > existed, and the mismatch it was minimising was the ordinary one. The
 > > conclusion the note reached is unaffected; the reason it gave for calling it
@@ -2482,7 +2482,7 @@ So these searches have no door and must not grow one:
 | the search | whose name it is |
 |---|---|
 | `*.XV`, `*{suffix}` from `warmfiles.warm_list` | SIESTA's restart state. The vocabulary already comes from one home (`<engine>/warm-files.toml`); only the loop is local |
-| `*_geom_optim.xyz` | geomeTRIC's, via the declared `pyscf.input.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
+| `*_geom_optim.xyz` | geomeTRIC's, via the declared `runfiles.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
 | conda-meta's `*.json` | conda's |
 
 Each is an entry in the survey's `_OVERRIDES` carrying the reason someone wrote

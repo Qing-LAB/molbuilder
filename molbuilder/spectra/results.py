@@ -798,9 +798,29 @@ class SpectraResults:
                     f"SpectraResults.equilibrium_homo_idx="
                     f"{self.equilibrium_homo_idx} out of range [0, {n_mos})"
                 )
-        # Free + fixed atom partition.
-        free_set   = set(int(i) for i in self.free_atom_idxs)
+        # Free + fixed atom partition -- AND ITS ORDER: the free list is the
+        # order of every mode's eigenvector rows, ascending (§ 6.10.2,
+        # "stated and checked"); a file listing them otherwise would animate
+        # the wrong atoms with no word.
+        free_list = [int(i) for i in self.free_atom_idxs]
+        if free_list != sorted(free_list):
+            raise ValueError(
+                "SpectraResults: free_atom_idxs must be ascending -- the "
+                "order of every mode's eigenvector rows (engines/vibration.md "
+                "6.10.2)")
+        free_set   = set(free_list)
         frozen_set = set(int(i) for i in self.frozen_atom_idxs)
+        # THE SCOPE AGREES WITH THE HELD SET: `all` only where nothing is
+        # held, `free` only where something is (§ 6.10.2).
+        if self.hessian_scope == "all" and frozen_set:
+            raise ValueError(
+                "SpectraResults: hessian_scope 'all' with atoms held "
+                f"({sorted(frozen_set)[:20]}) -- a held atom is outside the "
+                "Hessian (engines/vibration.md 6.10.2)")
+        if self.hessian_scope == "free" and not frozen_set:
+            raise ValueError(
+                "SpectraResults: hessian_scope 'free' with no atom held -- "
+                "the Hessian is over every atom (engines/vibration.md 6.10.2)")
         if free_set & frozen_set:
             raise ValueError(
                 f"SpectraResults: free_atom_idxs and frozen_atom_idxs overlap "
@@ -1090,9 +1110,11 @@ class SpectraResults:
         if "frozen_atom_idxs" in d:
             frozen = [int(i) for i in d["frozen_atom_idxs"]]
         elif isinstance(structure, dict):
-            frozen = sorted(int(i) for i in (
-                ((structure.get("metadata") or {}).get("regions") or {})
-                .get("frozen_atoms") or ()))
+            # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1:
+            # outside the class nobody picks a structure dict apart).
+            frozen = sorted(int(i) for i in
+                            (_Structure.from_dict(structure).frozen_atoms
+                             or ()))
         else:
             raise ValueError(
                 "SpectraResults: neither a structure nor frozen_atom_idxs "

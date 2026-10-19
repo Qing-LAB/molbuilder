@@ -114,12 +114,20 @@ def loop_words(loop: Optional[Dict[str, Any]], *, over: bool = False) -> str:
         for i, p in done)
 
 
-def transmission_files(directory, label: str) -> Dict[str, List[Path]]:
-    """``{channel: [AVTRANS file, ...]}`` -- the unpolarized file, or the two
-    channels of a polarized run (``siesta_grammar.TBT_CHANNELS``)."""
+def transmission_files(directory, label: str, pair: str
+                       ) -> Dict[str, List[Path]]:
+    """``{channel: [AVTRANS file]}`` -- the unpolarized file, or the two
+    channels of a polarized run (``siesta_grammar.TBT_CHANNELS``), each the
+    transmission between the leads ``pair`` names (``L-R``, the caller's,
+    from the leads' own block names -- never the first of a glob), found on
+    the label through the catalogue (`runfiles.find_on_label`)."""
+    try:                                    # inside molbuilder
+        from ...runfiles import find_on_label
+    except ImportError:                     # beside a job, in a bundle
+        from runfiles import find_on_label  # type: ignore[no-redef]
     out: Dict[str, List[Path]] = {}
     for channel, tag in _G.TBT_CHANNELS:
-        files = sorted(Path(directory).glob(f"{label}{tag}AVTRANS_*"))
+        files = find_on_label(directory, label, _G.tbt_avtrans(tag, pair))
         if files:
             out[channel] = files
     return out

@@ -335,7 +335,7 @@ const WORKSPACE_TAG = "results:transport";
                 const f = frames[k] == null ? 0 : frames[k];
                 const zero = _pointAt(state, f, 0);
                 const i = (iv.current_a || [])[k];
-                const note = (iv.notes || {})[String(Number(v))];
+                const note = (iv.notes || {})[String(k)];
                 pickRow(f, v, [
                     Math.abs(v) < 1e-9 && zero ? _fmt(zero.conductance_g0, 4, false) : "—",
                     i === null || i === undefined ? (note || "—") : _fmt(i, 4, true),

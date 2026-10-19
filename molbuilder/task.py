@@ -44,8 +44,7 @@ Those belong to resolution (P2 below), which already has the schema in hand:
           block's, a bench point -- may stand for its item on the kind (the
           one per-value door, ``template.why_not``: refused) and is inside
           its recommended range (warned), a bias point too ·
-          ``shape: "hierarchical"`` on an engine whose ladder runs in ONE
-          process (§ 6.7 — PySCF; refused naming the engine) · and § 6.6a's
+          and § 6.6a's
           warning for two stages that RESOLVE identically, since resolving is
           P2's verb
 
@@ -146,6 +145,22 @@ _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
 #: a job holds does not, so a second home for it would be a second place to
 #: look and no new answer.
 LANE_ASKS = ("time", "domain")
+
+#: THE LANE ASKS AS A PAGE OFFERS THEM -- each with its words, its help and
+#: an example -- served to the Task setup page (`/api/task-setup/sweepable`,
+#: `lane_asks`), which keeps no table of its own (`web/task-setup.md`
+#: § 6.2b).  One home for the two rows' words and the two names above.
+LANE_ASK_ROWS = (
+    {"name": "time", "label": "wall clock for this run",
+     "help": ("D-HH:MM:SS -- what the scheduler is asked for; in a group "
+              "of stages each row is one stage's own, and the job asks for "
+              "their sum (the bench keeps the calculation's short one)"),
+     "placeholder": "2-00:00:00"},
+    {"name": "domain", "label": "queue for this run",
+     "help": "the bench can stay on a short-turnaround queue",
+     "placeholder": "public"},
+)
+assert tuple(r["name"] for r in LANE_ASK_ROWS) == LANE_ASKS
 
 
 def bias_token(v: float) -> str:
@@ -323,8 +338,8 @@ def fresh_stages(calculation: str, engine: str, *,
         from .pyscf.stages import vibration_stages
         return tuple(vibration_stages(engine,
                                       already_relaxed=bool(already_relaxed)))
-    from .config.siesta import SIESTA_STAGE_NAMES
-    return (Stage(name=SIESTA_STAGE_NAMES[1], overrides={}),)
+    from .config.stages import STAGE_NAMES
+    return (Stage(name=STAGE_NAMES[1], overrides={}),)
 
 @dataclass(frozen=True)
 class Stage:
@@ -567,6 +582,12 @@ class Task:
                     f"whitespace); got {cite!r}: a finished relaxation "
                     f"run's folder, or a structure pair's .xyz "
                     f"(engines/transport.md § 3.1)")
+        if self.calculation == "transport" and not self.bias:
+            raise DescriptionError(
+                "task: a transport description states its voltages -- [0.0] "
+                "for a single bias (engines/transport.md 2a.10); one written "
+                "before 2.16.3 states none: `jobset migrate` writes it",
+                where="bias")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
@@ -1276,6 +1297,15 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
 
     return Stage(name=name, overrides=overrides, execution=execution,
                  group=group)
+
+
+def fresh_varies(stages) -> Tuple[str, ...]:
+    """What a fresh ladder VARIES -- :func:`varies_for` over its stages'
+    overrides: nothing for the one-stage start, each tier's keys for a
+    `--stage-strategy` ladder.  The one rule both writers of a description
+    ask: `jobset init` and the hand-over (`proposed_varies`, which the Task
+    setup page copies; 2026-10-19)."""
+    return varies_for(st.overrides for st in stages)
 
 
 def varies_for(overrides_seq) -> Tuple[str, ...]:

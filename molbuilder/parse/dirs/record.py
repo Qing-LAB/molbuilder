@@ -206,9 +206,8 @@ def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
     start = facts.get("run_start_local")
     if not start:
         return None
-    from ..engines.siesta_fdflog import stamp_of as _fdf_stamp
-    return next((p for p in sorted(d.glob("fdf.*.log"))
-                 if _fdf_stamp(p) == start), None)
+    from ..engines.siesta_fdflog import logs_in, stamp_of as _fdf_stamp
+    return next((p for p in logs_in(d) if _fdf_stamp(p) == start), None)
 
 
 def _first_section_text(text: str) -> str:

@@ -49,27 +49,18 @@
         return;
     }
 
-    /* THE RUN'S WORKING PARTS -- the roles a `.molwatch.log` master
-     * subsumes (`results.md` § 2.3).  These are `runfiles` roles: one
-     * declared in `WRITTEN` (`_initial.xyz`) and two an engine writes
-     * (`_optimized.xyz`, `_geom_optim.xyz`, `runfiles._ENGINE_ROLES`).
-     *
-     * KNOWN GAP: the same vocabulary
-     * is spelled in `runfiles._ENGINE_ROLES` and in `pyscf/input.py`'s
-     * `ROLE_*` constants as well, so the browser's copy is the fourth of
-     * four rather than a lone offender.  `/api/results/dir` is the place a
-     * single answer would arrive -- the route already sends each file's
-     * role, and one more field would let this list be deleted.
-     */
-    /* THE SERVER'S ANSWER names what a file is: its ROLE in the catalogue
-     * (`runs._file_row`, `runfiles.WRITTEN`), carried per file by
-     * `/api/results/dir`.  A file with no answer is claimed by nothing --
-     * never by a suffix read off its name here.  These three roles are the
-     * run outputs this inspector presents. */
-    const TRAJECTORY_ROLES = [".molwatch.log", ".out", "_geom_optim.xyz"];
-    /* A run's structure parts -- the input echoed back, the geometry
-     * reached, geomeTRIC's stream -- shown under the run's own log. */
-    const PART_ROLES = ["_initial.xyz", "_optimized.xyz", "_geom_optim.xyz"];
+    /* THE SERVER'S ANSWER names what a file is: the PARSER that claims it
+     * (`runs._file_row` asks the registry, `/api/results/dir` carries it per
+     * file), as every inspector claims since 2.13.3 (`presenters.md` § 2).
+     * A file with no answer is claimed by nothing -- never by a suffix or a
+     * role spelled here (`parse.md` R-RO1).  The three parsers whose files
+     * this inspector presents are the run's progress log, SIESTA's output
+     * and geomeTRIC's trajectory, by the registry's own names. */
+    const TRAJECTORY_PARSERS = ["molwatch", "siesta", "pyscf"];
+    /* A run's structure parts -- the input echoed back and the geometry
+     * reached (the PySCF geometry parser's files), and geomeTRIC's stream
+     * (the trajectory parser's) -- shown under the run's own log. */
+    const PART_PARSERS = ["pyscf-geom", "pyscf"];
 
     const inspector = factory.makePartialInspector({
         name:          "trajectory",
@@ -78,7 +69,7 @@
         coreScriptDir: "trajectory",
         partialUrl:    "/partials/trajectory-inspector",
         match: (file, meta) =>
-            !!(meta && TRAJECTORY_ROLES.indexOf(meta.role) >= 0),
+            !!(meta && TRAJECTORY_PARSERS.indexOf(meta.parser) >= 0),
         // The picker groups a run's files under the engine's own heading.
         resultCategory: (file, meta) => {
             /* THE ENGINE COMES FROM THE SERVER: `/api/results/dir` answers
@@ -142,10 +133,10 @@
             // carries its stage.  A LADDER IS N RESULTS (`stages.md` § 1.1a), so 03_tight's
             // master must leave 01_coarse's stream to 01_coarse's master.
             if (!(mMeta && mMeta.label && oMeta && oMeta.label)) return false;
-            if (mMeta.role !== ".molwatch.log") return false;
+            if (mMeta.parser !== "molwatch") return false;
             if (mMeta.label !== oMeta.label) return false;
             if (oMeta.stage && oMeta.stage !== mMeta.stage) return false;
-            return PART_ROLES.indexOf(oMeta.role) >= 0;
+            return PART_PARSERS.indexOf(oMeta.parser) >= 0;
         },
     });
 

@@ -30,15 +30,15 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     """The shipped SIESTA ladder as ``Stage`` objects.
 
     One stage per tier of :data:`~molbuilder.config.siesta.SIESTA_STAGE_PRESETS`,
-    each carrying that tier's four values as its ``overrides``, enabled
-    according to the named strategy preset.  So the science is stated once,
-    in the presets table, and this only decides *which* tiers run and *how*
-    they are shaped for the description: building the ladder and applying
-    the enable-mask are one step.
+    each carrying that tier's four values as its ``overrides``, the tiers
+    the named strategy preset picks.  So the science is stated once, in the
+    presets table, and this only decides *which* tiers run and *how* they
+    are shaped for the description.
 
     Raises ``ValueError`` on an unknown strategy.
     """
-    from ..config.siesta import SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS
+    from ..config.siesta import SIESTA_STAGE_PRESETS
+    from ..config.stages import STAGE_NAMES
     from ..config.stages import STAGE_STRATEGY_PRESETS
 
     if strategy not in STAGE_STRATEGY_PRESETS:
@@ -62,7 +62,7 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
         # THE STAGES IT RUNS, and only those (`engines/stages.md` § 2): a
         # tier the strategy leaves out is not in the ladder.
         if i < len(enables) and enables[i]:
-            out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
+            out.append(Stage(name=STAGE_NAMES[tier],
                              overrides=overrides))
     return out
 

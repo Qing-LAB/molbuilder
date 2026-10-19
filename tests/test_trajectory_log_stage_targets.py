@@ -98,8 +98,9 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     NAME ITS READER ASKS FOR -- so the watch-tab horizontal threshold matches
     the stage that's currently running.
 
-    The card asks for `max_force_tol_eV_per_A` (trajectory/core.js): a
-    spelling this test invented is not a contract; the reader's vocabulary is.
+    The key is the log's own (`trajectory_log.emitter.MAX_FORCE_TOL`),
+    nested under the stage's token -- the one shape every writer writes
+    (`engines/pyscf.md` § 4, 2026-10-18).
 
     Default ladder (siesta/stages.py::default_siesta_stages) per stage:
       01_coarse: 0.05 (loose preopt)
@@ -110,9 +111,9 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     text1 = _log(tmp_path, "JOB_01_coarse.molwatch.log")
     text2 = _log(tmp_path, "JOB_02_medium.molwatch.log")
     text3 = _log(tmp_path, "JOB_03_tight.molwatch.log")
-    assert "# convergence.max_force_tol_eV_per_A: 0.05" in text1
-    assert "# convergence.max_force_tol_eV_per_A: 0.04" in text2
-    assert "# convergence.max_force_tol_eV_per_A: 0.01" in text3
+    assert "# convergence.01_coarse.max_force_tol_eV_per_A: 0.05" in text1
+    assert "# convergence.02_medium.max_force_tol_eV_per_A: 0.04" in text2
+    assert "# convergence.03_tight.max_force_tol_eV_per_A: 0.01" in text3
 
 
 def test_per_stage_molwatch_log_carries_its_geometry_step_cap(xyz, tmp_path):
@@ -124,6 +125,6 @@ def test_per_stage_molwatch_log_carries_its_geometry_step_cap(xyz, tmp_path):
     text1 = _log(tmp_path, "JOB_01_coarse.molwatch.log")
     text2 = _log(tmp_path, "JOB_02_medium.molwatch.log")
     text3 = _log(tmp_path, "JOB_03_tight.molwatch.log")
-    assert "# convergence.max_geom_iter: 600" in text1
-    assert "# convergence.max_geom_iter: 200" in text2
-    assert "# convergence.max_geom_iter: 100" in text3
+    assert "# convergence.01_coarse.max_geom_iter: 600" in text1
+    assert "# convergence.02_medium.max_geom_iter: 200" in text2
+    assert "# convergence.03_tight.max_geom_iter: 100" in text3

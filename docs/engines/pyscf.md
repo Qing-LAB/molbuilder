@@ -560,7 +560,7 @@ says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.
   a re-entry's start included, § 3) — both documented PySCF/geomeTRIC extension
   points.
 - **The convergence-header key grammar**: flat `convergence.<leaf>` for an
-  unstaged run, nested `convergence.<token>.<leaf>` for a staged one — and the
+  one shape: nested `convergence.<token>.<leaf>`, every run being staged (`stages.md` § 6.5; a flat form stood here until 2026-10-18) — and the
   `<token>` is the stage's artifact token, **digit-first**
   (`01_coarse`, [`job-contracts.md` § 6.3](?doc=execution/job-contracts.md)),
   never an identifier-shaped `stageN`. One reader owns the grammar
@@ -570,7 +570,7 @@ says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.
 - **The footer** is the run's conclusion: `# concluded: <stamp>` on a clean
   end, `# error: <message>` on a failure — the engine-neutral end-of-run
   marker `jobset status` and the Results page read
-  ([`running-a-job.md` § 4](?doc=execution/running-a-job.md)).
+  ([`running-a-job.md` § 4](?doc=execution/running-a-job.md)). And, when the relaxation returns, `# relaxed: yes` or `# relaxed: no` (`FOOTER_RELAXED`, written by `MolwatchEmitter.relaxed` from the deck's own `_GEOM_CONVERGED`): the run's ending reads it as its geometry verdict, so a PySCF relaxation's *geometry yes / NO* is stated as SIESTA's is (`web/results.md` § 2.4; 2026-10-18).
 
 ---
 

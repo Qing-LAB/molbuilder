@@ -27,7 +27,11 @@ from __future__ import annotations
 import os
 
 from ..errors import ParseError
-from ...runfiles import compose as _rf_compose
+from ...runfiles import compose as _rf_compose, stem_before as _rf_stem_before
+from ...runfiles import (ROLE_GEOM_TRAJ as _ROLE_GEOM_TRAJ,
+                         ROLE_MOLWATCH as _ROLE_MOLWATCH,
+                         ROLE_OPTIMIZED as _ROLE_OPTIMIZED,
+                         ROLE_PYSCF_LOG as _ROLE_PYSCF_LOG)
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -118,23 +122,14 @@ def _can_parse_xyz(path: str) -> bool:
         return False
 
 
-#: geomeTRIC's trajectory, named on its run's stem --
-#: ``<label>_<token>_geom_optim.xyz`` (`pyscf/input.py` ``ROLE_GEOM_TRAJ``,
-#: the role's home, which this reader sits below and does not import).  What
-#: precedes it is the stem every other file of the run is named on.
-_GEOM_TRAJ = "_geom_optim.xyz"
-
-
 def _run_stem_of(traj_path: str) -> Optional[str]:
     """The stem of the run whose geomeTRIC trajectory ``traj_path`` is --
     ``H2_01_coarse`` for ``H2_01_coarse_geom_optim.xyz`` -- or ``None`` for
     any other XYZ this reader is handed: the trajectory names its run's
     other files itself, and a file that names no run reads only itself
-    (`model/parse.md` § 5.3)."""
-    name = os.path.basename(traj_path)
-    if len(name) <= len(_GEOM_TRAJ) or not name.endswith(_GEOM_TRAJ):
-        return None
-    return name[:-len(_GEOM_TRAJ)]
+    (`model/parse.md` § 5.3).  The role and the cut are the catalogue's
+    (`runfiles.ROLE_GEOM_TRAJ`, `runfiles.stem_before`)."""
+    return _rf_stem_before(traj_path, _ROLE_GEOM_TRAJ)
 
 
 def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
@@ -151,7 +146,7 @@ def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
     if stem is None:
         return None
     base = os.path.dirname(traj_path) or "."
-    candidate = os.path.join(base, _rf_compose(stem, ".molwatch.log"))
+    candidate = os.path.join(base, _rf_compose(stem, _ROLE_MOLWATCH))
     return candidate if os.path.isfile(candidate) else None
 
 
@@ -228,6 +223,11 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
         out.update(_MG.read_conclusion(log_path))
     except OSError:
         pass
+    else:
+        # A LOG THAT IS THERE AND STATES NO FOOTER IS RUNNING -- the word
+        # `scan_conclusion` gives the same file (`model/parse.md` § 2b),
+        # never "unknown".
+        out.setdefault("run_state", "running")
     return out
 
 
@@ -243,7 +243,7 @@ def _read_scf_history(
     stem = _run_stem_of(traj_path)
     if stem is None:
         return []
-    log_path = os.path.join(base, _rf_compose(stem, ".log"))
+    log_path = os.path.join(base, _rf_compose(stem, _ROLE_PYSCF_LOG))
     if not os.path.isfile(log_path):
         return []
 
@@ -485,13 +485,13 @@ class PySCFOutFileParser(FileParser):
         # Strip both ``.molwatch.log`` and bare ``.log``; molwatch is
         # the MolwatchLogFileParser's filename, this hint is for the
         # PySCF run-time .log foot-gun.
-        if lower.endswith(".molwatch.log"):
+        if lower.endswith(_ROLE_MOLWATCH):
             return None
-        stem = filename[:-len(".log")]
+        stem = filename[:-len(_ROLE_PYSCF_LOG)]
         return (
             f"PySCF runs write the run-time log to {filename} but "
             f"the trajectory lives in the file whose role is "
-            f"`_geom_optim.xyz` -- {_rf_compose(stem, '_geom_optim.xyz')} for "
+            f"`{_ROLE_GEOM_TRAJ}` -- {_rf_compose(stem, _ROLE_GEOM_TRAJ)} for "
             f"a single run, or the same with this rung's token after the "
             f"label for a ladder (job-contracts.md § 2.2a). Point molbuilder "
             f"at that instead."
@@ -516,7 +516,7 @@ class PySCFOutFileParser(FileParser):
         # converged geometry"*), so a `StructureResult` is what it is;
         # this parser answers `TrajectoryResult` and has nothing to say
         # about a single frame that the sibling does not say better.
-        if path.name.endswith("_optimized.xyz"):
+        if path.name.endswith(_ROLE_OPTIMIZED):
             return False
         return _can_parse_xyz(str(path))
 

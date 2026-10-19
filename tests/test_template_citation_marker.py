@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import dataclasses
 
-import pytest
 
 from molbuilder import template as T
 
@@ -51,12 +50,24 @@ class _Cited:
 
 
 def _decl(name):
-    # `from __future__ import annotations` makes `f.type` a STRING, and
-    # `declaration_for` reads a real annotation -- resolve them once.
+    """The synthetic catalogue ITEM for one of `_Cited`'s fields -- built as
+    the catalogue builds one, from the facts the field's metadata states
+    (`T.Item`; `declaration_for`, which read them off a dataclass field,
+    went with the class copies in 2.15.4)."""
     import typing
     hints = typing.get_type_hints(_Cited)
     f = {x.name: x for x in dataclasses.fields(_Cited)}[name]
-    return T.declaration_for(f, hints[name])
+    m = dict(f.metadata)
+    return T.Item(name=name, kind=m["kind"],
+                  type={int: "int", float: "float", str: "str",
+                        bool: "bool"}[hints[name]],
+                  help=m["help"], default=f.default,
+                  engine_key=m.get("engine_key", ""),
+                  anchor=m.get("engine_key", ""),
+                  category=tuple(m.get("category", ())),
+                  group=m.get("group"),
+                  allocation=bool(m.get("allocation", False)),
+                  citation=tuple(m.get("citation", ())))
 
 
 def test_the_marker_survives_the_round_trip():
@@ -114,19 +125,6 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
         "a transport template answering a cited item is now the ORDINARY "
         "state: it is what `jobset init` writes, defaulted from the cited "
         "run, and what a person edits afterwards")
-
-
-def test_the_allocation_exclusion_is_untouched():
-    """`template_fields` still strips machine facts — and NOT citation ones.
-
-    Excluding `basis_size` by name would stop an optimization overriding its
-    own basis, because the row is shared."""
-    fields = T.template_fields(_Cited)
-    assert "mesh" in fields
-    assert "basis" in fields, (
-        "excluded by name -- an optimization could then not override its "
-        "own basis, because the row is shared")
-    assert "ranks" not in fields, "the allocation control still holds"
 
 
 def test_select_can_ask_which_items_the_citation_answers():

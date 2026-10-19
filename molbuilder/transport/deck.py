@@ -51,6 +51,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .. import script_emit as _sc
+from ..parse.engines import siesta_grammar as _G
 from ..runfiles import compose
 from ..siesta import layout as _sl
 from ..structure import Structure
@@ -326,7 +327,7 @@ def _emit_transmission_run(struct, cfg) -> str:
         f"# {label}.TS.HSX, .TSHS and .HSX that exists (m_tbt_hs.F90); naming it",
         "# says which one this transmission is of, rather than leaving that to",
         "# whichever file is present.",
-        f"TBT.HS                 {compose(label, '.TS.HSX')}",
+        f"TBT.HS                 {compose(label, _G.TS_HSX)}",
         "",
     ])
 

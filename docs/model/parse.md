@@ -306,7 +306,7 @@ closed, and each run-output role (§ 5.5) states it its own way:
 | value | means | SIESTA-family `.out` | PySCF stdout `.pyscf.log` | progress log `.molwatch.log` |
 |---|---|---|---|---|
 | `running` | not finished — no ending yet | no ending marker | no end line, no traceback | no footer |
-| `ended` | the engine reached its own end | `>> End of run` — that line only: SIESTA prints `Job completed` beside it, so a second marker adds nothing | the deck's end line (`pyscf/end_lines.py`), read at column 0 | `# concluded:` |
+| `ended` | the engine reached its own end | `>> End of run` — that line only: SIESTA prints `Job completed` beside it, so a second marker adds nothing | the deck's end line (`pyscf/end_lines.py`), read at column 0 | `# concluded:` — and beside it `# relaxed: yes\|no`, the relaxation's own verdict (`RunEnding.relaxed`, the geometry column's; 2026-10-18) |
 | `stopped` | it did not reach its end | a fatal marker (`siesta_grammar.FATAL_MARKERS`) | a Python traceback | `# error:` |
 | `out_of_memory` | the kernel or scheduler killed it for memory | an out-of-memory marker | — | — |
 | `unknown` | no evidence either way — a format with no ending markers at all, such as `.MD.nc` | — | — | — |
@@ -368,7 +368,7 @@ over*.
 |---|---|---|
 | `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, which passes a SIESTA output's session log — the one whose first section is its run (`wrapper_log.logs_by_run`); the wrapper's door below; the bench summary |
 | `python mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `relaxation-capped` or `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint and warm retries (`execution/running-a-job.md` § 3.5) |
-| `run_status(directory, basename=None)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json`; each output's ending read once per version of the file (its size and modification time, `_run_ending.ending_of`), and an output that states how it ended takes its own parse's reading (`keep_reading`, through the one read, `siesta_reader.read_output`), so a run asked about again and again — a Results viewer following it — costs a look at its folder, and a load reads its file once | `execution/running-a-job.md` § 4.2 |
+| `run_status(run_dir, basename, *, launch=, run=, launched_in=)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json`; each output's ending read once per version of the file (its size and modification time, `_run_ending.ending_of`), and an output that states how it ended takes its own parse's reading (`keep_reading`, through the one read, `siesta_reader.read_output`), so a run asked about again and again — a Results viewer following it — costs a look at its folder, and a load reads its file once | `execution/running-a-job.md` § 4.2 |
 | the registered parsers (§ 3) | frames, energies, forces — and the same `run_state` and `scf_converged`, from the same grammar | callers that want the arrays |
 
 SIESTA's lines are read one way. The registered parser builds its Frames from
@@ -382,7 +382,7 @@ first import, not a status poll of a running job.
 
 | a file's `run_state` | a directory's `run_status` — state · detail | the monitor, once the PID is gone |
 |---|---|---|
-| `ended` | `finished` · job completed | `finished` |
+| `ended` | `running` · *the engine's output ended; the job has not concluded* — until the job concludes: `finished` when it exits 0, `failed` when its scheduler's own line or the monitor's record says it was stopped (`running-a-job.md` § 4.2) | `finished` (rc 0) / `failed` |
 | `stopped` | `failed` · stopped before its end | `failed` |
 | `out_of_memory` | `failed` · out of memory | `failed` |
 | `running`, `unknown` | `finished` or `failed` by the `.concluded` code; without one, `failed` · stopped by the scheduler: *its words*, when its scheduler's line in the job's error file says it ended the job (`execution/scheduler.md` R16), else `failed` · stopped before its end, no exit recorded, when the monitor's closing record says its process went; else `running` | the directory's answer, asked after it writes that record |
@@ -956,8 +956,9 @@ reader waiting for a header 5.4.2 prints only above several.)*
 ### 5.4 The directory door must
 
 **walk** the directory, **compose readers that own their formats**, and
-**apply cross-file invariants** no single reader can see — atom-count
-consistency, lattice handedness, stage ordering, the status state machine. It
+**apply the cross-file rules** no single reader can see — the stage rule and
+the status state machine (atom-count consistency and lattice handedness were
+listed here until 2026-10-18; no door checks them, and none is asked to). It
 must **never implement a format inline**: add the missing reader instead.
 
 **Which reader depends on the QUESTION, and there are two families.**

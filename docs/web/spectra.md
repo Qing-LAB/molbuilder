@@ -62,13 +62,10 @@ flowchart TD
 
 ## 2. The spectrum chart
 
-> **Where this is going.** The chart is drawn today by ~345 lines inside
-> `lib/spectra/core.js`, the tab controller. Its design as a sealed module —
-> one importable `mount`, one file naming Plotly, a click that leaves as an
-> event and returns as an instruction — is written in
-> [`spectrumchart.md`](?doc=web/spectrumchart.md). Nothing is built yet: the
-> contract was written first so the door could be reviewed before the code
-> moves. What this section describes is what the tab does now.
+The chart is the sealed module `lib/spectrumchart/` — one importable `mount`,
+one file naming Plotly, a click that leaves as an event and returns as an
+instruction — whose contract is [`spectrumchart.md`](?doc=web/spectrumchart.md);
+the tab imports it (`core.js`). What this section describes is the tab's half.
 
 
 The chart plots **frequency (cm⁻¹) on a shared x-axis against every channel the

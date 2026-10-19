@@ -326,9 +326,10 @@ def test_the_presets_come_from_the_shipped_table(web_client):
     j = web_client.get("/api/task-setup/presets?engine=siesta"
                        "&calculation=optimization").get_json()
     assert j["ok"] and len(j["presets"]) == 3
-    from molbuilder.config.siesta import SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS
+    from molbuilder.config.siesta import SIESTA_STAGE_PRESETS
+    from molbuilder.config.stages import STAGE_NAMES
     for ps in j["presets"]:
-        assert ps["name"] == SIESTA_STAGE_NAMES[ps["tier"]]
+        assert ps["name"] == STAGE_NAMES[ps["tier"]]
         assert ps["values"] == SIESTA_STAGE_PRESETS[ps["tier"]], (
             "the endpoint restates the tier values instead of serving them")
     # OFFERED PER KIND, by the columns' own membership rule (`task-setup.md`

@@ -204,7 +204,8 @@ class SpectraSidecarFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return path.name.endswith(".spectra.json") and path.is_file()
+        from ...runfiles import ROLE_SPECTRA, role_of
+        return role_of(path) == ROLE_SPECTRA and path.is_file()
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:

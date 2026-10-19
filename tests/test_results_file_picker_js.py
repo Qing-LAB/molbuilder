@@ -499,10 +499,20 @@ class TestAbsorbSatellites:
             rec = rf_parse(name, TestAbsorbSatellites._JOB)
             if rec is not None and rec.role not in roles():
                 rec = None
+            # ...AND THE PARSER THAT CLAIMS IT, the registry's own name, as
+            # `runs._file_row` asks `parse.registry.detect` of a real file:
+            # the inspector claims and absorbs by it (`presenters.md` § 2).
+            from molbuilder.runfiles import (ROLE_GEOM_TRAJ, ROLE_INITIAL,
+                                             ROLE_MOLWATCH, ROLE_OPTIMIZED)
+            parser = ({ROLE_MOLWATCH: "molwatch", ROLE_GEOM_TRAJ: "pyscf",
+                       ROLE_INITIAL: "pyscf-geom",
+                       ROLE_OPTIMIZED: "pyscf-geom"}.get(rec.role)
+                      if rec else None)
             rows.append({"name": name, "path": p, "mtime": 1000,
                          "role": rec.role if rec else None,
                          "label": rec.label if rec else None,
-                         "stage": rec.stage if rec else None})
+                         "stage": rec.stage if rec else None,
+                         "parser": parser})
         names = json.dumps(rows)
         return (
             "const entries = " + names + ";\n"

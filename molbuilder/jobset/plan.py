@@ -18,6 +18,7 @@ from __future__ import annotations
 #: catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2): every file
 #: molbuilder writes is a row there.
 from ..runfiles import PLAN_FILE as FILENAME  # noqa: E402
+from .model import KIND_LADDER  # noqa: E402
 
 from typing import List, Optional
 
@@ -103,7 +104,7 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
     # (job-system.md § 5.3, user rule).  A plan that ends by recommending the
     # refused thing is worse than one that ends without advice.
     lines.append("")
-    if js.kind == "ladder":
+    if js.kind == KIND_LADDER:
         # A staged ladder declares no edges (P7 unit 2) and that is the design,
         # not an omission -- so say what to do rather than leaving a reader to
         # infer that unrelated jobs may all be started at once.

@@ -294,10 +294,15 @@ class TestRenderMethodsMdWithStruct:
         # 5-atom water-cluster mock; no atoms fixed.
         atoms = [_Atom("O"), _Atom("H"), _Atom("H"), _Atom("O"), _Atom("H")]
 
-        class _S:
-            pass
-        struct = _S()
-        struct.atoms = atoms
+        # A REAL STRUCTURE of five atoms (the one shape `methods` reads; a
+        # duck-typed mock stood here until 2026-10-18).
+        import numpy as np
+        from molbuilder.structure import Structure
+        # ...bent, not collinear: a linear chain has five rigid motions
+        # and the clause counts 3N - 6 for a bent one.
+        struct = Structure(elements=["H"] * len(atoms),
+                           positions=np.array([[1.2 * i, 0.4 * (i % 2), 0.0]
+                                               for i in range(len(atoms))]))
 
         md = render_methods_md(_spectra_cfg(), struct=struct)
         assert "5 atoms" in md

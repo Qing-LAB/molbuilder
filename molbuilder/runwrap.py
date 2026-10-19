@@ -17,6 +17,11 @@ Testing hook: tests inject a synthetic Capabilities via
 
 from __future__ import annotations
 
+#: THE LAUNCH CLAIM is the scheduler protocol's (`scheduler/kinds.py`:
+#: `LAUNCH_CLAIM_VAR`, `LAUNCH_CLAIM`, `MANUAL_CLAIM`), read here by the
+#: wrapper's gate.
+from .scheduler.kinds import LAUNCH_CLAIM_VAR, MANUAL_CLAIM
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -963,75 +968,6 @@ def _runtime_status_block(
     )
 
 
-def _probe_gpu0_numa() -> Optional[int]:
-    """Resolve the NUMA node that GPU 0 is attached to.
-
-    Two paths, tried in order:
-
-    1. ``nvidia-smi --query-gpu=pci.bus_id -i 0`` as a SUBPROCESS with a
-       hard timeout.  NVML has no timeout anywhere in its API, and an
-       in-process NVML call once froze the whole web server (2026-08-28);
-       a child process is the one fence that lets the caller walk away
-       (system_load.py carries the full story).
-    2. Kernel sysfs at ``/sys/bus/pci/devices/<id>/numa_node``.  The
-       stable ABI the Linux kernel itself uses for NUMA-aware
-       allocation.  A single integer; "-1" for "no NUMA / single
-       node system".
-
-    Returns the int, or ``None`` when:
-      * nvidia-smi is absent, fails, or times out (CPU-only host, or a
-        held driver -- the probe is an optimisation, never worth a hang)
-      * the sysfs file isn't readable
-      * the sysfs value is "-1" (no NUMA affinity)
-
-    Called once per wrapper render, at script-generation time.  The
-    answer is baked into the generated bash as a literal.
-    """
-    import subprocess
-    try:
-        cp = subprocess.run(
-            ["nvidia-smi", "--query-gpu=pci.bus_id",
-             "--format=csv,noheader", "-i", "0"],
-            capture_output=True, text=True, timeout=2.0)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if cp.returncode != 0:
-        return None
-    bus_id = cp.stdout.strip().lower()
-    if not bus_id:
-        return None
-    # nvidia-smi format: ``00000000:65:00.0`` (8-hex domain).
-    # sysfs path:        ``0000:65:00.0``    (4-hex domain).
-    # Strip the leading 4 hex digits of the domain.
-    import re
-    m = re.match(r"^[0-9a-f]{8}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]$", bus_id)
-    if not m:
-        return None
-    sysfs_id = bus_id[4:]
-    try:
-        with open(f"/sys/bus/pci/devices/{sysfs_id}/numa_node", "r") as fh:
-            txt = fh.read().strip()
-    except OSError:
-        return None
-    try:
-        val = int(txt)
-    except ValueError:
-        return None
-    if val < 0:
-        return None  # "-1" = no NUMA affinity / single-node system
-    return val
-
-
-def _baked_numa_literal_line() -> str:
-    """Format the ``_gpu_numa="${MOLBUILDER_GPU_NUMA:-<probed>}"``
-    bash line with the probed value baked in.  Factored out so the
-    "0 is a valid NUMA node, don't truthy-fallback it" logic stays
-    in one obvious place."""
-    probed = _probe_gpu0_numa()
-    value = "unknown" if probed is None else str(probed)
-    return f'_gpu_numa="${{MOLBUILDER_GPU_NUMA:-{value}}}"\n'
-
-
 def _bash_numa_from_gpu(gpu_expr: str, out_var: str,
                         bus_var: str = "_bus", indent: str = "") -> str:
     """Emit bash that resolves the NUMA node of the GPU at index
@@ -1545,10 +1481,10 @@ def _gpu_runtime_block() -> str:
         is on PATH, and whether the run may start it (``--mps`` /
         ``--no-mps`` and ``MOLBUILDER_USE_MPS`` say; unsaid, allowed).  The
         MPS block below decides from both and from ranks sharing a GPU.
-      * ``_gpu_numa``: the NUMA node GPU 0 is attached to, baked at
-        script-generation time by :func:`_probe_gpu0_numa` (nvidia-smi +
-        kernel sysfs); overridable at run time via ``MOLBUILDER_GPU_NUMA``.  An
-        integer string, or ``"unknown"``.
+      * ``_gpu_numa``: the NUMA node GPU 0 is attached to, resolved at run
+        time on the machine the job runs on (:func:`_bash_numa_from_gpu`:
+        nvidia-smi's bus id + the kernel's sysfs); overridable via
+        ``MOLBUILDER_GPU_NUMA``.  An integer string, or ``"unknown"``.
       * ``_numa_wrap_gpu``: the ``numactl`` prefix that sets a single-GPU
         run's memory on its GPU's node, where the box has two sockets and
         numactl is there -- it does not hold the ranks there: OpenMPI's map
@@ -1572,18 +1508,20 @@ def _gpu_runtime_block() -> str:
         '_have_mps_str="no"; '
         '[ "$_have_mps" = "1" ] && _have_mps_str="yes"\n'
         'echo "molbuilder: mps_available=$_have_mps_str" >&2\n'
-        # ---- GPU NUMA proximity (probed at generation time) ----
-        # Resolved by the Python generator via ``_probe_gpu0_numa()`` using
-        # nvidia-smi's PCI bus id + the kernel sysfs ABI.  No scraping of
-        # ``nvidia-smi``'s tabular output, whose ``N/A`` libnuma rejects as
-        # ``--cpunodebind=N/A``.
-        # The runtime override ``MOLBUILDER_GPU_NUMA=N`` wins over the
-        # baked value.  NB: an explicit ``is None`` check, because 0 is a
-        # valid NUMA node.
-        + _baked_numa_literal_line() +
-        '# Defence in depth: even if the baked / override value got\n'
-        '# garbage, refuse to use it as a NUMA target unless it parses\n'
-        '# as a non-negative integer.\n'
+        # ---- GPU NUMA proximity, RESOLVED AT RUN TIME ----
+        # On the machine the job runs on, from GPU 0's PCI bus id and the
+        # kernel's sysfs -- the same lookup the per-rank launcher makes
+        # (`_bash_numa_from_gpu`).  A machine fact is measured where the job
+        # runs, never on the machine that prepared it (`configuration.md`
+        # § 5 M-1; until 2026-10-18 the prepping machine's node was baked
+        # into the script, wrong for another target and a line R-L15
+        # read as a changed description).  The runtime override
+        # ``MOLBUILDER_GPU_NUMA=N`` wins; 0 is a valid node.
+        + _bash_numa_from_gpu("0", "_gpu_numa_probed")
+        + '_gpu_numa="${MOLBUILDER_GPU_NUMA:-$_gpu_numa_probed}"\n' +
+        '# Defence in depth: whatever the lookup or the override gave,\n'
+        '# use it as a NUMA target only if it parses as a non-negative\n'
+        '# integer (the lookup says -1 for unknown).\n'
         'case "$_gpu_numa" in\n'
         '    ""|*[!0-9]*) _gpu_numa="unknown" ;;\n'
         'esac\n'
@@ -3633,15 +3571,15 @@ def render_run_wrapper(script_path: Path, *,
         f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
         f"\n"
         f"# --- Launch-door gate (one door: jobset launch) ----------\n"
-        f"# `molbuilder jobset launch` sets MB_LAUNCHED_BY when it launches\n"
+        f"# `molbuilder jobset launch` sets {LAUNCH_CLAIM_VAR} when it launches\n"
         f"# this script (direct: child env; sent to a scheduler: on the\n"
         f"# line it is sent with).  A bare invocation is usually an accident: it skips the\n"
         f"# launch bookkeeping, the deck/launch agreement check and the\n"
-        f"# mode/config resolution.  MB_LAUNCHED_BY=manual is the\n"
+        f"# mode/config resolution.  {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} is the\n"
         f"# deliberate override, and the value is logged either way\n"
         f"# (job-contracts.md 2.6).  A help request skips the gate: it\n"
         f"# launches nothing.\n"
-        f"if [ -z \"${{MB_LAUNCHED_BY:-}}\" ] && [ \"$_mb_help\" = \"0\" ]; then\n"
+        f"if [ -z \"${{{LAUNCH_CLAIM_VAR}:-}}\" ] && [ \"$_mb_help\" = \"0\" ]; then\n"
         f"  echo \"WARNING: {run_sh} was called directly, not via\" >&2\n"
         f"  echo \"  'molbuilder jobset launch'.  Direct calls skip launch\" >&2\n"
         f"  echo \"  bookkeeping and the deck/launch agreement check.\" >&2\n"
@@ -3657,15 +3595,15 @@ def render_run_wrapper(script_path: Path, *,
         f"      # wrapper, and an unexported answer would re-prompt (or\n"
         f"      # refuse, stdin long gone) mid-retry at 3am (U10).  The\n"
         f"      # submit door already exports; the manual door must too.\n"
-        f"      y|Y|yes|YES) export MB_LAUNCHED_BY=manual ;;\n"
-        f"      *) echo \"  Aborted.  (MB_LAUNCHED_BY=manual skips this prompt.)\" >&2\n"
+        f"      y|Y|yes|YES) export {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} ;;\n"
+        f"      *) echo \"  Aborted.  ({LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} skips this prompt.)\" >&2\n"
         f"         echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
         f"         exit 2 ;;\n"
         f"    esac\n"
         f"  else\n"
         f"    echo \"  Non-interactive shell: refusing.  Launch via\" >&2\n"
         f"    echo \"  'molbuilder jobset launch', or override deliberately:\" >&2\n"
-        f"    echo \"    MB_LAUNCHED_BY=manual bash {run_sh} --run N   # local\" >&2\n"
+        f"    echo \"    {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} bash {run_sh} --run N   # local\" >&2\n"
         f"    echo \"  or send its scheduler header by hand, as the header's own\" >&2\n"
         f"    echo \"  comment shows -- the claim rides the line it is sent with.\" >&2\n"
         f"    echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
@@ -3677,7 +3615,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# log -- either alone answers \"was this launched properly, run by\n"
         f"# hand on purpose, or refused?\" -- no terminal needed, and nothing\n"
         f"# can sit waiting on one (no-TTY never prompts).\n"
-        f'echo "launched-by: ${{MB_LAUNCHED_BY:-none (help)}}"\n'
+        f'echo "launched-by: ${{{LAUNCH_CLAIM_VAR}:-none (help)}}"\n'
         f"# Per docs/execution/running-a-job.md § 5: the wrapper does NOT change cwd.\n"
         f"# A scheduler lands the job in the folder it was sent from; direct\n"
         f"# callers ``cd`` to the project dir before invoking.  The\n"
@@ -3734,6 +3672,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "_section_rules.py":   "molbuilder.parse.engines._section_rules",
     "scf_timing_rows.py":  "molbuilder.parse.instruments.scf_timing_rows",
     "end_lines.py":        "molbuilder.pyscf.end_lines",
+    "emitter.py":          "molbuilder.trajectory_log.emitter",
     "_run_ending.py":      "molbuilder.parse.engines._run_ending",
     "report_fields.py":    "molbuilder.report_fields",
     "job.py":              "molbuilder.parse.dirs.job",
@@ -3888,6 +3827,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "_section_rules.py":       "molbuilder.parse.engines._section_rules",
     "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
     "end_lines.py":            "molbuilder.pyscf.end_lines",
+    "emitter.py":              "molbuilder.trajectory_log.emitter",
     "atom_permutation.py":     "molbuilder.atom_permutation",
     # THE STRUCTURE, WHOLE, in the result (engines/vibration.md § 6.10): the
     # result type builds and checks it through the one serialiser.
@@ -4402,7 +4342,7 @@ def render_sbatch(names, *, scheduler,
     # the job named by its header's name, the claim the person's.
     by_hand = " ".join(kind.line(
         scheduler.commands(), job=basename, restated=[],
-        launched_by="manual", header=f"{where}{names.name('.sbatch')}",
+        launched_by=MANUAL_CLAIM, header=f"{where}{names.name('.sbatch')}",
         args=[] if where else ["--run", "N"]))
     lines: List[str] = [
         "#!/bin/bash",

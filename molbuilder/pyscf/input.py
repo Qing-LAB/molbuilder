@@ -39,13 +39,9 @@ from ..structure import Structure
 #: the other half of the rule.  The role vocabulary still has ONE home, so a
 #: role cannot be respelled in the emitted lines while the header, the
 #: warm-file declaration and the reader all say something else.
-ROLE_CHK         = ".chk"
-ROLE_LOG         = ".log"                # PySCF's own log, a rung's own
-ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
-ROLE_INITIAL     = "_initial.xyz"
-ROLE_OPTIMIZED   = "_optimized.xyz"
-ROLE_CONSTRAINTS = ".constraints.txt"
-ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
+from ..runfiles import (ROLE_CHK, ROLE_CONSTRAINTS, ROLE_GEOM_TRAJ,  # noqa: E402
+                        ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
+from ..runfiles import ROLE_PYSCF_LOG as ROLE_LOG  # noqa: E402
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
 #: `end_lines`, which the reader imports and which travels beside the job
@@ -1147,7 +1143,10 @@ def _emit_optimization(cfg: PySCFConfig,
         out.append("        keep = lambda _m: _save_structure("
                    f"_m, _mb_outfile({run_file_expr(names, ROLE_OPTIMIZED)}), "
                    "'Geometry reached (PySCF, relaxing)'),")
-        out.append(f"        resumable = {bool(continues(cfg))},")
+    # WHETHER THE RUN RESUMES IS `restart`'S ANSWER (`identity.continues`,
+    # `run-identity.md` § 4), whatever is kept per step: a produce item
+    # decided it until 2026-10-18.
+    out.append(f"        resumable = {bool(continues(cfg))},")
     out.extend(_layout.geom_kwargs())
     if emit_constraints:
         out.append("        constraints           = _FROZEN_CONSTRAINTS_PATH,")
@@ -1164,6 +1163,11 @@ def _emit_optimization(cfg: PySCFConfig,
     if cfg.write_molwatch_log:
         out.append("        callback              = _molwatch.opt_step_hook,")
     out.append("    )")
+    if cfg.write_molwatch_log:
+        # THE RELAXATION'S OWN VERDICT, into the log's footer
+        # (`MolwatchEmitter.relaxed`), so the run's ending states geometry
+        # yes / NO as SIESTA's does (`web/results.md` § 2.4; 2026-10-18).
+        out.append("_molwatch.relaxed(bool(_GEOM_CONVERGED))")
     out.append("")
     if v:
         out.append("# Re-converge the SCF at the relaxed geometry.  The")
@@ -1243,9 +1247,9 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     # deck is one rung (§ 1.1a): the values are this config's own, already
     # resolved by `prep` from the description ⊕ this stage's overrides.  The
     # molwatch parser keys them as
-    # ``runtime_info["convergence_targets"][<stage>][<leaf>]`` and the JS
-    # reader (web/static/lib/trajectory/core.js) flattens to the last stage
-    # for the threshold-line render, which with one entry is that entry.
+    # ``runtime_info["convergence_targets"][<stage>][<leaf>]``; the one
+    # reader of the block (`trajectory_log.emitter.targets_of`) takes the
+    # one stage's leaf, and the watch door serves it to the page as said.
     #
     # The key is the stage TOKEN, the same string this log's own filename
     # carries, so a log and the targets inside it name the rung identically.
@@ -1267,15 +1271,20 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     _max_force_eV = float(cfg.geom_gmax) * _ha_bohr_to_ev_ang
     _rms_force_eV = float(cfg.geom_grms) * _ha_bohr_to_ev_ang
     _energy_tol_eV = float(cfg.geom_etol) * _HARTREE_EV
+    # THE KEYS ARE THE LOG'S OWN (`trajectory_log.emitter`, one home), the
+    # block nested by this rung's token as every writer writes it.
+    from ..trajectory_log import emitter as _E
+    _leaves = ((_E.MAX_FORCE_TOL, _max_force_eV),
+               (_E.RMS_FORCE_TOL, _rms_force_eV),
+               (_E.MAX_DISPL, float(cfg.geom_dmax)),
+               (_E.RMS_DISPL, float(cfg.geom_drms)),
+               (_E.ENERGY_STEP_TOL, _energy_tol_eV),
+               (_E.MAX_SCF_ITER, int(cfg.scf_max_cycle)),
+               (_E.MAX_GEOM_ITER, int(cfg.geom_max_steps)))
     out.append("_CONVERGENCE_TARGETS = {")
     out.append(f"    {names.stage!r}: {{")
-    out.append(f"        'max_force_tol_eV_per_A': {_max_force_eV!r},")
-    out.append(f"        'rms_force_tol_eV_per_A': {_rms_force_eV!r},")
-    out.append(f"        'max_displ_ang':          {float(cfg.geom_dmax)!r},")
-    out.append(f"        'rms_displ_ang':          {float(cfg.geom_drms)!r},")
-    out.append(f"        'energy_step_tol_eV':     {_energy_tol_eV!r},")
-    out.append(f"        'max_scf_iter':           {int(cfg.scf_max_cycle)!r},")
-    out.append(f"        'max_geom_iter':          {int(cfg.geom_max_steps)!r},")
+    for _k, _v in _leaves:
+        out.append(f"        {_k!r}: {_v!r},")
     out.append("    },")
     out.append("}")
     # THE ATOMS THIS RUN HOLDS go into its log's header (`model/parse.md`

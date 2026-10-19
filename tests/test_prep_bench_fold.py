@@ -1312,7 +1312,7 @@ def test_a_verdictless_summarize_prints_no_report(calc):
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
     # `project-layout.md` § 2.3: no winner is said, with why
-    assert "no winner: no completed, timed trial to rank (" in r.output
+    assert "no winner: no finished, timed trial to rank (" in r.output
     assert "bench recommendation" not in r.output
 
 
@@ -1445,25 +1445,23 @@ def test_sweep_view_has_one_trial_per_job_in_the_job_sets_order(calc):
     assert [t["label"] for t in view["trials"]] == [j["name"] for j in js["jobs"]]
 
 
-def test_sweep_view_reports_where_the_RUN_is_not_what_the_files_say(calc):
-    """§ 2's table gives 'queued/running/finished/failed' to jobset_status.
-
-    ``BenchPoint.state`` answers a DIFFERENT question -- what the artifacts
-    on disk look like -- so the view carries both under separate keys and
-    never lets the artifact word stand in for the run's position.
+def test_sweep_view_reports_where_the_RUN_is(calc):
+    """A trial's state is the run door's -- `queued/running/finished/
+    failed`, the one rule every surface says (`model/parse.md` § 2b) -- and
+    the view carries that one word.  Until 2026-10-18 a second word read off
+    the output alone (`artifacts`: `completed` once `>> End of run` was
+    printed) stood beside it, and the ranking read that one, so a trial
+    that failed after its output ended could be crowned.
     """
     from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
     view = sweep_view(jobset, bundle)
     t = view["trials"][0]
-    assert "state" in t and "artifacts" in t
-    # Nothing has been launched, so the RUN has not started.  The artifact
-    # word for "no .out at all" is `unknown`, which is not a run state.
-    assert t["artifacts"] == "unknown"
-    assert t["state"] != "unknown", (
-        "the run's position must come from jobset_status, not from the "
-        "artifact reader")
+    assert "state" in t and "artifacts" not in t
+    # Nothing has been launched, so the RUN has not started: the door's
+    # word, never `unknown` and never `completed`.
+    assert t["state"] == "pending", t["state"]
 
 
 def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):

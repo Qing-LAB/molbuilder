@@ -967,36 +967,46 @@ classDiagram
       str name
       str engine
       str kind
-      list shared
-      list jobs
+      List[str] shared
+      List[Job] jobs
     }
     class Job {
       str name
       str script
       Resources resources
-      list warm
-      dict traits
-      dict point
-      str finish
+      List[WarmFile] warm
+      Dict[str, str] traits
+      Dict[str, Any] point
+      Optional[str] finish
       bool resumes
+      Optional[Dict[str, Any]] placement
+      Optional[List[str]] members
+      Optional[str] written_at
+      Dict[str, Any] asked
     }
     class Resources {
-      int mpi_np
-      int cpus_per_task
-      str time
-      str mem
-      str gres
-      bool exclusive
-      str domain
-    }
-    class WarmFile {
-      str name
-      str requires_same
+      Optional[str] domain
+      Optional[str] time
+      Optional[bool] exclusive
+      Optional[str] mem
+      Optional[str] gres
+      Optional[bool] gpu_binding
+      Optional[bool] use_gpu
+      Optional[int] mpi_np
+      Optional[int] cpus_per_task
+      Optional[int] continue_retries
+      Optional[bool] notify_on_scf
+      Optional[float] notify_every_hours
+      Optional[Tuple[str, ...]] notify_channels
+      Optional[Tuple[str, ...]] notify_report
+      Optional[str] program
+      Optional[int] max_memory_mb
     }
     JobSet "1" o-- "many" Job
     Job "1" o-- "1" Resources
-    Job "1" o-- "many" WarmFile
 ```
+
+*(The diagram is the dataclasses' fields, regenerated 2026-10-18 — `jobset/model.py`; a job carries every key of `JOB_KEYS` every time, § 6.1, and `Job.from_dict` refuses one that lacks any.)*
 
 **There is no edge anywhere in this picture.** No job names another job. That is
 decision #6, and it is the single most important thing about the shape.
@@ -1232,27 +1242,7 @@ sequenceDiagram
 **The copy is the thing a person can check** — it is a real file, present
 before the stage starts, from the run `launch` said it took (§ 5.4).
 
-A complete 2-stage ladder `job-set.json`:
-
-```json
-{
-  "schema": "molbuilder/job-set@1",
-  "name": "bdt", "engine": "siesta", "kind": "ladder",
-  "shared": ["Au.psml", "S.psml", "C.psml", "H.psml"],
-  "jobs": [
-    { "name": "stage1", "script": "bdt_01_stage1.fdf",
-      "resources": { "domain": "htc", "time": "0-04:00:00" },
-      "warm": [], "traits": { "optimizer": "CG" } },
-
-    { "name": "stage2", "script": "bdt_02_stage2.fdf",
-      "resources": { "domain": "public", "time": "7-00:00:00", "mem": "64G" },
-      "warm": [ { "name": "bdt.XV" },
-                { "name": "bdt.DM" },
-                { "name": "bdt.CG", "requires_same": "optimizer" } ],
-      "traits": { "optimizer": "CG" } }
-  ]
-}
-```
+A `job-set.json` is written by `JobSet.to_dict()` and nothing abbreviates it: every job carries every key of `JOB_KEYS` (`name`, `script`, `resources`, `warm`, `traits`, `point`, `finish`, `resumes`, `placement`, `members`, `written_at`, `asked`) and `Job.from_dict` refuses one that lacks any, naming it (`WrittenBefore`). *(An abbreviated "complete" example stood here until 2026-10-18; a file written from it was refused, so it is gone — read a real one, which every `prep` writes.)*
 
 Read it back in plain language: *a SIESTA ladder named `bdt`; four
 pseudopotentials are shared by both stages; stage 1 runs on the

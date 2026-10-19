@@ -62,7 +62,7 @@ try:                                        # inside molbuilder
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
     from ..parse.engines.siesta_reader import SiestaReader
-    from ..parse.fdf import (deck_atoms, fdf_key, read_fdf, parse_fdf_params,
+    from ..parse.fdf import (deck_atoms, fdf_key, read_fdf,
                              system_label)
     from ..runfiles import compose
     from ..structure import Structure
@@ -83,7 +83,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                            hessian_from_fc, read_fc, reference_frame_of)
     from siesta_reader import SiestaReader
     from fdf import (deck_atoms, fdf_key, read_fdf,  # type: ignore[no-redef]
-                     parse_fdf_params, system_label)
+                     system_label)
     from runfiles import compose
     from structure import Structure
     from deck_record import (DeckRecordUnreadable, box_of_run,
@@ -257,7 +257,10 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
             f"{deck.name} carries no vibration block -- the stationarity "
             f"criterion and the ladder's relaxation are not recorded: "
             f"re-prep the stage")
-    cell = parse_fdf_params(text, source=deck.name).cell_ang
+    # THE BOX THE RUN HAD -- the one rule the structure the result states is
+    # built with (`deck_record.box_of_run`, the ENGINE-OFFSET block), never
+    # a second read of the deck's lattice (2026-10-18).
+    cell = (box_of_run(offset) or {}).get("cell")
 
     # THE RUN'S OWN ACCOUNT: FC step 0, and the version SIESTA states.
     reading = SiestaReader().feed_text(
@@ -350,7 +353,7 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         raise FinishError(
             f"{run.deck.name}'s vibration block states no masses_amu -- a "
             f"deck prepared before the masses were stated in it (2026-10-10, "
-            f"format v3): prepare the stage again")
+            f"format v2): prepare the stage again")
     if len(masses) != n:
         raise FinishError(
             f"{run.deck.name}'s vibration block states {len(masses)} masses "

@@ -340,20 +340,20 @@ deck_lacks = ["ecp ="]
 name = "a PySCF rung set to continue reads the density and geometry the run before it left, before it builds the molecule"
 engine = "pyscf"
 deck = ['mf.init_guess = "chkfile"']
-deck_order = ['_opt_path = _mb_outfile(JOB + "_optimized.xyz")', "mol = gto.M("]
+deck_order = ["_opt_path = _mb_outfile(JOB + '_optimized.xyz')", "mol = gto.M("]
 
 [[case]]
 name = "...whether or not it writes a geometry of its own"
 engine = "pyscf"
 template = { save_optimized_xyz = false }
-deck = ['_opt_path = _mb_outfile(JOB + "_optimized.xyz")']
+deck = ["_opt_path = _mb_outfile(JOB + '_optimized.xyz')"]
 
 [[case]]
 name = "...set clean, it reads neither, and still writes its checkpoint"
 engine = "pyscf"
 template = { restart = "clean" }
 deck = ["mf.chkfile = "]
-deck_lacks = ['mf.init_guess = "chkfile"', '_opt_path = _mb_outfile(JOB + "_optimized.xyz")']
+deck_lacks = ['mf.init_guess = "chkfile"', "_opt_path = _mb_outfile(JOB + '_optimized.xyz')"]
 
 # running-a-job.md § 4.2, job-contracts.md § 3.2: the engine is declared in PROVENANCE, deck and run script.
 [[case]]
@@ -375,4 +375,4 @@ deck = ["\nJOB = \"H2\""]
 [[case]]
 name = "a PySCF deck saves the input geometry right after building the molecule, before relaxing"
 engine = "pyscf"
-deck_order = ["mol = gto.M(", "\n_save_structure(mol, _mb_outfile(JOB + \"_initial.xyz\")", "= _mb_relax("]
+deck_order = ["mol = gto.M(", "\n_save_structure(mol, _mb_outfile(JOB + '_initial.xyz'", "= _mb_relax("]

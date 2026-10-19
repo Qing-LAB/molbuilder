@@ -374,6 +374,24 @@ def _stop_reason(traj) -> Optional[str]:
     return CAUSE_WORDS.get(cause) if cause else None
 
 
+def _targets_of(data) -> Optional[Dict[str, Any]]:
+    """``{source, force_tol_ev_ang, said}`` from a trajectory's
+    ``runtime_info.convergence_targets``, through the log's own rule
+    (`trajectory_log.emitter.targets_of`), or ``None`` where it states
+    none."""
+    from molbuilder.trajectory_log import emitter as _E
+    rt = data.get("runtime_info") if isinstance(data, dict) else None
+    ct = (rt or {}).get("convergence_targets")
+    leaf = _E.targets_of(ct)
+    if not leaf:
+        return None
+    tol = leaf.get(_E.MAX_FORCE_TOL)
+    return {"source": (ct or {}).get("source"),
+            "force_tol_ev_ang": (float(tol) if isinstance(tol, (int, float))
+                                 and not isinstance(tol, bool) else None),
+            "said": _E.targets_said(ct)}
+
+
 @bp.route("/api/watch/load", methods=["POST"])
 def api_load():
     """Two body shapes:
@@ -504,6 +522,10 @@ def api_load():
             state["data"], parser_cls),
         "label":            parser_cls.label,
         "data":             state["data"],
+        # THE RUN'S TARGETS AS THE PAGE DRAWS THEM (`trajectory_log.emitter`,
+        # the keys' one home): the rows said, the force threshold the plot
+        # draws, and where they came from -- the page spells no key.
+        "targets":          _targets_of(state["data"]),
         "uploaded":         False,
         # HOW THE RUN THIS FILE BELONGS TO IS DOING -- the one door's answer,
         # which the viewer follows (`web/results.md` § 4.1).
@@ -595,6 +617,7 @@ def _api_load_multipart(uploaded_file):
         "format":           _engine_of(None, state["data"], parser_cls),
         "label":            parser_cls.label,
         "data":             state["data"],
+        "targets":          _targets_of(state["data"]),
         "uploaded":         True,
         "uploaded_filename": uploaded_file.filename,
         # An upload belongs to no run, so there is no run to follow --
@@ -684,5 +707,6 @@ def _changed(state: Dict[str, Any]) -> Dict[str, Any]:
             state["data"], parser_cls),
         "label":    parser_cls.label,
         "data":     state["data"],
+        "targets":  _targets_of(state["data"]),
         "uploaded": state.get("uploaded", False),
     }

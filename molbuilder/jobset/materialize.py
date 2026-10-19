@@ -11,6 +11,8 @@ runs from).
 
 from __future__ import annotations
 
+from .model import KIND_SWEEP
+
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:                      # annotations only
     from ..paths import Shape
@@ -379,7 +381,7 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
         # one answer to *where do this trial's files go*, and `prep` asks
         # the same one.
         d = base / dirs[job.name]
-        if jobset.kind == "sweep":
+        if jobset.kind == KIND_SWEEP:
             # A TRIAL'S FOLDER IS A RUN's, opened by the one opener.
             d = open_run(base, trial_work_dir(d, sh,
                                               run_names(jobset, job, sh)),
@@ -433,7 +435,7 @@ def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
     alike: a run's record lies in its folder, and its name is the names'."""
     from ..paths import trial_label
     from ..runfiles import RunNames, parse
-    trial = jobset.kind == "sweep"
+    trial = jobset.kind == KIND_SWEEP
     label = trial_label(jobset.name, job.name) if trial else jobset.name
     rec = parse(Path(job.script).name, label)
     if rec is None or rec.stage is None:

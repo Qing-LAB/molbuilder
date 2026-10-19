@@ -389,7 +389,7 @@ def api_transport_describe() -> Any:
     composes through.
     """
     from molbuilder.projects import projects_root
-    from molbuilder.task import Task, derive_run
+    from molbuilder.task import Task, derive_run, fixed_by_kind
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder import template as _T
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
@@ -418,13 +418,6 @@ def api_transport_describe() -> Any:
                                  "relaxed junction first: a finished "
                                  "relaxation run, or a structure pair "
                                  "saved from one"}), 400
-    bias_raw = body.get("bias") or [0.0]
-    try:
-        bias = tuple(float(v) for v in bias_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False,
-                        "error": f"bias must be a list of volts, "
-                                 f"got {bias_raw!r}"}), 400
     # THE LOW-BIAS APPROXIMATION, as the person chose it -- the
     # description's check below refuses a list of several without it, and
     # one with a single voltage (`engines/transport.md` § 2a.10).
@@ -480,6 +473,21 @@ def api_transport_describe() -> Any:
         _, cited = resolve_citation(citation, projects_root())
     except ComposeError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # THE BIAS, STATED: `[0.0]` for a single bias -- the one spelling both
+    # roads write (`engines/transport.md` § 2a.10); nothing defaults it.
+    # After both fences: a path outside the tree is refused first.
+    bias_raw = body.get("bias")
+    if not bias_raw:
+        return jsonify({"ok": False,
+                        "error": "bias: state the voltages -- [0.0] for a "
+                                 "single bias (engines/transport.md 2a.10)"}), 400
+    try:
+        bias = tuple(float(v) for v in bias_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False,
+                        "error": f"bias must be a list of volts, "
+                                 f"got {bias_raw!r}"}), 400
 
     # THE FOLDER'S two refusals every door that describes asks
     # (`engines/transport.md` § 3.8.2a; user, 2026-10-11): one calculation
@@ -554,7 +562,7 @@ def api_transport_describe() -> Any:
                                      f"marks `shared` for transport"}), 400
     try:
         task = Task(
-            engine=engine, shape="hierarchical",
+            engine=engine, shape=fixed_by_kind("transport")["shape"],
             run=derive_run(typed, citation,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",
@@ -676,7 +684,6 @@ def api_transport_schema() -> Any:
                                                         citation_answers)
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder.transport.stages import (RUNG_NOTES, TRANSPORT_STAGES,
-                                             resolvable_override_names,
                                              why_no_transport)
     from molbuilder import template as _T
 
@@ -734,7 +741,12 @@ def api_transport_schema() -> Any:
                 _panel_template(cited.path, shared, label="transport"))
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        answers = citation_answers(cited.path)
+        try:
+            answers = citation_answers(cited.path)
+        except ValueError as exc:
+            # A CITED VALUE THIS BUILD CANNOT READ, refused by name
+            # (`citation_defaults`; a 500 until 2026-10-19).
+            return jsonify({"ok": False, "error": str(exc)}), 400
         source = {"kind": answers.source, "name": answers.source_name}
         asks = asked_of_the_person(cited)
     # ONE ID PER CONTROL ON THE PAGE: the five rung tabs render the same
@@ -752,21 +764,9 @@ def api_transport_schema() -> Any:
         response["rung"] = rung
         response["rungs"] = [{"name": n, "index": i, "note": RUNG_NOTES[n]}
                              for i, n in enumerate(TRANSPORT_STAGES, start=1)]
-        # AND EVERY CONTROL PREP CANNOT RESOLVE: a control the describe door
-        # is guaranteed to reject is not a control (measured 2026-09-16).
-        # A locked echo is not a control (§ 6.6 obligation 3): it stays.
-        _resolvable = resolvable_override_names()
-        kept = []
-        for sec in schema.get("sections", []):
-            fields_left = [f for f in sec.get("fields", [])
-                           if f.get("name") in _resolvable
-                           or "locked" in f]
-            if fields_left:
-                sec = dict(sec)
-                sec["fields"] = fields_left
-                kept.append(sec)
-        schema = dict(schema)
-        schema["sections"] = kept
+        # NO SECOND FILTER HERE: which fields a rung's tab offers is the
+        # schema builder's, by the catalogue's markers (`transport.md`
+        # § 3.8.2; the run settings dropped by `surface="rung"`, 2026-10-18).
     response["schema"] = schema
     return jsonify(response)
 

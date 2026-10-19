@@ -546,10 +546,15 @@ def _emit_initial_state() -> List[str]:
     # structure states them from the equilibrium write on
     # (engines/vibration.md 6.10.2).
     out.append("    'frozen_atom_idxs':   FROZEN_ATOM_IDXS,")
+    # ABSENT WHOLE UNTIL THE SCF STATES IT (`engines/vibration.md` § 6.5: a
+    # missing number is absent, never zero; the block travels whole or not
+    # at all) -- so the file reads from its first write, during the
+    # relaxation, as § 4.2 promises.  Placeholders (0.0, [], 0) stood here
+    # until 2026-10-18 and the reader refused every in-progress file.
     out.append("    'equilibrium':        {")
-    out.append("        'scf_energy_eh':  0.0,            # placeholder until SCF")
-    out.append("        'mo_energies_eh': [],")
-    out.append("        'homo_idx':       0,")
+    out.append("        'scf_energy_eh':  None,")
+    out.append("        'mo_energies_eh': None,")
+    out.append("        'homo_idx':       None,")
     out.append("    },")
     out.append("    'modes':                    [],")
     out.append("    'selected_mode_idxs_1based': [],")
@@ -569,10 +574,6 @@ def _emit_initial_state() -> List[str]:
     out.append("    # actually used the resources they expected.")
     out.append("    'runtime_info':              dict(_RUNTIME_INFO),")
     out.append("}")
-    out.append("# We deliberately don't write the initial state yet -- the")
-    out.append("# SpectraResults shape requires non-empty MO energies +")
-    out.append("# valid homo_idx for the partition check, so the first")
-    out.append("# meaningful checkpoint is after the equilibrium SCF.")
     out.append("")
     return out
 

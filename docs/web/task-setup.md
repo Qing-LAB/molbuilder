@@ -179,7 +179,7 @@ two electrode labels in its own copy of the junction (`swap_electrodes`,
 emitted file is stemmed on. **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
-describe door's own helper (`compose.frame_set_answer`,
+describe door's own door (`frame_average.answer`,
 [`engines/transport.md`](?doc=engines/transport.md) § 3.8.1), through the
 folder answer's `frame_set`; a citation that does not read says why, and the
 folder still opens.
@@ -297,12 +297,13 @@ group number or add one")*. Beside each stage's name, its **group** — the job
 it runs in ([`stages.md`](?doc=engines/stages.md) § 2) — with two choices on
 every row but the first: *same as above* (repeat the number) or *new group*
 (add one). A row that may not repeat — it builds on a stage in the group
-above as the card stands, edits included — says why beside it and offers only
-*new group*: the page applies the rule to the stages each row builds on, as
-the folder answer gives them (`groups`: each stage's number, the stages it
-builds on — `builds_on`, asked of `group.upstream_of` by the server —
-whether that is its kind's, `linked`, and whether it was launched), and
-Save's check (`group.check_groups`) refuses what the rule forbids. Both name
+above, or states other values than that group on what a job shares, or that
+group was launched — says why beside it and offers only *new group*: the
+sentence is the server's (`groups.stages[i].why_same`, from
+`group.why_not_join`, the one home of the rule `group.may_join` asks; the
+page composes none, 2026-10-18), beside the facts the folder answer gives
+(each stage's number, `builds_on`, `linked`, `launched`), and Save's check
+(`group.check_groups`) refuses what the rule forbids after edits. Both name
 the ways out: a new group — or, for an independent ladder's stage, its run
 card's `restart` set to `clean`, so it builds on nothing.
 A new description arrives with the defaults (repeat wherever allowed); Save
@@ -391,9 +392,11 @@ are named the same way from the first run — `01_coarse` — and a job that gro
 second stage needs nothing renamed or renumbered
 ([`stages.md § 6.5`](?doc=engines/stages.md)).
 
-**Names are words, and the ordinal is not part of the name.** The shipped ladder
-is `coarse` / `medium` / `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`), each
-arriving with its tier's preset ([`tuning.md § 4`](?doc=engines/tuning.md)).
+**Names are words, and the ordinal is not part of the name.** A fresh
+optimization is one stage, `coarse`, with no overrides (`task.fresh_stages`);
+the three tiers `coarse` / `medium` / `tight` (`config/stages.py::STAGE_NAMES`, the engine-neutral home),
+each with its preset ([`tuning.md § 4`](?doc=engines/tuning.md)), come with
+`jobset init --stage-strategy`.
 Position is carried by the artifact token — `01_coarse`,
 `identity.stage_token` — so the name never repeats it, and a stage's `seq` is
 assigned once and never reassigned
@@ -660,8 +663,10 @@ marker is the catalogue's ([`engines/template.md`](?doc=engines/template.md)
 no list.
 
 **Two rows are the run's alone and are never the bench's**: `time` and
-`domain`, offered by *+ Add setting* beside the sweepable items and by name
-rather than from the catalogue — no engine has an opinion about a wall clock
+`domain`, offered by *+ Add setting* beside the sweepable items, served with
+them by the sweepable door (`lane_asks`, their words from `task.LANE_ASK_ROWS`;
+the page keeps no table, 2026-10-18) and not from the catalogue — no engine has
+an opinion about a wall clock
 or a queue, and a benchmark that swept its own wall would be measuring the
 queue (`stages.md` § 6.8e). They are what makes *"the bench keeps the
 calculation's short wall, this run asks for two days"* sayable in one file.
@@ -1065,9 +1070,9 @@ or somebody edited by hand ([`tabs.md § 6`](?doc=web/tabs.md)).
 
 Every one of these can silently destroy a value if its rule is not stated.
 On a transport folder the rows are fixed (§ 5.3): no stage is renamed or
-moved and no preset is offered; only the seed is removed, or added back in its
-place with no values of its own — a rung, not a refinement of the one before
-it; columns and cells work as they do on every kind.
+moved and no preset is offered, and no rung is removed — the five, every one,
+in order (§ 5.3; `task.py` refuses otherwise); columns and cells work as they
+do on every kind.
 
 | Operation | What it does | The rule that keeps it safe |
 |---|---|---|

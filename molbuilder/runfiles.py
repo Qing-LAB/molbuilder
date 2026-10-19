@@ -69,7 +69,21 @@ _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 #: engines' vocabularies are read by modules this one may not import -- L1
 #: grammar reaching an L1 TOML reader would put a file read behind every
 #: filename.  A caller holding the real vocabulary passes it as ``roles``.
-_ENGINE_ROLES = ("_optimized.xyz", "_geom.tmp")
+#: THE ROLES OTHER MODULES NAME IN CODE -- each spelled here and nowhere
+#: else (`model/parse.md` § 5.5 R-RO1): the PySCF deck emitter names the
+#: files its script writes by these (`pyscf/input.py` imports them), the
+#: readers ask `role_of`/`stem_before` with them, the catalogue's rows below
+#: are written with them.
+ROLE_CHK         = ".chk"
+ROLE_PYSCF_LOG   = ".log"                # PySCF's own log, a rung's own
+ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
+ROLE_INITIAL     = "_initial.xyz"
+ROLE_OPTIMIZED   = "_optimized.xyz"
+ROLE_CONSTRAINTS = ".constraints.txt"
+ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
+ROLE_MOLWATCH    = ".molwatch.log"       # the run as it happens, every engine
+
+_ENGINE_ROLES = (ROLE_OPTIMIZED, "_geom.tmp")
 
 #: The basename rule, restated from `config/siesta.py::_validate_basename`
 #: (job-contracts.md § 2.1: "a single token matching [A-Za-z0-9_-]+").  It is
@@ -643,6 +657,53 @@ def find(directory, label: str, *,
     return out
 
 
+def find_on_label(directory, label: str, role: str) -> "list[Path]":
+    """The label's files in ``role`` named on the label ALONE, no stage
+    token -- as an engine names its own (SIESTA's ``<label>.FC``,
+    TBtrans's ``<label>.TBT.nc``) and a run its result
+    (``<label>.spectra.json``) -- in run-index order.  THE ONE BODY behind
+    `runs.Run.on_label` and every reader of an engine file on the label
+    (`job-contracts.md` § 2.2a): a reader that copied it answered the same
+    question a second way."""
+    return [p for p, rec in find(directory, label, role=role)
+            if rec.stage is None]
+
+
+def longest_tail(engine_names: "tuple[str, ...]") -> str:
+    """The longest text the catalogue appends to ``<label>_<stage>`` -- every
+    role, a templated one filled with the longest value its field takes:
+    the longest engine name, the longest shape, a run counter of four digits,
+    the wrapper's stamp.  What `identity.MAX_LABEL_BYTES` is derived from
+    (`run-identity.md` § 3)."""
+    fill = {"engine": max(engine_names, key=len),
+            "shape": max(_SHAPES, key=len),
+            "stamp": "YYYYMMDD-HHMMSS", "run": "9999"}
+    out = ""
+    for r in roles():
+        try:
+            t = r.format(**fill)
+        except (KeyError, IndexError):
+            t = r
+        if len(t) > len(out):
+            out = t
+    return out
+
+
+def stem_before(name, role: str) -> Optional[str]:
+    """What precedes ``role`` in ``name`` -- the stem every other file of
+    that run is named on -- or ``None`` when ``name`` does not end in it, or
+    is nothing but it.  ``role`` is one of this module's (the constant,
+    never a literal at the call site); the cut is one place, so a reader
+    handed a path and no label (`parse.engines.pyscf`, geomeTRIC's
+    trajectory) does not split the name by hand."""
+    if role not in roles():
+        raise ValueError(f"not a role of the catalogue: {role!r}")
+    base = str(name).rsplit("/", 1)[-1]
+    if len(base) <= len(role) or not base.endswith(role):
+        return None
+    return base[:-len(role)]
+
+
 def find_by_role(directory, role: str) -> "list[Path]":
     """Every file here in this ROLE, whoever's it is — sorted by name.
 
@@ -945,7 +1006,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # ---- what the DECK writes for itself ------------------------------
     # A file the generated script writes is molbuilder's too -- it is our
     # deck that writes it.
-    Artifact("_initial.xyz", "the input geometry, echoed back before "
+    Artifact(ROLE_INITIAL, "the input geometry, echoed back before "
                              "anything ran", staged=False, engine="pyscf",
              kind="result", writer="the PySCF deck"),
     # ITS SIDECAR, the pair's other half -- written by the deck through the
@@ -959,13 +1020,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                           "restart file `_optimized.xyz`",
              staged=False, engine="pyscf", kind="result",
              writer="the PySCF deck"),
-    Artifact(".constraints.txt", "which atoms are held still, in geomeTRIC's "
+    Artifact(ROLE_CONSTRAINTS, "which atoms are held still, in geomeTRIC's "
                                  "own format",
              staged=False, engine="pyscf", kind="derived",
              writer="the PySCF deck", only="atoms are held"),
     # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
     # finish after the force-constant run (`engines/vibration.md` § 5.5).
-    Artifact(".spectra.json", "the spectrum this run computed: frequencies, "
+    Artifact(ROLE_SPECTRA, "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
                               "thermochemistry -- written by the run itself",
              staged=False, calculation="vibration", kind="result",
@@ -1004,7 +1065,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # PREP SEEDS IT, so its moment is prep's.
     # EACH FLAT RUN'S OWN (plan W57 decision 2), so a flat stage launched
     # again does not truncate an earlier run's PySCF trajectory.
-    Artifact(".molwatch.log", "the run as it happens — coordinates, "
+    Artifact(ROLE_MOLWATCH, "the run as it happens — coordinates, "
                               "energy and forces, one block per step",
              attempt="shared", output="progress", when="prep", kind="record",
              writer="prep seeds the first run's, in the attempt -- in "
@@ -1071,7 +1132,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # PYSCF'S OWN LOG (`mol.output`, `model/parse.md` § 5.5).
     # PySCF OPENS IT WITH 'w', so a flat run's own (plan W57 decision 2): a
     # flat stage launched again would truncate the last run's.
-    Artifact(".log", "PySCF's own log", attempt="shared", engine="pyscf",
+    Artifact(ROLE_PYSCF_LOG, "PySCF's own log", attempt="shared", engine="pyscf",
              kind="result", writer="the PySCF deck",
              door="parse.dirs.record.run_record"),
     # GEOMETRIC'S TRAJECTORY, `<label>_<stage>_geom_optim.xyz` -- the row the
@@ -1080,7 +1141,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # it, which carries the run's number there, so a flat stage's runs do not
     # write one file.  geomeTRIC writes no log file here: PySCF hands it a
     # logging setup that prints to the screen (`pyscf/geomopt/log.ini`).
-    Artifact("_geom_optim.xyz", "geomeTRIC's trajectory: each accepted "
+    Artifact(ROLE_GEOM_TRAJ, "geomeTRIC's trajectory: each accepted "
                                 "step's geometry, multi-frame XYZ — the name "
                                 "the deck's prefix for geomeTRIC is derived "
                                 "from; geomeTRIC writes no log file of its "

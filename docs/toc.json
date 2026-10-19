@@ -671,6 +671,11 @@
           "subtitle": "The plan's done rows — 2026-10-18"
         },
         {
+          "path": "archive/2026-10-18-review-findings.md",
+          "label": "The seven-lane review of 2026-10-18 — every finding, with its verdict",
+          "subtitle": "The seven-lane review of 2026-10-18 — every finding, with its verdict"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"

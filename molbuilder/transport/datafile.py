@@ -370,7 +370,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     n_eig = max((len((p.get("dos") or {}).get("eigenchannels") or ())
                  for p in done_points), default=0)
     iv = record.get("iv") or {}
-    iv_biases = _voltages(task.bias or ()) or [0.0]
+    iv_biases = _voltages(task.bias)
     n_atoms = junction.n_atoms if junction is not None else 0
     # EVERY RUN'S CONVERGENCE: the rungs that run once, by the stage table;
     # the device's runs, one a point; one SCF-row axis long enough for the

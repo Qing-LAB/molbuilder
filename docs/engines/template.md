@@ -425,12 +425,11 @@ next author does not undo one of them:
   breaks survive and nothing in the string is interpreted. Short help also
   rides a native `title=` tooltip, which is single-line by nature; that is why
   the long/short split exists rather than a style choice.
-- **Comparing normalises whitespace.** A config class mirrors the catalogue's
-  help in a Python string wrapped to fit source, so the two legitimately
-  differ in where the lines break. `test_catalogue_agreement` compares them
-  with whitespace collapsed, so it stays pointed at the fact it guards — a
-  stale sentence, other bounds, another engine's wording — rather than firing
-  on a re-wrap.
+- **Comparing normalises whitespace.** A help text compared across two files
+  (a document's quote of the catalogue's) is wrapped to fit source, so the two legitimately
+  differ in where the lines break; a comparison collapses whitespace first, so
+  it stays pointed at the fact — a stale sentence, other bounds, another
+  engine's wording — rather than firing on a re-wrap.
 
 ### 4.1 Why TOML, and why not the three alternatives
 
@@ -797,10 +796,11 @@ and wrongly, with nothing in the file to reveal that it moved. Naming the
 release the citation was taken against makes a stale pointer *visible* — the
 same reasoning as § 3's schema string.
 
-**It is the one key the config classes do NOT mirror.** The mirrored set lives
-in two homes until the form is rebuilt from the catalogue (§ 2.1a), and
-`tests/test_catalogue_agreement.py` keeps the two in step. **That set is named
-once, in the test's own `MIRRORED` constant** — naming it here as well is how
+**The config classes mirror nothing since 2.15.4** (§ 2.1a — the debt paid
+2026-10-18): a class carries a field's name, type, default and validators, and
+every other fact is the catalogue's, read through `items_of`.
+`tests/test_catalogue_agreement.py` keeps the one fact both still state, the
+`default`, in step. **Naming a mirrored set here as well is how**
 this paragraph came to list five keys while § 2.1a listed seven and the code
 checked six.
 
@@ -1049,13 +1049,14 @@ keyword, so tell me what it is.*
 | **the catalogue** (`data/catalogue.template.toml`) | by hand, as TOML | **verbatim** — you write `kind`, and `anchor` when the kind is `engine` |
 | **the config class** (`SiestaConfig` / `PySCFConfig`) | field `metadata` | **derived** — from `engine_key`, plus `item_kind` when the shape needs it |
 
-The catalogue is the master (§ 2.1), but the live form still reads the
-dataclass, so the same fact has two homes until that debt is paid (§ 2.1a).
+The catalogue is the master (§ 2.1), and the live form reads it through
+`items_of` (§ 2.1a, paid 2026-10-18; `web/form-schema.md` § 1a).
 
 **What is caught, and what is not — and the difference matters most for the two
-keys this section is about.** `test_every_mirrored_fact_agrees` compares the six
-mirrored facts (`label`, `range`, `unit`, `choices`, `engine_key`,
-`workflow_group`) and goes red naming the item and the key. **`kind` and
+keys this section is about.** `tests/test_catalogue_agreement.py` compares the
+one fact both homes still state, the `default`, and goes red naming the item;
+the six facts that were mirrored (`label`, `range`, `unit`, `choices`,
+`engine_key`, `workflow_group`) have one home since 2.15.4. **`kind` and
 `anchor` are not compared**, because `restart` declares `kind = deck` in the
 shared catalogue row and `produce` on the PySCF dataclass, correctly, and no
 document states that exception. `tests/test_template_roundtrip.py` checks that
@@ -2205,30 +2206,11 @@ the one [`overview.md`](?doc=engines/overview.md) § 3 already draws:
 | | what it is | where it lives |
 |---|---|---|
 | the sidecar's **`frozen_atoms`** | the structure's own annotation. It **seeds** the form | with the structure, in the sidecar |
-| **`frozen_indices`** | what the user actually chose — this run's boundary condition | **a template item**, `kind="deck"`, producing `%block Geometry.Constraints` |
+| the held set, written | `%block Geometry.Constraints`, from the structure's own `frozen_atoms` region — the same fact, in SIESTA's 1-based numbering | `siesta/input.py`, from the structure; **no template item** (§ 12.1 row 2, closed 2026-09-24: the held set is a structure fact for every engine, `overview.md` § 3) |
 
 Note that the two use different index bases in one file on purpose
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.4: the metadata block
 is 0-based, SIESTA's constraints block is 1-based).
-
-> **⚠ The second row is the design, and for SIESTA it is not built.** There is
-> no `frozen_indices` item in the catalogue and no such field on
-> `SiestaConfig` — only `SpectraConfig` has one. `siesta/input.py` writes
-> `%block Geometry.Constraints` straight from **`struct.frozen_atoms`**, the
-> sidecar's own annotation.
->
-> **What that costs is the whole point of the distinction.** The boundary-
-> condition contract ([`overview.md`](?doc=engines/overview.md) § 3) says the
-> sidecar *seeds* the form and the form is then authoritative — leave the
-> pre-fill, add to it, or clear it deliberately. On the SIESTA path there is no
-> form value to be authoritative: clearing the field cannot unfreeze anything,
-> because the deck is written from the sidecar either way. The Stage-3A
-> divergence warning that would catch the two disagreeing is spectra-only, so
-> nothing reports it.
->
-> Recorded rather than quietly corrected because the founding rule it touches
-> is a user directive of 2026-05-21 — *"no silent absorption of config"* — and
-> the gap is exactly a silent absorption. § 12 carries it as work owed.
 
 ### 9.2 A person's own text is an item, because there is no previous deck to read
 
@@ -2602,9 +2584,10 @@ step 3.
 one item rather than as a sequencing rule. The wrapper cannot be written until
 `use_gpu` is fixed, because three of its decisions are functions of it.
 
-**And it is where § 1.1a's second row bites.** Step 4 gets that value by
-**grepping the `.fdf` it just wrote**, not by reading `read_by`. The picture is
-the same either way — the same value reaching the same three decisions — which
+**And it is where § 1.1a's second row used to bite.** Step 4 took that value by
+grepping the `.fdf` it had just written until 2026-08-23; it is handed the value
+now (§ 1.1a — the scan is gone). The picture is the same either way — the same
+value reaching the same three decisions — which
 is exactly why the difference is easy to overlook and worth drawing: an engine
 whose deck is a `.py` produces the identical arrows and is not looked at.
 
@@ -2707,10 +2690,12 @@ writpx = fdf_get( 'WriteMDXmol',    .not. writec ) ! -> pixmol  -> .ANI
 
 `WriteMDXmol`'s default is **the negation of `WriteCoorStep`** — and this
 project ships `WriteCoorStep .true.`. So turning on the per-step coordinate log
-turns the `.ANI` animation file *off*, molbuilder never writes `WriteMDXmol` to
-say otherwise, and `parse/dirs/job.py` indexes `.ANI` files that our decks
-cannot produce. **Three correct-looking decisions composed into a missing
-file.** Nothing failed; the artefact simply was not there.
+turned the `.ANI` animation file *off*, and until `write_md_xmol` became an
+item of the output section (`siesta/layout.py`; the `.ANI` row of the file
+catalogue names it as its writer) nothing wrote `WriteMDXmol` to say otherwise
+while the run index listed `.ANI` files our decks could not produce. **Three
+correct-looking decisions composed into a missing file** — history now, kept
+as the worked example of the rule.
 
 **So: a `help` that names a FILE or an EFFECT is checked against the engine,
 not against plausibility** — and where one keyword's default is written in
@@ -2772,8 +2757,9 @@ A **GPU** deck must run in `molbuilder-siesta-gpu` — the source build is the
 only one whose ELPA was compiled with GPU support. The wrapper writer needs
 `use_gpu`'s value to pick both the environment and the GPU runtime.
 
-**How it gets it today, and how it is meant to.** Today it greps the rendered
-deck for `Diag.ELPA.GPU`. The design is that it asks for every item whose
+**How it gets it.** The value is handed to the wrapper renderer (§ 1.1a; the
+grep of the rendered deck for `Diag.ELPA.GPU` went on 2026-08-23). The design
+is that it asks for every item whose
 `read_by` names it and is handed `use_gpu` — and the item already carries
 that declaration, kept correct by the guard test in § 6.1. The difference is
 one import away and is § 1.1a's second row.
@@ -2879,7 +2865,7 @@ closing one is a visible act. Measured 2026-08-17.
 | **1** | **`user_custom` has no schema field and no catalogue item** | § 9, § 9.2 | in the staged path a person's own engine text is silently dropped |
 | ~~**2**~~ | ~~`frozen_indices` has no item for SIESTA~~ — **closed 2026-09-24**: the held set is a structure fact for every engine (the `frozen_atoms` region, [`engines/overview.md`](?doc=engines/overview.md) § 3, [`engines/vibration.md`](?doc=engines/vibration.md) § 2.3); no engine has a form item for it and none should — the form copy was the silent absorption, and it retired on 2026-08-21 | § 9.1 | — |
 | **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
-| **4** | **`read_by` is declared and unconsumed**; the wrapper still greps the deck | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency |
+| **4** | **`read_by` is declared and unconsumed** (the wrapper's grep of the deck is gone since 2026-08-23; the value is handed to it) | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency — plan TPL |
 | **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |
 | ~~**6**~~ | ~~PySCF's `threads` is not flagged `allocation`~~ — **closed**: the PySCF `threads` item carries `allocation = true` (`data/catalogue.template.toml`, `[item.threads]`) | § 6.4 | — |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |

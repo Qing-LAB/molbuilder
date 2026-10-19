@@ -234,13 +234,15 @@ class SiestaParser:
         # registry dispatch unambiguous.  Case-insensitive guard
         # against filesystem-case quirks (Windows / case-insensitive
         # mounts may surface ``.MOLWATCH.LOG``).
-        if str(path).lower().endswith(".molwatch.log"):
-            return False
-        # A PYTHON FILE IS A SCRIPT, never an engine's output -- the person's
-        # PySCF deck, or one of the framework modules shipped beside every job
-        # (`runwrap.MONITOR_COMPANIONS`), whose sources quote SIESTA's own
-        # lines.
-        if str(path).lower().endswith(".py"):
+        # A DECLARED FILE THAT IS NOT SIESTA'S STDOUT IS NOT THIS PARSER'S
+        # -- the progress log (its own parser's), a PySCF script or log
+        # (whose sources quote SIESTA's own lines): asked of the catalogue
+        # (`runfiles.role_of`, `stdout_roles`), never of a suffix spelled
+        # here.  A name the catalogue does not know (a hand-started
+        # `job.out`) goes on to the content sniff below.
+        from ...runfiles import role_of as _role_of, stdout_roles as _stdout
+        _role = _role_of(path)
+        if _role is not None and _role not in _stdout("siesta"):
             return False
         try:
             with open(path, "r", errors="replace") as fh:

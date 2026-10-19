@@ -62,7 +62,13 @@ class PySCFGeomFileParser(FileParser):
         # Plain ``.xyz`` files (without the suffix) are intentionally
         # NOT claimed here; the PySCFOutFileParser registered under
         # engines/ handles ``_geom_optim.xyz`` trajectories.
-        return path.name.endswith("_optimized.xyz") and path.is_file()
+        # THE GEOMETRY REACHED, and the INPUT ECHOED BACK before relaxing
+        # -- both single-frame pairs the PySCF deck writes, both this
+        # reader's (the run's parts the trajectory inspector absorbs,
+        # `web/trajectory.md`); the echo had no reader until 2026-10-19.
+        from ...runfiles import ROLE_INITIAL, ROLE_OPTIMIZED
+        return ((path.name.endswith(ROLE_OPTIMIZED)
+                 or path.name.endswith(ROLE_INITIAL)) and path.is_file())
 
     @classmethod
     def parse(cls, path: Path) -> StructureResult:

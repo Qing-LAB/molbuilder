@@ -495,9 +495,12 @@ class TestThePlanComesFromTheProducer:
         wall, one memory.  `prep task <stage>` is already per stage, so a
         rung that wants a different wall says so on its own command."""
         d = _plan(client, _PLAN_TASK)
+        # THE EFFECTIVE ASK per stage (`ask`: the run card's over the
+        # calculation's, the fold prep uses) -- here every stage's is the
+        # calculation's one allocation.
         for row in d["stages"]:
-            assert row["allocation"] == {"domain": "htc",
-                                         "time": "1-00:00:00", "mem": ""}
+            assert row["ask"] == {"domain": "htc",
+                                  "time": "1-00:00:00", "mem": None}
 
     def test_the_chosen_shape_is_EXECUTION_never_the_bench(self, client):
         """`stages.md` § 6.8d: the run's condition is `execution`, its own

@@ -968,59 +968,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /* ------------------------------------------------------------------ */
 
 
-    // Pull convergence_targets out of runtime_info.  Returns null
-    // when the parser didn't find them (older runs / non-molbuilder
-    // scripts).  Callers (plots + summary block) decide what to do
-    // with absence; the most common is "hide the threshold line +
-    // render the hint instead."
-    //
-    // Two header shapes are normalised to a single flat dict:
-    //
-    //   FLAT (legacy, single-stage):
-    //     {max_force_tol_eV_per_A: 0.023, max_scf_iter: 100, ...,
-    //      source: "molwatch_header"}
-    //     -> returned as-is.
-    //
-    //   NESTED (staged runs, task #534) — keys are the stages' artifact
-    //   TOKENS, digit-first (job-contracts.md 6.3), so they are NOT
-    //   identifiers and always need quoting:
-    //     {"01_coarse": {max_force_tol_eV_per_A: ..., ...},
-    //      "02_tight":  {max_force_tol_eV_per_A: ..., ...}, ...,
-    //      source: "molwatch_header"}
-    //     -> flattened to the LAST stage's leaf dict (the tightest
-    //     tier — the run only stops when the last enabled stage's
-    //     targets are met, so that's the "what counts as converged"
-    //     reference the plot needs).  Future commit may wire per-
-    //     frame stage attribution so threshold lines per stage can
-    //     be drawn against the trajectory; today we collapse to the
-    //     run's terminal target.
+    // THE RUN'S TARGETS are the server's answer (`/api/watch/*` `targets`,
+    // from `trajectory_log.emitter.targets_of`: the one rule picking the
+    // run's own leaf out of the nested block) -- `{source, force_tol_ev_ang,
+    // said: [[label, text], ...]}` or null -- a nested block's one stage, or
+    // SIESTA's flat echo, both the door's to read.  The page keeps no copy
+    // of the keys, the units or the shape rule (2026-10-18).
     function _convergenceTargets() {
-        const rt = state.data && state.data.runtime_info;
-        if (!rt) return null;
-        const ct = rt.convergence_targets;
-        if (!ct || typeof ct !== "object") return null;
-        // Detect nested shape: any top-level value is itself a
-        // (non-array) object, excluding the meta ``source`` key.
-        let stageNames = [];
-        for (const k of Object.keys(ct)) {
-            if (k === "source") continue;
-            const v = ct[k];
-            if (v && typeof v === "object" && !Array.isArray(v)) {
-                stageNames.push(k);
-            }
-        }
-        if (stageNames.length === 0) {
-            return ct;                 // flat shape — return verbatim
-        }
-        // Nested.  Pick the LAST stage in insertion order (Object.keys
-        // preserves it for non-integer string keys) as the run's
-        // tightest tier.  Copy ``source`` across so the summary block
-        // still reads "from molwatch header".
-        const last = stageNames[stageNames.length - 1];
-        const leaf = ct[last] || {};
-        const flat = Object.assign({}, leaf);
-        if (typeof ct.source === "string") flat.source = ct.source;
-        return flat;
+        return state.targets || null;
     }
 
     // THE SCF'S CRITERIA -- `{phase: {residual: {tolerance, unit,
@@ -1093,12 +1048,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 sourceMap[ct.source] || (ct.source ? "from " + ct.source : "");
         }
 
-        // Targets list — render only the keys that are populated.
-        const rows = [];
-        if (typeof ct.max_force_tol_eV_per_A === "number") {
-            rows.push(["max |F|",
-                ct.max_force_tol_eV_per_A.toFixed(4) + " eV/Å"]);
-        }
+        // THE TARGETS AS SAID by the server, in the file's order.
+        const rows = (ct.said || []).map((r) => [r[0], r[1]]);
         // THE SCF'S CRITERIA, every engine's in one shape
         // (`runtime_info.scf_criteria`, web/trajectory.md § 3): one row per
         // residual the SCF had to bring below its tolerance, in that
@@ -1114,15 +1065,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     c.tolerance.toExponential(2) + (c.unit ? " " + c.unit : "")
                     + (c.required === false ? " (not required)" : "")]);
             }
-        }
-        if (typeof ct.max_scf_iter === "number") {
-            rows.push(["MaxSCFIterations", String(ct.max_scf_iter)]);
-        }
-        if (typeof ct.max_geom_iter === "number") {
-            rows.push(["geom steps cap", String(ct.max_geom_iter)]);
-        }
-        if (typeof ct.max_displ_ang === "number") {
-            rows.push(["max displ", ct.max_displ_ang + " Å"]);
         }
         if (targets) {
             for (const [label, val] of rows) {
@@ -1140,7 +1082,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // back to "all atoms" otherwise.  Adds the off-target
         // styling when ratio > 2× so the visual reads "still work
         // to do" without the user having to compute the division.
-        const tol = ct.max_force_tol_eV_per_A;
+        const tol = ct.force_tol_ev_ang;
         const forces = state.data && state.data.max_forces;
         const constrained = state.data && state.data.max_forces_constrained;
         const iters = state.data && state.data.iterations;
@@ -1338,7 +1280,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // ticks (~5-7) and skip integer labels at high frame
             // counts; the energy's ticks are every energy chart's
             // (`plot-theme.js`).
-            xaxis: { title: { text: "CG step", standoff: 4 },
+            xaxis: { title: { text: "geometry step", standoff: 4 },
                      zeroline: false, automargin: true,
                      nticks: 6 },
             yaxis: Object.assign({ title: { text: "E_KS (eV)", standoff: 4 },
@@ -1413,8 +1355,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const forceShapes = [];
         const forceAnnotations = [];
         var forceYType = undefined;
-        if (ct && typeof ct.max_force_tol_eV_per_A === "number") {
-            const tol = ct.max_force_tol_eV_per_A;
+        if (ct && typeof ct.force_tol_ev_ang === "number") {
+            const tol = ct.force_tol_ev_ang;
             // Log y-axis when the run is far above target.
             const allValues = state.data.max_forces || [];
             const maxSeen = allValues.reduce(
@@ -1435,7 +1377,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                                        window.molbuilder.themedLayout({
             title: { text: "Max force", font: { size: 13 } },
             margin: { l: 8, r: 12, t: 32, b: forceLegend.bottom },
-            xaxis: { title: { text: "CG step", standoff: 4 },
+            xaxis: { title: { text: "geometry step", standoff: 4 },
                      zeroline: false, automargin: true,
                      nticks: 6 },
             yaxis: { title: { text: "Max |F| (eV/\u00C5)", standoff: 4 },
@@ -1777,7 +1719,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             if (rt.cuda_version)            gpu += "/CUDA" + rt.cuda_version;
             parts.push(gpu);
         } else if (rt.gpu_requested === true) {
-            parts.push("CPU (GPU requested, fell back)");
+            // ASKED, NOT YET STATED USED (an interrupted header): PySCF has
+            // no CPU fallback (`engines/pyscf.md` § 2a), so this is not one.
+            parts.push("GPU requested");
         } else if (rt.gpu_used === false) {
             parts.push("CPU");
         }
@@ -2080,6 +2024,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     function applyNewData(r) {
+        // THE RUN'S TARGETS, as the server says them (`targets`: the rows
+        // said, the force threshold, their source) -- the page spells no key.
+        state.targets = (r && r.targets) || null;
         // Decide poll path: strict-tail-append (cheap; keeps playback
         // running) vs full rebuild (structure changed or frames
         // shrank).  Strict-tail criteria: existing data present, new
@@ -2369,6 +2316,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 format: r.format,
                 label:  r.label,
                 path:   r.path,
+                // THE RUN'S TARGETS, as the door says them (`targets`).
+                targets: r.targets !== undefined ? r.targets : null,
                 // Per-atom metadata recovered from the run's input script
                 // (region labels / frozen / annotations); handed to MolView
                 // below.  Only the LOAD response carries it -- watch-data

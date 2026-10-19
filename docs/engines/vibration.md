@@ -188,7 +188,7 @@ flowchart LR
   S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
   T -->|"prep task"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
   P -->|"launch task"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
-  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 8"]
+  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 9"]
   A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
 ```
 
@@ -544,7 +544,7 @@ phase.
 
 mol = gto.M(atoms = EVERY atom, held ones included; basis, charge, spin, ...)
 _mb_configure_scf / _mb_configure_theory   # the generated dressers (§ 4.3)
-state = {schema_version: 7, engine: 'pyscf', phases: empty, ...}; write the artifact
+state = {schema_version: 9, engine: 'pyscf', phases: empty, ...}; write the artifact
 
 # Phase 0 — relaxation (§ 4.2)
 if not ALREADY_RELAXED:
@@ -1326,6 +1326,8 @@ states:
 #   "relaxation_stage":"relax",       # the stage that record is of, or null
 #   "temperature_K":298.15,           # the thermochemistry's temperature (§ 4.7)
 #   "masses_amu":[1.008, 1.008],      # every atom's mass, the deck's order (I3)
+#   "title":"...",                    # the structure's title -> the result's structure (§ 6.10.1)
+#   "identity":{...},                 # the identity columns, in your order -> the result's structure
 #   "molbuilder_version":"1.1.0"      # the molbuilder that prepared it -> the result
 # }
 # === molbuilder vibration END ===
@@ -1428,7 +1430,7 @@ reads **running**, and **failed** once the monitor saw the process go
 (`execution/running-a-job.md` § 4.2). **And it is asked before the run is
 paid for**: once the run index is known and before SIESTA starts, the wrapper
 asks the bundle whether it loads on the job's python (`$_mb_py mb_vibration.pyz
-loads`, which imports the finish with numpy;
+loads`, which imports the finish with numpy and netCDF4 (§ 6.10.6);
 `runwrap._finish_check_block`); a job env that cannot
 run it stops there, with a marker saying so (`rc=1 at …; finish cannot load
 (mb_vibration.pyz)`), and the attempt reads failed with no run lost. A dry run
@@ -1859,15 +1861,15 @@ vibration run's folder and the sha256 of its result in `info.vibration`.
 **How many frames, and where they sit, is the generator's**: by default the
 Gauss–Hermite nodes of the mode's thermal distribution at the stated
 temperature (three, five on request, science § 4c.5), each weight the node's —
-`⅔, ⅙, ⅙` for three — and its parameters, `max_displacement_ang` among them,
-are its own rows, carried and shown (the user, 2026-10-09: *"max displacement
-is a parameter we feed to generate the multi-frame data and is included in the
-meta data"*). *(How `max_displacement_ang` as the generator's input and the
+`⅔, ⅙, ⅙` for three — and its parameters are its own rows, carried and shown (the user,
+2026-10-09: *"max displacement is a parameter we feed to generate the
+multi-frame data and is included in the meta data"*) — **which rows, and
+their names, `model/structure.md` § 2.2f states and nothing here repeats**
+*(2026-10-18: this paragraph had named `max_displacement_ang` and a
+nearest-neighbour row that § 2.2f does not hold; the generator (V1.25) is
+written to § 2.2f's vocabulary alone)*. *(How the generator's input and the
 nodes of the thermal distribution meet — the displacements derived from the
-temperature, D7 — is settled when the generator is designed, V1.25.)* Each
-displaced frame also states its largest atomic displacement against that
-atom's nearest-neighbour distance (science § 4c.5, soft modes) — a warning
-above a stated fraction, never a refusal. The pair keeps every promise the
+temperature, D7 — is settled when the generator is designed, V1.25.)* The pair keeps every promise the
 transport citation door checks by construction — count, order, species and
 labels unchanged, and no electrode atom moves when every electrode atom is held, which the generator
 checks and says when it is not so. **Another mode is another set**, cited by
@@ -1923,8 +1925,10 @@ rule, so the same writer serves both kinds and neither needs to know what a
 mode is:
 
 - per mode and per scalar `X` — `E_F`; the free atoms' charge and each
-  element's; `PDOS_free(E_F)`; each followed level's `ε − E_F`; on transport
-  `T(E_F)` and `G` — the value at every node, the slope `X′ = (X₊ − X₋)/2h`, the curvature
+  element's; `PDOS_free(E_F)`; each followed level's `ε − E_F` (~~on transport
+  `T(E_F)` and `G`~~ — transport's values are the transport record's, each
+  frame's aligned with its rows, and nothing is derived across them there,
+  `engines/transport.md` § 2a.12; struck 2026-10-18) — the value at every node, the slope `X′ = (X₊ − X₋)/2h`, the curvature
   `X″ = (X₊ + X₋ − 2X₀)/h²` with `h` the node's `Q`, the thermal average
   `⟨X⟩ = Σ_j w_j X_j` and `⟨X⟩ − X₀`, and the three-node against the five-node
   average where both exist;
@@ -1932,12 +1936,13 @@ mode is:
   coefficient vectors in the overlap-matrix metric — § 5.9's assignment, on
   orbitals instead of modes — so `ε_HOMO-like(Q)` follows one state even where
   two cross;
-- on transport, the thermally averaged `T(E)` of each mode, and per frame,
-  where one resonance fits, its Breit–Wigner `ε_r` and `Γ`: whether the mode
-  moved the level or the coupling (science § 4c.3);
-- the rigid-shift estimate `T″ ≈ g_ε² ∂²T₀/∂E²|_{E_F}` (science § 4c.6)
-  wherever a transmission at the base exists, beside the explicit value where
-  that exists too;
+- ~~on transport, the thermally averaged `T(E)` of each mode, and per frame,
+  where one resonance fits, its Breit–Wigner `ε_r` and `Γ`~~ and ~~the
+  rigid-shift estimate `T″ ≈ g_ε² ∂²T₀/∂E²|_{E_F}` wherever a transmission at
+  the base exists~~ — struck 2026-10-18: a transport quantity across frames is
+  the analysis's (`engines/transport.md` § 2a.12, science § 8); the resonance
+  fit and the rigid-shift estimate, if wanted, are brought as an analysis of the
+  data file, never as rows of this summary;
 - frames without a result as `pending`, never a failure; flags only against a
   tolerance the person gives.
 
@@ -2167,7 +2172,7 @@ v7, which states none.
 ### 6.7 What the reader refuses
 
 `SpectraResults` is built at the boundary and refuses, by name: a schema
-version outside `{4, 5, 6, 7}`; masses that are not one positive finite
+version outside `{4, 5, 6, 7, 8, 9}` (`READABLE_SCHEMA_VERSIONS`, § 6.1); masses that are not one positive finite
 number per atom, or that come without the geometry they belong to; in a v7
 file, the geometry without its masses — `equilibrium.masses_amu` travels with
 `equilibrium.positions_ang`, so an in-progress file not yet at its geometry

@@ -483,7 +483,12 @@ def sent_wall_s(record: Optional[dict]) -> Optional[int]:
     (`scheduler.quantities.slurm_time`, which wrote it) -- or ``None``
     where it states none: a run here, which no queue placed.  A wall that
     is there and does not read in that spelling is a
-    :class:`LaunchRecordError`, never read as no wall."""
+    :class:`LaunchRecordError`, never read as no wall.
+
+    Parsed here rather than by `scheduler.quantities.parse_walltime`
+    because this module ships beside the job (`runwrap.MONITOR_COMPANIONS`)
+    and `quantities` does not: the one spelling, read where the monitor
+    runs."""
     placed = (record or {}).get("placed_on") or {}
     wall = placed.get("time")
     if wall in (None, ""):

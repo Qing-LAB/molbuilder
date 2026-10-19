@@ -779,9 +779,10 @@
     }
 
     /* THE STRUCTURE DECIDES THE DEFAULT.  A structure that repeats or
-     * continues along an axis is refused by PySCF's gate (an isolated-
-     * molecule code) and is what SIESTA is for, so a periodic load switches
-     * the strip to SIESTA and says why -- unless the person already chose.
+     * continues along an axis is what SIESTA is for; PySCF computes it as
+     * an isolated cluster and the cell is not respected -- a note, not a
+     * refusal (`engines/vibration.md` § 3.3) -- so a periodic load switches
+     * the strip to SIESTA and says why, unless the person already chose.
      * The page calls this after every successful load. */
     function structureLoaded() {
         // THE MODEL'S OWN DOOR for the axis kinds (molview.md § 9.3) -- never
@@ -792,9 +793,10 @@
         const periodic = Array.isArray(ak) && ak.some((k) => k && k !== "isolated");
         if (periodic && !state.engineChosenByUser && _activeEngine() !== "siesta") {
             setEngine("siesta", {
-                reason: "This structure repeats or continues along an axis, "
-                      + "which PySCF's gate refuses: SIESTA is the engine for "
-                      + "a periodic system.  Switch back if you meant a cluster.",
+                reason: "This structure repeats or continues along an axis: "
+                      + "SIESTA is the engine for a periodic system.  PySCF "
+                      + "would compute it as an isolated cluster, the cell "
+                      + "not respected.  Switch back if you meant a cluster.",
             });
             return;
         }
@@ -2286,11 +2288,11 @@
         const dgap_minus_mev = (gap_minus - gap_eq) * 1000;
         // Electron-phonon coupling magnitude per spec § 9.2.4:
         //   g_HOMO = ΔE_HOMO(+A→−A) / (2A)  (meV/Å -- approximate)
-        // The full spec divides by √(ℏ/(2mω)) but that requires the
-        // mass-weighted normal coordinate magnitude per mode, which
-        // we don't currently emit.  Showing the simpler ΔE/(2A) form
-        // gives the user a first-pass EPC magnitude they can scale
-        // later.
+        // The dimensionless coupling g_ν (per zero-point amplitude,
+        // `zero_point_amplitude_amu12_ang`, which the file carries from v7)
+        // is V1.27's, the PySCF probe over five points per mode -- decided,
+        // not built (`engines/vibration.md` § 4.8).  Until then the simpler
+        // ΔE/(2A) form is shown.
         const g_HOMO_mev_A = ((plus[hi] - minus[hi]) / (2 * es.amplitude_ang)) * 1000;
         const g_LUMO_mev_A = ((plus[li] - minus[li]) / (2 * es.amplitude_ang)) * 1000;
 

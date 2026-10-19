@@ -201,13 +201,10 @@ function renderStages(task) {
         });
         nameInput.addEventListener("change", () => {
             const v = nameInput.value.trim();
-            // The name keys filenames, so the rule is the description's, not
-            // this page's (`stages.md` § 2): letters, digits, underscore.
-            if (!/^[A-Za-z0-9_]+$/.test(v)) {
-                setState("refuse", "That stage name cannot be used",
-                         "A stage name is letters, digits and underscore — no "
-                         + "hyphen, because a hyphen means \'a counter "
-                         + "follows\' everywhere else in the system.");
+            // The name keys filenames, so the rule is the description's
+            // (`stages.md` § 2, `task.py` STAGE_NAME_RE): the save door
+            // refuses one it cannot use, by name; the page tests nothing.
+            if (!v) {
                 nameInput.value = name;
                 return;
             }
@@ -358,24 +355,12 @@ function groupCell(stages, i) {
     const rowOf = (name) => (_fs.groups.stages || []).find(
         (r) => r.stage === name) || null;
     const said = rowOf(st.name);
-    const mates = stages.slice(0, i).filter((o) => o.group === above)
-        .map((o) => o.name);
-    const fed = mates.filter(
-        (n) => ((said && said.builds_on) || []).indexOf(n) !== -1);
-    const ran = mates.some((n) => (rowOf(n) || {}).launched);
-    const whyNot = fed.length
-        ? "`" + st.name + "` builds on "
-          + fed.map((n) => "`" + n + "`").join(", ") + ", in the group "
-          + "above: one job runs its members one after another with "
-          + "nothing handed between them"
-          // THE OTHER WAY OUT, where there is one: an independent stage
-          // builds on the stage before it only while it continues.
-          + (said && said.linked === false
-             ? " -- or, for it to start from its own deck, set its run "
-               + "card's `restart` to `clean`"
-             : "")
-        : ran ? "group " + above + " was launched -- its members are fixed"
-        : null;
+    // WHY THIS ROW MAY NOT JOIN THE GROUP ABOVE is the door's sentence
+    // (`groups.stages[i].why_same`, from `group.why_not_join`: what it
+    // builds on, what its card shares, a launched group); the page
+    // composes none and derives none.  Save's check (`group.check_groups`)
+    // refuses what the rule forbids after edits.
+    const whyNot = (said && said.why_same) || null;
     const sel = el("select", { class: "ts-cell",
                                "aria-label": "group of " + st.name });
     const same = el("option", { value: "same" },
@@ -647,16 +632,10 @@ function extraRunRows(stage) {
  *
  * `mem` is deliberately not here.  A trial and a run hold about the same
  * amount, so a second home for it would be a second place to look. */
-const LANE_ASKS = [
-    { name: "time", label: "wall clock for this run",
-      help: "D-HH:MM:SS \u2014 what the scheduler is asked for; in a group "
-            + "of stages each row is one stage's own, and the job asks for "
-            + "their sum (the bench keeps the calculation's short one)",
-      placeholder: "2-00:00:00" },
-    { name: "domain", label: "queue for this run",
-      help: "the bench can stay on a short-turnaround queue",
-      placeholder: "public" },
-];
+/* THE RUN'S OWN TWO ASKS -- `time` and `domain` -- with their words, as the
+ * sweepable door serves them (`lane_asks`, from `task.LANE_ASK_ROWS`; the
+ * page kept its own table until 2026-10-18).  Empty until the door answers. */
+let _laneAsks = [];
 
 /** The rows that STAND on every run card (`task-setup.md` § 6.2b): the
  *  launch rows the catalogue marks `run_card`, every setting the bench
@@ -705,8 +684,8 @@ function stageExecutionOf(stage, make) {
 /** ``name`` set to ``raw`` on each of ``members`` -- a stage's own card,
  *  or every stage of a group for a shared row (`task-setup.md` § 6.2b). */
 function setRunValue(name, raw, members) {
-    const v = coercePoint(raw);
-    const blank = (v === null || raw === "");
+    const v = readTyped(name, raw);
+    const blank = (v === null);
     for (const stage of members) {
         const box = stageExecutionOf(stage, !blank);
         if (!box) continue;
@@ -744,7 +723,7 @@ function runRowOrder(names) {
     (_sweep || []).forEach((it, i) => {
         if (it && it.name) rank.set(it.name, (it.run_card ? 0 : 1000) + i);
     });
-    LANE_ASKS.forEach((a, i) => rank.set(a.name, 2000 + i));
+    _laneAsks.forEach((a, i) => rank.set(a.name, 2000 + i));
     const at = (n) => (rank.has(n) ? rank.get(n) : 3000);
     return names.slice().sort((x, y) => at(x) - at(y) || x.localeCompare(y));
 }
@@ -879,7 +858,7 @@ function runRow(task, name, members, opts) {
         // A LANE ASK SHOWS AN EXAMPLE when nothing is stated: "not stated"
         // is true but useless for a field whose format (`D-HH:MM:SS`) is
         // the thing people get wrong.
-        const lane = LANE_ASKS.find((a) => a.name === name);
+        const lane = _laneAsks.find((a) => a.name === name);
         input = el("input", { type: "text", class: "ts-runval",
                               placeholder: behind
                                   || (lane ? "e.g. " + lane.placeholder
@@ -959,7 +938,7 @@ function addSetting(task, members, names) {
     // own wall clock would be measuring the queue), but which a RUN owns
     // separately from the bench (`stages.md` § 6.8e).
     fillPicker(sel, (_sweep || []).filter((it) => it && members.some(
-                   (m) => readsHere(it.name, m))).concat(LANE_ASKS), names,
+                   (m) => readsHere(it.name, m))).concat(_laneAsks), names,
                "every setting is already listed");
     return el("div", { class: "ts-actions" }, sel, go);
 }
@@ -1057,7 +1036,7 @@ function renderMachine(task) {
             ? el("small", { class: "ts-row-note" },
                  name === "use_gpu"
                    ? (pts.length + " points \u2014 the cpu-vs-gpu axis: "
-                      + "the grid enumerates per flag, and submit bench "
+                      + "the grid enumerates per flag, and launch bench "
                       + "groups trials by their exact resource ask \u2014 "
                       + "CPU trials never hold a GPU.")
                    : (pts.length + " points sweep as a value axis \u2014 "
@@ -1317,10 +1296,13 @@ async function readFolder(projects, dir, opts) {
     if (!dir) {
         _mode = "empty";
         hideDescriptionCards();
-        for (const [id, name] of [["ts-f-task", "task.json"],
-                                  ["ts-f-tmpl", "<label>.template.toml"],
-                                  ["ts-f-struct", "<label>.source.xyz"],
-                                  ["ts-f-side", "<label>.source.molstruct.json"]]) {
+        // NO FOLDER, NO NAMES: the files are named by the folder answer
+        // once one is open (`task_name`, `structure_pair`); the page spells
+        // none of them.
+        for (const [id, name] of [["ts-f-task", "\u2014"],
+                                  ["ts-f-tmpl", "\u2014"],
+                                  ["ts-f-struct", "\u2014"],
+                                  ["ts-f-side", "\u2014"]]) {
             markFile(id, false, "");
             const named = $(id + "-name");
             if (named) named.textContent = name;
@@ -1370,6 +1352,8 @@ async function readFolder(projects, dir, opts) {
     const templateName = (said.template && said.template.name) || null;
     const names = new Set(said.files || []);
 
+    // THE DESCRIPTION'S FILE NAME is the folder answer's (`task_name`).
+    if (said.task_name) $("ts-f-task-name").textContent = said.task_name;
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
     /* THE TEMPLATE IS NOT SAVE'S.  `/api/task-setup/save` calls `write_task`
      * and writes `task.json` alone; the template arrives with the hand-over
@@ -1684,8 +1668,7 @@ function renderCameOver(obj, treatment, frameSet, shared) {
     renderShared(obj ? shared : null);
     /* THE CITED JUNCTION'S FRAMES, by the one card (transport.md § 3.8.1),
      * from the folder's answer; nothing for one structure or another kind. */
-    renderFrameSet($("ts-frameset"), obj && frameSet && frameSet.n_frames
-        ? frameSet : null);
+    renderFrameSet($("ts-frameset"), obj ? frameSet : null);
     if (!obj) { card.hidden = true; return; }
     const run = obj.run || {};
     const st  = obj.structure || {};
@@ -1895,6 +1878,9 @@ async function loadSweepChoices(engine) {
             + "&calculation=" + encodeURIComponent(kind),
             "sweepable settings");
         const items = (got.ok && got.body && got.body.items) || [];
+        if (got.ok && got.body && Array.isArray(got.body.lane_asks)) {
+            _laneAsks = got.body.lane_asks;
+        }
         if (_sweepKey !== key) return items;   // a newer load owns the slot
         _sweep = items;
         _fillSweepMeta(_sweep);
@@ -1937,6 +1923,10 @@ function valueInForce(name) {
     if (name in _tmpl.values) return _tmpl.values[name];
     const m = _meta[name] || {};
     if (m.default !== undefined && m.default !== null) return m.default;
+    // NO VALUE IN FORCE: the row is still born with one point, 1 -- an
+    // invented number (the review of 2026-10-18, K5), kept until the
+    // user decides what a valueless setting's first point is (plan REV-D):
+    // the reader takes no empty row (`task.py`: a non-empty list).
     return 1;
 }
 
@@ -2187,10 +2177,10 @@ function variesOf() {
  */
 function addColumn(name) {
     const v = variesOf(); if (!v) return;
-    if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
-        setState("refuse", "That is not a parameter name",
-                 "Use the parameter's own name — letters, digits and "
-                 + "underscore, as the catalogue spells it.");
+    if (!String(name || "").trim()) {
+        setState("refuse", "A column needs a parameter's name",
+                 "Type the parameter's own name, as the catalogue spells "
+                 + "it; the save door refuses one it does not know.");
         return;
     }
     if (v.indexOf(name) !== -1) return;
@@ -2425,7 +2415,7 @@ function paintPlan(box, host, body) {
             el("code", { class: "ts-plan-dir" },
                row.dir === "." ? "(the bundle root)" : row.dir + "/"),
             el("span", { class: "ts-plan-ask" },
-               askLine(row.allocation, row.chosen))));
+               askLine(row.ask, row.chosen))));
     }
     if (body.bench) {
         const axes = Object.keys(body.bench.axes || {})
@@ -3353,13 +3343,16 @@ function _showPrepAnswer(wrap, say, r, head) {
 
 /** Coerce a typed point to what `task.json` should carry.
  *  `bench` takes scalars only — the reader refuses a nested value. */
-function coercePoint(raw) {
-    const t = String(raw).trim();
+/** ``raw`` as the DECLARED TYPE reads it (`task-setup.md` § 5.2: never by
+ *  its look): the catalogue's type through `CELL_READERS`, as a stage cell
+ *  is read; a name with no declared type -- a lane ask -- as typed, for
+ *  the save door to refuse by name.  ``null`` for a blank. */
+function readTyped(name, raw) {
+    const t = String(raw == null ? "" : raw).trim();
     if (t === "") return null;
-    if (/^(true|on|yes)$/i.test(t))  return true;
-    if (/^(false|off|no)$/i.test(t)) return false;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : t;
+    const read = CELL_READERS[(_meta[name] || {}).type];
+    const v = read ? read(t) : undefined;
+    return v === undefined ? t : v;
 }
 
 function benchOf() {
@@ -3368,7 +3361,7 @@ function benchOf() {
 }
 
 function addPoint(name, raw) {
-    const v = coercePoint(raw);
+    const v = readTyped(name, raw);
     if (v === null) return;
     const b = benchOf(); if (!b) return;
     const pts = Array.isArray(b[name]) ? b[name] : (b[name] === undefined ? [] : [b[name]]);
@@ -3407,7 +3400,7 @@ function removeSetting(name) {
  * ordinary starting ladder (`stages.md` § 6.5): one stage is not a special
  * shape, and empty `varies` is a real state.
  */
-function proposedFromHandover(over, shape, varies) {
+function proposedFromHandover(over, shape) {
     const run = (over && over.run) || {};
     // THE KIND rides the hand-over, every kind, as task.json states it --
     // and so does THE PROPOSED LADDER, numbered, made by the server's one
@@ -3415,21 +3408,30 @@ function proposedFromHandover(over, shape, varies) {
     // vibration.md` § 2.2, § 5.2a; `engines/stages.md` § 6.5).  The page
     // shows it and derives nothing.
     const kind = over.calculation;
-    if (!Array.isArray(over.proposed_stages)) {
-        throw new Error("this hand-over carries no proposed ladder -- it "
-                        + "was written before 2.15.3: send it again from "
-                        + "its tab.");
+    if (!Array.isArray(over.proposed_stages)
+            || !Array.isArray(over.proposed_varies)) {
+        throw new Error("this hand-over carries no proposed ladder, or no "
+                        + "proposed columns -- it was written before "
+                        + "2.16.3: send it again from its tab.");
     }
     const stages = over.proposed_stages.map((s) => ({
         name: s.name, group: s.group, overrides: s.overrides || {} }));
+    if (typeof over.task_schema !== "string" || !over.engine
+            || !over.engine.name) {
+        throw new Error("this hand-over names no task schema or no engine "
+                        + "-- it was written before 2.16.3: send it again "
+                        + "from its tab.");
+    }
     const out = {
-        schema:    "molbuilder/task@1",
-        engine:    (over && over.engine) || { name: "siesta" },
+        schema:    over.task_schema,
+        engine:    over.engine,
         shape:     shape,
         run:       { name: run.name || "", id: run.id || "",
                      created: run.created || "" },
         structure: (over && over.structure) || {},
-        varies:    varies || [],
+        // WHAT VARIES is the hand-over's too (`proposed_varies`, the same
+        // rule `jobset init` writes with): the page seeds nothing.
+        varies:    over.proposed_varies.slice(),
         stages:    stages,
     };
     // EVERY KIND IS WRITTEN.
@@ -3537,103 +3539,11 @@ function setMachine(name) {
  * ===================================================================== */
 
 
-/** Seconds -> the shortest spelling a person would type back. */
-function _humanTime(sec) {
-    if (!sec) return "";
-    if (sec % 86400 === 0) return (sec / 86400) + "-00:00:00";
-    if (sec % 3600 === 0) return (sec / 3600) + "h";
-    if (sec % 60 === 0) return (sec / 60) + "m";
-    return sec + "s";
-}
-
-/* ---- the record's one spelling -------------------------------------
- * `task.json` holds SLURM's spelling and nothing else (user, 2026-08-24:
- * *"your record should set unified time format while it is the UI that
- * can do some translation for human readability/input"*).  So this file
- * translates in BOTH directions and the file sees only one:
- *
- *   _slurmTime / _canonTime   -> what gets WRITTEN   ("0-04:00:00")
- *   _humanTime                -> what gets SHOWN in prose ("4h")
- *
- * Typing "4h" in the box still works -- that is the human edge, and
- * `_canonTime` is the door it goes through.  Mirrors
- * `scheduler.quantities.slurm_time` / `canonical_time`; the parity test
- * pins the two against each other.
- */
-
-/** seconds -> "D-HH:MM:SS", the spelling sbatch takes and the file holds. */
-function _slurmTime(sec) {
-    const n = Math.max(0, Math.round(Number(sec) || 0));
-    const d = Math.floor(n / 86400);
-    const h = Math.floor((n % 86400) / 3600);
-    const m = Math.floor((n % 3600) / 60);
-    const s = n % 60;
-    const p2 = (x) => String(x).padStart(2, "0");
-    return d + "-" + p2(h) + ":" + p2(m) + ":" + p2(s);
-}
-
-/** GB -> "<n>G", or "<n>M" when not a whole GB.  Mirrors
- *  `scheduler.quantities.slurm_mem`. */
-function _slurmMem(gb) {
-    const v = Number(gb);
-    if (!(v > 0)) return "0";
-    const mb = Math.round(v * 1024);
-    // A POSITIVE ASK NEVER ROUNDS TO ZERO -- SLURM reads `--mem=0` as ALL
-    // the node's memory, so rounding a sliver down would turn the smallest
-    // request into the largest one.  Mirrors `slurm_mem`; the parity test
-    // carries a sub-megabyte value to hold the two together here.
-    if (mb <= 0) return "1M";
-    return (mb % 1024 === 0) ? (mb / 1024) + "G" : mb + "M";
-}
-
-/** Whatever the person typed -> the record's spelling.  An unparseable
- *  value is passed through untouched so the backend refuses it BY NAME
- *  ("allocation.time: ...") instead of this quietly writing a zero. */
-function _canonTime(txt) {
-    const s = String(txt || "").trim();
-    if (!s) return "";
-    const sec = _parseTime(s);
-    return Number.isFinite(sec) && sec > 0 ? _slurmTime(sec) : s;
-}
-
-function _canonMem(txt) {
-    const s = String(txt || "").trim();
-    if (!s) return "";
-    if (s === "0") return "0";          // SLURM's "all of the node's"
-    const gb = _parseMem(s);
-    return Number.isFinite(gb) && gb > 0 ? _slurmMem(gb) : s;
-}
-
-/** "4h" / "90m" / "2-00:00:00" / "45" -> seconds, or null. Mirrors
- *  `scheduler.quantities.parse_duration` plus SLURM's own D-HH:MM:SS,
- *  which is what the
- *  ceilings are spelled in. */
-function _parseTime(txt) {
-    const t = String(txt || "").trim().toLowerCase();
-    if (!t) return null;
-    let m = t.match(/^(?:(\d+)-)?(\d+):(\d{2})(?::(\d{2}))?$/);
-    if (m) {
-        return (+(m[1] || 0)) * 86400 + (+m[2]) * 3600
-             + (+m[3]) * 60 + (+(m[4] || 0));
-    }
-    m = t.match(/^([0-9.]+)\s*([hms]?)$/);
-    if (!m) return NaN;                       // says nothing usable
-    const v = parseFloat(m[1]);
-    if (!(v > 0)) return NaN;
-    return Math.round(v * ({ h: 3600, m: 60, s: 1 }[m[2]] || 60));
-}
-
-/** "128G" / "0.5T" / "128" -> GB, or null.
- *  Mirrors `scheduler.quantities.parse_memory`. */
-function _parseMem(txt) {
-    const t = String(txt || "").trim().toUpperCase();
-    if (!t) return null;
-    const m = t.match(/^([0-9.]+)\s*([KMGT]?)B?$/);
-    if (!m) return NaN;
-    const v = parseFloat(m[1]);
-    if (!(v > 0)) return NaN;
-    return v * ({ T: 1024, G: 1, M: 1 / 1024, K: 1 / 1048576 }[m[2]] || 1);
-}
+/* NO CODEC HERE: what is typed is written as typed, and the save door
+ * canonicalises it (`task.py`, `scheduler.quantities.canonical_time` /
+ * `canonical_mem`) or refuses it by name -- the page marks nothing invalid
+ * on a verdict of its own (`task-setup.md` § 6.1).  A JS mirror of the
+ * Python parsers, held equal by a parity test, stood here until 2026-10-18. */
 
 function _queuesOf(machineName) {
     const m = _machines.find((x) => x.name === machineName);
@@ -3739,9 +3649,8 @@ function paintAskNotes() {
     const _nodeMem = (!d && _me && !(_me.domains || []).length)
         ? _me.mem_total_gb : null;
     const said = {
-        "ts-ask-time": d ? (d.max_time_s
-                              ? d.name + "'s wall: "
-                                + _humanTime(Math.round(d.max_time_s))
+        "ts-ask-time": d ? (d.max_time
+                              ? d.name + "'s wall: " + d.max_time
                               : "this queue states no wall")
                          : "no queue chosen",
         "ts-ask-mem": d ? (d.memory && d.memory !== "-"
@@ -3750,19 +3659,15 @@ function paintAskNotes() {
                         : (_nodeMem ? "its probed node has " + _fmtGB(_nodeMem)
                                     : "no queue chosen"),
     };
-    const pairs = [["ts-ask-time", "ts-ask-time-note", _parseTime],
-                   ["ts-ask-mem", "ts-ask-mem-note", _parseMem]];
-    for (const [inId, noteId, parse] of pairs) {
+    const pairs = [["ts-ask-time", "ts-ask-time-note"],
+                   ["ts-ask-mem", "ts-ask-mem-note"]];
+    for (const [inId, noteId] of pairs) {
         const el = $(inId);
         const note = $(noteId);
         if (!el || !note) continue;
-        const val = parse(el.value);
         let state = "ok";
         let msg = said[inId];
-        if (Number.isNaN(val)) {
-            state = "bad";
-            msg = "not a value I can read";
-        } else if (val === null) {
+        if (!String(el.value || "").trim()) {
             // EMPTY, AND THE QUEUE STILL SHOWN: what it offers is what
             // helps choose a value (`submission.md` S5).
             state = "unset";
@@ -3772,7 +3677,6 @@ function paintAskNotes() {
         }
         note.textContent = msg;
         note.setAttribute("data-state", state);
-        el.setAttribute("aria-invalid", state === "bad" ? "true" : "false");
     }
 }
 
@@ -3784,10 +3688,10 @@ function askValues() {
     const b = $("ts-ask-gpu-binding");
     const out = {};
     if (_fs.queue) out.domain = _fs.queue;
-    // THE RECORD GETS ONE SPELLING.  The box accepts "4h" because that is
-    // the human edge; the file never sees it.
-    if (t.trim()) out.time = _canonTime(t);
-    if (m.trim()) out.mem = _canonMem(m);
+    // AS TYPED: the save door writes the record's one spelling
+    // (`task.py`, `canonical_time` / `canonical_mem`) or refuses by name.
+    if (t.trim()) out.time = t.trim();
+    if (m.trim()) out.mem = m.trim();
     // Ticked is the rule and writes nothing; unticked is the one value that
     // changes anything (`execution/gpu.md` G9).
     if (b && !b.checked) out.gpu_binding = false;
@@ -4226,10 +4130,8 @@ function setShape(shape) {
         // written over that folder's description.
         pageBusy.run("Proposing the stages\u2026", [], () =>
             Promise.all([loadColumnChoices(engine),
-                         loadSweepChoices(engine)]).then(([cols]) => {
-                const seed = cols.filter((c) => c.group === "stage")
-                                 .map((c) => c.name);
-                const text = proposedFromHandover(_handover, shape, seed);
+                         loadSweepChoices(engine)]).then(() => {
+                const text = proposedFromHandover(_handover, shape);
                 try { _task = JSON.parse(text); } catch (_) { _task = null; }
                 return setEditorText(text).then(() => {
                     if (_task) { renderStages(_task); renderNext(_task);
@@ -4237,7 +4139,7 @@ function setShape(shape) {
                                  refreshPickers(); }
                 });
             }).catch(() => {
-                const text = proposedFromHandover(_handover, shape, []);
+                const text = proposedFromHandover(_handover, shape);
                 try { _task = JSON.parse(text); } catch (_) { _task = null; }
                 return setEditorText(text).then(() => {
                     if (_task) renderStages(_task);
@@ -4247,8 +4149,8 @@ function setShape(shape) {
     refreshSave();
 }
 
-/* The two asks validate as they are typed: "more than htc allows" is
- * worth knowing at the keystroke, not after a queue wait. */
+/* The two asks show the queue's ceilings beside them as they are typed;
+ * what is typed is written as typed, and the save door reads it. */
 function watchAskControls() {
     for (const id of ["ts-ask-time", "ts-ask-mem"]) {
         const el = $(id);
@@ -4478,9 +4380,8 @@ async function _save() {
      * after is skipped -- the file is on disk and the page never says so.
      * The confirmation belongs to the write, so it is said before the
      * reload, and a reload failure is reported as its own thing. */
-    /* ONE FILE, because the save door writes one. */
-    const wrote = ["task.json"];
-    saidSave("Saved " + wrote.join(" + ") + " into this folder"
+    /* THE FILE THE DOOR SAYS IT WROTE (`wrote`), never a name spelled here. */
+    saidSave("Saved " + (body.wrote || "the description") + " into this folder"
              + (body.saved ? " · " + body.saved : "")
              + ". Prep reads this file.", "ok");
     /* THE FOLDER CHANGED, said as a prep says it, so the history panel
@@ -4496,7 +4397,7 @@ async function _save() {
         if (projects) await loadFolder(projects, _dir,
                                        { retire: true, saved: true });
     } catch (e) {
-        saidSave("Saved " + wrote.join(" + ") + " \u2014 but the page could "
+        saidSave("Saved " + (body.wrote || "the description") + " \u2014 but the page could "
                  + "not re-read the folder: " + ((e && e.message) || e)
                  + ".  What you see may be the previous state; reload.",
                  "warn");
@@ -4580,8 +4481,10 @@ function start(projects) {
     const addSetting = () => {
         const sel = $("ts-add-setting");
         if (!sel || !sel.value) return;
-        // A row starts as ONE point -- a choice -- and the choice starts
-        // at the value IN FORCE (template, else catalogue default).
+        // A row starts as ONE point -- a choice -- at the value IN FORCE
+        // (template, else catalogue default); a setting with no value in
+        // force starts EMPTY, the first point typed (`task-setup.md`
+        // § 6.2b: blank until stated, nothing proposed).
         addPoint(sel.value, String(valueInForce(sel.value)));
         sel.value = "";
     };

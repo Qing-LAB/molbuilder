@@ -903,7 +903,8 @@ Two ways to choose the size, then, and they answer different questions:
 mode. This is a drawing choice: real vibrational amplitudes are small, and a
 faithful one is often too subtle to read on screen, so the motion is exaggerated
 the way Jmol, Avogadro and Gaussian all exaggerate it. It uses the display-normalized
-eigenvector (largest per-atom vector = 1), and the amplitude in ångström is
+eigenvector (its largest absolute Cartesian component is 1 — `engines/vibration.md`
+§ 6.3, the one definition), and the amplitude in ångström is
 whatever the user dragged.
 
 **Physical** — the atoms swing by as much as they actually do. The size comes from
@@ -934,7 +935,7 @@ a unit:
 
 | | eigenvector | amplitude is in |
 |---|---|---|
-| display | dimensionless, largest per-atom vector = 1 | **Å** |
+| display | dimensionless, largest absolute Cartesian component = 1 (`engines/vibration.md` § 6.3) | **Å** |
 | physical | 1/√mass, `Σᵢ mᵢ\|Lᵢ\|² = 1` | **√amu·Å** |
 
 Both give ångström of motion, because the units multiply correctly *within* each

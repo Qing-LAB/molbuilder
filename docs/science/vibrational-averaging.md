@@ -25,9 +25,9 @@ A transport calculation on a frame set computes that average from a handful of
 **static frames**: the relaxed junction and copies of it displaced along
 **one** normal mode — one frame set per mode *(user, 2026-10-09: "i would
 rather let one multi-frame focus on one mode")*. Each frame is an ordinary
-transport calculation; the average is assembled afterwards from the mode the
-structure's `customized` rows announce and the weight each frame's own rows
-state.
+transport calculation; the average is assembled afterwards from the weight
+each frame's own rows state (`model/structure.md` § 2.2f; the mode's rows are
+carried and shown, and decide nothing in the average).
 
 ```mermaid
 flowchart LR

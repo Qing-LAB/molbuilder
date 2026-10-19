@@ -881,17 +881,25 @@ def negf_criteria(options: dict, periodic: dict) -> dict:
 #: leaves, `trajectory_log.emitter`): the relaxation's force tolerance and
 #: largest step, and the SCF's and the relaxation's iteration caps.  The
 #: optimization cap is echoed whatever ``MD.TypeOfRun`` produced it.
+# THE TARGETS' KEYS are the trajectory log's own (`trajectory_log.emitter`),
+# imported as a package module here and as a flat companion beside a job
+# (`runwrap.MONITOR_COMPANIONS`), the way `end_lines` is.
+try:
+    from ...trajectory_log import emitter as _E  # noqa: E402
+except ImportError:  # pragma: no cover -- shipped flat beside the job
+    import emitter as _E  # type: ignore[no-redef]  # noqa: E402
+
 TARGET_LINES: Tuple[Tuple[str, "re.Pattern", type], ...] = (
-    ("max_force_tol_eV_per_A", re.compile(
+    (_E.MAX_FORCE_TOL, re.compile(
         r"^\s*redata:\s+Force tolerance\s+=\s+([0-9.eE+-]+)\s+eV/Ang",
         re.IGNORECASE), float),
-    ("max_scf_iter", re.compile(
+    (_E.MAX_SCF_ITER, re.compile(
         r"^\s*redata:\s+Max\. number of SCF Iter\s+=\s+(\d+)",
         re.IGNORECASE), int),
-    ("max_displ_ang", re.compile(
+    (_E.MAX_DISPL, re.compile(
         r"^\s*redata:\s+Max atomic displ per move\s+=\s+([0-9.eE+-]+)\s+Ang",
         re.IGNORECASE), float),
-    ("max_geom_iter", re.compile(
+    (_E.MAX_GEOM_ITER, re.compile(
         r"^\s*redata:\s+Maximum number of optimization moves\s+=\s+(\d+)",
         re.IGNORECASE), int),
 )
@@ -1115,6 +1123,27 @@ TBT_POWER = re.compile(
 #: ``TBT.Directory`` would move them; molbuilder's decks set none.
 TBT_CHANNELS = (("unpolarized", ".TBT."), ("up", ".TBT_UP."),
                 ("down", ".TBT_DN."))
+
+#: THE FILES TRANSIESTA AND TBTRANS WRITE ON THE LABEL, by role -- spelled
+#: here, the engine's own vocabulary, and nowhere else (`job-contracts.md`
+#: § 2.2a: never a role literal at a call site).  The inventory of what a
+#: continued attempt carries is `siesta/warm-files.toml` `[transport]`.
+TS_HSX = ".TS.HSX"     # the device's Hamiltonian + overlap, read by tbtrans
+TSHS   = ".TSHS"       # an electrode's Hamiltonian + overlap
+DM     = ".DM"         # the seed's density matrix, the device's start
+
+
+def tbt_nc(channel_tag: str) -> str:
+    """TBtrans's ``.TBT.nc`` of a channel (its tag from
+    :data:`TBT_CHANNELS`): ``.TBT.nc``, ``.TBT_UP.nc``, ``.TBT_DN.nc``."""
+    return channel_tag + "nc"
+
+
+def tbt_avtrans(channel_tag: str, pair: str) -> str:
+    """TBtrans's k-averaged transmission of a channel between a pair of
+    leads named as its ``TS.Elecs`` blocks are -- ``.TBT.AVTRANS_L-R``
+    (``m_tbt_save.F90``)."""
+    return channel_tag + "AVTRANS_" + pair
 
 
 def tbt_channels(line: str) -> Optional[Tuple[str, ...]]:

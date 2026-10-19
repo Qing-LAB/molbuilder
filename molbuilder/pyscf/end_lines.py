@@ -30,3 +30,9 @@ SPECTRUM_END_MARKER = "Total wall time:"
 #: the decks' end lines, so the writer and the reader share one spelling.
 FOOTER_ERROR = "# error:"
 FOOTER_CONCLUDED = "# concluded:"
+#: ``# relaxed: yes|no`` -- whether the relaxation converged, written by the
+#: deck when its relaxation returns (`MolwatchEmitter.relaxed`), read by the
+#: progress log's ending (`_run_ending._molwatch_ending`) so a PySCF
+#: relaxation's *geometry yes / NO* is stated like SIESTA's
+#: (`web/results.md` § 2.4; 2026-10-18).
+FOOTER_RELAXED = "# relaxed:"

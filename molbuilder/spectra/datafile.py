@@ -44,7 +44,9 @@ try:                                        # inside molbuilder
                           number_attr, read_variables, unflag, unnumber_attr,
                           write_group)
     from ..persist import write_bytes
+    from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
+    from structure import Structure as _Structure  # type: ignore[no-redef]
     from ncdata import (Var, as_bytes, empty, flag, in_memory, json_attr,
                         number_attr, read_variables, unflag, unnumber_attr,
                         write_group)
@@ -332,16 +334,17 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
     values = _fill(vars_, {"atom": n_atoms, "xyz": 3})
     held: List[int]
     if structure is not None:
-        s = dict(structure)
-        values["element"][:] = [str(e) for e in s["elements"]]
-        values["position_ang"][:] = np.asarray(s["positions"], dtype=float)
-        meta = s.get("metadata") or {}
-        held = [int(i) for i in ((meta.get("regions") or {})
-                                 .get("frozen_atoms") or ())]
-        if meta.get("cell") is not None:
-            values["cell_ang"][:] = np.asarray(meta["cell"], dtype=float)
-        if meta.get("axis_kind") is not None:
-            values["axis_kind"][:] = [str(k) for k in meta["axis_kind"]]
+        # THROUGH THE STRUCTURE'S OWN DOOR (`model/structure.md` § 2.1):
+        # its elements, positions, held set, cell and axis kinds as the
+        # instance states them, never a hand-walk of the dict.
+        s = _Structure.from_dict(structure)
+        values["element"][:] = [str(e) for e in s.elements]
+        values["position_ang"][:] = np.asarray(s.positions, dtype=float)
+        held = [int(i) for i in (s.frozen_atoms or ())]
+        if s.cell is not None:
+            values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
+        if s.axis_kind is not None:
+            values["axis_kind"][:] = [str(k) for k in s.axis_kind]
     else:
         held = [int(i) for i in payload.get("frozen_atom_idxs") or ()]
     values["held"][:] = 0

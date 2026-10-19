@@ -162,9 +162,7 @@ def line(cfg, *, is_dft: bool):
     * ``scf_conv_tol_grad`` when it is not set, because PySCF derives it from
       the energy tolerance (``scf.hf.kernel``: ``if conv_tol_grad is None:
       conv_tol_grad = sqrt(conv_tol)``) and a line restating the derivation
-      would be the script claiming a setting it does not make;
-    * ``diis_space`` at PySCF's own 8, and ``damp`` at zero, because these are
-      hard-SCF knobs and a tutorial script stays clean on the easy path.
+      would be the script claiming a setting it does not make.
 
     The exact spellings are load-bearing: ``mf.conv_tol`` is written with two
     spaces before its ``=`` because it is the first of a column that reads as a
@@ -232,13 +230,18 @@ def line(cfg, *, is_dft: bool):
             return f"mf.max_cycle = {value}"
         if name == "scf_init_guess":
             return f'mf.init_guess = "{value}"'
+        # EVERY ITEM OF THE LAYOUT IS WRITTEN, a default as the deck's own
+        # line (`engines/template.md` § 6.6 obligation 4: no value reaches
+        # the engine by omission) -- so the record and the Results tab show
+        # the SCF settings the run used, and a PySCF upgrade that moves its
+        # own default moves no run of ours (2026-10-18; the three were
+        # written only off their defaults before).
         if name == "level_shift":
-            return f"mf.level_shift = {value}" if value else None
+            return f"mf.level_shift = {value}"
         if name == "diis_space":
-            # Only when bumped off PySCF's own default -- see the docstring.
-            return f"mf.diis_space = {value}" if value != 8 else None
+            return f"mf.diis_space = {value}"
         if name == "damp":
-            return f"mf.damp = {value}" if value else None
+            return f"mf.damp = {value}"
         return None
 
     return _line

@@ -139,7 +139,9 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
 
     # THE ELEMENTS, from the structure the result states whole (v9; the
     # reader serves that shape for every file, `engines/vibration.md` § 6.10).
-    elements = (payload.get("structure") or {}).get("elements") or []
+    from molbuilder.structure import Structure as _Structure
+    elements = (list(_Structure.from_dict(payload["structure"]).elements)
+                if payload.get("structure") else [])
     masses = (payload.get("equilibrium") or {}).get("masses_amu")
     # An empty free-atom list is "not recorded", not "no atom is free" -- a
     # result that never tracked the partition has one eigenvector row per atom,

@@ -143,14 +143,16 @@ def parse_point(label: str, run, engine: str,
     #     the first KB.
     out = run.stdout if run is not None else None
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
+    # THE TRIAL'S STATE IS THE RUN DOOR'S (`rundir.run_state_of`, the one
+    # rule every surface says): `finished` only when the job exited 0 after
+    # its output ended, never "completed" read off the output alone -- a
+    # trial that failed after `>> End of run` was ranked, and could win,
+    # until 2026-10-18.
     state = "unknown"
-    if out is not None:
-        from ..parse.engines._run_ending import ending_of
-        try:
-            state = ("completed" if ending_of(out).run_state == "ended"
-                     else "incomplete")
-        except OSError:
-            pass
+    if run is not None:
+        from ..parse.dirs.rundir import run_state_of
+        state = run_state_of(run.folder, run.names, run.run,
+                             launched_in=run.launched_in).state
     # THE KNOBS ARE WHAT WAS ASKED, and only that: the ranks the run got
     # are `effective`'s (below, SIESTA's own count).  Every trial states its
     # counts (`generator.md` § 4.3a).
@@ -574,7 +576,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
     # from three of eleven prepared points says so on its face.
     if res.choice.get("label"):
         timed = sum(1 for p_ in res.points
-                    if p_.state == "completed" and p_.s_per_iter() is not None)
+                    if p_.state == "finished" and p_.s_per_iter() is not None)
         if timed < len(res.points):
             lines.append(f"  coverage: {timed} of {len(res.points)} prepared "
                          f"points measured -- the verdict ranks what ran.")
@@ -730,7 +732,6 @@ def sweep_view(jobset, bundle) -> Dict:
             # one node.  "" when the record has no [MACHINE] line.
             "machine":       dict(p.machine),
             "machine_brief": machine_brief(p.machine),
-            "artifacts":  p.state,      # what the files say
             "state":      st.state,     # where the RUN is (§ 2's door)
             "detail":     st.detail,
             "dir":        st.dir,

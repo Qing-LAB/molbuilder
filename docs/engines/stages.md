@@ -192,7 +192,7 @@ place; each names the file that holds it, so the claim is checkable.**
    ask for no Hessian (geomeTRIC 1.1.1 `engine.py` `calc`, `normal_modes.py`
    `calc_cartesian_hessian`). Their rows left the rules file, with a third,
    `_geom_optim.tmp`, that named a file nothing writes; the trajectory's ROLE
-   stays declared where it is written (`pyscf/input.ROLE_GEOM_TRAJ`), which
+   stays declared where it is written (`runfiles.ROLE_GEOM_TRAJ`), which
    is how its readers find it.
 5. **`PySCFConfig.stages` and the in-script loop are gone.** The field outlived
    `SiestaConfig.stages` on the strength of one reader — the `for STAGE in
@@ -350,7 +350,7 @@ the five items that declare no `engines` list and therefore apply everywhere
 > catalogue, and the machine asks moved to `staging` — a form does not ask a
 > person how many ranks the scheduler granted.)*
 
-> **So `varies` starts as the engine's `stage` group**, and the user adds to or
+> **So `varies` starts as what the proposed stages vary** (`task.varies_for` over their overrides — nothing for a fresh one-stage ladder; carried on the hand-over as `proposed_varies`, the one rule `jobset init` and the Task setup page both write with, 2026-10-18), and the user adds to or
 > removes from it — declared by each engine, beside the fields themselves, in the
 > one place that already knows what a field *is*. No engine needs code in the
 > shared machinery, and a new engine gets a working starting point by tagging its
@@ -1415,7 +1415,7 @@ own written value, rejected by the tool.
 
 **Translation lives at the edges where humans are** — the Task-setup tab's
 input box, `--time`/`--mem`, and a file typed by hand, which is such an edge
-too. All of them go through one door (`jobset/ask.py`'s `canonical_time` /
+too. All of them go through one door (`scheduler/quantities.py`'s `canonical_time` /
 `canonical_mem`), and the reader below normalises on the way in, so a
 description written before this rule still opens and a person may still type
 `4h` anywhere. What no layer behind those edges ever meets is a second
@@ -1809,7 +1809,7 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   | | |
   |---|---|
   | **In the hierarchical shape it does not bite at all** | the log sits in `01_coarse/run-0/`, so the path says which stage it is. Nothing needs to be looked up |
-  | **In the flat shape it bites, and on the default names already** | the defaults are the words `coarse` / `medium` / `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`), so the deck said `<label>_01_coarse.fdf` while the log said `<label>-stage1.molwatch.log`. Nothing in either name says they are the same run |
+  | **In the flat shape it bites, and on the default names already** | the defaults are the words `coarse` / `medium` / `tight` (`config/stages.py::STAGE_NAMES`), so the deck said `<label>_01_coarse.fdf` while the log said `<label>-stage1.molwatch.log`. Nothing in either name says they are the same run |
   | **A user naming their own stages only widens it** | `warmup` and `production` against `stage1` and `stage2` — the same mismatch, with no ordinal left to guess from |
 
   So the rule is worth adopting for consistency and for the flat shape, where

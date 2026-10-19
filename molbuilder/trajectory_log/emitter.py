@@ -29,6 +29,7 @@ breaks the molwatch parser at :mod:`molbuilder.parse.engines.molwatch`.
 from __future__ import annotations
 
 import time
+from typing import Optional
 
 import numpy as np
 
@@ -38,10 +39,10 @@ import numpy as np
 # log's reader converts with (`constants` says why there are two).
 try:                                        # inside molbuilder
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from ..pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+    from ..pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 
 
 #: The convergence targets a log's header states, one ``# convergence.
@@ -49,15 +50,67 @@ except ImportError:                         # beside a job, in mb_pyscf.pyz
 #: (`molwatch_grammar.parse_convergence_line`, `trajectory/core.js`), whose
 #: threshold lines the Results tab draws.  Force and displacement in eV/A and
 #: A, the energy step in eV, the two caps as counts.
-_LEAF_KEYS = (
-    "max_force_tol_eV_per_A",
-    "rms_force_tol_eV_per_A",
-    "max_displ_ang",
-    "rms_displ_ang",
-    "energy_step_tol_eV",
-    "max_scf_iter",
-    "max_geom_iter",
+#: Each key, named once -- the PySCF deck (`pyscf/input.py`), prep's seed
+#: (`jobset/prep.py`), SIESTA's echo (`siesta_grammar.TARGET_LINES`) and the
+#: citation reader (`parse/contract.py`) import these; a spelling anywhere
+#: else is a copy (2026-10-18: four producers had spelled them).
+MAX_FORCE_TOL   = "max_force_tol_eV_per_A"
+RMS_FORCE_TOL   = "rms_force_tol_eV_per_A"
+MAX_DISPL       = "max_displ_ang"
+RMS_DISPL       = "rms_displ_ang"
+ENERGY_STEP_TOL = "energy_step_tol_eV"
+MAX_SCF_ITER    = "max_scf_iter"
+MAX_GEOM_ITER   = "max_geom_iter"
+
+#: ...IN THE FILE'S ORDER, with the words a page says each in and its unit
+#: (`web/trajectory.md` § 3): ``(key, label, unit)``.
+LEAF_ROWS = (
+    (MAX_FORCE_TOL,   "max |F|",        "eV/Å"),
+    (RMS_FORCE_TOL,   "rms |F|",        "eV/Å"),
+    (MAX_DISPL,       "max displ",      "Å"),
+    (RMS_DISPL,       "rms displ",      "Å"),
+    (ENERGY_STEP_TOL, "energy step",    "eV"),
+    (MAX_SCF_ITER,    "MaxSCFIterations", ""),
+    (MAX_GEOM_ITER,   "geom steps cap", ""),
 )
+LEAF_KEYS = tuple(r[0] for r in LEAF_ROWS)
+_LEAF_KEYS = LEAF_KEYS
+
+
+def targets_of(convergence_targets) -> "Optional[dict]":
+    """THE RUN'S OWN LEAVES out of a parsed ``convergence_targets`` block --
+    nested one level by the stage's token, as every writer writes it
+    (:func:`_convergence_lines`; `engines/pyscf.md` § 4): one stage nested
+    is the run's; several is a header this run did not write alone, and
+    the answer is ``None`` rather than a pick.  A FLAT block -- SIESTA's
+    echo of its own limits (`siesta_reader`, ``source: siesta_input_echo``)
+    and a progress log seeded before 2026-10-18 -- is the run's own as it
+    stands.  The one rule, asked by the citation reader (`parse/contract.py`)
+    and by the page's rows (:func:`targets_said`)."""
+    if not isinstance(convergence_targets, dict):
+        return None
+    nested = [v for k, v in convergence_targets.items()
+              if k != "source" and isinstance(v, dict)]
+    if nested:
+        return dict(nested[0]) if len(nested) == 1 else None
+    flat = {k: v for k, v in convergence_targets.items() if k in LEAF_KEYS}
+    return flat or None
+
+
+def targets_said(convergence_targets) -> "list":
+    """The run's targets as a page draws them -- ``[[label, text], ...]``
+    in :data:`LEAF_ROWS`' order, each key the block states -- so the page
+    spells no key and no unit (`web/trajectory.md` § 3)."""
+    leaf = targets_of(convergence_targets) or {}
+    out = []
+    for key, label, unit in LEAF_ROWS:
+        v = leaf.get(key)
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            continue
+        text = (f"{v:.4f}" if key in (MAX_FORCE_TOL, RMS_FORCE_TOL)
+                else str(v)) + (f" {unit}" if unit else "")
+        out.append([label, text])
+    return out
 
 
 def _convergence_lines(targets) -> list:
@@ -247,7 +300,17 @@ class MolwatchEmitter:
         self._step += 1
 
 
-    # ----- the end lines, at exit -----
+    # ----- the end lines -----
+    def relaxed(self, converged: bool) -> None:
+        """Write ``# relaxed: yes|no`` when the relaxation returns -- whether
+        it converged, the deck's own word (`_GEOM_CONVERGED`), which the
+        log's ending reads as the run's geometry verdict."""
+        try:
+            with open(self.path, 'a') as fh:
+                fh.write(f"{FOOTER_RELAXED} {'yes' if converged else 'no'}\n")
+        except Exception:
+            pass    # never break the run on a logging issue
+
     def conclude_at_exit(self):
         """Write the log's end lines when the process exits
         (`engines/pyscf.md` § 4): ``# error: <the uncaught exception>`` when

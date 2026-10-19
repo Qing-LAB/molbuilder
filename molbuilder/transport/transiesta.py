@@ -35,6 +35,7 @@ from .sort import (
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
 )
+from ..parse.engines import siesta_grammar as _G
 from ..runfiles import compose
 from ..structure import Structure
 
@@ -504,7 +505,7 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         # THE ELECTRODE'S FILE, as the catalogue composes the name the
         # gather brings (`stages.stage_inputs`): one spelling.
         lines.append(f"  HS                 "
-                     f"{compose(electrode_hs_stem(cfg.system_label, label), '.TSHS')}")
+                     f"{compose(electrode_hs_stem(cfg.system_label, label), _G.TSHS)}")
         lines.append(f"  chem-pot           {cp}")
         lines.append(f"  used-atoms         {len(idxs)}")
         # ALWAYS, because the manual lists it among the four lines a

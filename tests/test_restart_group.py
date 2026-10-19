@@ -66,14 +66,17 @@ def test_the_members_cannot_be_set_individually_any_more():
     assert "restart" in names
 
 
-def test_a_missing_restart_field_reads_as_clean():
-    """The safe reading of silence. The dangerous direction is resuming when
-    nobody asked -- that discards nothing, but it silently changes what the
-    run computed from."""
+def test_a_missing_restart_field_reads_as_the_catalogue_s_default():
+    """`run-identity.md` § 4 rule 3: `continue` is the default, and nothing
+    computes it -- a template-shaped object that states no `restart` reads
+    as the catalogue's default, never as a second default spelled in code
+    (`clean` stood in `identity.continues` until 2026-10-18)."""
     class Bare:
         pass
     from molbuilder.identity import continues
-    assert continues(Bare()) is False
+    from molbuilder.template import catalogue, one
+    assert one(catalogue(), "restart").default == "continue"
+    assert continues(Bare()) is True
 
 
 # --------------------------------------------------------------------- #

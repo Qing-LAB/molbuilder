@@ -112,6 +112,31 @@ def may_join(base, task, stage: str, members: Sequence[str],
             and card_shares(task, stage) == card_shares(task, members[0]))
 
 
+def why_not_join(base, task, stage: str, members: Sequence[str],
+                 template_text: Optional[str] = None) -> Optional[str]:
+    """Why ``stage`` may not share the job ``members`` make -- the sentence
+    the Task setup page shows beside its row (`web/task-setup.md` § 5),
+    said here and nowhere else -- or ``None`` where :func:`may_join` says
+    it may.  The two conditions :func:`may_join` asks, each in words."""
+    if not members:
+        return None
+    fed = upstream_of(base, task, stage, template_text) & set(members)
+    if fed:
+        named = ", ".join(f"`{n}`" for n in members if n in fed)
+        kind_s = linked(base, task, stage, template_text)
+        return (f"`{stage}` builds on {named}, in the group above: one job "
+                f"runs its members one after another with nothing handed "
+                f"between them"
+                + ("" if kind_s else
+                   " -- or, for it to start from its own deck, set its run "
+                   "card's `restart` to `clean`"))
+    if card_shares(task, stage) != card_shares(task, members[0]):
+        return (f"`{stage}`'s run card states other values than the group "
+                f"above's on what one job shares; set them alike, or give "
+                f"it a new group")
+    return None
+
+
 def default_groups(task, template_text: Optional[str] = None
                    ) -> Tuple[int, ...]:
     """The numbers a new description takes (`engines/stages.md` § 2): the

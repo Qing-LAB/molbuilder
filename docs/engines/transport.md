@@ -929,8 +929,7 @@ their run's words; for a frame set, each point's frame and that frame's
 rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
 type, is asked of `/api/transport/pdos`. The Results tab composes the record on
 read (`/api/transport/record`); `summarize task` writes the same composition to
-the file. **Not yet**: the E_F reference checked rather than assumed (plan
-§ 5u.1 step 9). The `.TBT.nc` reader was checked on a real run's file — the
+the file. **Asserted, not checked**: the E_F reference is TBtrans's convention and the record says so (`energies_relative_to_ef: true`); nothing measures it against the output, and nothing is asked to. The `.TBT.nc` reader was checked on a real run's file — the
 carbon-chain walk, 2026-10-07 (`web/results.md` § 2.5).
 
 ---
@@ -1622,7 +1621,7 @@ The Results surface shows that label beside the curve, not buried in metadata.
 false}` (`jobset init --bias … --low-bias-approximation / --no-low-bias-approximation`;
 the transport tab asks, with nothing chosen, once its list holds a second
 voltage) — and is refused without it: never inferred from the count. A list of
-one voltage is the single bias, and states none. The tab's list is typed, or
+one voltage is the single bias, and states none — written so, `[0.0]`, by both roads (`jobset init` with no `--bias`, the Transport tab's box); an empty list is written by neither and no reader fills one in (2026-10-18). The tab's list is typed, or
 filled by its **start / stop / step** builder — 0 V first, then the walk — and
 stays editable; one list either way. Beside the junction slot,
 `"swap_electrodes": true` states the electrode rename this calculation makes
@@ -2168,7 +2167,7 @@ records and adds the science:
 | seed | the converged energy and E_F of the periodic junction | as any SCF |
 | electrode_L · electrode_R | each lead's E_F — the reference for T(E), and the two must agree | as any SCF |
 | device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's, and the energy never compared across biases or calculations (the manual: TranSIESTA's energies *"are not to be trusted"*, § 1.1); the charge distribution (device · electrodes · couplings) and the molecule's change against the periodic start; the contour and pole count TranSIESTA used | the device symptoms (`model/parse.md` § 5d.6) |
-| transmission | T(E_F) and the conductance — G = G₀·T(E_F), or (e²/h)·(T↑ + T↓) per spin channel when polarized — with the E_F reference **checked** rather than assumed; T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10), its current **the junction's total** — see below | the run's end, and the channels it wrote |
+| transmission | T(E_F) and the conductance — G = G₀·T(E_F), or (e²/h)·(T↑ + T↓) per spin channel when polarized — with energies relative to E_F by TBtrans's own convention (asserted by the record, `energies_relative_to_ef`; not measured against the output — § 1.1); T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10), its current **the junction's total** — see below | the run's end, and the channels it wrote |
 
 **The current is the junction's total, and says so** *(user, 2026-10-03, Q5:
 "make sure the result presentation, data record and the summary/comments
@@ -3243,7 +3242,7 @@ fixed.**
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opened a `PipelineLog` and carried it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=`. *(The arm went 2026-10-05, § 3.6 item 4: prep's one entry opens the log for every kind.)* |
 | ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` (plus any `*-electrode` name until 2026-10-02, when the leads became two exact names, § 4) — so a label transport genuinely cannot read is still named, which is § 4's rule |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` was keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatched for no rung (the engine was deleted 2026-09-17, the class 2026-10-02) — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
-| `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
+| ~~`validate_subject` is unanswered, so the gate judges a frame the deck does not express~~ — **answered** (`transport/deck.py`: the structure as it arrived with its meshes and the rung; `wizard.as_structure` always states a cell — read 2026-10-18) | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config)` and the stage token (`names.stage`), so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
 | ~~the projection narrows one range~~ | **One range since 2026-10-02.** `TransportConfig.energy_shift_ry` allowed `(0.0001, 0.1)` against `pao_energy_shift`'s `(0.001, 0.05)`; the class is gone, and a citation whose deck says `PAO.EnergyShift 0.0005 Ry` draws `pao_energy_shift`'s warn — warn-only, so it cannot refuse a prep |
 
@@ -3340,8 +3339,7 @@ beneath. For frames stating no rows, *N frames — a family: each frame's curve
 its own, no average*; for one structure, nothing. The data is the describe
 door's `frame_set` — `{n_frames, definition}`, the definition
 `frame_average.answer`, so the card keeps no list
-(`compose.frame_set_answer`, asked by the describe door and Task setup's
-folder answer alike).
+(asked by the describe door and Task setup's folder answer alike).
 
 **The pseudopotential directory is asked for a pair**, on the shared panel:
 the `setup` items a citation asks of the person

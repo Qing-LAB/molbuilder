@@ -104,12 +104,17 @@ def continues(cfg) -> bool:
     would be two spellings of one rule, free to drift in the direction § 4
     calls silent.
 
-    ``getattr`` with a default rather than ``cfg.restart``: this is also
-    reached with a template-shaped object during stage resolution, and a
-    missing field means *clean*, which is the safe reading of silence -- the
-    dangerous direction is resuming when nobody asked.
+    Reached with a template-shaped object during stage resolution too, which
+    may state no ``restart``: then the field's own default decides -- the
+    catalogue's (`continue`, `run-identity.md` § 4 rule 3: *nothing computes
+    it*), read from the one home and never spelled here (a second default,
+    ``clean``, stood here until 2026-10-18).
     """
-    return getattr(cfg, "restart", "clean") == "continue"
+    restart = getattr(cfg, "restart", None)
+    if restart is None:
+        from .template import catalogue, one
+        restart = one(catalogue(), "restart").default
+    return restart == "continue"
 
 
 #: One character of the id's alphabet.  Deliberately a character class rather
@@ -129,10 +134,22 @@ _EDGE_SEPARATORS = re.compile(r"^[-_]+|[-_]+$")
 #: across ext4, xfs, APFS and NTFS.
 _NAME_LIMIT = 255
 
-#: The longest extension molbuilder writes beside a label, from
-#: `job-contracts.md § 4.2`'s SIESTA inventory.  ``.STRUCT_NEXT_ITER`` is the
-#: longest of the thirteen; PySCF's longest (``_geom_optim.xyz``) is shorter.
-_LONGEST_EXTENSION = ".STRUCT_NEXT_ITER"
+def _longest_extension() -> str:
+    """The longest role the file catalogue composes beside a label -- what
+    ``<label>_<stage>`` may be followed by (`runfiles.roles`, the catalogue's
+    own and the engines'; the carried engine files of `job-contracts.md`
+    § 4.2 are among them).  Asked of the catalogue, never spelled here: the
+    hand-spelled ``.STRUCT_NEXT_ITER`` (17 bytes) stood here while the
+    catalogue's ``_optimized.molstruct.json`` was 25, so a label the cap
+    admitted could name a file past the limit (2026-10-18)."""
+    try:                               # inside molbuilder
+        from .runfiles import engines, longest_tail
+    except ImportError:                # beside a job (runfiles travels too)
+        from runfiles import engines, longest_tail  # type: ignore[no-redef]
+    return longest_tail(engines())
+
+
+_LONGEST_EXTENSION = _longest_extension()
 
 #: What ``_<stage name>`` may occupy when the ladder is not known yet.
 #:

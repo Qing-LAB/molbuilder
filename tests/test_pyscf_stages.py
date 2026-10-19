@@ -22,7 +22,7 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig, PYSCF_STAGE_PRESETS
 from molbuilder.config.stages import STAGE_STRATEGY_PRESETS
-from molbuilder.config.siesta import SIESTA_STAGE_NAMES
+from molbuilder.config.stages import STAGE_NAMES
 from molbuilder.pyscf.stages import default_pyscf_stages
 from molbuilder.task import Stage
 
@@ -73,7 +73,7 @@ def test_default_ladder_is_three_named_stages():
     rung in both engines, so ``coarse`` means the same thing in a PySCF
     description and a SIESTA one (`tuning.md` § 4)."""
     stages = default_pyscf_stages("vib-quality")
-    assert [s.name for s in stages] == [SIESTA_STAGE_NAMES[i]
+    assert [s.name for s in stages] == [STAGE_NAMES[i]
                                         for i in (1, 2, 3)]
     assert all(isinstance(s, Stage) for s in stages)
 

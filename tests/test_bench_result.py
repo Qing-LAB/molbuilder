@@ -25,10 +25,10 @@ def _pts():
     return [
         BenchPoint("gpu-k8", "gpu", {"gpus": 1, "ranks_per_gpu": 8},
                    {"s_per_iter": 1538.0, "mem_peak_gb": 25.2},
-                   bound="gpu", state="completed"),
+                   bound="gpu", state="finished"),
         BenchPoint("gpu-k4", "gpu", {"gpus": 1, "ranks_per_gpu": 4},
                    {"s_per_iter": 1938.0, "mem_peak_gb": 22.3},
-                   bound="gpu", state="completed"),
+                   bound="gpu", state="finished"),
         BenchPoint("cpu-np64", "cpu", {"ranks": 64},
                    {"s_per_iter": None, "mem_peak_gb": 433.2},
                    state="timeout"),
@@ -147,12 +147,12 @@ def test_a_knob_only_one_side_knows_is_not_a_disagreement():
 def test_a_trial_that_ran_something_else_cannot_win_even_if_fastest():
     pts = [
         BenchPoint("gpu-k8", "gpu", {"gpus": 1},
-                   {"s_per_iter": 10.0}, state="completed",
+                   {"s_per_iter": 10.0}, state="finished",
                    effective={"diag_algorithm": "D&C"},
                    mismatch={"diag_algorithm": {"asked": "ELPA-1STAGE",
                                                 "ran": "D&C"}}),
         BenchPoint("gpu-k4", "gpu", {"gpus": 2},
-                   {"s_per_iter": 99.0}, state="completed"),
+                   {"s_per_iter": 99.0}, state="finished"),
     ]
     c = choose_winner(pts)
     assert c["label"] == "gpu-k4", "the fastest row measured another machine"
@@ -162,7 +162,7 @@ def test_a_trial_that_ran_something_else_cannot_win_even_if_fastest():
 
 def test_the_readback_survives_the_json_round_trip():
     pts = [BenchPoint("g", "gpu", {"gpus": 1}, {"s_per_iter": 5.0},
-                      state="completed",
+                      state="finished",
                       effective={"blocksize": 64, "diag_algorithm": "D&C"},
                       mismatch={"mpi_np": {"asked": 8, "ran": 4}})]
     back = BenchResult.from_dict(build_bench_result(pts).to_dict())

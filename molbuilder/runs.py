@@ -174,6 +174,19 @@ class Run:
         return _rf.stem(self.label, self.stage)
 
     @property
+    def launched_in(self) -> Optional[Path]:
+        """THE FOLDER THIS RUN'S LAUNCH RECORD LIES IN -- its own ``run-<n>``
+        folder, which for a run of points is the one above the point's
+        folder (`paths.run_folder_of`, the one reading); ``None`` where no
+        part of the folder is one (a flat root's stage).  What every reader
+        of the run's state passes to `rundir.run_state_of`
+        (`running-a-job.md` § 4.2); two readers passed nothing until
+        2026-10-18, so a queued point read *not launched* and a point the
+        scheduler cut read *running* for ever."""
+        from .paths import run_folder_of
+        return run_folder_of(self.folder)
+
+    @property
     def names(self) -> "_rf.RunNames":
         """The names of this run's stage's files, in its calculation's
         shape -- the one composer every writer names them with
@@ -198,8 +211,7 @@ class Run:
         stage token -- as an engine names its own (SIESTA's ``<label>.FC``,
         ``.ORB_INDX``) and a run its result (``<label>.spectra.json``) -- in
         its own folder, or ``None``."""
-        hits = [p for p, rec in _rf.find(self.folder, self.label, role=role)
-                if rec.stage is None]
+        hits = _rf.find_on_label(self.folder, self.label, role)
         return hits[-1] if hits else None
 
     @property
@@ -639,7 +651,8 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     run = run_of(path)
     if run is None or run.stage is None:
         return None
-    st = run_state_of(run.folder, run.names, run.run)
+    st = run_state_of(run.folder, run.names, run.run,
+                      launched_in=run.launched_in)
     return {"state": st.state, "detail": st.detail,
             "live": st.state in LIVE_STATES}
 
@@ -878,7 +891,8 @@ def folder_answer(directory) -> Dict[str, Any]:
                 attempts.append(str(exc))
             attempts += trail[1:]
             if run is not None and run.stage is not None:
-                st = run_state_of(run.folder, run.names, run.run)
+                st = run_state_of(run.folder, run.names, run.run,
+                                  launched_in=run.launched_in)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}

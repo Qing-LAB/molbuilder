@@ -323,8 +323,9 @@ special-cased *wrongly*.
 
 **The origin `R_c` does not matter.** A rotation about a different origin differs
 from one about `R_c` by a translation, and the translations are already columns
-of `G`. The span is the same, so the rank is the same. Use the centre of mass,
-as PySCF does, and the choice stops being a choice.
+of `G`. The span is the same, so the rank is the same. The code uses the
+geometric centre of the free atoms (`normal_modes.rigid_motions`); PySCF uses
+the centre of mass; the two give the same span, so the choice is not one.
 
 **What the rank must NOT remove — and why a blanket projection is wrong.**
 There is a published warning against exactly the naive version of this fix, and

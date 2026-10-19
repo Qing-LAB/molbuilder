@@ -59,12 +59,19 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
     leaves the item unanswered -- the documented default fills it at prep.
     """
     from ..kmesh import with_fixed
+    # A GRID THE RECORD STATES AND THIS CANNOT READ IS REFUSED BY NAME
+    # (`engines/transport.md` § 3.8.3: a stated value is never dropped in
+    # silence -- it was, until 2026-10-18, and the panel read *not chosen*).
     try:
         counts = tuple(int(v) for v in kgrid)
     except (TypeError, ValueError):
-        return
+        raise ValueError(
+            f"the cited record states a k-point grid this build cannot "
+            f"read: {kgrid!r} (three whole numbers expected)")
     if len(counts) != 3:
-        return
+        raise ValueError(
+            f"the cited record states a k-point grid of {len(counts)} "
+            f"entries, not three: {kgrid!r}")
     kw["kgrid"] = with_fixed("kgrid", counts, "transport")
     try:
         offset = tuple(float(v) for v in shifts) if shifts else None
