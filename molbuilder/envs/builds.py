@@ -510,6 +510,30 @@ def recorded_manager_run() -> Optional[Dict[str, Any]]:
     return _RECORDED_MANAGER_RUN["fact"]
 
 
+def remember_manager_run(conda: str, works: bool) -> Optional[Path]:
+    """THE FACT, SAVED WHERE IT WAS MEASURED (the user, 2026-10-18: *"facts
+    has only one version.  Why do we have to keep updating one same
+    fact?"*): this machine's record, read and written through its own door
+    (`configuration.md` § 5 M-4), gains ``manager_run`` for ``conda`` the
+    moment a dispatch measured it -- nothing for a person to run.  Returns
+    the path written, or ``None`` where there is no record here to write
+    into (none yet, or one that does not read): nothing is created, nothing
+    guessed, and the measurement is made again next time."""
+    from ..scheduler import (machine_scope_path, read_environment,
+                             write_environment)
+    path = machine_scope_path()
+    env = read_environment(path)
+    if env is None:
+        return None
+    fact = {"manager": conda, "run_works": bool(works)}
+    if env.manager_run == fact:
+        return path
+    env.manager_run = fact
+    _RECORDED_MANAGER_RUN["read"] = True
+    _RECORDED_MANAGER_RUN["fact"] = dict(fact)
+    return write_environment(env, path)
+
+
 def measure_manager_run(conda: str, env_prefix: str) -> Optional[bool]:
     """Does this manager's ``run`` enter an environment here?  MEASURED, by
     trying it on ``env_prefix`` with ``true`` -- the probe's own
@@ -747,6 +771,9 @@ def dispatch_into_env(argv: Sequence[str],
         if MANAGER_RUN_STUB_SIGNATURE not in (out or ""):
             return rc, out
         _MANAGER_RUN_UNUSABLE["seen"] = True
+        # ...AND SAVED IN THIS MACHINE'S RECORD, so no later command
+        # measures it again (`remember_manager_run`).
+        saved = remember_manager_run(argv[0], False)
         # SAID ONCE, TO STDERR, whoever asked: M4 promises the switch is
         # reported, and a quiet dispatch (`doctor`'s verify, the presence
         # gate, a tool call) passes no sink.  Once per process, because the
@@ -757,9 +784,11 @@ def dispatch_into_env(argv: Sequence[str],
             f"rejecting the stub it writes ({MANAGER_RUN_STUB_SIGNATURE!r}). "
             f"Nothing ran.  For the rest of this command each env is "
             f"entered as `run` would enter it: its prefix, its bin on PATH, "
-            f"its activate.d hooks.  Measured by trying it, once per "
-            f"command -- `{_probe_command()}` records it, and later commands "
-            f"skip the try.\n")
+            f"its activate.d hooks.  "
+            + (f"Saved in this machine's record ({saved}), so no later "
+               f"command measures it again.\n" if saved else
+               f"This machine has no record to save it in, so each command "
+               f"measures it until `{_probe_command()}` writes one.\n"))
         sys.stderr.flush()
 
     return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,

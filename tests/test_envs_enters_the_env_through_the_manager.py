@@ -129,9 +129,10 @@ def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
     # sink, and until 2026-09-14 that meant silence (review A-1.3).
     err = capsys.readouterr().err
     assert "does not work on this machine" in err
-    # ...AND NAMES THE WAY TO STOP THE REPEAT: the probe that records it
+    # ...AND SAYS WHERE THE FACT WENT: the suite's machine record (the
+    # conftest's isolated config) holds it from now on
     # (`configuration.md` § 5 M-2, `manager_run`).
-    assert "jobset probe" in err, err
+    assert "Saved in this machine's record" in err, err
 
     # and a step that fails for its OWN reasons is not retried: a pip install
     # that ran and failed must not run a second time.
@@ -196,6 +197,66 @@ def test_a_record_about_another_manager_decides_nothing(tmp_path,
                         _prefix(tmp_path))
 
     assert attempts[0][:2] == ("/m/mamba", "run"), attempts
+
+
+def test_the_measurement_is_saved_in_this_machine_s_record_as_it_is_made(
+        tmp_path, monkeypatch, capsys):
+    """The user, 2026-10-18: "facts has only one version.  Why do we have to
+    keep updating one same fact?"  The dispatch that meets the stub writes
+    `manager_run` into this machine's record, through the record's door,
+    there and then -- and the next process reads it and tries nothing.
+
+    Silent failure: the fact is measured on every command forever, or a
+    person is sent to re-run a probe for a fact molbuilder already has."""
+    from molbuilder.scheduler import record as R
+    path = tmp_path / "environment.json"
+    R.write_environment(R.Environment(scheduler=R.Scheduler(kind="workstation")),
+                        path)
+    monkeypatch.setattr("molbuilder.scheduler.machine_scope_path",
+                        lambda: path)
+    attempts = []
+
+    def fake_stream(argv, **kw):
+        attempts.append(tuple(argv))
+        if argv[0] == "bash":
+            return (0, "ran")
+        return (126, "mamba-stub.sh: line 5: exec: --: invalid option")
+
+    monkeypatch.setattr(B, "run_streaming", fake_stream)
+    argv = B.conda_run_argv("/m/mamba", "someenv", "python", "-V")
+
+    B.dispatch_into_env(argv, _prefix(tmp_path))
+
+    saved = R.read_environment(path)
+    assert saved.manager_run == {"manager": "/m/mamba", "run_works": False}
+    assert "Saved in this machine's record" in capsys.readouterr().err
+    # THE NEXT PROCESS: the record's word, no try, nothing said.
+    B.reset_manager_run_measurement()
+    attempts.clear()
+    B.dispatch_into_env(argv, _prefix(tmp_path))
+    assert [a[0] for a in attempts] == ["bash"], attempts
+    assert capsys.readouterr().err == ""
+
+
+def test_no_record_here_means_nothing_is_created(tmp_path, monkeypatch,
+                                                 capsys):
+    """A machine with no record cannot hold the fact: the door creates none
+    (a record is the probe's to create, `configuration.md` M-3) and says
+    so; the measurement is made again next time."""
+    path = tmp_path / "environment.json"
+    monkeypatch.setattr("molbuilder.scheduler.machine_scope_path",
+                        lambda: path)
+    assert B.remember_manager_run("/m/mamba", False) is None
+    assert not path.exists()
+    # ...AND THE NOTE SAYS SO, naming the probe that writes a record.
+    monkeypatch.setattr(B, "run_streaming", lambda argv, **kw: (
+        (0, "ran") if argv[0] == "bash"
+        else (126, "mamba-stub.sh: line 5: exec: --: invalid option")))
+    B.dispatch_into_env(B.conda_run_argv("/m/mamba", "someenv", "python"),
+                        _prefix(tmp_path))
+    err = capsys.readouterr().err
+    assert "no record" in err and "jobset probe" in err, err
+    assert not path.exists()
 
 
 def test_the_record_is_read_through_its_door_once(tmp_path, monkeypatch):

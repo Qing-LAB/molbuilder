@@ -115,12 +115,15 @@ each env is entered as `run` would enter it: its prefix, its bin on PATH, its
 activate.d hooks. Measured by trying it, once per command.* It names no version,
 because none was measured; the rest of the command's output is the real result.
 **And once per machine, not once per command** *(the user, 2026-10-18: "remember
-the measurement in the machine record so it stops repeating")*: `jobset probe
---write` makes the same measurement (`builds.measure_manager_run`, `run` tried on
-the probe's own environment) and records it as `manager_run`; the door reads
-this machine's record first and, where it says `run` is broken for the manager
-in hand, goes straight to the activation hooks and says nothing. The note, when
-it is said, ends by naming that probe as the way to stop it. The env framework already has the
+the measurement in the machine record so it stops repeating"; "facts has only
+one version")*: the command that measures it saves it in this machine's record
+there and then (`builds.remember_manager_run`, `manager_run` in
+[`configuration.md`](?doc=configuration.md) § 5 M-2), and the note says so;
+every later command reads the record first and, where it says `run` is broken
+for the manager in hand, goes straight to the activation hooks and says
+nothing. A machine with no record yet cannot hold the fact — the note says
+that too, and `jobset probe --write`, which makes the same measurement,
+writes one. Nobody re-runs anything to record a fact molbuilder has measured. The env framework already has the
 mechanism: a declared alternative on the step
 ([`env-framework.md`](?doc=ops/env-framework.md) § 5.6).
 

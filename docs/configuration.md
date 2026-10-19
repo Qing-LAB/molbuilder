@@ -1060,11 +1060,17 @@ measurement in the machine record so it stops repeating")* is
 `{"manager": <the binary the probe found there>, "run_works": true | false}`:
 whether that manager's `run` entered an environment when the probe tried it
 on its own (`builds.measure_manager_run`, the same measurement the one door
-makes — [`ops/installation.md`](?doc=ops/installation.md) M4). The door reads
-this machine's record before it tries: a record that says `run` is broken for
-the manager in hand sends every command straight through the activation hooks,
-silently; any other answer, or none, and the door measures as it always did
-and its note names `jobset probe --write` as the way to stop the repeat.
+makes — [`ops/installation.md`](?doc=ops/installation.md) M4). **The door that
+measures it saves it** *(the user, the same day: "facts has only one version.
+Why do we have to keep updating one same fact?")*: a dispatch that meets the
+stub writes `manager_run` into this machine's record through the record's own
+door (`builds.remember_manager_run`), there and then — the one case a record is
+written by something other than a probe, and it adds a fact the probe would
+measure the same way; it never creates a record (none here, or one that does
+not read: nothing written, the measurement made again next time, the note
+says so). The door reads the record before it tries: a record that says `run`
+is broken for the manager in hand sends every command straight through the
+activation hooks, silently.
 
 `molbuilder.json` held a SLURM-shaped `scheduler` block until 2026-10-02 and
 could never serve this role; the record is the one place a machine's kind is
