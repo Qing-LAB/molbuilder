@@ -127,53 +127,35 @@ symlink to `../Au.psml` opens as a real file from inside the directory, and the
 engine cannot tell the difference — so sharing one copy of a large
 pseudopotential across stages is invisible to it, and legitimate.
 
-#### A stage may declare what it needs: `required`
+#### What a stage needs from the runs before it, and who checks
 
-*Added 2026-08-08 (user).* Continuing a relaxation implies a known set —
-`.XV`, `.DM`, `.CG` — because that is what *continuing* means. Some runs need
-something else: a TranSIESTA scattering calculation cannot start without the
-`.TSHS` an electrode run produced, and nothing about `restart: continue` says so.
+*The user, 2026-08-08: "based on how the job is run inside the stage run
+subdir, that's where the check is done."* Continuing a relaxation implies a
+known set — `.XV`, `.DM`, `.CG` — because that is what *continuing* means
+(§ 4.2a, the restart list). A transport rung needs something else: the
+device cannot start without the `.TSHS` each electrode run produced, the
+transmission without the device's `.TSDE` — and these are **the kind's own
+DAG, never a field a description sets** (`transport.stages.inputs_of`: which
+upstream stage, which file, for every rung; `engines/transport.md` § 6.1).
 
-**`required` is to be an ordinary config field**, so a stage sets it through
-`overrides` like `mesh_cutoff`, and `stages.md § 2`'s stage — `name`,
-`overrides`, `execution`: *"Three fields, and no others"* — stays exactly as it
-is. No new stage mechanism, no fourth key in the description.
+**The check is the gather, at the stage's first launch** (`jobset/gather.py`
+— `transport_inputs`, `gather_sources`, `gather_into`; `job-system.md`
+§ 6.0): for each input, three gates, each a refusal naming what to do first
+— the upstream stage prepared; its newest run finished; that run made from
+the same engine input the rung renders now, and holding the file. What
+passes is copied into the run directory with the record of where each file
+came from (`.gathered-from`), before anything is sent; `--gather` on a
+later launch takes them anew. A group's members run one after another from
+one script, each member's own run directory filled the same way
+(`submit._points_walk`). Nothing is checked at produce (the files do not
+exist yet) and nothing at prep (prep renders the decks and copies nothing):
+the answer is definite at the first launch, which is the moment the files
+are taken.
 
-> ⚠ **Neither half of this is built, and the design is stated here in full so
-> the two halves land together** *(recorded 2026-08-16)*. § 4.4 has said since
-> 2026-08-11 that the **check** is unbuilt. The **field** is unbuilt too, which
-> is the more basic gap and was nowhere stated: the catalogue carries no
-> `required` item, so `resolve` refuses the example below — *"override(s)
-> 'required' name no field of `SiestaConfig`. A stage may override any field of
-> the shared schema, but only a field of it."* That refusal is correct
-> behaviour (`stages.md` § 6.1: a description names fields, it never defines
-> them), which is exactly why the field has to be **added to the catalogue**
-> before a stage can carry one — a stage cannot introduce it. Building the
-> check without the item would give the wrapper a list nothing can produce;
-> building the item without the check would let a description declare a
-> requirement nobody verifies.
-
-```jsonc
-{ "name": "scattering",
-  "overrides": { "required": [".TSHS", ".TSDE"] },
-  "execution": { "restart": "continue" } }
-```
-
-Extensions, not filenames: molbuilder prepends the run id, so a stage cannot
-name another calculation's file by accident — which is the mixing this document
-spends § 2.1 Rule 1 preventing.
-
-**It is a claim, not an instruction**, and that is the whole reason it is worth
-having. *"Carry this for me"* can only be obeyed; *"this stage cannot run
-without this"* can be **checked** — see § 4.4, which is the only place with a
-definite answer.
-
-> **What it does NOT change.** In the flat shape nothing is carried at all: every
-> stage shares one directory, so a declared file is either there or it is not.
-> In the hierarchical shape `prep` links it in beside the standard set. Same
-> declaration, two different pieces of work behind it, and the *check* is
-> identical in both — which is what makes it a property of the stage rather than
-> of a layout.
+> Until 2026-10-18 this subsection and § 4.4 described a `required` config
+> field and a check inside the run script, both marked unbuilt. Neither is
+> needed and neither exists: the inputs are the kind's DAG, and the gather
+> checks and copies them at launch. (Plan W44.)
 
 > ⚠ **Which is why the transportable unit is the calculation folder, not the run
 > directory.** Completeness here is a property of *what resolves*, not of what
@@ -2167,42 +2149,13 @@ whole list:
 (The flag spellings: `--continue` / `-c`; `--force` / `-f` says yes to
 `--cold`'s refusal; `--cold` / `--from-scratch`.)
 
-#### The required-file check, beside the banner
+#### What a run holds before the engine starts
 
-*Added 2026-08-08 (user): **"based on how the job is run inside the stage run
-subdir, that's where the check is done."*** A stage's `required` list (§ 2.1) is
-verified **in the directory the job runs in, immediately before the engine
-starts** — the same moment and the same place the MODE line above is computed.
-
-**Why not earlier, stated so nobody moves it:**
-
-| when | why not |
-|---|---|
-| at produce | the files do not exist yet, and a `.TSHS` may arrive from a different calculation entirely — so *"does an earlier stage produce this?"* is unanswerable and is deliberately not asked |
-| at prep | nothing is copied at prep — a stage's first launch copies what it takes ([`job-system.md`](?doc=execution/job-system.md), *The task*) |
-| **in the run directory** | **a definite answer, at the last moment before cluster time is spent** |
-
-**Warn by name, offer abort, `MOLBUILDER_FORCE=1` to proceed:** a missing
-`.TSHS` is the same kind of problem the MODE line above exists for — the run
-starts, and produces something wrong.
-
-> ⚠ **This paragraph described the check by a function that no longer exists,
-> and by a two-emitter design that no longer exists either.** It read *"it
-> reuses the shipped pattern rather than adding one: `_warm_check` in the staged
-> runner already does exactly this class of thing"*, and *"both emitters carry
-> it — the staged runner for the flat shape, and the per-job wrapper for the
-> hierarchical one."*
->
-> `render_siesta_stages_runner` and its `_warm_check` were **deleted on
-> 2026-08-10** (decision 29: the shape branches at `prep`, so **both shapes run
-> through the same wrapper** — flat is not a second emitter, it is the same one
-> in a directory laid out differently). **There is exactly one emitter**,
-> `runwrap.render_run_wrapper`, and it is where this check belongs — it already
-> reads the `SystemLabel` and computes the MODE line in the run directory.
->
-> **The check is unbuilt.** Saying it "reuses a shipped pattern" was true of a
-> pattern that has since been removed, so what it reuses now is the MODE line's
-> own machinery, and nothing more has been written.
+What a stage takes from the runs before it is in its run directory before
+the job is sent — the restart files of § 4.2a copied at a continuing launch,
+a transport rung's inputs gathered at its first launch (§ 2.1, *What a stage
+needs*) — so the wrapper checks nothing of the kind: it prints the MODE line
+above from the restart files that lie there and starts the engine.
 
 ---
 

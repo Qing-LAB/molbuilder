@@ -801,7 +801,7 @@ decks that are subtly wrong for the machine they run on.
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `use_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at prep (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
-| **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
+| **what a rung needs from the runs before it** | a transport rung's `.TSHS` / `.TSDE` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`jobset/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
 > (clarified 2026-08-07, because the wording invited the other reading).
@@ -833,34 +833,16 @@ decks that are subtly wrong for the machine they run on.
 > SIESTA rounds the diagonaliser's block down to a power of two itself;
 > [`template.md`](?doc=engines/template.md) § 12).
 
-> **Why the fourth row is not the third one wearing a hat** *(added 2026-08-08)*.
-> The third row's fields are **values the wrapper uses**: a rank count becomes an
-> `mpirun -np`, a retry budget becomes a loop. `required` is not a value the
-> wrapper uses — it is a **statement about the world** that the wrapper *checks*,
-> and the only place with a definite answer is the run directory at run time.
->
-> Not at produce: the files do not exist yet, and a `.TSHS` may legitimately
-> arrive from a different calculation the user copies in, so *"does an earlier
-> stage produce this?"* is unanswerable and is deliberately not asked. **Not at
-> prep either, for the same reason** — a declared file may come from a different
-> calculation entirely, so at prep its absence proves nothing.
->
-> This is also why `required` is phrased as a **claim** rather than an
-> instruction. *"Carry this file for me"* can only be obeyed; *"this stage
-> cannot run without this file"* can be **verified** — warn by name, offer
-> abort, `MOLBUILDER_FORCE=1` to proceed unattended.
->
-> > ⚠ **Corrected 2026-08-11.** This paragraph rested on `Carry`'s symlink
-> > *"being meant to dangle until the producer ran"*, and said the check
-> > *"reuses the shipped `_warm_check` in the staged runner"*. **Neither exists:**
-> > `Carry` was deleted 2026-08-10 and prep copies real files, and
-> > `render_siesta_stages_runner` with its `_warm_check` went the same day
-> > (there is one wrapper emitter, `runwrap.render_run_wrapper`). The
-> > conclusion is unchanged; the reason is now the one above, and **the check
-> > itself is unbuilt** — [`job-contracts.md`](?doc=execution/job-contracts.md)
-> > § 4.4 carries the same correction, made a day earlier. *Two documents held
-> > one argument and only one was fixed, which is what § 11 of
-> > [`architecture.md`](?doc=execution/architecture.md) exists to prevent.*
+> **Why the fourth row is not the third one wearing a hat** *(added
+> 2026-08-08; brought to what is built, 2026-10-18)*. The third row's fields
+> are **values the wrapper uses**: a rank count becomes an `mpirun -np`, a
+> retry budget becomes a loop. What a rung needs from the runs before it is
+> not a value at all and not a field: it is the kind's DAG, and the gather at
+> the rung's first launch checks each input (the upstream prepared, its newest
+> run finished, the same engine input, the file there) and copies it into the
+> run with its record — before anything is sent
+> ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1, *What a stage
+> needs*; `jobset/gather.py`). The wrapper checks nothing of the kind.
 
 **The routing is derivable, never a second list.** A field carries an
 `engine_key` when it is a line in the deck; the config ↔ exchange translation for
