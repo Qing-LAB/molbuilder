@@ -491,6 +491,7 @@ def run_status(run_dir, basename: str, *,
         basename)
     states = {name: e.run_state or "unknown" for name, e in endings.items()}
     messages = {name: e.error_message for name, e in endings.items()}
+    doings = {name: e.doing for name, e in endings.items()}
     # WHICH OF THEM MAY SPEAK is the catalogue's `output` column, not a rule
     # written here.  A "stdout" file exists because the PROCESS started, so it
     # counts whether or not it ended; a "progress" file is SEEDED at prep, so
@@ -516,6 +517,7 @@ def run_status(run_dir, basename: str, *,
         past_wall=lambda: _past_wall(run_dir, basename, run, launch),
         quiet_for=lambda: _quiet_for(run_dir, basename, run, launch),
         out_messages=messages,
+        out_doing=doings,
         finish_started=lambda p: _finish_started(run_dir, p, basename),
         run_index=lambda p: _run_index(p, basename)),
         endings=endings)
@@ -538,6 +540,7 @@ def _build_status(out_paths: List[Path],
                   past_wall: Callable[[], Optional[str]] = lambda: None,
                   quiet_for: Callable[[], str] = lambda: "",
                   out_messages: Optional[Dict[str, Optional[str]]] = None,
+                  out_doing: Optional[Dict[str, Optional[str]]] = None,
                   finish_started: Callable[[Path], bool] = lambda _p: False,
                   run_index: Callable[[Path], int] = lambda _p: -1,
                   ) -> "RunStatus":
@@ -562,8 +565,10 @@ def _build_status(out_paths: List[Path],
     finished -- however long it has been quiet (`running-a-job.md` § 4.2)
     -- unless its folder's newest write is older than the wall its job was
     sent with (``past_wall``, *Past its wall*): then it is over, and
-    ``failed`` says how it was not recorded.  A sent run still ``running``
-    says how long since its folder was written (``quiet_for``).
+    ``failed`` says how it was not recorded.  A run still ``running`` says
+    where it is in the reading pass's words (``out_doing``,
+    `RunEnding.doing`),
+    and a sent one how long since the job last wrote (``quiet_for``).
 
     ``out_paths`` are the files that may SPEAK, the run's newest run index
     speaking (``run_index``); ``last_change_at`` is the speaker's mtime,
@@ -688,7 +693,10 @@ def _build_status(out_paths: List[Path],
             if over:
                 state, detail = "failed", over
             else:
-                state, detail = "running", "running" + quiet_for()
+                doing = (out_doing or {}).get(active.name)
+                state, detail = "running", ("running"
+                                            + (f" \u00b7 {doing}" if doing
+                                               else "") + quiet_for())
 
     return RunStatus(state=state, detail=detail,
                      last_change_at=_iso_z(active.stat().st_mtime),

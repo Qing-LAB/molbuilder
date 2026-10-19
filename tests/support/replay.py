@@ -8,7 +8,7 @@ itself writes -- its log and its samples -- and the timing tee, which grows
 with the output, are left for the replay to write.
 
 Used by ``tests/test_monitor_watches_a_live_run_e2e.py`` (a relaxation) and
-``tests/test_transport_on_a_real_junction_e2e.py`` (a transmission).
+``tests/test_transport_on_a_real_junction_e2e.py`` (a transmission, a device).
 """
 from __future__ import annotations
 

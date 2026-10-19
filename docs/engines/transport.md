@@ -1985,6 +1985,18 @@ else.
 
 ### 2a.12 What the Results surface reads
 
+**A device run's row says where it is** while it runs
+([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.2;
+`model/parse.md` § 2b, `doing`): until its first SCF row, which lead's
+surface Green's function TranSIESTA is computing and the file's estimated
+size — the stretch Sol's device job 66108241 spent its hours in on
+2026-10-19, its row saying only *running* — or, a later frame's point at the
+same voltage, that the leads' functions are reused (§ 2a.11); then the rows
+speak: a first point's periodic SCF (*periodic SCF iteration 3*), the charge
+distribution at the switch where a point starting from a `.TSDE` goes at
+once, then *negf SCF iteration N*. The monitor's status line says the same
+words, from the same reading (`parse/engines/transiesta.py`).
+
 **In your order** ([`model/overview.md`](?doc=model/overview.md) § 2.2a,
 I1): the report draws the composed junction put back in your order — its load
 asks the load route to restore it — while `junction.xyz` stays the engine's

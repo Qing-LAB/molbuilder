@@ -94,6 +94,12 @@ class RunEnding:
     max_force_all:       Optional[float] = None
     stress_voigt_kbar:   Optional[Tuple[float, ...]] = None
     forces_not_computed: Optional[str] = None
+    #: WHERE A RUN STILL GOING IS, in words (`model/parse.md` § 2b): the
+    #: row in flight's phase and iteration, or until a TranSIESTA device's
+    #: first SCF row its set-up -- the reading pass's one rule
+    #: (`siesta_reader.SiestaReader._where_words`); ``None`` when the output
+    #: states neither.
+    doing:               Optional[str] = None
 
 
 def _read(path) -> str:
@@ -152,7 +158,8 @@ def _ending_of_reading(read: Dict[str, Any]) -> RunEnding:
                      max_force=read.get("max_force"),
                      max_force_all=read.get("max_force_all"),
                      stress_voigt_kbar=(tuple(stress) if stress else None),
-                     forces_not_computed=read.get("forces_not_computed"))
+                     forces_not_computed=read.get("forces_not_computed"),
+                     doing=read.get("doing"))
 
 
 # ---- PySCF: our own decks' end lines, and Python's own failure shape ---- #

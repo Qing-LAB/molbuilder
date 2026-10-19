@@ -183,6 +183,11 @@ class JobStatus:
     #: (`model/parse.md` § 5d.5) -- not a report field: the summary line
     #: says it in words (`tbtrans.loop_words`).
     tbtrans: Optional[Dict[str, Any]] = None
+    #: WHERE THE RUN IS, in the reading pass's words (`model/parse.md`
+    #: § 2b, ``doing``: the row in flight's phase and iteration, or a
+    #: TranSIESTA device's set-up until its first SCF row) -- the summary
+    #: line says it as given; ``None`` when the output states neither.
+    doing: Optional[str] = None
     #: The pass underway's share done, in per cent, and the time TBtrans
     #: says it has left, as its latest progress line states them
     #: (`run-reports.md` § 4.1a); ``None`` when no pass is underway.
@@ -209,11 +214,11 @@ class JobStatus:
         exit."""
         head = self.state + (f" ({self.detail})" if self.detail else "")
         bits = [head]
-        if self.phase or self.cycle is not None:
-            bits.append(" ".join(b for b in (
-                self.phase, "SCF",
-                f"iteration {self.cycle}" if self.cycle is not None else "")
-                if b))
+        # WHERE THE RUN IS, in the reading pass's words (`model/parse.md`
+        # § 2b, ``doing``) -- not repeated when the head's detail, the run
+        # door's, already says them.
+        if self.doing and not (self.detail and self.doing in self.detail):
+            bits.append(self.doing)
         if self.n_iters:
             bits.append(f"{self.n_iters} SCF rows")
         if self.energy is not None:
@@ -274,8 +279,10 @@ LIVE_READERS: Dict[str, Callable[[Optional[str]], Any]] = {
 }
 
 #: What a live reading must state to say where the run IS -- an SCF row, a
-#: step, or TBtrans's loop (TBtrans states no SCF).
-_POSITION = ("cycle", "step", "energy", "tbtrans")
+#: step, TBtrans's loop (TBtrans states no SCF), or the words of where it
+#: is (`model/parse.md` § 2b, ``doing``: a device's set-up until its first
+#: SCF row).
+_POSITION = ("cycle", "step", "energy", "tbtrans", "doing")
 
 
 #: How much of a file's beginning, and of what was last read, identifies it
@@ -435,6 +442,7 @@ class WatchedRun:
             st.max_force_held = (every if every is not None
                                  and every > st.max_force else None)
         st.tbtrans = state.get("tbtrans")
+        st.doing = state.get("doing")
         st.done_pct = state.get("done_pct")
         st.eta_s = state.get("eta_s")
 
@@ -1871,13 +1879,19 @@ def _append(log_path: Path, line: str) -> None:
 def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
     """Did real work advance between two ticks?  True iff the SCF row count,
     the row's own iteration, the phase or the step moved -- or TBtrans's
-    loop did: a progress line, a pass begun or completed."""
+    loop did: a progress line, a pass begun or completed -- or TranSIESTA's
+    set-up did, until its first SCF row."""
     if (curr.n_iters or 0) > (prev.n_iters or 0):
         return True
     if (curr.phase, curr.cycle) != (prev.phase, prev.cycle):
         return curr.cycle is not None
     if curr.tbtrans != prev.tbtrans:
         return curr.tbtrans is not None
+    if curr.cycle is None and curr.doing != prev.doing:
+        # TRANSIESTA'S SET-UP MOVED, before the first SCF row: a lead's
+        # cell checked, its surface Green's function begun, sized, written
+        # or found, the charge distribution (`run-reports.md` § 2.2).
+        return curr.doing is not None
     return (curr.geom_step or 0) > (prev.geom_step or 0)
 
 

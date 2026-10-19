@@ -99,11 +99,11 @@ way up and reused by every frame's point at that voltage
 from Sol's device job that died with nothing written**: a sent run the
 scheduler no longer lists is written down once by the first reader on that
 machine and reads `failed` everywhere; a run past its wall is over anywhere
-(`running-a-job.md` § 4.2). Open, with the user's yes: the chat card's
-layout as data per receiver (a layout file; the one card built once), and
-the device run's phase on its ladder row while it is before its first SCF
-iteration (the leads' Green's functions, the charge table — facts the
-reader already extracts).
+(`running-a-job.md` § 4.2). **Then 2.21.0**: a running run's row and
+the monitor's line say where it is — the SCF row's phase and iteration,
+or a device's set-up until its first SCF row (`model/parse.md` § 2b,
+`doing`). Open, with the user's yes: the chat card's layout as data per
+receiver (a layout file; the one card built once).
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs

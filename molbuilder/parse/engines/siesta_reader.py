@@ -21,6 +21,10 @@ transport rung are each read as what they are, with nothing told.
 from __future__ import annotations
 
 import copy
+try:
+    from .transiesta import scf_words as _scf_words, setup_words as _setup_words
+except ImportError:                         # beside the job
+    from transiesta import scf_words as _scf_words, setup_words as _setup_words
 import math
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -812,6 +816,56 @@ class SiestaReader:
         m = _G.TS_GF_FOR.match(line)
         if m:
             self._ts_gf_electrode = m.group(1)
+            self.ts_info.setdefault("electrodes", {}).setdefault(
+                m.group(1), {})["gf_started"] = True
+
+    def _on_ts_gf_file(self, line: str, line_no: int) -> None:
+        """The lead's file: its estimated size, and its being written --
+        the set-up's place (`transiesta.setup_words`)."""
+        if self._ts_gf_electrode is None:
+            return
+        el = self.ts_info.setdefault("electrodes", {}).setdefault(
+            self._ts_gf_electrode, {})
+        m = _G.TS_GF_SIZE.match(line)
+        if m:
+            el["gf_file_size"] = f"{m.group(1)} {m.group(2)}"
+            return
+        if _G.TS_GF_DONE.match(line):
+            el["gf_done"] = True
+
+    def _on_ts_gf_reused(self, line: str, line_no: int) -> None:
+        """A lead's file found and read instead of computed (``Using
+        GF-file``): the lead named by the file's tail after ``TSGF``."""
+        m = _G.TS_GF_REUSED.match(line)
+        if not m or "TSGF" not in m.group(1):
+            return
+        lead = m.group(1).rsplit("TSGF", 1)[-1]
+        self.ts_info.setdefault("electrodes", {}).setdefault(
+            lead, {})["gf_reused"] = True
+
+    def _where_words(self) -> str:
+        """WHERE THE RUN IS, in words -- the one precedence (`model/parse.md`
+        § 2b, ``doing``): the row in flight's phase and iteration
+        (`transiesta.scf_words`), else TranSIESTA's set-up as it stands
+        (`transiesta.setup_words`); ``""`` with neither.  Read by `now()`
+        for the monitor and by `finish()` for the ending, so the two say
+        the same words."""
+        # THE ROW IN FLIGHT, by `now()`'s own rule: the current SCF's last
+        # row, else the last committed step's -- so a step boundary keeps
+        # its words.
+        last = (self._current_scf[-1] if self._current_scf else
+                next((s["scf_history"][-1] for s in reversed(self.steps)
+                      if s.get("scf_history")), None))
+        if last is not None:
+            words = _scf_words(last.get("phase"), last.get("cycle"))
+            if words:
+                return words
+        # A TBTRANS OUTPUT states no SCF and computes no file: its leads'
+        # cell check would read as set-up for its whole loop.  Its loop is
+        # said by `tbtrans.loop_words` where a surface asks for it.
+        if self.tbtrans:
+            return ""
+        return _setup_words(self.ts_info)
 
     def _on_ts_gf_stats(self, line: str, line_no: int) -> None:
         if self._ts_gf_electrode is None:
@@ -1078,6 +1132,16 @@ class SiestaReader:
                         start=any_of(matches_regex_ci(_G.TS_GF_MEAN_STD.pattern),
                                      matches_regex_ci(_G.TS_GF_MIN_MAX.pattern)),
                         on_start=self._on_ts_gf_stats),
+            SectionRule(name="ts_gf_file",
+                        aliases=["Estimated file size: ...",
+                                 "Done creating '...'."],
+                        start=any_of(matches_regex_ci(_G.TS_GF_SIZE.pattern),
+                                     matches_regex_ci(_G.TS_GF_DONE.pattern)),
+                        on_start=self._on_ts_gf_file),
+            SectionRule(name="ts_gf_reused",
+                        aliases=["Using GF-file '...'"],
+                        start=matches_regex_ci(_G.TS_GF_REUSED.pattern),
+                        on_start=self._on_ts_gf_reused),
             SectionRule(name="emadel", aliases=["siesta: Emadel = ..."],
                         start=matches_regex_ci(_G.EMADEL.pattern),
                         on_start=self._on_emadel),
@@ -1276,6 +1340,14 @@ class SiestaReader:
             if passes:
                 out.update({k: passes[-1][k] for k in ("done_pct", "eta_s")
                             if k in passes[-1]})
+        if self.ts_info:
+            # TRANSIESTA'S SET-UP, as it stands (`transiesta.setup_words`).
+            out["transiesta"] = copy.deepcopy(self.ts_info)
+        # WHERE THE RUN IS, in words -- said only when the output states
+        # it (`_where_words`); what the monitor's summary line says.
+        where = self._where_words()
+        if where:
+            out["doing"] = where
         return out
 
     def _forces_now(self) -> Dict[str, Any]:
@@ -1339,6 +1411,9 @@ class SiestaReader:
                        and bool(self._step_frame)
                        and bool(self._current_scf)
                        and self._step_energy is None)
+        # WHERE IT IS, read before the step in flight is committed (which
+        # empties the rows): the ending's `doing` (`model/parse.md` § 2b).
+        doing = self._where_words() or None
         self._commit(in_progress=in_progress)
         live_scf: Optional[Dict[str, Any]] = None
         if self.run_state == "running" and self._current_scf:
@@ -1398,7 +1473,7 @@ class SiestaReader:
         # WHAT EACH SCF ROW MEASURES, the engine's one declaration.
         self.runtime_info["scf_residuals"] = [dict(r) for r in
                                               _G.SCF_RESIDUALS]
-        return {"steps": self.steps, "live_scf": live_scf,
+        return {"steps": self.steps, "live_scf": live_scf, "doing": doing,
                 "lattice": self.lattice, "run_state": self.run_state,
                 "scf_converged": self.scf_converged,
                 "phases": dict(self.phase_converged),

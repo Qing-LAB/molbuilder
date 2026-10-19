@@ -2367,6 +2367,71 @@ def test_the_monitor_says_a_transmissions_loop_as_it_grows(junction,
     assert completed in end, end
 
 
+def test_a_device_says_where_it_is_before_its_first_negf_row(junction,
+                                                             tmp_path):
+    """`model/parse.md` § 2b (`doing`), `running-a-job.md` § 4.2,
+    `run-reports.md` § 2.2: a device spends its first stretch computing the
+    leads' surface Green's functions and prints no SCF row there.  Shown
+    the run's output as it grew, the monitor's status line and the run
+    door's *running* detail say where it is in the same words -- which
+    lead's function it is computing and the file's estimated size, the
+    functions computed -- then the rows speak: a first point's periodic
+    SCF, then the NEGF row's iteration.  The silent failure: Sol's device
+    job 66108241 (2026-10-19), hours in that stretch with its row saying
+    only *running*."""
+    import re
+    from molbuilder import monitor
+    from molbuilder.parse.dirs.rundir import run_state_of
+    from molbuilder.parse.engines.transiesta import scf_words
+    from molbuilder.runfiles import RunNames
+    from molbuilder.task import read_task
+    from support.replay import output_lines, replay, statuses
+    folder = _point(junction, "04_device", 0, _BIAS[0])
+    s = output_lines(folder)
+    begun = [i for i, ln in enumerate(s) if _G.TS_GF_FOR.match(ln)]
+    sized = [i for i, ln in enumerate(s) if _G.TS_GF_SIZE.match(ln)]
+    done = [i for i, ln in enumerate(s) if _G.TS_GF_DONE.match(ln)]
+    charge = next(i for i, ln in enumerate(s) if _G.TS_CHARGE_START.match(ln))
+    row = next(i for i, ln in enumerate(s)
+               if re.match(_G.SCF_ROW_ERE, ln) and "ts-" in ln.lower())
+    assert len(begun) == 2 and len(sized) == 2 and len(done) == 2, (
+        begun, sized, done)
+    assert begun[0] < sized[0] < done[0] < begun[1] < done[1] < charge < row
+    lead = _G.TS_GF_FOR.match(s[begun[1]]).group(1)
+    m = _G.TS_GF_SIZE.match(s[sized[1]])
+    size = f"{m.group(1)} {m.group(2)}"
+    # A FIRST POINT'S PERIODIC ROWS come between the leads' files and the
+    # charge line (`transport.md` § 2a.12): at the charge line the last
+    # periodic row speaks.
+    periodic = [i for i, ln in enumerate(s)
+                if re.match(_G.SCF_ROW_ERE, ln) and "ts-" not in ln.lower()
+                and i < charge]
+    assert periodic and done[1] < periodic[0] < charge, (done, periodic, charge)
+    k = int(s[periodic[-1]].split()[1])
+    rows = [
+        (sized[1] + 1, f"computing the {lead} lead's surface Green's "
+                       f"function (estimated {size})"),
+        (done[1] + 1, "the leads' surface Green's functions computed"),
+        (charge + 1, scf_words(_G.PHASE_PERIODIC, k)),
+        (row + 1, scf_words(_G.PHASE_NEGF, 1)),
+    ]
+    assert rows[-1][1] == "negf SCF iteration 1"
+    label = read_task(junction.bundle / "task.json").label
+    names = RunNames.of(label, "04_device", "hierarchical")
+    there, watched, grow = replay(folder, tmp_path, begun[0])
+    for n, (to, words) in enumerate(rows):
+        monitor.run_monitor(watched, interval=1, watch_pid=0, max_ticks=1,
+                            sleep=lambda _, to=to: grow(to))
+        said = statuses(watched)
+        assert said and words in said[-1], (words, said)
+        # THE RUN DOOR'S ONE SCAN, on the same folder, carries the same
+        # words (`RunEnding.doing`, what its *running* detail says) -- the
+        # replayed folder keeps the finished run's conclusion, so the state
+        # read here is the finished run's; the words are the output's.
+        st = run_state_of(there, names)
+        assert st.endings[st.active_source].doing == words, (words, st)
+
+
 def test_a_devices_own_contours_are_no_transmission_loop(junction, tmp_path):
     """A biased device prints its own contours in the words TBtrans prints
     its energies in -- ``ts:   line contour points = N`` -- and they are

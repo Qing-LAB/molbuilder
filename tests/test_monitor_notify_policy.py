@@ -485,3 +485,36 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
         f"the shipped monitor needs something a bare python lacks:\n"
         f"{proc.stderr[-2000:]}")
+
+
+def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
+        tmp_path):
+    """`engines/vibration.md` I23: the finish travels as one declared set
+    (`runwrap.VIBRATION_COMPANIONS`) that imports only what the job env
+    carries -- and what its own modules import of each other must be in
+    the set.  The SIESTA reader it ships reads the output's ending and,
+    since 2.21.0, composes where a run is (`parse/engines/transiesta.py`):
+    a module the reader imports and the set did not ship made every
+    finish die at import on the real-junction e2e (2026-10-19).  The
+    readers are imported from the bundle on a python with no molbuilder
+    on its path; numpy is left as the job env has it (the finish needs
+    it, I23)."""
+    import subprocess
+    import sys
+    from molbuilder import runwrap
+    from molbuilder.runfiles import VIBRATION_BUNDLE
+
+    ship = tmp_path / "jobdir"
+    ship.mkdir()
+    (ship / VIBRATION_BUNDLE).write_bytes(runwrap.vibration_bundle())
+    env = dict(os.environ)
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
+    env.pop("PYTHONPATH", None)
+    proc = subprocess.run(
+        [sys.executable, "-I", "-c",
+         f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
+         "import siesta_reader, siesta_fc, fdf; print('loaded')"],
+        cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0 and "loaded" in proc.stdout, (
+        f"the shipped finish's readers need a module the bundle does not "
+        f"carry:\n{proc.stderr[-2000:]}")

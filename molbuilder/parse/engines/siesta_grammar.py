@@ -1052,6 +1052,19 @@ TS_GF_MEAN_STD = re.compile(
 TS_GF_MIN_MAX = re.compile(
     r"Lopez Sancho.*Min/Max iterations\s*:\s*(\d+)\s*/\s*(\d+)",
     re.IGNORECASE)
+#: The surface Green's function's file (``Src/m_ts_electrode.F90``): its
+#: estimated size before the recursion, ``Estimated file size: 49.170 GB``,
+#: and ``Done creating '<file>'.`` once written -- the stretch a device
+#: spends before its first NEGF row, said by `transiesta.setup_words`.
+TS_GF_SIZE = re.compile(r"^\s*Estimated file size:\s*(\S+)\s*(\S+)",
+                        re.IGNORECASE)
+TS_GF_DONE = re.compile(r"^\s*Done creating\s+'([^']+)'", re.IGNORECASE)
+#: The file found and read instead (``Src/m_ts_gf.F90`` ``do_Green``, under
+#: ``GF.ReUse``): ``Using GF-file '<file>'`` -- a later frame's point at the
+#: same voltage (`engines/transport.md` § 2a.11); it prints no ``Calculating``
+#: and no ``Done creating`` for that lead.  The lead is the file's tail after
+#: ``TSGF``, the engine's own naming (`ts_electrode.F90`:373-377) and ours.
+TS_GF_REUSED = re.compile(r"^\s*Using GF-file\s+'([^']+)'", re.IGNORECASE)
 
 #: SIESTA's own Makov-Payne monopole term (``Src/write_subs.F``):
 #: ``siesta: Emadel  = <eV>`` -- zero unless SIESTA applied it (a molecule
