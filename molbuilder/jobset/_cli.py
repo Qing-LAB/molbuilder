@@ -2327,11 +2327,12 @@ def _probe_consent_merge(before, probed, *, yes: bool):
                       probed.site.partition,
                       lambda: setattr(probed.site, "partition",
                                       before.site.partition)))
-    # THE THREE FACTS THAT TRAVEL WITH A RECORD (`diagnostics.local_facts`:
+    # THE FOUR FACTS THAT TRAVEL WITH A RECORD (`diagnostics.local_facts`:
     # how the machine enters its environment, which envs it holds, what they
-    # were built for) are asked about like every other difference: a record
-    # edited by hand is a person's answer.
-    for _f in ("env_init", "conda_envs", "env_arch"):
+    # were built for, whether its manager's `run` enters one) are asked
+    # about like every other difference: a record edited by hand is a
+    # person's answer.
+    for _f in ("env_init", "conda_envs", "env_arch", "manager_run"):
         b, pv = getattr(before, _f), getattr(probed, _f)
         if b != pv:
             diffs.append((_f, b, pv,
@@ -2650,9 +2651,10 @@ def cmd_probe(do_write: bool, name, yes: bool,
         # for a kind with none (`record.Scheduler`).
         raise click.ClickException(str(exc)) from None
 
-    # THE THREE FACTS THAT TRAVEL WITH A RECORD -- how this machine enters
-    # its environment, which envs exist here, and what they were built
-    # for.  `diagnostics.local_facts` owns them and states why.  The first is THIS machine's
+    # THE FOUR FACTS THAT TRAVEL WITH A RECORD -- how this machine enters
+    # its environment, which envs exist here, what they were built for, and
+    # whether its manager's `run` enters one.  `diagnostics.local_facts`
+    # owns them and states why.  The first is THIS machine's
     # `env_init`, declared in its molbuilder.json and copied into whichever
     # record this writes, this machine's or a named one (user, 2026-10-02) --
     # required, and checked above.

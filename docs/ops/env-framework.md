@@ -674,7 +674,13 @@ corrects how this section first stated it:
   version check would mean tracking someone else's release history; the stub
   announces itself, and it dies *before* the inner command starts, which is what
   makes the retry safe rather than a second half-install. One wasted launch per
-  process on a broken manager, none at all on a working one.
+  process on a broken manager, none at all on a working one — **and none on a
+  machine whose record remembers it** *(2026-10-18)*: `jobset probe` makes the
+  measurement (`builds.measure_manager_run`) and records `manager_run`
+  ([`configuration.md`](?doc=configuration.md) § 5 M-2); the door reads this
+  machine's record before the first try and takes the record's word for the
+  manager it names. Any other record, or none: the try, the note — which names
+  the probe — and the switch, as before.
 * **Not `RECOVERED`.** A declared alternative on a step means *this package may
   come from another source* (§ 4.3), and an `Outcome` describes what became of a
   package. A broken manager is a property of the **machine**: reporting every

@@ -40,7 +40,8 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List, Mapping, Optional, Sequence, TextIO, Tuple
+from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
+                    TextIO, Tuple)
 
 from .abi import (
     AbiContract,
@@ -472,14 +473,57 @@ MANAGER_RUN_STUB_SIGNATURE = "exec: --: invalid option"
 _MANAGER_RUN_UNUSABLE = {"seen": False}
 
 
+#: What THIS MACHINE'S RECORD says about its manager's ``run`` -- read once
+#: per process through the record's own door (`configuration.md` § 5 M-4),
+#: never the file.  ``None`` until read, or when the record says nothing.
+_RECORDED_MANAGER_RUN = {"read": False, "fact": None}
+
+
 def manager_run_unusable() -> bool:
     """Has this manager's ``run`` been measured as broken in this process?"""
     return _MANAGER_RUN_UNUSABLE["seen"]
 
 
 def reset_manager_run_measurement() -> None:
-    """Forget the measurement.  For tests, and for nothing else."""
+    """Forget the measurement, and the record's word.  For tests, and for
+    nothing else."""
     _MANAGER_RUN_UNUSABLE["seen"] = False
+    _RECORDED_MANAGER_RUN["read"] = False
+    _RECORDED_MANAGER_RUN["fact"] = None
+
+
+def recorded_manager_run() -> Optional[Dict[str, Any]]:
+    """The machine record's ``manager_run`` fact -- ``{"manager", "run_works"}``
+    -- or ``None`` where the record is absent, does not read, or was written
+    before the fact existed.  THE RECORD REMEMBERS THE MEASUREMENT (the
+    user, 2026-10-18: *"remember the measurement in the machine record so it
+    stops repeating"*; `configuration.md` § 5 M-2): `jobset probe` makes it
+    with :func:`measure_manager_run` and writes it; this door reads it
+    before its first try.  Read once per process, as the measurement is
+    kept once per process."""
+    if not _RECORDED_MANAGER_RUN["read"]:
+        _RECORDED_MANAGER_RUN["read"] = True
+        from ..scheduler import machine_scope_path, read_environment
+        env = read_environment(machine_scope_path())
+        fact = env.manager_run if env is not None else None
+        _RECORDED_MANAGER_RUN["fact"] = dict(fact) if fact else None
+    return _RECORDED_MANAGER_RUN["fact"]
+
+
+def measure_manager_run(conda: str, env_prefix: str) -> Optional[bool]:
+    """Does this manager's ``run`` enter an environment here?  MEASURED, by
+    trying it on ``env_prefix`` with ``true`` -- the probe's own
+    environment, when `jobset probe` asks (`diagnostics.local_facts`).
+    ``True`` when the command ran, ``False`` when the stub died before it
+    (`MANAGER_RUN_STUB_SIGNATURE`), ``None`` when it failed some other way
+    -- unknown, and the record then says nothing (`configuration.md` § 5
+    M-2).  The same signature the one door reads at a dispatch, so the two
+    cannot disagree about what "broken" is."""
+    rc, out = run_streaming(conda_run_prefix_argv(conda, env_prefix, "true"),
+                            timeout=120)
+    if MANAGER_RUN_STUB_SIGNATURE in (out or ""):
+        return False
+    return True if rc == 0 else None
 
 
 def _run_argv(conda: str, address: Tuple[str, str],
@@ -636,6 +680,13 @@ def env_for_step(env_prefix: Optional[str],
     return env
 
 
+def _probe_command() -> str:
+    """The command that records this machine, as the record's door spells
+    it (`configuration.md` § 5 M-4) -- named by the note, never re-typed."""
+    from ..scheduler.record import probe_command
+    return probe_command()
+
+
 def dispatch_into_env(argv: Sequence[str],
                       env_prefix: Optional[str],
                       *,
@@ -680,6 +731,16 @@ def dispatch_into_env(argv: Sequence[str],
                              inherit_stdio=inherit_stdio)
 
     if not _MANAGER_RUN_UNUSABLE["seen"]:
+        # THE RECORD'S WORD FIRST: a machine whose record says this manager's
+        # `run` is broken is not tried again, and nothing is said -- the
+        # measurement was made and recorded by `jobset probe`
+        # (`recorded_manager_run`).  A record about another manager, or
+        # none, decides nothing here.
+        fact = recorded_manager_run()
+        if (fact and fact.get("manager") == argv[0]
+                and fact.get("run_works") is False):
+            _MANAGER_RUN_UNUSABLE["seen"] = True
+    if not _MANAGER_RUN_UNUSABLE["seen"]:
         rc, out = run_streaming(argv, cwd=cwd, env=env, sink=sink,
                                 log_file=log_file, timeout=timeout,
                                 inherit_stdio=inherit_stdio)
@@ -697,7 +758,8 @@ def dispatch_into_env(argv: Sequence[str],
             f"Nothing ran.  For the rest of this command each env is "
             f"entered as `run` would enter it: its prefix, its bin on PATH, "
             f"its activate.d hooks.  Measured by trying it, once per "
-            f"command.\n")
+            f"command -- `{_probe_command()}` records it, and later commands "
+            f"skip the try.\n")
         sys.stderr.flush()
 
     return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,

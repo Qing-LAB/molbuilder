@@ -100,7 +100,7 @@ same question**, and the answer is the same: ask the thing that knows.
 | **M1** | **The manager activates; molbuilder does not.** A step enters an env as `<mgr> run -n <env> …` — the detected binary's own mechanism, which performs the activation the env's own packages expect, `activate.d` hooks included | exporting `PATH` / `LD_LIBRARY_PATH` / `CONDA_PREFIX` by hand and sourcing `<prefix>/etc/conda/activate.d/*.sh` from a generated shell wrapper |
 | **M2** | **A path inside an env is ASKED FOR, never derived.** The prefix comes from the manager — `env list --json`, `info --json` | `<manager root>/envs/<name>`, `~/.conda/envs/<name>`, `Path(binary).parent.parent/etc/profile.d/conda.sh`. The binary's path says where the **manager** is installed; it does not say where that manager keeps envs, and on exactly the machines `envs.manager` exists for, the two differ |
 | **M3** | **A remedy names the DETECTED manager** — `caps.conda_binary` | a literal `conda env remove …` printed on a machine that has only micromamba: a remedy the person cannot run |
-| **M4** | **A manager's bug is MEASURED, then worked around — inside the one door.** Taken only when that bug's signature actually appears, reported once, and **not** recorded as the step's outcome: a broken manager is a fact about the machine, and calling every step on such a machine `RECOVERED` would say the PACKAGE came from elsewhere | making the workaround unconditional: every other machine loses the manager's real activation, the bug becomes invisible, and the hand-written copy drifts — twice, here |
+| **M4** | **A manager's bug is MEASURED, then worked around — inside the one door.** Taken only when that bug's signature actually appears, reported once, and **not** recorded as the step's outcome: a broken manager is a fact about the machine — so **the machine's record remembers it** (`jobset probe` measures it there, `manager_run`, [`configuration.md`](?doc=configuration.md) § 5 M-2) and the door reads the record before it tries, trying nothing the record says is broken; calling every step on such a machine `RECOVERED` would say the PACKAGE came from elsewhere | making the workaround unconditional: every other machine loses the manager's real activation, the bug becomes invisible, and the hand-written copy drifts — twice, here |
 | **M5** | **A remedy the program prints may not destroy working state.** A fix command must be runnable *and* must not be ruinous: nothing may propose removing the env the process is running from | `doctor` printing `install molbuilder --clean --yes` for the host env |
 
 **Why M4 is stated as a fallback rather than a version check.** Some mambas'
@@ -113,7 +113,14 @@ command on such a machine, on stderr: *`mamba run` does not work on this machine
 it stopped before the command started … Nothing ran. For the rest of this command
 each env is entered as `run` would enter it: its prefix, its bin on PATH, its
 activate.d hooks. Measured by trying it, once per command.* It names no version,
-because none was measured; the rest of the command's output is the real result. The env framework already has the
+because none was measured; the rest of the command's output is the real result.
+**And once per machine, not once per command** *(the user, 2026-10-18: "remember
+the measurement in the machine record so it stops repeating")*: `jobset probe
+--write` makes the same measurement (`builds.measure_manager_run`, `run` tried on
+the probe's own environment) and records it as `manager_run`; the door reads
+this machine's record first and, where it says `run` is broken for the manager
+in hand, goes straight to the activation hooks and says nothing. The note, when
+it is said, ends by naming that probe as the way to stop it. The env framework already has the
 mechanism: a declared alternative on the step
 ([`env-framework.md`](?doc=ops/env-framework.md) § 5.6).
 

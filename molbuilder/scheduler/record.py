@@ -402,6 +402,16 @@ class Environment:
     #: aarch64 it simply finds nothing and reports an unknown compiler
     #: version rather than the actual cause.
     env_arch:   Optional[str] = None
+    #: WHETHER THE MANAGER'S ``run`` ENTERS AN ENVIRONMENT THERE -- the fourth
+    #: fact that travels (the user, 2026-10-18: *"remember the measurement in
+    #: the machine record so it stops repeating"*).  Shape: ``{"manager": the
+    #: binary the probe found there, "run_works": bool}`` -- measured by the
+    #: probe the way the one door measures it (`envs.builds.measure_manager_run`,
+    #: `installation.md` M4), and read by that door before it tries, so a
+    #: broken ``run`` is not tried again on every command.  ``{}`` means not
+    #: measured: no manager answered, or its ``run`` failed some other way
+    #: than the stub -- the door measures as before.
+    manager_run: Dict[str, Any] = field(default_factory=dict)
     source:    Dict[str, str] = field(default_factory=dict)
     detected_at: Optional[str] = None
     #: Who wrote it: the probe -- `jobset probe`, or `envs init-config`
@@ -451,6 +461,8 @@ class Environment:
             **({"conda_envs": sorted(self.conda_envs)}
                if self.conda_envs else {}),
             **({"env_arch": self.env_arch} if self.env_arch else {}),
+            **({"manager_run": dict(self.manager_run)}
+               if self.manager_run else {}),
             "source": dict(self.source),
             "tool": self.tool,
             "machine": self.machine,
@@ -486,6 +498,11 @@ class Environment:
                 if k in ("preamble", "activation") and v is not None},
             conda_envs=[str(e) for e in (d.get("conda_envs") or [])],
             env_arch=(str(d["env_arch"]) if d.get("env_arch") else None),
+            manager_run=({"manager": str(d["manager_run"]["manager"]),
+                          "run_works": bool(d["manager_run"]["run_works"])}
+                         if isinstance(d.get("manager_run"), dict)
+                         and "manager" in d["manager_run"]
+                         and "run_works" in d["manager_run"] else {}),
             source=dict(d.get("source") or {}),
             detected_at=d.get("detected_at"),
             tool=(str(d["tool"]) if d.get("tool") else None),

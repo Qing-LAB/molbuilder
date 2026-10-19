@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import shutil
 import subprocess
 import collections.abc as _abc
@@ -489,7 +490,7 @@ def reset_capabilities() -> None:
 
 def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
                 = None) -> "Tuple[Any, List[str]]":
-    """Attach this machine's three portable facts to a probed record.
+    """Attach this machine's four portable facts to a probed record.
 
     Returns ``(environment, notes)`` -- the record with the facts on it, and
     the lines to show the operator: when it says nothing about how to enter
@@ -542,6 +543,21 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     if envs_here:
         import platform as _pl
         env_arch = _pl.machine() or None
+    # WHETHER THE MANAGER'S `run` ENTERS AN ENVIRONMENT HERE -- the fourth
+    # fact (the user, 2026-10-18: "remember the measurement in the machine
+    # record so it stops repeating"), measured the way the one door measures
+    # it, on the probe's own environment (`configuration.md` § 5 M-2).
+    manager_run: Dict[str, Any] = {}
+    run_unknown = None
+    if caps.conda_binary:
+        from .envs.builds import measure_manager_run
+        here = os.environ.get("CONDA_PREFIX") or sys.prefix
+        works = measure_manager_run(caps.conda_binary, here)
+        if works is None:
+            run_unknown = (f"`{caps.conda_binary} run` on {here} failed in "
+                           f"some other way than the stub")
+        else:
+            manager_run = {"manager": caps.conda_binary, "run_works": works}
     notes: List[str] = []
     if not sg_rec.get("activation"):
         notes.append(
@@ -555,11 +571,18 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
             f"`conda_envs` and `env_arch` are left out of the record: "
             f"{why_none} -- so which environments exist here, and what they "
             f"were built for, is unknown, and nothing is checked against it")
+    if run_unknown:
+        notes.append(
+            f"`manager_run` is left out of the record: {run_unknown} -- so "
+            f"whether its `run` enters an environment here is unknown, and "
+            f"every command measures it by trying")
     changes = {}
     if sg_rec:
         changes["env_init"] = sg_rec
     if envs_here:
         changes.update(conda_envs=envs_here, env_arch=env_arch)
+    if manager_run:
+        changes["manager_run"] = manager_run
     return (_dc.replace(env, **changes) if changes else env), notes
 
 

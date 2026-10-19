@@ -127,7 +127,11 @@ def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
         "wasted launch")
     # M4: the switch is REPORTED, to whoever asked -- this dispatch passed no
     # sink, and until 2026-09-14 that meant silence (review A-1.3).
-    assert "does not work on this machine" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "does not work on this machine" in err
+    # ...AND NAMES THE WAY TO STOP THE REPEAT: the probe that records it
+    # (`configuration.md` § 5 M-2, `manager_run`).
+    assert "jobset probe" in err, err
 
     # and a step that fails for its OWN reasons is not retried: a pip install
     # that ran and failed must not run a second time.
@@ -138,6 +142,107 @@ def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
                                             (1, "ERROR: no such package"))[1])
     B.dispatch_into_env(argv, _prefix(tmp_path))
     assert len(attempts) == 1, attempts
+
+
+# --------------------------------------------------------------------------- #
+#  M4 -- the machine's record remembers the measurement (2026-10-18)         #
+# --------------------------------------------------------------------------- #
+
+def test_a_record_saying_run_is_broken_is_taken_without_a_try(
+        tmp_path, monkeypatch, capsys):
+    """The user, 2026-10-18: "remember the measurement in the machine record
+    so it stops repeating".  A record that says this manager's `run` is
+    broken sends the command straight through the activation hooks: one
+    launch, the wrapper's, and nothing said.
+
+    Silent failure: the door ignores the record and pays the wasted launch
+    -- and prints the note -- on every command of every process on Sol."""
+    attempts = []
+
+    def fake_stream(argv, **kw):
+        attempts.append(tuple(argv))
+        if argv[0] == "bash":
+            return (0, "the step ran")
+        return (126, "mamba-stub.sh: line 5: exec: --: invalid option")
+
+    monkeypatch.setattr(B, "run_streaming", fake_stream)
+    monkeypatch.setattr(B, "recorded_manager_run",
+                        lambda: {"manager": "/m/mamba", "run_works": False})
+
+    rc, out = B.dispatch_into_env(
+        B.conda_run_argv("/m/mamba", "someenv", "python", "-V"),
+        _prefix(tmp_path))
+
+    assert (rc, out) == (0, "the step ran")
+    assert [a[0] for a in attempts] == ["bash"], attempts
+    assert capsys.readouterr().err == ""
+
+
+def test_a_record_about_another_manager_decides_nothing(tmp_path,
+                                                        monkeypatch):
+    """The fact is about the binary the probe found; a record about a
+    different manager -- the person pointed `envs.manager` elsewhere since
+    -- does not condemn the one in hand: the door tries it, as it would with
+    no record."""
+    attempts = []
+    monkeypatch.setattr(B, "run_streaming",
+                        lambda argv, **kw: (attempts.append(tuple(argv)),
+                                            (0, "ran"))[1])
+    monkeypatch.setattr(B, "recorded_manager_run",
+                        lambda: {"manager": "/elsewhere/mamba",
+                                 "run_works": False})
+
+    B.dispatch_into_env(B.conda_run_argv("/m/mamba", "someenv", "python"),
+                        _prefix(tmp_path))
+
+    assert attempts[0][:2] == ("/m/mamba", "run"), attempts
+
+
+def test_the_record_is_read_through_its_door_once(tmp_path, monkeypatch):
+    """`configuration.md` M-4: no consumer reads the file.  The door asks
+    `read_environment(machine_scope_path())`, once per process, and takes
+    the `manager_run` block as the record wrote it."""
+    from molbuilder.scheduler.record import Environment, Scheduler
+    reads = []
+
+    def fake_read(path):
+        reads.append(path)
+        env = Environment(scheduler=Scheduler(kind="workstation"))
+        env.manager_run = {"manager": "/m/mamba", "run_works": False}
+        return env
+
+    monkeypatch.setattr("molbuilder.scheduler.read_environment", fake_read)
+    monkeypatch.setattr("molbuilder.scheduler.machine_scope_path",
+                        lambda: tmp_path / "environment.json")
+
+    assert B.recorded_manager_run() == {"manager": "/m/mamba",
+                                        "run_works": False}
+    assert B.recorded_manager_run()["run_works"] is False
+    assert reads == [tmp_path / "environment.json"], reads
+
+
+def test_the_probe_s_measurement_is_the_door_s_own():
+    """`measure_manager_run` reads the same signature the door reads: the stub
+    is `False`, a command that ran is `True`, any other failure is unknown
+    (`None`) -- the record then says nothing, and the door measures."""
+    answers = {}
+
+    def fake_stream(argv, **kw):
+        answers["argv"] = tuple(argv)
+        return answers["reply"]
+
+    import pytest as _pt
+    with _pt.MonkeyPatch.context() as mp:
+        mp.setattr(B, "run_streaming", fake_stream)
+        answers["reply"] = (126, "x.sh: line 5: exec: --: invalid option")
+        assert B.measure_manager_run("/m/mamba", "/envs/here") is False
+        assert answers["argv"][:5] == ("/m/mamba", "run", "--prefix",
+                                       "/envs/here", "--no-capture-output")
+        assert answers["argv"][5:] == ("true",)
+        answers["reply"] = (0, "")
+        assert B.measure_manager_run("/m/mamba", "/envs/here") is True
+        answers["reply"] = (1, "some other failure")
+        assert B.measure_manager_run("/m/mamba", "/envs/here") is None
 
 
 def test_every_step_gets_the_clean_slate_only_builds_used_to_get(

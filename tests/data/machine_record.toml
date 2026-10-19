@@ -48,6 +48,12 @@ probe = [["--scheduler", "slurm"]]
 probe_refused = ["names no submit command", "--set scheduler.submit=PATH"]
 
 [[case]]
+name = "the probe measures whether this machine's manager's `run` enters an environment, and the record says so with the manager it tried"
+ends_at = "probe"
+probe = [[]]
+record_says = { manager_run = { run_works = true } }
+
+[[case]]
 name = "where a scheduler's submit command is on PATH, the probe records its kind, and each command where PATH finds it"
 ends_at = "probe"
 probe = [[]]

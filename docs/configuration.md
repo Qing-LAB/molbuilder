@@ -986,7 +986,7 @@ is the clearest statement of the rule.)*
 | answers | *what is this machine* | *what do I want from it* |
 | file | `environment.json` | `molbuilder.json` |
 | arrives by | **`jobset probe`, run on that machine** — measuring what it can, recording what it cannot see as you declare it there (`--set`, `--scheduler`), and copying how a shell enters an environment there from that machine's `molbuilder.json` (§ 4) | always a person |
-| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls, **how a shell enters an environment there** (activation and preamble), **which environments exist there** | how a launch is sent (`launch.mode`), **which environment to use** (`envs`), where the project tree is, the server's own settings. **Never a value of a job** — no queue, wall, memory, rank count or core count (§ 4) |
+| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls, **how a shell enters an environment there** (activation and preamble), **which environments exist there**, **whether the environment manager's `run` enters one there** (measured by trying it, `manager_run`) | how a launch is sent (`launch.mode`), **which environment to use** (`envs`), where the project tree is, the server's own settings. **Never a value of a job** — no queue, wall, memory, rank count or core count (§ 4) |
 
 > **The bootstrap is a fact, and it took a wasted afternoon to place it
 > correctly** *(2026-08-24)*. `module load mamba` is not something a person
@@ -1049,12 +1049,22 @@ a queue names its submit command** — a record that cannot send is no record
 of a scheduler — **and a kind with none names no command**: the probe refuses
 either, saying the way out (`--set scheduler.submit=PATH`; `--scheduler`
 naming the kind a declared command belongs to). The same fields either way; a field that could not be detected is `null`, kept and never
-omitted, so a consumer can tell *absent* from *unknown* — **but for the three
-facts that travel with the record**, `env_init`, `conda_envs` and `env_arch`,
-which are left out when empty *(user, 2026-10-03)*, and the probe says in its
-notes which it left out and why (no environment manager answered, or it listed
-none). Left out reads as unknown, and nothing is checked against an unknown
-inventory.
+omitted, so a consumer can tell *absent* from *unknown* — **but for the four
+facts that travel with the record**, `env_init`, `conda_envs`, `env_arch` and
+`manager_run`, which are left out when empty or not measured *(user,
+2026-10-03)*, and the probe says in its notes which it left out and why (no
+environment manager answered, or it listed none; its `run` failed some other
+way than the stub). Left out reads as unknown, and nothing is checked against
+an unknown inventory. **`manager_run`** *(2026-10-18, the user: "remember the
+measurement in the machine record so it stops repeating")* is
+`{"manager": <the binary the probe found there>, "run_works": true | false}`:
+whether that manager's `run` entered an environment when the probe tried it
+on its own (`builds.measure_manager_run`, the same measurement the one door
+makes — [`ops/installation.md`](?doc=ops/installation.md) M4). The door reads
+this machine's record before it tries: a record that says `run` is broken for
+the manager in hand sends every command straight through the activation hooks,
+silently; any other answer, or none, and the door measures as it always did
+and its note names `jobset probe --write` as the way to stop the repeat.
 
 `molbuilder.json` held a SLURM-shaped `scheduler` block until 2026-10-02 and
 could never serve this role; the record is the one place a machine's kind is
@@ -1224,7 +1234,9 @@ to check it with.
 
 A major bump whenever a field changes what it means, so a record an older
 molbuilder wrote says *an older molbuilder wrote it* instead of answering the
-question wrongly.
+question wrongly. A field **added** — `manager_run` (2.16.0) — moves nothing: a
+record without it reads as *not measured*, and its one reader behaves as it did
+before the field existed.
 
 ---
 
