@@ -959,6 +959,14 @@ Two small files answer the two questions *(the second decided by the user,
   script through the monitor's bundle (`runrecord.record_retry`,
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). The
   hierarchy's `run.json` is its run's and answers for every run in it.
+  **`ended`** is the scheduler's answer about a sent job, written once by
+  the first reader on the machine the job was sent to that found the
+  scheduler no longer listing it, or listing it ended —
+  `{asked_on, asked_at, listed: false, said}`, `said` the scheduler's words
+  or empty — and `null` at launch, as every key is written every time
+  (`runrecord.record_ended`, [`running-a-job.md`](?doc=execution/running-a-job.md)
+  § 4.2, *Asked once, written once*); a record written before 2.20.0 holds
+  no such key and is read as null.
   **A flat calculation written before** — any file the catalogue numbers
   where a stage's runs share a folder (every `attempt="shared"` row,
   `runfiles.shared_numbered_roles()`) found with no run number — is refused

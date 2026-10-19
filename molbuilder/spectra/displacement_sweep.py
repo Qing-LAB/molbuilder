@@ -161,7 +161,7 @@ def collect_sweep(base_dir, task, *,
     from ..engine_atom_index import from_engine_index
     from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt, stage_home
-    from ..parse.dirs.rundir import run_state_of
+    from ..runs import concluded
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
     from ..parse.errors import ParseError
@@ -215,9 +215,9 @@ def collect_sweep(base_dir, task, *,
         spectrum = run.on_label(".spectra.json") if run is not None else None
         if spectrum is None:
             # THE RUN'S STATE, through the one door -- a launch record that
-            # does not read is the state `unreadable`, said (`rundir.
-            # run_state_of`).
-            st = run_state_of(attempt, home.names(task.shape))
+            # does not read is the state `unreadable`, said (`runs.concluded`,
+            # the scheduler asked once where it can).
+            st = concluded(attempt, home.names(task.shape), base=base_dir)
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):

@@ -95,9 +95,15 @@ writer. **Then 2.19.0, the user's yes on the 49 GB `.TSGFL` of every
 device point**: the leads' surface Green's functions are the run's, once
 per voltage, named in the device deck's `TS.Elec` blocks the point's own
 way up and reused by every frame's point at that voltage
-(`transport.md` § 2a.11, *What a run's points share*). Open from the same
-reads, for the user's yes: the chat card's layout as data per receiver (a
-layout file; the one card built once).
+(`transport.md` § 2a.11, *What a run's points share*). **Then 2.20.0,
+from Sol's device job that died with nothing written**: a sent run the
+scheduler no longer lists is written down once by the first reader on that
+machine and reads `failed` everywhere; a run past its wall is over anywhere
+(`running-a-job.md` § 4.2). Open, with the user's yes: the chat card's
+layout as data per receiver (a layout file; the one card built once), and
+the device run's phase on its ladder row while it is before its first SCF
+iteration (the leads' Green's functions, the charge table — facts the
+reader already extracts).
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs

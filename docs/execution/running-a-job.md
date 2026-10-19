@@ -688,7 +688,7 @@ run_status(run_dir, basename, *, launch=<not asked>, run=None, launched_in=None)
 
 | caller | `launch` | `match` |
 |---|---|---|
-| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `parse.dirs.rundir.run_state_of` — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), a trial's, or a flat stage's newest run's own `<basename>-run<N>.run.json` | the stage's stem |
+| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and the scheduler asked once where it can — § 4.2, *Asked once, written once*) — an attempt's, each point's for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11), a trial's, or a flat stage's newest run's own `<basename>-run<N>.run.json` | the stage's stem |
 | the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runs.run_answer` — the viewers | the run's, through the same door | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
 | the monitor's closing line | not asked | its run's stem |
 
@@ -710,7 +710,9 @@ question *(user ruling, 2026-09-04: a re-run of an earlier rung must not
 take over the state)*; a file's time decides nothing, because a copied or
 restored folder reorders times, never runs *(the newest mtime picked the
 file until 2026-10-04, plan B11)*. The run index picks *which* file, never
-*whether* the run is alive.
+*whether* the run is alive — with the one bound a sent job's own wall gives
+(*Past its wall*, below): its own files' newest write older than that wall
+says the job is over, and nothing else about a time is judged.
 
 #### The order of evidence
 
@@ -722,15 +724,17 @@ flowchart TD
     C -->|"exit code 0"| FIN["finished"]
     C -->|"another exit code"| FAIL
     C -->|"not yet"| K{"did its scheduler end it?"}
-    K -->|"its line, for this job"| FAIL
+    K -->|"its line for this job, or its recorded answer (ended)"| FAIL
     K -->|"none"| G{"its monitor's closing record?"}
     G -->|"job ended"| FAIL
-    G -->|"none"| RUN["running"]
+    G -->|"none"| W{"past its wall?"}
+    W -->|"its own newest write older than the wall it was sent with"| FAIL
+    W -->|"no"| RUN["running"]
     S -->|"no"| C2{"did the run end on its own?"}
     C2 -->|"exit code 0"| FIN
     C2 -->|"another exit code"| FAIL
     C2 -->|"not yet"| K2{"did its scheduler end it?"}
-    K2 -->|"its line, for this job"| FAIL
+    K2 -->|"its line for this job, or its recorded answer (ended)"| FAIL
     K2 -->|"none"| G2{"its monitor's closing record?"}
     G2 -->|"job ended"| FAIL
     G2 -->|"none"| L{"the launch record"}
@@ -807,9 +811,9 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 |---|---|
 | `pending` | prepared, not launched (no run.json) |
 | `queued` | queued as job N · launched (direct), no output yet — and, on the Results tab's ladder row, its **standing** where this server runs on the machine the job was sent to (its own record names the machine the calculation's copy names): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on <machine>* |
-| `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result |
+| `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result — a sent run's bare *running* says how long since the job itself last wrote, *running · last wrote 2 h 10 min ago*: the one fact a folder gives where its scheduler cannot be asked · *the scheduler lists it: PENDING (Requeue)*, a requeued job past the wall rule's bound, on the machine it was sent to |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
+| `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · stopped before its end: the scheduler no longer listed job N (asked on *machine* at *when*); no exit recorded · the scheduler listed job N ended: *its words* (asked on *machine* at *when*) · stopped before its end: nothing was written for longer than its wall (*wall*; last write *when*), so the job is over; how it ended was not recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
@@ -820,7 +824,53 @@ marker; what says it is over is the scheduler's own line, where it wrote one
 its PID go or got its signal — *failed — stopped before its end: no ending in
 its output and no exit recorded*, here and in its own `finish`
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4). A stop neither
-records — a lost node, a kill no signal announced — reads `running`. Launching it again is yours
+records — a lost node, a disk that filled under every writer at once (Sol's
+job 66108241, 2026-10-19: the engine, the wrapper and the monitor all died
+with nothing written) — would read `running` for ever from the folder alone.
+Two more things say it is over, honestly *(user, 2026-10-19: "if the machine
+knows a way to probe status of a job, put it down with a status record so it
+does not have to be repeated; if not, just check time stamp")*:
+
+- **Asked once, written once.** On the machine the job was sent to (the
+  server's own record names the machine the calculation's copy names, as the
+  standing is asked, § 4.2 above), every reader of a sent run that still
+  reads live — `status`, a launch again, the Results tab — asks the
+  scheduler whether it still lists the job (the kind's `listed` query,
+  [`scheduler.md`](?doc=execution/scheduler.md) § 6a). A job it no longer
+  lists, or lists ended, is **written into the run's launch record** (`ended`:
+  the machine asked, when, and the scheduler's words — `runrecord.record_ended`,
+  [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) by that
+  first look, and the run reads `failed` from then on, wherever the folder
+  is copied: *stopped before its end: the scheduler no longer listed job N
+  (asked on sol at …); no exit recorded*. The question is asked only while
+  the record holds no answer, so the folder is concluded once (`runs.concluded`,
+  the door every reader of a run's state asks). A job the scheduler still
+  lists is left as it reads; nothing is written for it.
+- **Past its wall, wherever it is read.** A sent job cannot run longer than
+  the wall it was sent with (`run.json`'s `placed_on.time`), and every file
+  it writes is written while it runs — so a run whose **newest own write**
+  is older than that wall is over, whichever machine reads the folder and
+  whether or not its scheduler can be asked: *failed — stopped before its
+  end: nothing was written for longer than its wall (1-00:00:00; last write
+  2026-10-19T16:53:10Z), so the job is over; how it ended was not recorded*.
+  The job's own writes are its outputs, the engine's files, its wrapper's
+  and monitor's logs — the files of this run's label and stage
+  (`runfiles.parse`, `split_stem`); never molbuilder's own records of it
+  (`run.json`, `.continued-from`, `.gathered-from`), the ledger, or another
+  stage's files in a folder the flat shape shares. The bound is the
+  scheduler's own, so this never calls a running job over — with one case
+  the folder cannot tell: a job the scheduler **requeued** (a node lost;
+  SLURM's `JobRequeue`) keeps its id and waits again with its first start's
+  files in the folder. On the machine it was sent to the scheduler is asked
+  for such a run too, and a job it still lists reads `running — the
+  scheduler lists it: PENDING (…)`; from any other machine the wall rule
+  stands until the job writes again. Before the wall, the run stays
+  `running`, and its row says how long since the job last wrote — stalled
+  or slow is yours to read, molbuilder states the fact. On a server the
+  scheduler is asked at most once per ten seconds per job, however many
+  points or members share it.
+
+Launching it again is yours
 to decide: `launch task` does it as asked, warm or `--cold`, however the last
 run ended ([`job-system.md`](?doc=execution/job-system.md), *What molbuilder
 does for you*, 3).

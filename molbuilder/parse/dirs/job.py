@@ -35,6 +35,7 @@ what it is"*).
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field, replace
@@ -181,6 +182,18 @@ def _scheduler_ended(launched_in: Path, launch: Any) -> Optional[str]:
         return None
     if launch.get("mode") != "submit":
         return None
+    # THE SCHEDULER'S ANSWER, WRITTEN ONCE into the record by the first
+    # reader on the machine the job was sent to (`runrecord.record_ended`,
+    # `running-a-job.md` § 4.2, *Asked once, written once*): read first,
+    # since it is there wherever the folder is copied.
+    rec = launch.get("ended")
+    if isinstance(rec, dict):
+        where = (f"asked on {rec.get('asked_on') or 'its machine'} at "
+                 f"{rec.get('asked_at') or '?'}")
+        if rec.get("said"):
+            return f"the scheduler listed job {jid} ended: {rec['said']} ({where})"
+        return (f"stopped before its end: the scheduler no longer listed "
+                f"job {jid} ({where}); no exit recorded")
     from ...scheduler.queue import ended
     stated = (launch.get("scheduler") or {}).get("stderr")
     folder = (launched_in / stated).parent if stated else launched_in
@@ -192,6 +205,99 @@ def _scheduler_ended(launched_in: Path, launch: Any) -> Optional[str]:
             return (f"stopped by the scheduler: {words} "
                     f"({os.path.relpath(path, launched_in)})")
     return None
+
+
+#: Molbuilder's own records of a run, written after its launch -- never
+#: the job's writes (`running-a-job.md` § 4.2, *Past its wall*).
+_OUR_RECORDS = (".run.json", ".continued-from", ".gathered-from")
+
+
+def _the_jobs_own(name: str, basename: str, run: Optional[int]) -> bool:
+    """Whether ``name`` is a file THE JOB writes -- its outputs, the
+    engine's files, its wrapper's and monitor's logs: a file of this run's
+    label (`runfiles.parse`) carrying no stage or this run's, this run's
+    number or none, and not one of molbuilder's own records.  A flat
+    folder holds other stages' decks and records and the ledger beside
+    the run; none of those says the job is alive."""
+    label, stage = _rf.split_stem(basename)
+    got = _rf.parse(name, label)
+    if got is None or got.role in _OUR_RECORDS:
+        return False
+    if got.stage is not None and got.stage != stage:
+        return False
+    return got.run is None or run is None or got.run == run
+
+
+def _newest_write(run_dir: Path, basename: str,
+                  run: Optional[int]) -> Optional[float]:
+    """When the job last wrote -- the newest mtime over the files of
+    ``run_dir`` that are the job's own (:func:`_the_jobs_own`), none below
+    it; what `rsync -a` carries with the folder.  ``None`` with no such
+    file."""
+    newest = None
+    try:
+        with os.scandir(run_dir) as it:
+            for entry in it:
+                try:
+                    if (entry.is_file(follow_symlinks=False)
+                            and _the_jobs_own(entry.name, basename, run)):
+                        t = entry.stat(follow_symlinks=False).st_mtime
+                        newest = t if newest is None or t > newest else newest
+                except OSError:
+                    continue
+    except OSError:
+        return None
+    return newest
+
+
+def _ago(seconds: float) -> str:
+    """``2 h 10 min``, ``35 min``, ``20 s`` -- how long ago, in words."""
+    s = int(max(seconds, 0))
+    if s < 60:
+        return f"{s} s"
+    h, m = divmod(s // 60, 60)
+    d, h = divmod(h, 24)
+    return " ".join(w for w in (f"{d} d" if d else "", f"{h} h" if h else "",
+                                f"{m} min" if m or not (d or h) else "") if w)
+
+
+def _past_wall(run_dir: Path, basename: str, run: Optional[int],
+               launch: Any) -> Optional[str]:
+    """A SENT RUN PAST ITS WALL, wherever it is read (`running-a-job.md`
+    § 4.2, *Past its wall*): the job cannot run longer than the wall its
+    launch record says it was sent with (`runrecord.sent_wall_s`), and
+    writes only while it runs -- so a run whose newest own write
+    (:func:`_newest_write`) is older than that wall is over, said in these
+    words; ``None`` for a run here (no wall), one still within it, or one
+    that has written nothing of its own yet.  A job its scheduler requeued
+    is the one case the folder cannot tell: the machine it was sent to
+    asks the scheduler for such a run (`runs.concluded`)."""
+    if not isinstance(launch, dict) or launch.get("mode") != "submit":
+        return None
+    wall = _rr.sent_wall_s(launch)
+    newest = _newest_write(run_dir, basename, run)
+    if wall is None or newest is None:
+        return None
+    if time.time() - newest <= wall:
+        return None
+    return (f"stopped before its end: nothing was written for longer than "
+            f"its wall ({(launch.get('placed_on') or {}).get('time')}; last "
+            f"write {_iso_z(newest)}), so the job is over; how it ended was "
+            f"not recorded")
+
+
+def _quiet_for(run_dir: Path, basename: str, run: Optional[int],
+               launch: Any) -> str:
+    """``· last wrote 2 h 10 min ago`` for a sent run still reading
+    `running` (`running-a-job.md` § 4.2): the one fact a folder gives
+    where its scheduler cannot be asked -- the job's own last write
+    (:func:`_newest_write`); empty for a run here."""
+    if not isinstance(launch, dict) or launch.get("mode") != "submit":
+        return ""
+    newest = _newest_write(run_dir, basename, run)
+    if newest is None:
+        return ""
+    return f" \u00b7 last wrote {_ago(time.time() - newest)} ago"
 
 
 def _finish_failed(concluded: Optional[str]) -> bool:
@@ -304,6 +410,11 @@ class RunStatus:
     #: Read by the monitor's closing report (`run-reports.md` § 2.3) and the
     #: run record's exit (`record._concluded`).
     concluded:      "Optional[str]" = None
+    #: ``failed`` by the wall alone (`running-a-job.md` § 4.2, *Past its
+    #: wall*): the folder's newest own write older than the wall the job
+    #: was sent with, nothing else recorded -- what `runs.concluded` asks
+    #: the scheduler about where it can, since a requeued job reads so too.
+    by_wall:        bool = False
     #: Every run-output file's ending (`_run_ending.RunEnding`: how it ended,
     #: whether each SCF phase converged, the error), by filename -- the ONE
     #: scan the state above was judged from.  Readers: the run record's
@@ -402,6 +513,8 @@ def run_status(run_dir, basename: str, *,
             Path(launched_in) if launched_in is not None else run_dir,
             launch),
         monitor_ended=lambda: _monitor_ended(run_dir, basename, run),
+        past_wall=lambda: _past_wall(run_dir, basename, run, launch),
+        quiet_for=lambda: _quiet_for(run_dir, basename, run, launch),
         out_messages=messages,
         finish_started=lambda p: _finish_started(run_dir, p, basename),
         run_index=lambda p: _run_index(p, basename)),
@@ -422,6 +535,8 @@ def _build_status(out_paths: List[Path],
                   launch: Any = _UNASKED,
                   scheduler_ended: Callable[[], Optional[str]] = lambda: None,
                   monitor_ended: Callable[[], bool] = lambda: False,
+                  past_wall: Callable[[], Optional[str]] = lambda: None,
+                  quiet_for: Callable[[], str] = lambda: "",
                   out_messages: Optional[Dict[str, Optional[str]]] = None,
                   finish_started: Callable[[Path], bool] = lambda _p: False,
                   run_index: Callable[[Path], int] = lambda _p: -1,
@@ -444,7 +559,11 @@ def _build_status(out_paths: List[Path],
     `scheduler.md` R16) or the monitor's closing record says the process
     went without concluding (``monitor_ended``) -- each asked only then,
     the scheduler's first.  Where nothing says anything the run is ``running`` -- not
-    finished -- however long it has been quiet (`running-a-job.md` § 4.2).
+    finished -- however long it has been quiet (`running-a-job.md` § 4.2)
+    -- unless its folder's newest write is older than the wall its job was
+    sent with (``past_wall``, *Past its wall*): then it is over, and
+    ``failed`` says how it was not recorded.  A sent run still ``running``
+    says how long since its folder was written (``quiet_for``).
 
     ``out_paths`` are the files that may SPEAK, the run's newest run index
     speaking (``run_index``); ``last_change_at`` is the speaker's mtime,
@@ -484,6 +603,7 @@ def _build_status(out_paths: List[Path],
     active = sorted(out_paths, key=run_index)[-1]
     active_state = out_run_states.get(active.name, "unknown")
     ended = active_state == "ended"
+    over: Optional[str] = None
 
     # The engine parser reports how the OUTPUT ended from markers alone --
     # "running"|"ended"|"stopped"|"out_of_memory"|"unknown".  Note what is
@@ -530,11 +650,13 @@ def _build_status(out_paths: List[Path],
             # leaves no marker and whose monitor saw the process go.
             # Neither is finished: a force-constant run without its spectrum
             # has not finished.
-            if monitor_ended():
+            over = None if monitor_ended() else past_wall()
+            if monitor_ended() or over:
                 state = "failed"
                 detail = ("the engine ended and the job's finish began, but "
                           "the job stopped before it concluded -- no result "
-                          "was derived; the session log says how far it got")
+                          "was derived; the session log says how far it got"
+                          + (f" ({over})" if over else ""))
             else:
                 state = "running"
                 detail = ("the engine ended; the job's finish is deriving "
@@ -544,10 +666,12 @@ def _build_status(out_paths: List[Path],
             # -- or stopped there, which its monitor saw.  Not finished
             # either way: nothing builds on a run that did not end on its
             # own.
-            if monitor_ended():
+            over = None if monitor_ended() else past_wall()
+            if monitor_ended() or over:
                 state = "failed"
                 detail = ("the engine's output ended, but the job stopped "
-                          "before it concluded -- no exit recorded")
+                          "before it concluded -- no exit recorded"
+                          + (f" ({over})" if over else ""))
             else:
                 state = "running"
                 detail = ("the engine's output ended; the job has not "
@@ -557,11 +681,19 @@ def _build_status(out_paths: List[Path],
             # process go: a forced stop (`_monitor_ended`).
             state, detail = "failed", _STOPPED_UNRECORDED
         else:
-            state, detail = "running", "running"
+            # NOTHING SAYS ANYTHING: running -- unless the job's own wall
+            # has passed since the folder was last written (`_past_wall`);
+            # and a sent run says how long it has been quiet (`_quiet_for`).
+            over = past_wall()
+            if over:
+                state, detail = "failed", over
+            else:
+                state, detail = "running", "running" + quiet_for()
 
     return RunStatus(state=state, detail=detail,
                      last_change_at=_iso_z(active.stat().st_mtime),
                      active_source=active.name,
-                     concluded=said)
+                     concluded=said,
+                     by_wall=bool(state == "failed" and over))
 
 

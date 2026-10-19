@@ -360,7 +360,39 @@ def write_launch(where: Path, *, names: "_rf.RunNames", run: int,
     body["placed_on"] = dict(placed_on) if placed_on else None
     body["retry_of"] = retry_of
     body["scheduler"] = dict(scheduler) if scheduler else None
+    # ``ended`` null -- the scheduler has not been found to have forgotten
+    # the job; :func:`record_ended` fills it, once.
+    body["ended"] = None
     return _persist().write_json(p, body)
+
+
+def record_ended(where, names: "_rf.RunNames", run: Optional[int], *,
+                 asked_on: str, said: str) -> Path:
+    """THE SCHEDULER'S ANSWER, WRITTEN ONCE (`running-a-job.md` § 4.2,
+    *Asked once, written once*; `project-layout.md` § 1.6.3): the launch
+    record of run ``run`` -- a folder of the run's own answers with
+    ``None`` -- gets ``ended = {asked_on, asked_at, listed: False, said}``,
+    ``said`` the scheduler's own words for a job it lists ended, empty for
+    one it has forgotten (`scheduler.queue.listed`).  Written through
+    `persist`, whole; a run with no record cannot be concluded and is
+    refused."""
+    from datetime import datetime, timezone
+    body = launch_record(where, names, run)
+    if body is None:
+        raise LaunchRecordError(
+            f"{launch_record_path(Path(where), names, run or 0)} is not "
+            f"there: a run with no launch record cannot be concluded by its "
+            f"scheduler's answer.")
+    if names.numbered(".run.json") and run is None:
+        run = newest_run(where, names)
+    body["ended"] = {
+        "asked_on": asked_on,
+        "asked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "listed": False,
+        "said": said or "",
+    }
+    return _persist().write_json(launch_record_path(Path(where), names,
+                                                    run or 0), body)
 
 
 def record_retry(where, names: "_rf.RunNames", retried: int) -> Path:

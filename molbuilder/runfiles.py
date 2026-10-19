@@ -322,6 +322,16 @@ class RunFile:
                        **dict(self.counters), **dict(self.fields))
 
 
+def split_stem(stem_: str) -> "tuple[str, Optional[str]]":
+    """``(label, stage)`` read back out of a stem :func:`stem` composed --
+    the token's own shape ends the label (§ 2.2a: a stage token starts with
+    two digits after the underscore), so ``H2_01_coarse`` is ``("H2",
+    "01_coarse")`` and ``H2`` is ``("H2", None)``.  A label that itself
+    holds ``_NN_`` splits at the first such place."""
+    m = re.match(r"^(.*?)_(" + _STAGE.pattern + r")$", stem_)
+    return (m.group(1), m.group(2)) if m else (stem_, None)
+
+
 def stem(label: str, stage: Optional[str] = None) -> str:
     """``<label>[_<stage>]`` -- what every role attaches to.
 

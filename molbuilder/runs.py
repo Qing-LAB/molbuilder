@@ -20,7 +20,7 @@ read back with it, through `runfiles`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -642,6 +642,98 @@ def about(path) -> Dict[str, Any]:
     return _row_about(p, label)
 
 
+def _sent_here(rec) -> bool:
+    """WHETHER THIS SERVER RUNS ON THE MACHINE A JOB WAS SENT TO -- the
+    one rule the standing and the scheduler's answer are asked by
+    (`running-a-job.md` § 4.2): this server's own record
+    (`machine_scope_path`) names the machine the calculation's copy
+    (``rec``) names."""
+    from molbuilder.scheduler import machine_scope_path, read_environment
+    here = read_environment(machine_scope_path())
+    return bool(rec is not None and here is not None and rec.machine
+                and here.machine == rec.machine)
+
+
+def concluded(folder, names, *, base, run=None, launched_in=None):
+    """THE STATE OF A RUN, ASKED ONCE OF ITS SCHEDULER AND WRITTEN ONCE
+    (`running-a-job.md` § 4.2, *Asked once, written once*) -- the run
+    door's answer (`rundir.run_state_of`), and for a sent run that still
+    reads live, on the machine the job was sent to (:func:`_sent_here`),
+    the scheduler asked whether it still lists the job (the kind's `listed`
+    query): one it no longer lists, or lists ended, is written into the
+    run's launch record (`runrecord.record_ended`) and the state read
+    again, ``failed`` from then on wherever the folder goes.  Asked only
+    while the record holds no answer.  ``base`` is the calculation's
+    folder (the record copy's); ``run`` and ``launched_in`` as
+    `run_state_of` takes them."""
+    from molbuilder.parse.dirs.job import LIVE_STATES
+    from molbuilder.parse.dirs.rundir import run_state_of
+    from molbuilder.runrecord import (LaunchRecordError, launch_record,
+                                      record_ended)
+    from molbuilder.scheduler import read_environment
+    from molbuilder.scheduler.record import calculation_record
+    st = run_state_of(folder, names, run, launched_in=launched_in)
+    if st.state not in LIVE_STATES and not st.by_wall:
+        return st
+    where = launched_in if launched_in is not None else folder
+    which = None if launched_in is not None else run
+    try:
+        launch = launch_record(where, names, which)
+    except LaunchRecordError:
+        return st
+    if (not launch or launch.get("mode") != "submit"
+            or not launch.get("job_id") or launch.get("ended")):
+        return st
+    rec = read_environment(calculation_record(base))
+    if not _sent_here(rec):
+        return st
+    got = _listed_lately(rec.scheduler, str(launch["job_id"]))
+    if got is None:
+        return st
+    going, said = got
+    if going:
+        if st.by_wall:
+            # REQUEUED (a node lost; SLURM's JobRequeue): the job keeps its
+            # id and waits again with its first start's files in the
+            # folder, past the wall rule's bound -- the scheduler's word
+            # outranks the folder's here.
+            return replace(
+                st, state="running", by_wall=False,
+                detail=f"the scheduler lists it: {said}" if said
+                else "the scheduler lists it")
+        return st
+    record_ended(where, names, which, asked_on=rec.machine, said=said)
+    return run_state_of(folder, names, run, launched_in=launched_in)
+
+
+#: The scheduler's answers of the last ten seconds, by job -- one look at
+#: a run of points, or at a job's members, asks for one job id many times.
+_LISTED_LATELY: Dict[Tuple[str, str], Tuple[float, Any]] = {}
+_LISTED_TTL_S = 10.0
+
+
+def _listed_lately(scheduler, job_id: str):
+    """`scheduler.queue.listed`, asked at most once per :data:`_LISTED_TTL_S`
+    per job on this server (`running-a-job.md` § 4.2, *Asked once, written
+    once*)."""
+    import time
+    from molbuilder.scheduler.queue import listed
+    key = (str(scheduler.kind), job_id)
+    now = time.monotonic()
+    kept = _LISTED_LATELY.get(key)
+    if kept is not None and now - kept[0] < _LISTED_TTL_S:
+        return kept[1]
+    got = listed(scheduler, job_id)
+    _LISTED_LATELY[key] = (now, got)
+    return got
+
+
+def state_of(run: "Run"):
+    """:func:`concluded` for a run handle (`run_of`)."""
+    return concluded(run.folder, run.names, base=run.place.root, run=run.run,
+                     launched_in=run.launched_in)
+
+
 def standing_of(launch, base) -> Optional[Dict[str, Any]]:
     """A QUEUED RUN'S STANDING, as its scheduler states it here
     (`running-a-job.md` § 4.2; `scheduler.queue.standing`): ``{asked_on,
@@ -653,7 +745,7 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
     names; anywhere else the row says where to ask.  ``None`` for a run
     with no job id (a run here).  ``launch`` is the run's launch record,
     ``base`` its calculation's folder (the record copy's)."""
-    from molbuilder.scheduler import machine_scope_path, read_environment
+    from molbuilder.scheduler import read_environment
     from molbuilder.scheduler.queue import standing
     from molbuilder.scheduler.record import calculation_record
     jid = (launch or {}).get("job_id")
@@ -661,10 +753,7 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
         return None
     rec = read_environment(calculation_record(base))
     machine = (rec.machine if rec is not None else None) or "its machine"
-    here = read_environment(machine_scope_path())
-    sent_here = (rec is not None and here is not None
-                 and bool(rec.machine) and here.machine == rec.machine)
-    got = standing(rec.scheduler, str(jid)) if sent_here else None
+    got = standing(rec.scheduler, str(jid)) if _sent_here(rec) else None
     if got is None:
         return {"asked_on": None, "say": f"ask on {machine}"}
     if not got.get("listed"):
@@ -694,12 +783,10 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     folder where nothing has been launched and no one deck names the stage
     it is for (:func:`speaking`)."""
     from molbuilder.parse.dirs.job import LIVE_STATES
-    from molbuilder.parse.dirs.rundir import run_state_of
     run = run_of(path)
     if run is None or run.stage is None:
         return None
-    st = run_state_of(run.folder, run.names, run.run,
-                      launched_in=run.launched_in)
+    st = state_of(run)
     return {"state": st.state, "detail": st.detail,
             "live": st.state in LIVE_STATES}
 
@@ -900,7 +987,7 @@ def folder_answer(directory) -> Dict[str, Any]:
     """
     from molbuilder.parse.contract import engine_of
     from molbuilder.parse.dirs.record import run_record
-    from molbuilder.parse.dirs.rundir import openable_in, run_state_of
+    from molbuilder.parse.dirs.rundir import openable_in
 
     d = Path(directory)
     place = place_of(d)
@@ -938,8 +1025,7 @@ def folder_answer(directory) -> Dict[str, Any]:
                 attempts.append(str(exc))
             attempts += trail[1:]
             if run is not None and run.stage is not None:
-                st = run_state_of(run.folder, run.names, run.run,
-                                  launched_in=run.launched_in)
+                st = state_of(run)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}

@@ -143,16 +143,15 @@ def parse_point(label: str, run, engine: str,
     #     the first KB.
     out = run.stdout if run is not None else None
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
-    # THE TRIAL'S STATE IS THE RUN DOOR'S (`rundir.run_state_of`, the one
+    # THE TRIAL'S STATE IS THE RUN DOOR'S (`runs.state_of`, the one
     # rule every surface says): `finished` only when the job exited 0 after
     # its output ended, never "completed" read off the output alone -- a
     # trial that failed after `>> End of run` was ranked, and could win,
     # until 2026-10-18.
     state = "unknown"
     if run is not None:
-        from ..parse.dirs.rundir import run_state_of
-        state = run_state_of(run.folder, run.names, run.run,
-                             launched_in=run.launched_in).state
+        from ..runs import state_of
+        state = state_of(run).state
     # THE KNOBS ARE WHAT WAS ASKED, and only that: the ranks the run got
     # are `effective`'s (below, SIESTA's own count).  Every trial states its
     # counts (`generator.md` § 4.3a).

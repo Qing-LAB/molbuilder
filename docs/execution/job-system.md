@@ -2445,7 +2445,9 @@ own words, so a job it took and will never start says why
 said so with its state — *the scheduler lists it ended: FAILED
 (NonZeroExitCode)* — until the scheduler forgets it, when the run's own
 state says how it ended, the scheduler's word among it (`scheduler.md` R16;
-`running-a-job.md` § 4.2) (its kind's query, run where the calculation's copy of its machine's
+`running-a-job.md` § 4.2: the run door, on this machine, writes a job the
+scheduler no longer lists into the run's launch record, so the run's state
+says so wherever the folder goes) (its kind's query, run where the calculation's copy of its machine's
 record says the command is, asked on its own cluster — another cluster's job
 is said *sent to cluster C: ask there*, and a record naming no query
 command, a command that does not run here, or a copy that does not read here
@@ -2457,8 +2459,10 @@ run of its own (`runrecord.retried_to`, [`running-a-job.md`](?doc=execution/runn
 stage's row of `jobset status` (`runstatus.job_members`); a run no longer on
 disk — a restore went back past it — is said so. Where the two
 disagree — the process gone while its run still reads *queued*, stopped
-before its monitor began; a queue job the scheduler no longer lists, its run
-still *running* — both are said, and neither overrules the other.
+before its monitor began — both are said, and neither overrules the other;
+a queue job the scheduler no longer lists is written into its run's launch
+record by this very look (`running-a-job.md` § 4.2, *Asked once, written
+once*), so the run reads `failed` from then on and the two agree.
 
 **`molbuilder jobs status`** lists every file: its id, how it went, when, the
 calculation, and each member with its state in the status door's words —

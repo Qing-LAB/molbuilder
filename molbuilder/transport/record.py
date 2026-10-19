@@ -662,8 +662,8 @@ def _rung_points(base: Path, task, name: str, token: str,
     each point of a rung that runs per point, its state the run door's
     (`run_status`) and its own answer (:func:`_science`); ``run`` names the
     run to read instead of the latest."""
-    from ..parse.dirs.rundir import run_state_of
     from ..jobset.materialize import stage_home
+    from ..runs import concluded
     names = stage_home(base, task, name).names(task.shape)
     out: List[Dict] = []
     for pt, where, run in result_folders(base, task, name, run=run):
@@ -675,8 +675,9 @@ def _rung_points(base: Path, task, name: str, token: str,
             continue
         entry["attempt"] = str(where.relative_to(base))
         # THE POINT'S STATE, the one door's, with its run's launch record
-        # (`rundir.run_state_of`, given the run's folder).
-        st = run_state_of(where, names, launched_in=run)
+        # (`runs.concluded`, given the run's folder: the scheduler asked
+        # once where it can, `running-a-job.md` § 4.2).
+        st = concluded(where, names, base=base, launched_in=run)
         entry.update(state=st.state, detail=st.detail)
         outs = _outs_newest_first(where, token)
         if outs:
@@ -744,7 +745,6 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..jobset.materialize import stage_home
     from ..parse.dirs.job import FINAL_STATES
     from ..parse.dirs.record import tbtrans_loop
-    from ..parse.dirs.rundir import run_state_of
     from ..parse.engines._run_ending import keep_reading, version_of
     from ..parse.engines.siesta_reader import read_output
     from ..runfiles import JUNCTION_FILE
@@ -796,9 +796,11 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             except OSError:
                 now = None
         # THE POINT'S STATE, the one door's -- asked as every reader asks
-        # it, with its run's launch record (`rundir.run_state_of`, given the
-        # run's folder); one that does not read is said.
-        st = run_state_of(where, names, launched_in=run)
+        # it, with its run's launch record (`runs.concluded`, given the
+        # run's folder: the scheduler asked once where it can); one that
+        # does not read is said.
+        from ..runs import concluded
+        st = concluded(where, names, base=base, launched_in=run)
         if st.state == "unreadable":
             failed.append({**at, "attempt": rel,
                            "state": "unreadable", "why": st.detail})

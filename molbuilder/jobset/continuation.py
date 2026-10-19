@@ -261,8 +261,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output."""
     from ..parse.contract import relaxation_of
-    from ..parse.dirs.rundir import run_state_of
-    from ..runs import run_of
+    from ..runs import concluded as _concluded, run_of
     from ..runrecord import ending, newest_run
     from .materialize import stage_home
     home = stage_home(base, task, stage)
@@ -271,9 +270,11 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     concluded = ending(attempt, names.stem, run).line
     # ITS STATE, through the one door, asked with its launch record -- a
     # record that does not read is the state `unreadable`, said, never taken
-    # for a run that stopped (`rundir.run_state_of`).
+    # for a run that stopped (`runs.concluded`, which asks the scheduler
+    # once where it can, `running-a-job.md` § 4.2).
     from ..paths import run_folder_of
-    st = run_state_of(attempt, names, run, launched_in=run_folder_of(attempt))
+    st = _concluded(attempt, names, base=base, run=run,
+                   launched_in=run_folder_of(attempt))
     state, detail = st.state, st.detail
     rec = None
     if verdict:

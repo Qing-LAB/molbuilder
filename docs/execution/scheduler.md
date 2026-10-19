@@ -47,7 +47,7 @@ The rules, one line each — full statement in § 3:
 | **R13** | two ceilings | hardware (each machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read into the fit |
 | **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a benchmark that exceeds it is told **at prep** |
 | **R15** | a scheduler is a kind | every command, directive, output-file placeholder and job variable a scheduler has is its kind's, in one file (`scheduler/kinds.toml`); the machine's record names the kind and where its commands are there (§ 6a) |
-| **R16** | the scheduler's word on an ending | a job the scheduler ended says so in the scheduler's own words — the line it writes in the job's error file, read by its kind's reader and asked by the run door, on the cluster and wherever the run is copied |
+| **R16** | the scheduler's word on an ending | a job the scheduler ended says so in the scheduler's own words — the line it writes in the job's error file, read by its kind's reader and asked by the run door, on the cluster and wherever the run is copied; and a job it has forgotten, or lists ended, is its answer to the kind's `listed` query, written once into the run's launch record by the first reader on the machine the job was sent to (`running-a-job.md` § 4.2, *Asked once, written once*) |
 
 **How you use it:** the decision graph is § 5, the shape § 6, the scheduler
 kinds § 6a,
@@ -480,7 +480,11 @@ nothing. **The file lies where the run's launch record says**
 record's `scheduler`), so the answer is the same on the cluster and on a
 machine the run was copied to — a run is its directory. The run door asks it
 beside the conclusion marker and the monitor's closing record
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2).
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2). Where the
+file holds no line — a job that died with nothing written — the scheduler's
+answer to the kind's `listed` query, asked by the run door on the machine
+the job was sent to, is written once into the run's launch record (`ended`)
+and read there after, on every machine (§ 4.2, *Asked once, written once*).
 
 **R11 — Comparability is a property of the MACHINE, never of the domain.**
 Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue
@@ -735,7 +739,7 @@ kind: the header's own `<name>.sbatch`, and the scheduler's output
 | **how a job is sent** — its name, a wall the launch restates, molbuilder's launch claim, the header, the run's arguments | `{submit} -J {job} [-t {wall}] --export ALL,MB_LAUNCHED_BY=jobset-launch,MB_WALL_S={wall_s} {header} {args}` | `submit._sbatch_request`, the one line |
 | **how it is asked about without being sent** | the same line, `--test-only` after the command | `submit._ask` (`--mode ask`); its answer read by the kind's reader (`jobset.ask._ANSWER_READERS`) |
 | **the id it answers a send with** | `Submitted batch job (\d+)` | `submit._go` |
-| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T|%r` — its state, and the scheduler's reason for it · `{cancel} {id}` · its **standing**, `{query} --noheader --jobs={id} --format=%T|%r|%S|%Q` — its state, the scheduler's reason, the start it expects (`N/A` until it has one) and its priority, asked only where the scheduler answers for the job: the server on the machine the job was sent to (`runs.standing_of`; a record copy on another machine names commands that do not run there, and the row says *ask on <machine>*) | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
+| **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T|%r` — its state, and the scheduler's reason for it: asked by `molbuilder jobs status`, and by the run door for a sent run that still reads live on the machine the job was sent to, which writes a job no longer listed into the run's launch record (`runs.concluded`, `running-a-job.md` § 4.2) · `{cancel} {id}` · its **standing**, `{query} --noheader --jobs={id} --format=%T|%r|%S|%Q` — its state, the scheduler's reason, the start it expects (`N/A` until it has one) and its priority, asked only where the scheduler answers for the job: the server on the machine the job was sent to (`runs.standing_of`; a record copy on another machine names commands that do not run there, and the row says *ask on <machine>*) | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
 | **which cluster answers** | `{cluster} show config` | `scheduler.queue` (a job's address); read by the kind's reader |
 | **how it says it ended a job** | in the job's error file (`stderr`, its placeholder filled with the job's id): `*** JOB <id> ON <node> <its words> ***` (R16) | the run door (`running-a-job.md` § 4.2), through the kind's reader (`queue._READERS`), the file named by the run's launch record |
 | **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={memory}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}{file}` `-e {where}{file}` | `scheduler.emit`, `runwrap.render_sbatch` (prep's header); `Directives.lines_of` (what prep and launch print of it) |

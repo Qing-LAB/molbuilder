@@ -313,8 +313,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
     the run door's answer (`runs.openable`) -- the root's `task.json` for a
     transmission run, whose result is the report at its point (§ 0.1).
     ``[]`` for a stage nothing has prepared."""
-    from ..runs import openable, run_of, transmission_point
-    from ..parse.dirs.rundir import run_state_of
+    from ..runs import openable, run_of, state_of, transmission_point
     if not st.dir:
         return []
     root = Path(base)
@@ -334,8 +333,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             run = run_of(folder)
             if run is None or run.stage is None:
                 continue
-            got = run_state_of(run.folder, run.names, run.run,
-                               launched_in=run.launched_in)
+            got = state_of(run)
             # A TRANSMISSION RUN'S POINT IS THE DOOR'S, the one it opens the
             # report at -- its one point too, when the rung runs once.
             pt = transmission_point(folder) or pt
@@ -526,11 +524,12 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     if not observed.is_dir():
         launch, (state, detail, converged) = None, MISSING
     else:
-        # ITS STATE, THROUGH THE ONE DOOR (`rundir.run_state_of`): the
+        # ITS STATE, THROUGH THE ONE DOOR (`runs.concluded`, which asks the
+        # scheduler once where it can, `running-a-job.md` § 4.2): the
         # stage's newest run, asked of its launch record and its files --
         # a record that does not read is the state `unreadable`, said.
-        from ..parse.dirs.rundir import run_state_of
-        st = run_state_of(observed, names)
+        from ..runs import concluded
+        st = concluded(observed, names, base=base)
         state, detail, converged = st.state, st.detail, converged_of(st)
         launch = (None if state == "unreadable"
                   else launch_record(observed, names))
@@ -982,9 +981,8 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
     naming the newest run it reads; a run no longer on disk, and a
     calculation that does not read, are said."""
     from ..calcdirs import CONTAINER, read as placed
-    from ..parse.dirs.rundir import run_state_of
     from ..runrecord import retried_to
-    from ..runs import run_of
+    from ..runs import concluded, run_of
     from .model import FILENAME, JobSet
     base = Path(calculation)
     rows: Optional[Dict[str, StageStatus]] = None
@@ -997,8 +995,8 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
         if ran is not None and ran.stage is not None:
             reached = (retried_to(ran.folder, ran.names, ran.run)
                        if ran.run is not None else None)
-            st = run_state_of(ran.folder, ran.names, reached,
-                              launched_in=ran.launched_in)
+            st = concluded(ran.folder, ran.names, base=base, run=reached,
+                           launched_in=ran.launched_in)
             out.append((stage, run if reached == ran.run else
                         f"{run}, retried to {ran.names.run_name(reached)}",
                         _said(st.state, st.detail)))
