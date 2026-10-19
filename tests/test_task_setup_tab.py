@@ -140,6 +140,33 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
         pass    # tmp_path removes the tree
 
 
+# THE PROPOSED LADDER RIDES THE HAND-OVER, numbered, made by the server's one
+# rule (`task.fresh_stages`, `jobset.group.numbered_fresh`): a vibration's
+# own ladder read from the box (`engines/vibration.md` § 2.2, § 5.2a), the
+# ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
+# 2.15.3 the page derived it in JavaScript, a second copy of the rule.
+@pytest.mark.parametrize("engine,calculation,params,ladder", [
+    ("siesta", "vibration", {"system_label": "probe"},
+     [("relax", 1), ("freq", 2)]),
+    ("siesta", "vibration", {"system_label": "probe", "already_relaxed": True},
+     [("freq", 1)]),
+    ("pyscf", "vibration", {"job_name": "probe"}, [("freq", 1)]),
+    ("siesta", "optimization", {"system_label": "probe"}, [("coarse", 1)]),
+], ids=["siesta vibration, the box unticked", "siesta vibration, ticked",
+        "pyscf vibration", "an optimization"])
+def test_the_handover_carries_the_proposed_ladder(web_client,
+                                                  isolated_projects_root,
+                                                  engine, calculation,
+                                                  params, ladder):
+    rendered = web_client.post("/api/task-setup/handover", json=dict(
+        _envelope(), engine=engine, name="probe", calculation=calculation,
+        params=params)).get_json()
+    assert rendered["ok"], rendered
+    over = _json.loads(rendered["handover_text"])
+    assert [(s["name"], s["group"]) for s in over["proposed_stages"]] == ladder
+    assert all(s["overrides"] == {} for s in over["proposed_stages"])
+
+
 # --------------------------------------------------------------------- #
 #  T1 shape · T2 save                                                    #
 # --------------------------------------------------------------------- #

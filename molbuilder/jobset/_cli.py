@@ -577,13 +577,13 @@ def init_cmd(structure, bundle: str, shape: str,
     from pathlib import Path as _P
 
     from ..workingcopy_structure import StructureCodec
-    from ..config.siesta import SIESTA_STAGE_NAMES, SiestaConfig
+    from ..config.siesta import SiestaConfig
     from ..describe import DescribeError, build_description, write_description
     from ..identity import normalise_id
     from ..chemistry import species_order
     from ..pyscf.stages import default_pyscf_stages
     from ..siesta.stages import default_siesta_stages
-    from ..task import Stage
+    from ..task import fresh_stages
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
@@ -653,7 +653,6 @@ def init_cmd(structure, bundle: str, shape: str,
         # rungs carry, which is the engine's own preset table.
         _ladder = {"siesta": default_siesta_stages,
                    "pyscf": default_pyscf_stages}[engine]
-        _one = SIESTA_STAGE_NAMES[1]        # the shared ladder vocabulary
         if calculation == "vibration":
             # The vibration kind's own ladder, read from the person's one
             # statement (`engines/vibration.md` § 2.2, § 5.2a): a fresh
@@ -662,7 +661,7 @@ def init_cmd(structure, bundle: str, shape: str,
             # alone.  A --stage-strategy names the optimization ladder's
             # tiers, which grade nothing here: the convergence settings are
             # the template's, recommended tight (`template.md` § 6.3a).
-            from ..pyscf.stages import VIBRATION_ENGINES, vibration_stages
+            from ..pyscf.stages import VIBRATION_ENGINES
             from ..template import catalogue as _catalogue, one as _item
             if engine not in VIBRATION_ENGINES:
                 raise click.ClickException(
@@ -679,12 +678,15 @@ def init_cmd(structure, bundle: str, shape: str,
                     "relaxed (engines/vibration.md 2.2) -- and its "
                     "convergence settings are the template's own.")
             _box = _item(_catalogue(), "already_relaxed", engine=engine)
-            stages = tuple(vibration_stages(
-                engine, already_relaxed=bool(_box.default if _box else False)))
+            stages = fresh_stages(
+                calculation, engine,
+                already_relaxed=bool(_box.default if _box else False))
         else:
-            stages = (tuple(_ladder(stage_strategy))
-                      if stage_strategy
-                      else (Stage(name=_one, overrides={}),))
+            # THE FRESH LADDER'S ONE OWNER (`task.fresh_stages`), or the
+            # tiers a --stage-strategy names.
+            stages = (tuple(_ladder(stage_strategy)) if stage_strategy
+                      else fresh_stages(calculation, engine,
+                                        already_relaxed=False))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.

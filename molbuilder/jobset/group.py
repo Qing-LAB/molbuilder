@@ -27,6 +27,7 @@ This module answers the group's questions, each in one place:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Sequence, Set, Tuple
 
 from ..runfiles import GroupNames
@@ -128,6 +129,34 @@ def default_groups(task, template_text: Optional[str] = None
             out.append(out[-1] + 1 if out else 1)
             members = [st.name]
     return tuple(out)
+
+
+@dataclass(frozen=True)
+class _Fresh:
+    """A ladder before it is a description -- what :func:`default_groups`
+    reads of one: the kind, the engine, the stages, and no run card (a
+    fresh ladder states none, `task.fresh_stages`)."""
+    calculation: str
+    engine: str
+    stages: tuple
+
+    def run_condition(self, _stage: str) -> dict:
+        return {}
+
+
+def numbered_fresh(stages, *, engine: str, calculation: str,
+                   template_text: str):
+    """``stages``, a fresh ladder (`task.fresh_stages`), with every stage's
+    group stated by :func:`default_groups` -- the rule a description is
+    numbered with, asked before any description holds the ladder: the
+    hand-over's proposal (`web/handover-procedure.md`), which Task setup
+    shows as what will be written."""
+    import dataclasses
+    like = _Fresh(calculation=str(calculation), engine=str(engine),
+                  stages=tuple(stages))
+    return tuple(dataclasses.replace(st, group=g)
+                 for st, g in zip(like.stages,
+                                  default_groups(like, template_text)))
 
 
 def numbered(task, template_text: Optional[str] = None):

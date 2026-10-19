@@ -1225,10 +1225,23 @@ def api_task_setup_handover():
         "awaiting":  ["shape", "stages"],
     }
     # THE KIND RIDES THE HAND-OVER, every kind -- the receiving tab writes
-    # it into task.json and proposes the kind's own ladder (for a vibration,
-    # `relax` then `freq` on SIESTA unless the box says relaxed, `freq` alone
-    # on PySCF) instead of the tier default.
+    # it into task.json.
     handover["calculation"] = calculation
+    # THE PROPOSED LADDER RIDES IT TOO, numbered: the fresh ladder's one
+    # owner (`task.fresh_stages` -- a vibration's own, read from the box;
+    # the ordinary one-stage start otherwise) through the one numbering
+    # rule (`jobset.group.numbered_fresh`), as `jobset init` makes it.
+    # Task setup shows it as what will be written; it re-derives nothing.
+    from molbuilder.jobset.group import numbered_fresh
+    from molbuilder.task import fresh_stages
+    handover["proposed_stages"] = [
+        {"name": st.name, "group": st.group, "overrides": dict(st.overrides)}
+        for st in numbered_fresh(
+            fresh_stages(calculation, engine,
+                         already_relaxed=bool(getattr(cfg, "already_relaxed",
+                                                      False))),
+            engine=engine, calculation=calculation,
+            template_text=template_text)]
 
     return jsonify({
         "ok":            True,

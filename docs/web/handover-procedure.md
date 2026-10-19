@@ -224,8 +224,13 @@ The three prerequisites named here landed with the spectra migration
    a ladder, read from the template's own `already_relaxed` box
    ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.2a): a
    `freq` stage, and before it on SIESTA a `relax` stage unless the structure
-   is stated relaxed; on PySCF the relaxation is the deck's own Phase 0. The
-   Task setup tab proposes that ladder from the template that came over.
+   is stated relaxed; on PySCF the relaxation is the deck's own Phase 0.
+   **The hand-over carries that ladder, numbered** (`proposed_stages`, each
+   entry as `task.json` states a stage), made by the server's one rule —
+   `task.fresh_stages`, which `jobset init` asks too, through
+   `jobset.group.numbered_fresh` — and Task setup shows it as what will be
+   written, deriving nothing *(until 2.15.3 the page re-derived it in
+   JavaScript, a second copy of the rule)*.
 
 **And the hand-over is now exactly what this section predicted**: a Send
 button on the same endpoint. One extension rode along — the body states

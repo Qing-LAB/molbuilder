@@ -307,6 +307,25 @@ class StructureRef:
     fingerprint: str = ""
 
 
+
+def fresh_stages(calculation: str, engine: str, *,
+                 already_relaxed: bool) -> "Tuple[Stage, ...]":
+    """THE LADDER A NEW DESCRIPTION STARTS WITH, before it is numbered --
+    the one rule, asked by `jobset init` and by the hand-over the parameter
+    tabs send (`web/handover-procedure.md`): a vibration's own ladder, read
+    from the person's one statement (`pyscf/stages.py::vibration_stages`,
+    `engines/vibration.md` § 2.2, § 5.2a); every other kind the ordinary
+    start -- ONE stage carrying no overrides, the calculation that is just
+    the template (`engines/stages.md` § 6.5), named by the shared ladder
+    vocabulary.  A transport calculation proposes nothing here: its rungs
+    are fixed by the kind (`fixed_by_kind`)."""
+    if calculation == "vibration":
+        from .pyscf.stages import vibration_stages
+        return tuple(vibration_stages(engine,
+                                      already_relaxed=bool(already_relaxed)))
+    from .config.siesta import SIESTA_STAGE_NAMES
+    return (Stage(name=SIESTA_STAGE_NAMES[1], overrides={}),)
+
 @dataclass(frozen=True)
 class Stage:
     """§ 2 — a name, the cells that differ, and what this rung RUNS at when

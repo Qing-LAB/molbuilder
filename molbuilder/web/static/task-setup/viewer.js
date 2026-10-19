@@ -3400,29 +3400,19 @@ function removeSetting(name) {
  */
 function proposedFromHandover(over, shape, varies) {
     const run = (over && over.run) || {};
-    // THE KIND rides the hand-over, every kind, as task.json states it.
-    // A vibration hand-over
-    // proposes the kind's own ladder, read from the template that came
-    // over with it (`engines/vibration.md` § 2.2, § 5.2a): `freq` alone
-    // when the person ticked "already relaxed" or the engine is PySCF,
-    // whose deck relaxes in-process; `relax` then `freq` on SIESTA
-    // otherwise, because one SIESTA run cannot relax and take force
-    // constants.  An optimization proposes the ordinary `coarse` start.
+    // THE KIND rides the hand-over, every kind, as task.json states it --
+    // and so does THE PROPOSED LADDER, numbered, made by the server's one
+    // rule (`task.fresh_stages`, `jobset.group.numbered_fresh`; `engines/
+    // vibration.md` § 2.2, § 5.2a; `engines/stages.md` § 6.5).  The page
+    // shows it and derives nothing.
     const kind = over.calculation;
-    const engineName = _handoverEngine(over).toLowerCase();
-    const relaxed = _tmpl.values.already_relaxed === true;
-    let stages;
-    if (kind === "vibration") {
-        stages = [];
-        if (engineName === "siesta" && !relaxed) {
-            stages.push({ name: "relax", group: 1, overrides: {} });
-        }
-        // ITS OWN GROUP: the force-constant stage builds on `relax`.
-        stages.push({ name: "freq", group: stages.length + 1,
-                      overrides: {} });
-    } else {
-        stages = [{ name: "coarse", group: 1, overrides: {} }];
+    if (!Array.isArray(over.proposed_stages)) {
+        throw new Error("this hand-over carries no proposed ladder -- it "
+                        + "was written before 2.15.3: send it again from "
+                        + "its tab.");
     }
+    const stages = over.proposed_stages.map((s) => ({
+        name: s.name, group: s.group, overrides: s.overrides || {} }));
     const out = {
         schema:    "molbuilder/task@1",
         engine:    (over && over.engine) || { name: "siesta" },
