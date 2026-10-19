@@ -527,19 +527,22 @@ travels**; its members import each other the same two ways.  The monitor's
 set stays stdlib-only: the bundles are built by one builder from their own
 tables, and nothing of the finish's reaches the monitor. The finish reads its deck's
 order record through `deck_record` and `atom_permutation`, both in the set
-(`model/overview.md` § 2.2a, I5). *(Decided 2026-10-14, not built: what V1.39
-adds to it — the structure, the sidecar codec, the atomic writer, and
-`netCDF4` among the imports its writing functions may make — is V1.39's,
-stated with it.)*
+(`model/overview.md` § 2.2a, I5); it states the result's structure through
+`structure` and the sidecar codec `molstruct`, and writes the result's two
+files through `persist` and `ncdata` — so its rule is **the standard library,
+numpy and netCDF4**, which the SIESTA job envs carry for it (`envs/recipes.py`;
+`engines/vibration.md` § 6.10.5–6).
 
 **A third, imported rather than run.** A PySCF script imports every molbuilder
 function it runs from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,
 `engines/pyscf.md` § 3) -- the thread and GPU set-up, the progress-log
 writer, the structure codec, the relaxation, and a vibration's rules,
 selector and writer.  Its rule is **the standard library and numpy at load;
-in the functions the script calls also ASE -- which the PySCF env carries for
-it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run
-on the GPU; AND travels**; its members import each other the same two ways.
+in the functions the script calls also ASE and netCDF4 -- which the PySCF env
+carries for it (`envs/recipes.py`; netCDF4 for the result's data file,
+`engines/vibration.md` § 6.10.5) -- and PySCF itself, with gpu4pyscf and cupy
+for a run on the GPU; AND travels**; its members import each other the same
+two ways.
 The one member the script imports before numpy -- the thread set-up's,
 `runtime_info` -- imports nothing that loads numpy (the standard library at
 load; psutil inside the core count when the env has it, and cupy and

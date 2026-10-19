@@ -27,12 +27,12 @@ two calculations is a line of xarray on it.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
+from ..ncdata import Var
 from .sort import REGION_BRIDGE, REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
 from .stages import same_volts
 
@@ -69,32 +69,6 @@ AVTRANS_ENERGY_HALF_DECIMAL_EV = 0.5e-5
 class DataFileError(ValueError):
     """The record does not lay out on one grid -- the message names what
     disagrees, ready to surface verbatim."""
-
-
-@dataclass(frozen=True)
-class Var:
-    """One variable of the file: its ``name``, its dimensions, its ``kind``
-    (``coordinate``, ``given``, ``raw`` -- as an engine wrote it --,
-    ``derived``, ``state``), ``units``, ``long_name``, ``definition`` and,
-    for a raw one, ``source`` -- the file it was read from.  A
-    ``coordinate`` names a dimension's points: the dimension's own values
-    when it is named as the dimension (a NetCDF coordinate variable), else
-    a label of them.  An ``auxiliary`` variable labels the points of its one
-    dimension -- each variable over that dimension names it in its CF
-    ``coordinates`` attribute, so a NetCDF reader opens it as a
-    coordinate.  ``fill`` is an integer variable's fill value, where a cell
-    can be not stated (a flag of a run that did not run: neither 0 nor 1);
-    a number's is NaN, a text's the empty string."""
-    name: str
-    dims: Tuple[str, ...]
-    kind: str
-    units: str
-    long_name: str
-    definition: str
-    source: str = ""
-    dtype: Any = "f8"
-    auxiliary: bool = False
-    fill: Any = None
 
 
 #: THE SCF ROW, column by column -- the record's names (`record._SCF_FIELDS`,
@@ -357,8 +331,8 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     `record.collect_record` answers -- and the calculation's composed
     junction; returns its path.  :class:`DataFileError` names what does not
     lay out on one grid."""
-    import netCDF4
     from ..frame_average import fill_data_file
+    from ..ncdata import as_bytes, empty, in_memory, write_group
     from ..persist import write_bytes
     from .compose import recorded_junction
     from .record import order_unstated_said
@@ -417,20 +391,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
             "xyz": 3, "region": len(_REGIONS), "lead": len(leads),
             "eigenchannel": n_eig, "rung": len(once), "scf_cycle": n_cycles,
             "charge_part": len(parts)}
-    values: Dict[str, Any] = {}
-    nan = np.nan
-
-    def full(name):
-        var = next(v for v in VARIABLES if v.name == name)
-        shape = tuple(dims[d] for d in var.dims)
-        if var.dtype is str:
-            return np.full(shape, "", dtype=object)
-        if var.dtype in ("i1", "i4"):
-            return np.full(shape, 0 if var.fill is None else var.fill,
-                           dtype=var.dtype)
-        return np.full(shape, nan)
-    for v in VARIABLES:
-        values[v.name] = full(v.name)
+    values: Dict[str, Any] = {v.name: empty(v, dims) for v in VARIABLES}
     values["frame"][:] = np.arange(n_frames)
     if n_frames > 1:
         for f in range(n_frames):
@@ -542,35 +503,12 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
          if (by_stage.get(name) or {}).get("scf_criteria")})
     attrs["Conventions"] = "CF-1.8"
 
-    ds = netCDF4.Dataset("transport.nc", "w", memory=4096, format="NETCDF4")
-    for name, size in dims.items():
-        ds.createDimension(name, size)
-    auxiliary = [a for a in VARIABLES if a.auxiliary]
-    for var in VARIABLES:
-        # THE FILL VALUE, said: NaN for a number, the variable's own for an
-        # integer that can be not stated; compressed unless text.
-        kw = ({} if var.dtype is str else
-              {"zlib": True, "complevel": 4,
-               **({"fill_value": np.nan} if var.dtype not in ("i1", "i4")
-                  else {"fill_value": var.fill} if var.fill is not None
-                  else {})})
-        nc = ds.createVariable(var.name, var.dtype, var.dims, **kw)
-        # THE LABELS OF ITS POINTS, named for a NetCDF reader (CF
-        # `coordinates`): every auxiliary coordinate along its dimensions.
-        labels = ([] if var.kind == "coordinate" or var.auxiliary else
-                  [a.name for a in auxiliary if a.dims[0] in var.dims])
-        nc.setncatts({"kind": var.kind, "units": var.units,
-                      "long_name": var.long_name,
-                      "definition": var.definition,
-                      **({"source": var.source} if var.source else {}),
-                      **({"coordinates": " ".join(labels)} if labels
-                         else {})})
-        data = values[var.name]
-        if data.size:
-            nc[...] = data
+    # THE FILE, through the variable record's one writing loop (`ncdata`).
+    ds = in_memory("transport.nc")
+    write_group(ds, dims, VARIABLES, values)
     ds.setncatts(attrs)
     out = data_file_path(base, attrs["label"])
-    write_bytes(out, bytes(ds.close()))
+    write_bytes(out, as_bytes(ds))
     return out
 
 
@@ -641,16 +579,11 @@ def read_data_file(path) -> Dict[str, Any]:
     arrays (the fill value NaN), its units, long name, definition and source.
     The file's door (`runfiles.WRITTEN`); refuses another schema by name."""
     import netCDF4
+    from ..ncdata import read_variables
     with netCDF4.Dataset(str(path), "r") as ds:
         attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
         if attrs.get("schema") != DATA_SCHEMA:
             raise DataFileError(f"{Path(path).name} states the schema "
                                 f"{attrs.get('schema')!r}, not {DATA_SCHEMA}")
-        ds.set_auto_mask(False)
-        variables = {
-            name: {"dims": tuple(v.dimensions),
-                   "data": np.asarray(v[...]),
-                   "attrs": {k: v.getncattr(k) for k in v.ncattrs()
-                             if k != "_FillValue"}}
-            for name, v in ds.variables.items()}
+        variables = read_variables(ds)
     return {"attrs": attrs, "variables": variables}

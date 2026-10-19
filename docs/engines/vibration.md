@@ -2226,6 +2226,7 @@ SIESTA from the label (§ 5.4).
 | file | where | holds | written by |
 |---|---|---|---|
 | `<label>.spectra.json` | each force-constant attempt (SIESTA's `freq` stages); the attempt on PySCF | **the result**: every mode's frequency and both eigenvector forms, the strengths the engine computes (`null` where not computed), the removed motions, the thermochemistry, the stationarity verdict, the steps of every finite difference (§ 6.2–6.4); read it as § 6.8 says | the run itself (§ 5.5) |
+| `<label>.spectra.nc` | beside the `.spectra.json`, written with it at every write | **the same result as structured data** (§ 6.10.5): NetCDF-4 groups `/structure`, `/equilibrium`, `/modes` (`/modes/electronic_structure`), `/thermo` (`/thermo/grid`), every variable stating its units, long name, definition and kind, the scalar blocks as attributes, the structure whole as JSON text beside its arrays, the JSON's sha256 | the run itself, through the one writer (`sidecars.spectra.write_spectra_payload`) |
 | `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied (with units), every mode's frequency per stage matched by shape, how far the force constants moved, the paths of every stage's own files, and the stages without a result with their state (§ 5.9) | `jobset summarize task` |
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
 | `<label>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
@@ -2233,11 +2234,12 @@ SIESTA from the label (§ 5.4).
 | `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to yours — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
 | `<label>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 
-### 6.10 Schema 9 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14; the JSON built 2026-10-18, the NetCDF not yet)*
+### 6.10 Schema 9 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, built 2026-10-18)*
 
-> **Decided with the user on 2026-10-14** *(plan V1.39)*; the reader, the
-> consumers and both writers are built (2.13.3, 2.14.0); the NetCDF data file
-> (§ 6.10.5) and what it needs (§ 6.10.6) are not. The user's words: *"why
+> **Decided with the user on 2026-10-14** *(plan V1.39)*, built in 2.13.3,
+> 2.14.0 and 2.15.0 — the reader, the consumers, both writers and the data
+> file.  What remains is the person's: each machine's job environments
+> repaired for `netCDF4` (§ 6.10.6, `molbuilder envs install`). The user's words: *"why
 > not save the whole structure with labels all in that json rather than just
 > having the fingerprint? the single json would then contain all the
 > information … having one single json file storing everything removes the
@@ -2248,10 +2250,8 @@ SIESTA from the label (§ 5.4).
 > file would be enough for citation"*; and *"add both netcdf and json writing,
 > make sure netcdf contains meta data and are structurally clean and
 > organized with hierarchical structure"*. Revised the same day after two
-> review agents read it against the code. § 4.3, § 6.1, § 6.2 and I15 now
-> describe the JSON as written; § 6.9, § 7 (I23) and
-> [`configuration.md`](?doc=configuration.md)'s bundle rule still describe
-> no `.nc`, and are rewritten with it; this banner goes with the last.
+> review agents read it against the code; the sections it names describe
+> the files as written.
 
 **Why.** A schema-7 result names the geometry it is about by
 `structure_hash`, a hash of a structure kept elsewhere, carrying the job's
@@ -2307,9 +2307,10 @@ count.
   atoms outside `FC.First … FC.Last`, mapped back, are the structure's
   `frozen_atoms` — a deck whose two statements of the held set disagree is
   refused by the finish.
-- `structure.py`, `sidecars/molstruct.py` and `persist.py` join
-  `mb_vibration.pyz`; `persist.py` joins `mb_pyscf.pyz` (the other two travel
-  there already).
+- `structure.py`, `sidecars/molstruct.py`, `persist.py`, `ncdata.py` and
+  `spectra/datafile.py` join `mb_vibration.pyz`; `persist.py`, `ncdata.py`,
+  `spectra/datafile.py` and `runfiles.py` join `mb_pyscf.pyz` (the structure
+  and the sidecar codec travel there already).
 
 #### 2. One home for each fact
 
@@ -2411,8 +2412,12 @@ the phase and route attributes that already state what ran (§ 6.5) — no
 second flag beside them. **Every variable states itself** — `units`,
 `long_name`, `definition` and its kind (given, raw, derived) — through the
 variable record and the writing loop the transport data file uses
-(`transport.datafile.Var`), moved into a small module both data files and
-both job bundles share; each file keeps its own table of variables.
+(`ncdata.Var`, `ncdata.write_group` — the record and the loop the transport
+data file wrote with, now the module both data files and both job bundles
+share); each file keeps its own table of variables
+(`spectra/datafile.py`).  A key of the result, its `relaxation` or its
+`thermo` block that the file's tables do not know is refused by name — a
+fact the writer thinks it saved and the file would drop.
 **Encoding**, so the round trip is exact: `null` is the fill value (a
 number's NaN, a text's empty string, an integer's stated fill); a boolean is
 an `int8` with `flag_values 0 1`; an empty list is a dimension of length 0; a
@@ -2477,7 +2482,7 @@ Each names where it holds and what pins it.
 | I20 | **Nothing of molbuilder's is spliced into a deck**: what the PySCF script runs it imports from `mb_pyscf.pyz`, whose members load with molbuilder absent (since 2026-10-05; until then the rules were spliced as source, and a name the source read from its module -- the constant left behind on 2026-09-21 -- was undefined in the deck) | `runwrap.PYSCF_COMPANIONS` | `tests/test_pyscf_bundle_runs_alone.py` and the end-to-end runs |
 | I21 | **The SIESTA keyword set is re-verified on any SIESTA upgrade** against the manual-derived table, never `strings` | § 5.1 | review, on every upgrade |
 | I22 | **The job writes the result, on both engines**: a vibration's `launch` ends with `<label>.spectra.json` in the attempt — the PySCF deck writes it, and on SIESTA the finish the wrapper runs after the force-constant run (§ 5.5), whose failure is the job's. Nothing after `launch` derives a run's result: `summarize` only compares the results of a displacement sweep's stages (§ 5.9) | `runwrap` (the finish step), `DeckSpec.finish` → `Job.finish` | `tests/test_siesta_vibration_e2e.py` (the launch alone leaves the spectrum) |
-| I23 | **What travels is one declared set that imports only what the job env carries**: the finish's modules are `runwrap.VIBRATION_COMPANIONS`, each its own file imported two ways; at load, and in every function the finish calls, they import only the standard library and numpy — the SIESTA job envs' own packages (`envs/recipes.py`) — and each other. A member's functions the finish never calls (the host's element shares, the host's typed reader) may import what the host has | `runwrap.VIBRATION_COMPANIONS`, `envs/recipes.py` | the SIESTA end-to-end run, whose job python cannot import molbuilder |
+| I23 | **What travels is one declared set that imports only what the job env carries**: the finish's modules are `runwrap.VIBRATION_COMPANIONS`, each its own file imported two ways; at load, and in every function the finish calls, they import only the standard library, numpy and netCDF4 — the SIESTA job envs' own packages (`envs/recipes.py`; netCDF4 for the result's data file, § 6.10.5–6, imported at load so a job whose env lacks it stops at the `loads` check, before the engine runs) — and each other. A member's functions the finish never calls (the host's element shares, the host's typed reader) may import what the host has | `runwrap.VIBRATION_COMPANIONS`, `envs/recipes.py` | the SIESTA end-to-end run, whose job python cannot import molbuilder |
 | I24 | **Every force-constant stage measures at the relaxed geometry**: whichever its name, a stage that renders the force-constant deck takes the `relax` stage's geometry, in that run's cell, and its `vibration` block carries that run's record (§ 5.2a, § 5.9) — what a stage renders is asked of `vibration_render_kind` alone | `jobset/prep.py::_vibration_stage_geometry` | `tests/test_siesta_vibration_e2e.py` (the sweep: two force-constant stages, one deck geometry) |
 | I25 | **A sweep's summary loses nothing and copies nothing**: every stage's files stay in its attempt and the record names them; it adds only the comparison — modes matched by shape, the frequency changes, the force-constant changes read from the raw `.FC` — and flags only against a tolerance the person gave (§ 5.9) | `spectra/displacement_sweep.py` | `tests/test_siesta_vibration_e2e.py` (the sweep's record) |
 

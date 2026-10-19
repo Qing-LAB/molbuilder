@@ -1312,6 +1312,10 @@ def _pyscf(cuda_version: str) -> Recipe:
             # import (plan W36 ⑤; the SIESTA envs carry it for their
             # vibration's finish, `engines/vibration.md` § 5.5).
             "ase",
+            # netCDF4: a vibration result's data file, written by the deck
+            # beside its JSON (`engines/vibration.md` § 6.10.5-6; approved
+            # by the user, 2026-10-14).
+            "netcdf4",
         ),
         # GPU support: gpu4pyscf + cupy ship via PyPI (not conda-forge for
         # current versions).  Wheel suffix derived from ``cuda_version`` via
@@ -1391,7 +1395,7 @@ def _pyscf(cuda_version: str) -> Recipe:
         # from the right repository that nevertheless cannot be imported
         # passes the audit and fails here, which is the right way round.
         verify_argv=("python", "-c",
-                     "import pyscf, geometric; "
+                     "import pyscf, geometric, netCDF4; "
                      "from pyscf.prop import polarizability; "
                      "import importlib, importlib.util as _u; "
                      "ir = (importlib.import_module('pyscf.prop.infrared') "
@@ -1488,7 +1492,10 @@ _SIESTA = Recipe(
                     # siesta related env so it is always available when
                     # we need them"; the planned electronic kind,
                     # `engines/vibration.md` § 5.10 D5).
-                    "numpy", "ase", "sisl"),
+                    # netCDF4: a vibration result's data file, written by
+                    # the job's finish (`engines/vibration.md` § 6.10.5-6);
+                    # sisl brings it, and it is listed for its own reason.
+                    "numpy", "ase", "sisl", "netcdf4"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",
 )
@@ -2428,7 +2435,9 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # its binary outputs: the same three the packaged recipe
             # carries, so the GPU switch never changes what a job can import
             # (plan W36 ⑤; `engines/vibration.md` § 5.10 D5).
-            "numpy", "ase", "sisl",
+            # netCDF4: a vibration result's data file (`engines/vibration.md`
+            # § 6.10.5-6); sisl brings it, listed for its own reason.
+            "numpy", "ase", "sisl", "netcdf4",
         ),
         build_spec=_SIESTA_GPU_BUILD,
         # ---- bare-name toolchain shims (runs after conda create, BEFORE

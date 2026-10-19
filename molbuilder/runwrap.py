@@ -453,7 +453,7 @@ def _finish_check_block(finish: Optional[str]) -> str:
         f'    echo "ERROR: this job cannot finish itself: {finish} does not '
         f'load on the job\'s python (${{_mb_py:-none found}}) -- the engine '
         f'was not started, so no run is lost.  Its imports are the standard '
-        f'library and numpy, which the job env carries '
+        f'library, numpy and netCDF4, which the job env carries '
         f'(envs/recipes.py)." >&2\n'
         f'    [ -n "$_mb_fin_said" ] && echo "$_mb_fin_said" >&2\n'
         f'    printf "rc=1 at %s; {FINISH_CANNOT_LOAD} ({finish})\\n" '
@@ -3893,6 +3893,12 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     # result type builds and checks it through the one serialiser.
     "structure.py":            "molbuilder.structure",
     "molstruct.py":            "molbuilder.sidecars.molstruct",
+    # THE RESULT'S TWO FILES (engines/vibration.md § 6.10.5): the data
+    # file's writer, the variable record it shares with the transport data
+    # file, and the one atomic writer both files go through.
+    "spectra_datafile.py":     "molbuilder.spectra.datafile",
+    "ncdata.py":               "molbuilder.ncdata",
+    "persist.py":              "molbuilder.persist",
     "engine_atom_index.py":    "molbuilder.engine_atom_index",
     "wrapper_log.py":          "molbuilder.wrapper_log",
     "runfiles.py":             "molbuilder.runfiles",
@@ -3922,7 +3928,7 @@ _VIBRATION_MAIN = (
     f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
     f"(time.strftime({LOG_CLOCK!r}), 'ERROR', "
     f"'vibration: {VIBRATION_BUNDLE} did not load -- %s: %s (it needs "
-    f"numpy in the job env: envs/recipes.py)' "
+    f"numpy and netCDF4 in the job env: envs/recipes.py)' "
     "% (type(_e).__name__, _e)))\n"
     "    traceback.print_exc()\n"
     "    raise SystemExit(1)\n"
@@ -3952,16 +3958,17 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 #: record its ``atom_order`` field holds (`model/overview.md` § 2.2a) and the
 #: sidecar module its ``write_moved`` reaches; the relaxation; and a
 #: vibration's rules -- the PySCF route's, the harmonic path and
-#: thermochemistry, the result's hash and writer -- and its mode selector.
+#: thermochemistry, the structure the result states and the result's writer
+#: (its JSON and its data file) -- and its mode selector.
 #: The script imports them by these names -- `pyscf.input.emit_bundle_imports`
 #: reads them here.
 #:
 #: **Each module's own file, imported two ways**, like the monitor's and the
 #: finish's; the rule for joining is *imports the standard library and numpy
-#: at load, and in the functions the script calls also ASE -- which the
-#: PySCF env carries for it (`envs/recipes.py`) -- and PySCF itself, with
-#: gpu4pyscf and cupy for a run on the GPU; nothing else but the other
-#: members*.
+#: at load, and in the functions the script calls also ASE and netCDF4 --
+#: which the PySCF env carries for it (`envs/recipes.py`) -- and PySCF
+#: itself, with gpu4pyscf and cupy for a run on the GPU; nothing else but
+#: the other members*.
 PYSCF_COMPANIONS: Dict[str, str] = {
     "runtime_info.py":          "molbuilder.runtime_info",
     "molwatch_emitter.py":      "molbuilder.trajectory_log.emitter",
@@ -3975,6 +3982,14 @@ PYSCF_COMPANIONS: Dict[str, str] = {
     "pyscf_vibration.py":       "molbuilder.spectra.pyscf_vibration",
     "normal_modes.py":          "molbuilder.spectra.normal_modes",
     "spectra_sidecar.py":       "molbuilder.sidecars.spectra",
+    # THE RESULT'S TWO FILES (engines/vibration.md § 6.10.5): the data
+    # file's writer, the variable record it shares with the transport data
+    # file, the one atomic writer both files go through, and the catalogue
+    # the data file's name follows from.
+    "spectra_datafile.py":      "molbuilder.spectra.datafile",
+    "ncdata.py":                "molbuilder.ncdata",
+    "persist.py":               "molbuilder.persist",
+    "runfiles.py":              "molbuilder.runfiles",
     # THE DERIVED VALUES, stated by the one writer at every write
     # (`spectra.derived`, `engines/vibration.md` § 6.6), and the activity
     # rule they ask.

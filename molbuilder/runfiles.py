@@ -972,6 +972,16 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the run itself: the PySCF deck, or a SIESTA "
                     "force-constant job's finish (`mb_vibration.pyz`)",
              door="parse.sidecars.spectra.SpectraSidecarFileParser"),
+    # THE SAME RESULT AS STRUCTURED DATA, written beside the JSON at every
+    # write by the one writer (`engines/vibration.md` § 6.10.5).
+    Artifact(".spectra.nc", "the spectrum as data on its grids -- the "
+                            "structure, the modes, the thermochemistry, "
+                            "every variable stating itself (NetCDF-4); "
+                            "the JSON's sha256 beside",
+             staged=False, calculation="vibration", kind="result",
+             writer="the run itself, with the JSON "
+                    "(`sidecars.spectra.write_spectra_payload`)",
+             door="spectra.datafile.read_spectra_data"),
     # ---- the wrapper --------------------------------------------------
     Artifact(".run.sh", "the wrapper — activates the environment, tees "
                         "the output, catches a kill",

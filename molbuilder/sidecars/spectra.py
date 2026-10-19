@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Union
 
 # THIS MODULE TRAVELS, and imports only the standard library at load: the
@@ -31,6 +31,23 @@ if TYPE_CHECKING:
 # --------------------------------------------------------------------- #
 #  Exceptions (canonical home; read-side re-imports)                     #
 # --------------------------------------------------------------------- #
+
+
+# TWO WAYS, because this module travels beside the job in both bundles.
+try:                                        # inside molbuilder
+    from ..persist import write_bytes as _write_bytes
+    from ..runfiles import compose as _compose, role_of as _role_of
+    from ..spectra.datafile import write_spectra_data as _write_spectra_data
+    from ..spectra.derived import with_derived as _with_derived
+except ImportError:                         # beside a job, in a bundle
+    from persist import write_bytes as _write_bytes
+    from runfiles import compose as _compose, role_of as _role_of
+    from spectra_datafile import write_spectra_data as _write_spectra_data
+    from derived import with_derived as _with_derived
+
+#: The result's role and its data file's, the catalogue's (`runfiles.WRITTEN`).
+SPECTRA_ROLE = ".spectra.json"
+DATA_ROLE = ".spectra.nc"
 
 
 class SpectraJsonError(Exception):
@@ -86,14 +103,18 @@ def write_spectra_payload(payload: dict,
                           path: Union[str, "os.PathLike[str]"],
                           *,
                           indent: int = 2) -> None:
-    """Write a ``.spectra.json`` payload to ``path`` via atomic rename.
+    """Write the result to ``path`` -- ``<label>.spectra.json`` -- and, from
+    the same payload, its data file ``<label>.spectra.nc`` beside it
+    (`spectra.datafile.write_spectra_data`; `engines/vibration.md`
+    § 6.10.5): one source, two files, both through the one atomic writer
+    (`persist.write_bytes`).  ``path`` is named as the catalogue names the
+    result (`runfiles`: the `.spectra.json` role on the run's label), and
+    the data file's name follows from it; another name is refused.
 
-    The wire-format contract that every Spectra-tab writer follows
-    — providing it as a helper here keeps engines from diverging on
-    the details (NaN handling, indent, BOM, atomicity).  Every writer
-    calls it: :func:`dump_spectra_json` with a results object, the SIESTA
-    finish through that, and the PySCF vibration script -- importing it from
-    ``mb_pyscf.pyz`` -- with the payload it builds phase by phase.
+    The wire-format contract every writer follows: :func:`dump_spectra_json`
+    with a results object, the SIESTA finish through that, and the PySCF
+    vibration script -- importing it from ``mb_pyscf.pyz`` -- with the
+    payload it builds phase by phase.
 
     Behaviour:
 
@@ -101,94 +122,40 @@ def write_spectra_payload(payload: dict,
         amplitude and displacement -- are stated beside its own keys by the
         one derivation (`spectra.derived`), whichever engine built the
         payload;
-      * ``payload`` is encoded with ``allow_nan=False`` —
-        a non-finite scalar anywhere in the payload raises
-        :class:`ValueError` BEFORE any bytes hit disk, so the engine
-        is forced to filter or null out NaN/Inf SCF energies
-        explicitly instead of producing JSON that downstream
-        consumers can't read.
-      * UTF-8 without a BOM (cm⁻¹ / Å survive verbatim thanks to
-        ``ensure_ascii=False``).
-      * Atomic: write to a temp file beside ``path`` (``tempfile.mkstemp``,
-        named ``<name>.<random>.tmp``) first, then :func:`os.replace` it on
-        top of ``path``.  A reader opening the path mid-write sees either
-        the prior version (intact) or the new version (intact) — never a
-        half-written file.
-
-    Parameters
-    ----------
-    payload
-        The ``.spectra.json`` document, as a dict.
-    path
-        Destination path.  Parent directory must exist.
-    indent
-        ``json.dumps`` indent.  Default 2 (readable + diffable);
-        pass 0 / ``None`` for the compact wire form.
-
-    Raises
-    ------
-    ValueError
-        ``payload`` contains a non-finite float.  The engine must
-        filter NaN/Inf before calling this (:func:`finite_or_none`).
-    OSError
-        Path can't be written (permission / no such directory /
-        disk full).  The temp file is cleaned up before re-raise.
+      * ``payload`` is encoded with ``allow_nan=False`` -- a non-finite
+        scalar anywhere in the payload raises :class:`ValueError` BEFORE any
+        bytes hit disk, so the engine is forced to filter or null out
+        NaN/Inf SCF energies explicitly (:func:`finite_or_none`);
+      * UTF-8 without a BOM (cm⁻¹ / Å survive verbatim, ``ensure_ascii=False``);
+      * atomic, both files: a reader opening either path mid-write sees the
+        prior version or the new one, never a half-written file; the data
+        file states the sha256 of the JSON bytes written with it.
     """
-    p = os.fspath(path)
+    import hashlib
+    p = Path(os.fspath(path))
+    role = _role_of(p.name)
+    if role != SPECTRA_ROLE:
+        raise ValueError(
+            f"{p.name}: a vibration result is named <label>{SPECTRA_ROLE} "
+            f"(runfiles.WRITTEN), and its data file follows from that name")
+    label = p.name[:-len(SPECTRA_ROLE)]
 
     # EVERY MODE'S DERIVED VALUES, stated beside what they come from by the
     # one derivation (`spectra.derived`, `engines/vibration.md` § 6.6) -- in
     # this writer, so every engine's file states them alike at every write.
     if payload.get("modes"):
-        try:                                # inside molbuilder
-            from ..spectra.derived import with_derived
-        except ImportError:                 # beside a job, in a bundle
-            from derived import with_derived
-        payload = {**payload, "modes": with_derived(payload["modes"])}
+        payload = {**payload, "modes": _with_derived(payload["modes"])}
 
-    # ``allow_nan=False`` is the safety net: dataclass __post_init__
-    # validates shapes but doesn't enforce finiteness on scalar
-    # fields (an SCF that didn't converge can leave NaN in
-    # equilibrium_scf_eh).  json.dumps would otherwise happily emit
-    # the bare token `NaN`.
     text = json.dumps(payload,
                       indent=indent,
                       ensure_ascii=False,
                       allow_nan=False,
                       sort_keys=False)
-
-    # Atomic write: temp file in the same directory (so os.replace
-    # is a same-filesystem rename), fsync the data before replace
-    # to survive a crash between write() and replace().
-    parent  = os.path.dirname(os.path.abspath(p)) or "."
-    fd, tmp = tempfile.mkstemp(
-        prefix=os.path.basename(p) + ".",
-        suffix=".tmp",
-        dir=parent,
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-            fh.flush()
-            try:
-                os.fsync(fh.fileno())
-            except OSError:
-                # Some filesystems (tmpfs on some kernels) reject
-                # fsync; the data is still in the OS write buffer
-                # and will land before the replace anyway.  Don't
-                # let a quirky FS block the write.
-                pass
-        os.replace(tmp, p)
-    except BaseException:
-        # Best-effort cleanup of the temp file on any failure
-        # (including KeyboardInterrupt).  Swallow errors during
-        # cleanup -- the original exception is what the caller
-        # cares about.
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    data = text.encode("utf-8")
+    _write_bytes(p, data)
+    _write_spectra_data(payload, p.with_name(_compose(label, DATA_ROLE)),
+                        json_sha256=hashlib.sha256(data).hexdigest(),
+                        label=label)
 
 
 def dump_spectra_json(results: "SpectraResults",

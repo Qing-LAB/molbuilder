@@ -87,7 +87,7 @@ def _make_minimal_results(complete: bool = True) -> SpectraResults:
     )
 
 
-def _write_json(tmp_path: Path, results, name: str = "spectra.json") -> Path:
+def _write_json(tmp_path: Path, results, name: str = "job.spectra.json") -> Path:
     """The result as a run's file: through our ONE writer,
     `dump_spectra_json`."""
     p = tmp_path / name
@@ -439,9 +439,11 @@ class TestDumpSpectraJson:
 
         # Old content is intact.
         assert p.read_bytes() == original_bytes
-        # No temp file dangling next to it.
-        siblings = list(tmp_path.iterdir())
-        assert siblings == [p], f"unexpected temp files: {siblings}"
+        # No temp file dangling next to it: the JSON and its data file,
+        # written beside it at every write (`engines/vibration.md` § 6.10.5).
+        siblings = sorted(tmp_path.iterdir())
+        assert siblings == [p, tmp_path / "existing.spectra.nc"], (
+            f"unexpected temp files: {siblings}")
 
     def test_no_bom_in_output(self, tmp_path):
         """The writer never emits a BOM, even though the reader
@@ -476,9 +478,9 @@ class TestDumpSpectraJson:
         later reads).
         """
         original = _make_minimal_results()
-        # pathlib.Path is os.PathLike.
-        dump_spectra_json(original, tmp_path / "x.json")
-        assert (tmp_path / "x.json").exists()
+        # pathlib.Path is os.PathLike; the name is the catalogue's.
+        dump_spectra_json(original, tmp_path / "x.spectra.json")
+        assert (tmp_path / "x.spectra.json").exists()
 
 
 # --------------------------------------------------------------------- #
