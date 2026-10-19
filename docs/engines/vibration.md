@@ -665,17 +665,13 @@ relaxed to the deck's own criterion, reads 3.35·10⁻² over all atoms against
 3.9·10⁻¹⁴. Judging every atom (the old `np.abs(_g0).max()`) warned on four of
 five correct constrained minima, and the warning reached the web UI.
 
-**The structure hash** (`structure_hash`, `sha256:…`) is computed by
-`sidecars.spectra.structure_hash_text` over `n_atoms`, the label and one line
-per atom in the input order, imported by the deck from `mb_pyscf.pyz`, so the
-SIESTA derivation and the PySCF deck hash with one function. Each hashes its
-own geometry: the SIESTA derivation the force-constant reference geometry, put
-back in the input order; the PySCF deck its input atoms, before any relaxation
-the deck runs. A displacement sweep compares it and refuses two stages whose
-hashes differ (§ 5.9); nothing else does. It carries the job name as its
-second line, and it is not the pair's geometry hash
-(`model/structure-molstruct.md` § 3), a different scheme. Schema 9 retires it:
-the result states its structure whole instead (§ 6.10, decided 2026-10-14).
+**The structure the result states** (`structure`, § 6.10.1) is built at the
+equilibrium write: the geometry the Hessian is taken at with the run's own
+sidecar payload applied whole (`_MB_SIDECAR`, through
+`molstruct.apply_to_structure` — `spectra.pyscf_vibration.equilibrium_structure`,
+imported from `mb_pyscf.pyz`). A schema-8 file carried a hash of a structure
+kept elsewhere instead (`structure_hash`); it is read from such a file and
+never written.
 
 ### 4.4 Phase 2 — the Hessian over the free atoms
 
@@ -2014,8 +2010,9 @@ registered in [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 | 6 | 2026-09-23 | `removed_motions`, `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit`; the equilibrium block optional as a whole; `eigenvector_display` derived when a file carries only the canonical form — additive |
 | **7** | 2026-10-10 | `equilibrium.masses_amu` — every atom's mass, as the deck stated it and the analysis weighted by it (I3); the derived per-mode keys — the activity classes, the zero-point amplitude and displacement — **written by both engines** through one function and checked on read (§ 6.6), where until now the SIESTA finish wrote them and the PySCF deck did not. A v4–v6 file reads as before: no masses, its derived keys computed on read |
 | **8** | 2026-10-14 | the SIESTA route's `engine_metadata` names its force-constant range in SIESTA's numbering, `fc_range_engine_1based` — the deck's held-first order, an engine fact and not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a). A v4–v7 file reads as before, its range read under v8's name (`SpectraResults.from_dict`) |
+| **9** | 2026-10-18 | **the result states its structure whole** — `structure`, `Structure.to_dict()` of the equilibrium structure (§ 6.10.1): the geometry, the box, the labels with the held atoms as `frozen_atoms`, the identity columns, `info`; `structure_hash`, `frozen_atom_idxs` and `equilibrium.{elements, positions_ang}` are read from a v4–v8 file and never written (`frozen_atom_idxs` still in a PySCF file written before any geometry exists, § 6.10.2); `relaxation.record` carries the relaxing stage's record whole. The reader serves every file as this shape |
 
-`READABLE_SCHEMA_VERSIONS = {4, 5, 6, 7, 8}`; an older or unknown version is
+`READABLE_SCHEMA_VERSIONS = {4, 5, 6, 7, 8, 9}`; an older or unknown version is
 refused by name.
 
 ### 6.2 The keys, and who writes each
@@ -2023,10 +2020,10 @@ refused by name.
 | key | written by | meaning |
 |---|---|---|
 | `schema_version` · `engine` · `engine_version` · `molbuilder_version` · `timestamp` | both | provenance; `engine` is `pyscf` or `siesta` |
-| `structure_hash` | both, through one function (§ 4.3) | `sha256:` over `n_atoms`, the label and the atom lines in the input order — a displacement sweep refuses two stages whose hashes differ (§ 5.9) |
-| `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **input** order (SIESTA: inverted through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise |
+| `structure` | both, from v9 (§ 6.10.1) | the equilibrium structure whole, `Structure.to_dict()`: the geometry the Hessian is taken at, in the input order, its box, its labels — the held atoms as `frozen_atoms` — its identity columns and `info`. A v4–v8 file's is built on read from its old keys. `structure_hash` (v4–v8) is read, never written |
+| `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **input** order (SIESTA: inverted through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise. From v9 the held list is the structure's label, and `frozen_atom_idxs` is written only before any geometry exists (§ 6.10.2) |
 | `equilibrium.{scf_energy_eh, mo_energies_eh, homo_idx}` | PySCF | the reference SCF and its orbital ladder — the **energy subgroup** of the equilibrium block, which travels whole or not at all: **`null` in all three on SIESTA** (a periodic engine has a Fermi level, not a HOMO), and `null` in one slot only is a broken file. The two geometry keys below are separate and always present |
-| `equilibrium.{elements, positions_ang}` | both | the geometry the Hessian is taken at (§ 4.2) — what the animation draws from |
+| `equilibrium.{elements, positions_ang}` | v4–v8 | the geometry the Hessian is taken at (§ 4.2); from v9 it is the structure's, which the animation draws from |
 | `equilibrium.masses_amu` | both, from v7, wherever the geometry is | every atom's mass in amu, in the input order — the masses the analysis weighted by, as the deck states them (I3): one positive finite number per atom, refused otherwise (§ 6.7). What a mode's frame set's `mass_amu` channel is copied from ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
 | `modes[]` | both | ascending frequency; every entry a vibration (§ 6.3) |
 | `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
@@ -2236,10 +2233,11 @@ SIESTA from the label (§ 5.4).
 | `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to yours — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
 | `<label>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 
-### 6.10 Schema 9 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, not built)*
+### 6.10 Schema 9 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14; the JSON built 2026-10-18, the NetCDF not yet)*
 
-> **Decided with the user on 2026-10-14, not yet built** *(plan V1.39; its
-> version 2.10.0 — a new file is new functionality)*. The user's words: *"why
+> **Decided with the user on 2026-10-14** *(plan V1.39)*; the reader, the
+> consumers and both writers are built (2.13.3, 2.14.0); the NetCDF data file
+> (§ 6.10.5) and what it needs (§ 6.10.6) are not. The user's words: *"why
 > not save the whole structure with labels all in that json rather than just
 > having the fingerprint? the single json would then contain all the
 > information … having one single json file storing everything removes the
@@ -2250,11 +2248,10 @@ SIESTA from the label (§ 5.4).
 > file would be enough for citation"*; and *"add both netcdf and json writing,
 > make sure netcdf contains meta data and are structurally clean and
 > organized with hierarchical structure"*. Revised the same day after two
-> review agents read it against the code. Until it is built, § 4.3, § 5.5,
-> § 5.9, § 6.1–6.9 and § 7 (I3, I15, I23) describe the files as written today
-> (schema 8), and so do [`model/structure.md`](?doc=model/structure.md)
-> § 2.2f and [`configuration.md`](?doc=configuration.md)'s bundle rule; each
-> is rewritten as its part is built, and this banner goes with the last.
+> review agents read it against the code. § 4.3, § 6.1, § 6.2 and I15 now
+> describe the JSON as written; § 6.9, § 7 (I23) and
+> [`configuration.md`](?doc=configuration.md)'s bundle rule still describe
+> no `.nc`, and are rewritten with it; this banner goes with the last.
 
 **Why.** A schema-7 result names the geometry it is about by
 `structure_hash`, a hash of a structure kept elsewhere, carrying the job's
@@ -2472,7 +2469,7 @@ Each names where it holds and what pins it.
 | I12 | **A cost claim is read from the code** (R8): the advisories say what the code skips, and what it cannot | `validation/spectra.py`; § 4.4, § 5.7 | review |
 | I13 | **The Methods paragraph is composed once**, route-neutral before the run, the route added at load; the count it states is R2's, and the level of theory `is_dft`'s | `spectra/methods.py`, `_loaded` in `web/blueprints/spectra.py` | `tests/spectra/test_methods.py`; the IR-only and solvated runs assert the text; `test_a_hartree_fock_deck_names_no_functional` the level of theory |
 | I14 | **Absent is never zero** in the file, on both engines; the equilibrium energy subgroup travels whole or not at all | `SpectraResults.__post_init__`, `spectra/vibrational_analysis.py` | `tests/spectra/test_types.py`, the SIESTA fixture test |
-| I15 | **One hash**: `structure_hash_text` has one home, and the deck imports it | `sidecars/spectra.py` | review (the SIESTA derivation and the PySCF deck call the one function) |
+| I15 | **One structure**: the result states its structure through the one serialiser (`Structure.to_dict()`), each writer building it from what its deck already carries once (§ 6.10.1) — never a hash of a structure kept elsewhere | `spectra/pyscf_vibration.py`, `spectra/siesta_vibration.py` | review; the reader checks the structure against the result's own count, coordinates and held list (§ 6.7) |
 | I16 | **The derived per-mode values are written by one function, beside what they come from, on both engines, and checked on read**; the element shares at load, never in the file (§ 6.6) | `spectra/derived.py`, `SpectraResults` (the check), `_loaded` | `tests/spectra/test_activity.py`, `test_motion_share.py`; the end-to-end runs read them from each engine's file |
 | I17 | **Every catalogue citation resolves** in `science/references.bib`, and every key the prose cites is an entry | the catalogue-refs test | `tests/spectra/test_methods.py` |
 | I18 | **No second producer**: a deck is written by `prep` from a description, through `spec_for`; there is no engine verb and the tab renders nothing | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 1 | review |
@@ -2503,7 +2500,7 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/siesta_vibration.py` | the SIESTA route's finish: `read_force_constant_run`, `finish`, and `main`, the entry of `mb_vibration.pyz` (§ 5.5) |
 | `molbuilder/spectra/displacement_sweep.py` | a SIESTA displacement sweep's summary: `match_modes` (by shape), `stages_share_a_directory` (the layout rule `prep` refuses by), `collect_sweep`, `sweep_path`, `write_sweep`, `sweep_table_text` — `<label>.fc-sweep.json` (§ 5.9); which stages take part is `pyscf/stages.force_constant_stages` |
 | `molbuilder/parse/engines/siesta_fc.py` | `read_fc`, `hessian_from_fc` — the `.FC` reader (§ 5.4) |
-| `molbuilder/sidecars/spectra.py` | `write_spectra_payload` (the one writer of the file: a payload built phase by phase, as the PySCF script does) and `dump_spectra_json` (a results object, through it), `finite_or_none`, `parse_spectra_json`, `structure_hash_text` |
+| `molbuilder/sidecars/spectra.py` | `write_spectra_payload` (the one writer of the file: a payload built phase by phase, as the PySCF script does) and `dump_spectra_json` (a results object, through it), `finite_or_none`, `parse_spectra_json` |
 | `molbuilder/pyscf/vibration_deck.py` | the PySCF deck composer, the `VibrationConfigView`, the relaxation / gradient / thermo / IR-only blocks, `vibration_stages` in `pyscf/stages.py` |
 | `molbuilder/pyscf/vibration_emitters.py` | the emitted blocks: constants, the molecule, the equilibrium SCF, the Hessian, the Raman sweep, the IR projection, the electronic-structure loop, the Methods fragment |
 | `molbuilder/pyscf/scf_setup.py` | the generated SCF and DFT dressers (I9) |

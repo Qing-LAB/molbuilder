@@ -13,8 +13,28 @@ from __future__ import annotations
 
 try:                                        # inside molbuilder
     from ..constants import DEBYE_E_ANGSTROM
+    from ..sidecars.molstruct import apply_to_structure
+    from ..structure import Structure
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from constants import DEBYE_E_ANGSTROM
+    from molstruct import apply_to_structure
+    from structure import Structure
+
+
+def equilibrium_structure(elements, positions_ang, sidecar) -> dict:
+    """THE STRUCTURE A PYSCF RESULT STATES (`engines/vibration.md`
+    § 6.10.1): the geometry the Hessian is taken at -- ``elements`` and
+    ``positions_ang``, the deck's ``ELEMENTS`` and ``COORDS_EQ_ANG`` -- with
+    the run's own sidecar payload, ``_MB_SIDECAR``, applied whole through
+    the envelope's door (`molstruct.apply_to_structure`: the labels, the
+    held atoms, the box, the identity columns, ``info``), as
+    ``Structure.to_dict()``, the one serialiser.  The deck calls it from
+    ``mb_pyscf.pyz`` at its equilibrium write."""
+    import numpy as np
+    struct = Structure(elements=[str(e) for e in elements],
+                       positions=np.asarray(positions_ang, dtype=float))
+    apply_to_structure(struct, dict(sidecar))
+    return struct.to_dict()
 
 
 #: The HOMO rule, as a REAL FUNCTION so it can be called and tested.

@@ -65,7 +65,9 @@ try:                                        # inside molbuilder
     from ..parse.fdf import (deck_atoms, fdf_key, read_fdf, parse_fdf_params,
                              system_label)
     from ..runfiles import compose
-    from ..deck_record import (DeckRecordUnreadable, extract_atom_metadata,
+    from ..structure import Structure
+    from ..deck_record import (DeckRecordUnreadable, box_of_run,
+                               extract_atom_metadata,
                                extract_engine_offset,
                                extract_vibration_record, order_record_of)
     from ..engine_atom_index import from_engine_index, siesta_atom_index
@@ -83,7 +85,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from fdf import (deck_atoms, fdf_key, read_fdf,  # type: ignore[no-redef]
                      parse_fdf_params, system_label)
     from runfiles import compose
-    from deck_record import (DeckRecordUnreadable, extract_atom_metadata,
+    from structure import Structure
+    from deck_record import (DeckRecordUnreadable, box_of_run,
+                             extract_atom_metadata,
                              extract_engine_offset, extract_vibration_record,
                              order_record_of)
     from engine_atom_index import from_engine_index, siesta_atom_index
@@ -105,7 +109,9 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      temperature_K: float,
                      masses_amu: Sequence[float],
                      molbuilder_version: str,
-                     relaxation_stage: Optional[str] = None) -> dict:
+                     relaxation_stage: Optional[str] = None,
+                     title: str = "",
+                     identity: Optional[Mapping[str, Any]] = None) -> dict:
     """The deck's ``vibration`` block (`engines/vibration.md` § 5.3): what
     the finish reads back and no SIESTA keyword states.  Built by `prep`,
     which holds every fact -- the stage it prepares, the stage's resolved
@@ -113,9 +119,12 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     relaxation record it read the coordinates from
     (`parse.contract.relaxation_of_output`, ``None`` without one) and that
     stage's name, the thermochemistry's temperature, every atom's mass in
-    the deck's order (``masses_amu``, `chemistry.atomic_mass`'s, I3), and
-    the molbuilder that renders the deck -- and placed in the deck as given
-    (`script_emit.emit_vibration_record`).  Its keys are read by
+    the deck's order (``masses_amu``, `chemistry.atomic_mass`'s, I3), the
+    molbuilder that renders the deck, and what no other block of the deck
+    carries of the structure -- its ``title`` and its ``identity`` columns
+    (`structure.IDENTITY_FIELDS`, in the deck's order), for the structure the
+    result states (`engines/vibration.md` § 6.10.1) -- and placed in the
+    deck as given (`script_emit.emit_vibration_record`).  Its keys are read by
     :func:`result_of` -- and, before the deck is written, its
     ``relaxation`` by the stage's own checks (`validate`'s ``prior``,
     handed in by the SIESTA spec)."""
@@ -136,7 +145,10 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                                  if relaxation is not None else None),
             "temperature_K": float(temperature_K),
             "masses_amu": [float(m) for m in masses_amu],
-            "molbuilder_version": str(molbuilder_version)}
+            "molbuilder_version": str(molbuilder_version),
+            "title": str(title or ""),
+            "identity": {k: (list(v) if v is not None else None)
+                         for k, v in (identity or {}).items()}}
 
 
 class FinishError(ValueError):
@@ -164,6 +176,15 @@ class ForceConstantRun:
     axis_kind: Tuple[str, str, str]
     #: the deck's order record -- ``None`` for a deck in the input order
     permutation: Optional[Permutation]
+    #: THE DECK'S STATEMENTS OF THE STRUCTURE but its atoms (`engines/
+    #: vibration.md` § 6.10.1): its ATOM-METADATA payload (the labels, the
+    #: channels, the named rows, the order record), its ENGINE-OFFSET
+    #: payload (the box), and from its `vibration` block what no block
+    #: carries -- the title and the identity columns.
+    atom_metadata: Optional[dict]
+    engine_offset: Optional[dict]
+    title: str
+    identity: dict
     fc: ForceConstantFile
     siesta_version: str
     #: the deck's ``vibration`` block (`script_emit.emit_vibration_record`)
@@ -223,7 +244,8 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     try:
         offset = extract_engine_offset(text)
         record = extract_vibration_record(text)
-        order = order_record_of(extract_atom_metadata(text))
+        atom_metadata = extract_atom_metadata(text)
+        order = order_record_of(atom_metadata)
     except DeckRecordUnreadable as exc:
         raise FinishError(f"{deck.name}: {exc}") from exc
     if not offset or len(offset.get("axis_kind") or ()) != 3:
@@ -264,9 +286,41 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         cell=(np.asarray(cell, dtype=float) if cell is not None else None),
         axis_kind=tuple(str(k) for k in offset["axis_kind"]),
         permutation=order,
+        atom_metadata=atom_metadata, engine_offset=offset,
+        title=str(record.get("title") or ""),
+        identity=dict(record.get("identity") or {}),
         fc=read_fc(fc_path),
         siesta_version=str(build.get("version") or ""),
         record=record)
+
+
+def equilibrium_structure(run: ForceConstantRun) -> dict:
+    """THE STRUCTURE THE RESULT STATES, whole and in the input order
+    (`engines/vibration.md` § 6.10.1): the force-constant reference geometry
+    with the box the run had (`deck_record.box_of_run`, the run door's
+    rule), the deck's labels, channels, rows and order record applied
+    through the structure's one door (``Structure.apply_atom_metadata``),
+    the title and the identity columns from the `vibration` block, then put
+    back in the person's order (``Structure.restored``).  **Checked**: the
+    atoms the run did not nudge are the structure's `frozen_atoms` -- a deck
+    whose two statements of the held set disagree is refused."""
+    struct = Structure(
+        elements=list(run.elements),
+        positions=np.array(run.positions_ang, dtype=float),
+        title=run.title,
+        **{k: (list(v) if v is not None else None)
+           for k, v in run.identity.items()})
+    box = box_of_run(run.engine_offset) or {}
+    struct.apply_metadata_dict({**struct.metadata_to_dict(), **box})
+    struct.apply_atom_metadata(run.atom_metadata or {})
+    held_label = sorted(int(i) for i in (struct.frozen_atoms or ()))
+    if held_label != sorted(run.held):
+        raise FinishError(
+            f"{run.deck.name} states two held sets: its labels hold "
+            f"{struct.atoms_named(held_label) or 'no atom'}, and its "
+            f"FC.First .. FC.Last leaves {struct.atoms_named(run.held) or 'no atom'} "
+            f"unnudged (engines/vibration.md 6.10.1)")
+    return struct.restored().to_dict()
 
 
 def result_of(run: ForceConstantRun) -> SpectraResults:
@@ -305,7 +359,8 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         H, [float(m) for m in masses],
         run.positions_ang, run.elements, run.held,
         axis_kind=run.axis_kind, cell=run.cell, permutation=run.permutation,
-        label=run.label, engine="siesta", engine_version=run.siesta_version,
+        structure=equilibrium_structure(run),
+        engine="siesta", engine_version=run.siesta_version,
         molbuilder_version=str(rec.get("molbuilder_version") or ""),
         geometry_note=GEOMETRY_NOTE,
         reference_forces_ev_ang=run.reference_forces_ev_ang,

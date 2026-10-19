@@ -3892,6 +3892,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     # THE STRUCTURE, WHOLE, in the result (engines/vibration.md § 6.10): the
     # result type builds and checks it through the one serialiser.
     "structure.py":            "molbuilder.structure",
+    "molstruct.py":            "molbuilder.sidecars.molstruct",
     "engine_atom_index.py":    "molbuilder.engine_atom_index",
     "wrapper_log.py":          "molbuilder.wrapper_log",
     "runfiles.py":             "molbuilder.runfiles",

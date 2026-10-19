@@ -412,21 +412,8 @@ class Declared:
         origin, an ``engine_offset`` of 0, once a cell is known.  ``None``
         when nothing says.  Both records are this run's deck's, read in
         one place, so the box and the labels never come from two decks."""
-        out: Dict[str, Any] = {}
-        if isinstance(lattice, list) and len(lattice) == 3:
-            out["cell"] = lattice
-        rec = self.engine_offset or {}
-        if rec.get("axis_kind"):
-            out["axis_kind"] = [str(k) for k in rec["axis_kind"]]
-        if "cell" not in out and rec.get("cell") is not None:
-            out["cell"] = rec["cell"]
-        if "cell" in out:
-            out["engine_offset"] = [0.0, 0.0, 0.0]
-            # ...THE ENGINE'S origin, recorded as such: a new calculation made
-            # from these coordinates does not carry it (§ 6.0, *Entering a new
-            # calculation*).
-            out["offset_by"] = "engine"
-        return out or None
+        from .deck_record import box_of_run
+        return box_of_run(self.engine_offset, lattice)
 
 
 def declared(run: Run) -> Declared:

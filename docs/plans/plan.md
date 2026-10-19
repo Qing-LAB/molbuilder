@@ -106,9 +106,9 @@ state, the hand-over file's one reader (2.13.2).
 **What remains, ranked** *(the user, 2026-10-18: "fix all those listed in
 #2" — all five)*: (1) the user's Sol runs — what they show; (2) ~~the five
 items of API unification~~ *done 2.13.3 (the uploads and docs-index writers
-in 1a0ae147)*; (3) V1.39 — its step 1, the reader serving one shape and the
-consumers on it, done 2.13.3; the writers, the NetCDF data file and the docs
-remain.
+in 1a0ae147)*; (3) V1.39 — the reader serving one shape and the consumers on it (2.13.3),
+both writers (2.14.0) done; the NetCDF data file `<label>.spectra.nc`
+(§ 6.10.5–6) and the `netcdf4` recipe/bundle lines remain.
 
 **Off the plan** (the user, 2026-10-18): every other feature until the three
 roads and the five items are done; the scan's findings off these roads

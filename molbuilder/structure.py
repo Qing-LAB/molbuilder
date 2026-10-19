@@ -1175,6 +1175,54 @@ class Structure:
         # ``customized`` row set per frame this structure holds.
         self.__post_init__()
 
+    def apply_atom_metadata(self, payload: Mapping[str, Any]) -> bool:
+        """THE reader of a deck's ATOM-METADATA payload (`job-contracts.md`
+        § 3.4; ``script_emit.emit_atom_metadata`` writes it): every metadata
+        field but the box (:data:`ATOM_METADATA_FIELDS`), the order record
+        among them, applied in place.  Returns ``False`` when the block
+        carries nothing.  A caller holding a whole deck extracts first
+        (``deck_record.extract_atom_metadata``) and hands the payload here;
+        the run door and the SIESTA vibration finish both do.
+
+        ONE guard, and it is not about versions: a block whose
+        ``n_atoms_total`` disagrees with this structure raises
+        ``sidecars.molstruct.MolstructPairingError`` -- labels are indexed
+        by atom position, so a block written for another structure would
+        label the wrong atoms and say nothing.  The same error type as the
+        sidecar's identical guard: one name for one condition.
+
+        The block is a PARTIAL: it carries no box, and :meth:`apply_metadata_dict`
+        is a full replace, so the block is completed from what this
+        structure already holds and the whole goes through the one door.  A
+        deck is one frame, and an engine may write several from it: the
+        deck's named values are then the structure's rows and the first
+        frame's, the steps after it carrying none."""
+        try:                                        # inside molbuilder
+            from .sidecars.molstruct import MolstructPairingError
+        except ImportError:                         # beside a job, in a bundle
+            from molstruct import MolstructPairingError
+        stated = payload.get("n_atoms_total")
+        if stated is not None and self.n_atoms and stated != self.n_atoms:
+            raise MolstructPairingError(
+                f"these atom labels were written for a structure of {stated} "
+                f"atoms and this one has {self.n_atoms}.  Region and "
+                f"frozen-atom indices are positions in the atom list, so "
+                f"applying them here would label the wrong atoms; re-export "
+                f"the labels from the structure they belong to.")
+        carried = {f: payload[f] for f in ATOM_METADATA_FIELDS if f in payload}
+        if not any(v for v in carried.values()):
+            return False
+        block = dict(self.metadata_to_dict())
+        block.update(carried)
+        custom, n_frames = block.get("customized"), self.n_frames
+        if custom and n_frames > 1 and len(custom.get("frames") or []) == 1:
+            block["customized"] = {
+                "rows": custom.get("rows") or [],
+                "frames": [custom["frames"][0]]
+                          + [[] for _ in range(n_frames - 1)]}
+        self.apply_metadata_dict(block)
+        return True
+
     # ------------------------------------------------------------------ #
     #  Whole-structure codec -- the ONE (de)serialiser (structure-        #
     #  authority.md § 3.1).  ``to_dict``/``from_dict`` carry coordinates  #
@@ -1854,10 +1902,8 @@ class Structure:
         the gate judges that copy.
 
         Not the sidecar's ``geometry_hash`` (its pin over the atom lines as
-        written and the cell, in the file's own order) and not
-        `sidecars.spectra.structure_hash_text` (the artifact's pin over the
-        input order with the job's label in it): this is a fact about the
-        geometry alone.  Labels, cell and metadata are left out on purpose;
+        written and the cell, in the file's own order): this is a fact about
+        the geometry alone.  Labels, cell and metadata are left out on purpose;
         a rigid shift is NOT folded in: a record is judged against the
         coordinates the person holds (``validate``'s ``design``), never the
         placed copy a deck writes, and a structure saved from a run states

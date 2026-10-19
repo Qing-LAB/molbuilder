@@ -170,8 +170,9 @@ def _common_assertions(d):
     from molbuilder.spectra.results import SCHEMA_VERSION
     assert d["engine"] == "siesta" and d["schema_version"] == SCHEMA_VERSION
     # YOUR ORDER: the oxygens atoms 0 and 1, the held carbon atom 2.
-    assert d["equilibrium"]["elements"] == CO2["elements"]
-    assert d["free_atom_idxs"] == [0, 1] and d["frozen_atom_idxs"] == [2]
+    assert d["structure"]["elements"] == CO2["elements"]
+    assert d["structure"]["metadata"]["regions"]["frozen_atoms"] == [2]
+    assert d["free_atom_idxs"] == [0, 1] and "frozen_atom_idxs" not in d
     assert d["hessian_scope"] == "free" and d["n_atoms_in_hessian"] == 2
     # the two turns about the held carbon, about x and about y; four modes
     # left
@@ -289,7 +290,7 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_geom
     assert d["relaxation"]["enabled"] is True and d["relaxation"]["n_steps"] >= 1
     # the geometry in the file is the one the force constants were taken
     # at -- where `relax` ended, in your order
-    assert np.allclose(d["equilibrium"]["positions_ang"],
+    assert np.allclose(d["structure"]["positions"],
                        _relaxed_geometry(run.attempt("relax")), atol=1e-5)
 
     # LAUNCHED AGAIN, the force constants start over -- nothing handed on.
@@ -340,7 +341,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(ticked):
     deck = run_of(ticked.attempt("freq")).deck.read_text()
     placed = (np.asarray(CO2["positions"], dtype=float)
               + extract_engine_offset(deck)["applied_offset"])
-    assert np.allclose(d["equilibrium"]["positions_ang"], placed, atol=1e-6)
+    assert np.allclose(d["structure"]["positions"], placed, atol=1e-6)
     assert d["relaxation"]["converged"] is False
     assert d["relaxation"]["max_force_eh_bohr"] \
         > 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE

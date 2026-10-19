@@ -138,9 +138,9 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     # RELAXED one, not the input (design § 15.4): the relaxation moved
     # atoms, so the two must differ.
     from molbuilder.structure import Structure
-    _moved = np.abs(np.asarray(d["equilibrium"]["positions_ang"])
+    _moved = np.abs(np.asarray(d["structure"]["positions"])
                     - Structure.from_xyz(WATER).positions).max()
-    assert _moved > 1e-4, f"positions_ang is still the input geometry ({_moved})"
+    assert _moved > 1e-4, f"the structure is still the input geometry ({_moved})"
 
     # Water's three modes at B3LYP/def2-SVP (harmonic): bend ~1639,
     # stretches ~3791/3886.  Windows generous enough for BLAS-level
@@ -515,7 +515,10 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     bundle = _describe(tmp_path, monkeypatch, frozen=(0,))
     d = _prep_and_run(bundle)
 
-    assert d["frozen_atom_idxs"] == [0] and d["free_atom_idxs"] == [1, 2]
+    # THE HELD ATOMS are the structure's own label (schema 9).
+    from molbuilder.structure import Structure
+    assert Structure.from_dict(d["structure"]).frozen_atoms == [0]
+    assert "frozen_atom_idxs" not in d and d["free_atom_idxs"] == [1, 2]
     freqs = sorted(m["frequency_cm1"] for m in d["modes"])
     assert len(freqs) == 3, freqs
     assert d["removed_motions"]["count"] == 3

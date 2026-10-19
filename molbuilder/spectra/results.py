@@ -78,16 +78,18 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 8   # 8: the SIESTA route's `engine_metadata` names its
-#                    force-constant range as SIESTA's numbering,
+SCHEMA_VERSION = 9   # 9: the result states its STRUCTURE whole
+#                    (engines/vibration.md § 6.10): `Structure.to_dict()` of
+#                    the equilibrium structure -- the geometry, the box, the
+#                    labels, the held atoms; `structure_hash`,
+#                    `frozen_atom_idxs` and `equilibrium.elements` /
+#                    `positions_ang` are read from a v4-v8 file, never
+#                    written.  8: the SIESTA route's `engine_metadata` names
+#                    its force-constant range as SIESTA's numbering,
 #                    `fc_range_engine_1based` (model/overview.md § 2.2a); a
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
-#: v9 (engines/vibration.md § 6.10): the result states its STRUCTURE whole
-#: (`Structure.to_dict()` of the equilibrium structure -- the geometry, the
-#: box, the labels, the held atoms); `structure_hash`, `frozen_atom_idxs`
-#: and `equilibrium.elements` / `positions_ang` are read from a v4-v8 file,
-#: never written; the reader serves the v9 shape for every file.
+#: Every version the reader serves as the v9 shape.
 READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9})
 
 
@@ -579,9 +581,9 @@ class SpectraResults:
     the UI which modes WILL get ES data so it can show progress
     ("3 of 10 modes done").
 
-    ``structure_hash`` (``sidecars.spectra.structure_hash_text``) names
-    the geometry the result was taken from; a displacement sweep refuses
-    two stages whose hashes differ (`engines/vibration.md` § 4.3);
+    ``structure`` states the geometry the result was taken from, whole
+    (`engines/vibration.md` § 6.10); a v4-v8 file's ``structure_hash`` is
+    read, never written;
     ``engine`` +
     ``engine_version`` + ``molbuilder_version`` give the software
     stack used; ``timestamp`` is ISO-8601 UTC.
@@ -594,8 +596,8 @@ class SpectraResults:
     molbuilder_version:   str
     timestamp:            str                    # ISO-8601 UTC
 
-    #: v4-v8's pin of the geometry (`sidecars.spectra.structure_hash_text`),
-    #: read from such a file, never written since v9: the structure is stated.
+    #: v4-v8's pin of the geometry, read from such a file, never written
+    #: since v9: the structure is stated.
     structure_hash:       Optional[str]
     n_atoms_total:        int
     free_atom_idxs:       List[int]              # 0-based, complement of frozen

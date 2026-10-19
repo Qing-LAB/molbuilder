@@ -145,15 +145,15 @@ def science_view(cfg, struct: Structure) -> "VibrationConfigView":
 def _vib_constants(cfg, names) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones; its
     result's name through the stage's ``names`` (`input.run_file_expr`)."""
-    from ..sidecars.spectra import (finite_or_none, structure_hash_text,
-                                    write_spectra_payload)
+    from ..sidecars.spectra import finite_or_none, write_spectra_payload
     from .. import constants
     from ..spectra.normal_modes import (display_form, frequencies_cm1,
                                         signed_omega, thermo_temperatures,
                                         vibrational_modes, vibrational_thermo,
                                         vibrational_thermo_grid)
     from ..spectra.pyscf_vibration import (as_numpy, dipole_derivatives,
-                                           homo_index, mo_window)
+                                           equilibrium_structure, homo_index,
+                                           mo_window)
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
@@ -181,14 +181,14 @@ def _vib_constants(cfg, names) -> List[str]:
            # head put on the path (`engines/pyscf.md` § 3): the pair writer's
            # codec, the progress-log writer, the relaxation, the HOMO and
            # Hessian rules, the harmonic path and the thermochemistry, the
-           # hash, the result's writer and its scrub, and the mode selector
-           # (§ 4.8).
+           # structure the result states, the result's writer and its scrub,
+           # and the mode selector (§ 4.8).
            *emit_bundle_imports(
                StructureCodec, MolwatchEmitter, relax, homo_index, mo_window,
                dipole_derivatives, as_numpy, vibrational_modes,
                signed_omega, frequencies_cm1, display_form,
                thermo_temperatures, vibrational_thermo,
-               vibrational_thermo_grid, structure_hash_text,
+               vibrational_thermo_grid, equilibrium_structure,
                write_spectra_payload, finite_or_none, select_modes,
                constants),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
@@ -681,11 +681,14 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # _emit_molwatch_emitter are input.py's own, imported, so the
         # two decks cannot drift about either text; the code both call
         # is imported from mb_pyscf.pyz at the top (_vib_constants).
+        # THE RUN'S STRUCTURE AS ITS SIDECAR, in every vibration deck: the
+        # result states its structure from it (engines/vibration.md 6.10.1).
+        from .input import _sidecar_for, emit_sidecar_constant
+        out += emit_sidecar_constant(_sidecar_for(struct))
         if getattr(cfg, "save_initial_xyz", False) or getattr(
                 cfg, "save_optimized_xyz", False):
-            from .input import _sidecar_for, emit_save_helper
-            out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)),
-                                    _sidecar_for(struct))
+            from .input import emit_save_helper
+            out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)))
         if getattr(cfg, "save_initial_xyz", False):
             out.append(emit_save_call("mol", ROLE_INITIAL, names))
         if getattr(cfg, "write_molwatch_log", False):

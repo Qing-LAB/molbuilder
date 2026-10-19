@@ -297,6 +297,7 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
     from ..chemistry import atomic_mass
     from ..pyscf.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
+    from ..structure import IDENTITY_FIELDS
     # The record is of the ladder's relaxation rung: `_vibration_stage_geometry`
     # read it from that stage's output, found by its role (plan § 5w K12) --
     # and the block names it by the kind's name for it, `relax`, which every
@@ -310,7 +311,11 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
         relaxation_stage=VIBRATION_RELAX_STAGE,
         temperature_K=float(cfg.temperature_K),
         masses_amu=[atomic_mass(el) for el in struct.elements],
-        molbuilder_version=str(_mb_version))
+        molbuilder_version=str(_mb_version),
+        # WHAT NO OTHER BLOCK OF THE DECK CARRIES of the structure the result
+        # states (engines/vibration.md 6.10.1).
+        title=str(struct.title or ""),
+        identity={k: getattr(struct, k) for k in IDENTITY_FIELDS})
 
 
 def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,

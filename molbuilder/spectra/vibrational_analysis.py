@@ -47,7 +47,6 @@ try:                                        # inside molbuilder
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
                             checkpoint_words, launch_as_typed)
-    from ..sidecars.spectra import structure_hash_text
     from .methods import extract_citation_keys
     from .normal_modes import (display_form, frequencies_cm1,
                                thermo_temperatures, vibrational_modes,
@@ -59,7 +58,6 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from identity import (LAUNCHED_WAY_BACK, LAUNCH_MODE_NOTE,
                           checkpoint_words, launch_as_typed)
-    from spectra_sidecar import structure_hash_text
     from methods import extract_citation_keys
     from normal_modes import (display_form, frequencies_cm1,
                               thermo_temperatures, vibrational_modes,
@@ -73,7 +71,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
                          axis_kind: Sequence[str],
                          cell=None,
                          permutation: Optional[Permutation] = None,
-                         label: str,
+                         structure: Optional[Mapping[str, Any]] = None,
                          engine: str,
                          engine_version: str = "",
                          molbuilder_version: str = "",
@@ -104,9 +102,14 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     § 5.5).  ``already_relaxed`` is the person's statement, carried as made.
     ``ladder_relaxation`` is the relaxation record of the stage that relaxed
     first (`parse.contract.relaxation_of_output`): the result then says the
-    relaxation ran, how many steps it took, and ``phase_relaxation`` is
-    complete; without it the phase is `not requested`.  ``relaxation_stage``
-    names that stage, for the remedy (:func:`nonstationary_remedy`).
+    relaxation ran, how many steps it took, carries the record whole
+    (``relaxation.record``), and ``phase_relaxation`` is complete; without
+    it the phase is `not requested`.  ``relaxation_stage`` names that stage,
+    for the remedy (:func:`nonstationary_remedy`).  ``structure`` is the
+    equilibrium structure, whole and in the input order --
+    ``Structure.to_dict()``, the one serialiser (`engines/vibration.md`
+    § 6.10.1) -- which the result states; the reader checks its atom count,
+    coordinates and held label against the result's own.
 
     Raises ``ValueError`` naming the mismatch -- every atom held, a
     permutation or a force table that does not fit the atoms.
@@ -211,8 +214,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         molbuilder_version=str(molbuilder_version),
         timestamp=(timestamp or datetime.now(timezone.utc).isoformat()
                    .replace("+00:00", "Z")),
-        structure_hash=structure_hash_text(n, label, elements_in,
-                                           positions_in),
+        structure_hash=None,
+        structure=(dict(structure) if structure is not None else None),
         n_atoms_total=n,
         free_atom_idxs=free_atom_idxs,
         frozen_atom_idxs=frozen_atom_idxs,
@@ -358,6 +361,10 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
     return {"enabled": ladder is not None,
             "already_relaxed": bool(already_relaxed),
             "n_steps": (int(ladder.get("n_steps") or 0) if ladder else 0),
+            # THE RELAXING STAGE'S RECORD, WHOLE (`engines/vibration.md`
+            # § 6.10.1) -- what the relaxation reached, as its reader states
+            # it, not a step count alone.
+            "record": (dict(ladder) if ladder else None),
             "max_force_eh_bohr": max_free_eh,
             "max_force_all_atoms_eh_bohr": max_all_eh,
             "converged": converged, "warning": warning}

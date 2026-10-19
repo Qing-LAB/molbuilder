@@ -239,6 +239,33 @@ def extract_vibration_record(text: str) -> Optional[Dict[str, Any]]:
     return read_json_block(text, BLOCK_VIBRATION)
 
 
+def box_of_run(engine_offset: Optional[Dict[str, Any]],
+               lattice=None) -> Optional[Dict[str, Any]]:
+    """The box the engine had, for coordinates that came from it
+    (`model/structure-periodicity.md` § 6.0): the ``cell`` -- ``lattice``,
+    the output's own, else the one the deck placed the atoms in -- the
+    ``axis_kind`` the deck recorded (:func:`extract_engine_offset`'s
+    payload), and the engine's origin, an ``engine_offset`` of 0 whose
+    owner is the engine, once a cell is known.  ``None`` when nothing says.
+    Asked by the run door (``runs.RunView.frame``) and by the SIESTA
+    vibration finish for the structure its result states -- one rule."""
+    out: Dict[str, Any] = {}
+    if isinstance(lattice, list) and len(lattice) == 3:
+        out["cell"] = lattice
+    rec = engine_offset or {}
+    if rec.get("axis_kind"):
+        out["axis_kind"] = [str(k) for k in rec["axis_kind"]]
+    if "cell" not in out and rec.get("cell") is not None:
+        out["cell"] = rec["cell"]
+    if "cell" in out:
+        out["engine_offset"] = [0.0, 0.0, 0.0]
+        # ...THE ENGINE'S origin, recorded as such: a new calculation made
+        # from these coordinates does not carry it (§ 6.0, *Entering a new
+        # calculation*).
+        out["offset_by"] = "engine"
+    return out or None
+
+
 def order_record_of(block: Optional[Dict[str, Any]]):
     """THE DECK'S ORDER RECORD (`model/overview.md` § 2.2a, I5): an
     ATOM-METADATA payload's ``atom_order``, read by the order record's one

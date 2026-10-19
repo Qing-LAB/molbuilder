@@ -2004,73 +2004,14 @@ def write_script(path, text: str, *, plan=None,
 
 
 def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
-    """THE reader of an ATOM-METADATA payload.  One block, one reader.
-
-    Applies every field the block carries -- every metadata field but the
-    box (``structure.ATOM_METADATA_FIELDS``), the order record among them,
-    which the structure reads by its one reader (``model/overview.md``
-    § 2.2a, I5).  Returns ``True`` when the block had something to say
-    (:func:`atom_metadata_has_something`), ``False`` when it carries
-    nothing.  A caller holding a whole script extracts first --
-    ``deck_record.extract_atom_metadata(text)`` -- and hands the payload here.
-
-    THE RULE: the block is read as it is written today.  Nothing translates an
-    older layout, and a block that no longer says what this build reads simply
-    carries no labels.
-
-    ONE guard, and it is not about versions: a block whose ``n_atoms_total``
-    disagrees with the structure raises
-    :class:`~molbuilder.sidecars.molstruct.MolstructPairingError`.  Labels are
-    indexed by atom POSITION, so a block written for another structure does
-    not fail loudly when applied -- it labels the wrong atoms and says
-    nothing.  Same error type as the sidecar's identical guard: one name for
-    one condition.
+    """THE reader of an ATOM-METADATA payload -- the structure's own door
+    (``Structure.apply_atom_metadata``): every field the block carries, the
+    order record among them, applied through the structure's one
+    validator; ``True`` when the block had something to say.  A caller
+    holding a whole script extracts first
+    (``deck_record.extract_atom_metadata(text)``) and hands the payload here.
     """
-    from molbuilder.sidecars.molstruct import MolstructPairingError
-
-    # IS THIS BLOCK EVEN ABOUT THESE ATOMS?  Asked before anything is applied,
-    # because every label below is an index into the atom list and means
-    # nothing -- or means the wrong thing -- if the answer here is no.
-    stated = payload.get("n_atoms_total")
-    have = len(getattr(struct, "elements", ()) or ())
-    if stated is not None and have and stated != have:
-        raise MolstructPairingError(
-            f"these atom labels were written for a structure of {stated} "
-            f"atoms and this one has {have}.  Region and frozen-atom indices "
-            f"are positions in the atom list, so applying them here would "
-            f"label the wrong atoms; re-export the labels from the structure "
-            f"they belong to.")
-
-    if not atom_metadata_has_something(payload):
-        return False
-    # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST: assigning the
-    # fields straight onto the structure would skip its validation.
-    #
-    # It cannot simply call that door, because `apply_metadata_dict` is a
-    # FULL REPLACE and this block is a PARTIAL: it carries no box, so handing
-    # it over as-is would reset `cell`, a stated `engine_offset`, `vacuum`
-    # and `axis_kind` to their defaults.  So the block is completed from what
-    # the structure already holds and the whole thing goes through -- the
-    # same "complete the block, do not patch the result" shape
-    # `transport/compose.py` uses where it applies a sidecar over a `.XV`.
-    # Each field the block carries goes in as the block states it -- a block
-    # written before a field existed states none, and the structure keeps
-    # its own (an order record: none, your order).
-    from molbuilder.structure import ATOM_METADATA_FIELDS
-    block = dict(struct.metadata_to_dict())
-    block.update({f: payload[f] for f in ATOM_METADATA_FIELDS
-                  if f in payload})
-    # A DECK IS ONE FRAME, and an engine may write several from it -- a
-    # relaxation's steps, the first of them the deck's own geometry.  Its
-    # named values are then the structure's rows and the first frame's;
-    # the steps after it carry none of the deck's frame.
-    custom, n_frames = block.get("customized"), struct.n_frames
-    if custom and n_frames > 1 and len(custom.get("frames") or []) == 1:
-        block["customized"] = {
-            "rows": custom.get("rows") or [],
-            "frames": [custom["frames"][0]] + [[] for _ in range(n_frames - 1)]}
-    struct.apply_metadata_dict(block)
-    return True
+    return bool(struct.apply_atom_metadata(payload))
 
 
 # --------------------------------------------------------------------- #

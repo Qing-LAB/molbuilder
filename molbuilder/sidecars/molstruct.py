@@ -366,7 +366,10 @@ def structure_fields_via_dataclass(
     enumerate a different field set.
     Raises :class:`MolstructJsonError` on any invalid field.
     """
-    from molbuilder.structure import Structure
+    try:                                        # inside molbuilder
+        from molbuilder.structure import Structure
+    except ImportError:                         # beside a job, in a bundle
+        from structure import Structure
     import numpy as _np
     n = int(n_atoms_total)
     frames = int(n_frames_total)
@@ -388,7 +391,10 @@ def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
     has to.  It reads the label store, because that is the only place the fact
     lives.
     """
-    from molbuilder.structure import FROZEN_LABEL   # lazy: stdlib-only at load
+    try:                                        # inside molbuilder
+        from molbuilder.structure import FROZEN_LABEL   # lazy: stdlib-only at load
+    except ImportError:                         # beside a job, in a bundle
+        from structure import FROZEN_LABEL
     if not isinstance(payload, dict):
         return []
     regions = payload.get("regions")
@@ -726,9 +732,13 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"{struct.n_frames} frame(s).  The sidecar's frame rows no longer "
             f"belong to these frames; write the pair again from the frame set "
             f"it describes.")
-    from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
-                                      RETIRED_IDENTITY_KEYS,
-                                      RETIRED_METADATA_KEYS)
+    try:                                        # inside molbuilder
+        from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+                                          RETIRED_IDENTITY_KEYS,
+                                          RETIRED_METADATA_KEYS)
+    except ImportError:                         # beside a job, in a bundle
+        from structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+                               RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
     # A RETIRED KEY IS NOT A STRAY ONE -- the THIRD gate asking that
     # question, and it has to give the same answer as the other two
     # (`structure.RETIRED_METADATA_KEYS` says which and why).
