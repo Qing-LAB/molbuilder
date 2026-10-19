@@ -960,7 +960,7 @@ create_host_env() {
         --yes "${HOST_CONDA_PACKAGES[@]}"
     if [[ ${#HOST_PIP_PACKAGES[@]} -gt 0 ]]; then
         # Call the env's python directly instead of ``mamba run``.
-        # mamba 1.x's ``run`` implementation generates a shell stub
+        # Some mambas' ``run`` (1.x; Sol's 2.9.0 module too) generates a shell stub
         # that uses ``exec -- "$@"`` which fails on shells where
         # ``exec`` doesn't accept ``--`` (most bash, dash); the user
         # sees ``line 5: exec: --: invalid option`` and the pip step
@@ -1070,7 +1070,7 @@ recreate_host_env() {
 # ---- dispatch (1:1 with `molbuilder envs ...`) ---------------------------
 #
 # Bypasses ``mamba run`` and calls the host env's python directly.
-# Why: mamba 1.x's ``run`` generates a shell stub that uses
+# Why: some mambas' ``run`` (1.x; Sol's 2.9.0 module too) generate a shell stub that uses
 # ``exec -- "$@"`` -- bash's exec builtin rejects ``--`` with
 # ``line 5: exec: --: invalid option`` and the whole dispatch dies.
 # Calling the env's python directly avoids the buggy stub and works

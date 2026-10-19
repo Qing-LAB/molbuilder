@@ -459,7 +459,8 @@ def build_subprocess_env(base_env: Optional[Mapping[str, str]] = None
 #: output.
 OUTPUT_LIMIT = 4096
 
-#: What mamba 1.x's `run` stub produces.  Its generated shell does
+#: What a broken mamba `run` stub produces (mamba 1.x; the `mamba` module
+#: 2.9.0 on ASU Sol too, seen 2026-10-18).  Its generated shell does
 #: ``exec -- "$@"`` and bash rejects ``--``, so the dispatch dies on line 5 of
 #: mamba's own file -- BEFORE the inner command starts, which is what makes
 #: retrying through the wrapper safe rather than a second half-install.
@@ -648,8 +649,8 @@ def dispatch_into_env(argv: Sequence[str],
     """Launch one argv inside an env.  THE ONE DOOR (M1).
 
     The manager's own ``run`` is the route.  A manager whose ``run`` is broken
-    -- mamba 1.x, still common on clusters -- is MEASURED, not guessed from a
-    version number: the first attempt that fails with
+    -- a mamba on a cluster, whatever its version says -- is MEASURED, not
+    guessed from a version number: the first attempt that fails with
     `MANAGER_RUN_STUB_SIGNATURE` switches this process to
     `activation_wrapper` and says so once.  The stub dies before the inner
     command starts, so that retry cannot half-run anything.
@@ -690,10 +691,13 @@ def dispatch_into_env(argv: Sequence[str],
         # gate, a tool call) passes no sink.  Once per process, because the
         # flag is.
         sys.stderr.write(
-            f"    note: this manager's `run` is unusable on this machine "
-            f"({MANAGER_RUN_STUB_SIGNATURE!r}; mamba 1.x).  Entering the "
-            f"env through its activation hooks instead, for the rest of "
-            f"this run.\n")
+            f"    note: `{Path(argv[0]).name} run` does not work on this "
+            f"machine: it stopped before the command started, bash "
+            f"rejecting the stub it writes ({MANAGER_RUN_STUB_SIGNATURE!r}). "
+            f"Nothing ran.  For the rest of this command each env is "
+            f"entered as `run` would enter it: its prefix, its bin on PATH, "
+            f"its activate.d hooks.  Measured by trying it, once per "
+            f"command.\n")
         sys.stderr.flush()
 
     return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,

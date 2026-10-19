@@ -95,9 +95,9 @@ def test_the_manager_s_own_command_goes_through_untouched(tmp_path,
 
 def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
         tmp_path, monkeypatch, capsys):
-    """mamba 1.x's `run` writes a shell stub containing ``exec -- "$@"``, and
-    bash refuses `--`, so the command never starts.  2.x fixed that line;
-    everything else about the two is identical.
+    """Some mambas' `run` (1.x; the 2.9.0 module on ASU Sol too) writes a
+    shell stub containing ``exec -- "$@"``, and bash refuses `--`, so the
+    command never starts.  Everything else about the managers is identical.
 
     The fallback is unconditional protection, so molbuilder does not need to
     know or care which version it is talking to -- and this test does not
@@ -127,7 +127,7 @@ def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
         "wasted launch")
     # M4: the switch is REPORTED, to whoever asked -- this dispatch passed no
     # sink, and until 2026-09-14 that meant silence (review A-1.3).
-    assert "unusable on this machine" in capsys.readouterr().err
+    assert "does not work on this machine" in capsys.readouterr().err
 
     # and a step that fails for its OWN reasons is not retried: a pip install
     # that ran and failed must not run a second time.

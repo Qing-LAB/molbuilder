@@ -212,7 +212,10 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     from molbuilder.chemistry import atomic_mass
     from molbuilder.spectra.derived import DERIVED_MODE_KEYS
     eq = d["equilibrium"]
-    assert eq["masses_amu"] == [atomic_mass(e) for e in eq["elements"]], eq
+    # The elements are the structure's (schema 9, § 6.10.1); the masses
+    # stay beside the geometry's energies, every atom's.
+    assert eq["masses_amu"] == [atomic_mass(e)
+                                for e in d["structure"]["elements"]], eq
     for m in d["modes"]:
         assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
 

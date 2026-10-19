@@ -101,10 +101,11 @@ them *(W36 ⑦, 2026-09-27)*: keep inheriting, guarded — a job's size comes fr
 what prep wrote and `launch`'s flags, molbuilder's own override name (`MB_NP`)
 still works and the wrapper log names it when used, and a bare
 `OMP_NUM_THREADS` no longer sets it. A run `jobset launch` starts already takes
-its size from the `-np` / `-omp` it is handed, which win (§ 3.2); the rest is
-*not built — plan § 2, W36 ⑦*: the run script still honours `MB_NP` and
-`OMP_NUM_THREADS` ahead of the reservation when it is run by hand (§ 3.2, § 3.3's
-precedence), and its log names none of them.
+its size from the `-np` / `-omp` it is handed, which win (§ 3.2). Run by hand,
+the run script honours `MB_NP` and `OMP_NUM_THREADS` ahead of the reservation
+(§ 3.2, § 3.3's precedence), and its log names none of them — the person's
+own shell, left as it is (the override log was dropped from the plan on
+2026-10-17: never seen on a real run).
 
 What follows, and is checked in the rendered script:
 

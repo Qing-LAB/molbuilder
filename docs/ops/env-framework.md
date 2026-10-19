@@ -664,8 +664,9 @@ hooks, which source-built recipes depend on (siesta-gpu puts binaries under
 reimplementation of someone else's product, and it is wrong by construction on
 any manager whose activation does something we did not copy.
 
-**A manager's bug is MEASURED, and it is not a step outcome.** mamba 1.x's `run`
-emits a stub whose `exec --` bash rejects. Two things follow, and the second
+**A manager's bug is MEASURED, and it is not a step outcome.** Some mambas' `run`
+(1.x; Sol's `mamba` module 2.9.0 too, 2026-10-18) emits a stub whose `exec --` bash
+rejects. Two things follow, and the second
 corrects how this section first stated it:
 
 * **Measured, not predicted.** The first dispatch that fails with that
@@ -677,7 +678,7 @@ corrects how this section first stated it:
 * **Not `RECOVERED`.** A declared alternative on a step means *this package may
   come from another source* (§ 4.3), and an `Outcome` describes what became of a
   package. A broken manager is a property of the **machine**: reporting every
-  step on a mamba-1.x cluster as `RECOVERED` would state something false about
+  step on such a cluster as `RECOVERED` would state something false about
   every package in the recipe. So the fallback lives inside the one door, is
   reported once, and the step's outcome is whatever the step's own criteria say.
 

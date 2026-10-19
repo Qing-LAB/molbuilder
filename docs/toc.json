@@ -656,6 +656,21 @@
           "subtitle": "RMP's design rounds — 2026-10-14"
         },
         {
+          "path": "archive/2026-10-18-5ab-remapped-state.md",
+          "label": "§ 5ab — the remapped state (RMP) — archived 2026-10-18",
+          "subtitle": "§ 5ab — the remapped state (RMP) — archived 2026-10-18"
+        },
+        {
+          "path": "archive/2026-10-18-plan-consolidation.md",
+          "label": "The plan's handover history — archived 2026-10-18",
+          "subtitle": "The plan's handover history — archived 2026-10-18"
+        },
+        {
+          "path": "archive/2026-10-18-plan-rows.md",
+          "label": "The plan's done rows — 2026-10-18",
+          "subtitle": "The plan's done rows — 2026-10-18"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"

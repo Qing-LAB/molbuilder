@@ -103,11 +103,17 @@ same question**, and the answer is the same: ask the thing that knows.
 | **M4** | **A manager's bug is MEASURED, then worked around — inside the one door.** Taken only when that bug's signature actually appears, reported once, and **not** recorded as the step's outcome: a broken manager is a fact about the machine, and calling every step on such a machine `RECOVERED` would say the PACKAGE came from elsewhere | making the workaround unconditional: every other machine loses the manager's real activation, the bug becomes invisible, and the hand-written copy drifts — twice, here |
 | **M5** | **A remedy the program prints may not destroy working state.** A fix command must be runnable *and* must not be ruinous: nothing may propose removing the env the process is running from | `doctor` printing `install molbuilder --clean --yes` for the host env |
 
-**Why M4 is stated as a fallback rather than a version check.** mamba 1.x's `run`
-generates a shell stub whose `exec --` bash rejects, and that is a real failure on
-real clusters — but "which versions are broken" is a fact about someone else's
+**Why M4 is stated as a fallback rather than a version check.** Some mambas'
+`run` generates a shell stub whose `exec --` bash rejects (mamba 1.x; the `mamba`
+module 2.9.0 on ASU Sol, seen 2026-10-18), and that is a real failure on real
+clusters — but "which versions are broken" is a fact about someone else's
 software that we would have to keep current, whereas *"the stub failed, here is the
-alternative"* is a fact we measure on the spot. The env framework already has the
+alternative"* is a fact we measure on the spot. **What the person sees**, once per
+command on such a machine, on stderr: *`mamba run` does not work on this machine:
+it stopped before the command started … Nothing ran. For the rest of this command
+each env is entered as `run` would enter it: its prefix, its bin on PATH, its
+activate.d hooks. Measured by trying it, once per command.* It names no version,
+because none was measured; the rest of the command's output is the real result. The env framework already has the
 mechanism: a declared alternative on the step
 ([`env-framework.md`](?doc=ops/env-framework.md) § 5.6).
 

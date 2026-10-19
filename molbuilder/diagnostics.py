@@ -269,8 +269,8 @@ def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
     candidate names.
 
     IMPORTANT: ``conda run -n <env>`` and ``mamba run -n <env>`` are
-    NOT interchangeable on mamba 1.x.  mamba 1.x's ``run`` generates
-    a shell stub that uses ``exec --`` which bash rejects with
+    NOT interchangeable on every mamba (1.x; Sol's 2.9.0 module too).
+    Such a ``run`` generates a shell stub that uses ``exec --`` which bash rejects with
     ``exec: --: invalid option`` -- every pip / extra-step / verify
     / build step would fail.  That is handled where commands are
     dispatched, not here and not by avoiding ``run``:
