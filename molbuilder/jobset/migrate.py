@@ -540,6 +540,79 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
     return said, moves
 
 
+def _migrate_lead_names(base: Path, task
+                        ) -> Tuple[List[str], List[Tuple[Path, Path]],
+                                   List[tuple]]:
+    """A transport calculation prepared before 2.18.0 named a lead's files
+    on the calculation's label; a lead's are on the lead's own stem since
+    (`job-contracts.md` § 2.1 rule 2; `transport.stages.rung_label`), the
+    stem its engine files were always on.  Each such file -- in the lead's
+    stage folder, each of its attempts and the calculation root (the
+    pipeline log) -- is renamed by the stem door (`runfiles.stem`: the old
+    stem swapped for the new, the name's tail as it was), and every
+    `job-set.json` naming the old deck is rewritten.  Decided, never done
+    here: ``(said, moves, writes)``; nothing for a calculation whose leads
+    are already on their stems, or that has none."""
+    from ..paths import attempt_index
+    from ..persist import json_text, read_json
+    from ..runfiles import find, stem
+    from ..runfiles import RunNames
+    from ..runrecord import newest_run
+    from .commands import way_back
+    from .materialize import ladder_homes
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    said: List[str] = []
+    moves: List[Tuple[Path, Path]] = []
+    writes: List[tuple] = []
+    renamed_decks: Dict[str, str] = {}
+    js_path = base / JOBSET_FILENAME
+    js = JobSet.from_dict(read_json(js_path)) if js_path.is_file() else None
+    for home in ladder_homes(base, task):
+        if home.label == task.label:
+            continue
+        old_stem, new_stem = stem(task.label, home.token), stem(home.label,
+                                                                home.token)
+        folders = [base]
+        if home.dir is not None and home.dir.is_dir():
+            folders.append(home.dir)
+            folders += sorted(d for d in home.dir.iterdir()
+                              if d.is_dir() and attempt_index(d.name) is not None)
+        stage_moves: List[Tuple[Path, Path]] = []
+        for folder in folders:
+            for path, rf in find(folder, task.label, stage=home.token):
+                new = folder / (new_stem + path.name[len(old_stem):])
+                stage_moves.append((path, new))
+                if path.suffix == ".fdf" and folder == home.dir:
+                    renamed_decks[path.name] = new.name
+        if not stage_moves:
+            continue
+        moves += stage_moves
+        said += [f"{old.relative_to(base)} -> {new.name} (a lead's files "
+                 f"are on its own stem, job-contracts.md 2.1 rule 2)"
+                 for old, new in stage_moves]
+        # LAUNCHED, read off the old names as they were written: the run
+        # door's own `newest_run`, asked with the names the files carry
+        # now, in each of the stage's folders.
+        old_names = RunNames.of(task.label, home.token, task.shape)
+        launched = any(newest_run(f, old_names) is not None
+                       for f in folders if f != base)
+        said.append(f"{home.name}: its run script and header were written "
+                    f"for the old names; to launch it again, "
+                    + way_back(home.name, base=base, task=task,
+                               launched=launched))
+    if renamed_decks and js is not None:
+        changed = False
+        for j in js.jobs:
+            if j.script in renamed_decks:
+                j.script = renamed_decks[j.script]
+                changed = True
+        if changed:
+            writes.append((js_path, json_text(js.to_dict()), ".pre-2.17.1"))
+            said.append(f"{JOBSET_FILENAME}: each lead's deck named on its "
+                        f"own stem")
+    return said, moves, writes
+
+
 def _migrate_last_run(base: Path, task, moves
                       ) -> Tuple[List[str], Optional[Tuple[Path, str]]]:
     """A flat calculation whose runs were launched before its folder recorded
@@ -604,6 +677,8 @@ def migrate_state(base) -> List[str]:
     m_said, m_writes = _migrate_machine_record(base)
     said, writes = said + m_said, writes + m_writes
     n_said, moves = _migrate_run_numbers(base, task)
+    lead_said, lead_moves, lead_writes = _migrate_lead_names(base, task)
+    moves, writes = moves + lead_moves, writes + lead_writes
     l_said, l_write = _migrate_last_run(base, task, moves)
     try:
         t_said, t_writes, t_task, t_keep = _migrate_template(base, task)
@@ -657,7 +732,7 @@ def migrate_state(base) -> List[str]:
         old.rename(new)
     if l_write is not None:
         write_bytes(l_write[0], l_write[1].encode("utf-8"))
-    said += n_said + l_said + t_said
+    said += n_said + lead_said + l_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",
