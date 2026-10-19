@@ -107,8 +107,18 @@ state, the hand-over file's one reader (2.13.2).
 #2" — all five)*: (1) the user's Sol runs — what they show; (2) ~~the five
 items of API unification~~ *done 2.13.3 (the uploads and docs-index writers
 in 1a0ae147)*; (3) ~~V1.39~~ *done 2.13.3–2.15.0: the reader serving one shape, the
-consumers, both writers, the data file*; the user's side: the PySCF env on
-each machine repaired for `netcdf4` (`molbuilder envs install`).
+consumers, both writers, the data file*; the PySCF env here repaired for
+`netcdf4` through `envs repair` (2.15.1–2.15.2 list it where a python of
+ours imports it); Sol's is the user's. **Then, 2026-10-18** *(the user:
+"continue to fix other issues")*: ~~V1.33~~ (2.15.3, the hand-over carries
+the proposed ladder), ~~V1.37~~ (closed by 2.15.0), ~~W48~~ (2.15.4, every
+fact about a parameter has one home). **A question for the user — W44**:
+its design is a check in the run directory before the engine starts
+(`job-contracts.md` § 4.4, the user 2026-08-08), which the later ruling
+forbids (2026-10-17: prep decides, launch runs the script, never re-checks);
+either the row is retired by that ruling with the four contracts' sentences
+rewritten to the gather's refusals at launch, or the check is built at prep
+— the user's call.
 
 **Off the plan** (the user, 2026-10-18): every other feature until the three
 roads and the five items are done; the scan's findings off these roads
