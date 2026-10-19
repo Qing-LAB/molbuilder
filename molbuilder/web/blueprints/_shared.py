@@ -73,10 +73,10 @@ def resolve_workflow_group(where: str, cfg) -> Optional[str]:
     # "config.net_charge.makov_payne" → "net_charge".
     tail = where.split(".", 1)[1]
     field_name = tail.split(".", 1)[0]
-    for f in fields(cfg):
-        if f.name == field_name:
-            return f.metadata.get("workflow_group")
-    return None
+    # THE CARD IS THE CATALOGUE'S `group` (`engines/template.md` § 2.1).
+    from molbuilder.template import items_of
+    item = items_of(cfg).get(field_name)
+    return item.group if item is not None else None
 
 
 def issues_to_json(issues, cfg=None):
@@ -832,7 +832,8 @@ def _item_to_field(item, id_prefix: str,
 
 
 def coerce_to_field_type(field: dataclasses.Field, value: Any,
-                         resolved_hints: Dict[str, Any]) -> Any:
+                         resolved_hints: Dict[str, Any], *,
+                         choices=None) -> Any:
     """Convert a JSON-arriving value to the field's declared type.
 
     The form layer can deliver number-typed fields as strings ("300"
@@ -874,7 +875,8 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
     # and a client that sends the text "2" means the member 2.  Matched on
     # the member's own spelling, so "free" stays a word and "2" becomes a
     # number; a value naming no member is refused here, by name.
-    choices = field.metadata.get("choices")
+    # THE ENUM'S MEMBERS ARE THE CATALOGUE'S (`engines/template.md` § 2.1),
+    # handed in by the caller that holds the item.
     if choices:
         from molbuilder.template import is_member
         if is_member(value, choices):
@@ -1021,12 +1023,16 @@ def config_from_params(cls, params: Dict[str, Any],
     field** (``coerce_to_field_type``): the caller says it as the refusal.
     """
     by_name = {f.name: f for f in fields(cls)}
+    from molbuilder.template import items_of
+    items = items_of(cls)
     kwargs: Dict[str, Any] = {}
     for k, v in params.items():
         f = by_name.get(k)
         if f is None or v is None or v == "":
             continue
-        kwargs[k] = coerce_to_field_type(f, v, hints)
+        kwargs[k] = coerce_to_field_type(
+            f, v, hints,
+            choices=(items[k].choices if items.get(k) is not None else None))
     base = cls()
     if calculation:
         from molbuilder.template import apply_recommended

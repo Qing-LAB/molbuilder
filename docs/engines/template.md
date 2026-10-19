@@ -222,156 +222,37 @@ would be a view rather than the source.
 > `template_with_values(config)` narrows it to one engine and fills in what a
 > person answered.
 
-### 2.1a What the migration settled, and the one debt it left
+### 2.1a What a config class carries, and what it does not *(the debt paid 2026-10-18)*
 
-Both questions this section used to pose are now answered.
+**A config class carries a field's name, its Python type, its default and its
+validators — and no other fact about the parameter.** Every other fact — the
+label, the unit, the range, the choices, the engine keyword, the card
+(`group`), the category, the tier, the pattern, the null label, whether the
+machine answers it, what it expands to — has one home, the catalogue
+(`data/catalogue.template.toml`), and every reader asks it through
+`template.items_of(cls_or_cfg)`: the settings gate (`validation/metadata.py`),
+the description check (`validation/task.py`), the form's coercion and finding
+placement (`web/blueprints/_shared.py`), the template's membership
+(`template_fields`, `resolve._emitter_fields`). A field's `validate` entry is
+code, not a fact, and stays on the field.
 
-**What a config class still carries.** In principle: a name, a Python type, and
-its validators — enough to hold a value on the way to the engine. In practice it
-still carries copies of the template's facts — `label`, `range`, `unit`,
-`choices`, `engine_key` and `workflow_group`, which is
-`tests/test_catalogue_agreement.py`'s `MIRRORED` set and the one place that
-list is defined — because consumers still read them off the class rather
-than off the catalogue: the settings gate's metadata pass
-(`validation/metadata.py` — `range`, `choices`, and `label`, `unit` and
-`engine_key` for its messages), the description check of a stage's overrides
-(`range`, `choices` — `validation/task.py`), the form payload's coercion
-(`choices` — `_shared.coerce_to_field_type`) and the code that decides which
-card a validator finding lands on (`workflow_group`). The legacy form builder
-that Spectra and Transport used was one more reader until it was deleted
-with `TransportConfig` (2026-10-02); `web/form-schema.md` § 1a lists every
-key's readers.
+**Why.** Until 2026-10-18 the classes carried copies of the catalogue's facts
+in each field's `metadata` — 524 of them, measured — guarded by a test that
+compared six keys and could not compare the rest (`kind`, `default`,
+`expands` were unguarded, and `use_gpu`'s `expands` disagreed live). The
+cost was measured, not hypothetical: `negf_eq_pole_ev` corrected on one class
+and left wrong on another stopped every device deck before its SCF loop
+(2026-09-16); a fix to one home of `engine`'s kind passed three tests while
+the other stayed wrong (2026-09-14); `help` carried different text in the two
+homes for 149 of 158 fields until it moved out (2026-09-16). Every fall in the
+count came from deleting a home; the last deletion is this one. A class copy
+of a catalogue fact is a defect, and a reader of one is the defect's cause.
 
-**`help` is no longer among them** *(2026-09-16)*. It is the fact a user
-actually reads, and it had the worst drift of the six: 149 of 158 fields
-carried different text in the two homes, so which version somebody saw
-depended only on which door they came through — the Build tab read the
-catalogue, the Spectra and Transport tabs read the dataclass, and `--help`
-read the dataclass too. Every surface now asks `template.help_for`, and the
-150 duplicated strings are deleted. The eight copies kept for fields with no
-catalogue row were all `TransportConfig`'s, and went with it on 2026-10-02:
-every field of the two engine classes has its help in the catalogue, and
-`help_for` is the only reader.
-
-**The rest of that duplication is the debt, and it is measured rather than
-guarded.** **524 facts live in two places** (measured 2026-08-20 at 307, 618
-on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
-`wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
-`es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
-and 487 the same day when the electronic state's `spin_treatment` and
-`unpaired_electrons` became items both engines declare, and 491 on
-2026-09-29 with `tbt_verbosity` -- `TBT.Verbosity`, which both NEGF decks
-wrote from outside the catalogue until then (`transport.md` § 6.1b) — 487
-the same day once PySCF's one-choice `optimizer` retired with `berny`, and
-491 on 2026-10-01 when `gpu_count` gained PySCF (`execution/gpu.md` § 1.1),
-and 496 on 2026-10-08 with `ts_elecs_eta_ev` -- `TS.Elecs.Eta`, the device's
-self-energy broadening, which the device deck left to TranSIESTA's own
-default until then (`transport.md` § 6.1b) — and 512 at 2.1.0 (2026-10-11)
-with `ts_solution_method`, `tbt_solution_method`, `ts_hartree_fix` and
-`negf_neq_fermi_cutoff_kt`, four TranSIESTA / tbtrans lines the decks left
-unsaid until then (`transport.md` § 2a.13), and 519 at 2.3.0 with the device's
-charge check, `ts_scf_dq_converge` and `ts_scf_dq_tolerance`, and 524 at
-2.9.5 with `h_tolerance` -- `SCF.H.Tolerance`, the Hamiltonian test SIESTA
-requires beside the density matrix's, which the decks left to SIESTA's own
-1e-3 eV until then —
-every fall in the series came from deleting a home rather than from adding a
-check, and the rises are items gaining a home: two merged items gaining a
-second engine, whose declarations `config/state.py` writes once, and eight
-keywords the catalogue had not declared).
-**The six mirrored facts are compared on every run** — `MIRRORED` plus
-`workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
-the item and the key and printing both values. What it does **not** do is
-compare every key: `restart` declares `kind = deck` in the shared catalogue row
-and `produce` on the PySCF dataclass, correctly, and a blanket check would have
-to know that exception. `kind`, `default` and `expands` are therefore unguarded,
-and the `use_gpu` divergence below is one of those.
-
-*This paragraph claimed the comparison existed while it did not, from 2026-09-10
-to 2026-09-17.* `082ba979` retired the test in a sweep aimed at tests that
-assert where code lives; the file said so in its own docstring and this
-sentence — the one a reader of the contract acts on — went on promising the
-guard. Restored 2026-09-17, scoped to what was actually claimed, and
-mutation-tested: widening `mesh_cutoff`'s range on the class alone turns it red.
-
-**A SECOND duplication, class against class, is gone with `TransportConfig`
-(2026-10-02): 20 field names were declared in both `SiestaConfig` and
-`TransportConfig`** — `basis_size`,
-`xc_functional`, `xc_authors`, `max_memory_mb`, `negf_eq_pole_ev`,
-`negf_neq_eta_ev`, `electrodes_bulk` (`elecs_bulk` until 2026-09-29), the six `tbt_*` flags, `tbt_k_grid`,
-`tbt_spin`, `tbt_elecs_eta_ev`, `tbt_contours_eta_ev`, `tbt_t_eig`, and the
-three `transmission_*` items (measured 2026-09-17). It was class-against-class,
-not catalogue-against-class, so `MIRRORED` did not reach it and neither did
-the test above — and `default`, the key that mattered most there, is not a
-mirrored fact in the first place.
-
-It cost a run. `negf_eq_pole_ev` was corrected to `0.0` on the
-SIESTA class on 2026-09-16 and left at `1.5` on the transport class, which is
-18 poles against TranSIESTA's minimum of 20 at the 300 K the same config ships
-— so every deck rendered through `transiesta.render_script` stopped before the
-SCF loop. Fixed 2026-09-17. **Whether that second renderer should exist at all
-was the open question** — a home that nothing reads is a home that drifts until
-something does — and the answer was no: the renderer was deleted, and the class
-that fed it retired by TD4.
-
-The cost is measured, not hypothetical: on 2026-09-14 a fix to the dataclass
-half of `engine`'s `item_kind` passed three tests while the catalogue half
-stayed wrong, and only a mutation test noticed. A live instance stands today —
-`use_gpu` declares `expands = ["Diag.ELPA.GPU", "gpu4pyscf"]` in the catalogue
-and `("Diag.ELPA.GPU",)` on the field. It is inert because the catalogue wins
-in production; what is gone is the thing that would have told anyone.
-
-What that file still checks is narrower and worth having: category ORDER,
-declared TYPE, orphan items, panel presence. `MIRRORED` and `RENAMED` survive
-in it as the one place the set is NAMED, read now only by the debt count here.
-**Restoring a blanket agreement check would be wrong** and the file argues why:
-`restart` legitimately declares `deck` in the shared row and `produce` on the
-PySCF dataclass, because it expands three keywords on SIESTA and none on
-PySCF — one correct disagreement out of 109 shared items, which no document
-states as an exception. So the honest position is that the duplication is
-measured and **unguarded**, and that is the argument for deleting it rather
-than for writing a test that has to know that exception.
-
-> **The number above is a claim about the code, held by review.** It had
-> been wrong by 145 for three days before a review caught it; a count stated
-> in prose is re-derived when the code it counts changes
-> ([`process/code-audit.md`](?doc=process/code-audit.md) § 1c).
-
-**The form question is closed.** `web/form-schema.md` § 1 now builds the SIESTA
-and PySCF forms from the catalogue: cards from `group`, legends from `category`,
-controls from `type` with bounds from `range` and `choices`, badges from
-`engine_key`. `section` — the old per-engine fieldset name — is retired: the
-last tabs built from a dataclass, Spectra's (P3) and Transport's (2026-09-24),
-moved onto the catalogue, and the builder and the key were deleted with
-`TransportConfig` on 2026-10-02.
-
-**And the template is not a deck.** A deck is a **floor 3 (plan)** product,
-written by the engine's deck writer at `prep` step 3, on the target machine.
-
-```mermaid
-flowchart LR
-    subgraph F2["<b>floor 2 · description</b> — portable, names no machine"]
-      T["<b>the template</b><br/><i>every parameter, with a value</i>"]
-      TJ["task.json<br/><i>what varies</i>"]
-      ST["the structure<br/>+ its sidecar"]
-    end
-    subgraph F1["<b>floor 1</b> — on the target"]
-      E["the resolved machine<br/><i>ranks · GPUs · queue</i>"]
-    end
-    subgraph F3["<b>floor 3 · plan</b> — rendered at prep"]
-      D["<b>the deck</b><br/><i>.fdf / .py</i>"]
-    end
-    T --> D
-    TJ --> D
-    ST --> D
-    E --> D
-    D -.->|"never flows back"| T
-```
-
-**The dotted arrow is the rule that makes the rest work** — nothing a machine
-produced ever edits the description
-([`architecture.md`](?doc=execution/architecture.md) § 5: *each step decides
-within what the steps above it already fixed*). It is why a deck is disposable
-and the template is not.
+`default` stays on the class — a field must hold a value on the way to the
+engine — and the catalogue states it too; `test_the_DEFAULT_agrees` keeps the
+two equal. The merged items (`net_charge`, `spin_treatment`,
+`unpaired_electrons`) are declared once in the catalogue for both engines; the
+classes state their default alone.
 
 ### 2.2 The module, what it may depend on, and what is built on it
 
@@ -1216,12 +1097,7 @@ choices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "free"]
 optional = true
 help = "2S, or free.  SIESTA ignores Spin.Total unless Spin.Fix is also set, which is why a count writes both."
 ```
-```python
-# config/state.py -- declared once for both engines' configs
-"engine_key": "Spin.Fix + Spin.Total (SIESTA) | gto.M(spin=...) (PySCF)",
-"item_kind":  "deck",
-"expands":    ("Spin.Fix", "Spin.Total", "gto.M"),
-```
+
 
 **3 · One question, a keyword chosen at render time.** Same shape, `|` instead
 of `+`. The deck writer picks; the check gate asks only for the line it

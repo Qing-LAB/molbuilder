@@ -13,10 +13,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.resolve import effective_config
 from molbuilder.structure import Structure
-from molbuilder.task import Stage
 from molbuilder import template as T
 
 
@@ -49,7 +49,7 @@ def test_a_config_survives_the_round_trip(cfg):
     § 4).  If the trip is lossy, every stage resolves against something the
     user did not write."""
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
-    for item in T.declarations_for(SiestaConfig):
+    for item in T.items_of(SiestaConfig).values():
         if item.allocation:
             # DELIBERATELY lossy at @2 (§ 2, G1): a machine fact's value is
             # never written, so it cannot come back.  The item travels; the
@@ -197,7 +197,7 @@ def test_every_item_carries_what_a_surface_needs_to_render_it():
     fields or group them.**  They were dropped until 2026-08-11 — ``label``
     held the *field* name, ``section`` was read only to decide exposure and
     then discarded, and ``null_label`` was gone entirely."""
-    for item in T.declarations_for(SiestaConfig):
+    for item in T.items_of(SiestaConfig).values():
         # A label serves the FORM, which renders an item under its first
         # category; what every item owes every reader is its help text.
         if item.category:
@@ -222,18 +222,22 @@ def test_the_three_surface_keys_survive_the_round_trip():
 #  Every parameter is an item — § 7                                     #
 # --------------------------------------------------------------------- #
 
-def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
+@pytest.mark.parametrize("cls", [SiestaConfig, PySCFConfig],
+                         ids=lambda c: c.__name__)
+def test_every_exposed_field_becomes_an_item_and_declares_its_kind(cls):
     """§ 7's membership rule is total: *"every parameter the engine's schema
     declares is an item, and each one's ``kind`` says who consumes it."*  A
-    field this vocabulary cannot place is a gap to fix, not an item to drop."""
-    items = T.declarations_for(SiestaConfig)
+    field the catalogue does not carry is a gap to fix, not an item to drop
+    -- and since the class carries no copy of any fact (§ 2.1), the
+    catalogue is the only place a field can be placed."""
+    items = list(T.items_of(cls).values())
     # The membership rule, stated exactly: every parameter the schema
     # declares is an item.  No form-placement tag is in this expression.
     # An allocation field IS a member (§ 6.4): the item is declared,
     # valueless, so a surface can ask for ranks and the wrapper writer knows
     # to look -- the machine-fact row of § 7 excludes the VALUE, not the
     # item.
-    members = [f.name for f in __import__("dataclasses").fields(SiestaConfig)]
+    members = [f.name for f in __import__("dataclasses").fields(cls)]
     assert sorted(i.name for i in items) == sorted(members)
     assert all(i.kind in T.KINDS for i in items)
 
@@ -343,7 +347,6 @@ def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
     The failure guarded against: a deck once rendered for a rank count the
     allocation never granted.
     """
-    from molbuilder.config.siesta import SiestaConfig
     import molbuilder.template as T
     text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
@@ -370,40 +373,6 @@ def test_the_item_itself_is_legitimate_only_its_value_is_not():
 #  A refusal nothing exercises is a refusal that will be deleted by    #
 #  the next person who finds it inconvenient.                          #
 # ------------------------------------------------------------------ #
-
-def test_an_unknown_category_is_refused_not_accepted():
-    """The vocabulary is closed (§ 6.2).
-
-    An accepted-but-unknown category is worse than a rejected one: a
-    surface would silently drop the item -- it belongs to no panel -- so
-    a parameter vanishes from the form while remaining in the file.
-    """
-    import dataclasses
-    from dataclasses import field as dc_field
-    from molbuilder.template import declarations_for
-    bad = dataclasses.make_dataclass("Bad", [
-        ("x", int, dc_field(default=1, metadata={
-            "category": ("thermodynamics",),      # not one of the six
-            "help": "x", "workflow_group": "stage"}))])
-    with pytest.raises(ValueError, match=r"unknown category 'thermodynamics'"):
-        declarations_for(bad)
-
-
-def test_a_field_with_no_category_is_refused_by_name():
-    """§ 3: `category` is required, and the refusal NAMES the field.
-
-    'missing required key' with no field name sends a reader to search
-    the whole schema -- the same reason § 3 requires item-named refusals.
-    """
-    import dataclasses
-    from dataclasses import field as dc_field
-    from molbuilder.template import declarations_for
-    nocat = dataclasses.make_dataclass("NoCat", [
-        ("mesh_cutoff", int, dc_field(default=1, metadata={
-            "help": "x", "workflow_group": "stage"}))])
-    with pytest.raises(ValueError, match=r"mesh_cutoff.*no `category`"):
-        declarations_for(nocat)
-
 
 def test_a_template_file_missing_category_is_refused_on_READ():
     """The write side validating is not enough: a template is a file a

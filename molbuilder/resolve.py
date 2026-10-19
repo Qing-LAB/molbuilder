@@ -99,8 +99,10 @@ def _emitter_fields(config_cls) -> tuple:
     the field itself, by the machine-answered flag, so this asks it.
     """
     import dataclasses
+    from .template import items_of
+    items = items_of(config_cls)
     return tuple(f.name for f in dataclasses.fields(config_cls)
-                 if f.metadata.get("allocation"))
+                 if items.get(f.name) is not None and items[f.name].allocation)
 
 
 @dataclass(frozen=True)

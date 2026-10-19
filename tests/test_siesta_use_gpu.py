@@ -26,34 +26,27 @@ def test_use_gpu_default_is_off():
 
 
 def test_use_gpu_metadata_is_present():
-    """The metadata a live reader takes off this field.
-
-    The SIESTA form is built from the CATALOGUE; what reads this class is
-    finding-placement (`workflow_group`) and the catalogue-agreement mirror
-    (`engine_key`, `choices`, ...).
-    """
-    field = SiestaConfig.__dataclass_fields__["use_gpu"]
-    md = field.metadata
-    # ``staging`` -- the group whose items a parameter form deliberately does
-    # NOT ask, because the Job Prep UI answers them (web/task-setup.md § 6.1,
-    # § 6.2).  The class's ``workflow_group`` must MIRROR the catalogue item's
-    # ``group``, which is ``staging`` (web/form-schema.md § 2): the form reads
-    # the catalogue's, finding-placement reads this one, so a disagreement puts
-    # the control on one card and its warnings on another.
-    assert md["workflow_group"] == "staging"
+    """The facts a live reader takes about this item -- the catalogue's,
+    through the one door (`template.items_of`; `engines/template.md`
+    § 2.1a).  ``staging`` is the group whose items a parameter form
+    deliberately does NOT ask, because the Job Prep UI answers them
+    (web/task-setup.md § 6.1, § 6.2), and finding-placement files a finding
+    about it on that card."""
+    from molbuilder.template import items_of
+    it = items_of(SiestaConfig)["use_gpu"]
+    assert it.group == "staging"
     # The engine_key must reference the SIESTA fdf keyword so the
-    # methods-text generator can cite it; an empty value would let
-    # the field silently drift from the keyword the generator emits.
-    assert "Diag.ELPA.GPU" in md["engine_key"]
+    # settings gate's message names what a person can search for.
+    assert "Diag.ELPA.GPU" in it.engine_key
 
 
 def test_diag_algorithm_field_metadata():
     """A dropdown with three choices (ScaLAPACK + the two ELPA variants),
     default ELPA-1STAGE (`engines/siesta.md` § 7: molbuilder's default, on
     CPU in the packaged env), always shown (NOT gated behind GPU)."""
-    field = SiestaConfig.__dataclass_fields__["diag_algorithm"]
-    md = field.metadata
-    assert md["workflow_group"] == "budget"
-    assert md["choices"] == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
-    assert md["engine_key"] == "Diag.Algorithm"
+    from molbuilder.template import items_of
+    it = items_of(SiestaConfig)["diag_algorithm"]
+    assert it.group == "budget"
+    assert tuple(it.choices) == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
+    assert it.engine_key == "Diag.Algorithm"
     assert SiestaConfig().diag_algorithm == "ELPA-1STAGE"

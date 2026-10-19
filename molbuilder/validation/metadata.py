@@ -14,7 +14,7 @@ from typing import List
 from ..issues import Issue
 
 
-def _keyword_suffix(meta) -> str:
+def _keyword_suffix(item) -> str:
     """`` (MeshCutoff)`` — the engine's own spelling, beside the human name.
 
     **Both, always** (user, 2026-08-15: *"always include the keyword relevant
@@ -33,7 +33,7 @@ def _keyword_suffix(meta) -> str:
     inventing one would make a search fail rather than merely not help.
     """
     from ..template import _bare_anchor
-    kw = _bare_anchor(str(meta.get("engine_key", "") or ""))
+    kw = _bare_anchor(str(getattr(item, "engine_key", "") or ""))
     return f" ({kw})" if kw else ""
 
 
@@ -65,11 +65,17 @@ def _validate_config_metadata(cfg, refused=frozenset(),
     issues: List[Issue] = []
     if not is_dataclass(cfg):
         return issues
+    # EVERY FACT ABOUT A PARAMETER IS THE CATALOGUE'S (`engines/template.md`
+    # § 2.1): the range, the choices, the label, the unit, the keyword.  The
+    # field itself carries its validators.
+    from ..template import items_of
+    items = items_of(cfg)
     for f in fields(cfg):
         meta = f.metadata or {}
+        item = items.get(f.name)
         value = getattr(cfg, f.name)
         # range = (lo, hi) inclusive
-        rng = meta.get("range")
+        rng = item.range if item is not None else None
         if (rng is not None and value is not None
                 and f.name not in refused and f.name not in foreign):
             lo, hi = rng
@@ -78,15 +84,15 @@ def _validate_config_metadata(cfg, refused=frozenset(),
             # `kgrid` -- (1, 64) bounds each axis count, never their
             # product -- and it is what the form now puts on each of the
             # three inputs.
-            label = meta.get("label", f.name)
-            unit = f" {meta['unit']}" if meta.get("unit") else ""
+            label = (item.label or f.name) if item is not None else f.name
+            unit = f" {item.unit}" if item is not None and item.unit else ""
             if isinstance(value, (tuple, list)):
                 # EVERY TRIPLE, per component, through the one helper the
                 # description's own check asks too (:func:`outside_range`).
                 for i, v in outside_range(value, rng):
                     issues.append(Issue(
                         "warn",
-                        f"{label}{_keyword_suffix(meta)}[{i}] = "
+                        f"{label}{_keyword_suffix(item)}[{i}] = "
                         f"{v}{unit} is outside the recommended "
                         f"range [{lo}, {hi}]{unit}",
                         f"config.{f.name}",
@@ -96,7 +102,7 @@ def _validate_config_metadata(cfg, refused=frozenset(),
                     if value < lo or value > hi:
                         issues.append(Issue(
                             "warn",
-                            f"{label}{_keyword_suffix(meta)} = {value}{unit} "
+                            f"{label}{_keyword_suffix(item)} = {value}{unit} "
                             f"is outside the recommended range "
                             f"[{lo}, {hi}]{unit}",
                             f"config.{f.name}",
@@ -106,7 +112,7 @@ def _validate_config_metadata(cfg, refused=frozenset(),
                     # number belongs, say.
                     issues.append(Issue(
                         "error",
-                        (f"Field metadata for ``{f.name}`` declares "
+                        (f"The catalogue declares ``{f.name}``'s "
                          f"``range = {rng}`` but the value "
                          f"{value!r} is not comparable with it.  "
                          f"This is a programmer bug: either the range or "
@@ -117,13 +123,13 @@ def _validate_config_metadata(cfg, refused=frozenset(),
         # (`engines/template.md` § 5) -- the rule the template reader and the
         # form's coercion already hold, here for a config built any other
         # way.
-        choices = meta.get("choices")
+        choices = item.choices if item is not None else None
         if choices and value is not None:
             from ..template import is_member
             if not is_member(value, choices):
                 issues.append(Issue(
                     "error",
-                    f"{meta.get('label', f.name)}{_keyword_suffix(meta)} = "
+                    f"{(item.label or f.name)}{_keyword_suffix(item)} = "
                     f"{value!r} is not one of "
                     f"{', '.join(map(repr, choices))}",
                     f"config.{f.name}",

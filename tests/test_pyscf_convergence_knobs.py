@@ -35,16 +35,17 @@ def test_the_field_exists_with_ui_metadata():
     """Law A's first half: an explicit field carries the metadata that
     makes ONE declaration reach the UI, the template and the doc.  A
     field with no label/help is invisible where the user sets it."""
-    f = PySCFConfig.__dataclass_fields__["scf_conv_tol_grad"]
-    assert f.metadata["engine_key"] == "mf.conv_tol_grad"
-    assert f.metadata["label"]
+    from molbuilder.template import items_of
+    f = items_of(PySCFConfig)["scf_conv_tol_grad"]
+    assert f.engine_key == "mf.conv_tol_grad"
+    assert f.label
     # The help lives in the CATALOGUE -- one home, asked
     # through `template.help_for`, which is what every surface reads.
     from molbuilder.template import help_for
     assert help_for("scf_conv_tol_grad")
     # Tightens stage-to-stage, exactly like the energy tolerance it
     # qualifies -- not a one-off profile choice.
-    assert f.metadata["workflow_group"] == "stage"
+    assert f.group == "stage"
 
 
 # ------------------------------------------------------------------ #
@@ -52,15 +53,16 @@ def test_the_field_exists_with_ui_metadata():
 # ------------------------------------------------------------------ #
 
 def test_soscf_field_exists_with_ui_metadata():
-    f = PySCFConfig.__dataclass_fields__["scf_soscf"]
-    assert f.metadata["engine_key"] == "mf.newton()"
-    assert f.metadata["label"]
+    from molbuilder.template import items_of
+    f = items_of(PySCFConfig)["scf_soscf"]
+    assert f.engine_key == "mf.newton()"
+    assert f.label
     # The help lives in the CATALOGUE -- one home, asked
     # through `template.help_for`, which is what every surface reads.
     from molbuilder.template import help_for
     assert help_for("scf_soscf")
     # An SCF-algorithm choice made with the system, like level_shift.
-    assert f.metadata["workflow_group"] == "profile"
+    assert f.group == "profile"
 
 
 # --------------------------------------------------------------------- #
@@ -78,10 +80,10 @@ def test_memory_is_one_item_across_both_engines():
     mechanism they are one item by being spelled the same, so their
     declarations must agree; they disagreed on six attributes until this fix.
     """
-    from molbuilder.template import declarations_for
+    from molbuilder.template import items_of
     from molbuilder.config.siesta import SiestaConfig
-    s = {d.name: d for d in declarations_for(SiestaConfig)}["max_memory_mb"]
-    p = {d.name: d for d in declarations_for(PySCFConfig)}["max_memory_mb"]
+    s = items_of(SiestaConfig)["max_memory_mb"]
+    p = items_of(PySCFConfig)["max_memory_mb"]
     for attr in ("kind", "type", "default", "category",
                  "allocation", "optional", "unit"):
         assert getattr(s, attr) == getattr(p, attr), (

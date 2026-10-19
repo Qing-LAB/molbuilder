@@ -4,7 +4,6 @@ refusing a folder with two templates.
 """
 from __future__ import annotations
 
-import pytest
 
 from molbuilder import template
 
@@ -54,18 +53,6 @@ def test_block_size_is_a_plain_int_and_survives_the_round_trip():
     # Absent stays absent -- that is how *auto* is said, and it is what makes
     # the deck omit the keyword.
     assert _round_trip(None) is None
-
-
-def test_a_declared_type_must_be_in_the_vocabulary():
-    """``metadata['decl_type']`` is checked against ``TYPES`` -- a typo there
-    would otherwise put an unknown type into every template."""
-    import dataclasses
-    fld = dataclasses.field(metadata={"decl_type": "not_a_type",
-                                      "category": ("execution",),
-                                      "help": "x"})
-    fld.name, fld.type = "x", int
-    with pytest.raises(ValueError, match="not in the type vocabulary"):
-        template.declaration_for(fld, int)
 
 
 # --------------------------------------------------------------------- #

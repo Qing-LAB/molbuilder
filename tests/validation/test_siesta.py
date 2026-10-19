@@ -51,11 +51,13 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
     one would make a search fail rather than merely not help.
     """
     import dataclasses
-    from molbuilder.template import _bare_anchor
+    from molbuilder.template import _bare_anchor, items_of
 
+    items = items_of(SiestaConfig)
     missing, invented = [], []
     for f in dataclasses.fields(SiestaConfig):
-        rng = f.metadata.get("range")
+        it = items.get(f.name)
+        rng = it.range if it is not None else None
         if not rng:
             continue
         lo, hi = rng
@@ -77,8 +79,8 @@ def test_every_range_warning_names_the_engine_keyword(water_structure):
                 if i.where == f"config.{f.name}" and "outside" in i.message]
         if not hits:
             continue
-        kw = _bare_anchor(str(f.metadata.get("engine_key", "") or ""))
-        label = f.metadata.get("label", f.name)
+        kw = _bare_anchor(str(it.engine_key or ""))
+        label = it.label or f.name
         msg = hits[0].message
         # Matched against the EXACT opening, not by searching for a bracket:
         # ``mpi_np``'s own label is "MPI ranks (np)", so a field's label may

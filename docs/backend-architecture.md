@@ -74,7 +74,7 @@ builds geometry, or runs a job.
 | `structure.py` | L1 | the **one** structure codec + key-namer (coords + metadata) | `Structure`; `to_dict` / `from_dict` / `to_wire`; `from_xyz` / `to_xyz` / `from_pdb`; `resolve_cell` — full codec in [`model/structure.md`](?doc=model/structure.md) |
 | `frame.py` | L1 | `Frame` / `Trajectory` per-step physics | `Frame`, `Trajectory` |
 | `selection.py` | L1 | atom-selection rule algebra (duck-typed on `struct`) | `Rule`, `evaluate`, `to_json` / `from_json` |
-| `config/` | L1 | the engine-knob **dataclasses** (the lingua franca) + field metadata | `SiestaConfig`, `PySCFConfig` (the two engine configs; `config/state.py` declares the electronic-state items both carry, `config/stages.py` the stage strategies both share) |
+| `config/` | L1 | the engine-knob **dataclasses** (the lingua franca): a field's name, type, default and validators — every other fact is the catalogue's (`engines/template.md` § 2.1a) | `SiestaConfig`, `PySCFConfig` (the two engine configs; `config/stages.py` the stage strategies both share) |
 | `trajectory_log/` | L1 | the molwatch progress-log format + writer | `format`, `emitter` |
 | `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_json`, `write_json` |
 | `parse/` | L2 | the single **read-side** stack: File / Text → typed `ParseResult` (the Dir tier is specified but unbuilt, `model/parse.md` § 5) | `parse.registry.{parse,parse_text}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |

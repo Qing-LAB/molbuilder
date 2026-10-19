@@ -209,53 +209,37 @@ the template takes from the field's `Optional[...]` type and the form from
 the catalogue — 136 declarations. `help` left the classes the same day: the
 catalogue is its one home, read through `template.help_for`.)*
 
-**Group 1 — the form's own tags**, below. They describe *how a field is
-presented*, and this document owns them. **The form reads them from the
-catalogue** (§ 1). A config class carries copies — the two-homes debt of
-[`engines/template.md`](?doc=engines/template.md) § 2.1a — and the table names
-what reads the class's copy. `test_every_mirrored_fact_agrees` compares six of
-them with the catalogue (`label`, `unit`, `engine_key`, `range`, `choices`,
-`workflow_group`); the copies of `tier`, `pattern` and `null_label` are read
-only by `template.declaration_for`, which no production code calls, and nothing
-compares them — they go when that debt is paid.
+**Group 1 — the form's own tags.** They describe *how a field is presented*,
+and this document owns them. **The form reads them from the catalogue** (§ 1),
+and so does every other reader — the settings gate's messages, the description
+check, the form's coercion, finding placement — through `template.items_of`
+([`engines/template.md`](?doc=engines/template.md) § 2.1a). *A config class
+carried copies of them until 2026-10-18; it carries none now.*
 
-**Group 2 — the catalogue's axes**, which happen to ride on the same
-`field(metadata=…)` because that is where a config class carries anything.
-They describe *what an item is*, they are owned by
-[`engines/template.md`](?doc=engines/template.md), and the form reads none of
-them:
-
-| key | what it says | owned by |
+| Key | What it says | The form reads the catalogue's |
 |---|---|---|
-| `category` | which question about the calculation this answers | `template.md` § 6.2 |
-| `read_by` | which other layer derives from the value | `template.md` § 6.1 |
-| `allocation` | this value belongs to the allocation, so a template may never carry one | `template.md` § 7 |
-| `expands` | the engine keywords a `deck` item produces | `template.md` § 5 |
-| `item_kind` | the item's `kind` when it is not the default `engine` | `template.md` § 6 |
-| `validate` | a per-field checker the validation layer runs | `validation/` |
+| **`label`** | the field's display name | the control's legend; falls back to the item name |
+| **`group`** | which card — one of [`template.md`](?doc=engines/template.md) § 5's closed vocabulary, **not** restated here — and therefore **where a finding about it appears** (`_shared.resolve_workflow_group`) | `form-schema.js`'s cards |
+| **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s | the control's badge; the settings gate's messages |
+| **`tier`** | `basic` / `advanced` — a judgement about the parameter; the form dims an advanced field (§ 1.2) | `form-schema.js` |
+| **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the control's bounds; the settings gate; the description check |
+| **`choices`** | the legal values of an enum → a dropdown | the dropdown; the settings gate; the description check; `_shared.coerce_to_field_type` |
+| **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`). **Display only** — it never converts anything | beside the control; the settings gate's messages |
+| **`pattern`** | a regex the value must match | the control's `pattern` |
+| **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the tri-select's blank |
 
-*(A seventh, `decl_type`, is **read** by `template.declaration_for` — it names
-the validation type where a Python annotation cannot, and is checked against
-`template.TYPES`. No field carries one today; it is listed so that the next
-person to need it finds the entry rather than inventing a second spelling.)*
+**Group 2 — the catalogue's axes**, owned by
+[`engines/template.md`](?doc=engines/template.md): `category` (§ 6.2),
+`read_by` (§ 6.1), `allocation` (§ 7), `expands` (§ 5), `kind` (§ 6). The form
+reads none of them. **The one tag a class field still carries** is
+`validate` — a per-field checker the validation layer runs
+(`validation/metadata.py`): code, not a fact.
 
 > **The rule for a new tag, before the table:** a tag earns its place only if
 > something **reads** it. A key nothing consumes is a comment wearing metadata's
-> clothes — put it in the field's `help` instead. And a tag names *how a field is
+> clothes — put it in the item's `help` instead. And a tag names *how a field is
 > handled*, never *what it means scientifically*; that belongs in `help` and in
 > [`engines/tuning.md`](?doc=engines/tuning.md).
-
-| Key | What it says | The form reads the catalogue's | The class's copy is read by |
-|---|---|---|---|
-| **`label`** | the field's display name | the control's legend; falls back to the item name | the settings gate's messages (`validation/metadata.py`) |
-| **`workflow_group`** | which card — one of [`template.md`](?doc=engines/template.md) § 5's closed vocabulary, **not** restated here — and therefore **where a finding about it appears** | `form-schema.js` (card order) | `_shared.py::resolve_workflow_group`, which stamps each finding with its card for `validation-findings.js` to place |
-| **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the keyword badge | the settings gate's messages |
-| **`tier`** | `basic` / `advanced` — a judgement about the parameter; the form dims an advanced field (§ 1.2) | `form-schema.js` | `template.declaration_for` only |
-| **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the control's bounds | the settings gate; the description check (`validation/task.py`) |
-| **`choices`** | the legal values of an enum → a dropdown | the dropdown | the settings gate; the description check; `_shared.py::coerce_to_field_type` |
-| **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`). **Display only** — it never converts anything | beside the control | the settings gate's messages |
-| **`pattern`** | a regex the value must match | the control's `pattern` | `template.declaration_for` only |
-| **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the tri-select's blank | `template.declaration_for` only |
 
 > ### ⚠ `section` no longer decides visibility on the two engine forms
 >

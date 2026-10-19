@@ -213,9 +213,12 @@ def _cfg_field_with_a_group():
     """
     import dataclasses
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.template import items_of
+    items = items_of(SiestaConfig)
     for f in dataclasses.fields(SiestaConfig):
-        if f.metadata.get("workflow_group") and f.type in ("int", int):
-            return f.name, f.metadata["workflow_group"]
+        it = items.get(f.name)
+        if it is not None and it.group and f.type in ("int", int):
+            return f.name, it.group
     raise AssertionError("no int field carries a workflow_group any more")
 
 

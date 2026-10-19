@@ -286,11 +286,8 @@ class Item:
     #: carries it, and no config class mirrors it (user, 2026-08-15: *"this
     #: does not have to show up in the UI or generated config, but serve as a
     #: reference point when review of template or revision of it could
-    #: benefit from"*).  Mirroring it into the dataclass the way ``help`` and
-    #: ``label`` are mirrored would give a SECOND home to the one fact whose
-    #: entire job is to let someone check the first — so ``declaration_for``
-    #: never sets it, and ``MIRRORED`` in `tests/test_catalogue_agreement.py`
-    #: leaves it out on purpose.
+    #: benefit from"*).  Like every other fact about an item it has this
+    #: one home (§ 2.1).
     #:
     #: The citations were DERIVED, not recalled: the 5.4.2 manual sources
     #: were parsed for every ``\begin{fdfentry}{...}`` and matched to our
@@ -732,145 +729,6 @@ def _decl_type(ann, choices) -> Optional[str]:
     return None
 
 
-def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
-    """The § 3 item for one config field.  Membership is total (D5).
-
-    Raises ``ValueError`` for an exposed field whose type has no name in the
-    grammar: that is a gap in the vocabulary, and the loud version of it is the
-    only one that gets fixed.
-    """
-    # Membership is § 7's TOTAL rule (U16): every parameter the schema
-    # declares is an item.
-    #
-    # § 6.4 (schema @2): a machine fact's VALUE is forbidden, but the
-    # ITEM is declared -- valueless, flagged as the scheduler's to answer.
-    # A surface must know the question exists in order to ask it, and the
-    # wrapper writer must know to look.
-    #
-    # The protection: a value on one is refused, on read and on rebuild
-    # (``read_template``, ``config_from_template``).  Declaring the question
-    # is portable; answering it on the wrong machine is not.
-    _alloc = bool(f.metadata.get("allocation"))
-    _cited = tuple(f.metadata.get("citation") or ())
-    _role = tuple(f.metadata.get("role") or ())
-    _shared = tuple(f.metadata.get("shared") or ())
-    _stages = tuple(f.metadata.get("stages") or ())
-
-    ann, optional = _unwrap_optional(annotation)
-
-    choices = f.metadata.get("choices")
-    # A field may DECLARE its type when the annotation cannot carry the
-    # constraint -- § 5's reason for ``type`` existing: "what a parser cannot
-    # know".
-    declared = f.metadata.get("decl_type")
-    if declared is not None:
-        if declared not in TYPES:
-            raise ValueError(
-                f"field {f.name!r}: metadata['decl_type'] = {declared!r} is not "
-                f"in the type vocabulary {TYPES} (engines/template.md § 5).")
-        return_type = declared
-    else:
-        return_type = None
-    type_ = return_type or _decl_type(ann, choices)
-    if type_ is None:
-        raise ValueError(
-            f"field {f.name!r}: no declaration type for annotation {ann!r}. "
-            f"Add one to the grammar (engines/template.md § 5) rather than "
-            f"leaving the field out of the template -- § 7's premise is that "
-            f"every parameter the schema declares is an item.")
-
-    rng = f.metadata.get("range")
-    # § 6.2 -- REQUIRED, and validated here rather than at write time so the
-    # refusal names the field.  A category cannot change the deck, but an item
-    # without one has no panel to appear on, which is G2 ("enough on its own
-    # for a surface") failing quietly.
-    category = tuple(f.metadata.get("category", ()) or ())
-    if not category:
-        raise ValueError(
-            f"field {f.name!r}: no `category`. Every item declares which "
-            f"question about the calculation it answers "
-            f"(engines/template.md § 6.2); the vocabulary is {CATEGORIES}.")
-    for _c in category:
-        if _c not in CATEGORIES:
-            raise ValueError(
-                f"field {f.name!r}: unknown category {_c!r}. The vocabulary "
-                f"is closed: {CATEGORIES}.")
-    engines = tuple(f.metadata.get("engines", ()) or ())
-    kind = f.metadata.get("item_kind") or _DEFAULT_KIND
-    anchor = _bare_anchor(f.metadata.get("engine_key", "") or f.name)
-    expands = tuple(f.metadata.get("expands", ()) or ())
-
-    # § 7: "a parameter that cannot be given a ``kind`` is a gap in this
-    # vocabulary, and the loud version of that is the only one that gets
-    # fixed."  An ``engine_key`` that is a molbuilder NOTE rather than a
-    # keyword -- ``(molbuilder: ...)`` -- names nothing the deck can carry, so
-    # a field left at the default kind is not classified, it is unclassified.
-    if kind == "engine" and not anchor:
-        raise ValueError(
-            f"field {f.name!r}: kind defaults to 'engine' but its engine_key "
-            f"names no keyword ({f.metadata.get('engine_key','')!r}). Give it "
-            f"an explicit metadata['item_kind'] -- one of "
-            f"{', '.join(KINDS)} (engines/template.md § 6). Leaving it out "
-            f"would put a note where the deck expects a keyword.")
-    if kind == "deck" and not expands and anchor:
-        expands = (anchor,)
-
-    return Item(
-        name=f.name,
-        allocation=_alloc,
-        citation=_cited,
-        role=_role,
-        shared=_shared,
-        stages=_stages,
-        kind=kind,
-        type=type_,
-        # THE CATALOGUE -- `help_for` is the one home for what a user reads.
-        help=help_for(f.name),
-        default=(f.default if f.default is not dataclasses.MISSING else None),
-        anchor=(anchor if kind == "engine" else ""),
-        # The FULL spelling, whatever the kind -- a wrapper or produce item
-        # names no deck keyword and its note is exactly what says so.
-        engine_key=str(f.metadata.get("engine_key", "") or ""),
-        expands=expands,
-        read_by=tuple(f.metadata.get("read_by", ()) or ()),
-        choices=(tuple(choices) if choices else None),
-        range=(tuple(rng) if rng else None),
-        unit=f.metadata.get("unit"),
-        group=f.metadata.get("workflow_group"),
-        label=str(f.metadata.get("label", "") or ""),
-        null_label=str(f.metadata.get("null_label", "") or ""),
-        optional=optional,
-        tier=str(f.metadata.get('tier', '') or ''),
-        pattern=str(f.metadata.get('pattern', '') or ''),
-        category=category,
-        engines=engines,
-    )
-
-
-def declarations_for(config_cls) -> List[Item]:
-    """Every exposed field of *config_cls*, in declaration order.
-
-    ⚠ **This is the direction § 2.1 retired, and it has NO production caller.**
-    A parameter is defined in the catalogue (§ 4.3); a config class is a
-    translator.  The tests that compare a class's copies of the catalogue's
-    facts with the catalogue call it -- the two-homes debt of `template.md`
-    § 2.1a, whose production readers of the class copies are the validation
-    pass and finding placement (`web/form-schema.md` § 1a).  When the debt is
-    paid, the copies go, and this function goes with them.
-
-    Declaration order, not alphabetical: the config's field order is the form's
-    order and the deck's order, and a template a person reads should not be a
-    third arrangement of the same things.
-    """
-    hints = typing.get_type_hints(config_cls)
-    out: List[Item] = []
-    for f in dataclasses.fields(config_cls):
-        decl = declaration_for(f, hints[f.name])
-        if decl is not None:
-            out.append(decl)
-    return out
-
-
 # --------------------------------------------------------------------- #
 #  Writing                                                              #
 # --------------------------------------------------------------------- #
@@ -1262,6 +1120,24 @@ def _emit(items, *, engines, title: str = "") -> str:
             f"{_first_difference(payload, got)}. This is a bug in the writer "
             f"(engines/template.md § 4.1 asks for exactly this check).")
     return text
+
+
+def items_of(cls_or_cfg) -> "Dict[str, Item]":
+    """THE CATALOGUE'S ITEMS FOR A CONFIG, by field name -- the one home of
+    every fact about a parameter (§ 2.1: a config class is a translator; its
+    field's name, type, default and validators are its own, and every other
+    fact -- the label, the unit, the range, the choices, the engine keyword,
+    the card, the category, whether the machine answers it -- is the
+    catalogue's).  Asked with the class or an instance; the engine is the
+    class's (:func:`engine_name`).  Every reader of such a fact asks this:
+    the settings gate, the description check, the form's coercion, finding
+    placement, the template's membership."""
+    cls = cls_or_cfg if isinstance(cls_or_cfg, type) else type(cls_or_cfg)
+    engine = engine_name(cls)
+    # THE SAME RULE `one` READS BY: an item naming no engines is every
+    # engine's.
+    return {it.name: it for it in catalogue().items
+            if not it.engines or engine in it.engines}
 
 
 def engine_name(cls) -> str:
@@ -1866,8 +1742,9 @@ def template_fields(config_cls) -> set:
     as a template item's value, a stage override, a pin, or a parameter
     sweep axis.
     """
+    items = items_of(config_cls)
     return {f.name for f in dataclasses.fields(config_cls)
-            if not f.metadata.get("allocation")}
+            if not (items.get(f.name) is not None and items[f.name].allocation)}
 
 
 # --------------------------------------------------------------------- #
@@ -2671,7 +2548,7 @@ def why_not_an_item(name: str, *, value: Any = None,
 #: The module's public surface.
 __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "Item", "Template",
-           "declaration_for", "declarations_for", "help_for",
+           "items_of", "help_for",
            "select", "one",
            "CATALOGUE", "catalogue", "load_catalogue",
            "template_with_values",

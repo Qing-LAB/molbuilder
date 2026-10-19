@@ -165,9 +165,10 @@ def test_pyscf_also_says_it_with_one_field():
     names = {f.name for f in PySCFConfig.__dataclass_fields__.values()}
     assert "restart" in names
     fld = PySCFConfig.__dataclass_fields__["restart"]
+    from molbuilder.template import items_of
     # The SAME two answers SIESTA gives.  A third value on one engine would
     # make `restart` mean different things in two descriptions.
-    assert tuple(fld.metadata["choices"]) == ("clean", "continue")
+    assert tuple(items_of(PySCFConfig)["restart"].choices) == ("clean", "continue")
     # And the same DEFAULT.  `continue` (user, 2026-08-18): a run started
     # in a folder that already holds a result was started after somebody read
     # that result, so it continues from it.  `clean` is that person overriding,

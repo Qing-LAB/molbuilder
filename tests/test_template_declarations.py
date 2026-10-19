@@ -19,9 +19,7 @@ Contracts:
 """
 from __future__ import annotations
 
-import dataclasses
 import typing
-from dataclasses import field as dc_field
 
 import pytest
 
@@ -29,7 +27,7 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.deck_record import MARKER_RE
 from molbuilder.script_emit import benchmark_declarable_types
-from molbuilder.template import declarations_for
+from molbuilder.template import items_of
 
 
 ENGINES = [SiestaConfig]
@@ -103,7 +101,7 @@ def test_optional_is_set_for_exactly_the_optional_fields(cls):
     hold — for these fields the engine gets no line at all, which is not the
     same as getting the default."""
     hints = typing.get_type_hints(cls)
-    for d in declarations_for(cls):
+    for d in items_of(cls).values():
         ann = hints[d.name]
         is_opt = (typing.get_origin(ann) is typing.Union
                   and type(None) in typing.get_args(ann))
@@ -149,18 +147,6 @@ def test_range_unit_and_group_come_from_the_CATALOGUE():
     assert d.group == "stage"
 
 
-def test_an_unnameable_type_is_refused_by_name():
-    """A gap in the type vocabulary is loud, because the quiet version is a
-    field silently missing from the template — and § 3.7's premise is that
-    every allowed item has a place in it."""
-    odd = dataclasses.make_dataclass("Odd", [
-        ("weird", complex, dc_field(default=0j,
-                                    metadata={"category": ("method",),
-                                              "workflow_group": "budget"}))])
-    with pytest.raises(ValueError, match="weird"):
-        declarations_for(odd)
-
-
 @pytest.mark.parametrize("table", [
     'offered = { vibraton = ["CG"] }',
     'offered = { siesta = { vibraton = ["CG"] } }',
@@ -180,29 +166,6 @@ def test_a_misspelled_kind_is_refused_by_name(table):
             'choices = ["CG", "FIRE"]\nhelp = "x"\n' + table + "\n")
     with pytest.raises(ValueError, match="calculation kind"):
         T.read_template(text)
-
-
-def test_pyscf_has_no_vocabulary_gaps_left():
-    """§ 7's total rule, satisfied for PySCF: every PySCF field either
-    renders or is a machine fact § 7 deliberately excludes, and nothing
-    falls through unnamed.
-
-    A field added later without a category, an item_kind, or a type the
-    grammar knows fails HERE rather than the first time somebody tries
-    to describe a PySCF calculation.
-    """
-    import typing as _t
-    from molbuilder.template import declaration_for
-    hints = _t.get_type_hints(PySCFConfig)
-    gaps = []
-    for f in dataclasses.fields(PySCFConfig):
-        try:
-            declaration_for(f, hints[f.name])
-        except ValueError as exc:
-            gaps.append(f"{f.name}: {exc}")
-    assert gaps == [], (
-        "PySCF fields cannot be placed in the template vocabulary:\n  "
-        + "\n  ".join(gaps))
 
 
 def test_pyscf_renders_a_template_at_all():
@@ -250,48 +213,6 @@ def test_both_spellings_of_optional_are_understood():
     # A union that is not an Optional stays un-unwrapped, both ways round.
     assert _unwrap_optional(int | str) == (int | str, False)
     assert _unwrap_optional(int) == (int, False)
-
-
-#: Fixtures for § 1.1, at MODULE scope on purpose: this file uses
-#: ``from __future__ import annotations``, so annotations are strings and
-#: ``get_type_hints`` resolves them against the module globals.  A dataclass
-#: defined inside a test function cannot be resolved at all.
-_PEP604_META = {"category": ("execution",), "engine_key": "Thing",
-                "help": "a thing", "null_label": "(auto)"}
-
-
-@dataclasses.dataclass
-class _OldSpelling:
-    thing: typing.Optional[int] = dc_field(default=None,
-                                           metadata=_PEP604_META)
-
-
-@dataclasses.dataclass
-class _NewSpelling:
-    thing: int | None = dc_field(default=None, metadata=_PEP604_META)
-
-
-def test_a_field_annotated_the_new_way_declares_the_same_item():
-    """End to end, because § 1.1's cost is a DECLARATION that differs.
-
-    The same field written both ways must produce the same item -- same type,
-    same ``optional`` -- or a config modernised one field at a time would
-    silently change its own template.
-    """
-    from molbuilder.template import declaration_for
-    old = declaration_for(dataclasses.fields(_OldSpelling)[0],
-                          typing.get_type_hints(_OldSpelling)["thing"])
-    new = declaration_for(dataclasses.fields(_NewSpelling)[0],
-                          typing.get_type_hints(_NewSpelling)["thing"])
-    assert old.type == new.type == "int"
-    assert old.optional is new.optional is True
-
-
-    # NOTHING here asserts "every public name is exported".  A module's
-    # namespace also holds what it imported -- ``Any``, ``Dict``, ``Optional``
-    # -- and no rule anywhere says a module must re-export or hide those.
-    # Writing one from this module alone would be inventing policy, which is
-    # the thing § 1.5 is complaining about in the other direction.
 
 
 # --------------------------------------------------------------------- #

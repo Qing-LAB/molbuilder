@@ -45,44 +45,12 @@ from molbuilder.config.siesta import SiestaConfig
 
 ENGINES = [("siesta", SiestaConfig), ("pyscf", PySCFConfig)]
 
-#: The facts the catalogue owns that a dataclass field also spells today.
-#: ``category`` is compared in its own test, as a sequence: the ORDER is
-#: meaningful (first = the panel).
-#: ``help`` is not here: every surface asks ``template.help_for``, so it is
-#: not a fact with two homes.
-MIRRORED = ("range", "unit", "choices", "label", "engine_key")
-
-#: Facts the catalogue spells one way and a dataclass field spells another.
-#: ``group`` is the CARD, and the two homes are read by different consumers:
-#: the FORM takes it from the catalogue, while finding-placement takes it from
-#: the class (``_shared.resolve_workflow_group``). A disagreement puts a
-#: control on one card and its warnings on another — which is exactly the
-#: state twenty-three fields were in on 2026-08-15, when the panels were
-#: filled in on the catalogue side only.
-RENAMED = {"group": "workflow_group"}
 
 
 def _catalogue():
     return {i.name: i for i in T.read_template(T.load_catalogue()).items}
 
 
-
-
-@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
-def test_the_category_agrees_in_ORDER_not_only_in_membership(engine, cls):
-    """`category` is a LIST and the first entry is the panel the item appears
-    on (§ 6.2).  Two homes agreeing on the set but not the order would put a
-    parameter on a different panel depending on which one a surface read."""
-    cat = _catalogue()
-    bad = []
-    for f in dataclasses.fields(cls):
-        item = cat.get(f.name)
-        if item is None or not f.metadata.get("category"):
-            continue
-        if tuple(f.metadata["category"]) != tuple(item.category):
-            bad.append(f"{f.name}: class={tuple(f.metadata['category'])} "
-                       f"catalogue={tuple(item.category)}")
-    assert not bad, "category order disagrees:\n  " + "\n  ".join(bad)
 
 
 def _same(a, b) -> bool:
@@ -93,67 +61,6 @@ def _same(a, b) -> bool:
     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         return tuple(a) == tuple(b)
     return a == b
-
-
-def _declared(v) -> bool:
-    """Is this side carrying a value at all?  Absent is not a disagreement."""
-    return v not in (None, "", (), [])
-
-
-@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
-def test_every_mirrored_fact_agrees(engine, cls):
-    """THE GUARANTEE THREE SECTIONS OF THE CONTRACT PROMISE.
-
-    `template.md` § 6.0 says editing one home and not the other is *"caught,
-    loudly, by name -- which is the only reason the duplication is
-    survivable"*, and § 5.1 says this file *"keeps the two in step"*.
-
-    **Why this exists** (the admission question, and the answer has to be a
-    failure nothing else catches): a surface reads these facts off
-    whichever home it came through.  `range` disagreeing means a form accepts
-    a value the other door then refuses; `choices` disagreeing means a valid
-    setting is rejected depending on the tab; `engine_key` disagreeing means
-    the deck gets a different keyword.  And `workflow_group` is measured, not
-    hypothetical -- § 2.1a records twenty-three fields whose control sat on
-    one card while their findings landed on another, because the panels were
-    filled in on the catalogue side only.  No other test compares these keys.
-
-    **Why SCOPED and not blanket.**  This file's header argues a blanket
-    agreement check would be wrong, and it is right: `restart` declares
-    `kind = deck` in the shared catalogue row and `produce` on the PySCF
-    dataclass, correctly, because it expands three keywords on SIESTA and
-    none on PySCF -- and no document states that exception.  `kind` is not in
-    :data:`MIRRORED`.  This compares the facts the contract names, where
-    there is no legitimate exception and, measured today, no disagreement.
-
-    **One-sided is NOT a failure.**  Five PySCF items carry a catalogue label
-    and no class copy, which is the debt being PAID -- one home, the direction
-    `help` went.  A
-    test that demanded both sides carry a copy would push the count up and
-    call it progress.
-    """
-    cat = _catalogue()
-    bad = []
-    for f in dataclasses.fields(cls):
-        item = cat.get(f.name)
-        if item is None:
-            continue
-        for ckey in MIRRORED + tuple(RENAMED):
-            fkey = RENAMED.get(ckey, ckey)
-            cv, fv = getattr(item, ckey, None), f.metadata.get(fkey)
-            if not (_declared(cv) and _declared(fv)):
-                continue
-            if not _same(cv, fv):
-                bad.append(f"{f.name}.{ckey}: catalogue={cv!r} class={fv!r}"
-                           + (f"  (class spells it {fkey!r})"
-                              if fkey != ckey else ""))
-    assert not bad, (
-        f"the two homes disagree for {engine}, by item and key:\n  "
-        + "\n  ".join(bad)
-        + "\n\nThe CATALOGUE is the master (`template.md` § 2.1): fix the "
-          "dataclass metadata unless the catalogue row is the wrong one.")
-
-
 
 
 def test_the_catalogue_carries_no_item_no_engine_can_hold():

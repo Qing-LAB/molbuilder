@@ -875,7 +875,9 @@ For a run by hand the run script takes ``bash <stem>.run.sh --run N -np M``, to 
 [item.gpu_count]
 # BOTH ENGINES (`execution/gpu.md` § 1.1): how many GPUs a run asks for is
 # stated, on every engine, and has no default.  READ WHERE `use_gpu` IS: a
-# count without the GPU is refused (G5).
+# count without the GPU is refused (G5).  Blank is a real state -- a run
+# that asks no GPU -- which is why the item is optional: stated for a GPU
+# run, or prep refuses (G5); the one row that said otherwise (2026-10-18).
 stages = "scf"
 kind = "wrapper"
 run_card = true
@@ -883,6 +885,8 @@ category = ["execution"]
 engine_key = "(molbuilder: scheduler ``--gres=gpu:G``; not in the deck)"
 type = "int"
 allocation = true
+null_label = "(none asked; a GPU run states one or prep refuses)"
+optional = true
 range = [1, 16]
 group = "staging"
 label = "GPUs (G)"

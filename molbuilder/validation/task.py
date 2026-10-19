@@ -143,7 +143,7 @@ def preflight(task, config_cls=None, *,
     #  deck as `MD.Steps 100.7` (the M2 seam walk, 2026-08-07).
     out.extend(_values_are_the_declared_type(task, cls, fields))
     out.extend(_values_in_bounds(
-        task, fields,
+        task, cls, fields,
         refused={(i.stage, i.where.split(".", 1)[1])
                  for i in (*unread, *stepless)}))
     out.extend(stepless)
@@ -168,8 +168,9 @@ def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
     plan = getattr(task, "bench", None)
     if not plan:
         return []
-    sweepable = {f.name for f in dataclasses.fields(cls)
-                 if "execution" in (f.metadata.get("category") or ())}
+    from ..template import items_of
+    sweepable = {name for name, it in items_of(cls).items()
+                 if "execution" in tuple(it.category or ())}
     out: List[Issue] = []
     for name in sorted(plan):
         if name in sweepable:
@@ -655,7 +656,8 @@ def _overrides_a_rung_reads(task) -> List[Issue]:
     return out
 
 
-def _values_in_bounds(task, fields, *, refused=frozenset()) -> List[Issue]:
+def _values_in_bounds(task, cls, fields, *,
+                      refused=frozenset()) -> List[Issue]:
     """Every override's value is inside the bounds the schema declares.
 
     Enum ``choices`` and what the one per-value door refuses -- a component
@@ -674,6 +676,8 @@ def _values_in_bounds(task, fields, *, refused=frozenset()) -> List[Issue]:
     nothing more here -- one value, one refusal (`engines/template.md` § 5.3).
     """
     from .metadata import outside_range
+    from ..template import items_of
+    items = items_of(cls)
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():
@@ -682,8 +686,9 @@ def _values_in_bounds(task, fields, *, refused=frozenset()) -> List[Issue]:
                 continue                    # already reported by _names_exist
             if (st.name, key) in refused:
                 continue                    # the rung does not read it
-            rng = f.metadata.get("range")
-            choices = f.metadata.get("choices")
+            item = items.get(key)
+            rng = item.range if item is not None else None
+            choices = item.choices if item is not None else None
             if choices and not is_member(value, choices):
                 out.append(Issue(
                     "error",
