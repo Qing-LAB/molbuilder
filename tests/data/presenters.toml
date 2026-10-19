@@ -34,15 +34,19 @@
 [[pick]]
 name = "a geomeTRIC *_geom_optim.xyz opens as a trajectory"
 file = "/tmp/BDT/optimization/BDT_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", parser = "pyscf-geom", engine = "pyscf" }
+meta = { role = "_geom_optim.xyz", parser = "pyscf", engine = "pyscf" }
 opens = "trajectory"
 
+# A file the directory answers nothing about is claimed by no run viewer
+# (2026-10-18): the trajectory viewer reads the catalogue's role, never a
+# suffix off the name -- so the same name with no answer is what its format
+# says, a geometry file, which the structure viewer takes.
 [[pick]]
-name = "...and an older wrapper's *_optim.xyz"
-file = "/tmp/foo_optim.xyz"
-opens = "trajectory"
+name = "...and the same name with no answer opens as a plain structure"
+file = "/tmp/foo_geom_optim.xyz"
+opens = "structure"
 
-# The trajectory match is narrowed to *_optim.xyz so a plain .xyz is not taken.
+# A plain .xyz is a geometry format, which the structure viewer takes.
 [[pick]]
 name = "a plain .xyz opens as a structure"
 file = "/tmp/water_demo/water.xyz"
@@ -171,7 +175,7 @@ lists = "trajectory"
 [[result]]
 name = "...and a geomeTRIC *_geom_optim.xyz"
 file = "/projects/foo/BDT_01_coarse_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", parser = "pyscf-geom", engine = "pyscf" }
+meta = { role = "_geom_optim.xyz", parser = "pyscf", engine = "pyscf" }
 lists = "trajectory"
 
 [[result]]
@@ -256,22 +260,25 @@ file = "/projects/foo/run.molwatch.log"
 meta = { engine = "pyscf", role = ".molwatch.log" }
 heading = "PySCF optimization"
 
-# Without it, the file is named for what it is and the engine left unclaimed.
+# Without an engine in the answer, the file is named for what it is and the
+# engine left unclaimed.
 [[heading]]
-name = "a .out with no answer sits under Optimization"
+name = "a .out whose answer names no engine sits under Optimization"
 file = "/projects/foo/bar.out"
+meta = { role = ".out" }
 heading = "Optimization"
 
 [[heading]]
 name = "...and a *_geom_optim.xyz"
 file = "/projects/foo/BDT_geom_optim.xyz"
+meta = { role = "_geom_optim.xyz" }
 heading = "Optimization"
 
 # `unknown` is the directory declining to name an engine, read as no answer.
 [[heading]]
 name = "a run whose engine is unknown names none"
-file = "/projects/foo/BDT_optim.xyz"
-meta = { engine = "unknown" }
+file = "/projects/foo/BDT_geom_optim.xyz"
+meta = { role = "_geom_optim.xyz", engine = "unknown" }
 heading = "Optimization"
 
 # A transport calculation's report opens through its description, on the
@@ -289,16 +296,19 @@ file = "/projects/BDT/relax/task.json"
 [[heading]]
 name = "a sweep's job-set.json sits under Benchmark sweeps"
 file = "/p/calc/01_coarse/bench/job-set.json"
+meta = { parser = "job-set-sweep" }
 heading = "Benchmark sweeps"
 
 [[heading]]
 name = "a .fc-sweep.json sits under Spectrum"
 file = "/projects/foo/spectrum/h2o/H2O.fc-sweep.json"
+meta = { parser = "fc-sweep-json" }
 heading = "Spectrum"
 
 [[heading]]
 name = "a .spectra.json sits under Vibrational spectrum"
 file = "/projects/foo/r.spectra.json"
+meta = { parser = "spectra-json" }
 heading = "Vibrational spectrum"
 
 [[heading]]

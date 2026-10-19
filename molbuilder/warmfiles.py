@@ -41,9 +41,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .persist import check_schema
+from .runfiles import WARM_FILES_FILE as FILENAME  # the catalogue's name (B13)
 
 SCHEMA = "molbuilder/warm-files@1"
-FILENAME = "warm-files.toml"
 
 #: The row keys, closed by contract.  ``suffix`` identifies the row.
 _ROW_KEYS = ("suffix", "carry", "requires_same", "honoured_by")

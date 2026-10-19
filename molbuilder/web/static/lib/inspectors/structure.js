@@ -39,10 +39,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
     const inspector = {
         name:        "structure",
         displayName: "Structure preview",
-        // PySCF / geomeTRIC writes multi-frame ``*_optim.xyz`` files
-        // and SIESTA-side helpers may dump intermediate/final ``.xyz``
-        // / ``.pdb`` -- both are user-meaningful results in a project
-        // dir, so the file picker on /results should surface them.
+        // A geometry FORMAT -- an .xyz or a .pdb, the two the structure
+        // codec writes (`model/structure.md` § 2.4) -- which no catalogue
+        // row names: a saved pair has no role, and the server's parse answer
+        // reads any .xyz as a trajectory of one or more frames.  A result a
+        // person wants to see, so the file picker on /results surfaces it.
         isResult:    true,
         match:       (file) => {
             const lower = file.toLowerCase();

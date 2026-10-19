@@ -31,12 +31,11 @@ import { pointWords } from "../lib/results/point-words.js";
 // and Prep takes it.
 import { pageBusy } from "../lib/page-busy.js";
 
-const TASK_JSON     = "task.json";
-/* The hand-over a parameter tab leaves (`stages.md` § 6.5a).  Read ONLY when
- * there is no `task.json` -- a folder holding both is a save that did not
- * finish, and the description wins because it is the one that passed the
- * preflight. */
-const TASK_HANDOVER = "task.1st.json";
+/* The description's and the hand-over's names are the folder answer's
+ * (`task_name`, `handover_name`): the page spells neither.  The hand-over a
+ * parameter tab leaves (`stages.md` § 6.5a) is read ONLY when there is no
+ * description -- a folder holding both is a save that did not finish, and
+ * the description wins because it is the one that passed the preflight. */
 
 /* Which items the MACHINE answers (`machineAnswers` below) — DERIVED, never
  * listed here.
@@ -1109,7 +1108,7 @@ async function _bootEditor() {
     // when a file of that kind is first opened (`lib/codemirror-load.js`).
     // `task.json` resolves to the javascript mode with `json: true` — the
     // JSON dialect, since CodeMirror ships no separate json mode.
-    const mode = await modeFor(TASK_JSON);
+    const mode = await modeFor(".json");
     _cm = CM($("ts-editor"), {
         value:       "",
         mode:        mode,
@@ -1429,8 +1428,8 @@ async function readFolder(projects, dir, opts) {
         setShape(_shape);                       // re-assert / repaint the choice
         setState("handover",
                  "Handed over — not a description yet",
-                 `${TASK_HANDOVER} is here, carrying the parameters. `
-                 + `${awaiting} Saving writes task.json and removes `
+                 `${said.handover_name} is here, carrying the parameters. `
+                 + `${awaiting} Saving writes ${said.task_name} and removes `
                  + `this file.`);
         /* EVERY CARD THE DESCRIPTION BRANCH PAINTS IS PAINTED HERE TOO,
          * with nothing to paint.

@@ -52,8 +52,10 @@ import numpy as np
 # (`runwrap.VIBRATION_COMPANIONS`).
 try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from structure import Structure as _Structure
 
 
 # SCHEMA_VERSION (incremented when the on-disk JSON shape changes):
@@ -81,7 +83,12 @@ SCHEMA_VERSION = 8   # 8: the SIESTA route's `engine_metadata` names its
 #                    `fc_range_engine_1based` (model/overview.md § 2.2a); a
 #                    v4-v7 file reads as before, its range read under v8's
 #                    name (`from_dict`).
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8})
+#: v9 (engines/vibration.md § 6.10): the result states its STRUCTURE whole
+#: (`Structure.to_dict()` of the equilibrium structure -- the geometry, the
+#: box, the labels, the held atoms); `structure_hash`, `frozen_atom_idxs`
+#: and `equilibrium.elements` / `positions_ang` are read from a v4-v8 file,
+#: never written; the reader serves the v9 shape for every file.
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -177,7 +184,8 @@ _EQUILIBRIUM_KEYS = frozenset({
 _RESULTS_KEYS = frozenset({
     "schema_version", "engine", "engine_version", "molbuilder_version",
     "timestamp", "structure_hash", "n_atoms_total", "free_atom_idxs",
-    "frozen_atom_idxs", "equilibrium", "modes", "selected_mode_idxs_1based",
+    "frozen_atom_idxs", "structure", "equilibrium", "modes",
+    "selected_mode_idxs_1based",
     "config", "methods_text", "bibliography_keys", "phase_frequencies",
     "phase_relaxation", "relaxation", "thermo", "removed_motions",
     "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
@@ -586,7 +594,9 @@ class SpectraResults:
     molbuilder_version:   str
     timestamp:            str                    # ISO-8601 UTC
 
-    structure_hash:       str                    # structure_hash_text
+    #: v4-v8's pin of the geometry (`sidecars.spectra.structure_hash_text`),
+    #: read from such a file, never written since v9: the structure is stated.
+    structure_hash:       Optional[str]
     n_atoms_total:        int
     free_atom_idxs:       List[int]              # 0-based, complement of frozen
     frozen_atom_idxs:      List[int]              # 0-based
@@ -729,6 +739,14 @@ class SpectraResults:
     # missing keys).
     runtime_info:              Dict[str, Any] = field(default_factory=dict)
 
+    #: v9: THE STRUCTURE, WHOLE -- `Structure.to_dict()` of the equilibrium
+    #: structure (engines/vibration.md § 6.10): the geometry the Hessian is
+    #: taken at, its box, its labels, the held atoms as `frozen_atoms`.  A
+    #: v4-v8 file's is built from its old keys on read -- elements,
+    #: coordinates, the held list; no box, no other label: stated absent,
+    #: never invented.  ``None`` only while a PySCF run has no geometry yet.
+    structure:                 Optional[Dict[str, Any]] = None
+
     __eq__ = _no_equality
 
     def __post_init__(self):
@@ -821,6 +839,33 @@ class SpectraResults:
                 f"SpectraResults.phase_ir={self.phase_ir!r} is not a valid "
                 f"phase status; expected one of {_VALID_PHASE_STATES}, or "
                 f"'' for a file written before the flag")
+        # THE STRUCTURE, WHOLE (v9, § 6.10): stated, it IS the geometry --
+        # the file's own count, held list and coordinates are checked
+        # against it (§ 6.6).  A file before v9 states its geometry under
+        # `equilibrium`; the structure it emits is built from that on the
+        # way out (:meth:`structure_stated`).
+        if self.structure is not None:
+            s = _Structure.from_dict(self.structure)
+            if s.n_atoms != int(self.n_atoms_total):
+                raise ValueError(
+                    f"SpectraResults: the structure holds {s.n_atoms} atoms "
+                    f"and n_atoms_total says {self.n_atoms_total}")
+            held = sorted(int(i) for i in
+                          (s.regions or {}).get("frozen_atoms", ()))
+            if held != sorted(frozen_set):
+                raise ValueError(
+                    f"SpectraResults: the structure holds {held} as "
+                    f"frozen_atoms and the file states {sorted(frozen_set)}")
+            pos = np.asarray(s.positions, dtype=float)
+            if self.equilibrium_elements is None:
+                self.equilibrium_elements = list(s.elements)
+                self.equilibrium_positions_ang = pos
+            elif (list(self.equilibrium_elements) != list(s.elements)
+                  or not np.allclose(self.equilibrium_positions_ang, pos,
+                                     rtol=0.0, atol=1e-9)):
+                raise ValueError(
+                    "SpectraResults: the structure and the equilibrium "
+                    "geometry disagree")
         # Equilibrium geometry (optional).  When both elements and
         # positions are supplied, validate shape + count match.
         if self.equilibrium_elements is not None or self.equilibrium_positions_ang is not None:
@@ -877,6 +922,16 @@ class SpectraResults:
                 f"its geometry without its masses -- equilibrium.masses_amu "
                 f"travels with it (engines/vibration.md 6.2)")
 
+        # THE HESSIAN'S SCOPE, stated and checked (§ 6.6): `free` holds the
+        # free atoms' count, `all` every atom's.
+        if self.n_atoms_in_hessian is not None and self.hessian_scope:
+            want = {"free": len(free_set), "all": n}.get(self.hessian_scope)
+            if want is not None and int(self.n_atoms_in_hessian) != want:
+                raise ValueError(
+                    f"SpectraResults: hessian_scope {self.hessian_scope!r} "
+                    f"holds {want} atoms, and n_atoms_in_hessian says "
+                    f"{self.n_atoms_in_hessian}")
+
         # Cross-mode shape consistency.  Allow the empty-modes case
         # (in-progress write before phase 2 -- no harmonic analysis yet).
         if self.modes:
@@ -914,7 +969,25 @@ class SpectraResults:
         (`spectra.derived`, `engines/vibration.md` § 6.6)."""
         return with_derived([m.to_dict() for m in self.modes])
 
+    def structure_stated(self) -> Optional[Dict[str, Any]]:
+        """THE STRUCTURE THE RESULT STATES (v9, § 6.10): the one it was read
+        with, or -- a file before v9, or one built in memory -- the one its
+        equilibrium geometry and held list make (`Structure.to_dict()`: no
+        box, no other label -- stated absent, never invented); ``None``
+        before any geometry exists (§ 4.9)."""
+        if self.structure is not None:
+            return dict(self.structure)
+        if self.equilibrium_elements is None:
+            return None
+        held = sorted(int(i) for i in self.frozen_atom_idxs)
+        s = _Structure(elements=list(self.equilibrium_elements),
+                       positions=np.asarray(self.equilibrium_positions_ang,
+                                            dtype=float),
+                       regions=({"frozen_atoms": held} if held else {}))
+        return s.to_dict()
+
     def to_dict(self) -> Dict[str, Any]:
+        structure = self.structure_stated()
         return {
             "schema_version":       int(self.schema_version),
             "engine":               str(self.engine),
@@ -922,10 +995,15 @@ class SpectraResults:
             "molbuilder_version":   str(self.molbuilder_version),
             "timestamp":            str(self.timestamp),
 
-            "structure_hash":       str(self.structure_hash),
             "n_atoms_total":        int(self.n_atoms_total),
             "free_atom_idxs":       [int(i) for i in self.free_atom_idxs],
-            "frozen_atom_idxs":      [int(i) for i in self.frozen_atom_idxs],
+            # THE HELD ATOMS, stated once: the structure's `frozen_atoms`
+            # label where the structure is stated (v9); as their own list
+            # in a file written before any geometry exists (§ 6.10.2) --
+            # never derived from the count.
+            **({"structure": structure} if structure is not None
+               else {"frozen_atom_idxs":
+                     [int(i) for i in self.frozen_atom_idxs]}),
 
             "equilibrium": {
                 "scf_energy_eh":     (None if self.equilibrium_scf_eh is None
@@ -934,12 +1012,8 @@ class SpectraResults:
                                       else self.equilibrium_mo_energies_eh.tolist()),
                 "homo_idx":          (None if self.equilibrium_homo_idx is None
                                       else int(self.equilibrium_homo_idx)),
-                # Optional geometry; emitted only when present so
-                # older readers ignore the missing keys cleanly.
-                **({"elements":      [str(e) for e in self.equilibrium_elements]}
-                   if self.equilibrium_elements is not None else {}),
-                **({"positions_ang": self.equilibrium_positions_ang.tolist()}
-                   if self.equilibrium_positions_ang is not None else {}),
+                # THE MASSES THE MODES ARE WEIGHTED BY stay the analysis's
+                # own, beside the structure (§ 6.10.1).
                 **({"masses_amu":    self.equilibrium_masses_amu.tolist()}
                    if self.equilibrium_masses_amu is not None else {}),
             },
@@ -1005,6 +1079,22 @@ class SpectraResults:
             meta["fc_range_engine_1based"] = meta.pop("fc_range_1based")
         eq = d["equilibrium"]
         _refuse_unknown_keys(eq, _EQUILIBRIUM_KEYS, "SpectraResults.equilibrium")
+        # THE HELD ATOMS: a v9 file states them in its structure's
+        # `frozen_atoms` label, or -- written before any geometry exists
+        # (§ 6.10.2) -- as `frozen_atom_idxs`, which is also where a file
+        # before v9 states them.  Stated nowhere, the file is refused: the
+        # held set is never derived from the count.
+        structure = d.get("structure")
+        if "frozen_atom_idxs" in d:
+            frozen = [int(i) for i in d["frozen_atom_idxs"]]
+        elif isinstance(structure, dict):
+            frozen = sorted(int(i) for i in (
+                ((structure.get("metadata") or {}).get("regions") or {})
+                .get("frozen_atoms") or ()))
+        else:
+            raise ValueError(
+                "SpectraResults: neither a structure nor frozen_atom_idxs "
+                "states which atoms were held (engines/vibration.md 6.10.2)")
         # THE DERIVED VALUES A v7 FILE STATES ARE ITS INPUTS' (§ 6.6): each
         # computed again by the one derivation, and a file stating another
         # is refused by name.  A file before v7 states them or not; they are
@@ -1025,10 +1115,13 @@ class SpectraResults:
             molbuilder_version   = str(d["molbuilder_version"]),
             timestamp            = str(d["timestamp"]),
 
-            structure_hash       = str(d["structure_hash"]),
+            structure_hash       = (None if d.get("structure_hash") is None
+                                    else str(d["structure_hash"])),
             n_atoms_total        = int(d["n_atoms_total"]),
             free_atom_idxs       = [int(i) for i in d["free_atom_idxs"]],
-            frozen_atom_idxs      = [int(i) for i in d["frozen_atom_idxs"]],
+            frozen_atom_idxs      = frozen,
+            structure            = (dict(structure) if isinstance(structure, dict)
+                                    else None),
 
             equilibrium_scf_eh         = (None if eq.get("scf_energy_eh") is None
                                           else float(eq["scf_energy_eh"])),

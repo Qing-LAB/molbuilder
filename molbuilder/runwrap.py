@@ -22,7 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tuple
 
-from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
+from .diagnostics import get_capabilities
+from .runfiles import (RANK_LAUNCHER, RUN_COUNTER_GLOB, deck_roles,
+                       engine_of_role)
 # The channel-name rule, from the module that owns the file those names
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
@@ -136,7 +138,21 @@ def _stdout_role_for(deck_suffix: str) -> str:
 #: them as it runs (`runfiles.RunNames.template`): the run's number `launch`
 #: gave it (``--run N``), and its own start's stamp, in the shape the
 #: catalogue declares for the field (`runfiles.FIELDS["stamp"]`).
-_BASH_FILLS = {"run": "${_run_n}", "stamp": "$(date +%Y%m%d-%H%M%S)"}
+_BASH_FILLS = {"run": "${_run_n}", "stamp": "$(date +%Y%m%d-%H%M%S)",
+               "pid": "$$"}
+
+
+def _bash_fill(name: str) -> str:
+    """A catalogue template -- a stage's name (`RunNames.template`) or a
+    fixed-name row's (`runfiles.RANK_LAUNCHER`) -- as the run script spells
+    it: each field filled by its run-time value."""
+    unfilled = set(re.findall(r"\{([a-z_]+)\}", name)) - set(_BASH_FILLS)
+    if unfilled:
+        raise WrapperError(f"{name!r}: the run script has no value for "
+                           f"{', '.join(sorted(unfilled))}.")
+    for field, value in _BASH_FILLS.items():
+        name = name.replace("{" + field + "}", value)
+    return name
 
 
 def _bash_name(names, role: str) -> str:
@@ -144,14 +160,7 @@ def _bash_name(names, role: str) -> str:
     template (`runfiles.RunNames`), each placeholder filled by its run-time
     value -- so the script names every file of its run as the catalogue
     does, and composes none itself."""
-    out = names.template(role)
-    unfilled = set(re.findall(r"\{([a-z_]+)\}", out)) - set(_BASH_FILLS)
-    if unfilled:
-        raise WrapperError(f"{role!r} is named {out!r}: the run script has "
-                           f"no value for {', '.join(sorted(unfilled))}.")
-    for field, value in _BASH_FILLS.items():
-        out = out.replace("{" + field + "}", value)
-    return out
+    return _bash_fill(names.template(role))
 
 
 def _last_run_block(names) -> str:
@@ -162,8 +171,7 @@ def _last_run_block(names) -> str:
     calculation's folder; a run in a folder of its own needs none."""
     if not names.shared:
         return ""
-    role = ".concluded"
-    run = _bash_name(names, role)[:-len(role)]      # the run's own name
+    run = _bash_fill(names.run_template())          # the run's own name
     rec = names.name(".last-run")
     return (
         "# THE LAST RUN IN THIS FOLDER, said as its engine starts\n"
@@ -707,7 +715,7 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
         f"            # A RUN'S OWN FILES, named with its number, are kept:\n"
         f"            # every run is (job-system.md, What molbuilder does\n"
         f"            # for you, 2).\n"
-        f"            *-run[0-9]*) continue ;;\n"
+        f"            *{RUN_COUNTER_GLOB}) continue ;;\n"
         f"            # THIS STAGE'S names are swept; ANOTHER STAGE'S, which\n"
         f"            # share the flat layout's folder, never.\n"
         f"            {basename}.*|{basename}_*) ;;\n"
@@ -1238,7 +1246,7 @@ def _gpu_per_rank_launcher_block() -> str:
     the robust idiom.
     """
     return (
-        '_rank_helper=".mb-rank-launch-$$.sh"\n'
+        f'_rank_helper="{_bash_fill(RANK_LAUNCHER)}"\n'
         "cat > \"$_rank_helper\" <<'HELPEREOF'\n"
         '#!/bin/bash\n'
         '_lr=${OMPI_COMM_WORLD_LOCAL_RANK:-${PMIX_RANK:-0}}\n'
@@ -1948,12 +1956,13 @@ def render_run_wrapper(script_path: Path, *,
             raise WrapperError(f"notify report field: {why[0]}")
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
-    category = EXTENSION_TO_CATEGORY.get(suffix)
+    # THE DECK'S ENGINE is the catalogue's answer (`runfiles.engine_of_role`).
+    category = engine_of_role(suffix)
     if category is None:
         raise WrapperError(
             f"`{script_path.name}`: unsupported script extension "
             f"`{suffix}`.  Supported: "
-            f"{', '.join(sorted(EXTENSION_TO_CATEGORY))}."
+            f"{', '.join(sorted(deck_roles()))}."
         )
     # A FINISH THE LAUNCHER CANNOT HONOUR IS REFUSED, never dropped: a job
     # told to finish that ran without finishing would conclude rc=0 with no
@@ -3880,6 +3889,9 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
     "end_lines.py":            "molbuilder.pyscf.end_lines",
     "atom_permutation.py":     "molbuilder.atom_permutation",
+    # THE STRUCTURE, WHOLE, in the result (engines/vibration.md § 6.10): the
+    # result type builds and checks it through the one serialiser.
+    "structure.py":            "molbuilder.structure",
     "engine_atom_index.py":    "molbuilder.engine_atom_index",
     "wrapper_log.py":          "molbuilder.wrapper_log",
     "runfiles.py":             "molbuilder.runfiles",
@@ -4002,7 +4014,7 @@ def bundles_for(script, finish: Optional[str] = None
     out = [(MONITOR_BUNDLE, monitor_bundle)]
     if finish is not None:
         out.append((finish, _FINISH_BUNDLES[finish]))
-    if EXTENSION_TO_CATEGORY.get(Path(script).suffix.lower()) == "pyscf":
+    if engine_of_role(Path(script).suffix.lower()) == "pyscf":
         out.append((PYSCF_BUNDLE, pyscf_bundle))
     return tuple(out)
 

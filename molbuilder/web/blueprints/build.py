@@ -1055,13 +1055,32 @@ def api_task_setup_handover():
     # findings for the tab to put beside the field.  The sender names the
     # folder (`dest`); a caller that names none is asked about the library
     # alone, as the live check is.
+    # THE FOLDER'S RULES ARE THE SERVER'S, as the transport describe door's
+    # are (`engines/transport.md` § 3.8.2a): a calculation lives under a
+    # topic -- project / topic / its folder, three levels inside the picker's
+    # root (`job-contracts.md` § 2.5; the file layer's one depth door,
+    # `files._depth_inside_root`) -- and one calculation per folder
+    # (`describe.refuse_described`, the rule `jobset init` asks).  A sender
+    # that names no folder is answered about the library alone.
+    dest_dir = None
+    if body.get("dest"):
+        from molbuilder.describe import DescribeError, refuse_described
+        from .files import _depth_inside_root
+        try:
+            dest_dir = _resolve_within_roots(str(body["dest"]))
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
+        depth = _depth_inside_root(dest_dir)
+        if depth is None or depth < 3:
+            return jsonify({"ok": False, "error": (
+                "That folder is too high in the tree -- a calculation lives "
+                "under a topic (projects / project / topic / your folder). "
+                "Pick or make one further down in the sidebar.")}), 400
+        try:
+            refuse_described(dest_dir, shown=str(body["dest"]))
+        except DescribeError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
     if engine == "siesta":
-        dest_dir = None
-        if body.get("dest"):
-            try:
-                dest_dir = _resolve_within_roots(str(body["dest"]))
-            except _PickerError as exc:
-                return jsonify({"ok": False, "error": exc.message}), exc.status
         from molbuilder.validation.siesta import pseudopotential_findings
         psml = pseudopotential_findings(struct, cfg, calculation=calculation,
                                         dest_dir=dest_dir)
@@ -1219,6 +1238,10 @@ def api_task_setup_handover():
         "template_text": template_text,
         "handover_name": TASK_HANDOVER_NAME,
         "handover_text": json.dumps(handover, indent=2) + "\n",
+        # A hand-over already in the folder is replaced by this one -- said,
+        # so the page can say it.
+        "handover_here": bool(dest_dir is not None
+                              and (dest_dir / TASK_HANDOVER_NAME).is_file()),
         # Each entry is a file as it would exist on disk, under the name it
         # would exist as -- nothing is left for the browser to work out.
         "structure_files": structure_files,
@@ -2204,6 +2227,9 @@ def api_task_setup_folder():
                  else "handover" if handover is not None else "empty"),
         "description": described,
         "handover": handover,
+        # THE TWO FILES' NAMES, said here so the page spells neither.
+        "task_name": TASK_FILENAME,
+        "handover_name": TASK_HANDOVER_NAME,
         # WHICH FILES ARE HERE -- names only.  The "what gets written" card
         # asks *is the file this description names actually present*, which
         # is a fact about the folder and belongs in the folder's answer.

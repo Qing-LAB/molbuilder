@@ -2385,12 +2385,12 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     if kind == "bench":
         # EACH SHELF AS ITS HEADER CARRIES IT, read back from the text the
         # plan holds (`Directives.lines_of`), in the order they are sent.
-        from ..runfiles import LAUNCH_DIR
+        from ..runfiles import LAUNCH_DIR, role_of
         from ..scheduler.emit import Directives
         shelf_dir = resolved.record_dir(base) / LAUNCH_DIR
         out.shelves = []
         for w in plan.writes():
-            if w.parent == shelf_dir and w.suffix == ".sbatch":
+            if w.parent == shelf_dir and role_of(w.name) == ".sbatch":
                 lines = Directives.lines_of(plan.read_text(w),
                                             environment.kind)
                 out.shelves.append({"name": w.stem, "header": lines,

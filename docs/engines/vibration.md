@@ -2320,7 +2320,7 @@ count.
 |---|---|
 | `structure_hash` | **retired** — read in a v4–v8 file, never written; the structure is stated instead |
 | `equilibrium.elements` · `equilibrium.positions_ang` | the structure's elements and coordinates |
-| `frozen_atom_idxs` | the structure's `frozen_atoms` label |
+| `frozen_atom_idxs` | the structure's `frozen_atoms` label, once the structure is stated; **its own key until then** — a file written before any geometry exists (below) states its held atoms as this list, as every file before v9 does. The held set is stated, never derived from the count |
 | `n_atoms_total` · `free_atom_idxs` · `n_atoms_in_hessian` · `hessian_scope` | **stated and checked** (§ 6.6): the structure's atom count; the complement of its held label in ascending order — the order of every mode's eigenvector rows; the count of free atoms on the reduced route; `free` when atoms are held. A file whose stated value disagrees with its structure is refused (§ 6.7) |
 | `equilibrium.masses_amu` | **kept**, beside the structure (§ 1) |
 
@@ -2328,6 +2328,8 @@ count.
 (§ 4.9); `structure` appears with the first write that knows the geometry
 the Hessian is taken at, and the checked values are checked from then on —
 exactly as `equilibrium.positions_ang` and `masses_amu` travel today (§ 6.7).
+Until then the file carries `frozen_atom_idxs`, and a file stating neither is
+refused.
 
 **The reader serves one shape.** `SpectraResults` reads both shapes and
 answers with one: `to_dict()` emits the v9 shape for every file, a v4–v8

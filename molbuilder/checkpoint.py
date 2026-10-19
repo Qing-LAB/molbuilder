@@ -50,6 +50,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .jobset.model import FILENAME as _JOBSET_FILENAME
 from .task import FILENAME as _TASK_FILENAME
+from .runfiles import GITIGNORE_FILE, SNAPSHOT_DIR
 
 
 # --------------------------------------------------------------------- #
@@ -57,14 +58,9 @@ from .task import FILENAME as _TASK_FILENAME
 #  Contract: checkpointing.md § 3, S1, S1a, S1b, S1c                    #
 # --------------------------------------------------------------------- #
 
-#: Where the archive lives, one directory per distinct content (§ 3).
-#:
-#: **DO NOT RENAME THIS TO MATCH THE TOOL'S NAME** (user's ruling).  The
-#: tool is `molbuilder checkpoint` everywhere a person types it; the directory sits
-#: inside calculation folders that already exist, and renaming it orphans
-#: real archives -- whole copies of large files -- to no one's benefit.  A
-#: verb someone types is the tool's name; a directory on disk is the data's.
-ARCHIVE_DIR = ".binsnapshots"
+#: Where the archive lives, one directory per distinct content (§ 3) -- the
+#: catalogue's name (`runfiles.SNAPSHOT_DIR`, and the ruling beside it).
+ARCHIVE_DIR = SNAPSHOT_DIR
 
 #: The only two paths that are never stored (S1).  Not a policy about worth --
 #: a store cannot contain itself, and that is the entire list.  Anything else
@@ -161,7 +157,7 @@ def write_gitignore(root: Path, always_large=()) -> None:
     nothing. Two savers write identical bytes here, so the race has no wrong
     *content* to reach; it had a wrong *moment*.
     """
-    gi = root / ".gitignore"
+    gi = root / GITIGNORE_FILE
     body = render_gitignore(always_large)
     if not gi.exists():
         _atomic_write_bytes(gi, body.encode("utf-8"), tmp_dir=root / ".git")
@@ -184,7 +180,7 @@ def gitignore_is_current(root: Path, always_large=()) -> bool:
     stored digest could not catch an edit that rode into a save, because the
     save would hash whatever it found and bless it.
     """
-    gi = root / ".gitignore"
+    gi = root / GITIGNORE_FILE
     if not gi.is_file():
         return False
     text = gi.read_text(encoding="utf-8")

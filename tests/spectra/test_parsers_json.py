@@ -758,8 +758,10 @@ class TestGeometryRoundTrip:
     these keys still loads."""
 
     def test_geometry_round_trips(self, tmp_path):
-        """SCIENCE-ADJACENT. The optional `equilibrium.elements` + `positions_ang`
-        survive the round trip, and appear under `equilibrium` on the wire.
+        """SCIENCE-ADJACENT. The optional geometry survives the round trip,
+        and appears on the wire as the result's `structure`
+        (`engines/vibration.md` § 6.10.2) -- a result built in memory from
+        its equilibrium geometry and held list emits the v9 shape.
 
         Catches the geometry the modes belong TO being dropped. An eigenvector is
         a displacement of specific atoms at specific places; without the elements
@@ -785,10 +787,12 @@ class TestGeometryRoundTrip:
         results.__post_init__()
         p = tmp_path / "geom.spectra.json"
         dump_spectra_json(results, p)
-        # Wire form has the new keys under equilibrium.
+        # Wire form: the structure, whole; the geometry nowhere else.
         raw = json.loads(p.read_text())
-        assert "elements"      in raw["equilibrium"]
-        assert "positions_ang" in raw["equilibrium"]
+        assert raw["structure"]["elements"] == ["O", "H"]
+        assert len(raw["structure"]["positions"]) == 2
+        assert "elements" not in raw["equilibrium"]
+        assert "frozen_atom_idxs" not in raw
         # Round-trip.
         loaded = parse_spectra_json(p)
         assert loaded.equilibrium_elements == ["O", "H"]
@@ -953,7 +957,8 @@ class TestComprehensiveRoundTrip:
         assert loaded.engine_version          == original.engine_version
         assert loaded.molbuilder_version      == original.molbuilder_version
         assert loaded.timestamp               == original.timestamp
-        assert loaded.structure_hash          == original.structure_hash
+        # No `structure_hash`: read from a v4-v8 file, never written since
+        # v9 (`engines/vibration.md` § 6.10.2).
         assert loaded.n_atoms_total           == original.n_atoms_total
         assert loaded.free_atom_idxs          == original.free_atom_idxs
         assert loaded.frozen_atom_idxs         == original.frozen_atom_idxs

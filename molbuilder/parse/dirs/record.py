@@ -240,7 +240,8 @@ class Contributor:
 
 
 def tbtrans_loop(out: Optional[Path], *, over: bool,
-                    head: Optional[str] = None) -> Dict[str, Any]:
+                    head: Optional[str] = None,
+                    now: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """TBtrans's account of its loop, as its output states it --
     ``{progress, estimated_at}`` (`model/parse.md` § 5d.1b, § 5d.5): the loop
     in its one sentence (`tbtrans.loop_words`), said as over or not by the
@@ -253,21 +254,23 @@ def tbtrans_loop(out: Optional[Path], *, over: bool,
     Read whole, through the family's one read (`siesta_reader.read_output`):
     a TBtrans output is its loop's own account, a line every
     ``TBT.Progress`` per cent, and a tail could miss a pass's start or its
-    end."""
+    end.  A caller that has read the output already hands its reading over
+    as ``now`` (`SiestaReader.now`), and it is not read again."""
     from ..engines import siesta_grammar as _G
     from ..engines.siesta_reader import read_output
     from ..engines.tbtrans import loop_words
     from .job import _iso_z
     if out is None:
         return {}
-    if head is None:
-        head = _read(out, head=_BUILD_HEADER)
-    if _G.program_of(head.splitlines()) != "tbtrans":
-        return {}
-    try:
-        now = read_output(out).now()
-    except OSError:
-        return {}
+    if now is None:
+        if head is None:
+            head = _read(out, head=_BUILD_HEADER)
+        if _G.program_of(head.splitlines()) != "tbtrans":
+            return {}
+        try:
+            now = read_output(out).now()
+        except OSError:
+            return {}
     said = loop_words(now.get("tbtrans"), over=over)
     if not said:
         return {}

@@ -47,6 +47,11 @@ import numpy as np
 SWEEP_SCHEMA = "molbuilder/fc-displacement-sweep@2"
 
 
+#: How far one atom may sit from the reference stage's for the two to be
+#: one geometry (`engines/vibration.md` § 6.10.3).
+SAME_GEOMETRY_ANG = 1e-6
+
+
 class SweepError(Exception):
     """A sweep that cannot be summarized -- the message names what to run or
     describe first, ready to surface verbatim."""
@@ -280,23 +285,26 @@ def collect_sweep(base_dir, task, *,
                 f"(free atom indices {list(ref.free_atom_idxs)} against "
                 f"{list(res.free_atom_idxs)}): not one calculation's sweep")
         # ONE GEOMETRY, or the comparison is not a displacement's: each
-        # result's structure hash pins the geometry its force constants were
-        # taken at (`engines/vibration.md` § 6.2), and each stage took the
-        # relax stage's NEWEST attempt when it was prepared (§ 5.2a) -- so a
+        # result states the geometry its force constants were taken at
+        # (`engines/vibration.md` § 6.10.3), and each stage took the relax
+        # stage's NEWEST attempt when it was prepared (§ 5.2a) -- so a
         # relaxation re-run between two stages would be reported as the
-        # displacement's effect.
-        if res.structure_hash != ref.structure_hash:
-            moved = ""
-            if (res.equilibrium_positions_ang is not None
-                    and ref.equilibrium_positions_ang is not None):
-                d = np.linalg.norm(
-                    np.asarray(res.equilibrium_positions_ang, float)
-                    - np.asarray(ref.equilibrium_positions_ang, float),
-                    axis=1)
-                moved = f"; an atom moved {float(d.max()):.2e} Å between them"
+        # displacement's effect.  Every atom within SAME_GEOMETRY_ANG of the
+        # reference's: the stages copy one relax output, so they agree
+        # exactly, and the tolerance absorbs the two files' float formatting.
+        moved = None
+        if (res.equilibrium_positions_ang is not None
+                and ref.equilibrium_positions_ang is not None):
+            d = np.linalg.norm(
+                np.asarray(res.equilibrium_positions_ang, float)
+                - np.asarray(ref.equilibrium_positions_ang, float), axis=1)
+            moved = float(d.max())
+        if moved is None or moved > SAME_GEOMETRY_ANG:
+            where = (f"an atom moved {moved:.2e} Å between them" if moved
+                     is not None else "one of them states no geometry")
             raise SweepError(
                 f"stages {ref_name!r} and {name!r} were measured at different "
-                f"geometries (their results' structure hashes differ{moved}): "
+                f"geometries ({where}): "
                 f"a displacement sweep compares one geometry's force "
                 f"constants, and this would report the geometry's change as "
                 f"the displacement's.  Each force-constant stage takes the "

@@ -20,7 +20,6 @@ from unittest.mock import MagicMock
 
 from molbuilder import diagnostics
 from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
-                                      EXTENSION_TO_CATEGORY,
                                       TOOL_TO_CATEGORY, detect,
                                       get_capabilities, initialize,
                                       set_capabilities)
@@ -55,8 +54,11 @@ def test_every_tool_routes_to_a_known_category():
     assert set(TOOL_TO_CATEGORY.values()) <= set(DEFAULT_ENV_NAMES)
 
 
-def test_every_extension_routes_to_a_known_category():
-    assert set(EXTENSION_TO_CATEGORY.values()) <= set(DEFAULT_ENV_NAMES)
+def test_every_engine_the_catalogue_names_has_an_env():
+    """A deck's engine is the catalogue's answer (`runfiles.engine_of_role`),
+    and the run script needs an env for it."""
+    from molbuilder.runfiles import engines
+    assert set(engines()) <= set(DEFAULT_ENV_NAMES)
 
 
 def test_known_tools_present():
@@ -65,8 +67,6 @@ def test_known_tools_present():
     assert TOOL_TO_CATEGORY["siesta"]     == "siesta"
     # playwright is NOT routed: browser E2E runs under the host env.
     assert "playwright" not in TOOL_TO_CATEGORY
-    assert EXTENSION_TO_CATEGORY[".fdf"]  == "siesta"
-    assert EXTENSION_TO_CATEGORY[".py"]   == "pyscf"
 
 
 # --------------------------------------------------------------------- #

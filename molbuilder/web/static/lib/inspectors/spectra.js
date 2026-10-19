@@ -44,13 +44,10 @@ import { mount as mountVibrationView } from "/static/lib/vibrationview/index.js"
         coreApiKey:     "spectraInspector",
         coreScriptDir:  "spectra",
         partialUrl:     "/partials/spectra-inspector",
-        // THE ROLE, when the server gave one -- `.spectra.json` is a
-        // `runfiles.WRITTEN` row, and spelling it here is the second
-        // home R-RO1 forbids.  The suffix survives as the fallback for
-        // a caller outside the Results tab.
-        match:          (file, meta) => (meta && meta.role)
-            ? meta.role === ".spectra.json"
-            : file.toLowerCase().endsWith(".spectra.json"),
+        // THE SERVER'S PARSE ANSWER (`runs._file_row`: `parser`), never a
+        // suffix spelled here (R-RO1).
+        match:          (file, meta) =>
+            !!(meta && meta.parser === "spectra-json"),
         resultCategory: (_file) => "Vibrational spectrum",
         // The one thing the core cannot reach for itself.
         provide:        { mountVibrationView: mountVibrationView },

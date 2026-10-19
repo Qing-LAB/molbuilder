@@ -191,10 +191,8 @@
         displayName: "Displacement sweep",
         isResult:    true,
         resultCategory: () => "Spectrum",
-        // THE ROLE, when the server gave one (see the spectra inspector).
-        match: (file, meta) => (meta && meta.role)
-            ? meta.role === ".fc-sweep.json"
-            : String(file).toLowerCase().endsWith(".fc-sweep.json"),
+        // THE SERVER'S PARSE ANSWER (see the spectra inspector).
+        match: (file, meta) => !!(meta && meta.parser === "fc-sweep-json"),
 
         mount(host, file, ctx) {
             let disposed = false;

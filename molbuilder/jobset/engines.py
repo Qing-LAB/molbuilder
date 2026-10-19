@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from ..pseudos import PSEUDO_DIRNAME
+from ..runfiles import deck_role
 from .errors import PrepError
 
 
@@ -281,7 +282,7 @@ def engine_seam(engine: str) -> EngineSeam:
         from ..siesta.input import spec_for as _siesta_spec
         from ..siesta.stages import traits_for, warm_for
         return EngineSeam(config_cls=SiestaConfig, spec_for=_siesta_spec,
-                          suffix=".fdf",
+                          suffix=deck_role("siesta"),
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, system_label=label),
                           warm_for=warm_for, traits_for=traits_for,
@@ -299,7 +300,7 @@ def engine_seam(engine: str) -> EngineSeam:
         # the calculation; and its script's own text instructs nothing to be
         # run beside it, so there is no promise to keep.
         return EngineSeam(config_cls=PySCFConfig, spec_for=_pyscf_spec,
-                          suffix=".py",
+                          suffix=deck_role("pyscf"),
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, job_name=label),
                           warm_for=_pyscf_warm, traits_for=_pyscf_traits)

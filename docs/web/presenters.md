@@ -126,11 +126,15 @@ no filename answer at all:
   ([`results.md`](?doc=web/results.md) § 2.3);
 - the **engine** is a fact about the run directory that no filename carries.
 
-It is **absent outside the Results tab** — nothing else holds a directory
-answer — and `engine: "unknown"` is the directory declining to name one, which
-reads the same as absent. Absence narrows what a presenter may claim; it does
-not license a guess. `trajectory` is the worked example: with `meta.engine` its
-heading reads *SIESTA optimization*, without it *Optimization* — the file is
+**A run's viewer claims nothing without it** (2026-10-18): `trajectory` reads
+the catalogue's role and nothing else, the sidecar viewers (`spectra`,
+`fc-sweep`, `bench-summary`, `transport`) the registry's `parser`; a file the
+directory answers nothing about is left to what its FORMAT says — a `.xyz` or
+`.pdb` is a geometry, the structure preview's, which no catalogue row names;
+a `.json` or `.log` the text pane's. No suffix read off a name stands in for
+the answer. `engine: "unknown"` is the directory declining to name one, which
+reads the same as an answer without an engine: `trajectory`'s heading reads
+*SIESTA optimization* with `meta.engine`, *Optimization* without — the file is
 still named for what it IS, and the engine is left unclaimed. Guessing it from
 the suffix is what filed most SIESTA runs under *PySCF optimization* while the
 plot title, which asked the server, said SIESTA (2026-09-04), and what labelled

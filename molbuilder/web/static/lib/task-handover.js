@@ -121,64 +121,13 @@
                 + "composite derives everything from that citation.");
             return;
         }
-        /* A CALCULATION LIVES UNDER A TOPIC (`job-contracts.md` § 2.5): the
-         * tree is project / topic / calculation, and the three levels above
-         * the calculation are organisational.  The file layer refuses only at
-         * the projects ROOT, so without this a Send into a bare project or topic
-         * folder would put a calculation where one may not live.
-         *
-         * Measured against the projects root rather than by counting slashes,
-         * because the root is configurable — `relativeToProjects` is the
-         * sidebar's own answer to "where am I". */
+        /* THE FOLDER'S RULES ARE THE DOOR'S -- a calculation lives under a
+         * topic, one calculation per folder (`job-contracts.md` § 2.5,
+         * § 2.1 Rule 1): both hand-over doors refuse (`/api/task-setup/
+         * handover`, `/api/transport/describe`), and their sentence is shown
+         * below.  `rel` is the sidebar's own words for the folder. */
         const rel = (typeof projects.relativeToProjects === "function")
             ? String(projects.relativeToProjects(dest) || "") : "";
-        const depth = rel.split("/").filter(Boolean).length;
-        if (depth < 3) {
-            say("warn",
-                "That folder is too high in the tree — a calculation lives "
-                + "under a topic (projects / project / topic / your folder). "
-                + "Pick or make one further down in the sidebar.");
-            return;
-        }
-
-        /* ONE CALCULATION PER FOLDER (`job-contracts.md` § 2.1 Rule 1) -- for a
-         * hand-over, whose bytes this module writes.  A transport describe
-         * is written by its server door, which refuses a described folder
-         * and one inside the citation itself, as `jobset init` does
-         * (`engines/transport.md` § 3.8.2a), so it is not asked here.
-         * Send writes with `overwrite: true`, so without this it would
-         * silently replace another calculation's template.  The check goes through the file
-         * layer like every other read -- `missingOk` makes "no description
-         * here" a 200 rather than a logged 404, which is the normal case.
-         * It lives on the side that chooses where to write. */
-        /* readFile never throws (projects/api.js: every failure is an
-         * {ok:false, error} envelope), so with missingOk a genuine
-         * absence is {ok:true, exists:false} and ok===false is ALWAYS a
-         * real failure -- a 403/500/network drop, and it refuses: a
-         * one-calculation-per-folder check that fails OPEN overwrites the folder
-         * it could not read. */
-        const prior = isTransport ? null
-            : await projects.readFile(dest + "/task.json",
-                                      { missingOk: true, signal: signal });
-        if (prior && prior.aborted) {
-            say("muted", "Cancelled — nothing written.");
-            return;
-        }
-        if (prior && prior.ok === false) {
-            say("error", "Could not check the folder for an existing "
-                + "description: " + (prior.error || "read failed")
-                + " — nothing was written.");
-            return;
-        }
-        if (prior && prior.exists !== false
-            && typeof prior.text === "string" && prior.text.trim()) {
-            say("error",
-                "That folder already holds a task.json — it is a described "
-                + "calculation. Sending here would overwrite it. Pick or "
-                + "make another folder in the sidebar; one calculation per "
-                + "folder.");
-            return;
-        }
 
         say("muted", isTransport ? "Describing…" : "Rendering…");
         const req = {
@@ -368,6 +317,8 @@
          * hazard wearing a URL. */
         say("ok", "Wrote " + written.join(" and ")
             + " into " + (rel || "the selected folder")
+            + (out.handover_here
+               ? " — replacing the hand-over that was there" : "")
             + ".  Next: open Task setup and pick this folder — it asks for "
             + "the shape and the stages, which this hand-over leaves out on "
             + "purpose, and writes task.json when you save.");

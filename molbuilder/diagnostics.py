@@ -82,13 +82,6 @@ TOOL_TO_CATEGORY: Mapping[str, str] = {
     "antechamber": "mdtools",
 }
 
-# Script file extension -> category.  Used by the run-wrapper emitter
-# to pick which env a ``.fdf`` or ``.py`` script should execute in.
-EXTENSION_TO_CATEGORY: Mapping[str, str] = {
-    ".fdf": "siesta",
-    ".py":  "pyscf",
-}
-
 
 # --------------------------------------------------------------------- #
 #  Capabilities snapshot                                                #
@@ -571,7 +564,7 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
 
 
 __all__ = [
-    "DEFAULT_ENV_NAMES", "TOOL_TO_CATEGORY", "EXTENSION_TO_CATEGORY",
+    "DEFAULT_ENV_NAMES", "TOOL_TO_CATEGORY",
     "Capabilities",
     "detect", "initialize", "local_facts",
     "get_capabilities", "set_capabilities", "reset_capabilities",

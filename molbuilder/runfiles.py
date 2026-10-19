@@ -177,6 +177,22 @@ _FIELD_RE = re.compile(r"\{([a-z_]+)\}")
 #: kind; the kind spells only its placeholder.
 SCHEDULER_STDOUT = "{scheduler}.{jobid}.out"
 SCHEDULER_STDERR = "{scheduler}.{jobid}.err"
+#: The per-rank GPU launcher the run script writes beside the job, named on
+#: the script's own process id (`runwrap`), removed at its exit.
+RANK_LAUNCHER = ".mb-rank-launch-{pid}.sh"
+#: A SIESTA pseudopotential, named for its element (`fixed_name`).
+PSEUDO_FILE = "{element}.psml"
+#: The saved states' big files, by content (`checkpoint`), and the ignore
+#: list that sends them there.
+#:
+#: **DO NOT RENAME THE DIRECTORY TO MATCH THE TOOL'S NAME** (user's ruling).
+#: The tool is `molbuilder checkpoint` everywhere a person types it; the
+#: directory sits inside calculation folders that already exist, and
+#: renaming it orphans real archives -- whole copies of large files -- to no
+#: one's benefit.  A verb someone types is the tool's name; a directory on
+#: disk is the data's.
+SNAPSHOT_DIR = ".binsnapshots"
+GITIGNORE_FILE = ".gitignore"
 
 
 def _fields_in(role: str) -> "tuple[str, ...]":
@@ -1252,7 +1268,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=LEDGER_FILE, what="one line per decision of every verb",
              when="prep", level="calculation", kind="record",
              writer="every verb (`jobset.ledger.record`)"),
-    Artifact(name="{element}.psml",
+    Artifact(name=PSEUDO_FILE,
              what="a pseudopotential: the calculation's one copy in "
                   "`pseudos/`, and a real copy beside every deck — SIESTA "
                   "opens only its working directory",
@@ -1292,7 +1308,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "older one's order "
                     "(`transport.compose.write_compose_record`)",
              door="transport.compose.read_provenance"),
-    Artifact(name=".gitignore",
+    Artifact(name=GITIGNORE_FILE,
              what="which files the saved states keep by content in "
                   "`.binsnapshots/` rather than in git",
              when="setup", level="calculation", kind="record",
@@ -1304,7 +1320,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`checkpoint.save_before`, before every Save and prep and a "
                     "group's first launch",
              door="checkpoint.Repo"),
-    Artifact(name=".binsnapshots/",
+    Artifact(name=SNAPSHOT_DIR + "/",
              what="the big files of each saved state, by content",
              when="setup", level="calculation", kind="record",
              writer="`checkpoint.save_before`, before every Save and prep and a "
@@ -1370,7 +1386,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the scheduler, as the run's header asks (its kind's "
                     "`stderr`, `scheduler/kinds.toml`)",
              only="launched to a queue"),
-    Artifact(name=".mb-rank-launch-{pid}.sh",
+    Artifact(name=RANK_LAUNCHER,
              what="the per-rank GPU launcher",
              level="run", kind="transient",
              writer="the run script, removed when it exits",
@@ -1415,6 +1431,10 @@ ON_THE_LABEL: "tuple[Artifact, ...]" = tuple(a for a in WRITTEN if a.role)
 #: means the unindexed spelling; ``-run*`` the wrapper's.
 _ATTEMPT_GLOBS = {"never": ("",), "maybe": ("", "-run*"), "always": ("-run*",),
                   "shared": ("", "-run*")}
+
+#: A run counter as a shell glob (``-run[0-9]*``): what a name sweep over a
+#: label's files steps around (`runwrap`, ``--cold``).
+RUN_COUNTER_GLOB = f"-{QUALIFIERS[0]}[0-9]*"
 
 #: THE FIRST RUN IS ZERO -- the number `launch` gives a stage's first run
 #: (`runrecord.next_run`) -- so this is the real name the first launch
@@ -1576,6 +1596,12 @@ class RunNames:
         """``<label>_<stage>-run<N>`` -- the name every file of run ``run``
         carries (:func:`run_name`)."""
         return run_name(self.label, self.stage, run)
+
+    def run_template(self) -> str:
+        """:meth:`run_name` with :data:`RUN_FIELD` where the run's number
+        goes -- what a rendered script fills in when it runs."""
+        _role = ".concluded"
+        return self.template(_role)[:-len(_role)]
 
     def unnumbered(self, role: str) -> str:
         """``role``'s name carrying no run's number -- how a shared folder's
@@ -1739,6 +1765,15 @@ def deck_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
                  and (engine is None or a.engine == engine))
 
 
+def deck_role(engine: str) -> str:
+    """THE deck ``engine`` reads -- its one row (:func:`deck_roles`)."""
+    roles = deck_roles(engine)
+    if len(roles) != 1:
+        raise RunFileError(f"{engine!r}: {len(roles)} deck rows in the "
+                           f"catalogue, not one ({', '.join(roles)}).")
+    return roles[0]
+
+
 def prepared_roles() -> "tuple[str, ...]":
     """What every prepared run carries that says what it is -- each engine's
     deck (:func:`deck_roles`) and the run script beside it, both stating
@@ -1857,6 +1892,30 @@ def manifest(label: str, stage: Optional[str], *, shape: str,
                      "level": a.level,
                      "only": a.only})
     return rows
+
+
+def fixed_name(name: str, **fields) -> str:
+    """A file of the catalogue's FIXED-NAME family ``name`` -- a
+    :data:`WRITTEN` row's name with fields, as :data:`PSEUDO_FILE`
+    (``{element}.psml``) -- composed: every field filled, each checked
+    against its declared shape (:data:`FIELDS`).  The counterpart of
+    :func:`find_fixed`; a name no row writes is :class:`RunFileError`."""
+    if not any(a.name == name and not a.role for a in WRITTEN):
+        raise RunFileError(
+            f"fixed_name({name!r}): not a fixed name molbuilder's catalogue "
+            f"writes (`runfiles.WRITTEN`).")
+    wanted = _fields_in(name)
+    if set(wanted) != set(fields):
+        raise RunFileError(
+            f"fixed_name({name!r}) takes {', '.join(wanted) or 'no field'}; "
+            f"given {', '.join(sorted(fields)) or 'none'}.")
+    for k, v in fields.items():
+        if not re.fullmatch(FIELDS[k].shape, str(v)):
+            raise RunFileError(
+                f"{k}={v!r} does not match the declared shape "
+                f"{FIELDS[k].shape!r} for that field ({FIELDS[k].what}; "
+                f"e.g. {FIELDS[k].example}).")
+    return _FIELD_RE.sub(lambda m: str(fields[m.group(1)]), name)
 
 
 def find_fixed(directory, name: str) -> "list[tuple[Path, dict]]":

@@ -597,7 +597,8 @@ def _emit_initial_state() -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List[str]:
+def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
+                          names) -> List[str]:
     """Run the SCF at the input geometry; populate the
     equilibrium sub-dict of state and write the first JSON
     checkpoint."""
@@ -629,8 +630,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     # Newton wrap ride the EQUILIBRIUM mf only (render-time branches
     # on the config -- self-documenting in the emitted text).
     if getattr(cfg, "chkfile", False):
-        from .input import ROLE_CHK
-        out.append(f'mf.chkfile = _mb_outfile(JOB + "{ROLE_CHK}")')
+        from .input import ROLE_CHK, run_file_expr
+        out.append(f'mf.chkfile = _mb_outfile({run_file_expr(names, ROLE_CHK)})')
     if getattr(cfg, "scf_soscf", False):
         out.append("# Second-order SCF (engines/pyscf.md § 7): Newton solver;")
         out.append("# DIIS/damp stop applying under it, by design.")

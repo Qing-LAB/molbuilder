@@ -11,6 +11,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..issues import Issue
+from ..runfiles import PSEUDO_FILE, fixed_name
 from ..structure import Structure
 from .chemistry import check_species_labels
 from .sidecar import _check_frozen_atoms_consumed
@@ -224,7 +225,8 @@ def _psml_files(struct, cfg, *, dest_dir=None) -> dict:
             library = None     # a spelling the rule refuses: coverage says so
     found = psml_sources(getattr(struct, "elements", []) or [],
                          dest_dir=dest_dir, library=library)
-    return {el: d / f"{el}.psml" for el, d in found.items() if d is not None}
+    return {el: d / fixed_name(PSEUDO_FILE, element=el)
+            for el, d in found.items() if d is not None}
 
 
 def _declared_cutoff_ry(struct, cfg, *, dest_dir=None):

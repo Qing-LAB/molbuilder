@@ -151,12 +151,15 @@ class TestInspectorListenerTeardown:
     gone fires against a dead panel, on every later mount (`presenters.md`
     § 3, step 2)."""
 
-    @pytest.mark.parametrize("viewer,file,loads", [
-        ("structure", "water.xyz", True),
-        ("spectra", "job.spectra.json", False),
+    # THE DIRECTORY'S ANSWER rides every mount, as the page passes it
+    # (`/api/results/dir`: the file's parser); a geometry format needs none.
+    @pytest.mark.parametrize("viewer,file,meta,loads", [
+        ("structure", "water.xyz", None, True),
+        ("spectra", "job.spectra.json", {"parser": "spectra-json"}, False),
     ])
     def test_opening_a_viewer_again_and_again_leaves_what_once_left(
             self, page, flask_server, isolated_projects_root, viewer, file,
+            meta,
             loads):
         """Opening and closing a viewer any number of times leaves on the
         page what opening and closing it once left: the listeners on the
@@ -193,8 +196,8 @@ class TestInspectorListenerTeardown:
         page.goto(f"{flask_server}/results", wait_until="networkidle")
         page.wait_for_function(
             "(c) => { const r = (window.molbuilder || {}).inspectors;"
-            "  return !!r && (r.pick(c.file) || {}).name === c.viewer; }",
-            arg={"file": path, "viewer": viewer}, timeout=10000)
+            "  return !!r && (r.pick(c.file, c.meta) || {}).name === c.viewer; }",
+            arg={"file": path, "viewer": viewer, "meta": meta}, timeout=10000)
         page.wait_for_selector(".ps-entry, .ps-list-error, #ps-list.is-empty",
                                state="attached", timeout=10000)
         from support.leftovers import SPY, grew
@@ -210,7 +213,8 @@ class TestInspectorListenerTeardown:
                     window.molbuilder.constants.EVENT_INSPECTOR_READY,
                     (e) => resolve((e && e.detail) || {}), { once: true }));
                 const handle = reg.mount(host, c.file,
-                                         reg.createDefaultContext(host));
+                                         reg.createDefaultContext(host),
+                                         c.meta);
                 const said = await Promise.race([ended,
                     new Promise((r) => setTimeout(() => r(null), 8000))]);
                 handle.dispose();
@@ -231,7 +235,7 @@ class TestInspectorListenerTeardown:
             } finally {
                 spy.restore();
             }
-        }""", {"file": path, "times": 5, "loads": loads})
+        }""", {"file": path, "meta": meta, "times": 5, "loads": loads})
         assert "error" not in left, left
         assert not grew(left), (
             f"opening the {viewer} viewer five times left more on the page "
@@ -331,8 +335,11 @@ class TestInspectorListenerTeardown:
         """
         gone = isolated_projects_root_module / "gone"
         gone.mkdir(parents=True, exist_ok=True)
-        files = {"trajectory": str(gone / "vanished.molwatch.log"),
-                 "spectra": str(gone / "vanished.spectra.json")}
+        # Each with the directory's answer, as the page passes it.
+        files = {"trajectory": [str(gone / "vanished.molwatch.log"),
+                                {"role": ".molwatch.log"}],
+                 "spectra": [str(gone / "vanished.spectra.json"),
+                             {"parser": "spectra-json"}]}
         _open_results(page, flask_server)
         out = page.evaluate("""async (files) => {
             const C = window.molbuilder.constants;
@@ -341,12 +348,13 @@ class TestInspectorListenerTeardown:
             document.addEventListener(C.EVENT_INSPECTOR_READY, onReady);
             const reg = window.molbuilder.inspectors;
             const out = {};
-            for (const [name, file] of Object.entries(files)) {
+            for (const [name, [file, meta]] of Object.entries(files)) {
                 const host = document.createElement("div");
                 document.body.appendChild(host);
                 got.length = 0;
                 const t0 = performance.now();
-                const h = reg.mount(host, file, reg.createDefaultContext(host));
+                const h = reg.mount(host, file, reg.createDefaultContext(host),
+                                    meta);
                 for (let i = 0; i < 60; i += 1) {
                     if (got.some(d => d.inspector === name)) break;
                     await new Promise(r => setTimeout(r, 100));
@@ -402,7 +410,8 @@ class TestInspectorErrorCardRuntime:
             const host = document.getElementById("inspector-host");
             const reg  = window.molbuilder.inspectors;
             const ctx  = reg.createDefaultContext(host);
-            reg.mount(host, "/projects/foo/run.molwatch.log", ctx);
+            reg.mount(host, "/projects/foo/run.molwatch.log", ctx,
+                      { role: ".molwatch.log" });
         }""")
         # The adapter's .catch() handler renders the error card; wait
         # for it (the fetch + setHTML + DOM update is microtask-fast

@@ -594,15 +594,15 @@ class JobSet:
         (a flat stage's bench folder, a hierarchical one's)."""
         import json
         from ..persist import read_json
-        from ..runfiles import TASK_FILE
         from .commands import command
         path = Path(path)
         try:
             return cls.from_dict(json.loads(plan.read_text(path))
                                  if plan is not None else read_json(path))
         except WrittenBefore as exc:
-            calc = next((d for d in (path.parent, *list(path.parents)[1:3])
-                         if (d / TASK_FILE).is_file()), None)
+            # THE CALCULATION ROOT through its one door (`calcdirs.root_of`).
+            from ..calcdirs import root_of
+            calc = root_of(path.parent)
             way = (f"`{command('migrate', base=calc)}` rewrites it, every "
                    f"value kept and the old file beside the new"
                    if calc is not None else

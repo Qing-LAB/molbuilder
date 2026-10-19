@@ -170,18 +170,18 @@ def request_of(resources, *, one_process: bool):
 
 
 def one_process(engine) -> bool:
-    """Whether ``engine`` runs ONE process -- its deck's answer
-    (:func:`deck_runs_one_process`)."""
-    from .engines import engine_seam
-    return deck_runs_one_process(engine_seam(str(engine)).suffix)
+    """Whether ``engine`` runs ONE process -- PySCF, a Python script with
+    OpenMP threads -- so its request asks one task.  The one rule, asked by
+    an engine's name or by its deck (:func:`deck_runs_one_process`)."""
+    return str(engine) == "pyscf"
 
 
 def deck_runs_one_process(suffix: str) -> bool:
-    """Whether a deck of this suffix runs ONE process -- a Python script,
-    PySCF's, with OpenMP threads -- so its request asks one task.  The one
-    rule, asked by an engine's name (:func:`one_process`) or by its deck
-    (`runwrap`)."""
-    return str(suffix).lower() == ".py"
+    """:func:`one_process` for the engine whose deck ``suffix`` is -- the
+    catalogue's answer (`runfiles.engine_of_role`); a suffix no engine's
+    deck has runs more than one (`runwrap`)."""
+    from ..runfiles import engine_of_role
+    return one_process(engine_of_role(str(suffix).lower()))
 
 
 #: The values a run's placement records the source of -- its queue, wall

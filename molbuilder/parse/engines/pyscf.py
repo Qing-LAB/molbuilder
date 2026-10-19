@@ -17,24 +17,20 @@ Frame format::
 
 Energies are stored in Hartree on disk; we convert to eV (matches
 the SIESTA parser) so the energy plot is unit-consistent across
-formats.  geomeTRIC's ``_optim.xyz`` carries no per-frame forces;
-when the companion ``<prefix>.qdata`` is present we additionally pull
-the maximum force per step (Hartree/Bohr -> eV/Ang) + a constrained
-variant that masks out the atoms the run holds, as its progress log's
-``# frozen_atoms:`` line states them (SIESTA analog of
-``MD.MaxForceTol`` semantics).
+formats.  geomeTRIC's ``_optim.xyz`` carries no per-frame forces, and
+the deck asks geomeTRIC for no ``qdata`` file, so a PySCF frame states
+no force.
 """
 
 from __future__ import annotations
 
-import math
 import os
 
 from ..errors import ParseError
 from ...runfiles import compose as _rf_compose
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -48,13 +44,6 @@ from ._helpers import wrap_trajectory
 
 # Hartree -> eV
 from molbuilder.constants import HARTREE_EV as _HARTREE_TO_EV
-# Hartree/Bohr -> eV/Ang, the ASE convention.  The same forces are
-# converted by `trajectory_log.emitter` and the thresholds drawn over them
-# by `pyscf.input`, both with this one; deriving it here instead
-# (HARTREE_EV / BOHR_ANGSTROM) gives a number 0.36 ppm away, so a force
-# read back would not equal the force emitted.
-from molbuilder.constants import (
-    HARTREE_BOHR_EV_ANGSTROM_ASE as _HA_BOHR_TO_EV_ANG)
 
 
 _COMMENT_RE = re.compile(
@@ -242,87 +231,6 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     return out
 
 
-def _read_qdata_forces(
-    traj_path: str, n_frames: int, frozen=(),
-) -> Tuple[List[Optional[float]], List[Optional[float]]]:
-    """Read ``<prefix>.qdata{,.txt}`` and return per-step (max,
-    max_excluding_frozen) force magnitudes in eV/Ang.
-
-    The constrained variant exists because ``MD.MaxForceTol``-style
-    convergence thresholds apply to FREE atoms only — a forever-
-    pinned frozen atom keeps the unconstrained max above threshold
-    and the user can't tell when their run converged.  ``frozen`` is
-    the run's held atoms, as its own progress log states them
-    (:func:`_read_molwatch_metadata`); ``None`` for a step when it holds
-    none or the qdata entry is missing.
-    """
-    base, fname = os.path.split(traj_path)
-    stem = fname
-    if stem.endswith("_optim.xyz"):
-        stem = stem[: -len("_optim.xyz")]
-    candidates = [
-        os.path.join(base, f"{stem}.qdata.txt"),
-        os.path.join(base, f"{stem}.qdata"),
-    ]
-    qpath = next((p for p in candidates if os.path.isfile(p)), None)
-    if qpath is None:
-        return [None] * n_frames, [None] * n_frames
-
-    frozen_set = set(frozen or ())
-
-    max_forces:             List[Optional[float]] = []
-    max_forces_constrained: List[Optional[float]] = []
-    try:
-        with open(qpath, "r", errors="replace") as fh:
-            step_max:         Optional[float] = None
-            step_max_constr:  Optional[float] = None
-            in_frame = False
-            for raw in fh:
-                s = raw.strip()
-                if s.startswith("ENERGY"):
-                    if in_frame:
-                        max_forces.append(step_max)
-                        max_forces_constrained.append(step_max_constr)
-                    in_frame = True
-                    step_max = None
-                    step_max_constr = None
-                elif s.startswith("GRADIENT"):
-                    try:
-                        comps = [float(x) for x in s.split()[1:]]
-                    except ValueError:
-                        continue
-                    if len(comps) >= 3:
-                        per_atom = []
-                        for atom_idx, i in enumerate(
-                                range(0, len(comps) - 2, 3)):
-                            mag = math.sqrt(
-                                comps[i]**2 + comps[i+1]**2
-                                + comps[i+2]**2)
-                            per_atom.append((atom_idx, mag))
-                        if per_atom:
-                            step_max = max(
-                                m for _, m in per_atom
-                            ) * _HA_BOHR_TO_EV_ANG
-                            if frozen_set:
-                                free = [m for ai, m in per_atom
-                                        if ai not in frozen_set]
-                                if free:
-                                    step_max_constr = (
-                                        max(free) * _HA_BOHR_TO_EV_ANG)
-            if in_frame:
-                max_forces.append(step_max)
-                max_forces_constrained.append(step_max_constr)
-    except OSError:
-        return [None] * n_frames, [None] * n_frames
-
-    if len(max_forces) < n_frames:
-        max_forces.extend([None] * (n_frames - len(max_forces)))
-    if len(max_forces_constrained) < n_frames:
-        max_forces_constrained.extend(
-            [None] * (n_frames - len(max_forces_constrained)))
-    return max_forces[:n_frames], max_forces_constrained[:n_frames]
-
-
 def _read_scf_history(
     traj_path: str,
 ) -> List[List[Dict[str, float]]]:
@@ -330,12 +238,12 @@ def _read_scf_history(
     of runs (one per geom-opt step); each run is a list of per-cycle
     dicts.  Empty list when no log is present."""
     base = os.path.dirname(traj_path) or "."
-    # ``<stem>.log`` -- the pyscf stdout carries the run's stem
-    # (`pyscf/input.py`: ``ROLE_LOG``).
+    # ``<stem>.log`` -- the run's own log, named as the catalogue names it
+    # (`runfiles`: the `.log` row).
     stem = _run_stem_of(traj_path)
     if stem is None:
         return []
-    log_path = os.path.join(base, stem + ".log")
+    log_path = os.path.join(base, _rf_compose(stem, ".log"))
     if not os.path.isfile(log_path):
         return []
 
@@ -446,11 +354,9 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
             energies.append(energy_eV)
             iterations.append(step_idx)
 
-    # THE RUN'S OWN PROGRESS LOG, read once: its held atoms decide the
-    # free-atom force below, and its targets and ending enrich the frames.
+    # THE RUN'S OWN PROGRESS LOG, read once: its targets and ending enrich
+    # the frames.
     mw_meta = _read_molwatch_metadata(path)
-    max_forces, max_forces_constrained = _read_qdata_forces(
-        path, len(frames_raw), mw_meta.get("frozen_atoms") or ())
     scf_history = _read_scf_history(path)
 
     if not iterations:
@@ -468,10 +374,8 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
             step_index  = iterations[i],
             energy      = energies[i],
             forces      = None,
-            max_force   = max_forces[i] if i < len(max_forces) else None,
-            max_force_constrained = (
-                max_forces_constrained[i]
-                if i < len(max_forces_constrained) else None),
+            max_force   = None,
+            max_force_constrained = None,
             scf_history = scf_for_step,
         ))
 

@@ -283,7 +283,7 @@ def api_transport_record() -> Any:
     transport calculation's; 404 for nothing there.
     """
     from pathlib import Path
-    from molbuilder.task import FILENAME, read_task
+    from molbuilder.runs import place_of
     from molbuilder.transport.record import RecordError, collect_record
     from .files import _PickerError, _resolve_within_roots
 
@@ -295,12 +295,13 @@ def api_transport_record() -> Any:
     if not path.exists():
         return jsonify({"ok": False, "error": f"nothing at {raw}"}), 404
     base = Path(path) if path.is_dir() else Path(path).parent
-    try:
-        task = read_task(base / FILENAME)
-    except Exception as exc:                                  # noqa: BLE001
+    # THE FOLDER'S CALCULATION through its one door (`runs.place_of`).
+    place = place_of(base)
+    if place.task is None:
         return jsonify({"ok": False, "error": (
-            f"{path.name}: its calculation's description does not read -- "
-            f"{type(exc).__name__}: {exc}")}), 400
+            f"{path.name}: " + (place.problem or
+                                "no calculation of ours claims it"))}), 400
+    task = place.task
     if task.calculation != "transport":
         return jsonify({"ok": False, "error": (
             f"{path.name}: {base.name} is a {task.calculation} "
@@ -324,7 +325,7 @@ def api_transport_pdos() -> Any:
     (`transport.record.selection_pdos`) -> ``{ok, energy_ev, pdos, atoms,
     outside_device, orbitals}``.  400 names what is missing."""
     from pathlib import Path
-    from molbuilder.task import FILENAME, read_task
+    from molbuilder.runs import place_of
     from molbuilder.transport.record import RecordError, selection_pdos
     from .files import _PickerError, _resolve_within_roots
 
@@ -334,8 +335,13 @@ def api_transport_pdos() -> Any:
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     base = Path(path).parent if Path(path).is_file() else Path(path)
+    place = place_of(base)
+    if place.task is None:
+        return jsonify({"ok": False, "error": (
+            f"{path.name}: " + (place.problem or
+                                "no calculation of ours claims it"))}), 400
+    task = place.task
     try:
-        task = read_task(base / FILENAME)
         point = float(request.args.get("point", ""))
         raw_frame = request.args.get("frame")
         frame = None if raw_frame in (None, "") else int(raw_frame)

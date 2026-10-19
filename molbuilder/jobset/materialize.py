@@ -228,12 +228,12 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     ``None``.  A sweep's own job-set names its trials from the calculation,
     so a reader standing in its container reads them from there."""
     from ..identity import command_stage
-    from ..task import FILENAME as _TASK
+    # THE CALCULATION ROOT through its one door (`calcdirs.root_of`): the
+    # container is stamped, so the root answers from any depth.
     f = Path(folder).resolve()
-    for calc in (f.parent, f.parent.parent):
-        if not (calc / _TASK).is_file():
-            continue
-        rel = f.relative_to(calc)
+    calc = calcdirs.root_of(f)
+    if calc is not None:
+        rel = f.relative_to(calc.resolve())
         for name, token in _bench_containers_in(calc):
             if Path(name) == rel:
                 return calc, command_stage(token)

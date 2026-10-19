@@ -35,6 +35,19 @@
 (function (root) {
     "use strict";
 
+    /* THE HELD ATOMS a result states: its structure's own label, or --
+     * a file written before any geometry exists -- its own list
+     * (`engines/vibration.md` § 6.10.2, `model/structure.md` § 2.2f). */
+    function frozenAtomsOf(results) {
+        const s = results && results.structure;
+        const regions = s && s.metadata && s.metadata.regions;
+        if (regions && Array.isArray(regions.frozen_atoms)) {
+            return regions.frozen_atoms;
+        }
+        return (results && Array.isArray(results.frozen_atom_idxs))
+            ? results.frozen_atom_idxs : [];
+    }
+
     /**
      * Mount the spectra inspector inside ``rootEl``.
      *
@@ -1596,7 +1609,7 @@
             ["Atoms (total)",     results.n_atoms_total],
             ["Free / frozen",     (results.free_atom_idxs || []).length
                                     + " / "
-                                    + (results.frozen_atom_idxs || []).length],
+                                    + frozenAtomsOf(results).length],
             // ABSENT IS NOT ZERO (engines/vibration.md § 6.5): a SIESTA
             // file carries no reference energy, and Number(null) is 0.
             ["Equilibrium E (Eh)", (results.equilibrium
@@ -2572,10 +2585,12 @@
         const r = state.results;
         if (!r || state.selectedMode == null) return nothing;
 
-        const eq = r.equilibrium;
-        if (!eq || !Array.isArray(eq.elements) || !Array.isArray(eq.positions_ang)
+        // THE STRUCTURE the result states (schema 9): the equilibrium
+        // geometry's elements and positions are its own.
+        const eq = r.structure;
+        if (!eq || !Array.isArray(eq.elements) || !Array.isArray(eq.positions)
                 || !eq.elements.length
-                || eq.positions_ang.length !== eq.elements.length) {
+                || eq.positions.length !== eq.elements.length) {
             // Not animatable, and WHY is worth saying: results written before the
             // geometry was stored are a real thing a user still has on disk, and
             // a mode-visualisation panel that simply vanishes reads as a bug.
@@ -2636,7 +2651,7 @@
                 : "drawn exaggerated",
             structure: {
                 elements:  eq.elements.slice(),
-                positions: eq.positions_ang.map(row => row.slice()),
+                positions: eq.positions.map(row => row.slice()),
             },
             mode: {
                 index:         mode.index_1based,

@@ -611,9 +611,10 @@
          * here, because nothing else can see the number. */
         pollMs:      POLL_MS,
         resultCategory: () => "Benchmark sweeps",
-        /* An exact basename, which is as specific as a match gets -- and
-         * why this registers ahead of the .json catch-all. */
-        match:       (file) => _basename(file) === "job-set.json",
+        /* THE SERVER'S PARSE ANSWER names the job set's record
+         * (`runs._file_row`: `parser`); registered ahead of the .json
+         * catch-all. */
+        match:       (file, meta) => !!(meta && meta.parser === "job-set-sweep"),
 
         mount(host, file, ctx) {
             const state = { disposed: false, timer: null };

@@ -252,7 +252,9 @@ class TestSpectraResults:
         """
         r = _make_results()
         assert r.schema_version == SCHEMA_VERSION == 8
-        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7, 8}
+        # 9 is read before it is written (`engines/vibration.md` § 6.10.2:
+        # the reader first, then the consumers, then the writers).
+        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7, 8, 9}
         # The additive rule, executed: a v4 payload reads whole.
         d = r.to_dict(); d["schema_version"] = 4
         for k in ("phase_relaxation", "relaxation", "thermo"):

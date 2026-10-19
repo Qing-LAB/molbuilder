@@ -43,7 +43,7 @@ from ..structure import FROZEN_LABEL, Structure
 from .input import (emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_runtime_facts, emit_save_call, emit_script_head,
-                    ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
+                    run_file_expr, ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
 
 # The science emitters, composed here.
 from .vibration_emitters import (
@@ -142,8 +142,9 @@ def science_view(cfg, struct: Structure) -> "VibrationConfigView":
     return VibrationConfigView(cfg, struct)
 
 
-def _vib_constants(cfg) -> List[str]:
-    """The vibration deck's own constants, beside the lifted ones."""
+def _vib_constants(cfg, names) -> List[str]:
+    """The vibration deck's own constants, beside the lifted ones; its
+    result's name through the stage's ``names`` (`input.run_file_expr`)."""
     from ..sidecars.spectra import (finite_or_none, structure_hash_text,
                                     write_spectra_payload)
     from .. import constants
@@ -190,7 +191,7 @@ def _vib_constants(cfg) -> List[str]:
                vibrational_thermo_grid, structure_hash_text,
                write_spectra_payload, finite_or_none, select_modes,
                constants),
-           f"JSON_PATH = _mb_outfile(JOB + {ROLE_SPECTRA!r})",
+           f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
            ]
     return out
 
@@ -316,7 +317,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
             # THE ONE WRITER both decks use (`input.emit_constraints_file`):
             # the run wrapper reads the frozen set back off the deck by its
             # comment line.
-        ] + emit_constraints_file(_frozen, indent="    ")
+        ] + emit_constraints_file(_frozen, names, indent="    ")
         _opt_kw += ", constraints=str(_FROZEN_CONSTRAINTS_PATH)"
     if getattr(cfg, "write_trajectory", False):
         out += [
@@ -352,7 +353,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
         '            f"curvature there, not at the minimum")',
     ]
     if getattr(cfg, "save_optimized_xyz", False):
-        out.append(emit_save_call("mol", ROLE_OPTIMIZED, indent="    "))
+        out.append(emit_save_call("mol", ROLE_OPTIMIZED, names, indent="    "))
     out += [
         "    COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')",
         "    state['phase_relaxation'] = 'complete'",
@@ -632,7 +633,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         out += emit_pyscf_threads()
         out += _emit_constants(struct, view, methods_md=methods_md,
                                bibliography_keys=bibliography_keys)
-        out += _vib_constants(cfg)
+        out += _vib_constants(cfg, names)
         # The SCF dresser + density_fit kw -- generated from
         # SCF_SECTION + layout.line (pyscf.md § 7a): every mf this
         # deck builds calls _mb_configure_scf, so the machinery knobs
@@ -686,7 +687,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
             out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)),
                                     _sidecar_for(struct))
         if getattr(cfg, "save_initial_xyz", False):
-            out.append(emit_save_call("mol", ROLE_INITIAL))
+            out.append(emit_save_call("mol", ROLE_INITIAL, names))
         if getattr(cfg, "write_molwatch_log", False):
             # THE SCF'S CRITERIA, read off a solver this deck's own dresser
             # configures -- every mf here is built through it -- so the
@@ -713,7 +714,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # set (a structure-side fact the view lifted), and the view
         # forwards every config field it does not bridge.
         out += _vib_relax_block(view, names)
-        out += _emit_equilibrium_scf(view, struct)
+        out += _emit_equilibrium_scf(view, struct, names)
         out += _vib_gradient_check()
         out += _emit_gpu_coverage_probe(view)
         out += _emit_hessian_block(view)

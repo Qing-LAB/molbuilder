@@ -137,7 +137,9 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
             payload.get("ir_route") or "",
             payload.get("ir_fd_step_ang"))
 
-    elements = (payload.get("equilibrium") or {}).get("elements") or []
+    # THE ELEMENTS, from the structure the result states whole (v9; the
+    # reader serves that shape for every file, `engines/vibration.md` § 6.10).
+    elements = (payload.get("structure") or {}).get("elements") or []
     masses = (payload.get("equilibrium") or {}).get("masses_amu")
     # An empty free-atom list is "not recorded", not "no atom is free" -- a
     # result that never tracked the partition has one eigenvector row per atom,

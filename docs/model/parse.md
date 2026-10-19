@@ -1250,11 +1250,10 @@ once into a structured sidecar. When they do, the parser for the log reads the
 sidecar and **replaces values in frames it already built** — it does not build
 a second trajectory.
 
-Three parsers do this today:
+Two parsers do this today:
 
 | primary | sibling | what the sibling supplies |
 |---|---|---|
-| `engines/pyscf.py` | `<prefix>.qdata.txt` | per-step max force |
 | `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state, the atoms the run holds (§ 5.3) |
 | `engines/siesta.py` | the run's own `<label>_<stage>-run<N>.MD.nc` | coordinates + per-step energy, in full precision |
 

@@ -24,6 +24,12 @@ from pathlib import Path
 from tests.spectra._helpers import _spectra_cfg
 
 
+def _names():
+    """A vibration stage's names (`runfiles.RunNames`), as the deck takes them."""
+    from molbuilder.runfiles import RunNames
+    return RunNames.of("job", "01_vibration", "hierarchical")
+
+
 # Minimal PSML body covering the fields the parser reads.  Real
 # PseudoDojo files have 100+ KB of grid / orbital data we don't need
 # to fake here; the parser only touches the <header> + first
@@ -343,7 +349,7 @@ class TestMetalAwareScriptTemplates:
         fe = self._fe()
         text = "\n".join(_emit_equilibrium_scf(_spectra_cfg(
             fe, spin_treatment="unrestricted", unpaired_electrons=2,
-        ), fe))
+        ), fe, _names()))
         assert "Hard SCF (typical for open-shell metals like Fe)" in text
         assert "# mf.level_shift = 0.2" in text
 
@@ -351,7 +357,8 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
         water = self._water()
         text = "\n".join(_emit_equilibrium_scf(
-            _spectra_cfg(water, spin_treatment="restricted"), water))
+            _spectra_cfg(water, spin_treatment="restricted"), water,
+            _names()))
         assert "Hard SCF (typical for open-shell metals" not in text
 
 

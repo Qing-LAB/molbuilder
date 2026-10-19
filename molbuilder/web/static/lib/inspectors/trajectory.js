@@ -61,9 +61,15 @@
      * single answer would arrive -- the route already sends each file's
      * role, and one more field would let this list be deleted.
      */
-    const WORKING_PARTS = [
-        "_initial.xyz", "_optimized.xyz", "_geom_optim.xyz",
-    ];
+    /* THE SERVER'S ANSWER names what a file is: its ROLE in the catalogue
+     * (`runs._file_row`, `runfiles.WRITTEN`), carried per file by
+     * `/api/results/dir`.  A file with no answer is claimed by nothing --
+     * never by a suffix read off its name here.  These three roles are the
+     * run outputs this inspector presents. */
+    const TRAJECTORY_ROLES = [".molwatch.log", ".out", "_geom_optim.xyz"];
+    /* A run's structure parts -- the input echoed back, the geometry
+     * reached, geomeTRIC's stream -- shown under the run's own log. */
+    const PART_ROLES = ["_initial.xyz", "_optimized.xyz", "_geom_optim.xyz"];
 
     const inspector = factory.makePartialInspector({
         name:          "trajectory",
@@ -71,30 +77,9 @@
         coreApiKey:    "trajectoryInspector",
         coreScriptDir: "trajectory",
         partialUrl:    "/partials/trajectory-inspector",
-        /* THE ROLE, when the server gave one.  These four suffixes are
-         * `runfiles.WRITTEN` rows spelled a second time here, which is the
-         * duplication R-RO1 forbids; `meta.role` is the catalogue's own
-         * answer, carried per file by `/api/results/dir`.  The suffix test
-         * survives only as the fallback for a caller outside the Results
-         * tab, which has no directory answer to pass. */
-        match: (file, meta) => {
-            if (meta && meta.role) {
-                return meta.role === ".molwatch.log"
-                    || meta.role === ".out"
-                    || meta.role === "_geom_optim.xyz";
-            }
-            const lower = file.toLowerCase();
-            return lower.endsWith(".molwatch.log")
-                || lower.endsWith(".out")
-                || lower.endsWith("_optim.xyz")
-                || lower.endsWith("_geom_optim.xyz");
-        },
-        // Three different engine outputs land here; the picker groups
-        // them under distinct headers so the user scans visually.
-        //   ``.out``                 → SIESTA wrapper redirected stdout
-        //   ``.molwatch.log``        → unified molwatch format (any engine)
-        //   ``*_optim.xyz`` (incl. ``_geom_optim.xyz``)
-        //                            → PySCF / geomeTRIC multi-frame XYZ
+        match: (file, meta) =>
+            !!(meta && TRAJECTORY_ROLES.indexOf(meta.role) >= 0),
+        // The picker groups a run's files under the engine's own heading.
         resultCategory: (file, meta) => {
             /* THE ENGINE COMES FROM THE SERVER: `/api/results/dir` answers
              * `engine` for the directory (`plans/plan.md` N9), so the
@@ -103,25 +88,13 @@
              */
             const engine = (meta && meta.engine
                             && meta.engine !== "unknown") ? meta.engine : "";
-            const role = (meta && meta.role) || "";
-            const lower = file.toLowerCase();
-            const what =
-                (role === ".molwatch.log" || lower.endsWith(".molwatch.log"))
-                    ? "optimization"
-              : (role === ".out" || lower.endsWith(".out"))
-                    ? "optimization"
-              : (role === "_geom_optim.xyz" || lower.endsWith("_optim.xyz"))
-                    ? "optimization"
-              : "trajectory";
-            if (!engine) {
-                // No directory answer (a caller outside the Results tab).
-                // Name what the file IS and leave the engine unclaimed.
-                return what === "trajectory" ? "Trajectory" : "Optimization";
-            }
+            // The folder answer names no engine: the heading leaves it
+            // unclaimed.
+            if (!engine) return "Optimization";
             const label = engine === "siesta" ? "SIESTA"
                         : engine === "pyscf"  ? "PySCF"
                         : engine.toUpperCase();
-            return label + " " + what;
+            return label + " optimization";
         },
 
         /* A RUN IS ONE RESULT (results.md § 2.3).
@@ -168,21 +141,11 @@
             // no stage, while the geomeTRIC stream is this rung's and
             // carries its stage.  A LADDER IS N RESULTS (`stages.md` § 1.1a), so 03_tight's
             // master must leave 01_coarse's stream to 01_coarse's master.
-            if (mMeta && mMeta.label && oMeta && oMeta.label) {
-                if (mMeta.role !== ".molwatch.log") return false;
-                if (mMeta.label !== oMeta.label) return false;
-                if (oMeta.stage && oMeta.stage !== mMeta.stage) return false;
-                return WORKING_PARTS.indexOf(oMeta.role) >= 0;
-            }
-
-            // NO DIRECTORY ANSWER: the names, and only the shapes that need
-            // no boundary-finding -- an exact suffix on a shared prefix.
-            if (!m.name.toLowerCase().endsWith(".molwatch.log")) return false;
-            const stem = m.name.slice(0, -(".molwatch.log".length));
-            if (!stem) return false;
-            const n = o.name.toLowerCase();
-            const b = stem.toLowerCase();
-            return WORKING_PARTS.some((r) => n === b + r);
+            if (!(mMeta && mMeta.label && oMeta && oMeta.label)) return false;
+            if (mMeta.role !== ".molwatch.log") return false;
+            if (mMeta.label !== oMeta.label) return false;
+            if (oMeta.stage && oMeta.stage !== mMeta.stage) return false;
+            return PART_ROLES.indexOf(oMeta.role) >= 0;
         },
     });
 

@@ -43,6 +43,7 @@ import xml.etree.ElementTree as ET
 #: Where a calculation's staged pseudopotentials live, relative to it
 #: (roadmap 7.10 M6: grouped in one folder rather than N loose `<El>.psml`).
 from .runfiles import PSEUDO_DIR as PSEUDO_DIRNAME  # noqa: E402 -- the catalogue's name
+from .runfiles import PSEUDO_FILE, fixed_name  # noqa: E402
 
 
 #: THE FOLDER AS A PREP WILL LEAVE IT, while one is being planned -- a
@@ -105,7 +106,8 @@ def psml_sources(elements, *, dest_dir=None,
         key = str(el).strip()
         if key not in out:
             out[key] = next((d for d in places
-                             if _is_file(d / f"{key}.psml")), None)
+                             if _is_file(d / fixed_name(PSEUDO_FILE,
+                                                        element=key))), None)
     return out
 
 

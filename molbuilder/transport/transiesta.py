@@ -35,6 +35,7 @@ from .sort import (
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
 )
+from ..runfiles import compose
 from ..structure import Structure
 
 
@@ -500,8 +501,10 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         cp = chempot_for[block_name]
         sid = semi_inf.get(i, "+A3")
         lines.append(f"%block TS.Elec.{block_name}")
+        # THE ELECTRODE'S FILE, as the catalogue composes the name the
+        # gather brings (`stages.stage_inputs`): one spelling.
         lines.append(f"  HS                 "
-                     f"{electrode_hs_stem(cfg.system_label, label)}.TSHS")
+                     f"{compose(electrode_hs_stem(cfg.system_label, label), '.TSHS')}")
         lines.append(f"  chem-pot           {cp}")
         lines.append(f"  used-atoms         {len(idxs)}")
         # ALWAYS, because the manual lists it among the four lines a

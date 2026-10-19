@@ -54,6 +54,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
 # called, not annotated.  `issues` is L1 and imports nothing, so there is no
 # cycle to worry about.
 from .issues import calling as _calling
+from . import runfiles as _rf
 # THE BLOCK GRAMMAR IS `deck_record`'s -- the names, the fences, the one JSON
 # reader -- which this module writes with.  It lives below this one because a
 # job reads three blocks beside itself (`deck_record`), where this module
@@ -1532,8 +1533,9 @@ def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
     3.11's on the artifact — because *"the final validation of the full
     script"* is the two together, not whichever the caller happened to hold.
     """
-    out = Path(deck_path).with_suffix(VALIDATION_SUFFIX)
-    text = validation_report_text(Path(deck_path).name, findings)
+    deck = Path(deck_path)
+    out = deck.with_name(_rf.compose(deck.stem, VALIDATION_SUFFIX))
+    text = validation_report_text(deck.name, findings)
     if plan is not None:
         plan.text(out, text)
     else:

@@ -27,7 +27,8 @@ from ..config.pyscf import PySCFConfig
 # § 4 rule 2's reading of `restart`, shared with SIESTA -- one
 # field, one rule, one place that reads it.
 from ..identity import continues
-from ..runfiles import compose as _rf, stdout_roles as _stdout_roles
+from ..runfiles import (compose as _rf, stdout_roles as _stdout_roles,
+                        tail as _rf_tail)
 from ..structure import Structure
 
 #: THE ROLES THIS SCRIPT WRITES, spelled once (`job-contracts.md` § 2.2a).
@@ -70,7 +71,16 @@ def run_file_expr(names, role: str) -> str:
     number the run script gave the script (``_MB_RUN``,
     `runtime_info.run_given`).  The same expression in both shapes: where
     the stage's runs have folders of their own the template has nothing to
-    fill (plan W57 decision 2, `engines/pyscf.md` § 2)."""
+    fill (plan W57 decision 2, `engines/pyscf.md` § 2).
+
+    PySCF's own restart files (``.chk``, ``_optimized.xyz`` --
+    `pyscf/warm-files.toml`, the one vocabulary) are no row of the
+    catalogue: named on the label alone, they carry across rungs
+    (`job-contracts.md` § 2.2a), and the composer's tail for them is the
+    suffix itself (`runfiles.tail`)."""
+    from ..warmfiles import warm_list
+    if role in warm_list("pyscf").suffixes:
+        return f"JOB + {_rf_tail(role)!r}"
     return f"JOB + {names.tail(role)!r}.format(run=_MB_RUN)"
 
 
@@ -451,7 +461,8 @@ def spec_for(struct: Structure,
         # run WRITES one, and not ``optimize``, which says whether this run relaxes
         # -- can answer whether to start from it.
         if continues(cfg):
-            out.append(f'_opt_path = _mb_outfile(JOB + "{ROLE_OPTIMIZED}")')
+            out.append(f'_opt_path = _mb_outfile('
+                       f'{run_file_expr(names, ROLE_OPTIMIZED)})')
             out.append("if _os.path.exists(_opt_path):")
             out.append("    with open(_opt_path) as _mb_xyz_fh:")
             out.append("        _atom_block = _mb_Structure.from_xyz("
@@ -499,7 +510,7 @@ def spec_for(struct: Structure,
         if cfg.save_initial_xyz:
             if v:
                 out.append("# Snapshot the input geometry before any optimization runs.")
-            out.append(emit_save_call("mol", ROLE_INITIAL))
+            out.append(emit_save_call("mol", ROLE_INITIAL, names))
         out.append("")
 
         # NOTE: the molwatch emitter is NOT constructed here.  It writes its
@@ -546,7 +557,8 @@ def spec_for(struct: Structure,
         if not cfg.level_shift:
             out += _layout.hard_scf_hint(state)
         if cfg.chkfile:
-            out.append(f'mf.chkfile = _mb_outfile(JOB + "{ROLE_CHK}")')
+            out.append(f'mf.chkfile = _mb_outfile('
+                       f'{run_file_expr(names, ROLE_CHK)})')
             # Continuation: a rung that says ``continue`` starts its SCF from the
             # density the rung before it converged, instead of MINAO / atom.  That
             # turns "full SCF from scratch" into "small refine on top of a
@@ -564,7 +576,8 @@ def spec_for(struct: Structure,
             # checkpoint from a crashed run does not trigger.  ``_os`` is imported
             # at the top of the script.
             if continues(cfg):
-                out.append(f'_chk_path = _mb_outfile(JOB + "{ROLE_CHK}")')
+                out.append(f'_chk_path = _mb_outfile('
+                           f'{run_file_expr(names, ROLE_CHK)})')
                 out.append("if _os.path.exists(_chk_path) and "
                            "_os.path.getsize(_chk_path) > 0:")
                 out.append('    mf.init_guess = "chkfile"')
@@ -689,7 +702,7 @@ def spec_for(struct: Structure,
                         '# is 0-based so we shift below.  Without this block '
                         'geomeTRIC moves every atom.',
                     ]
-                out += emit_constraints_file(frozen)
+                out += emit_constraints_file(frozen, names)
         return "\n".join(out) if out else None
 
     def _science_d(struct, cfg) -> Optional[str]:
@@ -724,7 +737,7 @@ def spec_for(struct: Structure,
         # we only write the FINAL geometry.
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append("")
-            out.append(emit_save_call("mol_eq", ROLE_OPTIMIZED))
+            out.append(emit_save_call("mol_eq", ROLE_OPTIMIZED, names))
         out.append("")
         out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
 
@@ -1131,7 +1144,7 @@ def _emit_optimization(cfg: PySCFConfig,
         # hand-over takes only a run the status door calls finished
         # (`job-system.md` § 5.4).
         out.append("        keep = lambda _m: _save_structure("
-                   f"_m, _mb_outfile(JOB + {ROLE_OPTIMIZED!r}), "
+                   f"_m, _mb_outfile({run_file_expr(names, ROLE_OPTIMIZED)}), "
                    "'Geometry reached (PySCF, relaxing)'),")
         out.append(f"        resumable = {bool(continues(cfg))},")
     out.extend(_layout.geom_kwargs())
@@ -1508,8 +1521,9 @@ def emit_outputs_block(names, *,
     return out
 
 
-def emit_constraints_file(frozen, indent: str = "") -> List[str]:
-    """The lines that write the held atoms to ``<JOB>.constraints.txt`` in
+def emit_constraints_file(frozen, names, indent: str = "") -> List[str]:
+    """The lines that write the held atoms to the run's ``.constraints.txt``
+    (``names``: `runfiles.RunNames`, through :func:`run_file_expr`) in
     geomeTRIC's own format -- ``$freeze`` / ``xyz <1-based>`` -- and bind
     its path for the relaxation: one writer for both decks.  Its comment
     line is the frozen set's ONE SPELLING, which the run script reads back
@@ -1518,8 +1532,8 @@ def emit_constraints_file(frozen, indent: str = "") -> List[str]:
     ids = ",".join(str(geometric_atom_index(i)) for i in frozen)
     return [f"{indent}# Source: Structure.frozen_atoms = {list(frozen)!r}  "
             f"(0-based)",
-            f'{indent}_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + '
-            f'"{ROLE_CONSTRAINTS}")',
+            f'{indent}_FROZEN_CONSTRAINTS_PATH = _mb_outfile('
+            f'{run_file_expr(names, ROLE_CONSTRAINTS)})',
             f'{indent}with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:',
             f'{indent}    _fh.write("$freeze\\n")',
             f'{indent}    _fh.write("xyz {ids}\\n")']
@@ -1531,11 +1545,13 @@ _SAVED_AS = {ROLE_INITIAL:   "Initial geometry (input)",
              ROLE_OPTIMIZED: "Optimized geometry (PySCF)"}
 
 
-def emit_save_call(mol: str, role: str, indent: str = "") -> str:
+def emit_save_call(mol: str, role: str, names, indent: str = "") -> str:
     """The line that saves ``mol``'s geometry as ``role``'s pair through the
     script's ``_save_structure`` (:func:`emit_save_helper`) -- one spelling of
-    the call, the file and its comment line for both decks."""
-    return (f'{indent}_save_structure({mol}, _mb_outfile(JOB + "{role}"), '
+    the call, the file (``names``: `runfiles.RunNames`, through
+    :func:`run_file_expr`) and its comment line for both decks."""
+    return (f'{indent}_save_structure({mol}, '
+            f'_mb_outfile({run_file_expr(names, role)}), '
             f'"{_SAVED_AS[role]}")')
 
 

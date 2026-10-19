@@ -211,7 +211,8 @@ def point_transmission(where, label: str, spin: str) -> Dict:
             "transmission_file": files["unpolarized"][0].name}
 
 
-def point_currents(where, token: str, spin: str) -> Dict:
+def point_currents(where, token: str, spin: str, *,
+                   now: Optional[Dict] = None) -> Dict:
     """The current TBtrans printed at one point -- its own Landauer integral,
     parsed, never recomputed -- as the record says it
     (:data:`CURRENT_MEANS`): ``current_a_printed``, the first figure it
@@ -223,11 +224,14 @@ def point_currents(where, token: str, spin: str) -> Dict:
     output through the family's one read and its account of TBtrans's loop
     (`siesta_reader.read_output`, ``now()["tbtrans"]``, `model/parse.md`
     § 5d.5): each pass's currents beside its channel; ``None`` where the
-    run printed none."""
+    run printed none.  ``now`` is the newest output's reading where the
+    caller holds it already (`collect_record`: one read per point); an
+    older output is read only when the newest printed no current."""
     from ..parse.engines.siesta_reader import read_output
     out: Dict = {"current_a": None, "current_a_printed": None}
-    for path in _outs_newest_first(where, token):
-        loop = read_output(path).now().get("tbtrans") or {}
+    for i, path in enumerate(_outs_newest_first(where, token)):
+        reading = now if (i == 0 and now is not None) else read_output(path).now()
+        loop = reading.get("tbtrans") or {}
         for k in ("k_points", "k_method"):
             if k in loop:
                 out[k] = loop[k]
@@ -736,6 +740,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..parse.dirs.job import FINAL_STATES
     from ..parse.dirs.record import tbtrans_loop
     from ..parse.dirs.rundir import run_state_of
+    from ..parse.engines._run_ending import keep_reading, version_of
+    from ..parse.engines.siesta_reader import read_output
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..frame_average import AverageError, average_block
     from ..frameset import read as read_frame_set
@@ -771,6 +777,19 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                             "why": rung.get("detail") or ""})
             continue
         rel = str(where.relative_to(base))
+        # THE POINT'S NEWEST OUTPUT, READ ONCE (`model/parse.md` § 5d.5):
+        # its reading serves the run door (`keep_reading`: an output that
+        # stated its own end is not read again), the loop's words and the
+        # currents -- three readers, one read.
+        outs = _outs_newest_first(where, token)
+        now = None
+        if outs:
+            try:
+                reader = read_output(outs[0])
+                now = reader.now()
+                keep_reading(outs[0], version_of(outs[0]), reader.finish())
+            except OSError:
+                now = None
         # THE POINT'S STATE, the one door's -- asked as every reader asks
         # it, with its run's launch record (`rundir.run_state_of`, given the
         # run's folder); one that does not read is said.
@@ -785,10 +804,9 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
-            outs = _outs_newest_first(where, token)
             progress = tbtrans_loop(
                 outs[0] if outs else None,
-                over=st.state in FINAL_STATES)
+                over=st.state in FINAL_STATES, now=now)
             if progress:
                 entry["progress"] = {
                     "said": progress["progress"],
@@ -846,7 +864,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             "conductance_g0": conductance_g0(energies, read["transmission"]),
             # THE TOTAL, and the figure it came from (`CURRENT_MEANS`), with
             # the run's k-sampling.
-            **point_currents(where, token, spin),
+            **point_currents(where, token, spin, now=now),
             # THE WINDOW AND ITS POINTS, as written (`engines/transport.md`
             # § 2a.12).
             "window_ev": [min(energies), max(energies)],
