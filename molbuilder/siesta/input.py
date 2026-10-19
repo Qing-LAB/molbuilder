@@ -552,7 +552,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                vibration: Optional[dict] = None,
                relaxed_by: Optional[dict] = None,
                state=None,
-               trial: Optional[str] = None) -> "_sc.DeckSpec":
+               trial: Optional[str] = None,
+               point=None) -> "_sc.DeckSpec":
     """Describe a Structure's SIESTA .fdf deck -- the spec
     `script_emit.render_deck` renders into its text.
 
@@ -582,6 +583,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     resolves ONCE on the whole junction and hands to every rung
     (`science/chemistry-correctness.md` § 2a, ES1) -- a rung's own structure
     is not where a blank spin is decided.
+
+    ``point`` is a transport deck's point -- its frame and voltage
+    (`transport.stages.Point`), from which the device deck names its run's
+    shared files (`engines/transport.md` § 2a.11); only a transport deck
+    reads it.
 
     The box is ``cell`` when a caller passes one (Angstrom, row vectors), else the
     structure's resolved cell -- the one it states, or ``struct.resolve_cell()``'s
@@ -620,7 +626,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 f"(docs/engines/transport.md § 2a.9).")
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
-                              stage_token=stage_token, state=state)
+                              stage_token=stage_token, state=state,
+                              point=point)
+    if point is not None:
+        raise ValueError(
+            f"a {calculation} deck has no point: a frame and a voltage are "
+            f"a transport rung's (docs/engines/transport.md § 2a.11).")
     if calculation not in ("optimization", "vibration"):
         raise ValueError(
             f"SIESTA renders 'optimization', 'vibration' and 'transport'; "

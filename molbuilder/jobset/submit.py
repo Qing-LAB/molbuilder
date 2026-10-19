@@ -2369,10 +2369,13 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
     vocabulary = warm_list(jobset.engine, "transport", base)
-    # THE ENGINE'S SCRATCH AT A POINT (`warm-files.toml` [transport]
-    # scratch): recomputed by every run, so never taken over.
+    # THE ENGINE'S SCRATCH (`warm-files.toml` [transport] scratch, by
+    # suffix): recomputed by every run, so never taken over, wherever a
+    # run holds it.
     from ..runfiles import compose
-    scratch = {compose(task.label, suf) for suf in vocabulary.scratch}
+
+    def scratch(name: str) -> bool:
+        return any(name.endswith(suf) for suf in vocabulary.scratch)
     # WHAT A POINT MUST HOLD TO BE DONE -- the one list (`products_of`):
     # what the rungs downstream take, and what a point hands to the next.
     products = products_of(stage, task.label, base_dir=base)
@@ -2417,7 +2420,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
         hand_over(base, HandOver(
             pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
-                        if f.is_file() and f.name not in scratch)),
+                        if f.is_file() and not scratch(f.name))),
             plan.writes)
     # THE WALK: each frame's voltages in bias order, a point's start the
     # point before it in ITS frame (`engines/transport.md` § 2a.9).

@@ -91,11 +91,13 @@ reads as what it is (`OUT_OF_TIME`); a warm file written as its job died is
 named at the next launch; a queued job's standing on the ladder, through
 the scheduler kind; the listener's reports on the This machine tab; the
 monitor stdlib-only on any python, its vocabulary split from the log's
-writer. Open from the same reads, for the user's yes: the chat card's
-layout as data per receiver (a layout file; the one card built once), and
-the leads' surface Green's function files shared across a device rung's
-frames at one bias (`TS.Elec` `GF` paths; today every frame recomputes and
-writes both, 49 GB each on the AuBDTAu junction).
+writer. **Then 2.19.0, the user's yes on the 49 GB `.TSGFL` of every
+device point**: the leads' surface Green's functions are the run's, once
+per voltage, named in the device deck's `TS.Elec` blocks the point's own
+way up and reused by every frame's point at that voltage
+(`transport.md` § 2a.11, *What a run's points share*). Open from the same
+reads, for the user's yes: the chat card's layout as data per receiver (a
+layout file; the one card built once).
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs

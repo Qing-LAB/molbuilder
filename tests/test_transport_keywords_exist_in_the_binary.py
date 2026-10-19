@@ -59,7 +59,7 @@ from molbuilder.runfiles import RunNames
 _NOT_A_LABEL = {
     "part", "from", "to", "points", "delta", "method", "mu",
     "chem-pot", "used-atoms", "elec-pos", "bloch", "semi-inf-direction",
-    "HS", "begin", "end",
+    "HS", "begin", "end", "GF", "GF.ReUse",
 }
 
 

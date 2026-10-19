@@ -161,7 +161,7 @@ TBT_SECTION = _sc.Section(
     ))
 
 
-def _device_layout(derived, frame, state_block):
+def _device_layout(derived, frame, state_block, point):
     """The device rung -- TranSIESTA's open-boundary NEGF run, at one bias.
 
     Read by `siesta` alone, so it carries TranSIESTA's settings and no
@@ -190,15 +190,19 @@ def _device_layout(derived, frame, state_block):
         state_block,
         _sl.mpi_section(algorithm=derived.get("algorithm")),
         _sc.Block("what this rung runs", _emit_device_run),
+        # THE LEADS' SURFACE GREEN'S FUNCTIONS ARE THE RUN'S (§ 2a.11, *What
+        # a run's points share*): the block names them up at the run, the
+        # point's own way there.
         _sc.Block("the junction: its electrodes and reservoirs",
-                  _emit_electrode_block),
+                  _electrode_block(point.to_run if point is not None
+                                   else ".")),
         TS_DEVICE_SECTION,
         TS_ELECTRODE_SECTION,
         _sl.OUTPUT_SECTION,
     )
 
 
-def _transmission_layout(derived, frame, state_block):
+def _transmission_layout(derived, frame, state_block, point):
     """The transmission rung -- `tbtrans` on the device's converged
     Hamiltonian.
 
@@ -229,8 +233,9 @@ def _transmission_layout(derived, frame, state_block):
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
         _sc.Block("what this rung reads", _emit_transmission_run),
+        # tbtrans writes no Green's function file (§ 2a.11): no `GF` line.
         _sc.Block("the junction: its electrodes and reservoirs",
-                  _emit_electrode_block),
+                  _electrode_block(None)),
         TS_READ_BY_TBTRANS_SECTION,
         _sc.Block("the energy window T(E) is computed on", _emit_tbt_window),
         _sc.Block("the transmission k-point grid",
@@ -332,11 +337,18 @@ def _emit_transmission_run(struct, cfg) -> str:
     ])
 
 
-def _emit_electrode_block(struct, cfg) -> str:
-    """The electrode and reservoir declarations -- one text for both NEGF
-    rungs (`transiesta.emit_electrode_declarations`)."""
+def _electrode_block(gf_in):
+    """The electrode and reservoir declarations' Block -- one text for both
+    NEGF rungs (`transiesta.emit_electrode_declarations`), the device's
+    naming the leads' surface Green's functions in ``gf_in``, its run's
+    folder as the point reaches it; the transmission's (``None``) naming
+    none (`engines/transport.md` § 2a.11, *What a run's points share*)."""
     from .transiesta import emit_electrode_declarations
-    return "\n".join(emit_electrode_declarations(struct, cfg))
+
+    def render(struct, cfg) -> str:
+        return "\n".join(emit_electrode_declarations(struct, cfg,
+                                                     gf_in=gf_in))
+    return render
 
 
 def _emit_tbt_window(struct, cfg) -> str:
@@ -371,7 +383,7 @@ def _emit_tbt_window(struct, cfg) -> str:
     ])
 
 
-def _electrode_layout(derived, frame, state_block):
+def _electrode_layout(derived, frame, state_block, point):
     """An electrode rung: a genuinely periodic BULK calculation.
 
     Read down it and the difference from the seed is three lines — and each
@@ -426,7 +438,7 @@ def _emit_electrode_header(struct, cfg) -> str:
     ])
 
 
-def _seed_layout(derived, frame, state_block):
+def _seed_layout(derived, frame, state_block, point):
     """The seed rung: an ordinary periodic SIESTA pass (§ 1, stage 1).
 
     Read down it and you have read the deck's SCIENCE, in order.  Not the
@@ -622,8 +634,14 @@ def _k_mesh_block(mesh, *, advice=()):
 
 def transport_spec(struct: Structure, cfg, *,
                    stage_token: Optional[str] = None,
-                   state=None) -> "_sc.DeckSpec":
+                   state=None, point=None) -> "_sc.DeckSpec":
     """The ``DeckSpec`` for one transport rung.
+
+    ``point`` is the deck's point of a rung that runs per point
+    (`transport.stages.Point`: a frame and a voltage), from which the
+    device deck names the run's shared files the way the point reaches
+    them (`Point.to_run`); ``None`` for a rung that runs once, or a deck
+    rendered for no point in particular, whose way to the run is ``.``.
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
     calculation's own template ⊕ this rung's overrides, as
@@ -664,7 +682,8 @@ def transport_spec(struct: Structure, cfg, *,
               "electrode": _electrode_layout,
               "device": _device_layout,
               "transmission": _transmission_layout}[shape](
-                  derived, frame, _state_block(state, on_junction=handed))
+                  derived, frame, _state_block(state, on_junction=handed),
+                  point)
     return _sc.DeckSpec(
         engine="siesta",
         engine_frame=frame,

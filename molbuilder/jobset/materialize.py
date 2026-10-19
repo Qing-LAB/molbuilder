@@ -827,6 +827,13 @@ class HandOver:
             out.update(written_as_ended(folder, self.names.label, names))
         return out
 
+    def walk_copies(self, base, cwd) -> List[Tuple[str, str]]:
+        """What the walk copies just before the run starts: ``(file, folder)``
+        pairs, each from ``cwd``, the folder the walk runs in."""
+        dst = os.path.relpath(self.target, cwd)
+        return [(os.path.relpath(src.path(base) / name, cwd), dst)
+                for src, name in self.files]
+
 
 def written_as_ended(folder, label: str, files, *,
                      run: Optional[str] = None) -> Dict[str, str]:
@@ -872,13 +879,6 @@ def written_as_ended(folder, label: str, files, *,
                          f"from it may need more iterations or fail; "
                          f"`--cold` starts without it")
     return out
-
-    def walk_copies(self, base, cwd) -> List[Tuple[str, str]]:
-        """What the walk copies just before the run starts: ``(file, folder)``
-        pairs, each from ``cwd``, the folder the walk runs in."""
-        dst = os.path.relpath(self.target, cwd)
-        return [(os.path.relpath(src.path(base) / name, cwd), dst)
-                for src, name in self.files]
 
 
 def hand_over(base, h: HandOver, plan=None) -> List[str]:

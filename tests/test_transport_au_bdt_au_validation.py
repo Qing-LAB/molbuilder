@@ -183,25 +183,30 @@ def _struct_with_sidecar():
     return StructureCodec().load(_FIX_XYZ)
 
 
-def _live_device_deck(label="au_bdt_au_test", rung="device"):
+def _live_device_deck(label="au_bdt_au_test", rung="device", point=None):
     """A NEGF rung's deck through the LIVE path -- the same call `prep` makes:
     the device's by default, the transmission's when a check is about what
-    tbtrans reads (the two are separate texts, `transport.md` § 6.1b).
+    tbtrans reads (the two are separate texts, `transport.md` § 6.1b); at
+    ``point`` as `prep` renders each point's (`spec_for(..., point=)`, the
+    config at its voltage).
     """
     import dataclasses
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.transport_rung import at_point
     from molbuilder.siesta.input import spec_for
     from molbuilder.template import role_answers
     struct = _struct_with_sidecar()
     # ...with the rung's own answers laid on, as `resolve` lays them for
     # every prep (`engines/template.md` § 6.4): the device's `transiesta`
     # is the rung's answer, not a default the spec supplies.
-    cfg = dataclasses.replace(SiestaConfig(system_label=label),
-                              **role_answers("siesta", "transport", rung))
+    cfg = at_point(dataclasses.replace(
+        SiestaConfig(system_label=label),
+        **role_answers("siesta", "transport", rung)), point)
     token = {"device": "04_device", "transmission": "05_transmission"}[rung]
     spec = spec_for(struct, cfg, calculation="transport",
-                    names=RunNames.of(label, token, "hierarchical"))
+                    names=RunNames.of(label, token, "hierarchical"),
+                    point=point)
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
 
@@ -280,6 +285,65 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
         f"electrode blocks declare used-atoms {got}; the structure's leads "
         f"hold {sorted([n_l, n_r])} atoms -- a count that does not track the "
         f"regions is hardcoded")
+
+
+def _electrode_rows(deck: str, lead: str) -> dict:
+    """A lead's ``%block TS.Elec.<lead>`` as ``{line: value}``, through the
+    fdf reader."""
+    from molbuilder.parse.fdf import read_fdf
+    _scalars, blocks = read_fdf(deck)
+    return {r[0].lower(): r[1] for r in blocks[f"tselec{lead.lower()}"]}
+
+
+def test_the_leads_greens_functions_are_the_runs_once_per_voltage():
+    """`engines/transport.md` § 2a.11, *What a run's points share*: a device
+    point's deck names each lead's surface Green's function in its RUN's
+    folder, the file named on the voltage, and asks the engine to reuse it
+    -- so two frames at one voltage name the same file, two voltages never
+    do, a point with no level names the run itself, and the transmission
+    names none (tbtrans writes no such file).
+
+    MUTATION THIS MUST FAIL AGAINST: the path left at the point (every
+    frame writes its own 49 GB pair); the voltage dropped from the name
+    (the second voltage reads the first's file and the engine dies on the
+    chemical potential); `GF.ReUse` not written; a `GF` line in the
+    transmission's blocks."""
+    from pathlib import PurePosixPath
+
+    from molbuilder.transport.stages import Point
+
+    def named(point):
+        deck = _live_device_deck(point=point)
+        rows = {lead: _electrode_rows(deck, lead) for lead in ("L", "R")}
+        assert all(r["gf.reuse"] == "true" for r in rows.values()), rows
+        here = PurePosixPath("run-0") / (point.rel if point else "")
+        # The path as the engine resolves it from the point's folder.
+        return {lead: PurePosixPath(
+            *(p for p in (here / r["gf"]).parts if p != "."))
+            for lead, r in rows.items()}
+
+    def resolved(p: PurePosixPath) -> str:
+        out = []
+        for part in p.parts:
+            if part == "..":
+                out.pop()
+            else:
+                out.append(part)
+        return "/".join(out)
+
+    f0 = {k: resolved(v) for k, v in named(Point(frame=0, volts=0.2, of=3)).items()}
+    f1 = {k: resolved(v) for k, v in named(Point(frame=1, volts=0.2, of=3)).items()}
+    assert f0 == f1 == {"L": "run-0/au_bdt_au_test.v0.2.TSGFL",
+                        "R": "run-0/au_bdt_au_test.v0.2.TSGFR"}, (f0, f1)
+    other = {k: resolved(v) for k, v in named(Point(frame=1, volts=0.0, of=3)).items()}
+    assert other == {"L": "run-0/au_bdt_au_test.v0.TSGFL",
+                     "R": "run-0/au_bdt_au_test.v0.TSGFR"}, other
+    alone = {k: resolved(v) for k, v in named(None).items()}
+    assert alone == {"L": "run-0/au_bdt_au_test.v0.TSGFL",
+                     "R": "run-0/au_bdt_au_test.v0.TSGFR"}, alone
+    for lead in ("L", "R"):
+        rows = _electrode_rows(_live_device_deck(rung="transmission"), lead)
+        assert "gf" not in rows and "gf.reuse" not in rows, rows
 
 
 def test_the_device_deck_states_its_identity_and_method():

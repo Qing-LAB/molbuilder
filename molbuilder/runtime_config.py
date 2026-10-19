@@ -1165,9 +1165,10 @@ _CHECKPOINT_DEFAULTS: Dict[str, Any] = {
         "generic": [],
         "siesta":  ["*.DM", "*.HSX", "*.TSHS",
                     "*.TBT.AVTRANS_*", "*.TBT.CC", "*.TBT.DOS",
-                    # TranSIESTA's scratch at a device point -- the leads'
-                    # surface Green's functions, hundreds of MB each
-                    # (`siesta/warm-files.toml` [transport] scratch).
+                    # TranSIESTA's scratch at a device run -- the leads'
+                    # surface Green's functions, one pair per voltage,
+                    # tens of GB each (`siesta/warm-files.toml`
+                    # [transport] scratch).
                     "*.TSGFL", "*.TSGFR"],
         "pyscf":   ["*.chk", "*.cube"],
     },

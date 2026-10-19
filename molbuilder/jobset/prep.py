@@ -561,10 +561,10 @@ class Rung:
     #: ``cfg -> cfg``: the config an element renders from -- a lead's own
     #: label, the junction's electronic state folded in.
     configure: Callable = lambda cfg: cfg
-    #: ``(element, cfg) -> {keyword: value}``: what else `spec_for` is told
-    #: -- a vibration's block, the relaxation it builds on, the cell; the
-    #: junction's electronic state.
-    spec_extra: Callable = lambda element, cfg: {}
+    #: ``(element, cfg, point) -> {keyword: value}``: what else `spec_for`
+    #: is told -- a vibration's block, the relaxation it builds on, the
+    #: cell; the junction's electronic state and the deck's point.
+    spec_extra: Callable = lambda element, cfg, point: {}
     #: ``((folder, point), ...)``: the folders each holding a deck written at
     #: that point -- a frame and a voltage (`transport.stages.Point`,
     #: `engines/transport.md` § 2a.9-11) -- each with its own wrapper and
@@ -659,7 +659,7 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
          if stage_role(str(task.engine), "vibration", n) == "relaxation"),
         getattr(pset[0].render_config(), "relax_force_tol", None))
 
-    def spec_extra(element, cfg):
+    def spec_extra(element, cfg, point):
         return {**({"cell": cell} if cell is not None else {}),
                 # The finish's facts ride a force-constant deck -- never a
                 # benchmark trial's: a spectrum of capped SCFs is a spectrum
@@ -736,7 +736,11 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
                        if stage == "transmission" else job.resources))
     return Rung(struct=struct, render_kind="transport", configure=configure,
                 sources=transport_sources,
-                spec_extra=lambda element, cfg: {"state": state},
+                # THE DECK'S POINT reaches the spec: the device names its
+                # run's shared files the way its point reaches them
+                # (`engines/transport.md` § 2a.11).
+                spec_extra=lambda element, cfg, point: {"state": state,
+                                                        "point": point},
                 points=points, at_point=at_point,
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
@@ -1175,7 +1179,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                         _spec = seam.spec_for(
                             _struct, _at, names=_names,
                             calculation=rung.render_kind,
-                            **rung.spec_extra(element, cfg),
+                            **rung.spec_extra(element, cfg, _point),
                             # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
                             # K12) -- the bench lane is SIESTA's alone.
                             **({"trial": _trial} if _trial else {}))

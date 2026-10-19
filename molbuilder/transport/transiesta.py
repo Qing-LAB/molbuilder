@@ -91,6 +91,21 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
     return f"{job_name}_{label}"
 
 
+def lead_gf_file(job_name: str, volts: float, lead: str) -> str:
+    """THE ONE SPELLING of a lead's surface Green's function file at a
+    voltage -- the run's, shared by every point at that voltage
+    (`engines/transport.md` § 2a.11, *What a run's points share*): the
+    engine's own default name, ``<SystemLabel>.TSGF<lead>`` (SIESTA 5.4.2
+    `ts_electrode.F90`:373-377), with the point's voltage token in it, so
+    the points of one voltage share one pair and two voltages never do
+    (the chemical potential is in the file, and the engine refuses a file
+    at another: `m_ts_gf.F90` `check_Green`).  ``lead`` is the block's
+    name (`LEAD_NAMES`); ``volts`` the deck's ``bias_voltage_v``, the
+    point's (`jobset.transport_rung.at_point`)."""
+    from ..task import bias_token
+    return f"{job_name}.{bias_token(float(volts))}.TSGF{lead}"
+
+
 #: TranSIESTA's floor: the continued-fraction branch stops a run whose
 #: equilibrium contour has fewer poles than this (SIESTA 5.4.2
 #: `Src/m_ts_chem_pot.F90`:324) -- after the queue wait.
@@ -419,7 +434,8 @@ def _emit_geometry(struct: Structure,
     return lines
 
 
-def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
+def emit_electrode_declarations(struct: Structure, cfg, *,
+                                gf_in: Optional[str] = None) -> List[str]:
     """The junction as TranSIESTA and tbtrans read it -- which atoms are each
     lead and where its bulk Hamiltonian is, the two reservoirs and the bias
     between them, the buffer atoms (`engines/transport.md` § 6.1b).
@@ -448,6 +464,14 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
     computes transmission through a region that is not the molecule, and
     converges while doing it.  This text has been measured against a live
     5.4.2 run (§ 6.1b: 27 / 27 atoms at 1-27 and 94-120, as written).
+
+    ``gf_in`` is the folder, relative to the deck, where the device run
+    keeps the leads' surface Green's functions -- the run's, one pair per
+    voltage, shared by every point at that voltage (`engines/transport.md`
+    § 2a.11, *What a run's points share*; `lead_gf_file`): the device deck
+    hands its point's way up to the run (`stages.Point.to_run`).  ``None``
+    is the transmission's: tbtrans writes no such file, and its blocks say
+    so in place of the ``GF`` lines.
     """
     # TWO LEADS, ALWAYS: no other label is one (`sort.ELECTRODE_LABELS`),
     # and the sort refuses a junction missing either before any deck is
@@ -503,6 +527,34 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         "smaller")
     lines.append(
         "# lead cell up to it (SIESTA 5.4.2 ts_electrode.F90).")
+    # THE LEADS' SURFACE GREEN'S FUNCTIONS, the run's once per voltage
+    # (`engines/transport.md` § 2a.11, *What a run's points share*): the
+    # device deck names each lead's file in its run's folder and asks the
+    # engine to reuse it -- the block's `GF.ReUse` outranks the global
+    # `TS.Elecs.GF.ReUse` (`m_ts_options.F90`:472-491).  The transmission
+    # names none: tbtrans builds each self-energy in core.
+    if gf_in is not None:
+        lines.append(
+            "# `GF` / `GF.ReUse` in each block: the lead's surface Green's "
+            "function on this")
+        lines.append(
+            "# run's contour at this voltage is the RUN's file, written by "
+            "the first point")
+        lines.append(
+            "# at this voltage and read by every other frame's point there "
+            "(transport.md")
+        lines.append(
+            "# 2a.11): the engine checks it against this deck before "
+            "reading it")
+        lines.append("# (m_ts_gf.F90 check_Green) and stops on a mismatch.")
+    else:
+        lines.append(
+            "# No `GF` line: tbtrans builds each lead's self-energy in core "
+            "and writes no")
+        lines.append(
+            "# Green's function file (TBT.Elecs.Out-of-core, false by "
+            "default,")
+        lines.append("# m_tbt_options.F90).")
     for i, (label, block_name, idxs) in enumerate(electrodes):
         cp = chempot_for[block_name]
         sid = semi_inf.get(i, "+A3")
@@ -535,6 +587,10 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         # applies.
         lines.append("  bloch              1 1 1")
         lines.append(f"  semi-inf-direction {sid}")
+        if gf_in is not None:
+            lines.append(f"  GF                 {gf_in}/"
+                         f"{lead_gf_file(cfg.system_label, cfg.bias_voltage_v, block_name)}")
+            lines.append("  GF.ReUse           true")
         lines.append(f"%endblock TS.Elec.{block_name}")
         lines.append("")
 

@@ -179,6 +179,15 @@ class Point:
             + ([bias_token(self.volts)] if self.volts is not None else []))
 
     @property
+    def to_run(self) -> str:
+        """THE WAY FROM THE POINT'S FOLDER UP TO ITS RUN'S, as a deck in
+        the point names a file the run holds (`engines/transport.md`
+        § 2a.11, *What a run's points share*): ``..`` per level the point
+        has -- ``../..`` for ``f001/v0.2`` -- and ``.`` for a point with no
+        level, which is the run itself."""
+        return "/".join([".."] * len(self.rel.split("/"))) if self.rel else "."
+
+    @property
     def bias_v(self) -> float:
         """The voltage the point runs at: its own, or 0 V on a calculation
         that sweeps no bias (`engines/transport.md` § 2a.10)."""

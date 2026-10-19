@@ -282,8 +282,7 @@ def rung_deck_now(base, task, stage: str, composed, *, template_text,
         task, stage, composed, Resources(), template_text=template_text,
         pins=pins or None)
     struct = at_frame(struct, point)
-    spec, cfg = transport_spec(task, stage, struct, config, state,
-                                point.volts if point is not None else None,
+    spec, cfg = transport_spec(task, stage, struct, config, state, point,
                                 base=base)
     with user_error_as_prep():
         return _sc.render_deck(spec, struct, cfg, verbose=True,

@@ -1663,6 +1663,37 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
             first.relative_to(run.bundle)), nxt
 
 
+def test_the_leads_greens_functions_are_computed_once_per_voltage(junction):
+    """§ 2a.11 *What a run's points share*: the device run holds one pair of
+    surface Green's function files per voltage, at the run's level and in no
+    point; the first frame's point at each voltage computed them, and every
+    later frame's point found and read them, as the engine says in its own
+    output (*Using GF-file*).
+
+    MUTATION THIS MUST FAIL AGAINST: the `GF` path left at the point (a pair
+    in every point folder, none at the run); `GF.ReUse` off (the engine
+    rewrites the file and never says it used one)."""
+    from molbuilder.runs import openable
+    from molbuilder.task import read_task
+    from molbuilder.transport.transiesta import LEAD_NAMES, lead_gf_file
+    run = junction.from_pair
+    label = read_task(run.bundle / "task.json").label
+    device = run.bundle / "04_device" / "run-0"
+    for v in _BIAS:
+        for lead in LEAD_NAMES:
+            assert (device / lead_gf_file(label, v, lead)).is_file(), (v, lead)
+    for f in range(_N_FRAMES):
+        for v in _BIAS:
+            p = _frame_point(run, "04_device", f, v)
+            assert not [x.name for x in p.iterdir() if ".TSGF" in x.name], p
+            # THE POINT'S OUTPUT, the file the run door opens for its folder
+            # (`runs.openable`); the engine's own line in it.
+            output, trail = openable(p)
+            assert output is not None, trail
+            said = Path(output).read_text(errors="replace")
+            assert ("Using GF-file" in said) == (f > 0), (f, v)
+
+
 def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
         junction):
     """§ 2a.11: each transmission point gathers the device's Hamiltonian of

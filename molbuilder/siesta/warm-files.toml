@@ -88,13 +88,15 @@ along = [".TSDE"]               # WHAT A SWEEP HANDS FROM POINT TO POINT: a
                                 # it -- the manual's "copy the TSDE from the
                                 # closest, previously, calculated bias"
                                 # (engines/transport.md 2a.11)
-scratch = [".TSGFL", ".TSGFR"]  # THE ENGINE'S SCRATCH AT A POINT: the leads'
-                                # surface Green's functions, written and
-                                # re-read within one run and recomputed by
-                                # the next (hundreds of MB each) -- never
-                                # carried, never taken over into a new run,
-                                # always large to the checkpoint
-                                # (engines/transport.md 2a.11)
+scratch = [".TSGFL", ".TSGFR"]  # THE ENGINE'S SCRATCH AT A RUN: the leads'
+                                # surface Green's functions, one pair per
+                                # voltage in the run's folder, written by
+                                # the first point at that voltage and read
+                                # by every other frame's (tens of GB each)
+                                # -- never carried, never taken over into a
+                                # new run, always large to the checkpoint
+                                # (engines/transport.md 2a.11, *What a run's
+                                # points share*)
 
 [[transport.file]]
 suffix = ".TSHS"                # TranSIESTA Hamiltonian + overlap.

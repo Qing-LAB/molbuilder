@@ -1351,6 +1351,7 @@ tree says so without anyone having to know it.
 | | what is shared | valid when | gate |
 |---|---|---|---|
 | **Exact** — the electrodes | the lead Hamiltonian, used as **truth** (it becomes the self-energy) | the frame's electrode region is geometrically **identical** to the one the lead was derived from | **a displacement rule must never move an electrode atom** — checkable (tier 2); every electrode atom is in the structure's held label, which may hold more (§ 1.1, Step 0, *what transport asks of the held set*) |
+| **Exact** — the leads' surface Green's functions, at a voltage | each lead's self-energy on the device's contour, used as **truth**, written once per voltage by the first point that runs there and read by every other frame's point at that voltage (§ 2a.11, *What a run's points share*) | the same lead, cell, k-points, voltage and contour — which is every frame of a run at one voltage, since a displacement rule moves no electrode atom and the run's settings bind every frame (Class A) | **TranSIESTA's own check** (`m_ts_gf.F90` `check_Green`): a file that differs in any of them is refused, naming the difference; a frame's file is never a different frame's by name, because the name carries the voltage and the run holds one geometry per frame |
 | **Approximate** — the seed | a converged density, used only as a **starting guess** | any nearby geometry: same species, same ordering, slightly moved. The SCF converges away from it, so being imperfect costs iterations, not correctness | the orbital set must match; the geometry need only be close |
 
 The distinction matters because the two gates differ in **kind**, not in
@@ -1727,6 +1728,11 @@ voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
     │                       the gathered inputs, kept once as taken; every
     │                       point's own copy is taken from the run upstream,
     │                       as these are
+    ├── <label>.v0.TSGFL, <label>.v0.TSGFR, <label>.v0.2.TSGFL, …
+    │                       the leads' surface Green's functions, one pair
+    │                       per voltage: the engine's scratch, written by the
+    │                       first point at that voltage and read by the rest
+    │                       (*What a run's points share*, below)
     ├── run.json            the run's one launch record
     ├── v0/                 a point: its deck, its run script, its own copies
     │                       of the inputs, its outputs (.TS.HSX, .TSDE, the
@@ -1742,8 +1748,10 @@ voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
 
 A point folder holds everything its engine reads, as every run folder does
 (`project-layout.md` § 1.0) — its own copies of the run's inputs; the run keeps
-them once, clean, as their source. The stage folder holds no deck at the stage
-level: every deck is a point's.
+them once, clean, as their source — but for the leads' surface Green's
+functions, which the engine reads from the run above the point and which are
+the run's on purpose (*What a run's points share*, below). The stage folder
+holds no deck at the stage level: every deck is a point's.
 
 **A point is done or not done** — read from the point's own files by one door
 (`continuation.done`), never from a second record: **done** when its run
@@ -1784,8 +1792,9 @@ did not.
 engine's results the readers and the next rungs use, the run's own account:
 output, conclusion, logs) copied into the new run's point folder, **but not
 the engine's scratch** (`warm-files.toml` `[transport] scratch`: TranSIESTA's
-`.TSGFL` / `.TSGFR`, the leads' surface Green's functions, hundreds of MB and
-recomputed by every run), its `.continued-from` naming the run that
+`.TSGFL` / `.TSGFR`, the leads' surface Green's functions — the run's files,
+not a point's, recomputed once per voltage by every run, and left wherever
+they lie), its `.continued-from` naming the run that
 **computed** it (one hop: a point taken over from a point itself taken over
 names the run that ran it) — so a point taken over keeps the inputs it was
 computed from, and their `.gathered-from`, whatever the new run gathered —
@@ -1858,6 +1867,7 @@ does not:
 │   ├── f000/v0/ f000/v0.2/ f001/v0/ …   each point's prepared deck
 │   └── run-0/                   one run: every point
 │       ├── .gathered-from  <label>_L-electrode.TSHS  <label>_R-electrode.TSHS  <label>.DM
+│       ├── <label>.v0.TSGFL  <label>.v0.TSGFR  <label>.v0.2.TSGFL  …   ← once per voltage, every frame's
 │       └── f000/v0/ f000/v0.2/ f001/v0/ …
 └── 05_transmission/
     ├── f000/v0/ f000/v0.2/ f001/v0/ …
@@ -1887,6 +1897,57 @@ and runs the rest — a point not done starting from the closest done voltage
 before it in its frame, else the seed — and cold runs them all: rule 3 at the
 point, unchanged. Run here, any of these is left running in the background
 unless waited on (`execution/job-system.md` § 6.0).
+
+#### What a run's points share — the leads' surface Green's functions *(user, 2026-10-19)*
+
+> *"we shall reuse the tsgf files wherever possible for a clustered
+> calculation of transport when electrodes are shared, the only thing that is
+> changed is the bridging components … otherwise we are wasting a lot of space
+> and time on things that are the same"*
+
+Before TranSIESTA's first SCF iteration it computes each lead's **surface
+Green's function** on the whole contour — every energy point, every k-point —
+and writes it to a file it reads back at every iteration (`TS.Elecs.Out-of-core`,
+true by default): the `.TSGFL` / `.TSGFR` of a device point, 49 GB each on the
+Au–BDT–Au junction. The file depends on the **lead** (its atoms, orbitals and
+cell), the device's **cell and k-points**, the **spin**, the lead's **chemical
+potential** — the voltage — and the **contour** (§ 2a.9, *Two kinds of
+sharing*). None of these is the bridge's: every frame of a run at one voltage
+needs the same two files, and until 2.19.0 every frame computed and wrote its
+own.
+
+**The rule.** The leads' surface Green's functions are **the run's, once per
+voltage**: the device deck names each lead's file in the run's folder, above
+the point's — `GF <to the run>/<label>.<voltage>.TSGF<lead>` in its
+`%block TS.Elec.<lead>`, the engine's own default name
+(`<label>.TSGF<lead>`, `ts_electrode.F90`) with the point's voltage token in it
+— and asks the engine to reuse it (`GF.ReUse true`, the block's line, which
+outranks `TS.Elecs.GF.ReUse`; `m_ts_options.F90`, `ts_electrode.F90`). The
+first point the walk runs at a voltage finds no file and writes it; every
+later point at that voltage — the next frames' — finds it, **checks it**
+(`check_Green`: spin, cell, atoms, coordinates, orbitals, Bloch expansion, the
+chemical potential, the k-points and their weights, every contour energy) and
+reads it, saying *Using GF-file* in its output. A file that fails the check
+stops the point with TranSIESTA's own words (*Error in GFfile … Please move or
+delete*). The check reads the file's header: a point killed while writing the
+file — the wall, the node — leaves one the next frame's point at that voltage
+accepts and then fails reading (*ERROR in reading GF file*), as does every
+later frame at that voltage in that run, the walk going on frame by frame; a
+launch again opens a new run and computes the pair afresh. The walk runs
+points one after another, so no two write one file at once. A point with no
+level (one frame, one voltage) is the run itself, and its pair sits in the
+run's folder as every run's does.
+
+What follows for the rest of the contract: the files are the **run's scratch**
+(`warm-files.toml` `[transport] scratch`), never carried, never taken over —
+a run launched again computes each voltage's pair once more, as it computed
+them before — and the checkpoint leaves them out as it did (`*.TSGF*`,
+`runtime_config`). The transmission writes none: tbtrans builds each lead's
+self-energy in core (`TBT.Elecs.Out-of-core`, false by default,
+`m_tbt_options.F90`), and its deck's electrode blocks say so in place of a
+`GF` line. The gather's agreement check renders the upstream deck **at the
+point** it compares (`gather.rung_deck_now`), so a device deck's `GF` path —
+the point's own words — agrees with the one that ran.
 
 #### Attempts, and what is never overwritten
 
@@ -4388,6 +4449,7 @@ cross-checked against the installed binaries (2026-09-29):
 | **and several `TS.*` values as the defaults of its own — and a plain SIESTA one** | `TBT.Voltage` defaults to `TS.Voltage`; `TBT.Elecs.Bulk` to `TS.Elecs.Bulk` (itself true by default); `TBT.Elecs.Eta` to `TS.Elecs.Eta` (itself 1 meV); the temperature is SIESTA's own `ElectronicTemperature`, then `TS.ElectronicTemperature`, then `TBT.ElectronicTemperature` | `m_tbt_hs.F90` 109–110; `m_tbt_options.F90` 151–153, 285–289 |
 | **`TBT.k` is a list or a block — nothing else** | `TBT.k [2 2 1]` or `%block TBT.k` is read; any other form falls through to `%block TBT.kgrid.MonkhorstPack`, then to the SCF's own `kgrid.MonkhorstPack` — which is `kgrid_Monkhorst_Pack`, since fdf drops `_ . -` and case when it compares labels. **A list is only a list in brackets** | `m_tbt_kpoint.F90` 800–810 (`setup_kpoint_grid`), 103–127; `libfdf` `parse.F90` 1726 (*"if the token starts with [ and ends with ], it will be a list"*), `utils.F90` 113–162 (`labeleq`) |
 | **the device Hamiltonian is found by name** | `TBT.HS` when given; otherwise the first of `<label>.TS.HSX`, `.TSHS`, `.HSX` that exists | `m_tbt_hs.F90` 210–220 |
+| **a lead's surface Green's function is a file the block names, reused when it exists and matches** | `GF <file>` and `GF.ReUse <bool>` inside `%block TS.Elec.<name>`, read after the global `TS.Elecs.GF.ReUse` (default true) and so outranking it; the default name is `<SystemLabel>.TSGF<name>`; an existing file is checked field by field (`check_Green`) and read, or the point dies naming the difference; tbtrans reads the same block but writes no file unless `TBT.Elecs.Out-of-core` is set (false by default) | `ts_electrode.F90` 328, 373–377, 606–613; `m_ts_options.F90` 472–491; `m_ts_gf.F90` 96–171 (`do_Green`), 803–1060 (`check_Green`); `m_tbt_options.F90` 303–308 |
 | **`TBT.Verbosity` defaults to 5** | `init_verbosity('TBT.Verbosity', 5)` | `tbt_reinit_m.F90` 206 |
 | **`TBT.Progress` defaults to 5 per cent** | `fdf_get('TBT.Progress', 5.)`, below 0 taken as 0, divided by 100; a progress line — `tbt: Calculated N %, ETA in S s` — each time that share more of a spin pass's k-point × energy loop is done — the loop runs once per spin channel (`m_tbtrans.F90` 243–334) — after `tbt: Initial ETA in S s` once the pass's first is | `m_tbt_options.F90` 486–487; `m_tbt_trik.F90` 883–900, 1554 |
 
