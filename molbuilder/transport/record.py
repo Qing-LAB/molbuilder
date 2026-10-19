@@ -733,7 +733,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
     from ..jobset.materialize import stage_home
-    from ..parse.dirs.job import LIVE_STATES
+    from ..parse.dirs.job import FINAL_STATES
     from ..parse.dirs.record import tbtrans_loop
     from ..parse.dirs.rundir import run_state_of
     from ..runfiles import JUNCTION_FILE, RunNames
@@ -788,7 +788,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             outs = _outs_newest_first(where, token)
             progress = tbtrans_loop(
                 outs[0] if outs else None,
-                over=st.state not in LIVE_STATES)
+                over=st.state in FINAL_STATES)
             if progress:
                 entry["progress"] = {
                     "said": progress["progress"],

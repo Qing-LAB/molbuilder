@@ -353,12 +353,19 @@ export function init(viewer) {
          * file-selection mode; the `pickable` filter narrows it to what a
          * lattice can actually be measured from. */
         const { pickPath } = await import("/static/lib/tree-picker.js");
+        /* A RUN IS ITS DIRECTORY: the relaxation run's FOLDER is picked, as
+         * the junction citation picks one, and the server reads the run
+         * through the run door -- never a run's file by name.  A structure
+         * pair's .xyz is the other thing a lattice is measured from. */
         const path = await pickPath({
             title: "Measure the lattice from which run?",
-            hint: "Pick a relaxed bulk result.  \u25b8 expands a folder.",
-            mode: "file",
+            hint: "Pick the finished relaxation RUN's folder of the bulk "
+                + "metal (run-<n>, launched through jobset), or a structure "
+                + "pair's .xyz.  \u25b8 expands a folder.",
+            mode: "any",
             confirmLabel: "Measure",
-            pickable: (entry) => /\.(xyz|XV)$/i.test(entry.name || ""),
+            pickable: (entry) => entry.kind === "directory"
+                || /\.xyz$/i.test(entry.name || ""),
         });
         if (!path) return;                       // cancelled -- say nothing
         let j = null;

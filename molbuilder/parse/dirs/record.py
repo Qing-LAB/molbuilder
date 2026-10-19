@@ -285,7 +285,7 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
     the SIESTA family's table (`siesta_grammar`), and TBtrans's loop through
     its reading pass (:func:`tbtrans_loop`), said with the run's state --
     over once it is no longer live (`job.LIVE_STATES`)."""
-    from .job import LIVE_STATES
+    from .job import FINAL_STATES
     from ..engines import siesta_grammar as _G
     head = f.out_head
     if not head:
@@ -317,7 +317,9 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
             if k in launch}
     time.update(tbtrans_loop(
         f.out, head=head,
-        over=f.status is not None and f.status.state not in LIVE_STATES))
+        # OVER only when the run's state is final: an `unreadable` run's
+        # loop is not said stopped -- its state cannot be told.
+        over=f.status is not None and f.status.state in FINAL_STATES))
     if time:
         comp["time"] = time
     pseudos = []

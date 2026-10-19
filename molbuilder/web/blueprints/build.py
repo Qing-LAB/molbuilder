@@ -2136,14 +2136,22 @@ def api_task_setup_folder():
         return jsonify({"ok": False,
                         "error": f"not a directory: {dir_raw}"}), 400
 
-    def _read(name):
-        f = folder / name
+    def _read_handover():
+        """The hand-over file through its one reader: `persist.read_json`,
+        and the schema this module writes it with (`TASK_HANDOVER_SCHEMA`)
+        checked -- a file of another major is said, never read as this
+        one's; one that does not read is said too, the page shows it."""
+        from molbuilder.persist import check_schema, read_json
+        f = folder / TASK_HANDOVER_NAME
         if not f.is_file():
             return None
         try:
-            return json.loads(f.read_text(encoding="utf-8"))
+            obj = read_json(f)
+            check_schema(obj.get("schema") if isinstance(obj, dict) else None,
+                         TASK_HANDOVER_SCHEMA, label=f.name)
+            return obj
         except Exception as exc:                  # noqa: BLE001
-            return {"error": f"{name}: {exc}"}
+            return {"error": f"{TASK_HANDOVER_NAME}: {exc}"}
 
     def _described():
         """The description, through its one reader (`read_task`,
@@ -2164,7 +2172,7 @@ def api_task_setup_folder():
     # to keep.
     _task = _described()
     described = (_task.to_dict() if hasattr(_task, "to_dict") else _task)
-    handover = None if described is not None else _read(TASK_HANDOVER_NAME)
+    handover = None if described is not None else _read_handover()
     # THE LABEL THE TEMPLATE IS NAMED ON: the description's, else the
     # hand-over's name through the normaliser the hand-over named it with.
     if hasattr(_task, "label"):

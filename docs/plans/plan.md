@@ -96,10 +96,19 @@ fixed where it sits on one of these three roads and nowhere else.
    the catalogue states for every file molbuilder writes — the scan's case
    was a hand-started `job.out`, not ours — nothing to fix.
 
-**Pushed 2026-10-18 — 2.12.2** (Sol has it): a run SLURM stopped reads
-`failed` from its own files. **Local, to push**: 2.13.0 — the frames'
-post-process out of transport, the multi-frame review's crash fixes, the
-version on every call and page.
+**Pushed 2026-10-18 — through 2.13.2** (Sol pulls it): a run SLURM stopped
+reads `failed` from its own files (2.12.2); the frames' post-process out of
+transport, the multi-frame review's crash fixes, the version on every call
+and page (2.13.0); the two whole reads' findings (2.13.1); the Modify tab's
+lattice-from-run through the run door, a loop said stopped only in a final
+state, the hand-over file's one reader (2.13.2).
+
+**What remains, ranked**: (1) the user's Sol runs — what they show; (2)
+parked, nothing wrong on screen today: names spelled a second time outside
+the catalogue, the inspectors' JS suffix matches, the uploads and docs-index
+writers, one TBtrans output read three times, the hand-over page's own
+folder rules (depth; a hand-over already there replaced by the next send);
+(3) V1.39 after the roads.
 
 **Off the plan** (the user, 2026-10-18): V1.39 and every other feature until
 the three above are done; the scan's findings off these roads (migrate,

@@ -895,8 +895,8 @@ def api_modify_lattice_from_run():
         path = _resolve_within_roots(raw)
     except _PickerError as exc:
         return _err(exc.message, exc.status)
-    if not path.is_file():
-        return _err(f"{path.name} is not a file", 400)
+    if not (path.is_file() or path.is_dir()):
+        return _err(f"{path.name} is not there", 400)
 
     element = body.get("element")
     if element is not None and not isinstance(element, str):
@@ -964,27 +964,36 @@ def api_modify_lattice_from_run():
 
 
 def _read_relaxed_result(path):
-    """``(elements, positions_ang, cell_ang_or_None)`` from a result file.
+    """``(elements, positions_ang, cell_ang_or_None)`` of a relaxed result.
 
-    Two readers (§ 3.3): SIESTA's ``.XV`` through
-    ``parse.coords.siesta_xv.read_xv_with_cell``, and everything else through
-    ``StructureCodec``, which is the ONE authority on the ``.xyz`` +
-    ``.molstruct.json`` pair.  Nothing here parses a file itself.
+    A RUN IS ITS DIRECTORY: a run of ours -- its folder, or a file in it --
+    is read through the run door as the transport citation reads a run
+    (`runs.openable`, `runs.steps_of`): its LAST geometry step, in the box
+    the run had, in your order.  Anything else is a structure pair, read
+    through ``StructureCodec``, the ONE authority on the ``.xyz`` +
+    ``.molstruct.json`` pair.  A run's file picked by name (an ``.XV``) is
+    not read: the run door answers for the run.
     """
-    if path.suffix.lower() == ".xv":
-        # THE PARSE MODULE'S READER, not `transport.compose`'s.  Reading files
-        # is the parse module's job, and this one returns the cell as a
-        # first-class field, which is the thing being measured against.
-        from molbuilder.parse.coords.siesta_xv import (
-            SiestaXVError, read_xv_with_cell,
-        )
+    from molbuilder.runs import (OrderUnstated, RunStepsError, openable,
+                                 run_of, steps_of)
+    run = run_of(path)
+    if run is not None and run.stage is not None:
+        output, _trail = openable(run.folder)
+        if output is None:
+            raise ValueError(f"{run.folder} holds no output of the run "
+                             f"{run.basename} that a parser reads")
+        from molbuilder.atom_permutation import PermutationError
+        from molbuilder.deck_record import DeckRecordUnreadable
         try:
-            # ONE PASS for the two halves of one answer.
-            struct, cell = read_xv_with_cell(path)
-        except SiestaXVError as exc:
+            struct = steps_of(run, output).last
+        except (RunStepsError, OrderUnstated, DeckRecordUnreadable,
+                PermutationError) as exc:
             raise ValueError(str(exc)) from exc
-        return list(struct.elements), struct.positions, cell
-
+        return list(struct.elements), struct.positions, struct.cell
+    if path.is_dir():
+        raise ValueError(f"{path.name} is no run of ours: pick a relaxation "
+                         f"run's folder (run-<n>, launched through jobset) "
+                         f"or a structure pair's .xyz")
     from molbuilder.workingcopy_structure import StructureCodec
     struct = StructureCodec().read(path)
     return list(struct.elements), struct.positions, struct.cell
