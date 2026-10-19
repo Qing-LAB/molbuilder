@@ -399,6 +399,11 @@ method = "POST"
 takes_no_path = "A user id in the URL (monitor.is_notify_user regex) and a replace flag; the key file's path is the server's."
 
 [[route]]
+rule = "/api/notify/reports"
+method = "GET"
+takes_no_path = "A user id (?user=, the listener's key holder; the signed-in user by default), a count and an epoch second; the reports file's path is the server's own (config_dir.reports_dir)."
+
+[[route]]
 rule = "/api/notify/report-fields"
 method = "GET"
 takes_no_path = "An engine and a calculation kind narrowing the declared report fields."

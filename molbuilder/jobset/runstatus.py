@@ -92,6 +92,10 @@ class StageStatus:
     #: the record without a SECOND reader of the same file -- the schema is
     #: versioned (``molbuilder/run-launch@1``) and may grow fields.
     launch: Optional[Dict[str, Any]] = None
+    #: A QUEUED stage's standing as its scheduler states it here, or where
+    #: to ask (`runs.standing_of`; `web/results.md` § 2.4); ``None`` for
+    #: any other state.
+    standing: Optional[Dict[str, Any]] = None
     #: Whether this stage, launched again, continues from its own latest run
     #: -- the job's one fact (`Job.relaunch_continues`), which `launch`
     #: asks too, so the status says what launching it again will do
@@ -533,11 +537,14 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     if state == "pending":
         detail = _pending_detail(attempt, detail)
     where = attempt.name if attempt else None
+    from ..runs import standing_of
     return StageStatus(
         ref=refs[job.name], dir=d.name, state=state, detail=detail,
         converged=converged, attempt=where,
         attempts=attempts_in(home),
         launch=launch,
+        standing=(standing_of(launch, base)
+                  if state == "queued" else None),
         relaunch_continues=job.relaunch_continues,
         # THE SAME LABEL THE STATE WAS READ WITH -- the stage's names'.
         warm_files=_warm_present(observed, names.label, jobset.engine,

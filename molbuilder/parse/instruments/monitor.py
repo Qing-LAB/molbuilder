@@ -35,6 +35,10 @@ _VERDICT = re.compile(r"->\s*(GPU-bound|host/CPU-bound|mixed)")
 _BOUND_MAP = {"GPU-bound": "gpu", "host/CPU-bound": "host", "mixed": "mixed"}
 #: ``cpu mean=NN% (mm-MM); gpu0 sm mean=NN% (mm-MM) -> verdict``
 _SUMMARY_CPU = re.compile(r"cpu mean=(\d+(?:\.\d+)?)%")
+#: The closing record -- ``[<time>] [MONITOR] job ended (<why>); ...`` -- whose
+#: time is the run's end (`run-reports.md` § 2.5), which a launch compares a
+#: warm file's write time with (`running-a-job.md` § 3.6).
+_ENDED = re.compile(r"^\[([^\]]+)\]\s+\[MONITOR\]\s+job ended\s*\(([^)]*)\)")
 _SUMMARY_GPU = re.compile(r"gpu\d+ sm mean=(\d+(?:\.\d+)?)%")
 
 
@@ -49,7 +53,10 @@ _BASIS_LIMIT = re.compile(r"limit ([0-9.]+) GB")
 
 def monitor_metrics(text: str) -> Dict[str, Any]:
     """``{machine, bound, stated_cpu_mean_pct, stated_gpu_sm_mean_pct,
-    mem_basis, mem_peak_kernel_gb, mem_limit_gb}``.
+    mem_basis, mem_peak_kernel_gb, mem_limit_gb, ended_at, ended_why}``.
+    ``ended_at`` is the closing record's time as the log wrote it (ISO 8601
+    with its offset), ``ended_why`` its words; both absent for a run whose
+    monitor never closed.
 
     Absent facts are absent: ``machine`` is ``{}`` for a log predating the
     line, ``bound`` is ``None`` without a summary, and the stated means
@@ -65,6 +72,10 @@ def monitor_metrics(text: str) -> Dict[str, Any]:
                               "mem_gb": m.group(3), "gpu": m.group(4).strip()}
             break
     line = ""
+    for ln in text.splitlines():
+        m = _ENDED.match(ln)
+        if m:
+            out["ended_at"], out["ended_why"] = m.group(1), m.group(2)
     for ln in text.splitlines():
         if "[UTIL-SUMMARY]" in ln:
             line = ln                                # last one wins

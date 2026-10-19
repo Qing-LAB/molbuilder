@@ -157,7 +157,7 @@ def _vib_constants(cfg, names) -> List[str]:
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
-    from .relax_policy import policy_of, relax
+    from .relax_policy import policy_of, relax, wall_deadline
     out = ["",
            "# ---- vibration-kind constants (framework deck) ----",
            f"ALREADY_RELAXED = {bool(cfg.already_relaxed)}",
@@ -184,7 +184,8 @@ def _vib_constants(cfg, names) -> List[str]:
            # structure the result states, the result's writer and its scrub,
            # and the mode selector (§ 4.8).
            *emit_bundle_imports(
-               StructureCodec, MolwatchEmitter, relax, homo_index, mo_window,
+               StructureCodec, MolwatchEmitter, relax, wall_deadline,
+               homo_index, mo_window,
                dipole_derivatives, as_numpy, vibrational_modes,
                signed_omega, frequencies_cm1, display_form,
                thermo_temperatures, vibrational_thermo,
@@ -192,6 +193,10 @@ def _vib_constants(cfg, names) -> List[str]:
                write_spectra_payload, finite_or_none, select_modes,
                constants),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
+           # THE WALL (`engines/pyscf.md` § 3.9): the deadline this deck
+           # keeps -- its relaxation stops at it, its displaced SCFs refuse
+           # to start past it.
+           "_MB_WALL_DEADLINE = _mb_wall_deadline()",
            ]
     return out
 
@@ -342,6 +347,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
     out += [
         "    mol, _geometric_converged = _mb_relax(",
         "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
+        "        deadline=_MB_WALL_DEADLINE,",
         f"        {_opt_kw}, **_conv)",
         "    _judged = state['relaxation']['max_force_eh_bohr']",
         "    state['relaxation']['converged'] = (",

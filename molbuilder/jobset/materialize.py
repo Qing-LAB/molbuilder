@@ -815,6 +815,64 @@ class HandOver:
         """The files it takes, by name, in order."""
         return [name for _src, name in self.files]
 
+    def written_as_ended(self, base) -> Dict[str, str]:
+        """THE FILES IT TAKES THAT WERE WRITTEN AS THEIR RUN ENDED
+        (:func:`written_as_ended`, `running-a-job.md` § 3.6), each from the
+        folder it is taken from."""
+        out: Dict[str, str] = {}
+        by_folder: Dict[Path, List[str]] = {}
+        for src, name in self.files:
+            by_folder.setdefault(Path(src.path(base)), []).append(name)
+        for folder, names in by_folder.items():
+            out.update(written_as_ended(folder, self.names.label, names))
+        return out
+
+
+def written_as_ended(folder, label: str, files, *,
+                     run: Optional[str] = None) -> Dict[str, str]:
+    """THE FILES WRITTEN AS THEIR RUN ENDED (`running-a-job.md` § 3.6):
+    ``{name: why}`` for each of ``files`` in ``folder`` whose write time is
+    at or after the second the run's monitor closed -- the monitor log's
+    closing record (`parse/instruments/monitor.py`, ``ended_at``), read
+    through the registry -- a file a scheduler's kill may have caught
+    mid-write.  The log is the newest of ``label``'s in the folder, or
+    ``run``'s own where a stage's runs share the folder (its name,
+    ``H2_01_coarse-run1``).  Empty where no monitor closed, or every file
+    was written before.  A fact shown, never a veto."""
+    from datetime import datetime
+    from .. import runfiles as _rf
+    from ..parse import detect
+    folder = Path(folder)
+    if run is not None:
+        rec = _rf.parse_run_name(run, label)
+        logs = (_rf.find(folder, label, role=".monitor.log", stage=rec.stage,
+                         run=rec.run) if rec is not None else [])
+    else:
+        logs = sorted(_rf.find(folder, label, role=".monitor.log"),
+                      key=lambda pr: (pr[1].run is None, pr[1].run or 0))
+    if not logs:
+        return {}
+    try:
+        at = detect(str(logs[-1][0])).parse(logs[-1][0]).metrics.get("ended_at")
+        end_s = datetime.fromisoformat(at).timestamp() if at else None
+    except Exception:                       # noqa: BLE001 -- an unreadable
+        return {}                           # log says nothing
+    if end_s is None:
+        return {}
+    out: Dict[str, str] = {}
+    for name in files:
+        try:
+            wrote = (folder / name).stat().st_mtime
+        except OSError:
+            continue
+        if wrote >= int(end_s):
+            w = datetime.fromtimestamp(wrote).astimezone()
+            out[name] = (f"written as the job ended ({w:%H:%M:%S}; the job "
+                         f"ended {at[11:19]}), it may be incomplete; a start "
+                         f"from it may need more iterations or fail; "
+                         f"`--cold` starts without it")
+    return out
+
     def walk_copies(self, base, cwd) -> List[Tuple[str, str]]:
         """What the walk copies just before the run starts: ``(file, folder)``
         pairs, each from ``cwd``, the folder the walk runs in."""

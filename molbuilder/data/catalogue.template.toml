@@ -609,6 +609,30 @@ Total step budget = relax_steps x (1 + continue_retries).
 Set it low and a long relaxation gets cut off mid-descent; set it high and a run that was never going to converge burns the whole wall-clock allocation.
 """
 
+[item.wall_slack]
+kind = "wrapper"
+category = ["execution"]
+engines = ["siesta", "pyscf"]
+engine_key = "(molbuilder: SIESTA takes it on its command line as MaxWalltime.Slack, a PySCF deck as the deadline it keeps; never an .fdf line and never an sbatch flag)"
+# THE WORDS THE RUN SCRIPT PASSES THE PROGRAM, with what is left of the
+# wall (`{left}`) and this item (`{slack}`), in seconds: SIESTA's own
+# command-line override (siesta.md 8.9).  tbtrans checks no clock and is not
+# named; a PySCF deck reads MB_WALL_S, MB_JOB_STARTED and MB_WALL_SLACK_S
+# from its environment (pyscf.md 3.9).
+launch = { siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"] }
+type = "int"
+value = 600
+default = 600
+unit = "s"
+range = [30, 7200]
+group = "staging"
+label = "Wall-time slack"
+tier = "advanced"
+help = """
+How long before the job's wall the engine stops itself, with its restart state saved whole (running-a-job.md 3.6). The launch tells the job the wall it was sent with; the run script hands the engine what is left and this slack, and the engine stops once less than the slack is left -- SIESTA told on its command line, a PySCF deck by the deadline it computes.
+SIESTA checks the clock after every SCF iteration and every geometry step; a PySCF deck after every geometry step, and before every displaced SCF of a spectrum. Set it longer than the longest of those plus the write, or the kill is the scheduler's, mid-write. A step cut by the wall is then re-done from the state saved before it.
+"""
+
 [item.md_initial_temperature]
 kind = "engine"
 category = ["procedure"]

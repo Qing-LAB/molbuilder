@@ -194,6 +194,9 @@ class PySCFConfig:
     geom_max_steps: int = 200
     on_nonconvergence: str = "halt"
     geom_continue_retries: int = 1
+    #: ``wall_slack`` -- seconds before its wall the deck stops itself
+    #: (`engines/pyscf.md` § 3.9): the deadline it keeps.
+    wall_slack: int = 600
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = None

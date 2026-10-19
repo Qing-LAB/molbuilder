@@ -151,9 +151,9 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     header, `parse.engines.molwatch_grammar.parse_convergence_line`).  One stage
     nested is the run's; several is a header this run did not write alone,
     and the answer is ``None`` rather than a pick."""
-    from ..trajectory_log import emitter as _E
-    leaf = _E.targets_of(targets) or {}
-    v = leaf.get(_E.MAX_FORCE_TOL)
+    from ..trajectory_log import keys as _K
+    leaf = _K.targets_of(targets) or {}
+    v = leaf.get(_K.MAX_FORCE_TOL)
     return float(v) if isinstance(v, (int, float)) else None
 
 

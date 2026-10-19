@@ -75,7 +75,7 @@ builds geometry, or runs a job.
 | `frame.py` | L1 | `Frame` / `Trajectory` per-step physics | `Frame`, `Trajectory` |
 | `selection.py` | L1 | atom-selection rule algebra (duck-typed on `struct`) | `Rule`, `evaluate`, `to_json` / `from_json` |
 | `config/` | L1 | the engine-knob **dataclasses** (the lingua franca): a field's name, type, default and validators — every other fact is the catalogue's (`engines/template.md` § 2.1a) | `SiestaConfig`, `PySCFConfig` (the two engine configs; `config/stages.py` the stage strategies both share) |
-| `trajectory_log/` | L1 | the molwatch progress-log format + writer | `format`, `emitter` |
+| `trajectory_log/` | L1 | the molwatch progress-log format, its vocabulary + writer | `format`, `keys`, `emitter` |
 | `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_json`, `write_json` |
 | `parse/` | L2 | the single **read-side** stack: File / Text → typed `ParseResult` (the Dir tier is specified but unbuilt, `model/parse.md` § 5) | `parse.registry.{parse,parse_text}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |
 | `sidecars/` | L2 | write-side `.molstruct` / `.spectra` / `.transport` JSON | `molstruct.{to_dict,save,load,apply_to_structure}` |

@@ -273,3 +273,37 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     assert doc["phase_relaxation"] == "complete", doc["phase_relaxation"]
     assert rx["converged"] is False, rx
     assert nonstationary_remedy(None, "pyscf") in (rx.get("warning") or ""), rx
+
+
+def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(tmp_path,
+                                                             monkeypatch):
+    """`engines/pyscf.md` § 3.9, `running-a-job.md` § 3.6: the deck keeps the
+    deadline its environment states -- the job's wall, its start and the
+    slack, as the run script exports them -- and the first step past it
+    stops geomeTRIC: the geometry reached stays in ``_optimized.xyz``, the
+    deck says why, the log's footer says ``relaxed: no`` and the run ends
+    normally, so the run door reads `finished`, not converged.
+
+    The deadline here is already past when the deck starts (a wall of 1 s,
+    started 100 s ago), so the first step is the last.
+
+    MUTATION THIS MUST FAIL AGAINST: the deadline not read from the
+    environment, or the relaxation running to its step budget (H2 from
+    0.95 Å converges in a few steps, and the run would read converged)."""
+    import time
+
+    from molbuilder.parse.engines._run_ending import ending_of
+    monkeypatch.setenv("MB_WALL_S", "1")
+    monkeypatch.setenv("MB_JOB_STARTED", str(int(time.time()) - 100))
+    monkeypatch.setenv("MB_WALL_SLACK_S", "0")
+    bundle, state, said = _run(
+        tmp_path, monkeypatch, calculation="optimization",
+        overrides={"geom_max_steps": 50, "on_nonconvergence": "proceed"})
+    assert state == "finished", said[-3000:]
+    assert "stopped before the wall" in said, said[-3000:]
+    assert list(bundle.glob("*_optimized.xyz")), sorted(
+        p.name for p in bundle.iterdir())
+    # THE LOG'S FOOTER, read by the ending reader: the geometry verdict is
+    # the deck's own word (`# relaxed: no`).
+    log = next(bundle.glob("*.molwatch.log"))
+    assert ending_of(log).relaxed is False, log.read_text()[-600:]

@@ -747,6 +747,28 @@ decision 6).
 
 ---
 
+### 8.9 The wall, on the command line
+
+SIESTA 5.4.2 reads `MaxWalltime` and `MaxWalltime.Slack` (both in seconds, a
+physical quantity with its unit) and checks the clock after every SCF
+iteration and every geometry step (`siesta_init.F` reads them;
+`siesta_forces.F90` and `siesta_move.F` check): with less than the slack left
+it saves `.DM` and `.XV`, warns `GEOM_NOT_CONV` or `SCF_NOT_CONV`, and dies
+with `OUT_OF_TIME: Time is up.` — a `die`, nonzero, no `>> End of run`.
+**The deck never carries them**: the wall is the launch's, stated after the
+deck was written, so the run script passes both **on the command line** —
+`siesta -fdf MaxWalltime=<left>:s -fdf MaxWalltime.Slack=<slack>:s <deck>`,
+the binary's own `-fdf <label>=<value>[:<unit>]` override, in the words the
+catalogue's `wall_slack` item gives the `siesta` program (`launch`,
+[`template.md`](?doc=engines/template.md) § 5) — what is left, from
+`MB_WALL_S` and `MB_JOB_STARTED`, and the run card's `wall_slack`, which
+SIESTA subtracts itself
+([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6). A
+`tbtrans` launch gets none: the item names no words for it, and it checks no
+clock. The output reads `failed` with the wall as its cause, in SIESTA's own
+line (`siesta_grammar.OUT_OF_TIME_MARKER`; the `SCF_NOT_CONV` warning it
+prints on the way out is not the cause); the wrapper does not warm-retry it;
+the next launch continues from the files it saved whole.
 ## 9. Sibling outputs
 
 Alongside `<basename>.fdf`, **`prep`** also writes (unless
@@ -774,7 +796,7 @@ For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
 script next to the `.fdf` (§ 4). And each per-stage `.molwatch.log` carries
 `# convergence.<token>.<key>: <value>` lines — the stage's targets under its
 own token (`max_force_tol_eV_per_A`, `max_geom_iter`; the keys
-`trajectory_log/emitter.py`'s, one grammar) so the Results inspector draws the right threshold for the
+`trajectory_log/keys.py`'s, one grammar) so the Results inspector draws the right threshold for the
 running stage, and `# frozen_atoms: <i> ...`, the atoms the run holds
 (`model/parse.md` § 5.3).
 

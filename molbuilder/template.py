@@ -48,7 +48,7 @@ import tomllib
 import types
 import typing
 from pathlib import Path as _Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
                     Optional, Sequence, Tuple, Union)
 
@@ -253,6 +253,14 @@ class Item:
     anchor:  str = ""                       # required when kind == "engine"
     expands: Tuple[str, ...] = ()           # required when kind == "deck"
     read_by: Tuple[str, ...] = ()           # § 6.1 — who ELSE derives from it
+    #: ``kind = "wrapper"`` -- THE WORDS THE RUN SCRIPT PASSES THE ENGINE on
+    #: its command line for this item, by the program it starts
+    #: (``Resources.program``; the engine's own by default): ``{program:
+    #: [word, ...]}``, each word with the placeholders the script fills
+    #: (``{left}``, ``{slack}`` for `wall_slack`).  A program not named takes
+    #: the item some other way -- a PySCF deck from its environment -- or not
+    #: at all (`running-a-job.md` § 3.6).
+    launch: Mapping[str, Tuple[str, ...]] = field(default_factory=dict)
 
     #: **How the engine SPELLS this**, in full — and a different fact from
     #: :attr:`anchor`, which is the bare leading keyword the deck writer
@@ -787,13 +795,28 @@ def _toml_key(k: Any) -> str:
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
-                   "manual", "expands", "type",
+                   "manual", "expands", "launch", "type",
                    "choices", "value", "source", "default", "engine_default", "recommended", "offered", "optional", "required",
                    "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
                    "pattern",
                    "group", "label", "null_label", "not_set", "read_by", "help")
+
+
+def _launch_from(name: str, raw) -> Dict[str, Tuple[str, ...]]:
+    """``launch`` read: a table of program -> list of words, every word a
+    string; anything else refused naming the item (§ 5)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(
+            isinstance(p, str) and isinstance(ws, list)
+            and all(isinstance(w, str) for w in ws)
+            for p, ws in raw.items()):
+        raise ValueError(
+            f"template: {name}: launch must be a table of program -> list "
+            f"of words (launch.siesta = [\"-fdf\", ...]); got {raw!r}")
+    return {p: tuple(ws) for p, ws in raw.items()}
 
 
 def _item_payload(it: Item) -> Dict[str, Any]:
@@ -807,6 +830,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["manual"] = it.manual
     if it.expands:
         out["expands"] = list(it.expands)
+    if it.launch:
+        out["launch"] = {p: list(w) for p, w in it.launch.items()}
     if it.choices:
         out["choices"] = list(it.choices)
     # An absent ``value`` is the encoding of *explicitly unset* (§ 3).
@@ -1666,6 +1691,7 @@ def _item_from(name: str, body: Any) -> Item:
         manual=str(body.get("manual", "") or ""),
         engine_default=_engine_default_from(name, body, type_, choices),
         expands=tuple(body.get("expands", ()) or ()),
+        launch=_launch_from(name, body.get("launch")),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),
         pattern=str(body.get("pattern", "") or ""),

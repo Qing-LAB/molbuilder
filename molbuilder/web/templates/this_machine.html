@@ -183,6 +183,22 @@
     </div>
   </section>
 
+  {#- WHAT ARRIVED (this-machine.md § 4.1): the reports this server's
+     listener received, newest first, each the card Slack and Discord got. -#}
+  <section class="card" id="tm-reports-card">
+    <h2>Reports received <span class="tm-sub-note" id="tm-reports-count"></span></h2>
+    <p class="hint">What jobs reported to <em>this</em> server&rsquo;s listener
+      &mdash; the same card the chat channels got. The list follows the file
+      while this tab is open.</p>
+    <div class="tm-actions">
+      <input type="text" id="tm-reports-filter" class="tm-input"
+             placeholder="filter by calculation, machine or event"
+             autocomplete="off" spellcheck="false">
+      <span class="status muted" id="tm-reports-state">Checking&hellip;</span>
+    </div>
+    <div class="tm-reports" id="tm-reports"></div>
+  </section>
+
 </main>
 
 <script src="{{ url_for('static', filename='lib/time-ago.js') }}"></script>

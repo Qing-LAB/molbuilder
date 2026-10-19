@@ -118,7 +118,7 @@ try:                                        # inside molbuilder
     from .parse.engines.siesta_reader import SiestaReader
     from .parse.engines.tbtrans import loop_words
     from .parse.instruments.scf_timing_rows import timing_of
-    from .trajectory_log import emitter as _E
+    from .trajectory_log import keys as _K
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_fields as _fields
@@ -129,6 +129,7 @@ except ImportError:                         # beside the job
     from siesta_reader import SiestaReader
     from tbtrans import loop_words
     from scf_timing_rows import timing_of
+    import keys as _K
 
 
 @dataclass
@@ -428,7 +429,7 @@ class WatchedRun:
         if state.get("max_force") is not None:
             st.max_force = state["max_force"]
             st.max_force_tol = (state.get("targets") or {}).get(
-                _E.MAX_FORCE_TOL)
+                _K.MAX_FORCE_TOL)
             every = state.get("max_force_all")
             # THE HELD ATOMS' FORCE, said only when it is the larger.
             st.max_force_held = (every if every is not None
@@ -1381,6 +1382,14 @@ def _card(report: Dict[str, Any],
             "fields": fields}
 
 
+def card(report: Dict[str, Any],
+         items: "Optional[Tuple[str, ...]]" = None) -> Dict[str, Any]:
+    """The chat card's picture for ``report`` -- what Slack and Discord are
+    sent (:func:`_card`) -- for a page that draws the same one
+    (`this-machine.md` § 4.1)."""
+    return _card(report, items)
+
+
 #: The three wire formats.  `run-reports.md` § 4.1b.
 _KINDS = ("molbuilder", "slack", "discord")
 
@@ -1520,6 +1529,16 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     try:
         raw = p.read_text(encoding="utf-8")
     except OSError:
+        # NO CHANNELS FILE ON THIS MACHINE is reports off -- and SAID, once,
+        # for the same reason a named channel absent here is said
+        # (`run-reports.md` § 3.0): a calculation that asked for every
+        # channel on this machine and found none sends nothing, which is
+        # indistinguishable from working unless the log says so.  Channels
+        # are set up on the machine that RUNS the job (its This machine
+        # tab, or the file copied there), not where it was prepared.
+        _say(f"no channels set up on this machine ({p}): nothing is sent -- "
+             f"set them up on the machine that runs the job (its This "
+             f"machine tab), where the monitor reads them")
         return {}
     try:
         obj = json.loads(raw)
@@ -1800,6 +1819,11 @@ def _install_env_notifiers(log: Optional[Path] = None,
         register_notifier(make_webhook_notifier(
             url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident,
             report=report))
+        return
+    if channels is not None and len(channels) == 0:
+        # NONE ASKED FOR (`notify.channels = []`, `run-reports.md` § 3.0):
+        # reports off for this calculation -- nothing to look up, nothing
+        # to say about a machine with no channels file.
         return
     chosen, missing = channels_for(channels, load_channels(log=log))
     if missing:

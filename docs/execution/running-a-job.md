@@ -501,6 +501,7 @@ non-convergence)*.
 | the run ended | SIESTA shows it by | the wrapper asks | the retry resumes from |
 |---|---|---|---|
 | its SCF did not converge, and SIESTA stopped on it | `SCF_NOT_CONV: … (required)`, then a nonzero exit (`SCF.MustConverge`: SIESTA's default, false in a benchmark trial's deck) | `_mb_ending stopped-by scf_not_conv` | the banked `.DM`, with a fresh SCF budget |
+| it stopped at its wall (§ 3.6) | `OUT_OF_TIME: Time is up.`, after saving `.DM`/`.XV` | `_mb_ending stopped-by out_of_time:` — **never retried**: no time is left, and the next launch continues from the saved files | — |
 | a relaxation used all its moves, unconverged | exit 0, and `outcoor: Final (unrelaxed) atomic coordinates` (a converged one prints `Relaxed…`) | `_mb_ending relaxation-capped` | the banked `.XV`/`.DM`/`.CG`, with a fresh step budget |
 
 The wrapper **asks, never greps**: `_mb_ending` runs `python mb_monitor.pyz
@@ -569,6 +570,53 @@ in it, and nothing is written.
 
 ---
 
+
+### 3.6 A run ends itself before the wall, and a file written as a job died is said
+
+**The wall a job was sent with reaches its engine** *(the user, 2026-10-19:
+"this should be now mandatory for all engines … fed to the engine through
+their proper channel/parameter")*. The launch tells the job the wall it was
+sent with — `MB_WALL_S`, the seconds of the header's wall or the launch's
+`--time`, the value `run.json`'s `placed_on.time` records, on the send line
+beside the launch claim ([`scheduler.md`](?doc=execution/scheduler.md) § 6a)
+and in a direct run's environment when the run states a wall — and the
+header says when the job started (`MB_JOB_STARTED`, § 2.1b of
+[`run-reports.md`](?doc=execution/run-reports.md)). From the two the run
+script counts what is left when it starts the engine, and hands the engine
+that and the calculation's **wall slack** — the catalogue's `wall_slack`
+item on the run card, seconds, default 600 — through the engine's own
+channel; the engine stops once less than the slack is left:
+
+| engine | the channel | what the engine does |
+|---|---|---|
+| SIESTA, TranSIESTA | `-fdf MaxWalltime=<left>:s -fdf MaxWalltime.Slack=<slack>:s` on the command line, beside the deck — the words the catalogue's `wall_slack` item gives the program (`launch`, `template.md` § 5), never a line in the deck, which prep wrote before the launch stated the wall ([`engines/siesta.md`](?doc=engines/siesta.md) § 8.9) | checks the clock after every SCF iteration and every geometry step (`siesta_forces.F90`, `siesta_move.F`, 5.4.2) and, once less than the slack is left, saves its density and geometry, warns `SCF_NOT_CONV` or `GEOM_NOT_CONV`, and **dies with `OUT_OF_TIME: Time is up.`** — its own word for the stop (`siesta_grammar.OUT_OF_TIME_MARKER`). The run reads `failed`, the wall its cause in SIESTA's words; the wrapper does not warm-retry it (§ 3.5: no time is left); a launch again continues from the files it saved |
+| TBtrans | nothing: the item names no words for it, it checks no clock | runs to the wall |
+| PySCF | the deck reads `MB_WALL_S`, `MB_JOB_STARTED` and `MB_WALL_SLACK_S` from its environment and keeps a deadline ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3.9) | a relaxation stops at the first step past the deadline, keeps the geometry it reached (`_optimized.xyz`, as every step does) and ends normally with `# relaxed: no`; a vibration deck past the deadline before its spectrum is written stops with an error naming the wall, so the run reads `failed` with the reason and a launch starts it again |
+
+A run with no wall stated — a run here with none on its card — hands the
+engine nothing and runs until it is done. The monitor's `[WALL]` warning
+(§ 2.1b there) stays: it is the cue for a job whose engine could not stop
+itself in time, a step longer than the slack.
+
+**Why this is mandatory.** A scheduler's kill lands at a second of its own
+choosing, and SIESTA writes its density in place after every iteration
+(`m_iodm.F90`: open, write, close, no rename): a kill inside that write leaves
+a file of the right shape with mixed numbers, which SIESTA then reads back
+reporting success. Measured on Sol, 2026-10-18: the third launch of a
+312-atom relaxation started from such a file at +4,251,896 eV with a density
+residual of 694, and spent 37 SCF iterations climbing back to the energy the
+run already had.
+
+**A warm file written as the job ended is said at the next launch.** When a
+stage is launched again and continues from its last run's files, the launch
+compares each file it takes with when that run ended — the monitor log's
+closing record, its `[MONITOR] job ended` line
+(`parse/instruments/monitor.py`, `ended_at`) — and a file written in that
+second or after it is named in the continuation's line, both doors' and the
+ledger's: *copied H2.DM — WARNING: written as the job ended (13:58:12; the
+job ended 13:58:11), it may be incomplete; a start from it may need more
+iterations or fail; `--cold` starts without it.* A fact shown, never a veto:
+the launch goes as asked, and the person decides.
 ## 4. Watching a run, and reading it back
 
 ### 4.0 Which question, which reader
@@ -758,7 +806,7 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | state | detail |
 |---|---|
 | `pending` | prepared, not launched (no run.json) |
-| `queued` | queued as job N · launched (direct), no output yet |
+| `queued` | queued as job N · launched (direct), no output yet — and, on the Results tab's ladder row, its **standing** where this server runs on the machine the job was sent to (its own record names the machine the calculation's copy names): `PENDING (Priority) · expected to start 2026-10-19T14:02:00 · priority 1234`, the start as the scheduler prints it, the kind's `standing` query ([`scheduler.md`](?doc=execution/scheduler.md) § 6a) through the run door (`runs.standing_of`); from any other machine the row says *ask on <machine>* |
 | `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result |
 | `finished` | job_completed · concluded (rc=0 at …) |
 | `failed` | stopped by the scheduler: *its words* (*its file*) · stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |

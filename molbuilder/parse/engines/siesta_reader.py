@@ -387,8 +387,12 @@ class SiestaReader:
                 self.run_state = state
             # Keep the FIRST marker: later crashes cascade from the original.
             # A held ``SCF_NOT_CONV:`` outranks even that -- it IS the
-            # original cause.
-            if self.error_message is None:
+            # original cause -- except at the wall, where SIESTA prints the
+            # SCF warning on its way out and the wall is the cause.
+            if marker == _G.OUT_OF_TIME_MARKER:
+                self.cause = marker
+                self.error_message = line.strip()[:200]
+            elif self.error_message is None:
                 self.error_message = (self._scf_not_conv_line
                                       or line.strip()[:200])
         return _handler

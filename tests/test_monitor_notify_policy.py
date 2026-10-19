@@ -455,3 +455,33 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
         f"the shipped monitor could not resolve its own path:\n{proc.stderr}")
     assert proc.stdout.strip() == str(
         tmp_path / "scratch/molbuilder/secrets/notify")
+
+
+def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
+    """`run-reports.md` § 2.3: the monitor runs beside the job on the job's
+    own python, which on a cluster is a bare interpreter -- no numpy, no
+    molbuilder.  The bundle must import under one.  Measured 2026-10-19 on
+    Sol: a module-level numpy import in a companion (`emitter.py`, shipped
+    for the grammar's keys) killed every monitor at import, so a day's
+    runs reported nothing and kept no utilisation record.  Blocking numpy
+    in the interpreter (`sys.modules['numpy'] = None` makes its import
+    raise) is how a numpy-less python is had on a machine that has it."""
+    import subprocess
+    import sys
+    from molbuilder import runwrap
+
+    ship = tmp_path / "jobdir"
+    ship.mkdir()
+    (ship / runwrap.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
+    env = dict(os.environ)
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
+    env.pop("PYTHONPATH", None)
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.modules['numpy'] = None; "
+         f"sys.path.insert(0, {runwrap.MONITOR_BUNDLE!r}); "
+         "import mb_monitor, _run_ending, siesta_reader; print('loaded')"],
+        cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0 and "loaded" in proc.stdout, (
+        f"the shipped monitor needs something a bare python lacks:\n"
+        f"{proc.stderr[-2000:]}")

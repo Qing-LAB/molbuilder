@@ -30,6 +30,11 @@ from __future__ import annotations
 LAUNCH_CLAIM_VAR = "MB_LAUNCHED_BY"
 LAUNCH_CLAIM = "jobset-launch"
 MANUAL_CLAIM = "manual"
+#: THE WALL A JOB WAS SENT WITH, told to it in seconds -- on the send line
+#: beside the launch claim (`{wall_var}={wall_s}`), in a direct run's
+#: environment when its card states one -- from which the run script counts
+#: what is left and hands it to the engine (`running-a-job.md` § 3.6).
+WALL_VAR = "MB_WALL_S"
 
 import re
 import tomllib
@@ -56,7 +61,7 @@ RESTATES = ("wall",)
 
 #: The lines a kind's ``query`` states (`scheduler.queue`): asking whether
 #: a job is still listed, stopping it, and asking which cluster answers.
-QUERIES = ("listed", "cancel", "cluster")
+QUERIES = ("listed", "standing", "cancel", "cluster")
 
 #: MOLBUILDER'S OWN NAMES for what a scheduler tells a running job, each with
 #: what it means.  A kind maps its variables onto these (its ``job`` block),
@@ -114,17 +119,20 @@ class Kind:
 
     def line(self, where: Mapping[str, Optional[str]], *, job: str,
              restated: Sequence[str], launched_by: str, header: str,
-             args: Sequence[str]) -> List[str]:
+             args: Sequence[str], wall_s: int) -> List[str]:
         """The one line that sends ``header``: ``where`` is the record's
         command locations (`record.Scheduler.commands`), ``restated`` what a
         launch restates (:meth:`restated`), ``launched_by`` molbuilder's
         launch claim (`job-contracts.md` § 2.6), ``args`` the run's
-        arguments.  A command the line names and the record does not is a
+        arguments, ``wall_s`` the wall the job is sent with, in seconds,
+        told to the job as :data:`WALL_VAR` (`running-a-job.md` § 3.6).  A
+        command the line names and the record does not is a
         :class:`KindError`."""
         line = _filled(self, self.line_words, where, {
             "job": job, "restated": list(restated),
             "launched_by": launched_by, "header": header,
             "launch_claim_var": LAUNCH_CLAIM_VAR,
+            "wall_var": WALL_VAR, "wall_s": int(wall_s),
             "args": list(args)})
         if line is None:
             raise KindError(f"the machine's record names no command the "

@@ -487,6 +487,28 @@ one for me*.
 
 ---
 
+### 3.9 The wall — a deadline the deck keeps
+
+A PySCF deck is its own engine, so the wall reaches it as a deadline it
+reads at start from its environment — `MB_WALL_S` (the seconds the job was
+sent with: the launch sets it, on the send line or in a direct run's
+environment), `MB_JOB_STARTED` (the job's start, an epoch second: the
+header sets it, or the run script where the header stated none) and
+`MB_WALL_SLACK_S` (the run card's `wall_slack`: the run script sets it)
+([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6);
+any of them absent, no deadline, and the deck runs until it is done.
+`relax_policy.wall_deadline()` is the one reader, shipped beside the deck.
+
+- **A relaxation** (`relax_policy.relax`, `deadline=`) checks it in the
+  callback it already runs after every step; the first step past it stops
+  geomeTRIC, the geometry reached stays in `_optimized.xyz` as every step's
+  does, the deck prints why, writes `# relaxed: no` and ends normally — the
+  next launch continues from that geometry, `restart` permitting.
+- **A vibration deck** checks it before each displaced SCF; past it before
+  the spectrum is written, it raises `RuntimeError("stopped before the wall …")`
+  — the log's footer carries the error and the run reads `failed` with that
+  reason, since a spectrum half computed is no result; a launch runs it
+  again, its relaxation phase resuming as above.
 ## 4. The unified molwatch-log format
 
 `<job>.molwatch.log` is the engine-agnostic per-step trajectory log — **this is the

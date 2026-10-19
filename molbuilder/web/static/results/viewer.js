@@ -348,7 +348,11 @@
             tr.appendChild(td(String(s.name)));
             tr.appendChild(td(chip(s.state)));
             tr.appendChild(td(s.converged || "\u2014"));
-            tr.appendChild(td(s.detail || ""));
+            // A QUEUED RUNG SAYS ITS STANDING as its scheduler states it
+            // here, or where to ask (results.md § 2.4) -- the server's
+            // words, beside the detail.
+            tr.appendChild(td((s.detail || "")
+                + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")));
             tr.appendChild(td(""));
             tr.appendChild(td(""));
             table.appendChild(tr);

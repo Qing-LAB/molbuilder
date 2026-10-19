@@ -293,6 +293,11 @@ class SiestaConfig:
     # second hand-maintained mapping from a stage to its wrapper.  Unlike
     # those two it becomes NO sbatch flag -- it is baked in at install time.
     continue_retries: int = 1
+    #: ``wall_slack`` -- how many seconds before its wall the engine stops
+    #: itself, saving its restart state whole (`running-a-job.md` § 3.6).
+    #: Rides to the wrapper as ``continue_retries`` does; SIESTA takes it
+    #: on its command line (``MaxWalltime.Slack``), never in the deck.
+    wall_slack: int = 600
 
     # ---- Verlet / Nose dynamics (only emitted when relax_type is in
     # ("Verlet", "Nose"); ignored otherwise).  Defaults are chosen to

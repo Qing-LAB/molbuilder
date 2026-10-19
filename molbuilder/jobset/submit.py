@@ -347,9 +347,14 @@ def _sbatch_request(*, envelope: Resources, placement: "Optional[_Placed]",
     # alone is fragile (a site may not pass a plain variable on), and the
     # line wins over site defaults, so the claim reaches the job wherever it
     # runs (job-contracts.md § 2.6).
+    # THE WALL IT IS SENT WITH, told to the job (`running-a-job.md`
+    # § 3.6): the one restated, else the header's -- the value `run.json`
+    # records as `placed_on.time` -- in seconds.
+    from ..scheduler.quantities import parse_walltime
     cmd = kind.line(machine.scheduler.commands(), job=job_name,
                     restated=restated, launched_by=LAUNCH_CLAIM,
-                    header=script, args=run_args)
+                    header=script, args=run_args,
+                    wall_s=parse_walltime(envelope.time))
     return envelope, placement, cmd, os.path.dirname(script)
 
 
@@ -500,6 +505,27 @@ class _Member:
         return h.names_taken if h is not None else []
 
     @property
+    def warned(self) -> Dict[str, str]:
+        """The files it takes that were written as their run ended
+        (`running-a-job.md` § 3.6): a hand-over's, from the folders it
+        copies from; on the flat layout, the warm files the run reads in
+        place, against the run they were written by."""
+        from .materialize import written_as_ended
+        h = self.continued
+        if h is not None and h.files:
+            return h.written_as_ended(self.base)
+        # ON THE FLAT LAYOUT the hand-over copies nothing (its record alone
+        # is written): the run reads the warm files in the folder, against
+        # the run they were written by.
+        c = self.continuation
+        if c is None or not c.run:
+            return {}
+        present = [w.name for w in self.job.warm
+                   if (self.run_dir / w.name).is_file()]
+        return written_as_ended(self.run_dir, self.names.label, present,
+                                run=c.run)
+
+    @property
     def gathered(self) -> List[str]:
         """A transport rung's inputs, copied with their record."""
         return [n for h in self.hands if h.record == GATHERED
@@ -537,7 +563,8 @@ class _Member:
     def _takes(self, *, would: bool) -> str:
         """What it takes, warm or cold."""
         if self.continuation is not None:
-            return self.continuation.line(self._copied(), would=would)
+            return self.continuation.line(self._copied(), would=would,
+                                          warned=self.warned)
         # A SWEEP'S WALK SAYS WHICH POINTS RUN AND FROM WHAT -- what its
         # first launch gathers, or warm or cold what it takes over
         # (`engines/transport.md` § 2a.11: "Launch shows which points it
@@ -1738,6 +1765,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
                 plan.record("continues", stage=m.name,
                             **m.continuation.ledger_facts(),
                             copied=list(m.carries),
+                            written_as_ended=dict(m.warned),
                             **({"gathered": list(m.gathered)}
                                if m.gathered else {}))
             if m.took:
@@ -1813,6 +1841,12 @@ def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
     already goes to their own files (the run script's runwrap log, a walk's
     log) -- and the send does not wait."""
     env = {**os.environ, LAUNCH_CLAIM_VAR: LAUNCH_CLAIM}
+    # A RUN HERE WITH A WALL ON ITS CARD is told it the same way a sent job
+    # is (`running-a-job.md` § 3.6); one stating none runs until done.
+    if s.direct and s.sent is not None and s.sent.time:
+        from ..scheduler.kinds import WALL_VAR
+        from ..scheduler.quantities import parse_walltime
+        env[WALL_VAR] = str(parse_walltime(s.sent.time))
     names = [m.name for m in s.members]
     if s.direct:
         # The launch-door claim rides the child ENV here: inheritance

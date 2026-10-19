@@ -838,3 +838,39 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
     assert "per_iter_s" in offered_somewhere[("pyscf", "optimization")]
     assert "geom_step" not in offered_somewhere[("siesta", "transport")]
     assert "max_force" in offered_somewhere[("siesta", "transport")]
+
+
+# --------------------------------------------------------------------- #
+#  what the listener received, read back (this-machine.md 4.1)          #
+# --------------------------------------------------------------------- #
+
+def test_the_reports_the_listener_received_are_read_back_as_the_card(client):
+    """`this-machine.md` § 4.1, `web-api.md`: the reports route reads the
+    listener's own file, newest first, each with the chat card's picture;
+    `since` narrows; a name the listener does not know is a state, not an
+    error.  Silent failure otherwise: a tab drawing a card the chats never
+    got, or a report the listener kept and nobody can see."""
+    import time
+
+    from molbuilder.web.blueprints.notify import SCHEMA, _logger_for
+    c, _path = client
+    now = time.time()
+    for i, (event, energy) in enumerate((("start", None),
+                                         ("scf_converged", -1211221.06))):
+        record = {"run": "fine_optimization_01_fine", "job": "62238108",
+                  "host": "scc010", "sent_at": now - 100 + i, "event": event,
+                  "text": f"running | step {i}", "state": "running",
+                  "v": SCHEMA, "user": "alice", "received_at": now}
+        if energy is not None:
+            record["energy"] = energy
+        _logger_for("alice").info(json.dumps(record))
+    d = c.get("/api/notify/reports?user=alice").get_json()
+    assert d["ok"] and d["total"] == 2 and d["skipped"] == 0, d
+    first = d["reports"][0]
+    assert first["event"] == "scf_converged"                # newest first
+    assert first["card"]["title"] == "fine_optimization_01_fine · 62238108 — running"
+    assert ("energy", "-1211221.06 eV") in [tuple(f) for f in first["card"]["fields"]]
+    d = c.get(f"/api/notify/reports?user=alice&since={now - 100 + 0.5}").get_json()
+    assert [r["event"] for r in d["reports"]] == ["scf_converged"]
+    d = c.get("/api/notify/reports?user=nobody").get_json()
+    assert d["ok"] and d["total"] == 0 and "no key" in d["note"], d

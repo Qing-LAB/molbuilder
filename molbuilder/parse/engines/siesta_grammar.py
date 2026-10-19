@@ -522,6 +522,10 @@ def input_echo_edge(line: str) -> Optional[bool]:
 #: that leaves ranks empty, or no net spin on an open-shell metal.  Named, so
 #: the wrapper's hint for it asks the reader rather than grepping.
 PROPOR_MARKER = "propor: error"
+#: ``OUT_OF_TIME: Time is up.`` -- how SIESTA stops at its ``MaxWalltime``
+#: (`siesta_forces.F90`, `siesta_move.F`, 5.4.2), its restart state saved.
+OUT_OF_TIME_MARKER = "out_of_time:"
+
 FATAL_MARKERS: Tuple[Tuple[str, str], ...] = (
     # Out of memory is called out from the generic aborts because it is the
     # most common cause and the most actionable: "you ran out of memory" is
@@ -532,6 +536,11 @@ FATAL_MARKERS: Tuple[Tuple[str, str], ...] = (
     ("cannot allocate memory",       "out_of_memory"),
     ("insufficient virtual memory",  "out_of_memory"),
     ("siesta: error",                "stopped"),
+    # THE WALL (`siesta_init.F` MaxWalltime; `siesta_forces.F90`,
+    # `siesta_move.F`): SIESTA saves its density and geometry, warns, and
+    # dies with this line -- the cause of that stop, outranking the
+    # SCF_NOT_CONV warning it prints first (`running-a-job.md` § 3.6).
+    (OUT_OF_TIME_MARKER,             "stopped"),
     (PROPOR_MARKER,                  "stopped"),
     ("stopping program from node",   "stopped"),
     ("siesta died",                  "stopped"),
@@ -553,6 +562,9 @@ SCF_NOT_CONVERGED_MARKER = "scf did not converge"
 CAUSE_WORDS = {
     **{m: "out of memory" for m, st in FATAL_MARKERS if st == "out_of_memory"},
     "siesta: error": "an engine error",
+    OUT_OF_TIME_MARKER: "its wall (MaxWalltime): the engine stopped with its "
+                        "restart state saved; a launch again continues "
+                        "from it",
     PROPOR_MARKER: "MPI rank distribution error (propor)",
     "stopping program from node": "a rank stopped the run",
     "siesta died": "the engine died",
@@ -909,28 +921,30 @@ def negf_criteria(options: dict, periodic: dict) -> dict:
 # ---- The limits a run states, and its forces ----------------------------------
 #: ``Src/read_options.F90``'s echo of the limits a run is held to, under the
 #: cross-engine names its convergence targets carry (the molwatch header's
-#: leaves, `trajectory_log.emitter`): the relaxation's force tolerance and
+#: leaves, `trajectory_log.keys`): the relaxation's force tolerance and
 #: largest step, and the SCF's and the relaxation's iteration caps.  The
 #: optimization cap is echoed whatever ``MD.TypeOfRun`` produced it.
-# THE TARGETS' KEYS are the trajectory log's own (`trajectory_log.emitter`),
-# imported as a package module here and as a flat companion beside a job
-# (`runwrap.MONITOR_COMPANIONS`), the way `end_lines` is.
+# THE TARGETS' KEYS are the trajectory log's own (`trajectory_log.keys`,
+# standard library only), imported as a package module here and as a flat
+# companion beside a job (`runwrap.MONITOR_COMPANIONS`), the way `end_lines`
+# is -- never the log's writer, which needs numpy the monitor's python may
+# not have.
 try:
-    from ...trajectory_log import emitter as _E  # noqa: E402
+    from ...trajectory_log import keys as _K  # noqa: E402
 except ImportError:  # pragma: no cover -- shipped flat beside the job
-    import emitter as _E  # type: ignore[no-redef]  # noqa: E402
+    import keys as _K  # type: ignore[no-redef]  # noqa: E402
 
 TARGET_LINES: Tuple[Tuple[str, "re.Pattern", type], ...] = (
-    (_E.MAX_FORCE_TOL, re.compile(
+    (_K.MAX_FORCE_TOL, re.compile(
         r"^\s*redata:\s+Force tolerance\s+=\s+([0-9.eE+-]+)\s+eV/Ang",
         re.IGNORECASE), float),
-    (_E.MAX_SCF_ITER, re.compile(
+    (_K.MAX_SCF_ITER, re.compile(
         r"^\s*redata:\s+Max\. number of SCF Iter\s+=\s+(\d+)",
         re.IGNORECASE), int),
-    (_E.MAX_DISPL, re.compile(
+    (_K.MAX_DISPL, re.compile(
         r"^\s*redata:\s+Max atomic displ per move\s+=\s+([0-9.eE+-]+)\s+Ang",
         re.IGNORECASE), float),
-    (_E.MAX_GEOM_ITER, re.compile(
+    (_K.MAX_GEOM_ITER, re.compile(
         r"^\s*redata:\s+Maximum number of optimization moves\s+=\s+(\d+)",
         re.IGNORECASE), int),
 )

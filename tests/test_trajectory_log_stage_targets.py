@@ -98,7 +98,7 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     NAME ITS READER ASKS FOR -- so the watch-tab horizontal threshold matches
     the stage that's currently running.
 
-    The key is the log's own (`trajectory_log.emitter.MAX_FORCE_TOL`),
+    The key is the log's own (`trajectory_log.keys.MAX_FORCE_TOL`),
     nested under the stage's token -- the one shape every writer writes
     (`engines/pyscf.md` § 4, 2026-10-18).
 

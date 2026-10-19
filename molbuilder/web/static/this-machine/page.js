@@ -363,6 +363,113 @@
         });
         loadChannels();
         loadListener();
+        var filter = $("tm-reports-filter");
+        if (filter) filter.addEventListener("input", paintReports);
+        loadReports();
+        /* FOLLOW THE FILE while the tab is open (this-machine.md § 4.1),
+         * as a results viewer follows a live run: a poll, never a push. */
+        setInterval(loadReports, 30000);
+    }
+
+    /* ---------- the reports received (this-machine.md § 4.1) ---------- */
+
+    var REPORTS = "/api/notify/reports";
+    var reports = [];          // what the server last answered, newest first
+    var SEEN_KEY = "molbuilder.reports.seen";   // a per-browser convenience
+
+    function _seen() {
+        try { return parseFloat(localStorage.getItem(SEEN_KEY) || "0") || 0; }
+        catch (e) { return 0; }
+    }
+
+    function _markSeen(t) {
+        try { localStorage.setItem(SEEN_KEY, String(t)); } catch (e) { /* none */ }
+    }
+
+    function _when(epoch) {
+        var d = new Date(Number(epoch) * 1000);
+        return isNaN(d.getTime()) ? "" : d.toLocaleString();
+    }
+
+    function cardFor(r) {
+        var c = r.card || {};
+        var box = document.createElement("details");
+        box.className = "tm-report";
+        var head = document.createElement("summary");
+        head.className = "tm-report-head";
+        var bar = document.createElement("span");
+        bar.className = "tm-report-bar";
+        bar.style.background = "#" + ("000000" + Number(c.color || 0).toString(16)).slice(-6);
+        head.appendChild(bar);
+        var title = document.createElement("span");
+        title.className = "tm-report-title";
+        title.textContent = c.title || (r.run || "report");
+        head.appendChild(title);
+        var meta = document.createElement("span");
+        meta.className = "tm-report-meta";
+        meta.textContent = [r.event, r.host, _when(r.sent_at)].filter(Boolean).join(" \u00b7 ");
+        head.appendChild(meta);
+        box.appendChild(head);
+        var text = document.createElement("p");
+        text.className = "tm-report-text";
+        text.textContent = c.text || r.text || "";
+        box.appendChild(text);
+        if (Array.isArray(c.fields) && c.fields.length) {
+            var grid = document.createElement("dl");
+            grid.className = "tm-report-grid";
+            c.fields.forEach(function (f) {
+                var dt = document.createElement("dt"); dt.textContent = f[0];
+                var dd = document.createElement("dd"); dd.textContent = f[1];
+                grid.appendChild(dt); grid.appendChild(dd);
+            });
+            box.appendChild(grid);
+        }
+        return box;
+    }
+
+    function paintReports() {
+        var host = $("tm-reports");
+        if (!host) return;
+        var q = (($("tm-reports-filter") || {}).value || "").trim().toLowerCase();
+        host.textContent = "";
+        var shown = 0;
+        reports.forEach(function (r) {
+            var hay = [r.run, r.job, r.host, r.event].join(" ").toLowerCase();
+            if (q && hay.indexOf(q) === -1) return;
+            host.appendChild(cardFor(r));
+            shown += 1;
+        });
+        if (!reports.length) {
+            say("tm-reports-state", "Nothing received yet.", "muted");
+        } else if (q) {
+            say("tm-reports-state", shown + " of " + reports.length + " shown.", "muted");
+        }
+    }
+
+    async function loadReports() {
+        if (!$("tm-reports")) return;
+        try {
+            var r = await fetch(REPORTS);
+            var d = await r.json();
+            if (!d.ok) {
+                say("tm-reports-state", d.error || "could not read the reports", "warn");
+                return;
+            }
+            reports = d.reports || [];
+            var seen = _seen();
+            var fresh = reports.filter(function (x) { return Number(x.sent_at || 0) > seen; }).length;
+            var count = $("tm-reports-count");
+            if (count) count.textContent = reports.length
+                ? (reports.length + " kept" + (fresh ? ", " + fresh + " since you last looked" : ""))
+                : "";
+            say("tm-reports-state", reports.length
+                ? d.total + " report" + (d.total === 1 ? "" : "s") + " in " + d.file
+                : (d.note || "Nothing received yet."), "muted");
+            paintReports();
+            if (reports.length) _markSeen(Number(reports[0].sent_at || 0));
+        } catch (e) {
+            say("tm-reports-state", "Could not ask this server: " + e, "error");
+        }
     }
 
     if (document.readyState === "loading") {

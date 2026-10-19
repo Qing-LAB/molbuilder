@@ -85,7 +85,17 @@ served per mode (S3); one domain per allowed partition+QoS pair, no QoS
 preferred (E3); a lead's files on its own stem (T13); the held set and the
 SystemLabel read by the one pass (P4); and M9, M10, E2, P2, K14, K19, O6, K5,
 K22 — the changelog's 2.17.0 row says what each is; the archive's record
-carries the rows as they stood.
+carries the rows as they stood. **The same day, from the Sol runs, 2.18.0**:
+the wall reaches every engine through its own channel and a SIESTA wall stop
+reads as what it is (`OUT_OF_TIME`); a warm file written as its job died is
+named at the next launch; a queued job's standing on the ladder, through
+the scheduler kind; the listener's reports on the This machine tab; the
+monitor stdlib-only on any python, its vocabulary split from the log's
+writer. Open from the same reads, for the user's yes: the chat card's
+layout as data per receiver (a layout file; the one card built once), and
+the leads' surface Green's function files shared across a device rung's
+frames at one bias (`TS.Elec` `GF` paths; today every frame recomputes and
+writes both, 49 GB each on the AuBDTAu junction).
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs

@@ -199,7 +199,10 @@ step's length runs from one step finishing to the next, the first from the
 monitor's start. A run
 that states no steps (a single point, a transmission) is counted down and
 never warned: nothing in it says how long its next part takes. It stops
-nothing and asks nothing: what to do with the warning is the person's.
+nothing and asks nothing: what to do with the warning is the person's. The
+engine itself stops before the wall where it can
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6), so the
+warning is the cue for a run whose step is longer than its slack.
 
 ### 2.2 A converged SCF is read from the step advancing
 
@@ -240,11 +243,18 @@ is over is not.
 reader the rest of molbuilder reads that file with, and those readers travel
 with the job in **one file**, `mb_monitor.pyz` (`runwrap.MONITOR_BUNDLE`) — a
 Python zip application of the modules `runwrap.MONITOR_COMPANIONS` names, each
-unchanged, run by the job's own python. `prep` writes it beside the wrapper and
+unchanged, run by the job's own python: **whatever `python3` the job's PATH
+offers after its activation** — on this workstation the engine env's, on a
+cluster a module's bare interpreter with nothing installed (ASU Sol,
+measured 2026-10-19), which is why the rule is the standard library and
+nothing else. `prep` writes it beside the wrapper and
 `materialize` copies it into every attempt. What may travel is
 [`configuration.md`](?doc=configuration.md) § 2.3's rule, *stdlib-only AND
-travels*. One file, because a directory of shipped modules reads as a
-directory of decks.
+travels*; the trajectory log's vocabulary the grammar reads is its own
+standard-library module (`trajectory_log/keys.py`), never the log's writer,
+which needs numpy and ships with PySCF decks and the vibration finish, never
+with the monitor. One file, because a
+directory of shipped modules reads as a directory of decks.
 
 | it reports | read by | travels as |
 |---|---|---|
@@ -370,7 +380,7 @@ gpu<i>_vram_gb` per GPU sampled.
 | `[STATUS]` | when the run advanced (§ 2.1), and once at the end | the summary line (§ 4.1a), the time left before the job's wall among it (§ 2.1b) |
 | `[WALL]` | once, when the time left falls below the longest step so far; or once, when the wall cannot be counted (§ 2.1b) | the time left, the longest step and how many have finished; or why nothing is counted |
 | `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>` — the record of every event; or why a channel is skipped or not set up |
-| `[MONITOR] job ended` · `[MONITOR] stopped` | the first closing line | why it stopped: SIGTERM or the watched PID gone — the closing record `run_status` reads, then the `finish` event; or a warm retry — not an ending, and no `finish` |
+| `[MONITOR] job ended` · `[MONITOR] stopped` | the first closing line | why it stopped: `stopped by SIGTERM` or `watched pid N gone` — the closing record `run_status` reads, then the `finish` event; or a warm retry — not an ending, and no `finish`. Its time is the run's end, `ended_at` to the monitor-log reader (`parse/instruments/monitor.py`), which the next launch compares a warm file's write time with (`running-a-job.md` § 3.6) |
 | `[UTIL-SUMMARY]` | at the end | the CPU mean (min–max) and each GPU's SM mean; for a GPU run, a verdict from the busiest GPU's mean: ≥ 85 % *GPU-bound*, ≤ 60 % *host/CPU-bound*, otherwise *mixed* |
 | `[UTIL-BASIS]` | at the end | what every percentage is a fraction of (§ 2.1a) |
 
@@ -595,7 +605,14 @@ person just unticked, which is why `[]` and `["*"]` are two states.
 **A named channel this machine does not have is skipped, and said in the
 monitor log.** That is the travelling case: a description written at a desk,
 opened on a cluster. It cannot be an error — the run is not wrong — and it must
-not be silent, because silence here is indistinguishable from working.
+not be silent, because silence here is indistinguishable from working. **A
+machine with no channels file at all is said the same way**, once per run
+(`[NOTIFY] no channels set up on this machine (<path>): nothing is sent …`):
+channels live on the machine that runs the job, where its monitor reads
+them — its own This machine tab, or the file copied there — never on the
+machine the calculation was prepared on *(measured 2026-10-19: a transport
+ladder prepared at a desk with channels and run on Sol with none reported
+nothing, and its monitor logs said nothing)*.
 
 ### 3.1 Setting the channels up
 

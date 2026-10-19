@@ -288,7 +288,7 @@ header = ["#SBATCH -n 6"]
 [[case]]
 name = "a launch's --time restates the wall prep wrote, on the sbatch line -- and the request shown carries the wall sent, the header's beside it"
 launch = ["--time", "3h"]
-line = ["-t 0-03:00:00 --export", "H2_01_coarse.sbatch"]
+line = ["-t 0-03:00:00 --export", "H2_01_coarse.sbatch", "MB_WALL_S=10800"]
 listing = ["-t 0-03:00:00 (this launch's --time; the header says 0-01:00:00)"]
 
 [[case]]

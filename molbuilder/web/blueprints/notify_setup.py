@@ -528,6 +528,50 @@ def listener():
                     "users": sorted(keys)})
 
 
+@bp.route("/api/notify/reports", methods=["GET"])
+def reports():
+    """WHAT THIS SERVER'S LISTENER RECEIVED (`this-machine.md` § 4.1): the
+    reports in ``<state dir>/reports/<user>.jsonl`` for ``?user=`` -- the
+    signed-in user by default, a name the listener holds a key for --
+    newest first, through the reports reader
+    (`parse/instruments/reports.py`), each with the chat card's picture
+    (`monitor.card`) so the tab draws what Slack and Discord got.
+    ``?limit=`` (200) and ``?since=<epoch>`` narrow it; a file not there is
+    ``{ok: true, total: 0}``."""
+    from flask import g
+
+    from ...config_dir import reports_dir
+    from ...monitor import card, read_notify_keys
+    from ...parse.instruments.reports import read_reports
+    _route, keys = read_notify_keys()
+    user = (request.args.get("user") or getattr(g, "user", None) or "").strip()
+    # NO USER TO READ FOR, OR NONE THE LISTENER KNOWS, is a state the tab
+    # shows, never an error: the answer says so and lists nothing.
+    if not user:
+        return jsonify({"ok": True, "user": None, "total": 0, "skipped": 0,
+                        "reports": [], "note": "no user to read reports "
+                        "for: sign in, or name one with ?user=<name>"})
+    if user not in keys and not (reports_dir() / f"{user}.jsonl").is_file():
+        return jsonify({"ok": True, "user": user, "total": 0, "skipped": 0,
+                        "reports": [], "note": f"this server holds no key "
+                        f"for {user!r} and no reports of theirs; the users "
+                        f"with a key: {', '.join(sorted(keys)) or 'none'}"})
+    try:
+        limit = int(request.args.get("limit") or 200)
+        since = request.args.get("since")
+        since_f = float(since) if since not in (None, "") else None
+    except ValueError:
+        return jsonify({"ok": False, "error": "limit is a count and since "
+                        "an epoch second"}), 400
+    path = reports_dir() / f"{user}.jsonl"
+    got = read_reports(path, since=since_f, limit=limit)
+    for r in got["reports"]:
+        r["card"] = card(r)
+    return jsonify({"ok": True, "user": user, "file": str(path),
+                    "total": got["total"], "skipped": got["skipped"],
+                    "reports": got["reports"]})
+
+
 @bp.route("/api/notify/listener/keys/<user>", methods=["POST"])
 def issue_key(user: str):
     """Issue or rotate one person's signing key.

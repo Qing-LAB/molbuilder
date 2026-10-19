@@ -377,19 +377,19 @@ def _stop_reason(traj) -> Optional[str]:
 def _targets_of(data) -> Optional[Dict[str, Any]]:
     """``{source, force_tol_ev_ang, said}`` from a trajectory's
     ``runtime_info.convergence_targets``, through the log's own rule
-    (`trajectory_log.emitter.targets_of`), or ``None`` where it states
+    (`trajectory_log.keys.targets_of`), or ``None`` where it states
     none."""
-    from molbuilder.trajectory_log import emitter as _E
+    from molbuilder.trajectory_log import keys as _K
     rt = data.get("runtime_info") if isinstance(data, dict) else None
     ct = (rt or {}).get("convergence_targets")
-    leaf = _E.targets_of(ct)
+    leaf = _K.targets_of(ct)
     if not leaf:
         return None
-    tol = leaf.get(_E.MAX_FORCE_TOL)
+    tol = leaf.get(_K.MAX_FORCE_TOL)
     return {"source": (ct or {}).get("source"),
             "force_tol_ev_ang": (float(tol) if isinstance(tol, (int, float))
                                  and not isinstance(tol, bool) else None),
-            "said": _E.targets_said(ct)}
+            "said": _K.targets_said(ct)}
 
 
 @bp.route("/api/watch/load", methods=["POST"])
@@ -522,7 +522,7 @@ def api_load():
             state["data"], parser_cls),
         "label":            parser_cls.label,
         "data":             state["data"],
-        # THE RUN'S TARGETS AS THE PAGE DRAWS THEM (`trajectory_log.emitter`,
+        # THE RUN'S TARGETS AS THE PAGE DRAWS THEM (`trajectory_log.keys`,
         # the keys' one home): the rows said, the force threshold the plot
         # draws, and where they came from -- the page spells no key.
         "targets":          _targets_of(state["data"]),

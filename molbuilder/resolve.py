@@ -690,6 +690,13 @@ def resolve(template_text: str, task, config_cls, *,
             if budget is not None:
                 resources = dataclasses.replace(resources,
                                                 continue_retries=budget)
+        # THE WALL SLACK RIDES THE SAME WAY (`running-a-job.md` § 3.6): the
+        # run card's value, else the template's, onto the job for its wrapper.
+        if resources.wall_slack is None:
+            slack = getattr(values, "wall_slack", None)
+            if slack is not None:
+                resources = dataclasses.replace(resources,
+                                                wall_slack=int(slack))
 
         # ``use_gpu`` RIDES THE SAME WAY (`execution/gpu.md` G7), ALWAYS
         # the values' answer, never an allocation's: it is what

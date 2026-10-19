@@ -642,6 +642,47 @@ def about(path) -> Dict[str, Any]:
     return _row_about(p, label)
 
 
+def standing_of(launch, base) -> Optional[Dict[str, Any]]:
+    """A QUEUED RUN'S STANDING, as its scheduler states it here
+    (`running-a-job.md` § 4.2; `scheduler.queue.standing`): ``{asked_on,
+    listed, state, reason, start, priority, say}`` -- ``say`` the one line
+    a row shows -- or ``{asked_on: None, say: "ask on <machine>"}`` where
+    the scheduler cannot be asked from this server: it is asked only on
+    the machine the job was sent to, which is where this server's own
+    record (`machine_scope_path`) names the machine the calculation's copy
+    names; anywhere else the row says where to ask.  ``None`` for a run
+    with no job id (a run here).  ``launch`` is the run's launch record,
+    ``base`` its calculation's folder (the record copy's)."""
+    from molbuilder.scheduler import machine_scope_path, read_environment
+    from molbuilder.scheduler.queue import standing
+    from molbuilder.scheduler.record import calculation_record
+    jid = (launch or {}).get("job_id")
+    if not jid:
+        return None
+    rec = read_environment(calculation_record(base))
+    machine = (rec.machine if rec is not None else None) or "its machine"
+    here = read_environment(machine_scope_path())
+    sent_here = (rec is not None and here is not None
+                 and bool(rec.machine) and here.machine == rec.machine)
+    got = standing(rec.scheduler, str(jid)) if sent_here else None
+    if got is None:
+        return {"asked_on": None, "say": f"ask on {machine}"}
+    if not got.get("listed"):
+        return {"asked_on": machine, "listed": False,
+                "say": "the scheduler here no longer lists it"}
+    words = [got["state"] + (f" ({got['reason']})" if got.get("reason")
+                             else "")]
+    if got.get("start"):
+        words.append(f"expected to start {got['start']}")
+    else:
+        words.append("no start estimate yet")
+    if got.get("priority"):
+        words.append(f"priority {got['priority']}")
+    return {"asked_on": machine, "listed": True, "state": got["state"],
+            "reason": got.get("reason"), "start": got.get("start"),
+            "priority": got.get("priority"), "say": " · ".join(words)}
+
+
 def run_answer(path) -> Optional[Dict[str, Any]]:
     """``{state, detail, live}`` -- how the run the file at ``path`` belongs
     to is doing, the one door's answer (`parse.dirs.run_state_of`, asked

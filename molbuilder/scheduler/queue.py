@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
-from typing import Callable, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -55,6 +55,25 @@ def _slurm_listed(returncode: int, stdout: str,
     return any(s.strip() not in _SLURM_ENDED for s, _b, _r in rows), said
 
 
+def _slurm_standing(returncode: int, stdout: str,
+                    stderr: str) -> Optional[Dict[str, Any]]:
+    """``squeue``'s standing for one id, ``STATE|REASON|START|PRIORITY`` --
+    ``{listed, state, reason, start, priority}``: ``start`` the time it
+    expects to start, ``None`` while it states none (``N/A``); ``listed``
+    False, the rest absent, for an id it has forgotten; ``None`` for an
+    answer that says neither."""
+    if returncode != 0:
+        return {"listed": False} if "Invalid job id" in stderr else None
+    rows = [ln.split("|") for ln in stdout.split("\n") if ln.strip()]
+    if not rows or len(rows[0]) < 4:
+        return {"listed": False} if not rows else None
+    state, reason, start, priority = (x.strip() for x in rows[0][:4])
+    return {"listed": True, "state": state,
+            "reason": None if reason in ("", "None") else reason,
+            "start": None if start in ("", "N/A") else start,
+            "priority": priority or None}
+
+
 def _slurm_ended(text: str, job_id: str) -> Optional[str]:
     """SLURM's line in a job's error file when it ends the job --
     ``*** JOB <id> ON <node> <its words> ***`` -- for job ``job_id``: the
@@ -79,12 +98,16 @@ class _Readers(NamedTuple):
     cluster: Callable[[str], Optional[str]]
     #: Whether it still lists a job, and in what state (``listed``).
     listed: Callable[[int, str, str], Optional[Tuple[bool, str]]]
+    #: A queued job's standing (``standing``): state, reason, expected
+    #: start, priority.
+    standing: Callable[[int, str, str], Optional[Dict[str, Any]]]
     #: How it says it ended a job, in the job's error file (R16).
     ended: Callable[[str, str], Optional[str]]
 
 
 #: Each kind with a queue -> the readers of its answers.
-_READERS = {"slurm": _Readers(_slurm_cluster, _slurm_listed, _slurm_ended)}
+_READERS = {"slurm": _Readers(_slurm_cluster, _slurm_listed,
+                              _slurm_standing, _slurm_ended)}
 
 
 def _asked(scheduler, what: str, **values):
@@ -126,6 +149,22 @@ def listed(scheduler, job_id: str) -> Optional[Tuple[bool, str]]:
     except (OSError, subprocess.SubprocessError):
         return None
     return _READERS[k.name].listed(r.returncode, r.stdout, r.stderr)
+
+
+def standing(scheduler, job_id: str) -> Optional[Dict[str, Any]]:
+    """A queued job's standing as ``scheduler`` states it -- ``{listed,
+    state, reason, start, priority}`` (its kind's ``standing`` query, read
+    by its reader; `scheduler.md` § 6a) -- or ``None`` where it cannot be
+    asked here: no command for it on the record, one that does not run on
+    this machine, or an answer that says neither."""
+    k, line = _asked(scheduler, "standing", id=job_id)
+    if line is None:
+        return None
+    try:
+        r = subprocess.run(line, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return _READERS[k.name].standing(r.returncode, r.stdout, r.stderr)
 
 
 def cancel(scheduler, job_id: str) -> str:

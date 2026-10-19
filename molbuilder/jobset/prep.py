@@ -1663,7 +1663,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # tab's threshold line is THIS stage's and not the ladder's first.  They
     # come from the RESOLVED config, which is the whole point of resolving
     # before rendering: `coarse` and `tight` disagree about both of these.
-    # THE KEY NAMES ARE THE LOG'S OWN (`trajectory_log.emitter`, one home
+    # THE KEY NAMES ARE THE LOG'S OWN (`trajectory_log.keys`, one home
     # for every writer and reader), and the block is nested by this rung's
     # token as every writer writes it (`engines/pyscf.md` § 4; one shape,
     # 2026-10-18).
@@ -1671,11 +1671,11 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # the run was chasing" (`web/trajectory.md` § 3), and a force-constant run
     # chases none: a threshold line over its steps called 115 nudges a
     # relaxation that never settles.  ``relaxes`` is the rung's render kind.
-    from ..trajectory_log import emitter as _E
+    from ..trajectory_log import keys as _K
     leaf = {}
     for key, attr in (() if not relaxes else
-                      ((_E.MAX_FORCE_TOL, "relax_force_tol"),
-                       (_E.MAX_GEOM_ITER, "relax_steps"))):
+                      ((_K.MAX_FORCE_TOL, "relax_force_tol"),
+                       (_K.MAX_GEOM_ITER, "relax_steps"))):
         value = getattr(cfg, attr, None)
         if value is not None:
             leaf[key] = value

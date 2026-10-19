@@ -90,10 +90,14 @@ class Continuation:
                 f"({self.written_by_is}) -- the last run here; "
                 f"{self.stage}'s {which} is {self.run}")
 
-    def line(self, copied=(), *, would: bool = False) -> str:
+    def line(self, copied=(), *, would: bool = False, warned=None) -> str:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
         rc=0 at ...; converged): copied H2.XV, ...`` -- what both doors
-        print; ``would``, a preview's: what it would copy."""
+        print; ``would``, a preview's: what it would copy.  ``warned`` is
+        ``{name: why}`` for a copied file written as its run ended
+        (`HandOver.written_as_ended`, `running-a-job.md` § 3.6), said after
+        the file's name."""
+        warned = warned or {}
         facts = [("named" if not self.by_default else
                   "its own latest run" if self.own else
                   "the relaxation it builds on" if self.linked else
@@ -107,9 +111,14 @@ class Continuation:
                          "NOT converged -- expect imaginary frequencies"
                          if self.linked else
                          "NOT converged -- taken as it stands")
+        in_place = [n for n in warned if n not in copied]
         return (f"continues from {self.where()} ({'; '.join(facts)})"
                 + (f": {'would copy' if would else 'copied'} "
-                   f"{', '.join(copied)}" if copied else ""))
+                   + ", ".join(n + (f" -- WARNING: {warned[n]}"
+                                    if n in warned else "")
+                               for n in copied) if copied else "")
+                + "".join(f"; {n} in the folder -- WARNING: {warned[n]}"
+                          for n in in_place))
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)

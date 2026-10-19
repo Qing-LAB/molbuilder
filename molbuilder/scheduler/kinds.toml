@@ -43,7 +43,8 @@ cluster = "scontrol"
 # answers a send with.
 [slurm.send]
 line   = ["{submit}", "-J", "{job}", "{restated}",
-          "--export", "ALL,{launch_claim_var}={launched_by}", "{header}", "{args}"]
+          "--export", "ALL,{launch_claim_var}={launched_by},{wall_var}={wall_s}",
+          "{header}", "{args}"]
 ask    = "--test-only"
 job_id = 'Submitted batch job (\d+)'
 
@@ -57,6 +58,10 @@ wall = ["-t", "{wall}"]
 # -- each answer read by the kind's reader (`queue._READERS`).
 [slurm.query]
 listed  = ["{query}", "--noheader", "--jobs={id}", "--format=%T|%r"]
+# ITS STANDING, for a queued job the run door shows: its state, the
+# scheduler's reason, the start it expects (N/A until it has one) and its
+# priority (scheduler.md 6a; running-a-job.md 4.2).
+standing = ["{query}", "--noheader", "--jobs={id}", "--format=%T|%r|%S|%Q"]
 cancel  = ["{cancel}", "{id}"]
 cluster = ["{cluster}", "show", "config"]
 

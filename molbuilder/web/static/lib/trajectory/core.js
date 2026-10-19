@@ -969,7 +969,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
 
     // THE RUN'S TARGETS are the server's answer (`/api/watch/*` `targets`,
-    // from `trajectory_log.emitter.targets_of`: the one rule picking the
+    // from `trajectory_log.keys.targets_of`: the one rule picking the
     // run's own leaf out of the nested block) -- `{source, force_tol_ev_ang,
     // said: [[label, text], ...]}` or null -- a nested block's one stage, or
     // SIESTA's flat echo, both the door's to read.  The page keeps no copy

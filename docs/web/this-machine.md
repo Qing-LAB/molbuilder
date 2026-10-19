@@ -185,6 +185,23 @@ It is the same act as `molbuilder notify-token` and it writes the same file, so
 as; a molbuilder login is a person. molbuilder does not manage that mapping and
 does not try to — `access-control.md` § 8 rule 3 applied to the filesystem.
 
+### 4.1 What arrived — the reports received
+
+The listener appends and never reads (`run-reports.md` § 4); reading is a
+signed-in browser's job, and this is where. Under the listener's state the tab
+lists **the reports this server received for you**, newest first — the time
+it was sent, the calculation and its job, the machine it ran on, the event,
+and the summary line — each opening to the **same card Slack and Discord
+got** (the one picture, `monitor.card`, in the page's own spelling: title,
+headline, the field grid, the state's colour). A filter narrows by
+calculation, machine or event; while the tab is open the list follows the
+file (a poll every 30 s, the same as a results viewer follows a live run);
+and the header shows how many arrived since you last looked (a per-browser
+convenience). Read through one door, `GET /api/notify/reports`, which reads
+the file through the reports reader (`parse/instruments/reports.py`) — the
+page parses nothing. A report is a measurement sent from elsewhere, not a
+folder here: the tab links it to nothing.
+
 ---
 
 ## 5. What this tab does not do

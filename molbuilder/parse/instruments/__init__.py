@@ -5,12 +5,15 @@ Registered at import, like `engines/` and `sidecars/` beside them.
 from molbuilder.parse.registry import register
 
 from .monitor import MonitorLogFileParser   # re-export
+from .reports import ReportsFileParser      # re-export
 from .scf_timing import ScfTimingFileParser   # re-export
 from .util_csv import UtilCsvFileParser   # re-export
 from .utilisation import utilisation   # re-export
 
 register(ScfTimingFileParser)
 register(MonitorLogFileParser)
+register(ReportsFileParser)
 register(UtilCsvFileParser)
 
-__all__ = ["ScfTimingFileParser", "MonitorLogFileParser", "UtilCsvFileParser", "utilisation"]
+__all__ = ["ScfTimingFileParser", "MonitorLogFileParser", "ReportsFileParser",
+           "UtilCsvFileParser", "utilisation"]

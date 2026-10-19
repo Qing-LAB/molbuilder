@@ -68,6 +68,12 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
 # grammar.
 _SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
+#: SIESTA'S OWN SLACK (MaxWalltime.Slack's default, `siesta_init.F`, 5.4.2),
+#: in seconds: what a run script falls back to where no `wall_slack` was
+#: baked (`running-a-job.md` § 3.6; a wrapper rendered from a `Resources`
+#: that states none).
+_ENGINE_OWN_SLACK_S = 5
+
 
 
 class WrapperError(Exception):
@@ -1860,6 +1866,12 @@ def render_run_wrapper(script_path: Path, *,
     mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
     max_memory_mb, continue_retries = (r.max_memory_mb,
                                        r.continue_retries)
+    # THE WALL SLACK (`running-a-job.md` § 3.6), baked as the retry budget
+    # is; a job without one baked leaves the engine its own
+    # (`_ENGINE_OWN_SLACK_S`).
+    wall_slack = r.wall_slack
+    _slack_export = (f"export MB_WALL_SLACK_S={int(wall_slack)}\n"
+                     if wall_slack is not None else "")
     # WHEN this calculation should speak up -- carried on the allocation
     # like `continue_retries`, and rendered as monitor flags rather than
     # scheduler ones.  Absent means the flags are not emitted at all, so a
@@ -2541,6 +2553,20 @@ def render_run_wrapper(script_path: Path, *,
         # script carries no retry whatever the budget, and its banner says
         # why.
         _retries = 0 if _prog == "tbtrans" else (continue_retries or 0)
+        # THE WALL'S WORDS FOR THIS PROGRAM -- the catalogue's `launch` for
+        # `wall_slack` (template.md § 5), rendered with what the script
+        # counts: never a flag spelled here.  A program the item does not
+        # name (tbtrans) gets none.
+        from .script_emit import parameter as _parameter
+        _wall_decl = _parameter("wall_slack", category).declaration
+        _wall_words = (_wall_decl.launch.get(_prog, ())
+                       if _wall_decl is not None else ())
+        _wall_array = " ".join(
+            '"' + w.replace("{left}", "${_mb_wall_left}")
+                   .replace("{slack}",
+                            f"${{MB_WALL_SLACK_S:-{_ENGINE_OWN_SLACK_S}}}")
+            + '"'
+            for w in _wall_words)
         env_prefix += (
             # The block NAME is job-contracts.md § 2.6's row and stays
             # stable; the binary inside is _prog.
@@ -2772,6 +2798,16 @@ def render_run_wrapper(script_path: Path, *,
             + 'echo "  Mode          : $_mode"\n'
             + 'echo "  Constraints   : $_constraints"\n'
             + f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
+            # WHAT THE PROGRAM DOES WITH THE WALL: stops before it in the
+            # catalogue's words, or -- a program the item does not name
+            # (tbtrans) -- checks no clock and runs to it.
+            + 'if [ -n "${MB_WALL_S:-}" ]; then '
+              'echo "  Wall          : ${MB_WALL_S}s from the job\'s start; '
+            + (f'{_prog_label} stops ${{MB_WALL_SLACK_S:-{_ENGINE_OWN_SLACK_S}}}s '
+               f'before it ' if _wall_words
+               else f'{_prog_label} checks no clock and runs to it ')
+            + '(running-a-job.md 3.6)"; '
+              'else echo "  Wall          : none stated -- runs until done"; fi\n'
             + 'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
             + 'echo "========================================="\n'
             "\n"
@@ -3270,9 +3306,24 @@ def render_run_wrapper(script_path: Path, *,
                if _retries > 0 else "")
             + _history_block(names, deck_text)
             + _last_run_block(names)
+            # THE WALL REACHES THE ENGINE (running-a-job.md § 3.6; siesta.md
+            # § 8.9): what is left of the job's wall when the program
+            # starts, in the words the catalogue's `wall_slack` item gives
+            # this program (`launch`, template.md § 5) -- the deck, written
+            # at prep, never carries a wall the launch stated after it.
+            + "_mb_wall_args=()\n"
+            + (f'if [ -n "${{MB_WALL_S:-}}" ] && [ -n "${{MB_JOB_STARTED:-}}" ]; then\n'
+               f"    _mb_wall_left=$(( MB_WALL_S - ( $(date +%s) - MB_JOB_STARTED ) ))\n"
+               f'    [ "$_mb_wall_left" -lt 1 ] && _mb_wall_left=1\n'
+               f"    _mb_wall_args=({_wall_array})\n"
+               f'    _log INFO "wall: ${{_mb_wall_left}}s left of ${{MB_WALL_S}}s; '
+               f'{_prog_label} stops ${{MB_WALL_SLACK_S:-{_ENGINE_OWN_SLACK_S}}}s '
+               f'before it (running-a-job.md 3.6)"\n'
+               f"fi\n" if _wall_words else "")
             + f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
-            f'$_launch_cmd {script_name} | _mb_scf_tee "$_out_file" '
+            f'$_launch_cmd ${{_mb_wall_args[@]+"${{_mb_wall_args[@]}}"}} {script_name} '
+            f'| _mb_scf_tee "$_out_file" '
             f'"$_scf_timing_log"\n'
             f"_siesta_exit=${{PIPESTATUS[0]}}\n"
             f"set -e\n"
@@ -3351,7 +3402,13 @@ def render_run_wrapper(script_path: Path, *,
                f'    # banner and the retry message say so.  Crash classes (propor\n'
                f'    # IMAX, generic aborts) are NOT retried -- rerunning\n'
                f'    # cannot fix a defective pseudo or a bad rank count.\n'
-               f'    if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
+               f'    # STOPPED AT ITS WALL (MaxWalltime, running-a-job.md 3.6):\n'
+               f'    # its restart state is saved and no time is left, so no\n'
+               f'    # retry here -- the next launch continues from it.\n'
+               f'    if _mb_ending stopped-by "{_G.OUT_OF_TIME_MARKER}"; then\n'
+               f'        echo "stopped at its wall (MaxWalltime): the restart '
+               f'state is saved; launch this stage again to continue" >&2\n'
+               f'    elif [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
                f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
                f'        _mb_warm_retry "SCF did not converge '
                f'(SIESTA aborted under SCF.MustConverge)"\n'
@@ -3564,6 +3621,17 @@ def render_run_wrapper(script_path: Path, *,
         f'    case "$_mb_a" in -h|--help) _mb_help=1 ;; esac\n'
         f"done\n"
         f"\n"
+        # THE WALL, counted from the job's start (running-a-job.md § 3.6):
+        # a job's header said when it started; a run here says it now.  The
+        # slack travels to the engine beside it -- SIESTA on its command
+        # line below, a PySCF deck from its environment.
+        f"# The wall: the launch told this job the seconds it was sent with\n"
+        f"# (MB_WALL_S); its start is the header's, or now; the engine stops\n"
+        f"# itself MB_WALL_SLACK_S before the wall (running-a-job.md 3.6).\n"
+        f': "${{MB_JOB_STARTED:=$(date +%s)}}"\n'
+        f"export MB_JOB_STARTED\n"
+        f"{_slack_export}"
+        f"\n"
         f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
         f'_runwrap_log="$PWD/{_bash_name(names, ".runwrap-{stamp}.log")}"\n'
         f"# ABSOLUTE, and it has to be: every later reference -- the\n"
@@ -3679,7 +3747,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "_section_rules.py":   "molbuilder.parse.engines._section_rules",
     "scf_timing_rows.py":  "molbuilder.parse.instruments.scf_timing_rows",
     "end_lines.py":        "molbuilder.pyscf.end_lines",
-    "emitter.py":          "molbuilder.trajectory_log.emitter",
+    "keys.py":             "molbuilder.trajectory_log.keys",
     "_run_ending.py":      "molbuilder.parse.engines._run_ending",
     "report_fields.py":    "molbuilder.report_fields",
     "job.py":              "molbuilder.parse.dirs.job",
@@ -3835,6 +3903,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
     "end_lines.py":            "molbuilder.pyscf.end_lines",
     "emitter.py":              "molbuilder.trajectory_log.emitter",
+    "keys.py":                 "molbuilder.trajectory_log.keys",
     "atom_permutation.py":     "molbuilder.atom_permutation",
     # THE STRUCTURE, WHOLE, in the result (engines/vibration.md § 6.10): the
     # result type builds and checks it through the one serialiser.
@@ -3919,6 +3988,7 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 PYSCF_COMPANIONS: Dict[str, str] = {
     "runtime_info.py":          "molbuilder.runtime_info",
     "molwatch_emitter.py":      "molbuilder.trajectory_log.emitter",
+    "keys.py":                  "molbuilder.trajectory_log.keys",
     "constants.py":             "molbuilder.constants",
     "workingcopy_structure.py": "molbuilder.workingcopy_structure",
     "structure.py":             "molbuilder.structure",
@@ -4362,10 +4432,14 @@ def render_sbatch(names, *, scheduler,
     # numbers in its walk script.
     # THE LINE TO SEND IT BY HAND -- launch's own form (`kinds.Kind.line`),
     # the job named by its header's name, the claim the person's.
+    from .scheduler.quantities import parse_walltime
     by_hand = " ".join(kind.line(
         scheduler.commands(), job=basename, restated=[],
         launched_by=MANUAL_CLAIM, header=f"{where}{names.name('.sbatch')}",
-        args=[] if where else ["--run", "N"]))
+        args=[] if where else ["--run", "N"],
+        # THE HEADER'S WALL, told to the job as a launch tells it
+        # (`running-a-job.md` § 3.6).
+        wall_s=parse_walltime(time)))
     lines: List[str] = [
         "#!/bin/bash",
         f"# === molbuilder scheduler header (scheduler: {kind.name}) ===",

@@ -940,6 +940,16 @@ extension:
 > scheduler). `run` was the pre-job-system entry point and is **deleted, not
 > deprecated**: a second way in is a second way to lose your results.
 
+**The wall reaches the engine through the wrapper, never through the deck.**
+The deck is written at prep; the wall a job is sent with is the launch's
+(`placed_on.time`, a `--time` among them), so the wrapper reads `MB_WALL_S`
+and `MB_JOB_STARTED` at run time, counts what is left when it starts the
+engine, and passes it on the engine's own channel with the `wall_slack`
+item it bakes in at prep as it bakes `continue_retries` — SIESTA's `-fdf
+MaxWalltime=…:s -fdf MaxWalltime.Slack=…:s` beside the deck, a PySCF
+deck's environment; the engine stops once less than the slack is left
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6).
+
 - **`.fdf` → `molbuilder-siesta`**, run as `mpirun -np N siesta …` (or serial
   if `N < 2`). A `.fdf` that requests **GPU** eigensolving (`Diag.ELPA.GPU
   true`) is re-routed to a third env, **`molbuilder-siesta-gpu`** — the one
@@ -959,7 +969,7 @@ wrapper contains these and nothing else:
 | block | what it is for |
 |---|---|
 | **Per-run log file** | where this invocation's log goes — emitted FIRST, before the gate, so even a refused launch leaves a record; the output it was started with is kept, and a warm retry hands it back before it re-execs, so each start's log holds that start alone *(row order corrected 2026-08-13: it sat 8th while emitting first)* |
-| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sent to a scheduler: on the line, its kind's `--export ALL,MB_LAUNCHED_BY=jobset-launch` for SLURM — [`scheduler.md`](?doc=execution/scheduler.md) § 6a — robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
+| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sent to a scheduler: on the line, its kind's `--export ALL,MB_LAUNCHED_BY=jobset-launch,MB_WALL_S=<seconds>` for SLURM — [`scheduler.md`](?doc=execution/scheduler.md) § 6a — robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
 | **Baked preamble** | the target machine's own lines, verbatim from its record's preamble ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)) |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--run N` (the run's number, as `launch` gives it), `--continue` / `--cold` / `--force` handling |

@@ -110,6 +110,11 @@ class Resources:
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
     # NOT a SLURM flag -- baked into the wrapper.
     continue_retries: Optional[int] = field(default=None, metadata={"axis": "rider"})
+    #: THE WALL SLACK, seconds -- how long before its wall the engine stops
+    #: itself (`running-a-job.md` § 3.6); the catalogue's `wall_slack`, riding
+    #: the same road as ``continue_retries``: baked into the wrapper, no
+    #: scheduler flag.
+    wall_slack: Optional[int] = field(default=None, metadata={"axis": "rider"})
     #: WHEN this calculation should say something -- also not a SLURM flag,
     #: and here for the reason the paragraph above gives: this is the road a
     #: field takes from a job to its wrapper, and the alternative is a second

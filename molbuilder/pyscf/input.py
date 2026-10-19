@@ -390,9 +390,9 @@ def spec_for(struct: Structure,
         from ..runtime_info import to_gpu
         from ..trajectory_log.emitter import MolwatchEmitter
         from ..workingcopy_structure import StructureCodec
-        from .relax_policy import relax
+        from .relax_policy import relax, wall_deadline
         out += emit_bundle_imports(StructureCodec, MolwatchEmitter, relax,
-                                   Structure, to_gpu)
+                                   wall_deadline, Structure, to_gpu)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -1132,6 +1132,9 @@ def _emit_optimization(cfg: PySCFConfig,
     out.append(f"_GEOM_CONTINUE_RETRIES = {retries}")
     out.append("mol_eq, _GEOM_CONVERGED = _mb_relax(")
     out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
+    # THE WALL (`engines/pyscf.md` § 3.9): the deadline the run script's
+    # environment states, or none.
+    out.append("        deadline = _mb_wall_deadline(),")
     if cfg.save_optimized_xyz:
         # EVERY STEP'S GEOMETRY, KEPT, as SIESTA keeps its `.XV` (user,
         # 2026-10-06): a rung stopped at its step limit or its wall leaves
@@ -1248,7 +1251,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     # resolved by `prep` from the description ⊕ this stage's overrides.  The
     # molwatch parser keys them as
     # ``runtime_info["convergence_targets"][<stage>][<leaf>]``; the one
-    # reader of the block (`trajectory_log.emitter.targets_of`) takes the
+    # reader of the block (`trajectory_log.keys.targets_of`) takes the
     # one stage's leaf, and the watch door serves it to the page as said.
     #
     # The key is the stage TOKEN, the same string this log's own filename
@@ -1271,16 +1274,16 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     _max_force_eV = float(cfg.geom_gmax) * _ha_bohr_to_ev_ang
     _rms_force_eV = float(cfg.geom_grms) * _ha_bohr_to_ev_ang
     _energy_tol_eV = float(cfg.geom_etol) * _HARTREE_EV
-    # THE KEYS ARE THE LOG'S OWN (`trajectory_log.emitter`, one home), the
+    # THE KEYS ARE THE LOG'S OWN (`trajectory_log.keys`, one home), the
     # block nested by this rung's token as every writer writes it.
-    from ..trajectory_log import emitter as _E
-    _leaves = ((_E.MAX_FORCE_TOL, _max_force_eV),
-               (_E.RMS_FORCE_TOL, _rms_force_eV),
-               (_E.MAX_DISPL, float(cfg.geom_dmax)),
-               (_E.RMS_DISPL, float(cfg.geom_drms)),
-               (_E.ENERGY_STEP_TOL, _energy_tol_eV),
-               (_E.MAX_SCF_ITER, int(cfg.scf_max_cycle)),
-               (_E.MAX_GEOM_ITER, int(cfg.geom_max_steps)))
+    from ..trajectory_log import keys as _K
+    _leaves = ((_K.MAX_FORCE_TOL, _max_force_eV),
+               (_K.RMS_FORCE_TOL, _rms_force_eV),
+               (_K.MAX_DISPL, float(cfg.geom_dmax)),
+               (_K.RMS_DISPL, float(cfg.geom_drms)),
+               (_K.ENERGY_STEP_TOL, _energy_tol_eV),
+               (_K.MAX_SCF_ITER, int(cfg.scf_max_cycle)),
+               (_K.MAX_GEOM_ITER, int(cfg.geom_max_steps)))
     out.append("_CONVERGENCE_TARGETS = {")
     out.append(f"    {names.stage!r}: {{")
     for _k, _v in _leaves:

@@ -39,8 +39,30 @@ def policy_of(cfg) -> Tuple[str, int]:
     return str(policy).strip().lower(), int(retries)
 
 
+def wall_deadline(environ=None):
+    """The epoch second this deck must be done by, or ``None``: the run
+    script's three variables -- ``MB_WALL_S`` (the seconds the job was sent
+    with), ``MB_JOB_STARTED`` (the job's start, an epoch second) and
+    ``MB_WALL_SLACK_S`` (the run card's slack) -- read once at start
+    (`engines/pyscf.md` § 3.9, `running-a-job.md` § 3.6).  Any absent or
+    unreadable, no deadline: the deck runs until it is done."""
+    import os
+    env = os.environ if environ is None else environ
+    try:
+        wall = float(env["MB_WALL_S"])
+        started = float(env["MB_JOB_STARTED"])
+        slack = float(env["MB_WALL_SLACK_S"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    return started + wall - slack
+
+
+class WallReached(Exception):
+    """The deadline passed between two steps (`wall_deadline`)."""
+
+
 def relax(mf, policy, retries, *, keep=None, resumable=False,
-          **geometric_kw):
+          deadline=None, **geometric_kw):
     """Relax ``mf``'s molecule with geomeTRIC and apply this rung's
     ``on_nonconvergence`` to what geomeTRIC reports — ``(mol, converged)``,
     ``converged`` geomeTRIC's own verdict on all of its criteria.
@@ -62,6 +84,11 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
     ``resumable`` whether launching the stage again reads that geometry
                 back (its ``restart`` is ``continue``): what the stop's
                 message tells the person to do.
+    ``deadline`` the epoch second to be done by (:func:`wall_deadline`),
+                or ``None``: the first step past it stops geomeTRIC, and
+                the geometry reached comes back with ``False`` -- kept by
+                ``keep`` as every step's is, so the next launch continues
+                from it (`engines/pyscf.md` § 3.9).
     ``geometric_kw`` what geomeTRIC is handed — ``maxsteps`` (required: the
                 step budget the messages name), the five ``convergence_*``
                 criteria, ``constraints``, ``prefix``, ``callback`` — the same
@@ -79,8 +106,10 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
     shows it twice and counts it; the trajectory under ``prefix`` holds the
     last batch's steps.
     """
+    import time
     from pyscf.geomopt.geometric_solver import kernel
-    if keep is not None:
+    last = {}
+    if keep is not None or deadline is not None:
         given = geometric_kw.get("callback")
 
         def _each_step(envs):
@@ -88,13 +117,28 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
                 given(envs)
             reached = envs.get("mol") if isinstance(envs, dict) else None
             if reached is not None:
-                keep(reached)
+                last["mol"] = reached
+                if keep is not None:
+                    keep(reached)
+            if deadline is not None and time.time() > deadline:
+                raise WallReached()
 
         geometric_kw = {**geometric_kw, "callback": _each_step}
     steps = int(geometric_kw["maxsteps"])
     batches = 1 + (int(retries) if policy == "continue" else 0)
     for batch in range(1, batches + 1):
-        converged, mol = kernel(mf, assert_convergence=True, **geometric_kw)
+        try:
+            converged, mol = kernel(mf, assert_convergence=True,
+                                    **geometric_kw)
+        except WallReached:
+            # THE WALL (`engines/pyscf.md` § 3.9): the geometry reached is
+            # kept as every step's is; the run ends normally, unconverged,
+            # and the next launch continues from it.
+            print("WARNING: stopped before the wall (the job's wall less "
+                  "its slack): the geometry reached is kept"
+                  + ("; launch this stage again to continue from it"
+                     if keep is not None and resumable else ""))
+            return last.get("mol", mf.mol), False
         if converged:
             return mol, True
         if batch < batches:
@@ -123,4 +167,4 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
            f"Nothing continues from it: {back}."))
 
 
-__all__ = ["policy_of", "relax"]
+__all__ = ["policy_of", "relax", "wall_deadline", "WallReached"]
