@@ -482,15 +482,17 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             # not the stage's newest (§ 2a.12: the device facts beside T(E)
             # are that run's): its points' states, and a detail naming both.
             if run is not None and s.attempt and s.dir \
-                    and run != base / s.dir / s.attempt:
-                states = [p.get("state") for p in fact["by_point"]]
-                fact["state"] = ("finished" if states
-                                 and all(st == "finished" for st in states)
-                                 else next((st for st in states
-                                            if st != "finished"), "unknown"))
-                fact["detail"] = (f"the run the transmission gathered "
-                                  f"({fact['attempt']}); the stage's newest "
-                                  f"run is {s.dir}/{s.attempt}: {s.detail}")
+                    and run != base / s.dir / s.attempt and points:
+                # ITS STATE BY THE STATUS DOOR'S ONE RULE for a run of
+                # points (`runstatus.points_verdict`), on the rows that
+                # door read for this run (`point_rows`, above), never a
+                # second rule.
+                from ..jobset.runstatus import points_verdict
+                fact["state"], said = points_verdict(points)
+                fact["detail"] = (f"{said}; the run the transmission "
+                                  f"gathered ({fact['attempt']}); the "
+                                  f"stage's newest run is "
+                                  f"{s.dir}/{s.attempt}: {s.detail}")
             first = next((p for p in fact["by_point"]
                           if p.get("energy_ev") is not None), None)
             if first is not None:

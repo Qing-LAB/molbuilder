@@ -402,14 +402,7 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
     pts, running = point_rows(run, names, task, job.name, base=base,
                               launch=launch,
                               products=products)
-    n_done = sum(p["done"] for p in pts)
-    # THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
-    # § 2a.11): *k of N points done (F frames × V voltages)*.
-    n_frames = len({p["frame"] for p in pts})
-    n_volts = len({p["bias_v"] for p in pts})
-    summary = (f"{n_done} of {len(pts)} points done ({n_frames} "
-               f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
-               f"voltage{'' if n_volts == 1 else 's'})")
+    summary = points_summary(pts)
     # CONVERGED, in its own column (`job-system.md`, rule 4): yes for a rung
     # with an SCF (`STAGE_FACT`: the transmission converges nothing) when
     # every point's output says it converged; NO when one says it did not;
@@ -433,15 +426,7 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         state, detail = "queued", (f"queued as job {jid}" if jid
                                    else "launched, nothing run yet")
     else:
-        # THE RUN'S STATE IS ITS POINTS' RUNS': finished when every one
-        # finished -- converged or not, which is the converged column's
-        # (`job-system.md`, rule 4) -- else failed; the first point not
-        # done says why.
-        state = ("finished" if all(p["state"] == "finished" for p in pts)
-                 else "failed")
-        first = next((p for p in pts if not p["done"]), None)
-        detail = (summary if first is None
-                  else f"{summary}; {first['point']}: {first['why']}")
+        state, detail = points_verdict(pts)
     return StageStatus(
         ref=ref, dir=d.name, state=state, detail=detail,
         converged=converged,
@@ -450,6 +435,32 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         script=str(job.script), carries=[w.name for w in job.warm],
         resources=resources_text(job.resources), points=pts,
         gathered=_gathered_lines(run))
+
+
+def points_summary(pts) -> str:
+    """THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
+    § 2a.11): *k of N points done (F frames × V voltages)*."""
+    n_done = sum(p["done"] for p in pts)
+    n_frames = len({p["frame"] for p in pts})
+    n_volts = len({p["bias_v"] for p in pts})
+    return (f"{n_done} of {len(pts)} points done ({n_frames} "
+            f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
+            f"voltage{'' if n_volts == 1 else 's'})")
+
+
+def points_verdict(pts) -> "tuple[str, str]":
+    """A run of points' state once nothing in it runs -- THE RUN'S STATE IS
+    ITS POINTS' RUNS': finished when every one finished -- converged or not,
+    which is the converged column's (`job-system.md`, rule 4) -- else
+    failed; the first point not done says why.  The one rule, asked by the
+    status door (:func:`_sweep_status`) and by the transport record for the
+    run its transmission gathered (`engines/transport.md` § 2a.12)."""
+    summary = points_summary(pts)
+    state = ("finished" if all(p["state"] == "finished" for p in pts)
+             else "failed")
+    first = next((p for p in pts if not p["done"]), None)
+    return state, (summary if first is None
+                   else f"{summary}; {first['point']}: {first['why']}")
 
 
 def _taken_over(p, here) -> bool:

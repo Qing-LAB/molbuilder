@@ -612,7 +612,7 @@ each surface's words. A file's own ending is
 #### The call
 
 ```python
-run_status(run_dir, basename, *, launch=<not asked>) -> RunStatus   # parse/dirs/job.py
+run_status(run_dir, basename, *, launch=<not asked>, run=None, launched_in=None) -> RunStatus   # parse/dirs/job.py
 ```
 
 | argument | meaning |
@@ -620,6 +620,8 @@ run_status(run_dir, basename, *, launch=<not asked>) -> RunStatus   # parse/dirs
 | `run_dir` | the attempt (`run-<n>/`), or the calculation itself in the flat shape |
 | `basename` | the run's stem, `<label>[_<token>]` (`runfiles.stem`), in either shape: the flat shape keeps every stage in one directory, and an attempt's may hold several run indexes |
 | `launch` | `launch_record(dir)` (`runrecord.py`) — the `run.json` dict, or `None`; one that does not read is an error naming the file, never an answer; left out, *not asked* |
+| `run` | the run index asked about; left out, the stage's newest (`runrecord.newest_run`) |
+| `launched_in` | the folder the launch record lies in when it is not `run_dir` — a run of points' one record, in the run's folder, answering for each point (`rundir.run_state_of` passes it; the scheduler's file is named from there) |
 
 | field | holds |
 |---|---|

@@ -209,10 +209,27 @@ def done(folder, names, *, launch=None, products=(),
         return False, st.detail or st.state
     if st.verdict is not None and not st.verdict[1]:
         return False, f"finished, not converged ({converged_of(st)})"
-    missing = [f for f in products if not (folder / f).is_file()]
+    missing = [_said(p) for p in products if not _held(folder, p)]
     if missing:
         return False, f"finished without {', '.join(missing)}"
     return True, "done"
+
+
+def _held(folder: Path, product) -> bool:
+    """Does ``folder`` hold ``product`` -- a file's name, or several sets of
+    names of which one set, whole, must be there (a polarized transmission's
+    two channel files stand where the unpolarized one does;
+    `transport.stages.products_of`)?"""
+    if isinstance(product, str):
+        return (folder / product).is_file()
+    return any(all((folder / f).is_file() for f in group) for group in product)
+
+
+def _said(product) -> str:
+    """``product`` as a message names it: the file, or each set joined."""
+    if isinstance(product, str):
+        return product
+    return " or ".join(" and ".join(group) for group in product)
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,

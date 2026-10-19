@@ -57,8 +57,15 @@ fixed where it sits on one of these three roads and nowhere else.
    the gather between rungs, `summarize`: `engines/transport.md` § 1–§ 4
    against `transport/compose.py`, `transport/stages.py`, `transport/deck.py`,
    `transport/transiesta.py`, `jobset/prep.py`, `jobset/submit.py`
-   (`_points_walk`), `jobset/gather.py`. The user runs the junction on Sol
-   (E13); what it shows is the work.
+   (`_points_walk`), `jobset/gather.py`. **Read whole 2026-10-18** (a fresh
+   agent, every finding re-read against the code): a polarized transmission
+   point was never done (fixed, 2.13.1); the seed listed the device's
+   `.TSDE` as its product (fixed); the un-swept device's relaunch rule was
+   stated two ways (ruled: a stage like any, § 5.4); a lead gathered
+   finished-but-unconverged under `scf_must_converge: false` is the person's
+   choice, stated. Sort, per-point gather, the walk, frames, bias and
+   k-points: consistent. The user runs the junction on Sol (E13); what it
+   shows is the work.
 2. **Multi-frame support, correct** — a pair of several frames cited, a point
    per frame and voltage, each frame's own geometry in its device and
    transmission, every point and its rows in the record, the frames' average
@@ -73,7 +80,14 @@ fixed where it sits on one of these three roads and nowhere else.
    transport record and data file read back, the Results tab showing what the
    files say: `model/parse.md`, `execution/running-a-job.md` § 4.2,
    `web/results.md` against `parse/`, `runs.py`, `transport/record.py`,
-   `transport/tbtnc.py`, `web/blueprints/results.py`. The 2026-10-18 scan's
+   `transport/tbtnc.py`, `web/blueprints/results.py`. **Read whole
+   2026-10-18**: a run cut inside an SCF block read *SCF converged* (fixed,
+   2.13.1, seen on both Sol runs); a gathered run's rung state composed by a
+   second rule (fixed); two 500s where the contract says `unreadable`
+   (fixed); the plain-`.xyz` sentence and the `run_status` call table
+   brought to the code. The state chain, which file speaks, the endings and
+   the record's contributors: consistent. Parked: one TBtrans output is read
+   whole three times (cost, not a wrong value). The 2026-10-18 scan's
    three items on this road, checked against the code: a point's state is
    asked through `rundir.run_state_of`, which now takes the run's folder
    (done; the names come from the catalogue's composer `RunNames.of`, which

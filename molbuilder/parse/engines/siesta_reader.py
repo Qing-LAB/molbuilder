@@ -588,11 +588,18 @@ class SiestaReader:
             self.phase = phase
             self.phase_converged.setdefault(phase, None)
             self._prev_E_KS = None
-        # iscf==1 starts a new SCF run of THIS phase.
+        # iscf==1 starts a new SCF run of THIS phase -- and its convergence
+        # is unanswered until it says (P-S2: the flag is the LAST block's).
+        # Found 2026-10-18 on two runs the scheduler cut mid-block: the
+        # block before had converged, and the flag kept its True.
         if iscf == 1:
             if (self._current_scf
                     and self._current_scf[-1].get("phase") == phase):
                 self._current_scf = []
+            # Whatever emptied the block list -- the step boundary does, before
+            # this row -- the new block's verdict is its own, not yet said.
+            self.scf_converged = None
+            self.phase_converged[phase] = None
             self._prev_E_KS = None
         cycle["delta_E"] = (e_ks - self._prev_E_KS
                             if self._prev_E_KS is not None else 0.0)

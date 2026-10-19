@@ -288,13 +288,14 @@ def inputs_of(task, stage: str):
     return stage_inputs(stage, task.label)
 
 
-def products_of(stage: str, task_label: str, *,
-                transmission_product: str = ".TBT.nc",
-                base_dir=None) -> List[str]:
+def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     """What a run of ``stage`` must hold to be DONE: every file a rung
     downstream takes from it (:func:`stage_inputs`, the DAG, read the other
     way) -- for the transmission, which nothing downstream reads, its own
-    deliverable, the ``.TBT.nc`` -- and, with ``base_dir``, what a point
+    deliverable: the ``.TBT.nc``, or a polarized point's ``.TBT_UP.nc`` and
+    ``.TBT_DN.nc`` both, as TBtrans names its channels
+    (`siesta_grammar.TBT_CHANNELS`; one entry of alternative sets, which
+    `continuation.done` reads) -- and, with ``base_dir``, what a point
     hands to the next point: the calculation's ``along`` row, of the files
     this rung itself declares (the device's ``.TSDE``; the transmission
     declares none).  THE ONE LIST `done` is asked with
@@ -302,12 +303,18 @@ def products_of(stage: str, task_label: str, *,
     read it here and nowhere else."""
     from ..runfiles import compose
     if stage == "transmission":
-        out = [compose(task_label, transmission_product)]
+        from ..parse.engines.siesta_grammar import TBT_CHANNELS
+        tag = dict(TBT_CHANNELS)
+        out = [((compose(task_label, tag["unpolarized"] + "nc"),),
+                (compose(task_label, tag["up"] + "nc"),
+                 compose(task_label, tag["down"] + "nc")))]
     else:
         out = sorted({fn for downstream in TRANSPORT_STAGES
                       for up, fn in stage_inputs(downstream, task_label)
                       if up == stage})
-    if base_dir is not None:
+    # WHAT A POINT HANDS TO THE NEXT POINT is a per-point rung's alone: the
+    # seed has no points, and its restart state is its own `.DM` (§ 2a.15).
+    if base_dir is not None and stage in per_point_rungs():
         from ..warmfiles import warm_list
         own = {w.name for w in warm_declaration(stage, task_label, base_dir)}
         along = [compose(task_label, suf)

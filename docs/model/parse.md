@@ -326,7 +326,11 @@ that budgets its iterations. A reader composes the sentence — *"ended · not
 converged · 3 iterations"* — from two independent facts. **Convergence is per
 SCF phase** (§ 4b): `phases` holds each phase's, and `scf_converged` is the LAST
 phase's — a device's periodic initialization converging does not speak for its
-NEGF loop, so a new phase clears it, as `SCF cycle continued` does.
+NEGF loop, so a new phase clears it, as `SCF cycle continued` does — and so
+does a new SCF block of the same phase (a relaxation's next move, a
+force-constant run's next displacement): its convergence is unanswered until
+it says, so an output cut inside a block reads `None`, never the block
+before's `True` *(found 2026-10-18 on two runs the scheduler cut mid-block)*.
 
 **P-S3 — a parser never withholds what it parsed.** Frames, energies, forces,
 timings and iteration counts are returned whatever the ending: a `.out` cut off
@@ -543,8 +547,12 @@ molbuilder/parse/
     └── run_info.py            # run_info → the `info` block (composer)
 ```
 
-**Plain `.xyz` has no leaf FileParser (by design)** — `Structure.from_xyz` reads
-it ([`structure.md`](?doc=model/structure.md)). **A deck's initial coordinates
+**A plain `.xyz` opens through the PySCF trajectory reader** —
+`parse/engines/pyscf.py`'s `_can_parse_xyz` claims any XYZ-shaped file, one
+frame or many, as a `TrajectoryResult` (so a relaxation's `<label>.xyz` and a
+SIESTA `.ANI` list with that parser); `Structure.from_xyz` reads it for
+building ([`structure.md`](?doc=model/structure.md)) *(this said "no leaf
+FileParser, by design" until 2026-10-18; the reader had one)*. **A deck's initial coordinates
 are not read at all**: a viewer's starting structure is the trajectory's frame 0,
 from the same file every later frame comes from.
 

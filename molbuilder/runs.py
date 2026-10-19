@@ -875,12 +875,22 @@ def folder_answer(directory) -> Dict[str, Any]:
         label, stage, _trial = _position(d, place)
         attempts.append(f"calculation: {calc}")
         if place.role == calcdirs.RUN:
-            run = run_of(d)
-            point = transmission_point(d)
-            # THE ONE RULE for what a folder opens (:func:`openable`).
-            chosen, trail = openable(d)
+            from molbuilder.runrecord import LaunchRecordError
+            try:
+                run = run_of(d)
+                point = transmission_point(d)
+                # THE ONE RULE for what a folder opens (:func:`openable`).
+                chosen, trail = openable(d)
+            except LaunchRecordError as exc:
+                # A RECORD THAT DOES NOT READ is the state `unreadable`, its
+                # file named, never a crash (`running-a-job.md` § 4.2): the
+                # folder's files are still listed below.
+                run, chosen, trail = None, None, []
+                status = {"state": "unreadable", "detail": str(exc),
+                          "last_change_at": None, "active_source": None}
+                attempts.append(str(exc))
             attempts += trail[1:]
-            if run.stage is not None:
+            if run is not None and run.stage is not None:
                 st = run_state_of(run.folder, run.names, run.run)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
@@ -889,7 +899,7 @@ def folder_answer(directory) -> Dict[str, Any]:
                                     status=st,
                                     engine=engine, calculation=calc,
                                     stage_deck=run.stage_deck)
-            else:
+            elif run is not None:
                 attempts.append("no run here yet: nothing has been launched "
                                 "in this folder")
         elif place.role == calcdirs.CONTAINER:

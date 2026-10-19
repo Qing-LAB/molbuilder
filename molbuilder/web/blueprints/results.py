@@ -124,11 +124,16 @@ def api_results_contract():
     # record of the file the Results tab opens there -- both the run door's,
     # handed down because `parse/` cannot ask it (`model/parse.md` § 5b,
     # § 5b.1).
+    from molbuilder.deck_record import DeckRecordUnreadable
     from molbuilder.runs import declared, openable, run_of
     output, _trail = openable(directory)
     run = run_of(directory)
-    info = run_info(deck=declared(run).deck if run is not None else None,
-                    output=output) or {}
+    try:
+        deck = declared(run).deck if run is not None else None
+    except DeckRecordUnreadable as exc:
+        # A DECK WHOSE RECORD DOES NOT READ is said, never a crash.
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    info = run_info(deck=deck, output=output) or {}
     return jsonify({"ok": True, "calculation": info.get("calculation"),
                     "relaxation": info.get("relaxation")})
 

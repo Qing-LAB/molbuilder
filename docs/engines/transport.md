@@ -1746,7 +1746,11 @@ level: every deck is a point's.
 (`continuation.done`), never from a second record: **done** when its run
 finished, its SCF converged by the engine's own output (the device's), and it
 holds what the rungs downstream take from it (the DAG, `stage_inputs`: the
-device's `.TS.HSX` and `.TSDE`; the transmission's `.TBT.nc`). Its record is
+device's `.TS.HSX` and `.TSDE`; the transmission's `.TBT.nc` — or, on a
+polarized junction, its `.TBT_UP.nc` and `.TBT_DN.nc` both, the two files
+TBtrans writes in its place *(found 2026-10-18: the door asked for `.TBT.nc`
+alone, so a polarized sweep read 0 of N done and was walked again)*). Its
+record is
 what its wrapper already writes as it ends — the conclusion marker and the
 outputs. A point has no record of its own beyond that: *queued*, *running*,
 *finished* and *failed* are the **run's**, read from the run's launch record
@@ -1803,6 +1807,10 @@ launched; a launched rung is not prepared again — its way back is
 
 A **single-bias** calculation, and a **low-bias** one, have no `v*` level at
 all — the degenerate case of the axis rule, not a special case of the layout.
+Launched again, such a device is one stage like any
+([`job-system.md`](?doc=execution/job-system.md) § 5.4): warm from its own
+last run's `.TSDE`, or `--cold` from the seed's `.DM` — the per-point rule
+below (taken over whole, never run again) is a run of points'.
 
 **One door for each place.** A rung's runs are `paths.attempts_in`'s, as every
 stage's; a swept run's point folders are `transport.stages.points_in(run, task,
@@ -2485,7 +2493,9 @@ retry (`continue_retries`) continues a point in place from its last density;
 a point still not done when the run ends is run again in the NEXT run's fresh
 point folder, from its hand-over start — never continued across runs. Once
 done it is taken over whole into every later run and never run again, because
-a converged point is a fixed point and running it again only repeats it. The
+a converged point is a fixed point and running it again only repeats it. (A
+device with no point level has no points to take over: launched again, it is
+a stage like any, § 2a.11 above — the row above says so.) The
 seed and the leads follow the same rule and rarely need it — they are cheap —
 and the transmission has no iteration to resume. *(Until 2026-10-05 this read
 "the device has one": its own previous `.TSDE`, continued by a launch after a
