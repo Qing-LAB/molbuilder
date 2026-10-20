@@ -51,7 +51,7 @@ flowchart LR
   R -->|"returns TEXT, writes nothing"| P
   P -->|"projects.writeFile"| W
   W -->|"opens on the same folder"| T
-  T -->|"save: read_task validates"| D
+  T -->|"save: task.from_text validates"| D
   T -.->|"projects.deleteEntry, after"| W
 ```
 
@@ -166,7 +166,7 @@ The split is `projects.md`'s, not this document's invention:
 |---|---|---|
 | the structure's pair, the template, the hand-over | **the browser**, via `writeFile` — a transport calculation's template is its describe door's, with its `task.json` (row 3) | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
 | removing the hand-over | **the browser**, via `deleteEntry` | likewise, and **only after** the write succeeded: the reverse order loses the parameters if the write fails |
-| `task.json` | **the server**, via `/api/task-setup/save` — or, for a transport calculation, `/api/transport/describe`, which writes the whole description in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.read_task`, the same door `prep` uses, so the browser cannot become a second drifting writer |
+| `task.json` | **the server**, via `/api/task-setup/save` — or, for a transport calculation, `/api/transport/describe`, which writes the whole description in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.task.from_text`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
 ---
 

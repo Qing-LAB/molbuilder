@@ -31,9 +31,9 @@ def api_bench_summary():
     """Compose one sweep from its ``job-set.json``.
 
     Query: ``path`` -- the sweep's ``job-set.json``.  The CALCULATION it
-    belongs to is derived from it (``bundle_for_sweep_file``); the file's
-    own directory is not the bundle, and using it as one finds no
-    artifacts at all rather than failing.
+    belongs to is the bench container's owner (`materialize.bench_owner`,
+    the one door); the file's own directory is not the bundle, and using it
+    as one finds no artifacts at all rather than failing.
 
     Errors:
 
@@ -47,7 +47,8 @@ def api_bench_summary():
     # Deferred: this blueprint is imported at startup and the jobset
     # readers pull in the parsers (the reason results.py defers its own).
     from molbuilder.jobset.model import JobSet
-    from molbuilder.jobset.summarize import bundle_for_sweep_file, sweep_view
+    from molbuilder.jobset.materialize import bench_owner
+    from molbuilder.jobset.summarize import sweep_view
     from .files import _PickerError, _resolve_within_roots
 
     raw = request.args.get("path", "")
@@ -60,7 +61,10 @@ def api_bench_summary():
         return jsonify({"ok": False, "error": f"no such file: {raw}"}), 404
 
     try:
-        jobset = JobSet.load(path)
+        jobset = (JobSet.of(path.parent)
+                  if path == JobSet.path_of(path.parent) else None)
+        if jobset is None:
+            raise ValueError(f"{path.name} is not a job set of molbuilder's")
     except Exception as exc:
         # The picker lists what is on disk and a person may click any of
         # it, so "you picked something that is not a job-set" is a 400 the
@@ -78,13 +82,14 @@ def api_bench_summary():
         }), 400
 
     try:
-        bundle = bundle_for_sweep_file(jobset, path)
-        view = sweep_view(jobset, bundle)
-    except Exception as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"could not read the sweep: {type(exc).__name__}: {exc}",
-        }), 400
+        from molbuilder.calculation import open as open_calculation
+        owner = bench_owner(path.parent)
+        if owner is None:
+            raise ValueError(f"{path.parent} is no stage's bench container "
+                             f"of a calculation molbuilder described")
+        view = sweep_view(open_calculation(owner[0]), jobset)
+    except Exception as exc:                  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     view["ok"] = True
     return jsonify(view)

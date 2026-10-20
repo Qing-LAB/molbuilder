@@ -15,6 +15,7 @@ import os
 
 import numpy as np
 import pytest
+from molbuilder.calculation import open as open_calculation
 
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
@@ -138,7 +139,7 @@ def calc(tree):
 def _prep_bench(calc):
     """`prep bench coarse`, through the one entry -- what the command line
     and the Task setup tab call -- this prep's ask bounding the cells."""
-    prep_bench(calc, "coarse",
+    prep_bench(open_calculation(calc), "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8),
                emit_sbatch=False)
     # The sweep's OWN record lives in the stage's bench/ container
@@ -427,7 +428,7 @@ def test_the_benchmarks_memory_reaches_every_shelf_header(calc):
     at launch from the trials' shared request (`group.envelope`) -- asks it.
     """
     _on_a_queue(calc)
-    prep_bench(calc, "coarse",
+    prep_bench(open_calculation(calc), "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8, mem="128G"))
     headers = shelf_headers(calc, "coarse")
     assert headers
@@ -701,11 +702,11 @@ class TestTheRunsOwnCondition:
         exactly this."""
         from molbuilder.jobset.prep_inputs import prep_run_inputs
         from molbuilder.jobset.model import Resources
-        from molbuilder.task import read_task
+        from molbuilder.task import of as task_of
 
         self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
                                      "use_gpu": False})
-        task = read_task(calc / "task.json")
+        task = task_of(calc)
         for ask in (None, Resources()):
             alloc, _pins, chosen = prep_run_inputs(
                 calc, task, "coarse", ask)
@@ -817,9 +818,10 @@ def test_the_verb_renders_the_trial_decks_it_promises(calc):
     js = json.loads(
         (calc / "01_coarse" / "bench" / "job-set.json").read_text())
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
-    from molbuilder.jobset.materialize import (job_dir_names, shape_of)
+    from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import JobSet
-    _dirs = job_dir_names(JobSet.from_dict(js), shape_of(None, calc))
+    from molbuilder.paths import Shape
+    _dirs = job_dir_names(JobSet.from_dict(js), Shape.named(open_calculation(calc).task.shape))
     from molbuilder.jobset.materialize import latest_attempt
     for j in js["jobs"]:
         # The reader rule: the latest attempt where there is one
@@ -1021,10 +1023,11 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
     # trial decks carry the rung's token like any other stage's trials
     for j in js["jobs"]:
-        from molbuilder.jobset.materialize import (job_dir_names as _jdn,
-                                                    shape_of as _sof)
+        from molbuilder.jobset.materialize import job_dir_names as _jdn
         from molbuilder.jobset.model import JobSet as _JS
-        _dmap = _jdn(_JS.from_dict(js), _sof(None, dest))
+        from molbuilder.paths import Shape as _Shape
+        _dmap = _jdn(_JS.from_dict(js),
+                     _Shape.named(open_calculation(dest).task.shape))
         from molbuilder.jobset.materialize import latest_attempt
         # the reader rule (`project-layout.md` 1.5a): a trial's
         # deck is in its attempt where the shape keeps one.
@@ -1103,7 +1106,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tree):
                                       gpu_type="a100"),
                     env_init=_ENTERS).to_json() + "\n")
     for stage in ("coarse", "medium"):
-        prep_bench(dest, stage,
+        prep_bench(open_calculation(dest), stage,
                    allocation=Resources(mpi_np=8, cpus_per_task=8),
                    emit_sbatch=False)
     coarse = dest / "bench_01_coarse" / "job-set.json"
@@ -1186,7 +1189,7 @@ def test_the_declared_grid_is_the_sweep(calc):
     """Declared axes produce exactly those points — nothing enumerated."""
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
-    sweep, _pins, translation = bench_inputs(calc, None)
+    sweep, _pins, translation = bench_inputs(open_calculation(calc), None)
     assert sweep == [{"G": 0, "K": 1, "C": 1}, {"G": 0, "K": 2, "C": 1}]
     assert translation.axes == ("G", "K", "C")
 
@@ -1198,7 +1201,7 @@ def test_a_multi_point_value_entry_is_a_value_axis(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"block_size": [64, 128],
                           "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = bench_inputs(calc, None)
+    sweep, pins, _tr = bench_inputs(open_calculation(calc), None)
     assert len(sweep) == 2
     assert sorted(p["block_size"] for p in sweep) == [64, 128]
     assert "block_size" not in pins, "an axis is not a pin"
@@ -1217,7 +1220,7 @@ def test_a_value_axis_naming_a_measurement_pin_is_refused(calc):
     _declare_bench(calc, {"continue_retries": [0, 2],
                           "mpi_np": [4], "omp_threads": [1]})
     with pytest.raises(PrepError) as e:
-        bench_inputs(calc, None)
+        bench_inputs(open_calculation(calc), None)
     assert "continue_retries" in str(e.value)
     assert "measurement" in str(e.value)
 
@@ -1249,7 +1252,7 @@ def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     _declare_bench(calc, {"use_gpu": [True],
                           "diag_algorithm": ["ELPA-2STAGE"],
                           "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = bench_inputs(calc, None)
+    sweep, pins, _tr = bench_inputs(open_calculation(calc), None)
     assert pins["use_gpu"] is True
     assert pins["diag_algorithm"] == "ELPA-2STAGE"
     assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
@@ -1278,11 +1281,11 @@ def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"diag_algorithm": ["ELPA-9STAGE"]})
     with pytest.raises(PrepError) as e:
-        bench_inputs(calc, None)
+        bench_inputs(open_calculation(calc), None)
     assert "ELPA-9STAGE" in str(e.value) and "ScaLAPACK" in str(e.value)
     _declare_bench(calc, {"use_gpu": [1]})
     with pytest.raises(PrepError) as e:
-        bench_inputs(calc, None)
+        bench_inputs(open_calculation(calc), None)
     assert "true or false" in str(e.value)
 
 
@@ -1290,7 +1293,7 @@ def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
     """On a GPU description, G ranges over the divisors of each declared
     rank count, so G*K equals the declared mpi_np exactly."""
     _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1]})
-    sweep, _pins, _tr = bench_inputs(calc, None)
+    sweep, _pins, _tr = bench_inputs(open_calculation(calc), None)
     assert all(p["G"] * p["K"] == 4 for p in sweep)
     assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
 
@@ -1368,7 +1371,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tree):
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
     with pytest.raises(PrepError) as e:
-        bench_inputs(dest, None)
+        bench_inputs(open_calculation(dest), None)
     msg = str(e.value)
     assert "'pyscf'" in msg and "SIESTA" in msg, (
         "the refusal must name the engine and the reason")
@@ -1427,20 +1430,20 @@ def _bench_dir(calc):
 
 def _load_sweep(calc):
     """The jobset, and the BUNDLE it belongs to -- resolved the way the
-    route does it, which is NOT the file's own directory (see
-    ``bundle_for_sweep_file``)."""
+    route does it (`materialize.bench_owner`), which is NOT the file's own
+    directory."""
+    from molbuilder.jobset.materialize import bench_owner
     from molbuilder.jobset.model import JobSet
-    from molbuilder.jobset.summarize import bundle_for_sweep_file
-    jpath = _bench_dir(calc) / "job-set.json"
-    jobset = JobSet.load(jpath)
-    return jobset, bundle_for_sweep_file(jobset, jpath)
+    container = _bench_dir(calc)
+    jobset = JobSet.of(container)
+    return jobset, bench_owner(container)[0]
 
 
 def test_sweep_view_has_one_trial_per_job_in_the_job_sets_order(calc):
     from molbuilder.jobset.summarize import sweep_view
     js = _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
-    view = sweep_view(jobset, bundle)
+    view = sweep_view(open_calculation(bundle), jobset)
     assert view["n_trials"] == len(js["jobs"])
     assert [t["label"] for t in view["trials"]] == [j["name"] for j in js["jobs"]]
 
@@ -1456,7 +1459,7 @@ def test_sweep_view_reports_where_the_RUN_is(calc):
     from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
-    view = sweep_view(jobset, bundle)
+    view = sweep_view(open_calculation(bundle), jobset)
     t = view["trials"][0]
     assert "state" in t and "artifacts" not in t
     # Nothing has been launched, so the RUN has not started: the door's
@@ -1468,7 +1471,7 @@ def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):
     from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
     jobset, bundle = _load_sweep(calc)
-    view = sweep_view(jobset, bundle)
+    view = sweep_view(open_calculation(bundle), jobset)
     # every trial declares a coordinate, and the sweep varied at least one
     assert all(isinstance(t["point"], dict) for t in view["trials"])
     assert view["varied"], "a sweep that varied something must say which"
@@ -1499,7 +1502,7 @@ def test_sweep_view_never_writes_the_record_or_the_proposal(calc):
     jobset, bundle = _load_sweep(calc)
     bench = _bench_dir(calc)
     assert not (bench / "bench-result.json").exists()
-    sweep_view(jobset, bundle)
+    sweep_view(open_calculation(bundle), jobset)
     assert not (bench / "bench-result.json").exists(), (
         "the view published a record; that is run_summarize_jobset's job")
     assert not (bench / "run-config.toml").exists(), (

@@ -6,7 +6,7 @@ belongs to, and its files*; *the description*); `execution/project-layout.md`
 (the run a folder speaks for); `web/results.md` § 3b (the file card).
 
 Floor 2 (`architecture.md` § 2.1): it reads the description, through its one
-reader (`task.read_task`), and composes floor 1's doors -- `calcdirs` for a
+door (`task.of`), and composes floor 1's doors -- `calcdirs` for a
 folder's own record, `paths` and `identity` for the names a layout gives its
 folders, `runfiles` for the names a run gives its files, `runrecord` and
 `parse.dirs` for what a run's records and outputs say.  So nothing below it
@@ -62,17 +62,16 @@ def place_of(directory) -> Place:
     root, which its description's ``shape`` says is a run (flat) or a
     container (hierarchical), or a folder below it, which its own
     `calcdir.json` says.  **The description is read through its one door,
-    `read_task`** (`architecture.md` § 3.2, plan B14)."""
-    from molbuilder.task import read_task
+    `task.of`** (`architecture.md` § 3.2, A16)."""
+    from molbuilder.task import of as task_of
     d = Path(directory)
     root = calcdirs.root_of(d)
     if root is None:
         return Place()
-    where = root / _rf.TASK_FILE
     try:
-        task = read_task(where)
+        task = task_of(root)
     except Exception as exc:                               # noqa: BLE001
-        return Place(root=root, problem=f"{where} does not read: {exc}")
+        return Place(root=root, problem=str(exc))
     if d.resolve() == root.resolve():
         role = calcdirs.RUN if task.shape == "flat" else calcdirs.CONTAINER
     else:

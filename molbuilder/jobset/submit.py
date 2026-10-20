@@ -69,7 +69,7 @@ from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
 from .model import KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources
 from .continuation import Continuation
 from .planned import Plan, found
-from ..paths import attempt_dir
+from ..paths import Shape, attempt_dir
 from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           hand_over, open_container)
@@ -831,12 +831,13 @@ def _redo(base: Path, task, jobset: JobSet, job) -> str:
     """How a prepared stage is changed -- the one way back
     (`commands.way_back`), asked of its runs."""
     from .commands import way_back
-    return way_back(job.name, base=base, task=task,
-                    launched=ever_launched(jobset, base, job))
+    return way_back(job.name, base=base, task=task, jobset=jobset,
+                    launched=ever_launched(jobset, base, job,
+                                           Shape.named(task.shape)))
 
 
-def _as_described(base: Path, task, jobset: JobSet, job, *,
-                  written_at=None, described=None):
+def _as_described(base: Path, task, jobset: JobSet, job, *, described,
+                  written_at=None):
     """THE PREPARED STAGE IS STILL WHAT THE DESCRIPTION GIVES
     (`job-system.md` § 6.0, step 1) -- asked at a first launch and at a
     launch that takes inputs anew: the stage planned again as its prep
@@ -849,19 +850,18 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
     a run card's ranks, a junction re-cited since the prep -- is refused,
     naming the way to prepare it as it is described now: an edit never runs
     unsaid on another stage's new files.  ``described`` gives the
-    description read and checked once for the whole launch (``_planned``);
-    with none it is read here."""
+    calculation as prep checks it, once for the whole launch
+    (``_planned``)."""
     from ..deck_record import without_stamps
     from ..paths import attempt_index
-    from .materialize import run_names, shape_of
+    from .materialize import run_names
     from .errors import as_prep_error, step_errors
     from .planned import Plan
-    from .prep import PrepError, checked, plan_stage, read_description
+    from .prep import PrepError, plan_stage
     asked = job.asked or {}
     try:
         try:
-            d = (described() if described is not None else
-                 checked(base, read_description(base), target=None))
+            d = described()
             now = plan_stage(base, d, "task", job.name,
                              allocation=Resources.from_dict(
                                  asked.get("allocation") or {}),
@@ -877,7 +877,7 @@ def _as_described(base: Path, task, jobset: JobSet, job, *,
             f"now -- the description no longer gives what was prepared:\n  "
             f"{exc}\n  To prepare it as it is described now, "
             + _redo(base, task, jobset, job)) from None
-    names = run_names(jobset, job, shape_of(jobset, base))
+    names = run_names(jobset, job, Shape.named(task.shape))
     # ITS OWN FILES, and the one header of its walk of points when it has
     # them (`prep.prep_calculation`).
     own = {Path(job.script).name, names.name(".run.sh"),
@@ -936,7 +936,7 @@ def _prep_files_back(prepared, run: Path, writes: Plan) -> None:
             writes.bytes(path, path.read_bytes())
 
 
-def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str,
+def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str, shape,
                 named: bool = False):
     """Where a benchmark's trial runs -- a :class:`_Member` -- or, measured
     before, the result that passes it over by name.  A TRIAL is immutable
@@ -947,9 +947,9 @@ def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str,
     from .commands import command
     from ..paths import attempts_in
     from .materialize import (bench_stage_of, job_dir_names, run_dir,
-                              run_names, shape_of)
+                              run_names)
     from ..runrecord import launch_record_path, next_run
-    sh = shape_of(jobset, base)
+    sh = shape
     names = run_names(jobset, job, sh)
     container = base / job_dir_names(jobset, sh)[job.name]
     ns = attempts_in(container)
@@ -1013,8 +1013,8 @@ def _plan_member(jobset: JobSet, base: Path, job, *, task,
     ``from_attempt`` and ``gather`` what was said at the launch."""
     import functools
     from ..paths import attempts_in
-    from .materialize import job_dir_names, run_names, shape_of
-    sh = shape_of(jobset, base)
+    from .materialize import job_dir_names, run_names
+    sh = Shape.named(task.shape)
     names = run_names(jobset, job, sh)
     member = functools.partial(_Member, kind=jobset.kind, base=base,
                                names=names)
@@ -1030,7 +1030,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, task,
             f"hierarchical stage runs in run-<n>, never in its own container "
             f"(project-layout.md § 1.5, 1.6).  To open it, "
             + _redo(base, task, jobset, job))
-    first = not ever_launched(jobset, base, job)
+    first = not ever_launched(jobset, base, job, sh)
     # WHAT THE LAUNCH WAS TOLD, each flag where it is read: `--gather` takes
     # a transport rung's inputs anew, when it is launched again; `--from`
     # and `--gather` are two answers; the flat layout keeps no run to name.
@@ -1183,7 +1183,7 @@ def _launch_again(jobset: JobSet, base: Path, job, task, *, sh, member,
         why = cannot_be_named(base, task, stage, from_attempt, False)
         if why:
             raise SubmitError(why)
-        got = _gathered_now(base, task, stage, template_text) if gather \
+        got = _gathered_now(base, task, stage, template_text, jobset) if gather \
             else None
         if gather:
             _as_described(base, task, jobset, job, described=described)
@@ -1225,7 +1225,8 @@ def _launch_again(jobset: JobSet, base: Path, job, task, *, sh, member,
                 f"again.  To change it, " + _redo(base, task, jobset, job))
         cont, why = continuation_answer(base, task, stage,
                                         from_attempt=from_attempt, cold=cold,
-                                        template_text=template_text)
+                                        template_text=template_text,
+                                        jobset=jobset)
         if why:
             raise SubmitError(why)
         _as_described(base, task, jobset, job, described=described)
@@ -1237,7 +1238,7 @@ def _launch_again(jobset: JobSet, base: Path, job, task, *, sh, member,
     if gather:
         # THE INPUTS ANEW (L6): the upstreams' newest runs, under the
         # gather's gates, and the stage checked against the description.
-        got = _gathered_now(base, task, stage, template_text)
+        got = _gathered_now(base, task, stage, template_text, jobset)
         _as_described(base, task, jobset, job, described=described)
         inputs = [(src, fn) for _pt, ins in got for src, fn in ins]
     try:
@@ -1286,11 +1287,6 @@ def _relaunched(base: Path, task, job, cold: bool, *,
     folder); ``None`` cold, or for a stage that takes nothing from a run
     (`job-system.md` § 5.4, *A stage launched again*)."""
     from .continuation import relaunch
-    if task is None:
-        raise SubmitError(
-            f"{job.name} was launched, and launching it again reads what it "
-            f"continues from through its description -- there is no "
-            f"task.json beside its job set.")
     return relaunch(base, task, job, cold=cold, ran=ran)
 
 
@@ -1385,13 +1381,13 @@ def _record(base: Path, told, decision: str, **facts) -> None:
     7: `prep`'s and `launch`'s entries append their own); in a described
     calculation only, as prep's: a folder that is not one gets no ledger of
     ours."""
-    from ..task import FILENAME
+    from ..task import described
     from .ledger import record
-    if (Path(base) / FILENAME).is_file():
+    if described(base):
         record(base, "launch", decision, **{**dict(told or {}), **facts})
 
 
-def plan_launch(jobset: JobSet, base_dir, *, mode: str,
+def plan_launch(calc, jobset: JobSet, *, mode: str,
                 only: Optional[str] = None,
                 side: Optional[str] = None,
                 time_s: Optional[int] = None,
@@ -1404,7 +1400,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 gather: bool = False,
                 background: bool = False) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepared
-    ``jobset`` rooted at ``base_dir``, planned with nothing written: the
+    ``jobset`` of ``calc`` -- the calculation as the verb opened it (A16)
+    -- planned with nothing written: the
     work, its submissions and their members, the gates, the queue, the exact
     lines and every script the send will write.  A refusal can only come
     from here.
@@ -1444,13 +1441,15 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     shelf does on a queue; a transport sweep's per-point rung goes as one
     job walking its points; a stage and a named trial, one submission each.
     """
-    base = Path(base_dir).resolve()
+    base = Path(calc.base).resolve()
     try:
         # THE CALCULATION'S COPY OF ITS MACHINE'S RECORD READS, FIRST, for
         # every door in every mode (`configuration.md` M-3): a copy that does
-        # not read is refused in its own words before any member is planned.
-        _machine_of(base)
-        plan = _planned(jobset, base, mode=mode, only=only, side=side,
+        # not read is refused in its own words before any member is planned
+        # -- and read ONCE for the whole launch (§ 3.2, *the machine*).
+        machine = _machine_of(base)
+        plan = _planned(calc, jobset, machine=machine, mode=mode, only=only,
+                        side=side,
                         time_s=time_s, trial_timeout_s=trial_timeout_s,
                         told=told, cold=cold, group=group,
                         from_attempt=from_attempt, gather=gather)
@@ -1472,11 +1471,16 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     return plan
 
 
-def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
+def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
              trial_timeout_s, told,
              cold: bool = False, group=None, from_attempt=None,
              gather: bool = False) -> LaunchPlan:
-    """:func:`plan_launch`'s body -- the plan, or the refusal it records."""
+    """:func:`plan_launch`'s body -- the plan, or the refusal it records;
+    ``calc`` the calculation as the verb opened it (A16), ``jobset`` the
+    set launched -- its ladder, or a sweep's from its bench container."""
+    base = Path(calc.base)
+    task, template_text = calc.task, calc.template_text
+    shape = Shape.named(task.shape)
     errs = jobset.validate()
     if errs:
         raise SubmitError(
@@ -1501,22 +1505,27 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
             raise SubmitError(str(e))
 
     def again() -> LaunchPlan:
-        return plan_launch(jobset, base, mode=mode, only=only, side=side,
+        # THE FOLDER AS IT IS NOW (`job-system.md` § 6.0, step 4): the
+        # calculation opened again -- its description, template and plan --
+        # so anything changed since the plan is seen; a sweep's set is its
+        # bench container's and stays the one shown.
+        from ..calculation import open as open_calculation
+        fresh = open_calculation(base)
+        return plan_launch(fresh, fresh.jobset if jobset.kind == KIND_LADDER
+                           else jobset, mode=mode, only=only, side=side,
                            time_s=time_s, trial_timeout_s=trial_timeout_s,
                            told=told, record=False, cold=cold, group=group,
                            from_attempt=from_attempt, gather=gather)
 
-    # A LADDER'S DESCRIPTION AND TEMPLATE, read once: what each member is
-    # checked against and what its first launch takes are theirs.
-    task = template_text = described = None
+    # A LADDER'S DESCRIPTION AND TEMPLATE are the calculation's, read once:
+    # what each member is checked against and what its first launch takes.
+    described = None
     if jobset.kind == KIND_LADDER:
-        task, template_text = _description(base)
-        # AS PREP READS AND CHECKS IT, ONCE for the whole launch -- the first
-        # member whose files are compared with prep's plan reads it.
+        # AS PREP CHECKS IT, ONCE for the whole launch -- the first member
+        # whose files are compared with prep's plan asks.
         import functools
-        from .prep import checked, read_description
         described = functools.lru_cache(maxsize=None)(
-            lambda: checked(base, read_description(base), target=None))
+            lambda: _checked(calc))
     members, number = _the_group(jobset, base, task, group=group, only=only,
                                  one=bool(from_attempt or cold or gather))
     if members is not None and len(members) == 1:
@@ -1535,20 +1544,20 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
         plan = _plan_group(jobset, base, members, mode=mode,
                            time_s=time_s, told=told, task=task,
                            template_text=template_text, number=number,
-                           described=described)
+                           described=described, machine=machine)
     elif jobset.kind == KIND_SWEEP and only is None and mode in ("submit", "ask"):
-        plan = _plan_shelves(jobset, base, mode=mode, side=side,
+        plan = _plan_shelves(jobset, base, shape=shape, mode=mode, side=side,
                              time_s=time_s, trial_timeout_s=trial_timeout_s,
-                             told=told)
+                             told=told, machine=machine)
     elif jobset.kind == KIND_SWEEP and only is None:
-        plan = _plan_bench_here(jobset, base,
-                                trial_timeout_s=trial_timeout_s)
+        plan = _plan_bench_here(jobset, base, shape=shape,
+                                trial_timeout_s=trial_timeout_s, machine=machine)
     else:
-        plan = _plan_stage(jobset, base, mode=mode, only=only,
+        plan = _plan_stage(jobset, base, shape=shape, mode=mode, only=only,
                            time_s=time_s, told=told, cold=cold, task=task,
                            template_text=template_text,
                            from_attempt=from_attempt, gather=gather,
-                           described=described)
+                           described=described, machine=machine)
     plan.remake = again
     plan.queue = (domain, source)
     plan.engine = jobset.engine
@@ -1561,20 +1570,12 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, side, time_s,
     return plan
 
 
-def _description(base: Path):
-    """``(task, template text)`` of the calculation launched -- ``(None,
-    None)`` for a job set with no description beside it (a hand-built one);
-    a description that does not read is refused in its reader's words."""
-    from ..task import FILENAME, read_task
-    from ..template import find_template
-    if not (base / FILENAME).is_file():
-        return None, None
-    try:
-        task = read_task(base / FILENAME)
-        tpl = find_template(base, task.label)
-    except ValueError as exc:
-        raise SubmitError(f"{base / FILENAME}: {exc}") from None
-    return task, (tpl.read_text(encoding="utf-8") if tpl else None)
+def _checked(calc):
+    """The calculation AS PREP CHECKS IT (`prep.Described`, `prep.checked`),
+    for the member whose files are compared with prep's plan -- ``calc``
+    as the launch opened it (A16)."""
+    from .prep import Described, checked
+    return checked(calc.base, Described(calc), target=None)
 
 
 def _the_group(jobset: JobSet, base: Path, task, *, group, only,
@@ -1594,15 +1595,14 @@ def _the_group(jobset: JobSet, base: Path, task, *, group, only,
     from .commands import launch_lines, prep_group_lines
     from .group import (group_members, members_of, number_of, regrouped,
                         same_members)
-    if task is None:
-        return None, None
     if group is None:
         if only is None:
             return None, None
         number = number_of(task, only)
         described = group_members(task, number)
         job = jobset.job(only)
-        if job is None or ever_launched(jobset, base, job):
+        shape = Shape.named(task.shape)
+        if job is None or ever_launched(jobset, base, job, shape):
             return None, number
         if len(described) > 1:
             raise SubmitError(
@@ -1621,8 +1621,9 @@ def _the_group(jobset: JobSet, base: Path, task, *, group, only,
             f"group {group}: the description holds groups "
             f"{', '.join(map(str, sorted({st.group for st in task.stages})))}"
             f" (engines/stages.md § 2).")
+    shape = Shape.named(task.shape)
     ran = [j for j in map(jobset.job, members)
-           if j is not None and ever_launched(jobset, base, j)]
+           if j is not None and ever_launched(jobset, base, j, shape)]
     changed = next((j for j in ran if not same_members(members_of(j),
                                                        members)), None)
     if changed is not None:
@@ -1637,7 +1638,8 @@ def _the_group(jobset: JobSet, base: Path, task, *, group, only,
             + block(launch_lines("task", ran[0].name, base=base))
             + "\n  or put the members back as they were launched (Task "
               "setup, or task.json); or, to form the group anew, "
-            + redo_launched(changed.name, base=base, task=task))
+            + redo_launched(changed.name, base=base, task=task,
+                            jobset=jobset))
     missing = [m for m in members if jobset.job(m) is None]
     if missing:
         raise SubmitError(
@@ -1978,7 +1980,7 @@ def _keep(job):
     return job, None
 
 
-def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
+def _plan_shelves(jobset: JobSet, base: Path, *, machine, shape, mode: str,
                   side: Optional[str], time_s: Optional[int],
                   trial_timeout_s: Optional[int], told) -> LaunchPlan:
     """ONE scheduler job per RESOURCE SHELF of the sweep
@@ -2006,9 +2008,9 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     single-trial re-run see the truth.  ``ask`` asks the scheduler about
     each shelf -- the jobs the send would hand it.
     """
-    from .materialize import job_dir_names, shape_of
+    from .materialize import job_dir_names
     from .shelves import ShelfError, shelves_of, sides_of
-    dirs = job_dir_names(jobset, shape_of(jobset, base))
+    dirs = job_dir_names(jobset, shape)
     if side not in (None, "cpu", "gpu"):
         raise SubmitError(f"--only takes cpu or gpu, not {side!r}")
     try:
@@ -2025,7 +2027,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     sent = {j.name for this in ("cpu", "gpu")
             if not (side and this != side) for j in sides[this]}
     trials = {m.job.name: m for m in _bench_trials(
-        jobset, base, plan, mode=mode,
+        jobset, base, plan, shape=shape, mode=mode,
         jobs=[j for j in jobset.jobs if j.name in sent])}
     for this, names, members in shelves:
         if side and this != side:
@@ -2035,7 +2037,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
             continue            # this shelf already rode a group
         plan.submissions.append(_plan_shelf(
             jobset, base, pending, names, members, plan,
-            trial_timeout_s=trial_timeout_s, told=told, time_s=time_s))
+            trial_timeout_s=trial_timeout_s, told=told, time_s=time_s, machine=machine))
 
     if not plan.submissions:
         from .materialize import bench_stage_of
@@ -2205,7 +2207,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     return "\n".join(lines)
 
 
-def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
+def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *, shape,
                   mode: str, jobs=None) -> List[_Member]:
     """A benchmark's walk: its trials still to run -- of ``jobs``, all of
     them by default -- each through the trial's planner
@@ -2216,7 +2218,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
     (``plan.skipped``)."""
     pending: List[_Member] = []
     for job in (jobset.jobs if jobs is None else jobs):
-        m = _plan_trial(jobset, base, job, mode=mode)
+        m = _plan_trial(jobset, base, job, mode=mode, shape=shape)
         if isinstance(m, JobResult):
             plan.skipped.append(m)          # measured before
             continue
@@ -2255,7 +2257,7 @@ def _walk_of(members: List[_Member], container: Path) -> list:
             for m in members]
 
 
-def _plan_bench_here(jobset: JobSet, base: Path, *,
+def _plan_bench_here(jobset: JobSet, base: Path, *, machine, shape,
                      trial_timeout_s: Optional[int]) -> LaunchPlan:
     """A benchmark's trials run HERE (``--mode direct``, no trial named):
     one submission walking every trial not yet launched, in the sweep's
@@ -2264,10 +2266,10 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     is given; a trial launched before is passed over by name
     (:func:`_bench_trials`)."""
     plan = LaunchPlan(base, "direct", [])
-    pending = _bench_trials(jobset, base, plan, mode="direct")
+    pending = _bench_trials(jobset, base, plan, shape=shape, mode="direct")
     if not pending:
-        from .materialize import bench_stage_of, job_dir_names, shape_of
-        dirs = job_dir_names(jobset, shape_of(jobset, base))
+        from .materialize import bench_stage_of, job_dir_names
+        dirs = job_dir_names(jobset, shape)
         stage = bench_stage_of(base, base / dirs[jobset.jobs[0].name])
         raise SubmitError(
             f"all {len(jobset.jobs)} trials are launched.  next:\n    "
@@ -2297,7 +2299,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
 
 
 def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
-                names: GroupNames, members, plan: LaunchPlan, *,
+                names: GroupNames, members, plan: LaunchPlan, *, machine,
                 trial_timeout_s: Optional[int], told,
                 time_s: Optional[int] = None) -> Submission:
     """One shelf's submission: the walk of ``pending`` -- its trials still
@@ -2325,7 +2327,6 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     launch_dir = container / LAUNCH_DIR
     name = names.stem
     header = launch_dir / names.name(".sbatch")
-    machine = _machine_of(base)
     # THE HEADER PREP WROTE, or no queue to send to: a benchmark prepared
     # with --no-sbatch, or for a machine that names no queue, has none --
     # said by the one answer (`_no_sbatch`); asked about, the same.
@@ -2372,7 +2373,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
 
 
 def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
-                 task, *, mode: str, time_s: Optional[int], told) -> None:
+                 task, *, machine, mode: str, time_s: Optional[int], told) -> None:
     """A RUN OF POINTS SENT: one submission walking ``m``'s run -- its
     points as :func:`_plan_member` opened and filled them -- into ``plan``
     (`engines/transport.md` § 2a.11).
@@ -2517,7 +2518,6 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     gn = GroupNames.of_points(names.stem)
     launch_dir = stage_dir / LAUNCH_DIR
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
-    machine = _machine_of(base)
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
         member_word="point", log=log,
@@ -2557,7 +2557,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
         outputs_in=outputs_in))
 
 
-def _gathered_now(base: Path, task, stage: str, template_text):
+def _gathered_now(base: Path, task, stage: str, template_text, jobset):
     """A transport rung's gather, read now (`gather.gather_sources`, its three
     gates) -- or the refusal, in the gather's words, before anything is
     sent (`job-system.md` § 6.0, step 1)."""
@@ -2566,7 +2566,7 @@ def _gathered_now(base: Path, task, stage: str, template_text):
     try:
         with user_error_as_prep():
             return gather_sources(base, task, stage,
-                                  template_text=template_text)
+                                  template_text=template_text, jobset=jobset)
     except PrepError as exc:
         raise SubmitError(str(exc)) from None
 
@@ -2681,7 +2681,7 @@ def _record_launch(m: "_Member", *, mode: str, command: List[str],
                  placed_on=_placed_on(placement, sent), scheduler=scheduler)
 
 
-def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
+def _plan_group(jobset: JobSet, base: Path, names: List[str], *, machine,
                 mode: str, told, task, template_text: Optional[str],
                 number: int, time_s: Optional[int] = None,
                 described=None) -> LaunchPlan:
@@ -2731,7 +2731,6 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     # run folder; one that fails does not stop the others -- none builds on
     # another.
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
-    machine = _machine_of(base)
     script = _walk_script(
         gn.stem,
         [(m.name, str(m.run_dir.relative_to(base)),
@@ -2763,11 +2762,10 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
         # THE HEADER IS STILL WHAT PREP WOULD WRITE (L4): the members'
         # shared request, rendered now.
         from ..deck_record import without_stamps
-        from .machine import machine_record
         from .prep import PrepError, group_header
         try:
             now = group_header(base, task, number, jobs,
-                               machine_record(base, None))
+                               described().environment)
         except PrepError as exc:
             raise SubmitError(str(exc)) from None
         if now is None or without_stamps(now.text.encode("utf-8")) != \
@@ -2795,7 +2793,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     return plan
 
 
-def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
+def _plan_stage(jobset: JobSet, base: Path, *, machine, shape, mode: str,
                 only: Optional[str], time_s: Optional[int], told,
                 cold: bool = False,
                 task=None, template_text: Optional[str] = None,
@@ -2831,9 +2829,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
               "launched after you have looked at the one it builds on.")
 
     plan = LaunchPlan(base, mode, [])
-    machine = _machine_of(base)
     for job in jobset.jobs:
-        m = (_plan_trial(jobset, base, job, mode=mode,
+        m = (_plan_trial(jobset, base, job, mode=mode, shape=shape,
                          named=only is not None)
              if jobset.kind == KIND_SWEEP else
              _plan_member(jobset, base, job, task=task,
@@ -2845,7 +2842,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             continue
         if m.points is not None:
             _points_walk(plan, m, jobset, base, task, mode=mode,
-                         time_s=time_s, told=told)
+                         time_s=time_s, told=told, machine=machine)
             continue
         try:
             # A NAMED TRIAL'S way back is its benchmark's, not a group's.

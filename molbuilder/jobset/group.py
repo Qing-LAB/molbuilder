@@ -62,7 +62,7 @@ def card_shares(task, stage: str) -> dict:
     return {f: card.get(f) for f in SHARED}
 
 
-def upstream_of(base, task, stage: str,
+def upstream_of(task, stage: str,
                 template_text: Optional[str] = None) -> Set[str]:
     """The stages ``stage`` builds on, as the ladder states it: a transport
     rung's inputs, a force-constant stage's `relax`, an independent stage's
@@ -71,11 +71,11 @@ def upstream_of(base, task, stage: str,
         from ..transport.stages import inputs_of
         return {src for src, _f in inputs_of(task, stage)}
     from .continuation import source_stage
-    src, _linked = source_stage(base, task, stage, template_text)
+    src, _linked = source_stage(task, stage, template_text)
     return {src} if src else set()
 
 
-def linked(base, task, stage: str,
+def linked(task, stage: str,
            template_text: Optional[str] = None) -> bool:
     """Whether what ``stage`` builds on is its KIND's -- a transport rung's
     inputs, a force-constant stage's `relax` -- which no run card changes;
@@ -85,10 +85,10 @@ def linked(base, task, stage: str,
     if getattr(task, "calculation", None) == "transport":
         return True
     from .continuation import source_stage
-    return bool(source_stage(base, task, stage, template_text)[1])
+    return bool(source_stage(task, stage, template_text)[1])
 
 
-def may_join(base, task, stage: str, members: Sequence[str],
+def may_join(task, stage: str, members: Sequence[str],
              template_text: Optional[str] = None) -> bool:
     """Whether ``stage`` may share the job ``members`` make, the group
     above it, by default (`engines/stages.md` § 2: the defaults repeat the
@@ -99,12 +99,12 @@ def may_join(base, task, stage: str, members: Sequence[str],
     a new description's (:func:`default_groups`) and an older one's
     (`migrate`)."""
     return (bool(members)
-            and not upstream_of(base, task, stage, template_text)
+            and not upstream_of(task, stage, template_text)
             & set(members)
             and card_shares(task, stage) == card_shares(task, members[0]))
 
 
-def why_not_join(base, task, stage: str, members: Sequence[str],
+def why_not_join(task, stage: str, members: Sequence[str],
                  template_text: Optional[str] = None) -> Optional[str]:
     """Why ``stage`` may not share the job ``members`` make -- the sentence
     the Task setup page shows beside its row (`web/task-setup.md` § 5),
@@ -112,10 +112,10 @@ def why_not_join(base, task, stage: str, members: Sequence[str],
     it may.  The two conditions :func:`may_join` asks, each in words."""
     if not members:
         return None
-    fed = upstream_of(base, task, stage, template_text) & set(members)
+    fed = upstream_of(task, stage, template_text) & set(members)
     if fed:
         named = ", ".join(f"`{n}`" for n in members if n in fed)
-        kind_s = linked(base, task, stage, template_text)
+        kind_s = linked(task, stage, template_text)
         return (f"`{stage}` builds on {named}, in the group above: one job "
                 f"runs its members one after another with nothing handed "
                 f"between them"
@@ -139,7 +139,7 @@ def default_groups(task, template_text: Optional[str] = None
     out: List[int] = []
     members: List[str] = []
     for st in task.stages:
-        if out and may_join(None, task, st.name, members, template_text):
+        if out and may_join(task, st.name, members, template_text):
             out.append(out[-1])
             members.append(st.name)
         else:
@@ -189,7 +189,7 @@ def numbered(task, template_text: Optional[str] = None):
         for st, g in zip(task.stages, default_groups(task, template_text))))
 
 
-def check_groups(base, task, template_text: Optional[str] = None
+def check_groups(task, template_text: Optional[str] = None
                  ) -> Optional[str]:
     """Why the stated groups cannot run -- a stage sharing a group with one
     it builds on, both named -- or ``None`` (`engines/stages.md` § 6.6):
@@ -201,7 +201,7 @@ def check_groups(base, task, template_text: Optional[str] = None
     seen: dict = {}
     for st in task.stages:
         members = seen.setdefault(st.group, [])
-        fed = upstream_of(base, task, st.name, template_text) & set(members)
+        fed = upstream_of(task, st.name, template_text) & set(members)
         if fed:
             named = [f"`{n}`" for n in members if n in fed]
             on = (", ".join(named[:-1]) + " and " + named[-1]
@@ -210,7 +210,7 @@ def check_groups(base, task, template_text: Optional[str] = None
             # builds on the stage before it only while it continues, so set
             # clean it builds on nothing; a linked stage's input is its
             # kind's, whatever its run card says.
-            kind_s = linked(base, task, st.name, template_text)
+            kind_s = linked(task, st.name, template_text)
             return (f"`{st.name}` is in group {st.group} with {on}, which "
                     f"it builds on: one job runs its members one after "
                     f"another with nothing handed between them, so "
@@ -338,11 +338,13 @@ def launched_without(task, jobset, number: int, *, base
     (`job-system.md`, *The task*).  A launch record that does not read
     raises, as the one door does (`materialize.ever_launched`)."""
     from ..identity import stage_key
+    from ..paths import Shape
     from .materialize import ever_launched
     held = group_members(task, number)
+    shape = Shape.named(task.shape)
     for m in held:
         job = jobset.job(m) if jobset else None
-        if job is None or not ever_launched(jobset, base, job):
+        if job is None or not ever_launched(jobset, base, job, shape):
             continue
         joined = [h for h in held if not any(
             stage_key(h) == stage_key(x) for x in members_of(job))]
@@ -352,7 +354,7 @@ def launched_without(task, jobset, number: int, *, base
 
 
 def joined_launched(number: int, launched: str, joined: List[str], *, base,
-                    task) -> str:
+                    task, jobset) -> str:
     """The way on for stages put into a launched group: a group of their own,
     or the group formed anew from the state saved before its first launch."""
     from .commands import redo_launched
@@ -363,7 +365,8 @@ def joined_launched(number: int, launched: str, joined: List[str], *, base,
             f"group's members are fixed: give {said} a group of "
             f"{'its' if one else 'their'} own (Task setup, or task.json), or, "
             f"to form the group anew, "
-            + redo_launched(launched, base=base, task=task))
+            + redo_launched(launched, base=base, task=task,
+                            jobset=jobset))
 
 
 def regrouped(task, jobset, stage: str, *, base) -> Optional[str]:
@@ -399,7 +402,7 @@ def regrouped(task, jobset, stage: str, *, base) -> Optional[str]:
             return str(exc)
         if hit:
             return said + "; " + joined_launched(n, *hit, base=base,
-                                                 task=task)
+                                                 task=task, jobset=jobset)
     return (said + ", so its prep forms the job again "
             "(engines/stages.md § 2):\n"
             + block(prep_group_lines(numbers, base=base)))

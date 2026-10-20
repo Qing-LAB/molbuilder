@@ -98,6 +98,7 @@ comments a person wrote inside the file.
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -245,7 +246,60 @@ def _never_as_zero(hours) -> bool:
             and hours == 0)
 
 
-def _migrate_groups(base: Path, obj: dict) -> List[str]:
+@dataclass
+class _Records:
+    """EVERY RECORD OF THE CALCULATION, READ ONCE, RAW -- migrate's own
+    exception to A16 (`architecture.md`): the readers refuse a file an
+    older molbuilder wrote, so migrate reads the bytes through the owners'
+    paths (`task.path_of`, `JobSet.path_of`) and the template's door, decides every
+    rewrite on these bodies, and every later step reads them here -- no
+    step reads a record from disk after this."""
+    base: Path
+    #: `task.json` as it lies, decided in place by the records step.
+    task: dict
+    #: Each plan's body by its folder -- the root's and each sweep's bench
+    #: container's (`materialize.sweep_set_dirs`) -- decided in place.
+    jobsets: Dict[Path, dict]
+    #: The template (`template.of`), read by the first step that knows the
+    #: calculation's label -- derived, never stored (`Task.label`) -- and
+    #: held for every later one; ``None`` when there is none.
+    template: Optional["TemplateFile"] = None
+    _template_read: bool = False
+    #: The template's migration, decided once (:func:`_migrate_template`),
+    #: for the groups step that reads the ladder it resolves and the write.
+    _template_decision: Any = None
+
+    @classmethod
+    def read(cls, base: Path) -> "_Records":
+        from ..calculation import refusal
+        from ..persist import read_json
+        from .. import task as _task
+        from .materialize import sweep_set_dirs
+        from .model import JobSet
+        if not _task.described(base):
+            raise MigrateError(refusal(base))
+        obj = read_json(_task.path_of(base))
+        jobsets: Dict[Path, dict] = {}
+        for folder in [base, *sweep_set_dirs(base)]:
+            path = JobSet.path_of(folder)
+            if path.is_file():
+                jobsets[folder] = read_json(path)
+        return cls(base=base, task=obj, jobsets=jobsets)
+
+    def template_for(self, label: str) -> Optional["TemplateFile"]:
+        """The calculation's template, read once (`template.of`); a folder
+        with two, or one under another name, is refused by name."""
+        if not self._template_read:
+            from .. import template as _T
+            try:
+                self.template = _T.of(self.base, label)
+            except ValueError as exc:
+                raise MigrateError(str(exc)) from exc
+            self._template_read = True
+        return self.template
+
+
+def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     """Every stage's `group` (2026-10-11, plan § 5aa M1), written into the
     raw description ``obj`` -- a line saying the numbers, or ``[]`` when
     every stage states one.  A stage prepared takes the group its job
@@ -261,37 +315,30 @@ def _migrate_groups(base: Path, obj: dict) -> List[str]:
             not isinstance(st, dict) or "group" in st for st in stages):
         return []
     from ..identity import stage_key
-    from ..persist import read_json
     from ..task import Task
-    from ..template import find_template
     from .commands import rollback
     from .group import may_join
-    from .model import FILENAME as JOBSET_FILENAME
+    base = rec.base
     # THE LADDER'S LINKS do not depend on the numbers: read on the
     # description with each stage a group of its own.
     task = Task.from_dict({**obj, "stages": [
         {**st, "group": i + 1} for i, st in enumerate(stages)]})
-    try:
-        tpl = find_template(base, task.label)
-    except ValueError as exc:
-        raise MigrateError(str(exc)) from exc
-    text = tpl.read_text(encoding="utf-8") if tpl is not None else None
-    if tpl is not None:
+    template = rec.template_for(task.label)
+    text = template.text if template is not None else None
+    if template is not None:
         # THE TEMPLATE AS THIS MIGRATION WRITES IT (:func:`_migrate_template`)
         # -- every decision before any write -- since the links are read on
         # the ladder it resolves, and an older template's items are refused.
         try:
-            text = _migrate_template(base, task)[1][0][1]
+            text = _migrate_template(rec, task)[1][0][1]
         except _NothingInTheTemplate:
             pass
     # THE JOB SET AS AN OLDER PREP WROTE IT -- a description with no group
     # is one 2.7.0 never prepared, and before it a job's members were
     # written under `group` (`_JOB_RENAMED`).
-    js = base / JOBSET_FILENAME
     jobs = {stage_key(j["name"]): [stage_key(n) for n in (j.get("group")
                                                             or [j["name"]])]
-            for j in ((read_json(js).get("jobs") or [])
-                      if js.is_file() else [])}
+            for j in ((rec.jobsets.get(base) or {}).get("jobs") or [])}
     names = [st.name for st in task.stages]
     groups: List[int] = []
     members: List[str] = []
@@ -316,7 +363,7 @@ def _migrate_groups(base: Path, obj: dict) -> List[str]:
             continue
         joins = (job is None and above is not None
                  and jobs.get(stage_key(above)) is None
-                 and may_join(base, task, name, members, text))
+                 and may_join(task, name, members, text))
         groups.append(groups[-1] if joins else (groups[-1] + 1 if groups
                                                 else 1))
         members = members + [name] if joins else [name]
@@ -328,24 +375,25 @@ def _migrate_groups(base: Path, obj: dict) -> List[str]:
             f"and the run cards share one allocation)"]
 
 
-def _migrate_records(base: Path):
+def _migrate_records(rec: "_Records"):
     """`task.json` and every `job-set.json` of the calculation, each key an
     older file left out given the meaning its absence had, and a key a
-    release retired removed (`centre_junction`, 2.6.0) -- read raw, since
-    the readers refuse such a file, and each rewritten file checked by its
-    reader.  Nothing is written here: returns what changed (a line each), the
-    files to write (``(path, text, kept-as suffix)``), and the description as
-    rewritten."""
-    from ..persist import json_text, read_json
+    release retired removed (`centre_junction`, 2.6.0) -- on the bodies
+    read once (:class:`_Records`), since the readers refuse such a file,
+    and each rewritten file checked by its reader.  Nothing is written
+    here: returns what changed (a line each), the files to write
+    (``(path, text, kept-as suffix)``) and the description as rewritten;
+    the bodies in ``rec`` are the decided ones."""
+    from ..persist import json_text
     from ..task import FILENAME as TASK_FILENAME
-    from ..task import Task
-    from .materialize import sweep_set_paths
-    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    from ..task import Task, path_of
+    from .model import JobSet
+    base = rec.base
     said: List[str] = []
     writes: List[Tuple[Path, str, str]] = []
 
-    task_path = base / TASK_FILENAME
-    obj = read_json(task_path)
+    task_path = path_of(base)
+    obj = rec.task
     lines = []
     for key, meant in _TASK_ABSENT.items():
         if key not in obj:
@@ -397,7 +445,7 @@ def _migrate_records(base: Path):
     records = len(lines) - retired
     from ..resolve import ResolveError
     try:
-        grouped = _migrate_groups(base, obj)
+        grouped = _migrate_groups(rec, obj)
     except MigrateError:
         raise
     except (ValueError, ResolveError) as exc:
@@ -420,10 +468,8 @@ def _migrate_records(base: Path):
                        ".pre-2.6.0" if retired else ".pre-2.7.0"))
         said += [f"{TASK_FILENAME}: {ln}" for ln in lines]
 
-    for js_path in [base / JOBSET_FILENAME, *sweep_set_paths(base)]:
-        if not js_path.is_file():
-            continue
-        d = read_json(js_path)
+    for folder, d in rec.jobsets.items():
+        js_path = JobSet.path_of(folder)
         filled, missing, renamed = 0, set(), set()
         for job in d.get("jobs") or []:
             old = {o: n for o, n in _JOB_RENAMED.items()
@@ -547,7 +593,7 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
     return said, moves
 
 
-def _migrate_lead_names(base: Path, task
+def _migrate_lead_names(base: Path, task, jobset: Optional[dict]
                         ) -> Tuple[List[str], List[Tuple[Path, Path]],
                                    List[tuple]]:
     """A transport calculation prepared before 2.18.0 named a lead's files
@@ -556,12 +602,14 @@ def _migrate_lead_names(base: Path, task
     stem its engine files were always on.  Each such file -- in the lead's
     stage folder, each of its attempts and the calculation root (the
     pipeline log) -- is renamed by the stem door (`runfiles.stem`: the old
-    stem swapped for the new, the name's tail as it was), and every
-    `job-set.json` naming the old deck is rewritten.  Decided, never done
-    here: ``(said, moves, writes)``; nothing for a calculation whose leads
-    are already on their stems, or that has none."""
+    stem swapped for the new, the name's tail as it was), and the root's
+    `job-set.json` naming the old deck is rewritten -- ``jobset``, the set
+    as the records step decided it (:func:`_migrate_records`), ``None``
+    for a calculation with none.  Decided, never done here: ``(said, moves,
+    writes)``; nothing for a calculation whose leads are already on their
+    stems, or that has none."""
     from ..paths import attempt_index
-    from ..persist import json_text, read_json
+    from ..persist import json_text
     from ..runfiles import find, stem
     from ..runfiles import RunNames
     from ..runrecord import newest_run
@@ -572,8 +620,15 @@ def _migrate_lead_names(base: Path, task
     moves: List[Tuple[Path, Path]] = []
     writes: List[tuple] = []
     renamed_decks: Dict[str, str] = {}
-    js_path = base / JOBSET_FILENAME
-    js = JobSet.from_dict(read_json(js_path)) if js_path.is_file() else None
+    js_path = JobSet.path_of(base)
+    js = None
+    if jobset is not None:
+        try:
+            js = JobSet.from_dict(jobset)
+        except ValueError as exc:
+            raise MigrateError(f"{js_path} does not read as this molbuilder "
+                               f"writes it, and no rule here rewrites it; "
+                               f"nothing was written: {exc}") from None
     for home in ladder_homes(base, task):
         if home.label == task.label:
             continue
@@ -678,17 +733,28 @@ def migrate_state(base) -> List[str]:
     be migrated as it stands.
     """
     base = Path(base)
-    # EVERY DECISION BEFORE ANY WRITE: a refusal of any step leaves the
-    # calculation as it was, never half rewritten.
-    said, writes, task = _migrate_records(base)
+    # EVERY RECORD READ ONCE, then EVERY DECISION BEFORE ANY WRITE: a
+    # refusal of any step leaves the calculation as it was, never half
+    # rewritten (`architecture.md` A16, migrate's rule).
+    rec = _Records.read(base)
+    said, writes, task = _migrate_records(rec)
     m_said, m_writes = _migrate_machine_record(base)
     said, writes = said + m_said, writes + m_writes
     n_said, moves = _migrate_run_numbers(base, task)
-    lead_said, lead_moves, lead_writes = _migrate_lead_names(base, task)
-    moves, writes = moves + lead_moves, writes + lead_writes
+    lead_said, lead_moves, lead_writes = _migrate_lead_names(
+        base, task, rec.jobsets.get(base))
+    moves += lead_moves
+    # ONE WRITE OF job-set.json: the leads' decks renamed on top of what the
+    # records step gave it; the old file kept once, as the earliest rule it
+    # was written before.
+    for path, text, keep in lead_writes:
+        if any(p == path for p, _x, _k in writes):
+            writes = [(p, text if p == path else x, k) for p, x, k in writes]
+        else:
+            writes.append((path, text, keep))
     l_said, l_write = _migrate_last_run(base, task, moves)
     try:
-        t_said, t_writes, t_task, t_keep = _migrate_template(base, task)
+        t_said, t_writes, t_task, t_keep = _migrate_template(rec, task)
     except _NothingInTheTemplate:
         if not said and not moves and l_write is None:
             raise MigrateError(
@@ -704,8 +770,8 @@ def migrate_state(base) -> List[str]:
         # taken out, on top of whatever the records step gave it; the old
         # file kept once, as the earliest rule it was written before.
         from ..persist import json_text
-        from ..task import FILENAME as TASK_FILENAME
-        task_path, text = base / TASK_FILENAME, json_text(t_task.to_dict())
+        from ..task import path_of
+        task_path, text = path_of(base), json_text(t_task.to_dict())
         if any(p == task_path for p, _x, _k in writes):
             writes = [(p, text if p == task_path else x, k)
                       for p, x, k in writes]
@@ -753,7 +819,15 @@ class _NothingInTheTemplate(MigrateError):
     2.1.0 that meant *not set*."""
 
 
-def _migrate_template(base: Path, task):
+def _migrate_template(rec: "_Records", task):
+    """The template's migration, decided ONCE per run (:class:`_Records`)
+    -- the groups step and the write ask the same decision."""
+    if rec._template_decision is None:
+        rec._template_decision = _decide_template(rec, task)
+    return rec._template_decision
+
+
+def _decide_template(rec: "_Records", task):
     """The template's charge and spin items, rewritten into the electronic
     state's -- this module's first migration (2026-09-28) -- its zeros, and
     its stages', that meant *not set* (2.1.0), an item renamed, kept under
@@ -771,13 +845,11 @@ def _migrate_template(base: Path, task):
 
     engine = task.engine
     kind = task.calculation
-    try:
-        tmpl = _T.find_template(base, task.label)
-    except ValueError as exc:
-        raise MigrateError(str(exc)) from exc
-    if tmpl is None:
+    base = rec.base
+    template = rec.template_for(task.label)
+    if template is None:
         raise _NothingInTheTemplate(f"{base} holds no template.")
-    text = tmpl.read_text(encoding="utf-8")
+    tmpl, text = template.path, template.text
     try:
         parsed = _T.read_template(text)   # read against its OWN declarations
         mine = (_T.select(parsed, engine=engine) if parsed.engines

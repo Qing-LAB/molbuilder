@@ -91,7 +91,7 @@ def _job_set(tmp_path, kind):
     js = JobSet(name="JOB", engine="siesta", kind=kind, shared=[],
                 jobs=[Job(name="p1", script="p1.run.sh",
                           resources=Resources(mpi_np=4))])
-    return js.write(tmp_path / "job-set.json")
+    return js.write(tmp_path)
 
 
 def test_a_sweep_is_read_by_a_parser_so_the_door_can_offer_it(tmp_path):
@@ -126,7 +126,7 @@ def _task(tmp_path, calculation):
               if transport else ("coarse",))
     dest = tmp_path / calculation
     dest.mkdir(exist_ok=True)
-    write_task(dest / "task.json", Task(
+    write_task(dest, Task(
         engine="siesta", shape="hierarchical",
         run=derive_run("T", "J/structure/junc" if transport else "H2",
                        stage_names=stages),

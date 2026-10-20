@@ -775,7 +775,7 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 > function, fed by data, rather than a format string in the benchmark module.
 
 > **And it settles an asymmetry the code carries today.**
-> `materialize.shape_of` returns `None` for a sweep, on the stated grounds that
+> the shape, read from the description (`Shape.named(task.shape)`), is the sweep's calculation's, on the stated grounds that
 > *"a benchmark bundle carries no description and needs none"* — true now,
 > because a benchmark is a separate lifecycle. **Under this design it stops being
 > true:** a sweep is a `ParameterSet` inside a described calculation, so it has a

@@ -980,7 +980,7 @@ and switching directories mid-save retargeted the steps after the switch.
 
 **The rule the whole tab hangs on:** `prep` reads `task.json` **from disk**,
 never the browser's buffer. The door takes a FOLDER and does
-`task = read_task(desc)`, because one assembly serves the CLI and the browser
+`calc = calculation.open(folder)`, because one assembly serves the CLI and the browser
 ([`architecture.md` A12](?doc=execution/architecture.md)) and the CLI has only
 the file. **So `Save` is not a convenience, it is the only bridge** — and a
 card whose values have not crossed it has done nothing, however complete it

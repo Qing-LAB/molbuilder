@@ -101,6 +101,12 @@ def _rules_path(engine: str) -> Path:
     return Path(__file__).parent / engine / FILENAME
 
 
+def path_of(base) -> Path:
+    """``<base>/warm-files.toml`` -- a calculation's own copy, the one place
+    the name is joined to a folder (`architecture.md` A16)."""
+    return Path(base) / FILENAME
+
+
 def _parse_row(obj: dict, *, where: str) -> WarmRule:
     unknown = sorted(set(obj) - set(_ROW_KEYS))
     if unknown:
@@ -210,7 +216,7 @@ def warm_list(engine: str, kind: Optional[str] = None,
                 f"section in {engine}/{FILENAME}, never a branch).")
         rules = tuple(table.get("base", ())) + tuple(table[kind])
         resumes = stated.get(kind, stated.get("base", True))
-    own = base is not None and Path(doc.path) == Path(base) / FILENAME
+    own = base is not None and Path(doc.path) == path_of(base)
     return WarmList(engine=engine, kind=kind, path=doc.path, own=own,
                     rules=rules, resumes=resumes,
                     along=(dict(doc.along).get(kind, ()) if kind else ()),
@@ -234,7 +240,7 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     """
     path = _rules_path(engine)
     if base_dir is not None:
-        local = Path(base_dir) / FILENAME
+        local = path_of(base_dir)
         if local.is_file():
             path = local
     if not path.is_file():

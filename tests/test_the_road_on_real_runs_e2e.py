@@ -281,9 +281,9 @@ def test_a_run_that_ended_on_its_own_is_not_followed(real_h2_layered):
     from molbuilder.jobset.materialize import run_dir, stage_home
     from molbuilder.runfiles import stem
     from molbuilder.runs import run_answer
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     b = real_h2_layered.bundle
-    task = read_task(b / "task.json")
+    task = task_of(b)
     home = stage_home(b, task, "coarse")
     got = run_answer(str(run_dir(home.dir) / (stem(task.label, home.token)
                                               + ".fdf")))

@@ -688,7 +688,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
                                              named_environment_path,
                                              read_environment,
                                              write_environment)
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from support.real_runs import RealRun, _typed
     from support.road import group_words, jobset
     from molbuilder.config_dir import ensure_private_dir
@@ -725,7 +725,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
         (walk.bundle / "task.json").write_text(json.dumps(task, indent=2))
         _typed(walk, f"prep on {queue}", "prep", "task",
                *group_words(walk.bundle, "device"), "--target", "cluster")
-    described = read_task(walk.bundle / "task.json")
+    described = task_of(walk.bundle)
     home = stage_home(walk.bundle, described, "device")
     names = RunNames.of(described.label, home.token, described.shape)
     header = (home.dir / LAUNCH_DIR
@@ -741,8 +741,8 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
 
 def _record(run):
     from molbuilder.transport.record import record_path
-    from molbuilder.task import read_task
-    task = read_task(run.bundle / "task.json")
+    from molbuilder.task import of as task_of
+    task = task_of(run.bundle)
     return json.loads(record_path(run.bundle, task.label).read_text())
 
 
@@ -1063,9 +1063,9 @@ def _prepared_decks(run, stage):
     each point's (`transport.stages.point_folders`) -- named by the run's
     one naming door (`runfiles.RunNames`)."""
     from molbuilder.jobset.materialize import stage_home
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.transport.stages import point_folders
-    task = read_task(run.bundle / "task.json")
+    task = task_of(run.bundle)
     home = stage_home(run.bundle, task, stage)
     names = home.names(task.shape)
     folders = [f for f, _v in point_folders(run.bundle, task, stage)]
@@ -1401,12 +1401,12 @@ def test_the_geometry_is_compared_where_siesta_places_it(junction, case):
 
     from molbuilder.jobset.gather import composed_junction, rung_deck_now
     from molbuilder.siesta.engine_input import engine_input_difference
-    from molbuilder.task import read_task
-    from molbuilder.template import find_template
+    from molbuilder.task import of as task_of
+    from molbuilder.template import of as template_of
     from molbuilder.transport.sort import REGION_BRIDGE
     base = junction.single.bundle
-    task = read_task(base / "task.json")
-    text = find_template(base, task.label).read_text()
+    task = task_of(base)
+    text = template_of(base, task.label).text
     composed = composed_junction(base, task)
     atom = composed.junction.regions[REGION_BRIDGE][0]
     positions = np.array(composed.junction.positions, dtype=float)
@@ -1462,8 +1462,8 @@ def test_a_sweep_is_one_run_its_points_inside(junction):
     is left in the point's folder below the stage, where nothing writes to
     it again (`project-layout.md` § 1.0)."""
     from molbuilder.runfiles import WRITTEN, role_of
-    from molbuilder.task import read_task
-    label = read_task(junction.bundle / "task.json").label
+    from molbuilder.task import of as task_of
+    label = task_of(junction.bundle).label
     progress = {a.role for a in WRITTEN if a.output == "progress"}
     for v in _BIAS:
         p = _point(junction, "04_device", 0, v)
@@ -1610,10 +1610,10 @@ def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     holding what the rungs downstream take from it, computed on ITS frame's
     geometry; `status` counts the points with their axes, *k of N points
     done (F frames × V voltages)*."""
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.transport.compose import recorded_junction
     run = junction.from_pair
-    label = read_task(run.bundle / "task.json").label
+    label = task_of(run.bundle).label
     for f in range(_N_FRAMES):
         for v in _BIAS:
             p = _frame_point(run, "04_device", f, v)
@@ -1648,9 +1648,9 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.runfiles import RunNames
     from molbuilder.runrecord import read_continued_from, read_gathered_from
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     run = junction.from_pair
-    task = read_task(run.bundle / "task.json")
+    task = task_of(run.bundle)
     names = RunNames.of(task.label, stage_home(run.bundle, task,
                                                "device").token, task.shape)
     for f in range(_N_FRAMES):
@@ -1683,10 +1683,10 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.parse import detect
     from molbuilder.runs import openable, run_of
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.transport.gf_files import status_line
     run = junction.from_pair
-    task = read_task(run.bundle / "task.json")
+    task = task_of(run.bundle)
     device = run.bundle / "04_device" / "run-0"
     folder = device / "tsgf"
     assert folder.is_dir() and calcdirs.read(folder).role == calcdirs.SCRATCH
@@ -1786,9 +1786,9 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
     with their sum and tolerance, and the assumptions are stated beside the
     numbers."""
     from molbuilder.frameset import read as read_frame_set
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     run = junction.from_pair
-    label = read_task(run.bundle / "task.json").label
+    label = task_of(run.bundle).label
     avg = _record(run)["average"]
     fs = read_frame_set(_the_set(junction))
     assert avg["frames"] == _N_FRAMES
@@ -1827,11 +1827,11 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     it is, a raw one where it was read from; and a calculation of one
     structure has the same layout, one frame."""
     from molbuilder.frame_average import FRAME_ROWS, MASS_CHANNEL
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.transport.datafile import (VARIABLES, data_file_path,
                                                read_data_file)
     run = junction.from_pair
-    label = read_task(run.bundle / "task.json").label
+    label = task_of(run.bundle).label
     got = read_data_file(data_file_path(run.bundle, label))
     V = {k: v["data"] for k, v in got["variables"].items()}
     assert list(V["frame"]) == list(range(_N_FRAMES))
@@ -1903,10 +1903,10 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
     value; the once-run rungs on the `rung` axis; each point's state; the
     NEGF charges by TranSIESTA's own columns; the leads compared -- each as
     the record it is composed from states it."""
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.transport.datafile import data_file_path, read_data_file
     run = junction.from_pair
-    label = read_task(run.bundle / "task.json").label
+    label = task_of(run.bundle).label
     got = read_data_file(data_file_path(run.bundle, label))
     V = {k: v["data"] for k, v in got["variables"].items()}
     rec = _record(run)
@@ -2415,7 +2415,7 @@ def test_a_device_says_where_it_is_before_its_first_negf_row(junction,
     from molbuilder.parse.dirs.rundir import run_state_of
     from molbuilder.parse.engines.transiesta import scf_words
     from molbuilder.runfiles import RunNames
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from support.replay import output_lines, replay, statuses
     folder = _point(junction, "04_device", 0, _BIAS[0])
     s = output_lines(folder)
@@ -2447,7 +2447,7 @@ def test_a_device_says_where_it_is_before_its_first_negf_row(junction,
         (row + 1, scf_words(_G.PHASE_NEGF, 1)),
     ]
     assert rows[-1][1] == "negf SCF iteration 1"
-    label = read_task(junction.bundle / "task.json").label
+    label = task_of(junction.bundle).label
     names = RunNames.of(label, "04_device", "hierarchical")
     there, watched, grow = replay(folder, tmp_path, begun[0])
     for n, (to, words) in enumerate(rows):

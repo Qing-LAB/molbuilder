@@ -62,10 +62,12 @@ def _load_sweep(path: Path) -> dict:
     p = Path(path)
     if p.name != FILENAME:
         raise JobSetReadError(f"{p.name} is not {FILENAME}")
-    # THROUGH THE ONE DOOR, `JobSet.load` (`persist`, the schema by name and
-    # major -- `execution/architecture.md` § 3.2).
+    # THROUGH THE ONE DOOR, `JobSet.of` (`persist`, the schema by name and
+    # major -- `execution/architecture.md` § 3.2, A16).
     try:
-        js = JobSet.load(p)
+        js = JobSet.of(p.parent)
+        if js is None:
+            raise FileNotFoundError(p)
     except OSError as exc:
         raise JobSetReadError(f"{p.name} could not be read: {exc}") from exc
     except json.JSONDecodeError as exc:

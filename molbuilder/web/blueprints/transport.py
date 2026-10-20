@@ -295,22 +295,24 @@ def api_transport_record() -> Any:
     if not path.exists():
         return jsonify({"ok": False, "error": f"nothing at {raw}"}), 404
     base = Path(path) if path.is_dir() else Path(path).parent
-    # THE FOLDER'S CALCULATION through its one door (`runs.place_of`).
-    place = place_of(base)
-    if place.task is None:
-        return jsonify({"ok": False, "error": (
-            f"{path.name}: " + (place.problem or
-                                "no calculation of ours claims it"))}), 400
-    task = place.task
+    # THE FOLDER'S CALCULATION through its one door (`calculation.open`,
+    # A16), opened once: a folder below the root answers with the root.
+    from molbuilder import calcdirs
+    from molbuilder.calculation import NotACalculation, open as open_calc
+    root = calcdirs.root_of(base)
+    try:
+        calc = open_calc(root if root is not None else base)
+    except (NotACalculation, OSError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    task = calc.task
     if task.calculation != "transport":
         return jsonify({"ok": False, "error": (
             f"{path.name}: {base.name} is a {task.calculation} "
             f"calculation, not a transport one")}), 400
     try:
-        record = collect_record(base, task, partial=True)
+        record = collect_record(calc, partial=True)
     except (RecordError, OSError, ValueError) as exc:
-        return jsonify({"ok": False, "error": (
-            f"the record could not be composed: {exc}")}), 400
+        return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "record": record})
 
 
@@ -382,7 +384,7 @@ def api_transport_describe() -> Any:
     to edit, as every kind's is (`engines/transport.md` § 3.8.2a).
 
     Validation is the codec's and the description's own check: the
-    ``Task`` construction below is the gate `read_task` runs, and the
+    ``Task`` construction below is the gate `task.of` runs, and the
     task preflight (gate ③) is the one `jobset init`
     and the Task-setup save run -- its errors refuse, its warnings ride
     ``notices``.  The citation resolves through the same door prep

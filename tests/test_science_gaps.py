@@ -40,8 +40,9 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
 
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.task import read_task
-    from molbuilder.template import _emit, find_template, read_template
+    from molbuilder.task import of as task_of
+    from molbuilder.template import _emit, read_template
+    from molbuilder.template import of as template_of
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "P" / "structure" / "a.xyz").write_text(
@@ -79,12 +80,12 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     back = run.invoke(cli, ["checkpoint", "restore", before.id, "-p",
                             str(bundle), "--force"])
     assert back.exit_code == 0, back.output
-    tmpl = find_template(bundle, read_task(bundle / "task.json").label)
-    tmpl.write_text(_emit(
+    tmpl = template_of(bundle, task_of(bundle).label)
+    tmpl.path.write_text(_emit(
         [dataclasses.replace(i, value={"ecp": "def2-SVP",
                                        "ecp_atoms": ["Au"]}[i.name])
          if i.name in ("ecp", "ecp_atoms") else i
-         for i in read_template(tmpl.read_text()).items],
+         for i in read_template(tmpl.text).items],
         engines=("pyscf",)))
     out, deck = prep()
     assert "[config.ecp]" not in out, out

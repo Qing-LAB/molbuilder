@@ -22,7 +22,7 @@ from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
-from molbuilder.task import Stage, read_task
+from molbuilder.task import Stage, of as task_of
 from molbuilder.template import read_template
 
 
@@ -113,7 +113,7 @@ def test_the_structure_is_a_reference_and_a_witness_never_a_copy(struct, cfg,
     different calculation under the same id."""
     D.write_description(_describe(struct, cfg, source="structures/bdt.xyz"),
                         tmp_path / "calc")
-    task = read_task(tmp_path / "calc" / "task.json")
+    task = task_of(tmp_path / "calc")
     assert task.structure.source == "structures/bdt.xyz"
     assert task.structure.formula == struct.formula
     assert task.structure.atoms == struct.n_atoms
@@ -153,7 +153,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     calc = tree / "P" / "optimization" / "calc"
     assert sorted(p.name for p in calc.glob("*.source.*")) == [
         "JOB.source.molstruct.json", "JOB.source.xyz"]
-    task = read_task(calc / "task.json")
+    task = task_of(calc)
     assert task.structure.source == "JOB.source.xyz"
     from molbuilder.workingcopy_structure import StructureCodec
     assert StructureCodec().load(calc / task.structure.source).vacuum == (
@@ -171,7 +171,7 @@ def test_every_description_states_its_kind(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg), tmp_path / "calc")
     raw = json.loads((tmp_path / "calc" / "task.json").read_text())
     assert raw["calculation"] == "optimization"
-    assert read_task(tmp_path / "calc" / "task.json").calculation == \
+    assert task_of(tmp_path / "calc").calculation == \
         "optimization"
     # ("vibration" stands in for any non-default kind; "transport" is the
     # COMPOSITE with required slots and no structure block, guarded in
@@ -183,7 +183,7 @@ def test_every_description_states_its_kind(struct, cfg, tmp_path):
     D.write_description(desc, tmp_path / "calc2")
     raw = json.loads((tmp_path / "calc2" / "task.json").read_text())
     assert raw["calculation"] == "vibration"
-    assert read_task(tmp_path / "calc2" / "task.json").calculation == \
+    assert task_of(tmp_path / "calc2").calculation == \
         "vibration"
     with pytest.raises(Exception, match=r"calculation.*A-Za-z0-9_"):
         D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
@@ -196,7 +196,7 @@ def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg,
                                   default_siesta_stages("publishable")),
                         tmp_path / "calc")
-    task = read_task(tmp_path / "calc" / "task.json")
+    task = task_of(tmp_path / "calc")
     assert [s.name for s in task.stages] == ["coarse", "medium"]
     assert "relax_type" in task.varies
 
@@ -326,10 +326,10 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
         "the bare name must resolve against the tree and the pseudo "
         "must travel with the calculation")
     # ...and the template says whose the folder is (`template.md` § 6.6).
-    from molbuilder.template import find_template, one
+    from molbuilder.template import of as template_of, one
     calc = tree / "P" / "optimization" / "calc"
-    written = read_template(find_template(
-        calc, read_task(calc / "task.json").label).read_text())
+    written = read_template(template_of(
+        calc, task_of(calc).label).text)
     assert one(written, "psml_lib").source == "person"
 
 
@@ -346,7 +346,8 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.template import catalogue, find_template, recommended_for, select
+    from molbuilder.template import catalogue, recommended_for, select
+    from molbuilder.template import of as template_of
 
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
@@ -358,11 +359,10 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
         "--calculation", "vibration", "--name", "V"])
     assert res.exit_code == 0, res.output
     bundle = tree / "P" / "frequency" / "V"
-    assert [s.name for s in read_task(bundle / "task.json").stages] == ladder
+    assert [s.name for s in task_of(bundle).stages] == ladder
 
     written = {it.name: it for it in select(read_template(
-        find_template(bundle, read_task(bundle / "task.json").label)
-        .read_text()))}
+        template_of(bundle, task_of(bundle).label).text))}
     recommended = {it.name: recommended_for(it, "vibration")
                    for it in select(catalogue(), engine=engine)
                    if recommended_for(it, "vibration") is not None}

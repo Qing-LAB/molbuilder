@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef
 from ..paths import attempts_in
-from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, shape_of, stage_refs)
+from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, stage_refs)
 from ..runrecord import LaunchRecordError, launch_record
 from .commands import (block, command, launch_lines, launch_pending,
                        prep_group_lines, redo_launched)
@@ -212,6 +212,10 @@ class JobSetStatus:
     #: THE NEXT STEP, every group's (:func:`_steps`) -- ``[]`` for a job set
     #: with no description beside it.
     steps: List[GroupStep] = field(default_factory=list)
+    #: The description and the plan the rows were read from (A16), for the
+    #: renderers' way-back lines.  Not part of the wire form.
+    task: Any = None
+    jobset: Any = None
 
     def to_dict(self) -> Dict[str, Any]:
         """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
@@ -602,8 +606,14 @@ def _not_prepared(ref: StageRef, r) -> StageStatus:
         takes=list(r.takes), why=r.why, group=r.group)
 
 
-def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
+def jobset_status(subject, base_dir, *, jobset=None) -> JobSetStatus:
     """Read the on-disk status of every stage under ``base_dir`` (read-only).
+    ``subject`` is the calculation as the verb opened it
+    (`calculation.open`, A16): its description, template and plan, read
+    once; ``jobset`` names another set of the calculation's to list -- a
+    sweep's, from its bench container -- its shape the description's.
+    A plan alone (a hand-built set) is refused: no description, no layout
+    to read it by.
 
     **The rows are the description's ladder** when a description stands
     beside the set (`job-system.md` § 5.3, 2026-10-01): every stage
@@ -617,17 +627,24 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     ``first_incomplete`` is the first stage that is not ``finished`` -- the
     stage to resume from; ``None`` (and ``complete=True``) when every stage
     finished."""
-    from ..task import FILENAME as TASK_FILENAME, read_task
+    from ..calculation import Calculation
+    from ..paths import Shape
     base = Path(base_dir)
+    calc = subject if isinstance(subject, Calculation) else None
+    if jobset is None:
+        jobset = calc.jobset if calc is not None else subject
     sweep = jobset is not None and jobset.kind == KIND_SWEEP
-    task = (read_task(base / TASK_FILENAME)
-            if not sweep and (base / TASK_FILENAME).is_file() else None)
+    task = calc.task if calc is not None and not sweep else None
     if jobset is None and task is None:
         raise ValueError(f"nothing to report in {base}: no job set and no "
                          f"description")
+    if jobset is not None and calc is None:
+        raise ValueError(f"{base} holds a plan and no description -- not a "
+                         f"calculation molbuilder described, so it has no "
+                         f"layout to read it by (`molbuilder jobset init`)")
     kw = {}
     if jobset is not None:
-        sh = shape_of(jobset, base_dir)
+        sh = Shape.named(calc.task.shape)
         kw = {"dirs": job_dir_names(jobset, sh),
               "refs": stage_refs(jobset), "shape": sh}
     stages: List[StageStatus] = []
@@ -639,7 +656,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         # THE READY DOOR'S ANSWERS, read once -- NO VERDICT: status names the
         # run, not its relaxation, and the table is read far more often than
         # a stage is prepared or launched.
-        state = task_state(base, task=task, jobset=jobset)
+        state = task_state(calc)
         # THE NUMBERS ARE THE DOOR'S -- what the folders carry (W38 F4), so
         # a row's number is its folder's, not its place in the description.
         for st, ref, r in zip(task.stages,
@@ -684,6 +701,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         bench_of=bench_of,
         offer=(offer if task is not None else []),
         steps=(steps if task is not None else []),
+        task=task, jobset=jobset,
     )
 
 
@@ -823,7 +841,8 @@ def render_status(status: JobSetStatus) -> str:
         first = next((s for s in status.stages
                       if s.name == status.first_incomplete), None)
         lines.append(next_step(first, status.first_incomplete,
-                               base=status.base))
+                               base=status.base, task=status.task,
+                               jobset=status.jobset))
     return "\n".join(lines)
 
 
@@ -864,7 +883,8 @@ def _sweep_next(status: JobSetStatus) -> str:
     return "Every trial has ended -- read what they measured:\n" + read
 
 
-def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
+def next_step(s: Optional[StageStatus], name: str, *, base, task,
+              jobset) -> str:
     """What to do about a PREPARED stage that has not finished, by its state
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`).  A stage never launched goes with
@@ -898,7 +918,7 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     how = (f"launch it again -- {warm}:\n"
            + block(launch_lines("task", name, base=base))
            + "\n  or start it over with `--cold`; or, to change it first, "
-           + redo_launched(name, base=base))
+           + redo_launched(name, base=base, task=task, jobset=jobset))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
             f"auto-resume -- you decide: {how}")
 
@@ -1022,7 +1042,6 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
     from ..calcdirs import CONTAINER, read as placed
     from ..runrecord import retried_to
     from ..runs import concluded, run_of
-    from .model import FILENAME, JobSet
     base = Path(calculation)
     rows: Optional[Dict[str, StageStatus]] = None
     unread: Optional[str] = None
@@ -1049,10 +1068,9 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
         if rows is None:
             rows = {}
             try:
-                js = (JobSet.load(base / FILENAME)
-                      if (base / FILENAME).is_file() else None)
-                rows = {s.name.lower(): s
-                        for s in jobset_status(js, base).stages}
+                from ..calculation import open as open_calculation
+                rows = {s.name.lower(): s for s in jobset_status(
+                    open_calculation(base), base).stages}
             except (OSError, ValueError, KeyError) as exc:
                 unread = f"its calculation does not read: {exc}"
         row = rows.get(stage.lower())

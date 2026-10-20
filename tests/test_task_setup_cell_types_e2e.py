@@ -71,7 +71,7 @@ def calc_dir(isolated_projects_root_module):
                                  engine="siesta",
                                  calculation="optimization"),
             encoding="utf-8")
-        write_task(d / "task.json", Task(
+        write_task(d, Task(
             engine="siesta", shape="flat", calculation="optimization",
             run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
@@ -212,7 +212,7 @@ def bool_column_dir(isolated_projects_root_module):
                                  engine="siesta",
                                  calculation="optimization"),
             encoding="utf-8")
-        write_task(d / "task.json", Task(
+        write_task(d, Task(
             engine="siesta", shape="flat", calculation="optimization",
             run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
@@ -275,7 +275,7 @@ def out_of_set_dir(isolated_projects_root_module):
         template_with_values(SiestaConfig(system_label="probe"),
                              engine="siesta", calculation="vibration"),
         encoding="utf-8")
-    write_task(d / "task.json", Task(
+    write_task(d, Task(
         engine="siesta", shape="hierarchical",
         run=derive_run("probe", stage_names=("relax", "freq")),
         structure=StructureRef(source="probe.source.xyz"),

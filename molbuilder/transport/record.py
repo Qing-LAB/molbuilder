@@ -375,7 +375,7 @@ def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
     return [(Point(), run, run)]
 
 
-def _stage_facts(base: Path, task, label: str) -> List[Dict]:
+def _stage_facts(calc, label: str) -> List[Dict]:
     """One entry per rung of the ladder: where it stands, and its own answer.
 
     **A transport result is FIVE calculations, and the record says so**, so
@@ -401,13 +401,11 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     * *transmission* -- has its own `points` / `pending` / `failed` blocks.
     """
     from ..jobset.materialize import ladder_homes
-    from ..jobset.model import FILENAME as JOBSET_FILENAME, JobSet
     from ..jobset.runstatus import jobset_status
     from .stages import STAGE_FACT, TRANSPORT_STAGES, frames_of, rung_points
 
-    jpath = base / JOBSET_FILENAME
-    status = jobset_status(JobSet.load(jpath) if jpath.is_file() else None,
-                           base)
+    base, task = Path(calc.base), calc.task
+    status = jobset_status(calc, base)
     by_name = {s.name: s for s in status.stages}
     tokens = {h.name: h.token for h in ladder_homes(base, task)}
     # THE DEVICE RUN THE TRANSMISSION READ, when it has one -- the device
@@ -724,7 +722,7 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
     return out
 
 
-def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
+def collect_record(calc, *, partial: bool = False) -> Dict:
     """Walk the transmission attempts and build the record dict.
 
     **THE FRAMES' ROWS ARE READ THROUGH THEIR ONE DOOR** (`frameset.read`):
@@ -755,7 +753,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
                         spin_dos, tbt_files, tbt_name)
 
-    base = Path(base_dir)
+    base_dir = calc.base
+    base, task = Path(base_dir), calc.task
     recorded = recorded_junction(base)
     junction = recorded.structure if recorded is not None else None
     frame_set = (read_frame_set(junction) if junction is not None
@@ -766,7 +765,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     home = stage_home(base, task, "transmission")
     token, names = home.token, home.names(task.shape)
     regions = device_regions(junction)
-    stages = _stage_facts(base, task, task.label)
+    stages = _stage_facts(calc, task.label)
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
     # point at once).
@@ -890,7 +889,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                + block(launch_lines("task", "transmission", base=base_dir))
                if opened else
                "run the transmission stage first:\n"
-               + block(run_first("transmission", base=base_dir)))
+               + block(run_first("transmission", base=base_dir,
+                                 task=task)))
             + "\n"
             + "".join(f"  ({what}: "
                       + "; ".join(f"{p['point']}, "

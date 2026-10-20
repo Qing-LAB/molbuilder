@@ -34,7 +34,7 @@ from molbuilder.task import (
     StructureRef,
     Task,
     derive_run,
-    read_task,
+    of as task_of,
     write_task,
 )
 
@@ -52,15 +52,15 @@ def example() -> dict:
 def test_round_trip_is_byte_identical(example, tmp_path):
     """M1.  read -> write -> read, and the bytes settle."""
     p = tmp_path / FILENAME
-    first = write_task(p, Task.from_dict(example)).read_bytes()
-    again = write_task(p, read_task(p)).read_bytes()
+    first = write_task(p.parent, Task.from_dict(example)).read_bytes()
+    again = write_task(p.parent, task_of(p.parent)).read_bytes()
     assert first == again
-    assert read_task(p) == Task.from_dict(example)
+    assert task_of(p.parent) == Task.from_dict(example)
 
 
 def test_written_file_is_named_and_versioned(example, tmp_path):
     p = tmp_path / FILENAME
-    write_task(p, Task.from_dict(example))
+    write_task(p.parent, Task.from_dict(example))
     assert p.name == "task.json"
     assert json.loads(p.read_text())["schema"] == SCHEMA == "molbuilder/task@1"
 
@@ -248,7 +248,7 @@ def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
     one = dict(example)
     one["stages"] = [{"name": "coarse", "group": 1, "overrides": {}}]
     one["varies"] = []
-    write_task(p, Task.from_dict(one))
+    write_task(p.parent, Task.from_dict(one))
     written = json.loads(p.read_text())
     assert [s["name"] for s in written["stages"]] == ["coarse"]
     assert written["varies"] == []
@@ -300,7 +300,7 @@ def test_the_description_names_no_machine(example, tmp_path):
     partition, a rank count or a queue, and this fails if one is added
     without the contract being changed first."""
     p = tmp_path / FILENAME
-    write_task(p, Task.from_dict(example))
+    write_task(p.parent, Task.from_dict(example))
     text = p.read_text().lower()
     for machine_word in ("host", "partition", "queue", "slurm", "node",
                          "walltime", "account"):
@@ -319,7 +319,7 @@ def test_checkpoint_recognises_a_calculation_by_its_description(tmp_path,
     recognises a calculation by."""
     from molbuilder.checkpoint import _is_bundle_root
     assert not _is_bundle_root(tmp_path)
-    write_task(tmp_path / FILENAME, Task.from_dict(example))
+    write_task(tmp_path, Task.from_dict(example))
     assert _is_bundle_root(tmp_path)
 
 
@@ -432,8 +432,8 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
                 Stage(name="tight", overrides={"mesh_cutoff": 300},
                       execution={"restart": "continue"}, group=2)),
     )
-    p = write_task(tmp_path / FILENAME, task)
-    assert read_task(p) == task
+    p = write_task(tmp_path, task)
+    assert task_of(p.parent) == task
     assert task.to_dict()["schema"] == SCHEMA
 
 
@@ -490,8 +490,8 @@ def test_stages_with_nothing_varying_is_legal(example, tmp_path):
     assert [s.name for s in task.stages] == ["coarse", "tight"]
 
     p = tmp_path / FILENAME
-    write_task(p, task)
-    assert read_task(p) == task
+    write_task(p.parent, task)
+    assert task_of(p.parent) == task
     assert json.loads(p.read_text())["varies"] == []
 
 

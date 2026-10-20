@@ -488,7 +488,7 @@ creation and thrown away.
 
 | the directory | what answers | container or run |
 |---|---|---|
-| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2), read through its one door, `read_task`, by the run door (`architecture.md` § 3.2); `calcdirs` reads no description | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
+| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2), read through its one door, `task.of`, by the run door (`architecture.md` § 3.2); `calcdirs` reads no description | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
 | **everything below it that molbuilder made** | `calcdir.json`, written by the creator | **`role`**, said outright |
 | anything else | nothing | unknown — the directory is read alone, and told so |
 
@@ -1173,6 +1173,12 @@ runnable directory**, because only there do you know:
 Then it **renders the final deck** — template ⊕ this stage's variables ⊕ this
 machine's resolved parameters — writes the wrapper, builds the run directory, and
 brings in whatever you told it to continue from.
+
+**A described calculation is read through one door**, `calculation.open(base)`
+— the description, the template with its text, the plan when one is written —
+once per verb, passed whole; each record's own door takes the folder and
+answers `None` for a record that is not there
+([`architecture.md`](?doc=execution/architecture.md) § 3.2, rule A16).
 
 ### 2.2 Why the deck cannot be finished in the browser
 
@@ -2519,7 +2525,7 @@ module the job works around.
 | what is a trial's label? | `trial_label` (§ 2.3.2) |
 | which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt`; the run a point's folder lies in, `run_folder_of` |
 
-*(This table named `paths.path_for`, `sweep_set_paths`, `attempts` and a
+*(This table named `paths.path_for`, `sweep_set_dirs`, `attempts` and a
 `trial_dir` in `paths` until 2026-10-04 — doors designed on 2026-09-08 that
 were built under the names above or not at all; a file's whole path is now
 the run door's, `Run.file(role)`.)*
@@ -2668,7 +2674,7 @@ and in a remapped pair's sidecar, never a file of its own
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template.template_path` | `template.find_template` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template.template_path` | `template.of` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
@@ -2677,11 +2683,11 @@ and in a remapped pair's sidecar, never a file of its own
 | `<label>.fc-sweep.json` *(SIESTA, vibration)* — only: two or more force-constant stages | the force-constant stages compared, when the ladder has two or more (a displacement sweep), by `summarize task`: each stage and what it varied, every mode's frequency per stage, the force-constant changes, and where each stage's files are | `jobset summarize task` (`spectra.displacement_sweep.write_sweep`) | `parse.sidecars.fc_sweep.FcSweepRecordFileParser` | result |
 | `<label>.last-run` — only: the flat layout, where a calculation's stages share its folder | the last run in this folder -- the run whose restart files and results lie here | the run script, the moment its engine starts (`runwrap`); `jobset migrate`, for runs launched before 2.7.0 | `runrecord.last_run` | record |
 | `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | every prep, from either door, beside its `STAGE-PLAN.md` (`pipeline_log.PipelineLog`) | none | record |
-| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init` and the Transport tab's describe door (`describe.write_description`); Task setup's Save | `task.read_task` | source |
+| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init` and the Transport tab's describe door (`describe.write_description`); Task setup's Save | `task.of` | source |
 | `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
 | `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
-| `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.load` | derived |
+| `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.of` | derived |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |

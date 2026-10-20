@@ -54,10 +54,11 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     stage's state as the ladder reads it, and what the run itself printed."""
     from conftest import write_machine_record
     from molbuilder.jobset.model import FILENAME, JobSet
+    from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
-    from molbuilder.task import read_task, write_task
+    from molbuilder.task import of as task_of, write_task
     from molbuilder.workingcopy_structure import StructureCodec
 
     write_machine_record()
@@ -83,12 +84,12 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
             config_from_template(path.read_text(), PySCFConfig), **template)
         path.write_text(template_with_values(cfg, engine="pyscf",
                                              calculation=calculation))
-    task = read_task(bundle / "task.json")
+    task = task_of(bundle)
     # The run states its threads (`architecture.md` § 5.2); a case's own
     # run card goes over it.
     stage = dataclasses.replace(task.stages[0], overrides=dict(overrides),
                                 execution={"threads": 1, **(execution or {})})
-    write_task(bundle / "task.json", dataclasses.replace(
+    write_task(bundle, dataclasses.replace(
         task, stages=(stage,),
         varies=tuple(dict.fromkeys((*task.varies, *overrides)))))
     # How a shell enters conda HERE is this machine's record's to say.
@@ -101,7 +102,7 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     assert r.exit_code == 0, r.output
     _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,
             "--mode", "direct", "--foreground", "--yes")
-    row = next(iter(jobset_status(JobSet.load(bundle / FILENAME),
+    row = next(iter(jobset_status(open_calculation(bundle),
                                   bundle).stages))
     said = "\n".join(p.read_text(errors="replace")
                      for p in sorted(bundle.glob("*-run0.pyscf.log")))

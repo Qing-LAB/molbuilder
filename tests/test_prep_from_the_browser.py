@@ -271,7 +271,9 @@ def test_two_preps_at_once_leave_the_servers_stderr_as_they_found_it(
 
     def prep(calc):
         try:
-            P.prep_task(calc, "task", groups=[1], target=LOCAL_TARGET)
+            from molbuilder.calculation import open as open_calculation
+            P.prep_task(open_calculation(calc), "task", groups=[1],
+                        target=LOCAL_TARGET)
         except Exception as exc:          # said below, with the rest
             failed.append(exc)
 
@@ -587,7 +589,7 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
 
 def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
         web_client, described):
-    """`find_template` refuses a folder with two templates -- a leftover the
+    """`template.of` refuses a folder with two templates -- a leftover the
     person removes -- and the entry says so on both doors: a 400 with the
     sentence, and the terminal's `Error:`, never a 500 or a traceback."""
     calc = Path(described)

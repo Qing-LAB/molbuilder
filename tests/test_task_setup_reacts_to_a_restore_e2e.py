@@ -185,18 +185,18 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
 
     # ── rewrite the folder behind the tab, then record that as state B ──
     # THROUGH THE PROJECT'S OWN DOOR.  `molbuilder.task` owns this format
-    # and exposes `read_task` / `write_task`; hand-editing the JSON is a
+    # and exposes `task.of` / `write_task`; hand-editing the JSON is a
     # second writer, and a second writer can produce a `task.json` the app
     # would refuse or read differently -- which would make this test's
     # premise ("the folder changed underneath the tab") a lie about a file
     # the tab could not have shown in the first place.
     import dataclasses
 
-    from molbuilder.task import Stage, read_task, write_task
+    from molbuilder.task import Stage, of as task_of, write_task
 
-    before = read_task(calc_dir / "task.json")
+    before = task_of(calc_dir)
     renamed = dataclasses.replace(before.stages[0], name="afterwards")
-    write_task(calc_dir / "task.json",
+    write_task(calc_dir,
                dataclasses.replace(before, stages=(renamed,)))
     page.click("#ps-checkpoint-commit-btn")
     _note(page, "after the edit")

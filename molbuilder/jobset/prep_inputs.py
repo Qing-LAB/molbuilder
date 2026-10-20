@@ -54,7 +54,7 @@ def _declared_execution_pins(task, bench_override=None):
     must be an ``execution`` item, and `validation/task.py`'s
     ``_bench_names_a_speed_knob`` owns that rule -- a non-execution name
     was refused upstream and an unknown name here is simply skipped.
-    Point SHAPES are `read_task`'s (task.py `bench_from_obj`): every
+    Point SHAPES are `task.of`'s (task.py `bench_from_obj`): every
     value arrives as a non-empty tuple of scalars, so no scalar/empty
     arms exist here.
 
@@ -473,9 +473,9 @@ def fold_allocation(flags, declared, chosen=None):
 _FOLDED = object()
 
 
-def bench_inputs(base, target, *, bench_override=None, report=None,
-                 notes=None, task=None, environment=None,
-                 template_text=None, flags=None, on_a_queue: bool = True,
+def bench_inputs(calc, target, *, bench_override=None, report=None,
+                 notes=None, environment=None,
+                 flags=None, on_a_queue: bool = True,
                  queue=_FOLDED):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
@@ -511,10 +511,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     device coordinate.  See the section for the cap, naming, and
     split-submission halves of the rule.
 
-    ``task``, ``environment`` and ``template_text`` are the description,
-    the target's record and the template's text, when the caller has read
-    them: the prep entry reads each once and hands them over (W55 B1).  The
-    bench card's route has not, and they are read here.
+    ``calc`` is the calculation as the verb opened it (A16) -- its
+    description and template; ``environment`` the target's record when the
+    caller has read it (the prep entry reads it once and hands it over, W55
+    B1), else read here.
 
     ``flags`` are the prep's own, folded over the description's
     ``allocation`` by the one fold (:func:`fold_allocation`) into the ASK:
@@ -541,12 +541,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     note = notes.append if notes is not None else (lambda _text: None)
     from ..bench.grid import sweep_K, sweep_grid
     from ..resolve import MachineTranslation
-    from ..task import FILENAME as TASK_FILENAME, read_task
-    from ..template import (find_template, read_template, template_filename,
-                            select as template_select)
+    from ..template import read_template, select as template_select
     from .machine import machine_record
-    if task is None:
-        task = read_task(Path(base) / TASK_FILENAME)
+    base, task, template_text = (Path(calc.base), calc.task,
+                                 calc.template_text)
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
     # refusal about the target would otherwise answer a question the
     # description never asks.
@@ -608,16 +606,6 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
            if every else node_gpus) or 0
     cps = getattr(topo, "cores_per_socket", None)
 
-    if template_text is None:
-        try:
-            _tpl = find_template(Path(base), task.label)
-        except ValueError as exc:
-            raise PrepError(str(exc)) from exc
-        if _tpl is None:
-            raise PrepError(f"no {template_filename(task.label)} beside "
-                            f"{TASK_FILENAME}: a benchmark reads its grid's "
-                            f"values from the template.")
-        template_text = _tpl.read_text(encoding="utf-8")
     tmpl = read_template(template_text)
     # Through `select` -- `template.md` § 8.0 owns the rule.
     #

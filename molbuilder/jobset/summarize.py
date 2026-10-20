@@ -207,17 +207,15 @@ def _read_environment(bundle: Path) -> Dict:
 from ..parse.fdf import fdf_key   # noqa: E402  -- fdf's own matching rule
 
 
-def _read_system(bundle: Path) -> Dict:
+def _read_system(calc) -> Dict:
     """The system a sweep measured -- its engine and atom count -- from the
-    DESCRIPTION, whose witness records exactly these two facts
-    (`task.read_task`): ``bundle`` is the calculation's folder, and a
-    description that does not read is said in its reader's words."""
-    from ..task import FILENAME, read_task
-    t = read_task(Path(bundle) / FILENAME)
+    DESCRIPTION, whose witness records exactly these two facts, as the
+    verb opened it (A16)."""
+    t = calc.task
     return {"engine": t.engine, "n_atoms": t.structure.atoms}
 
 
-def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
+def discover_points_from_jobset(calc, jobset) -> List[BenchPoint]:
     """Discovery keyed by the DATA floor 3 wrote — the fold's reader
     (plan step 6 u4).
 
@@ -230,10 +228,11 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     its stage's bench container, so the set IS the scope — every job in it
     belongs to the stage that was named at the surface.
     """
-    from .materialize import job_dir_names, run_dir, shape_of
+    from ..paths import Shape
+    from .materialize import job_dir_names, run_dir
     from .model import gpu_request
-    bundle = Path(bundle)
-    dirs = job_dir_names(jobset, shape_of(jobset, bundle))
+    bundle = Path(calc.base)
+    dirs = job_dir_names(jobset, Shape.named(calc.task.shape))
     pts: List[BenchPoint] = []
     for j in jobset.jobs:
         # Knobs speak the EXCHANGE vocabulary -- the job-set's own field
@@ -260,7 +259,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     return pts
 
 
-def _winner_mechanism(bundle, jobset, label: str) -> Dict:
+def _winner_mechanism(calc, jobset, label: str) -> Dict:
     """HOW the winning trial computed -- read from ITS OWN deck, never
     re-derived (U13b).  The deck the trial RAN is
     on disk beside its results; its BENCH-MARKS block says gpu_mode and
@@ -268,9 +267,11 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     job = next((j for j in jobset.jobs if j.name == label), None)
     if job is None:
         return {}
-    from .materialize import job_dir_names, run_dir, shape_of
+    from ..paths import Shape
+    from .materialize import job_dir_names, run_dir
     from ..runs import run_of
-    _c = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
+    _c = Path(calc.base) / job_dir_names(
+        jobset, Shape.named(calc.task.shape))[label]
     run = run_of(run_dir(_c))          # the trial's run, the run door's
     deck = run.deck if run is not None else None
     text = _read(deck) if deck is not None else ""
@@ -288,7 +289,7 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     return mech
 
 
-def bench_record(jobset, bundle, *, now_iso: Optional[str] = None
+def bench_record(calc, jobset, *, now_iso: Optional[str] = None
                  ) -> BenchResult:
     """The sweep's record, built ONE way — points, then the verdict, then
     HOW the winner computed.
@@ -299,20 +300,20 @@ def bench_record(jobset, bundle, *, now_iso: Optional[str] = None
     verdict whichever door you came through (`bench-summary.md` B2).
     """
     res = build_bench_result(
-        discover_points_from_jobset(bundle, jobset),
-        environment=_read_environment(Path(bundle)),
-        system=_read_system(Path(bundle)),
+        discover_points_from_jobset(calc, jobset),
+        environment=_read_environment(Path(calc.base)),
+        system=_read_system(calc),
         now_iso=now_iso)
     # HOW the winner computed, read from its own deck (U13b) -- part of the
     # verdict, not a decoration on the file that happens to be written.
     if res.choice.get("label"):
-        mech = _winner_mechanism(bundle, jobset, res.choice["label"])
+        mech = _winner_mechanism(calc, jobset, res.choice["label"])
         if mech:
             res.choice["mechanism"] = mech
     return res
 
 
-def run_summarize_jobset(jobset, bundle, *,
+def run_summarize_jobset(calc, jobset, *,
                          out, now_iso: Optional[str] = None,
                          stage: Optional[str] = None):
     """Summarize a described sweep: write ``bench-result.json`` (the
@@ -333,7 +334,7 @@ def run_summarize_jobset(jobset, bundle, *,
     reason alone (settled 2026-09-06, user: *"keep it -- archiving a sweep
     IS a use"*, `job-system.md` § 7.1).
     """
-    res = bench_record(jobset, bundle, now_iso=now_iso)
+    res = bench_record(calc, jobset, now_iso=now_iso)
     # WHERE IT LIVES is the caller's to say -- the benchmark's container,
     # the catalogue's `bench` level -- and it is written by the one writer.
     from ..persist import write_bytes
@@ -426,7 +427,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # the device); a value axis like `block_size` is a coordinate of the
     # grid and lives in `point`.
     # `res.system["engine"]` -- the description's own answer, put there by
-    # `_read_system` from `read_task`.
+    # `_read_system` from `task.of`.
     vocab = _pins_vocabulary(res.system["engine"])
     for src in ((choice.get("point") or {}), (mech or {})):
         for name, val in sorted(src.items()):
@@ -529,7 +530,7 @@ def _point_table(points: List[BenchPoint]):
 
 def summary_text(res: BenchResult, out_path: Path, *,
                  report: Optional[str] = None,
-                 stage: Optional[str] = None, base=None) -> str:
+                 stage: Optional[str] = None, base=None, task=None) -> str:
     """The verb's stdout: the measurement table, the verdict, THE REPORT,
     and what to do next.  ``report`` is ``run_summarize_jobset``'s third
     return; ``stage`` names the stage in the next-commands and ``base`` the
@@ -600,7 +601,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
             # its config sets none.
             from .commands import (command, launch_lines, prep_group_lines,
                                    stage_group)
-            g = stage_group(base, stage)
+            g = stage_group(task, stage)
             lines.append("    2. prep the stage's group -- it uses what you "
                          "wrote, and nothing else:")
             lines.append("         " + (prep_group_lines([g], base=base)[0]
@@ -624,41 +625,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
 _BUNDLE_SEARCH_DEPTH = 4
 
 
-def bundle_for_sweep_file(jobset, path) -> Path:
-    """Which CALCULATION a sweep's ``job-set.json`` belongs to.
-
-    **The file's own directory is NOT the bundle**, and reading it as one
-    fails silently rather than loudly: ``job_dir_names`` hands out
-    directories relative to the calculation root (``01_coarse/bench/
-    bench-G1K1C1``), so resolving them against the file's directory points
-    at paths that do not exist -- every trial then reports ``unknown``,
-    every measurement is ``None``, and the sweep shows no verdict while
-    looking like a sweep that simply has not run yet.
-
-    Rather than climb a fixed number of levels -- which would encode one
-    of the layouts `paths.bench_container` supports -- ask the
-    naming authority where the trials should be and walk up until they are
-    actually THERE.  The answer is checked against the disk, so a wrong
-    guess cannot be returned as a right one.
-    """
-    from .materialize import job_dir_names, shape_of
-    start = Path(path).parent
-    candidates = [start, *list(start.parents)[:_BUNDLE_SEARCH_DEPTH]]
-    from ..task import FILENAME as TASK_FILENAME
-    for cand in candidates:
-        # A FOLDER THAT IS NO CALCULATION is passed over; one that is, and
-        # whose description does not read, is said (`shape_of`).
-        if not (cand / TASK_FILENAME).is_file():
-            continue
-        dirs = job_dir_names(jobset, shape_of(jobset, cand))
-        if dirs and all((cand / d).is_dir() for d in dirs.values()):
-            return cand
-    raise ValueError(
-        f"could not find the calculation {Path(path).name} belongs to: no "
-        f"directory at or above {start} holds this sweep's trial directories")
-
-
-def sweep_view(jobset, bundle) -> Dict:
+def sweep_view(calc, jobset) -> Dict:
     """The whole sweep, composed for a READER: the record a summarize
     would write, beside where every trial is right now.
 
@@ -691,14 +658,14 @@ def sweep_view(jobset, bundle) -> Dict:
     """
     from .runstatus import jobset_status
 
-    bundle = Path(bundle)
+    bundle = Path(calc.base)
     # ONE record-builder, shared with `run_summarize_jobset` -- so the
     # verdict this view shows is the verdict that gets written, down to
     # `choice["mechanism"]`.  Composing it here a second time is what B2
     # forbids.
-    res = bench_record(jobset, bundle, now_iso=utc_now_iso())
+    res = bench_record(calc, jobset, now_iso=utc_now_iso())
     points = res.points
-    status = jobset_status(jobset, bundle)
+    status = jobset_status(calc, bundle, jobset=jobset)
 
     # POSITION is the join, and it has to be: a BenchPoint's label is the
     # JOB's name while a StageStatus's name comes from its StageRef -- the
@@ -808,7 +775,7 @@ def utc_now_iso() -> str:
 
 __all__ = [
     "parse_point", "discover_points_from_jobset", "run_summarize_jobset",
-    "sweep_view", "swept_coordinates", "bundle_for_sweep_file",
+    "sweep_view", "swept_coordinates",
     "bench_record",
     "summary_text", "utc_now_iso",
     "recommendation_text", "task_summary",

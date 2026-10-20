@@ -222,7 +222,8 @@ def refuse_described(dest, *, shown: Optional[str] = None) -> None:
     (`engines/transport.md` § 3.8.2a) -- before anything is read or
     written.  ``shown`` is the folder as the door's reader names it (the
     browser's, from the projects root); the path otherwise."""
-    if (Path(dest) / TASK_FILENAME).is_file():
+    from .task import described
+    if described(dest):
         raise DescribeError(
             f"{shown or dest} already holds a calculation ({TASK_FILENAME}) -- one "
             f"calculation per folder.  Change it in Task setup or its "

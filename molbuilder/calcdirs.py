@@ -126,13 +126,13 @@ def root_of(directory) -> Optional[Path]:
     attempt's calculation is not here* is the honest reading, where a search
     would have adopted whatever it found.
     """
-    from .task import FILENAME as TASK_FILENAME
+    from .task import described
 
     directory = Path(directory)
-    if (directory / TASK_FILENAME).is_file():
+    if described(directory):
         return directory
     said = read(directory)
     if said is None:
         return None
     root = (directory / said.of).resolve()
-    return root if (root / TASK_FILENAME).is_file() else None
+    return root if described(root) else None

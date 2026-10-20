@@ -66,7 +66,7 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
 
     `engines/template.md` § 4.3 / `job-contracts.md` § 6.3 name the file
     ``<label>.template.toml``: ``template.template_path`` forms it and
-    ``template.find_template`` finds it, refusing a folder that holds two.
+    ``template.of`` finds it, refusing a folder that holds two.
     SEVEN call sites formed it themselves until 2026-08-17, in two
     incompatible ways -- from ``task.json``'s label, and by
     ``sorted(glob("*.template.toml"))[0]`` -- so a folder holding two

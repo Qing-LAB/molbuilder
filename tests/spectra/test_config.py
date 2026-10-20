@@ -92,7 +92,7 @@ class TestSpectraFieldMetadata:
         import json
         from molbuilder.config.pyscf import PySCFConfig
         from molbuilder.identity import run_id
-        from molbuilder.task import read_task
+        from molbuilder.task import of as task_of
         from molbuilder.validation.task import preflight
 
         (tmp_path / "task.json").write_text(json.dumps({
@@ -104,7 +104,7 @@ class TestSpectraFieldMetadata:
             "varies": ["dispersion"],
             "stages": [{"name": "coarse", "group": 1,
                         "overrides": {"dispersion": "d5"}}]}))
-        issues = preflight(read_task(tmp_path / "task.json"), PySCFConfig)
+        issues = preflight(task_of(tmp_path), PySCFConfig)
         bad = [i for i in issues
                if i.severity == "error" and "dispersion" in (i.message or "")]
         assert bad, [i.message for i in issues]

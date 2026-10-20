@@ -218,7 +218,7 @@ flowchart LR
     subgraph READ["reading"]
       A["<code>template.load_catalogue()</code><br/><i>the master list</i>"]
       B["<code>template.read_template(text)</code><br/><i>one calculation's answers</i>"]
-      C["<code>task.read_task(path)</code><br/><i>the steps</i>"]
+      C["<code>task.of(base)</code><br/><i>the steps</i>"]
     end
     subgraph WRITE["writing"]
       D["<code>template.template_with_values(cfg, engine)</code><br/><i>catalogue → this calculation</i>"]

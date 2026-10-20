@@ -228,7 +228,7 @@ def transport_sources(element):
                    SET_AFTER["rung_label"])
 
 
-def composed_for_prep(base, task, plan, *, afresh: bool = True):
+def composed_for_prep(base, task, plan, *, afresh: bool = True, jobset):
     """The junction a transport calculation's rungs describe: the record
     beside ``task.json`` when it is usable for THIS citation (the folder
     travels, `project-layout.md` § 2.1) -- written again when its order was
@@ -268,7 +268,8 @@ def composed_for_prep(base, task, plan, *, afresh: bool = True):
             return (_written_and_read_back(base, composed, plan, root=root,
                                            task=task)
                     if composed.order_found else composed)
-        refusal = no_usable_record(base, task, why, root=root, afresh=afresh)
+        refusal = no_usable_record(base, task, why, root=root, afresh=afresh,
+                                   jobset=jobset)
         if refusal is not None:
             raise PrepError(refusal)
         return _written_and_read_back(
@@ -280,7 +281,7 @@ def composed_for_prep(base, task, plan, *, afresh: bool = True):
         raise PrepError(str(exc)) from exc
 
 
-def no_usable_record(base, task, why, *, root, afresh: bool
+def no_usable_record(base, task, why, *, root, afresh: bool, jobset
                      ) -> "str | None":
     """Why this calculation's junction is not composed afresh, by its state
     -- in words, with the way on -- or ``None`` when it may be: no stage
@@ -294,7 +295,7 @@ def no_usable_record(base, task, why, *, root, afresh: bool
     from .ready import launched_stage
     reason = why[-1] if why else "there is no usable record"
     try:
-        launched = launched_stage(base, task)
+        launched = launched_stage(base, task, jobset)
     except LaunchRecordError as exc:
         return (f"this calculation's junction is not composed again: "
                 f"{reason}.  And {exc}")
@@ -305,7 +306,8 @@ def no_usable_record(base, task, why, *, root, afresh: bool
                 f"{reason}.  `{launched}` ran on the junction recorded, and a "
                 f"launched stage's junction is never replaced "
                 f"(engines/transport.md § 1.1); to compose it again, "
-                + redo_launched(launched, base=base, task=task))
+                + redo_launched(launched, base=base, task=task,
+                                jobset=jobset))
     if root is None:
         return (f"this transport calculation cannot be composed here: "
                 f"{reason}.  And {base} is not inside a projects tree, so the "

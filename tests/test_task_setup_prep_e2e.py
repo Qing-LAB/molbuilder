@@ -76,7 +76,7 @@ def _a_described_probe(root, execution=None):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.scheduler import Domain, Environment, Topology
     from molbuilder.structure import Structure
-    from molbuilder.task import Allocation, Stage, read_task, write_task
+    from molbuilder.task import Allocation, Stage, of as task_of, write_task
 
     src_dir = root / "structure"
     src_dir.mkdir(parents=True)
@@ -127,8 +127,8 @@ def _a_described_probe(root, execution=None):
         # ...and a run on it STATES its queue, wall, memory and cores per
         # rank (`architecture.md` § 5.2): the description says them, and the
         # card adds the rank count the test types.
-        t = read_task(d / "task.json")
-        write_task(d / "task.json", type(t)(
+        t = task_of(d)
+        write_task(d, type(t)(
             **{**{f.name: getattr(t, f.name)
                   for f in __import__("dataclasses").fields(t)},
                "execution": execution or {"omp_threads": 1},
@@ -432,7 +432,7 @@ def filled_dir(isolated_projects_root_module):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.scheduler import Environment, Topology
     from molbuilder.structure import Structure
-    from molbuilder.task import Allocation, Stage, read_task, write_task
+    from molbuilder.task import Allocation, Stage, of as task_of, write_task
 
     root = isolated_projects_root_module / "prep_filled"
     src_dir = root / "structure"
@@ -470,8 +470,8 @@ def filled_dir(isolated_projects_root_module):
         #   `time`         chosen    -- a LANE ASK, this run's own (§ 6.8e)
         # and `allocation` beside them, which is a different block for a
         # different question (§ 7).
-        t = read_task(d / "task.json")
-        write_task(d / "task.json", type(t)(
+        t = task_of(d)
+        write_task(d, type(t)(
             **{**{f.name: getattr(t, f.name)
                   for f in __import__("dataclasses").fields(t)},
                "execution": {"mpi_np": 16},

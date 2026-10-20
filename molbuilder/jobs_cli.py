@@ -117,8 +117,8 @@ def _record(job, decision: str, **facts) -> None:
     from pathlib import Path
 
     from .jobset.ledger import record
-    from .task import FILENAME
-    if (Path(job.calculation) / FILENAME).is_file():
+    from .task import described
+    if described(job.calculation):
         record(job.calculation, "jobs stop", decision, job=job.id, **facts)
 
 

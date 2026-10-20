@@ -14,7 +14,7 @@ the command line.
 WHY IT CLAIMS ONLY A TRANSPORT CALCULATION'S.  Every calculation has a
 ``task.json``; only a transport one has a report composed at its root.
 The discriminator is the description's own ``calculation``, read through
-its one door (`task.read_task`) -- never the file's place or name alone.
+its one door (`task.of`) -- never the file's place or name alone.
 """
 from __future__ import annotations
 
@@ -38,18 +38,20 @@ class TaskReadError(ValueError):
 def _load_transport_task(path: Path) -> dict:
     """The description's JSON, or :class:`TaskReadError` saying why not --
     one reader for both halves of the parser."""
-    from molbuilder.persist import read_json
     from molbuilder.runfiles import TASK_FILE
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     p = Path(path)
     if p.name != TASK_FILE:
         raise TaskReadError(f"{p.name} is not {TASK_FILE}")
     try:
-        # THE DESCRIPTION'S ONE READER (`task.read_task`): what every other
+        # THE DESCRIPTION'S ONE DOOR (`task.of`, A16): what every other
         # door reads it with, a description written before a rule refused
-        # naming the command that rewrites it.
-        task = read_task(p)
-        obj = read_json(p)
+        # naming the command that rewrites it; its record is the
+        # description's own encoding (`Task.to_dict`).
+        task = task_of(p.parent)
+        if task is None:
+            raise FileNotFoundError(p)
+        obj = task.to_dict()
     except Exception as exc:                                  # noqa: BLE001
         raise TaskReadError(
             f"{p.name} does not read as a description: "

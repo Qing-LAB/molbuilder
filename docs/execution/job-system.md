@@ -161,7 +161,7 @@ that file's own door:
 
 | what | it is | when the files say | the file | manifest | the door that reads the state |
 |---|---|---|---|---|---|
-| a stage | **described** | the description names it | `task.json` — its entry in `stages`, its `group` | § 5.1 | `task.read_task` |
+| a stage | **described** | the description names it | `task.json` — its entry in `stages`, its `group` | § 5.1 | `task.of` |
 | | **prepared** | its job's row is in the plan | `job-set.json` — the row; its `members`, the job it is prepared in; a force-constant stage's `written_at`, the `relax` run its deck holds | § 5.1 | `ready.job_of` |
 | | **ready to launch** / **waits for** | what it builds on has finished — the newest run of that stage, by that run's state below | the files of that run | § 5.3 | `ready.first_launch_takes` |
 | | **its job's members changed** | its row's `members` are not its group's now | `job-set.json` against `task.json` | § 5.1 | `group.regrouped` |
@@ -563,8 +563,8 @@ group's number — are said where they are typed, and written down too.
 
 | | when | the way on | decided in |
 |---|---|---|---|
-| **R-P1** | the folder is not a described calculation, or is one of its stage or run folders | `jobset init`; or the calculation's folder, named | `prep.read_description` |
-| **R-P2** | `task.json` or its template does not read — written by an older molbuilder, or a stage with no group | its reader's words; an older one names `jobset migrate` | `task.read_task` |
+| **R-P1** | the folder is not a described calculation, or is one of its stage or run folders | `jobset init`; or the calculation's folder, named | `calculation.open`, at each verb's entry (`calculation.refusal`, the one sentence) |
+| **R-P2** | `task.json` or its template does not read — written by an older molbuilder, or a stage with no group | its reader's words; an older one names `jobset migrate` | `task.of` |
 | **R-P3** | no group named, and nobody to ask (not a terminal) — or none to offer, and no junction order to record (a transport calculation whose junction's sidecar states none records it instead, nothing else written: [`engines/transport.md`](?doc=engines/transport.md) § 1.1, *No group left to prepare*) | the line that picks them; each group says where it stands | `_cli._ask_which_groups`, `prep._prep_groups` |
 | **R-P4** | a group the description does not hold | the groups it holds | `prep._prep_groups` |
 | **R-P5** | a member of a group picked — or of a group a changed job's members are in — was launched; or the group holds a stage put beside one launched without it | the state saved before its group's first launch; for a stage put in, a group of its own | `prep._prep_groups` (`group.launched_without`, `ready.launched_already`) |
@@ -608,7 +608,7 @@ group's number — are said where they are typed, and written down too.
 | **R-L24** | the folder's state cannot be saved | the save's words | `checkpoint.save_before` |
 | **R-L25** | the scheduler refuses the request | the scheduler's words; each run stays opened, not launched, and the next launch fills it anew | `submit._go` |
 | **R-L26** | a group the description does not hold | the groups it holds | `submit._the_group` |
-| **R-L27** | the description does not read | its reader's words | `submit._description` |
+| **R-L27** | the description does not read | its reader's words | `calculation.open`, at the launch's entry |
 | **R-L28** | a stage on the hierarchical layout with no run open | its group prepared again, or the restore | `submit._plan_member` |
 | **R-L29** | a deck rendered for other ranks or cores than its launch asks | its group prepared again, or the restore | `agreement.check_launch_matches_deck` |
 | **R-L30** | launched again, the inputs gathered for its run are gone | `--gather` | `submit._carry_the_gather` |
@@ -1968,11 +1968,12 @@ moves it (*The task*, *The next step*). `status
 <stage>` asks the same door for the stage it names. The Results tab's ladder is
 this same answer ([`web/results.md`](?doc=web/results.md) § 2.4) — its wire form,
 `JobSetStatus.to_dict`, the groups `prep task` would offer (`offer`) and the
-next step (`steps`) included. A job set with no
-description beside it — a hand-built one, a benchmark's sweep — lists its own
-jobs; a benchmark's sweep is read against the calculation it measures, from
-its bench folder too, and its next step is its own verbs for that stage —
-launch the sweep, then read what it measured (§ 7). A folder inside a calculation — a stage's, an attempt's — is answered with
+next step (`steps`) included. A benchmark's sweep is read against the
+calculation it measures (`jobset_status(calc, base, jobset=the sweep's)`),
+from its bench folder too, and its next step is its own verbs for that stage
+— launch the sweep, then read what it measured (§ 7); a plan with no
+description beside it — a hand-built one — is refused: no description, no
+layout to read it by (`architecture.md` A16). A folder inside a calculation — a stage's, an attempt's — is answered with
 the calculation it belongs to.
 
 The per-stage form answers a different question from the table. The table says
@@ -3008,10 +3009,10 @@ sequenceDiagram
     participant P as prep.plan_stage
     participant F as prep_calculation (filler)
     participant X as checkpoint · Plan · ledger
-    S->>R: task_state(base) — the groups, each stage's state
+    S->>R: task_state(calc) — the groups, each stage's state
     R-->>S: TaskState (prep_offer)
     S->>E: prep_task(groups, flags, asked)
-    E->>E: read_description — checkpoint 1
+    E->>E: calculation.open — checkpoint 1
     E->>R: job_of / ever_launched — a launched member refused first
     E->>E: checked — preflight, machine, provenance (3, 4)
     loop every member of every group picked
@@ -3069,7 +3070,7 @@ For someone extending the framework:
 | SIESTA's stage knowledge — the shipped ladder, the warm-file declaration, the traits — consumed by the engine seam | `molbuilder/siesta/stages.py` |
 | The benchmark grid — the `(G × K × c)` enumeration `prep bench` consumes | `molbuilder/bench/grid.py` |
 | Lay out the materialized tree — job folders with their copies; a stage's number and folder, read off the disk (`stage_home`); the one opener of every run folder (`open_run`: a stage's attempt, a trial's, a bias point's — each stamped with the containers above it; a submission's `launch/` stamped by `open_container`); what a run takes from other runs, one hand-over (`HandOver`, carried out by `hand_over`, § 5.4) | `molbuilder/jobset/materialize.py` |
-| The prep verb's entries, which the command line and the Task setup tab both call (§ 5.3): `prep_task` (a task's groups — read and checked once, every member into one plan, each group's header `group_header`) and `prep_bench` (one stage's benchmark), each → `PrepAnswer`; the description read and checked (`read_description`, `checked`); the one member planner, `plan_stage` (launch asks it too, quiet), handing the steps to `prep_calculation` into a `jobset.planned.Plan` — [`script-preparation.md`](?doc=execution/script-preparation.md) § 3, decided with nothing written; the save (`checkpoint.save_before`), the writing (`Plan.carry_out`), the record; a benchmark prepared (`prepared_already`) and the stages that fix the shape (`prepared_stages`) | `molbuilder/jobset/prep.py` |
+| The prep verb's entries, which the command line and the Task setup tab both call (§ 5.3): `prep_task` (a task's groups — read and checked once, every member into one plan, each group's header `group_header`) and `prep_bench` (one stage's benchmark), each → `PrepAnswer`; the calculation opened once and checked (`calculation.open`, `checked`); the one member planner, `plan_stage` (launch asks it too, quiet), handing the steps to `prep_calculation` into a `jobset.planned.Plan` — [`script-preparation.md`](?doc=execution/script-preparation.md) § 3, decided with nothing written; the save (`checkpoint.save_before`), the writing (`Plan.carry_out`), the record; a benchmark prepared (`prepared_already`) and the stages that fix the shape (`prepared_stages`) | `molbuilder/jobset/prep.py` |
 | The engine seam — an engine's deck writer, its data files, its warm declaration and traits, its config class (one map for every caller) | `molbuilder/jobset/engines.py` |
 | A job's placement — queue, wall, memory, ranks, cores, GPUs with their sources — and its fit, said (§ 6.0); the launch-value check | `molbuilder/jobset/placement.py` |
 | A benchmark's shelves — its trials by side and exact ask, widest first (`shelves_of`), and each shelf's one request (`shelf_request`), which prep writes each shelf's header from and launch walks | `molbuilder/jobset/shelves.py` |

@@ -39,16 +39,17 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
     collision does not fail -- it silently overwrites a stage.  The refusal
     lives where the ladder is READ (task.py), and it is
     case-insensitive because the names become filenames.  Driven through
-    ``read_task`` — the codec's live route."""
+    ``task.of`` — the codec's live route."""
     import json as _json
     import tempfile
     from pathlib import Path as _P
 
     from molbuilder.task import (Stage, StructureRef, Task, derive_run,
-                                 read_task, write_task)
+                                 write_task)
+    from molbuilder.task import of as task_of
     with tempfile.TemporaryDirectory() as d:
         p = _P(d) / "task.json"
-        write_task(p, Task(
+        write_task(_P(d), Task(
             engine="siesta", shape="flat", calculation="optimization",
             run=derive_run("j", stage_names=("tight", "medium")),
             structure=StructureRef(source="h2.xyz"),
@@ -62,7 +63,7 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
         raw["stages"][1]["name"] = "Tight"
         p.write_text(_json.dumps(raw))
         with pytest.raises(ValueError, match="two stages named"):
-            read_task(p)
+            task_of(p.parent)
 
 
 def test_a_stage_name_that_is_not_a_filename_is_refused():

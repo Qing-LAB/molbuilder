@@ -194,23 +194,19 @@ def api_results_dir():
     root = place["calculation"]
     if (place["role"] == calcdirs.CONTAINER and root is not None
             and Path(root).resolve() == directory.resolve()):
-        from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
-        from molbuilder.jobset.model import JobSet
+        from molbuilder.calculation import open as open_calculation
         from molbuilder.jobset.runstatus import every_run, jobset_status
-        from molbuilder.runs import place_of
         try:
-            jpath = directory / JOBSET_FILENAME
-            got_status = jobset_status(
-                JobSet.load(jpath) if jpath.is_file() else None, directory)
+            got_status = jobset_status(open_calculation(directory), directory)
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            attempts.append(f"the ladder could not be read: {exc}")
+            attempts.append(str(exc))
         else:
             # THE ONE WIRE FORM (`JobSetStatus.to_dict`), the next prep's
             # answer included -- and under each rung EVERY RUN of it, each
             # with its state and the file it opens (`runstatus.every_run`,
             # `web/results.md` § 2.4), so a run is picked here in place.
             ladder = got_status.to_dict()
-            task = place_of(directory).task
+            task = got_status.task
             for row, st in zip(ladder["stages"], got_status.stages):
                 try:
                     row["runs"] = every_run(directory, task, st)

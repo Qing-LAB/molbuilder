@@ -24,7 +24,7 @@ from .transport_rung import (at_frame, transport_rung, transport_sources,
                              transport_spec)
 
 
-def transport_inputs(base_dir, task, stage: str, *, template_text,
+def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
                      point=None) -> List[Tuple[RunRef, str]]:
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs: ``[(the run it comes from, filename)]``, decided at the
@@ -78,14 +78,15 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         from .group import number_of
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
-        redo = redo_launched(upstream, base=base, task=task)
-        # PREPARED, by the one door (`ready.job_of`).
+        redo = redo_launched(upstream, base=base, task=task, jobset=jobset)
+        # PREPARED, by the one door (`ready.job_of`), in the plan as the
+        # verb read it.
         from .ready import job_of
-        if job_of(base, upstream) is None:
+        if job_of(jobset, upstream) is None:
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has not been prepared -- run it first --\n"
-                + block(_run_first(upstream, base=base)) + q2)
+                + block(_run_first(upstream, base=base, task=task)) + q2)
         # THE NEWEST RUN, and only it (D5), by the layout's one answer
         # (`materialize.latest_attempt`): the one status door says it
         # finished (`continuation.usable`) -- exit code 0 and nothing in its
@@ -171,7 +172,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # records aside, an explicit engine default the same as none; never
         # which molbuilder wrote it (`siesta.engine_input`).
         if composed is None:
-            composed = composed_junction(base, task)
+            composed = composed_junction(base, task, jobset=jobset)
         now = rung_deck_now(base, task, upstream, composed,
                              template_text=template_text,
                              # THE UPSTREAM'S OWN POINTS (`rung_points`): a
@@ -201,8 +202,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     return gathered
 
 
-def gather_sources(base_dir, task, stage: str, *, template_text: str
-                   ) -> List[Tuple[Optional[object], List[tuple]]]:
+def gather_sources(base_dir, task, stage: str, *, template_text: str,
+                   jobset) -> List[Tuple[Optional[object], List[tuple]]]:
     """What this rung takes from the runs upstream -- ``[(point, [(source,
     filename), ...]), ...]``: one entry, ``point`` ``None``, for a rung that
     runs once; one per point for a rung that runs per point
@@ -221,7 +222,7 @@ def gather_sources(base_dir, task, stage: str, *, template_text: str
     from ..transport.stages import frames_of, rung_points
     base = Path(base_dir)
     return [(pt, transport_inputs(base, task, stage, point=pt,
-                                  template_text=template_text))
+                                  template_text=template_text, jobset=jobset))
             for pt in (rung_points(task, stage, frames=frames_of(base))
                        or (None,))]
 
@@ -240,7 +241,7 @@ def gather_into(base: Path, attempt_dir, inputs, plan, *, names: RunNames,
     return h
 
 
-def composed_junction(base, task):
+def composed_junction(base, task, *, jobset):
     """The junction this calculation is composed from -- its record beside
     ``task.json``, for the cited junction (`composed_for_prep` writes
     it before any rung's deck); read, never written: a record whose order a
@@ -263,7 +264,7 @@ def composed_junction(base, task):
         raise PrepError(str(exc)) from exc
     if composed is None:
         raise PrepError(no_usable_record(base, task, why, root=root,
-                                         afresh=False))
+                                         afresh=False, jobset=jobset))
     return composed
 
 

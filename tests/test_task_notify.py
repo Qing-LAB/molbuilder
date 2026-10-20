@@ -223,7 +223,7 @@ def test_finish_is_not_settable():
 # --------------------------------------------------------------------- #
 
 def test_a_field_selection_survives_the_round_trip():
-    """**The defect this closes.** `read_task` parsed `notify.report` and
+    """**The defect this closes.** `task.of` parsed `notify.report` and
     `to_dict` did not write it, so a description carrying a selection lost
     it the first time anything read and wrote the file -- which the task-setup
     tab does on every save.  No error anywhere; the ticks simply were not

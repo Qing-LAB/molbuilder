@@ -146,10 +146,10 @@ def why_no_sweep(task) -> Optional[str]:
     return None
 
 
-def collect_sweep(base_dir, task, *,
+def collect_sweep(calc, *,
                   tolerance_cm1: Optional[float] = None) -> Dict[str, Any]:
-    """The sweep record of the calculation at ``base_dir`` (`task` its
-    description): every force-constant stage's newest attempt, read where its
+    """The sweep record of the calculation ``calc`` (as the verb opened it,
+    A16): every force-constant stage's newest attempt, read where its
     run wrote it, and the comparison.  Raises :class:`SweepError` when there
     is nothing a sweep can be: a PySCF vibration (its Hessian is analytic),
     fewer than two force-constant stages, stages sharing a directory, no
@@ -171,7 +171,7 @@ def collect_sweep(base_dir, task, *,
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
     from ..template import catalogue, one
 
-    base = Path(base_dir)
+    base, task = Path(calc.base), calc.task
     why = why_no_sweep(task)
     if why:
         raise SweepError(why)
@@ -205,7 +205,7 @@ def collect_sweep(base_dir, task, *,
             # NOT PREPARED, in the ready door's words: ready, and what it
             # takes, or waiting, and what for (`jobset.ready`).
             from ..jobset.ready import readiness
-            r = readiness(base, task, name, verdict=False)
+            r = readiness(calc, name, verdict=False)
             pending.append({"stage": name, "state": r.state,
                             "detail": r.detail})
             continue
@@ -217,7 +217,7 @@ def collect_sweep(base_dir, task, *,
             # THE RUN'S STATE, through the one door -- a launch record that
             # does not read is the state `unreadable`, said (`runs.concluded`,
             # the scheduler asked once where it can).
-            st = concluded(attempt, home.names(task.shape), base=base_dir)
+            st = concluded(attempt, home.names(task.shape), base=base)
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):

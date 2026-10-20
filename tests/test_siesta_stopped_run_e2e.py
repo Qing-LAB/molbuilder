@@ -406,8 +406,9 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     # ladder door's own answer, the next group's words and lines, and when it
     # was read.
     from molbuilder.jobset.model import FILENAME as _PLAN, JobSet
+    from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
-    step = next(g for g in jobset_status(JobSet.load(bundle / _PLAN),
+    step = next(g for g in jobset_status(open_calculation(bundle),
                                          bundle).steps if g.next)
     shown = page.locator(".results-ladder-steps-list li.is-next").inner_text()
     assert step.words in shown and step.lines, (step, shown)

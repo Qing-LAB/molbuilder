@@ -186,13 +186,13 @@ def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
     MUTATION THIS MUST FAIL AGAINST: the calculation's card handed whole to
     every rung (`Task.run_condition`)."""
     from molbuilder.jobset.prep_inputs import run_inputs
-    from molbuilder.task import FILENAME, read_task
+    from molbuilder.task import FILENAME, of as task_of
     d = isolated_projects_root / "J" / "transport" / "t"
     d.mkdir(parents=True)
     r = _save(web_client, d, _transport(execution={
         "use_gpu": True, "gpu_count": 1, "mpi_np": 4, "omp_threads": 1}))
     assert r.status_code == 200, r.get_json()
-    task = read_task(d / FILENAME)
+    task = task_of(d)
     for rung in _RUNGS[:-1]:
         shape, pins = run_inputs(d, task, rung)
         assert (shape.get("gres"), pins.get("use_gpu")) == ("gpu:1", True), \
@@ -222,7 +222,7 @@ def test_the_templates_gpu_is_taken_by_the_rungs_that_read_it(
     from molbuilder.jobset.model import Resources, gpu_request
     from molbuilder.jobset.prep_inputs import run_inputs
     from molbuilder.resolve import resolve
-    from molbuilder.task import FILENAME, read_task
+    from molbuilder.task import FILENAME, of as task_of
     from molbuilder.template import template_path, template_with_values
     d = isolated_projects_root / "J" / "transport" / "t"
     d.mkdir(parents=True)
@@ -233,7 +233,7 @@ def test_the_templates_gpu_is_taken_by_the_rungs_that_read_it(
     r = _save(web_client, d, _transport(execution={
         "gpu_count": 1, "mpi_np": 4, "omp_threads": 1}))
     assert r.status_code == 200, r.get_json()
-    task = read_task(d / FILENAME)
+    task = task_of(d)
     asked = {}
     for rung in _RUNGS:
         shape, pins = run_inputs(d, task, rung)

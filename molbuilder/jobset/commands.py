@@ -44,17 +44,11 @@ def words_for(kind: str, *stages, groups=()) -> tuple:
     return (kind, *named)
 
 
-def stage_group(base, stage: str) -> Optional[int]:
-    """The group ``stage`` is in, as the calculation's description numbers
-    it (`engines/stages.md` § 2), or ``None`` -- a description that does
-    not read is its reader's to refuse, where it is read."""
-    from ..task import FILENAME, read_task
+def stage_group(task, stage: str) -> Optional[int]:
+    """The group ``stage`` is in, as the description numbers it
+    (`engines/stages.md` § 2), or ``None`` with no description."""
     from .group import number_of
-    try:
-        task = read_task(Path(base) / FILENAME)
-    except (OSError, ValueError):
-        return None
-    return number_of(task, stage)
+    return number_of(task, stage) if task is not None else None
 
 
 def prep_group_lines(numbers, *, base) -> List[str]:
@@ -242,10 +236,11 @@ def lines(verb: str, kind: str, *words, base) -> List[str]:
     return [command(verb, *words_for(kind, *words), base=base)]
 
 
-def run_first(stage: str, *, base) -> List[str]:
+def run_first(stage: str, *, base, task) -> List[str]:
     """Run ``stage`` first -- its group's prep, then its group's launch: the
-    remedy every refusal that waits on a stage not prepared gives."""
-    g = stage_group(base, stage)
+    remedy every refusal that waits on a stage not prepared gives; ``task``
+    the description as the verb read it."""
+    g = stage_group(task, stage)
     if g is None:
         return launch_lines(TASK, stage, base=base)
     return prep_group_lines([g], base=base) + launch_lines(
@@ -306,7 +301,7 @@ def _saved_states(base) -> str:
             + f"\n  then `{restore}` with the id of the one you pick.")
 
 
-def redo_launched(stage: Optional[str], *, base, task=None) -> str:
+def redo_launched(stage: Optional[str], *, base, task, jobset) -> str:
     """How a LAUNCHED stage is changed (`job-system.md` § 5.0): the state
     saved before its group's first launch restored -- every run it builds on
     is in it, and there it is prepared, never launched -- and a prep anew.
@@ -314,20 +309,14 @@ def redo_launched(stage: Optional[str], *, base, task=None) -> str:
     note named them (`group.named`, at the launch): the description may
     hold other members now, and a number shifts when a stage above it is
     removed.  A stage launched before 2.7.0, whose launch saved no state,
-    goes back to the state saved before its prep.  ``task`` is the
-    description as the caller read it; with none it is read here."""
+    goes back to the state saved before its prep.  ``task`` and ``jobset``
+    are the description and the plan as the verb read them (A16)."""
     from .group import (group_members, members_of, named, number_of,
                         same_members)
     from .ready import job_of
-    if task is None and stage is not None:
-        from ..task import FILENAME, read_task
-        try:
-            task = read_task(Path(base) / FILENAME)
-        except (OSError, ValueError):
-            task = None
     g = (number_of(task, stage)
          if task is not None and stage is not None else None)
-    job = job_of(base, stage) if stage is not None else None
+    job = job_of(jobset, stage) if stage is not None else None
     ran = members_of(job) if job is not None else None
     what = ("the first launch of its group" if g is None else
             f"the first launch of {named(task, g)}"
@@ -339,7 +328,7 @@ def redo_launched(stage: Optional[str], *, base, task=None) -> str:
             f"prep anew -- " + _saved_states(base))
 
 
-def way_back(stage: str, *, base, task, launched: bool) -> str:
+def way_back(stage: str, *, base, task, launched: bool, jobset) -> str:
     """How a prepared stage is made as the description gives it now
     (`job-system.md`, *The task*) -- the one composer of a stage's way back:
     never launched, its group prepared again; launched,
@@ -350,7 +339,7 @@ def way_back(stage: str, *, base, task, launched: bool) -> str:
     if not launched and g is not None:
         return ("prepare its group again -- it was never launched:\n"
                 + block(prep_group_lines([g], base=base)))
-    return redo_launched(stage, base=base, task=task)
+    return redo_launched(stage, base=base, task=task, jobset=jobset)
 
 
 def order_recorded(*, base) -> str:

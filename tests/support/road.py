@@ -33,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from molbuilder.calculation import open as open_calculation
 from support.machines import SLURM
 
 
@@ -539,8 +540,8 @@ def _road_source_edited(edit, bundle) -> None:
     """The calculation's structure file edited by hand after it was
     described: its ``atom``-th atom line (0-based) replaced by ``line``,
     the sidecar beside it untouched (`structure-molstruct.md` § 3)."""
-    from molbuilder.task import read_task
-    src = bundle / Path(read_task(bundle / "task.json").structure.source).name
+    from molbuilder.task import of as task_of
+    src = bundle / Path(task_of(bundle).structure.source).name
     lines = src.read_text().split("\n")
     lines[2 + edit["atom"]] = edit["line"]
     src.write_text("\n".join(lines))
@@ -550,9 +551,9 @@ def _road_held_edited(held, bundle) -> None:
     """The calculation's structure, its held atoms set anew (``held``) after
     it was described, written back through the codec -- its coordinates and
     its pin unchanged."""
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.workingcopy_structure import StructureCodec
-    src = bundle / Path(read_task(bundle / "task.json").structure.source).name
+    src = bundle / Path(task_of(bundle).structure.source).name
     mine = StructureCodec().load(src)
     StructureCodec().write(
         mine.replace(regions={**mine.regions, "frozen_atoms": list(held)}),
@@ -614,10 +615,10 @@ def _road_own_warm_files(case, bundle) -> None:
     known and not carried for each, ``resumes`` states its one
     section-level fact for every kind, in ``[base]``."""
     import re
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.warmfiles import FILENAME, warm_list
     own = case["own_warm_files"]
-    engine = str(read_task(bundle / "task.json").engine)
+    engine = str(task_of(bundle).engine)
     text = Path(warm_list(engine).path).read_text()
     for suffix in own.get("withhold", []):
         row = re.compile(r'(suffix\s*=\s*"' + re.escape(suffix)
@@ -641,7 +642,7 @@ def _road_plan_carries(want, bundle) -> None:
     ``{stage: [file, ...]}``.  Which of them a launch takes is
     `warm_carry`'s, asked at the launch (`job-contracts.md` § 4.2a)."""
     from molbuilder.jobset.model import JobSet
-    plan = JobSet.load(bundle / "job-set.json")
+    plan = JobSet.of(bundle)
     jobs = {j.name: j for j in plan.jobs}
     for stage, files in want.items():
         assert stage in jobs, f"the plan holds no job {stage!r}: {sorted(jobs)}"
@@ -734,8 +735,8 @@ def _road_card_written(specs, bundle) -> None:
     import re
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.runfiles import manifest
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
+    from molbuilder.task import of as task_of
+    task = task_of(bundle)
     for spec in specs:
         token = stage_home(bundle, task, spec["stage"]).token
         at_root = [p.name for p in bundle.iterdir() if p.is_file()]
@@ -958,8 +959,8 @@ def _stage_names(bundle: Path, stage: str):
     shape."""
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.runfiles import RunNames
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
+    from molbuilder.task import of as task_of
+    task = task_of(bundle)
     return RunNames.of(task.label, stage_home(bundle, task, stage).token,
                        task.shape)
 
@@ -983,11 +984,11 @@ def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.submit import plan_launch
     from molbuilder.paths import Shape, bench_container
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
+    from molbuilder.task import of as task_of
+    task = task_of(bundle)
     container = bundle / bench_container(
         Shape.named(task.shape), stage_home(bundle, task, stage).token)
-    plan = plan_launch(JobSet.load(container / "job-set.json"), bundle,
+    plan = plan_launch(open_calculation(bundle), JobSet.of(container),
                        mode="submit", side=side, record=False,
                        told=dict(kind="bench", stage=stage, trial=None,
                                  mode="submit", flags=[]))
@@ -1032,8 +1033,8 @@ def _named(kind: str, stage, bundle, *, verb: str = "prep") -> tuple:
     # the number its folder carries (`identity.resolve_stage_ref`).
     from molbuilder.identity import StageRef, resolve_stage_ref
     from molbuilder.jobset.materialize import ladder_homes
-    from molbuilder.task import read_task
-    task = read_task(Path(bundle) / "task.json")
+    from molbuilder.task import of as task_of
+    task = task_of(Path(bundle))
     refs = [StageRef(h.seq, h.name) for h in ladder_homes(Path(bundle), task)]
     groups = []
     for s in stages:

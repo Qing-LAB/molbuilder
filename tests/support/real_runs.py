@@ -81,8 +81,8 @@ class RealRun:
         from molbuilder.jobset.materialize import stage_home
         from molbuilder.paths import attempt_dir
         from molbuilder.runfiles import TASK_FILE
-        from molbuilder.task import read_task
-        task = read_task(self.bundle / TASK_FILE)
+        from molbuilder.task import of as task_of
+        task = task_of(self.bundle)
         return attempt_dir(stage_home(self.bundle, task, stage).dir, n)
 
 

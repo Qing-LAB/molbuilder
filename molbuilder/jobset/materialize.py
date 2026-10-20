@@ -176,44 +176,19 @@ def trial_work_dir(container, shape, names: "RunNames") -> Path:
     return attempt
 
 
-def shape_of(jobset: JobSet, base_dir) -> "Shape":
-    """The layout this bundle uses, read from its description.
-
-    **The one place a surface asks.** `engines/stages.md` § 6.7 puts the shape
-    in `task.json` and says *"`prep` **reads** it; it does not decide it"* —
-    so this reads it, and every layer below takes the answer as an argument
-    rather than going looking for it a second time.
-
-    A folder with no ``task.json`` is not a calculation molbuilder
-    described, and is refused.
-    """
-    from ..task import FILENAME, read_task
-    from ..paths import Shape
-    desc = Path(base_dir) / FILENAME
-    if not desc.is_file():
-        raise ValueError(f"{base_dir} holds no {FILENAME} -- not a "
-                         f"calculation molbuilder described, so it has no "
-                         f"layout to read (`molbuilder jobset init`)")
-    return Shape.named(read_task(desc).shape)
-
-
-def sweep_set_paths(bundle) -> "List[Path]":
-    """Every place a SWEEP's ``job-set.json`` can be in this bundle.
+def sweep_set_dirs(bundle) -> "List[Path]":
+    """Every folder a SWEEP's plan can lie in, in this bundle -- the bench
+    containers the layout declares (`paths.bench_containers_in`), in order.
 
     The search counterpart of :func:`bench_container`, and it lives beside it
     for that reason: the namer says where a sweep's state GOES and this says
     where to look for it, so a layout change moves one file instead of two
-    that must be kept in step by hand.  It asks `paths.bench_containers_in`,
-    so the answer is narrowed to the containers the layout declares.
-
-    Returns the paths that exist, unread: whether a set is a sweep is in the
-    file, and reading it is the caller's business.
+    that must be kept in step by hand.  Whether a folder holds a plan, and
+    whether it is a sweep's, is the plan's door's answer (`JobSet.of`,
+    `architecture.md` A16); nothing is read here.
     """
-    from .model import FILENAME as _JS
     base = Path(bundle)
-    return sorted(p for p in (base / rel / _JS
-                              for rel, _tok in _bench_containers_in(base))
-                  if p.is_file())
+    return [base / rel for rel, _tok in _bench_containers_in(base)]
 
 
 def bench_stage_of(base, where) -> "Optional[str]":
@@ -282,7 +257,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
     directory, flat is depth 1 and they all sit in the bundle root
     (:class:`~molbuilder.paths.Shape`).  A described trial nests
     under its stage's directory, so the shape reaches it through the stage.
-    It is required: every surface reads it through :func:`shape_of`.
+    It is required: the description's, `Shape.named(task.shape)` (A16).
     """
     sh = shape
     refs = stage_refs(jobset)
@@ -364,7 +339,7 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
 
 
 def materialize(jobset: JobSet, base_dir, plan=None, *,
-                shape=None, only=None) -> List[Path]:
+                shape, only=None) -> List[Path]:
     """Create each job's directory under ``base_dir`` with its copies --
     the jobs named in ``only`` (a set of job names), or every job.
 
@@ -377,7 +352,7 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
     of the disk, and is read for the files it already holds -- `prep`
     decides everything before it writes (`job-system.md` § 5.0); without one
     they are written now.  ``shape`` is the layout as the caller read it
-    (:func:`shape_of`); with none it is asked here.
+    (`Shape.named(task.shape)`, the one door; A16).
     """
     errors = jobset.validate()
     if errors:
@@ -389,7 +364,7 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
     plan = Plan() if own else plan
     base = Path(base_dir)
     created: List[Path] = []
-    sh = shape if shape is not None else shape_of(jobset, base_dir)
+    sh = shape
     dirs = job_dir_names(jobset, sh)
     for job in jobset.jobs:
         if only is not None and job.name not in only:
@@ -529,15 +504,17 @@ def resolve_attempt(stage_dir: Path, names: "RunNames") -> Tuple[Path, bool]:
     return attempt_dir(stage_dir, FIRST_ATTEMPT), True
 
 
-def ever_launched(jobset: JobSet, base_dir, job) -> bool:
+def ever_launched(jobset: JobSet, base_dir, job, shape) -> bool:
     """Whether ``job``'s stage has been launched -- any run of it
     (`project-layout.md` § 1.6.1): where its runs are folders, every
     ``run-<n>`` but the newest was, and the newest when its launch record
     says so (:func:`resolve_attempt`'s rule); where its runs share a
-    folder, its newest launched run's record.  A record that does not read
-    raises, as the one door does (`runrecord.launch_record`)."""
+    folder, its newest launched run's record.  ``shape`` is the
+    description's (`Shape.named(task.shape)`, the one door; A16).  A record
+    that does not read raises, as the one door does
+    (`runrecord.launch_record`)."""
     base = Path(base_dir)
-    sh = shape_of(jobset, base)
+    sh = shape
     names = run_names(jobset, job, sh)
     container = base / job_dir_names(jobset, sh)[job.name]
     if not sh.keeps_attempts_as_directories:
@@ -686,7 +663,7 @@ class SweepRun:
 
 
 def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
-                   plan, shape=None, frames: Optional[int] = None
+                   plan, shape, frames: Optional[int] = None
                    ) -> SweepRun:
     """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
     folder, holding copies of that point's prepared files (its deck, run
@@ -704,7 +681,7 @@ def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
     each starts from the walk's."""
     from ..transport.stages import point_folders
     base = Path(base_dir)
-    sh = shape if shape is not None else shape_of(jobset, base_dir)
+    sh = shape
     job = jobset.job(stage_name)
     stage_dir = base / job_dir_names(jobset, sh)[job.name]
     rn = run_names(jobset, job, sh)
@@ -943,7 +920,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     as part of its plan, written after the save (`job-system.md` § 5.0),
     and `launch` fills it as part of its own, written at the send; a caller
     with none has it written now.  ``shape`` is the layout as the caller read
-    it (:func:`shape_of`); with none it is asked here.
+    it (`Shape.named(task.shape)`, the one door; A16).
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
     the launch, by default (`job-system.md` § 5.4) -- so a refusal quotes
@@ -980,8 +957,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     same refusal when it matches none of them.
     """
     base = Path(base_dir)
-    sh = shape if shape is not None else shape_of(jobset, base_dir)
-    if sh is not None and not sh.keeps_attempts_as_directories:
+    sh = shape
+    if not sh.keeps_attempts_as_directories:
         raise ValueError(FLAT_HAS_NO_ATTEMPTS)
     dir_of = job_dir_names(jobset, sh)
     refs = stage_refs(jobset)
@@ -1062,8 +1039,8 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
     ONE CHECK, asked by :func:`prepare_attempt` before it writes anything
     and by `launch` before it shows what it will send -- so a run that
     cannot be continued is refused before the question, not after the yes.
-    ``shape`` is the layout as the caller read it (:func:`shape_of`); with
-    none it is asked here.
+    ``shape`` is the layout as the caller read it (`Shape.named(task.shape)`,
+    A16).
     """
     base = Path(base_dir)
     said = (f"--from {continue_from!r}" if named else
@@ -1080,8 +1057,7 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
                          f"to carry its files.")
     # The pair, resolved here and nowhere else -- `--from` is what names
     # the source, so this is the first moment both stages are known.
-    dir_of = job_dir_names(jobset, shape if shape is not None
-                           else shape_of(jobset, base))
+    dir_of = job_dir_names(jobset, shape)
     names = (carry if carry is not None
              else warm_carry(job, _source_job(jobset, dir_of, continue_from)))
     if not names:

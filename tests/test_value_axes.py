@@ -17,6 +17,7 @@ import json
 
 import numpy as np
 import pytest
+from molbuilder.calculation import open as open_calculation
 
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
@@ -121,7 +122,7 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     notes (`prep.prep_bench`)."""
     _declare(sol_calc, USERS_MATRIX)
     notes: list = []
-    points, pins, tr = bench_inputs(sol_calc, None, notes=notes)
+    points, pins, tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
 
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
@@ -148,7 +149,7 @@ def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     lets a login node enumerate for the cluster behind it; the ask is a
     count, and names no card (`scheduler.md` R2a)."""
     _declare(sol_calc, USERS_MATRIX)
-    points, _pins, tr = bench_inputs(sol_calc, None)
+    points, _pins, tr = bench_inputs(open_calculation(sol_calc), None)
     g2 = next(p for p in points if p["G"] == 2)
     res = tr.to_resources(g2, None)
     assert res["gres"] == "gpu:2"
@@ -169,7 +170,7 @@ def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [8]})
-    points, _pins, tr = bench_inputs(sol_calc, None)
+    points, _pins, tr = bench_inputs(open_calculation(sol_calc), None)
     assert [p["G"] for p in points] == [8], points
     assert tr.to_resources(points[0], None)["gres"] == "gpu:8"
 
@@ -185,7 +186,7 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
     with pytest.raises(PrepError) as e:
-        bench_inputs(sol_calc, None)
+        bench_inputs(open_calculation(sol_calc), None)
     said = str(e.value)
     assert "no queue with recorded GPUs" in said, said
     # the record that answered is the calculation's own snapshot, named as
@@ -256,7 +257,7 @@ def _prep_on(calc, queue):
     """`prep bench coarse --domain QUEUE`, through the one entry: the
     benchmark's one queue, its headers written (`job-system.md` § 6.0)."""
     from molbuilder.jobset.model import Resources
-    return prep_bench(calc, "coarse", allocation=Resources(domain=queue),
+    return prep_bench(open_calculation(calc), "coarse", allocation=Resources(domain=queue),
                       emit_sbatch=True).dirs
 
 
@@ -388,7 +389,7 @@ def test_declared_gpu_count_is_exact(sol_calc):
     never rounded."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [1, 2, 3]})
-    points, _pins, _tr = bench_inputs(sol_calc, None)
+    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None)
     assert sorted(p["G"] for p in points) == [1, 2],         "exactly the declared counts that divide -- G4 must NOT appear"
     assert all(p["G"] * p["K"] == 32 for p in points)
 
@@ -397,7 +398,7 @@ def test_uneven_split_is_dropped_by_name(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [2, 3]})
     notes: list = []
-    bench_inputs(sol_calc, None, notes=notes)
+    bench_inputs(open_calculation(sol_calc), None, notes=notes)
     out = "\n".join(notes)
     assert "do not split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
 
@@ -409,7 +410,7 @@ def test_a_gpu_count_past_the_record_is_kept_with_its_fit(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
                         "gpu_count": [8]})
     notes: list = []
-    points, _pins, _tr = bench_inputs(sol_calc, None, notes=notes)
+    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
     assert {(p["G"], p["K"]) for p in points} == {(8, 4)}
     assert "8 GPUs is over general's most GPUs on a node (4 GPUs)" \
         in "\n".join(notes)
@@ -419,7 +420,7 @@ def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [False],
                         "gpu_count": [2]})
     with pytest.raises(PrepError) as e:
-        bench_inputs(sol_calc, None)
+        bench_inputs(open_calculation(sol_calc), None)
     assert "silently ignored" in str(e.value)
 
 
@@ -427,7 +428,7 @@ def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
                         "gpu_count": [3]})
     with pytest.raises(PrepError) as e:
-        bench_inputs(sol_calc, None)
+        bench_inputs(open_calculation(sol_calc), None)
     assert "no GPU cell is left" in str(e.value)
     assert "even-split rule" in str(e.value), (
         "the refusal must point at the rule that dropped each cell -- not "
@@ -445,7 +446,7 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
                         "use_gpu": [True, False],
                         "gpu_count": [1, 2, 4]})
     notes: list = []
-    points, _pins, _tr = bench_inputs(sol_calc, None, notes=notes)
+    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None, notes=notes)
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
     assert sorted({p["K"] for p in cpu}) == [32, 64], \
@@ -466,7 +467,7 @@ def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
     half stays the machine's proposal, filtered to the declared device
     counts."""
     _declare(sol_calc, {"use_gpu": [True], "gpu_count": [2]})
-    points, _pins, _tr = bench_inputs(sol_calc, None)
+    points, _pins, _tr = bench_inputs(open_calculation(sol_calc), None)
     assert points, "the probed ladder must survive the filter"
     assert {p["G"] for p in points} == {2}
     assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
@@ -481,11 +482,11 @@ def test_preflight_flags_a_typod_choice_per_point(sol_calc):
     UI) failed only at `prep bench` on Sol.  The preflight now says it at
     describe time, per point, with the choices — and a repeated point is
     refused too."""
-    from molbuilder.task import read_task
+    from molbuilder.task import of as task_of
     from molbuilder.validation.task import preflight
     _declare(sol_calc, {"diag_algorithm": ["ELPA-1Stage", "ELPA-2STAGE"],
                         "use_gpu": [True, True]})
-    issues = preflight(read_task(sol_calc / "task.json"))
+    issues = preflight(task_of(sol_calc))
     msgs = [i.message for i in issues]
     assert any("'ELPA-1Stage'" in m and "ELPA-1STAGE" in m for m in msgs), \
         "the typo'd point must be named WITH the choices"
@@ -501,7 +502,7 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
     -- two identical grid cells measuring one configuration twice."""
     _declare(sol_calc, {"mpi_np": [8, 8, 16], "omp_threads": [1]})
     with pytest.raises(PrepError) as e:
-        bench_inputs(sol_calc, None)
+        bench_inputs(open_calculation(sol_calc), None)
     assert "repeated point" in str(e.value)
     assert "mpi_np" in str(e.value)
 
@@ -562,7 +563,7 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     from molbuilder.jobset._cli import _stage_bench_dir
     _declare(flat_sol_calc, _small_matrix())
     _prep_on(flat_sol_calc, "general")
-    container, token = _stage_bench_dir(flat_sol_calc, "coarse")
+    container, token = _stage_bench_dir(open_calculation(flat_sol_calc), "coarse")
     assert container.name.startswith("bench_"), (
         f"flat container is {container.name!r}, not the root-level "
         f"bench_<NN>_<stage> form")

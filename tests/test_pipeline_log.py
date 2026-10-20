@@ -20,6 +20,7 @@ import re
 
 import numpy as np
 import pytest
+from molbuilder.calculation import open as open_calculation
 
 from conftest import write_pseudos
 from molbuilder import describe as D
@@ -83,8 +84,8 @@ def _prep(dest, stage, **ask):
     and the Task setup tab call -- the launch shape stated as its flags:
     SIESTA's ranks and cores per rank, PySCF's threads (it runs one
     process).  ``ask`` adds to them."""
-    from molbuilder.task import read_task
-    siesta = read_task(dest / "task.json").engine == "siesta"
+    from molbuilder.task import of as task_of
+    siesta = task_of(dest).engine == "siesta"
     return prep_the_group_of(dest, stage, allocation=Resources(
         **({"mpi_np": 8} if siesta else {}), cpus_per_task=1, **ask))
 
@@ -319,7 +320,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
-            prep_bench(dest, stages[0],
+            prep_bench(open_calculation(dest), stages[0],
                        allocation=Resources(mpi_np=8))
         else:
             _prep(dest, stages[0])

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from molbuilder.calculation import open as open_calculation
 
 from support.road import (a_machine_with_queues, calls_made, describe_calculation,
                           group_words, jobset, stage_file)
@@ -167,11 +168,12 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     from molbuilder.jobset.ask import Said
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
-    js = JobSet.load(bundle / "job-set.json")
+    js = JobSet.of(bundle)
     attempt = bundle / "01_coarse" / "run-0"
 
     def plan():                  # the queue its prep placed it on: `debug`
-        return plan_launch(js, bundle, mode="submit", only="coarse",
+        return plan_launch(open_calculation(bundle), js, mode="submit",
+                           only="coarse",
                            told=dict(kind="task", stage="coarse", trial=None,
                                      mode="submit", flags=[]))
 

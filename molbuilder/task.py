@@ -389,7 +389,7 @@ class Task:
     the ordinary starting point, not a special shape.
 
     They stay ``Optional`` on the dataclass all the same, and the asymmetry is
-    deliberate rather than an oversight: the codec is the gate (:func:`read_task`
+    deliberate rather than an oversight: the codec is the gate (:func:`of`
     refuses a description with no ``stages``, naming the fix), while the type
     still admits ``None`` so a producer can build a Task in pieces.  What the
     type must keep enforcing is that the two move TOGETHER — ``varies`` is what
@@ -647,7 +647,7 @@ class Task:
                 "because an absent 'stages' is refused too "
                 "(engines/stages.md 6.5)")
         # The two LADDER-level refusals live here, in the codec, because
-        # every route to a Task -- describe on a laptop, read_task on the
+        # every route to a Task -- describe on a laptop, `task.of` on the
         # cluster, a hand-edited file -- passes through this constructor.
         if self.stages is not None:
             # CASE-INSENSITIVELY, like the reader (D6): the names key
@@ -1368,26 +1368,56 @@ def derive_run(name: str, formula: str = "", *, created: str = "",
                id=run_id(name, formula, stage_names=stage_names))
 
 
-def read_task(path) -> Task:
-    """Read and parse ``task.json``.  One written before every description
-    stated its kind and its notify block whole (2026-10-06), or every stage
-    its group (2026-10-11), is refused naming the command that rewrites it,
-    the calculation by its folder."""
-    obj = read_json(path)
+def path_of(base) -> Path:
+    """``<base>/task.json`` -- the one place the description's name is
+    joined to its folder (`architecture.md` A16): for its writer, and for
+    `jobset migrate`, which reads it raw."""
+    return Path(base) / FILENAME
+
+
+def described(base) -> bool:
+    """Does the folder hold a description -- the owner's answer to *is this
+    a described calculation's folder*, without reading it (the ledger
+    writes in one only; a route offers a folder's parts by it)."""
+    return path_of(base).is_file()
+
+
+def of(base) -> Optional[Task]:
+    """THE DESCRIPTION'S DOOR (`architecture.md` § 3.2, A16): the folder's
+    ``task.json`` read and parsed, or ``None`` when the folder holds none.
+    One written before every description stated its kind and its notify
+    block whole (2026-10-06), or every stage its group (2026-10-11), is
+    refused naming the command that rewrites it, the calculation by its
+    folder."""
+    path = path_of(base)
+    if not path.is_file():
+        return None
+    return _from_obj(read_json(path), said_as=str(path), base=Path(base))
+
+
+def from_text(text: str, said_as: str = FILENAME) -> Task:
+    """A description that is not yet a file -- the Task setup tab's save
+    (`task-setup.md`) -- read by the one reader; ``said_as`` names it in a
+    refusal."""
+    import json
+    return _from_obj(json.loads(text), said_as=said_as, base=None)
+
+
+def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
     before = _written_before(obj) if isinstance(obj, Mapping) else []
     if before:
         from .jobset.commands import command
         raise ValueError(
-            f"{path} was written before every description stated "
+            f"{said_as} was written before every description stated "
             f"{' and '.join(before)}: "
-            f"`{command('migrate', base=Path(path).parent)}` rewrites it, "
+            f"`{command('migrate', base=base)}` rewrites it, "
             f"every value kept and the old file beside the new.")
     return Task.from_dict(obj)
 
 
 def _written_before(obj: Mapping[str, Any]) -> List[str]:
     """What a description written before a rule leaves out, said as
-    :func:`read_task` says it -- no `calculation`, a notify block short of
+    :func:`of` says it -- no `calculation`, a notify block short of
     its four or a period of ``0`` for never (``null`` since; 2026-10-06), a
     stage without its `group` (2026-10-11) -- or ``[]``."""
     out: List[str] = []
@@ -1496,16 +1526,17 @@ def _task_to_dict(task: Task) -> dict:
     return out
 
 
-def write_task(path, task: Task):
-    """Write ``task.json`` atomically (``persist.write_json``)."""
-    return write_json(path, task.to_dict())
+def write_task(base, task: Task):
+    """Write the folder's ``task.json`` atomically (``persist.write_json``)
+    -- the path the owner forms (:func:`path_of`)."""
+    return write_json(path_of(base), task.to_dict())
 
 
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Allocation",
            "Run", "StructureRef", "Stage", "Task",
-           "bench_from_obj", "derive_run", "read_task", "varies_for",
-           "write_task"]
+           "bench_from_obj", "derive_run", "of", "from_text", "path_of",
+           "varies_for", "write_task"]
 
 
 #: See the note beside § 2 above.  Derived here, where `Stage` is in scope.

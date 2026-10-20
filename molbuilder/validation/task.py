@@ -133,7 +133,7 @@ def preflight(task, config_cls=None, *,
     # resolves; one that does not is refused above, or by prep.
     if ladder:
         from ..jobset.group import check_groups
-        why = check_groups(None, task, template_text)
+        why = check_groups(task, template_text)
         if why:
             out.append(Issue("error", why, where="stages.group"))
 

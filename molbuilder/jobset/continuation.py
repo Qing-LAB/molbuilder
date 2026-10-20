@@ -313,7 +313,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
 def continuation_answer(base, task, stage: str, *, from_attempt=None,
                         cold: bool = False, verdict: bool = True,
                         template_text: Optional[str] = None,
-                        bench: bool = False
+                        bench: bool = False, jobset=None
                         ) -> Tuple[Optional[Continuation], Optional[str]]:
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
@@ -337,15 +337,15 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     structure as given, when it is stated relaxed -- else refused, whatever
     was asked (`engines/vibration.md` § 5.2a's table).
 
-    ``template_text`` is the template as the caller read it -- prep's, read
-    once (`script-preparation.md` § 3.0); with none it is read here.
+    ``template_text`` is the template as the verb read it -- prep's, read
+    once (`script-preparation.md` § 3.0); ``jobset`` the plan as read.
     ``bench`` asks for a benchmark of the stage, which takes no ``--from``
     and is offered none."""
     from ..identity import command_stage
     base = Path(base)
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         try:
-            cfg = _stage_config(base, task, stage, template_text)
+            cfg = _stage_config(task, stage, template_text)
         except unreadable() as exc:
             return None, (f"what `{stage}` builds on cannot be read: "
                           f"{exc}")
@@ -370,10 +370,11 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                             converged=converged,
                             linked=force_constant_stage(task, stage)), None
     try:
-        prev, linked = source_stage(base, task, stage, template_text)
+        prev, linked = source_stage(task, stage, template_text)
         if prev is None:
             return None, None
         return _by_default(base, task, stage, prev, verdict=verdict,
+                           jobset=jobset,
                            linked=linked, bench=bench)
     except unreadable() as exc:
         # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
@@ -510,7 +511,7 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
 
 
 def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
-                linked: bool = False, bench: bool = False
+                jobset, linked: bool = False, bench: bool = False
                 ) -> Tuple[Optional[Continuation], Optional[str]]:
     """The default for ``stage``, which builds on ``prev`` -- the stage
     before it, or (``linked``) the `relax` a force-constant stage builds on:
@@ -535,7 +536,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     from .commands import (block, command, launch_lines, launch_pending,
                            run_first, words_for)
     from .group import number_of
-    run_prev = block(run_first(prev, base=base))
+    run_prev = block(run_first(prev, base=base, task=task))
     g_prev, g_stage = number_of(task, prev), number_of(task, stage)
     # A CHOICE OF RUN A LAUNCH SAYS FOR ONE STAGE (`job-system.md` § 5.4):
     # a member of a group of several, whose first launch takes the group
@@ -574,7 +575,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     if flat:
         # PREPARED, by the one door (`ready.job_of`): its row in the plan.
         from .ready import job_of
-        if job_of(base, prev) is None:
+        if job_of(jobset, prev) is None:
             return None, (f"{lead}, which has not run yet.  Run it "
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = base, None
@@ -722,7 +723,7 @@ def relax_stage_of(task) -> Optional[str]:
                  if vibration_render_kind(s.name) != "vibration"), None)
 
 
-def source_stage(base, task, stage: str, template_text: Optional[str] = None
+def source_stage(task, stage: str, template_text: Optional[str] = None
                   ) -> Tuple[Optional[str], bool]:
     """``(the stage whose run ``stage`` builds on by default, linked)``: the
     stage before it in an independent ladder (:func:`stage_before`), or the
@@ -730,7 +731,7 @@ def source_stage(base, task, stage: str, template_text: Optional[str] = None
     when it builds on none."""
     if force_constant_stage(task, stage):
         return relax_stage_of(task), True
-    return stage_before(base, task, stage, template_text), False
+    return stage_before(task, stage, template_text), False
 
 
 def _independent(task) -> bool:
@@ -742,31 +743,27 @@ def _independent(task) -> bool:
     return task.calculation not in KIND_ROLES
 
 
-def _ladder(base, task, template_text: Optional[str] = None) -> list:
+def _ladder(task, template_text: Optional[str] = None) -> list:
     """``[(stage, resolved config)]`` of the described stages, as `prep`
     resolves them (`resolve.resolved_ladder`: template ⊕ stage overrides ⊕
-    the run card) -- from ``template_text`` as the caller read it, else the
-    template read here; ``[]`` with no template."""
+    the run card) -- from ``template_text`` as the verb read it (A16);
+    ``[]`` with none."""
     from ..resolve import resolved_ladder
     from .engines import engine_seam
     if template_text is None:
-        from ..template import find_template
-        tpl = find_template(Path(base), task.label)
-        if tpl is None:
-            return []
-        template_text = tpl.read_text(encoding="utf-8")
+        return []
     return resolved_ladder(template_text, task,
                            engine_seam(str(task.engine)).config_cls)
 
 
-def _stage_config(base, task, stage: str, template_text: Optional[str] = None):
+def _stage_config(task, stage: str, template_text: Optional[str] = None):
     """``stage``'s resolved config (:func:`_ladder`), or ``None``."""
     from ..identity import stage_key
-    return next((c for n, c in _ladder(base, task, template_text)
+    return next((c for n, c in _ladder(task, template_text)
                  if stage_key(n) == stage_key(stage)), None)
 
 
-def stage_before(base, task, stage: str,
+def stage_before(task, stage: str,
                   template_text: Optional[str] = None) -> Optional[str]:
     """The stage ``stage`` continues from by default -- the one
     before it in the ladder, resolved as `prep` resolves it (template ⊕
@@ -777,7 +774,7 @@ def stage_before(base, task, stage: str,
     from ..identity import continues
     if not _independent(task):
         return None
-    ladder = _ladder(base, task, template_text)
+    ladder = _ladder(task, template_text)
     names = [n for n, _c in ladder]
     if stage not in names:
         return None
@@ -787,7 +784,7 @@ def stage_before(base, task, stage: str,
     return names[i - 1]
 
 
-def continue_from_choices(base, task, stage: str) -> Optional[dict]:
+def continue_from_choices(calc, stage: str) -> Optional[dict]:
     """What Task setup's **Continue from** offers ``stage`` -- the default
     and, when the verb that takes it would refuse it, why; every run of the
     stage before it with what it was; whether the structure (``--cold``) is
@@ -801,20 +798,22 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
     from .materialize import stage_home
-    base = Path(base)
+    base, task = Path(calc.base), calc.task
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         # NO `relax` TO BUILD ON: the structure as given when it is stated
         # relaxed -- nothing to choose -- else the refusal prep gives, here
         # before anything is written (`engines/vibration.md` § 5.2a).
-        _got, why = continuation_answer(base, task, stage, verdict=False)
+        _got, why = continuation_answer(base, task, stage, verdict=False,
+                                        template_text=calc.template_text,
+                                        jobset=calc.jobset)
         return ({"from_stage": None, "linked": True, "default": None,
                  "refused": why, "runs": [], "cold": False}
                 if why else None)
-    prev, linked = source_stage(base, task, stage)
+    prev, linked = source_stage(task, stage, calc.template_text)
     if prev is None:
         return None
     got, refused = _by_default(base, task, stage, prev, verdict=False,
-                               linked=linked)
+                               jobset=calc.jobset, linked=linked)
     sh = Shape.named(task.shape)
     runs = []
     if sh.keeps_attempts_as_directories:

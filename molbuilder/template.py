@@ -933,10 +933,16 @@ def template_path(base, label: str) -> "_Path":
     return _Path(base) / template_filename(label)
 
 
-def find_template(base, label: str) -> Optional["_Path"]:
-    """This calculation's template in *base* -- **the one door every reader
-    asks** (`execution/architecture.md` § 3.2): the folder's one template,
-    named for the calculation's *label*, or ``None`` when there is none.
+class TemplateFile(NamedTuple):
+    """The calculation's template as read: where it lies, and its text."""
+    path: "_Path"
+    text: str
+
+
+def of(base, label: str) -> Optional[TemplateFile]:
+    """THE TEMPLATE'S DOOR (`execution/architecture.md` § 3.2, A16): this
+    calculation's template in *base*, read -- the folder's one template,
+    named for the calculation's *label* -- or ``None`` when there is none.
 
     **A folder is one calculation** (`project-layout.md` § 1.4), and its
     template is ``<label>.template.toml`` -- the name :func:`template_path`
@@ -964,7 +970,7 @@ def find_template(base, label: str) -> Optional["_Path"]:
             f"{found[0]} is not this calculation's template: a calculation "
             f"labelled {label!r} keeps its parameters in "
             f"{template_filename(label)}, the name it was described with.")
-    return found[0]
+    return TemplateFile(found[0], found[0].read_text(encoding="utf-8"))
 
 
 def load_catalogue() -> str:

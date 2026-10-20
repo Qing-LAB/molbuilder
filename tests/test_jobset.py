@@ -204,7 +204,7 @@ def test_cli_prep_is_described_only(tree):
     step named; hand-built job-sets stay LAUNCHABLE (submit/status read
     job-set.json directly) -- prep is what they lose."""
     js = _sweep()
-    js.write(tree / "job-set.json")
+    js.write(tree)
     _write_fdf(tree / "job-gpu.fdf")
     runner, grp = _runner()
     r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tree),
@@ -472,7 +472,7 @@ def _describe(base, shape, names=("coarse", "tight")):
                                  derive_run, write_task)
     stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200}, group=i + 1)
                    for i, n in enumerate(names))
-    write_task(Path(base) / FILENAME, Task(
+    write_task(Path(base), Task(
         engine="siesta", shape=shape, calculation="optimization",
         run=derive_run("JOB", "H2", stage_names=names),
         structure=StructureRef(source="h2.xyz", formula="H2", atoms=2),
@@ -486,10 +486,15 @@ def test_the_surfaces_read_the_shape_from_the_description(tmp_path):
 
     Pinned through `job_dir_names` on a REAL bundle, because the object being
     correct proves nothing if nobody hands it the description's answer -- which
-    is what a mutation found: `shape_of` returning a constant left every test
-    green.
+    is what a mutation found: a shape read as a constant left every test
+    green.  The shape is the description's (`Shape.named(task.shape)`, A16).
     """
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.paths import Shape
+    from molbuilder.task import of as task_of
+
+    def shape_of(_js, folder):
+        return Shape.named(task_of(folder).shape)
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
 
     _describe(tmp_path, "flat")

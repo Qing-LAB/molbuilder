@@ -154,8 +154,8 @@ def test_a_structure_that_changed_since_describing_is_refused(calc):
 
     API-LEVEL: a refusal the road cannot reach -- nothing molbuilder does
     writes another structure over the calculation's copy; a hand does."""
-    from molbuilder.task import read_task
-    own = read_task(calc / "task.json").structure.source
+    from molbuilder.task import of as task_of
+    own = task_of(calc).structure.source
     (calc / own).write_text(
         Structure(elements=["H", "H"],
                   positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),

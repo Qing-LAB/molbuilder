@@ -1,11 +1,13 @@
 """``job-set@1`` data model — the declarative description of a set of
 related jobs that share a package (docs/execution/job-system.md).
 
-Pure dataclasses + JSON (de)serialization + structural validation.  NO
-filesystem, NO scheduler, NO engine knowledge — those live in the
-materialize / submit engines and the producers respectively.  Keeping
-this layer pure is what lets the bench sweep and the SIESTA stage ladder
-share one execution core without either knowing about the other.
+Dataclasses + JSON (de)serialization + structural validation, and the
+plan's own two doors to its file -- `JobSet.of(folder)` reads it, `write`
+writes it (`architecture.md` A16).  NO scheduler, NO engine knowledge --
+those live in the materialize / submit engines and the producers
+respectively.  Keeping this layer to the plan alone is what lets the bench
+sweep and the SIESTA stage ladder share one execution core without either
+knowing about the other.
 
 Shared information is modeled in exactly two sanctioned channels:
   * ``JobSet.shared``  — static package files, identical for every job
@@ -541,7 +543,7 @@ JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
 class WrittenBefore(ValueError):
     """A `job-set.json` written before every job key was (2026-10-06): read
     by no fallback -- `molbuilder jobset migrate` rewrites it, every value
-    kept (`JobSet.load` names the calculation)."""
+    kept (`JobSet.of` names the calculation)."""
 
 
 @dataclass
@@ -584,31 +586,47 @@ class JobSet:
             jobs=[Job.from_dict(j) for j in d["jobs"]],
         )
 
-    def write(self, path, *, plan=None) -> Path:
-        """Persist to ``job-set.json`` -- the bundle's plan, carried
-        host->target (the exchange vocabulary, `job-contracts.md` § 6.2;
-        the persisted-artifacts registry is that document's § 6).  Pretty JSON so a
+    def write(self, folder, *, plan=None) -> Path:
+        """Persist to the folder's ``job-set.json`` -- the bundle's plan,
+        carried host->target (the exchange vocabulary, `job-contracts.md`
+        § 6.2; the persisted-artifacts registry is that document's § 6), at
+        the path the owner forms (:meth:`path_of`, A16).  Pretty JSON so a
         human can read/diff the plan in the bundle.  ``plan``
         (`jobset.planned.Plan`) receives it instead of the disk."""
         from ..persist import json_text, write_json
+        path = self.path_of(folder)
         if plan is not None:
             return plan.text(path, json_text(self.to_dict()))
         return write_json(path, self.to_dict())
 
+    @staticmethod
+    def path_of(folder) -> Path:
+        """``<folder>/job-set.json`` -- the one place the plan's name is
+        joined to its folder (`architecture.md` A16): for its writer, and
+        for `jobset migrate`, which reads it raw."""
+        return Path(folder) / FILENAME
+
     @classmethod
-    def load(cls, path, *, plan=None) -> "JobSet":
-        """Read a ``job-set.json`` back into a JobSet (schema checked by name
-        and major -- persist.check_schema
-        via ``from_dict``) -- as it lies on disk, or as ``plan``
-        (`jobset.planned.Plan`) leaves it: what a prep planned into it before
-        writing.  One written before every job key was is refused
+    def of(cls, folder, *, plan=None) -> "Optional[JobSet]":
+        """THE PLAN'S DOOR (`architecture.md` § 3.2, A16): the folder's
+        ``job-set.json`` -- the root's ladder, or a sweep's in its bench
+        container -- read back (schema checked by name and major,
+        `persist.check_schema` via ``from_dict``), or ``None`` when the
+        folder holds none.  As it lies on disk, or as ``plan``
+        (`jobset.planned.Plan`) leaves it: what a prep planned into it
+        before writing.  One written before every job key was is refused
         naming the command that rewrites it, its calculation by its folder --
         found where the layout puts it: this folder, or one or two above
         (a flat stage's bench folder, a hierarchical one's)."""
         import json
         from ..persist import read_json
         from .commands import command
-        path = Path(path)
+        path = cls.path_of(folder)
+        if plan is not None:
+            if not plan.is_file(path):
+                return None
+        elif not path.is_file():
+            return None
         try:
             return cls.from_dict(json.loads(plan.read_text(path))
                                  if plan is not None else read_json(path))

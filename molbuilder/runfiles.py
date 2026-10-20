@@ -976,7 +976,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "door (`describe.write_description`); the hand-over, "
                     "which the browser writes; `jobset migrate` -- each "
                     "naming it with `template.template_path`",
-             door="template.find_template"),
+             door="template.of"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).
     #
@@ -1319,7 +1319,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="setup", level="calculation", kind="source",
              writer="`jobset init` and the Transport tab's describe door "
                     "(`describe.write_description`); Task setup's Save",
-             door="task.read_task"),
+             door="task.of"),
     Artifact(name=TASK_HANDOVER_FILE,
              what="a hand-over waiting for its shape and stages; Save "
                   "removes it",
@@ -1342,7 +1342,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "and a benchmark's own, in its container",
              when="prep", level="calculation", kind="derived",
              writer="prep (`jobset.model.JobSet.write`)",
-             door="jobset.model.JobSet.load"),
+             door="jobset.model.JobSet.of"),
     Artifact(name=PLAN_FILE, what="the plan in reading order",
              when="prep", level="calculation", kind="derived",
              writer="prep (`jobset.prep.prep_jobset`), whole at each prep"),

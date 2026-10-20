@@ -1397,11 +1397,16 @@ def api_task_setup_prep():
     # its answer returned whole, for the tab to show (`task-setup.md`
     # § 11.1).  The save is the entry's own and asks nothing
     # (`checkpointing.md` § 9).
+    from molbuilder.calculation import NotACalculation, open as open_calc
     from molbuilder.jobset.model import Resources
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.prep import prep_task
     try:
-        answers = prep_task(dest, kind, groups=(groups or ()),
+        calc = open_calc(dest)
+    except (NotACalculation, OSError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    try:
+        answers = prep_task(calc, kind, groups=(groups or ()),
                             stage=(stages[0].strip() if kind == "bench"
                                    else None),
                             target=target, allocation=Resources(),
@@ -1448,7 +1453,7 @@ def api_task_setup_save():
     would silently discard whatever was typed in the editor.
 
     **Refused rather than repaired.**  The text goes through the shipped reader
-    (`task.read_task`), so a description that does not parse, names a field the
+    (`task.from_text`), so a description that does not parse, names a field the
     schema does not know, or carries no stage is refused with the reason -- the
     same answer the CLI gives, from the same code.  A browser that "fixed" a
     description would be the second, drifting writer this design exists to
@@ -1475,39 +1480,36 @@ def api_task_setup_save():
     if not dest.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
 
-    import tempfile
-    # FILENAME comes from `task.py` too: the description's NAME is that
-    # module's to spell, like its bytes (`task-description.md` § 6.4 --
-    # one reader, so the two surfaces cannot produce different files).
+    # The description's NAME is `task.py`'s to spell, like its bytes
+    # (`task-description.md` § 6.4 -- one reader, so the two surfaces cannot
+    # produce different files).
     from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import read_task, write_task
+    from molbuilder.task import from_text, write_task
+    from molbuilder.task import of as task_of
 
-    # Validate by READING it, in a scratch file, so nothing lands in the
-    # calculation folder unless it is a description the rest of the system
-    # can open.  `read_task` is the same door `prep` uses.
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = pathlib.Path(tmp) / TASK_FILENAME
-        probe.write_text(text, encoding="utf-8")
-        try:
-            task = read_task(probe)
-        except Exception as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+    # Validate by READING it before anything lands in the calculation
+    # folder: the description's one reader (`task.from_text`, A16), the
+    # same gate `prep` reads through.
+    try:
+        task = from_text(text)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # GATE ③ FIRES HERE TOO (G-1b): a description naming an unknown field,
     # a value outside its bounds, or a bench point that fits no item is
     # refused here rather than at prep, on the cluster.  Same function the CLI runs (`validation.task.preflight`),
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
-    from molbuilder.template import find_template as _find_template
+    from molbuilder.template import of as _template_of
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
     try:
-        _tpl_file = _find_template(dest, task.label)
+        _tpl_file = _template_of(dest, task.label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     _pf = _task_preflight(
         task,
-        template_text=(_tpl_file.read_text(encoding="utf-8")
+        template_text=(_tpl_file.text
                        if _tpl_file is not None else None))
     # THE CONFIG CLASS RIDES WITH THE FINDINGS.  Without it `_issues_to_json`
     # omits `workflow_group` and the page has no card to put a finding on
@@ -1532,35 +1534,43 @@ def api_task_setup_save():
     # one thing that says which calculation a folder is
     # (`run-identity.md` § 2.0a).  Re-saving the SAME calculation is the
     # ordinary case and must stay free.
-    existing = dest / TASK_FILENAME
-    if existing.is_file():
+    from molbuilder.calculation import NotACalculation, open as open_calc
+    prior_calc = None
+    try:
+        prior_calc = open_calc(dest)
+        prior = prior_calc.task
+    except NotACalculation:
         try:
-            prior = read_task(existing)
+            prior = task_of(dest)             # described, no template yet
         except Exception:
             prior = None                      # unreadable: let the write fix it
-        if prior is not None and prior.run.id != task.run.id:
-            return jsonify({
-                "ok": False,
-                "error": f"this folder already describes a different "
-                         f"calculation ({prior.run.id!r}); saving {task.run.id!r} "
-                         f"here would orphan its results. One calculation per folder — "
-                         f"pick or make another.",
-            }), 409
-        # THE SHAPE, WHEN IT IS FIXED (`web/task-setup.md` § 4): by the
-        # kind, or once the calculation has produced -- a prepared stage lies
-        # where the shape put it.  The one answer the shape card draws
-        # (`prep.shape_fixed`), so the refusal says what the page said.
-        if prior is not None and prior.shape and task.shape != prior.shape:
-            from molbuilder.jobset.errors import PrepError
-            from molbuilder.jobset.prep import shape_fixed
-            try:
-                fixed = shape_fixed(dest, prior)
-            except (OSError, ValueError, PrepError) as exc:
-                # WHAT ITS READERS REFUSE -- a plan in a format they no longer
-                # read -- is said, and nothing is written over it.
-                return jsonify({"ok": False, "error": str(exc)}), 409
-            if fixed is not None:
-                return jsonify({"ok": False, "error": fixed["why"]}), 409
+    except Exception:
+        prior = None                          # unreadable: let the write fix it
+    if prior is not None and prior.run.id != task.run.id:
+        return jsonify({
+            "ok": False,
+            "error": f"this folder already describes a different "
+                     f"calculation ({prior.run.id!r}); saving {task.run.id!r} "
+                     f"here would orphan its results. One calculation per folder — "
+                     f"pick or make another.",
+        }), 409
+    # THE SHAPE, WHEN IT IS FIXED (`web/task-setup.md` § 4): by the
+    # kind, or once the calculation has produced -- a prepared stage lies
+    # where the shape put it.  The one answer the shape card draws
+    # (`prep.shape_fixed`), so the refusal says what the page said.
+    if prior is not None and prior.shape and task.shape != prior.shape:
+        from molbuilder.jobset.errors import PrepError
+        from molbuilder.jobset.prep import shape_fixed
+        try:
+            # no template yet (no calculation opened): nothing has produced
+            fixed = (shape_fixed(prior_calc) if prior_calc is not None
+                     else None)
+        except (OSError, ValueError, PrepError) as exc:
+            # WHAT ITS READERS REFUSE -- a plan in a format they no longer
+            # read -- is said, and nothing is written over it.
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        if fixed is not None:
+            return jsonify({"ok": False, "error": fixed["why"]}), 409
 
     # THE FOLDER'S STATE, SAVED FIRST -- always, by the one function prep
     # calls (`checkpointing.md` § 9; user, 2026-10-03, B10: "make this
@@ -1577,7 +1587,7 @@ def api_task_setup_save():
                                  f"written: {exc}"}), 409
 
     try:
-        write_task(dest / TASK_FILENAME, task)      # atomic (persist.write_json)
+        write_task(dest, task)                   # atomic (persist.write_json)
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
 
@@ -1778,37 +1788,38 @@ def api_task_setup_columns():
                     "roles": _T.stage_role_rule(engine, _calc_kind)})
 
 
-def _folder_template(folder, label, *, engine=None, kind=None) -> dict:
+def _folder_template(folder, label, *, found=None, engine=None,
+                     kind=None) -> dict:
     """What the folder's template answers -- the payload, not the response.
 
-    ``label`` is the
-    calculation's -- its description's, else its hand-over's -- and ``None``
-    for a folder that is neither, which has no template to show.  ``engine``
-    and ``kind``, a described folder's, add ``shared``: every value shared by
-    every stage of that kind, echoed read-only with whose it is
-    (`task-setup.md` § 3, `engines/template.md` § 6.6 obligation 3).
+    ``found`` is the template as the calculation opened it (A16); with
+    none, ``label`` is the hand-over's name and the door is asked
+    (`template.of`) -- ``None`` for a folder that is neither, which has no
+    template to show.  ``engine`` and ``kind``, a described folder's, add
+    ``shared``: every value shared by every stage of that kind, echoed
+    read-only with whose it is (`task-setup.md` § 3, `engines/template.md`
+    § 6.6 obligation 3).
     """
-    # THE door, not a glob (`template.find_template`): this tab and `prep`
-    # read the same file.
-    from molbuilder.template import (SOURCE_WORDS, find_template,
+    from molbuilder.template import (SOURCE_WORDS, of as template_of,
                                      read_template, select,
                                      shared_scope_words)
-    if label is None:
-        return {"ok": True, "name": None, "values": {}}
-    try:
-        found = find_template(folder, label)
-    except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
     if found is None:
-        return {"ok": True, "name": None, "values": {}}
+        if label is None:
+            return {"ok": True, "name": None, "values": {}}
+        try:
+            found = template_of(folder, label)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        if found is None:
+            return {"ok": True, "name": None, "values": {}}
 
     try:
-        tmpl = read_template(found.read_text())
+        tmpl = read_template(found.text)
     except Exception as exc:
         # A template that does not parse is the user's to fix, and saying which
         # file beats an empty table that looks like "nothing was sent".
-        return {"ok": False, "name": found.name,
-                "error": f"{found.name}: {exc}"}
+        return {"ok": False, "name": found.path.name,
+                "error": f"{found.path.name}: {exc}"}
 
     # Through `select` -- `engines/template.md` § 8.0 owns the rule.
     values = {it.name: it.value for it in select(tmpl) if it.is_set}
@@ -1840,7 +1851,7 @@ def _folder_template(folder, label, *, engine=None, kind=None) -> dict:
                                      or "unrecorded"],
                 # ...and which rungs it is for, when not every one reads it.
                 "scope": shared_scope_words(it)})
-    return {"ok": True, "name": found.name, "values": values, "said": said,
+    return {"ok": True, "name": found.path.name, "values": values, "said": said,
             "shared": shared}
 
 
@@ -1873,13 +1884,11 @@ def _folder_provenance(dest) -> dict:
     }
 
 
-def _row_kinds(dest, bench) -> dict:
+def _row_kinds(task, bench) -> dict:
     """``{name: "chosen" | "machine" | "measured"}`` for the bench as it is
     being edited, from prep's own split of the lane."""
     from molbuilder.jobset.prep_inputs import _declared_execution_pins
-    from molbuilder.task import read_task
     try:
-        task = read_task(dest)
         pins, axes, value_axes = _declared_execution_pins(task, bench)
     except Exception:                                  # noqa: BLE001
         # A description mid-edit may not read; the cells above still say.
@@ -1942,11 +1951,16 @@ def api_task_setup_bench_grid():
         return jsonify({"ok": False,
                         "error": "domain: must be a queue's name"}), 400
     rows: list = []
+    from molbuilder.calculation import NotACalculation, open as open_calc
+    try:
+        calc = open_calc(dest)
+    except (NotACalculation, OSError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     try:
         # THE SAME REPORT the prep's notes print, as data: the card refreshes
         # it on every keystroke, so it asks for the rows and not the notes.
         # One function, two renderings.
-        bench_inputs(dest, target, bench_override=bench, report=rows,
+        bench_inputs(calc, target, bench_override=bench, report=rows,
                      **({"queue": domain or None} if "domain" in body
                         else {}))
     except Exception as exc:                      # noqa: BLE001
@@ -1967,7 +1981,7 @@ def api_task_setup_bench_grid():
     # page paints what this says and decides nothing (2026-10-19).
     return jsonify({"ok": True, "cells": rows,
                     "kept": sum(1 for r in rows if not r["why"]),
-                    "rows": _row_kinds(dest, bench)})
+                    "rows": _row_kinds(calc.task, bench)})
 
 
 @bp.route("/api/task-setup/prep-plan", methods=["POST"])
@@ -2121,32 +2135,26 @@ def _warm_in_effect(task, folder) -> "dict | None":
     custom copy goes, which the card says (`web/task-setup.md` § 7.2; plan
     W36 ⑧: "provide information on the task setup web ui").  ``None`` for an
     engine with no list."""
-    from molbuilder.warmfiles import FILENAME, WarmFilesError, warm_list
+    from molbuilder.warmfiles import WarmFilesError, path_of, warm_list
     try:
         in_effect = warm_list(str(task.engine), None, folder)
     except WarmFilesError:
         return None
     return {"path": in_effect.path, "own": in_effect.own,
-            "copy_to": (str(pathlib.Path(folder) / FILENAME)
+            "copy_to": (str(path_of(folder))
                         if folder is not None else None)}
 
 
-def _folder_continue_from(dest) -> dict:
+def _folder_continue_from(calc) -> dict:
     """``{stage: choices}`` for every stage that continues from another by
     default -- what Task setup's **Continue from** offers
     (`continuation.continue_from_choices`); a stage that continues from
     nothing is absent.  Fail-soft per stage, like the folder's other parts."""
     from molbuilder.jobset.continuation import continue_from_choices
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import read_task
-    try:
-        task = read_task(dest / TASK_FILENAME)
-    except Exception as exc:                      # noqa: BLE001
-        return {"error": str(exc)}
     out = {}
-    for st in task.stages:
+    for st in calc.task.stages:
         try:
-            got = continue_from_choices(dest, task, st.name)
+            got = continue_from_choices(calc, st.name)
         except Exception as exc:                  # noqa: BLE001
             got = {"error": str(exc)}
         if got is not None:
@@ -2154,18 +2162,13 @@ def _folder_continue_from(dest) -> dict:
     return out
 
 
-def _folder_attempts(dest) -> dict:
+def _folder_attempts(calc) -> dict:
     """How many attempts each stage has on disk -- the payload."""
     from molbuilder.jobset.materialize import stage_home
     from molbuilder.paths import Shape, attempts_in
     from molbuilder.runrecord import newest_run
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import read_task
-    desc = dest / TASK_FILENAME
-    if not desc.is_file():
-        return {"ok": False, "error": f"no {TASK_FILENAME} here"}
+    dest, task = calc.base, calc.task
     try:
-        task = read_task(desc)
         shape = Shape.named(task.shape)
     except Exception as exc:                      # noqa: BLE001
         return {"ok": False, "error": str(exc)}
@@ -2249,23 +2252,33 @@ def api_task_setup_folder():
             return {"error": f"{TASK_HANDOVER_NAME}: {exc}"}
 
     def _described():
-        """The description, through its one reader (`read_task`,
-        `execution/architecture.md` § 3.2) -- the `Task` a molbuilder-written
-        `task.json` holds, or the words its reader refused one with."""
-        from molbuilder.task import read_task
-        f = folder / TASK_FILENAME
-        if not f.is_file():
-            return None
+        """The description, through its one door (`task.of`,
+        `execution/architecture.md` § 3.2, A16) -- the `Task` a
+        molbuilder-written `task.json` holds, ``None`` with none, or the
+        words its reader refused one with."""
+        from molbuilder.task import of as task_of
         try:
-            return read_task(f)
+            return task_of(folder)
         except Exception as exc:                  # noqa: BLE001
-            return {"error": f"{TASK_FILENAME}: {exc}"}
+            return {"error": str(exc)}
+
+    # THE CALCULATION, OPENED ONCE for every part below that reads it
+    # (A16); a folder that is no calculation yet -- a hand-over, or
+    # empty -- has none, and the description alone is asked for.
+    from molbuilder.calculation import NotACalculation, open as open_calc
+    # A folder whose description or template does not read answers as
+    # the parts say it: the description part in its reader's words, the
+    # template part naming the templates (`template.of`).
+    try:
+        _calc = open_calc(folder)
+    except (NotACalculation, Exception):          # noqa: BLE001
+        _calc = None
 
     # `task.json` and the hand-over are mutually exclusive by design: a save
     # writes the first and deletes the second (`task-setup.md` § 3), so the
     # page's MODE follows from which is here rather than from a flag it has
     # to keep.
-    _task = _described()
+    _task = _calc.task if _calc is not None else _described()
     described = (_task.to_dict() if hasattr(_task, "to_dict") else _task)
     handover = None if described is not None else _read_handover()
     # THE LABEL THE TEMPLATE IS NAMED ON: the description's, else the
@@ -2309,24 +2322,25 @@ def api_task_setup_folder():
         "structure_pair": structure_pair,
         "template": _folder_template(
             folder, _label,
+            found=_calc.template if _calc is not None else None,
             engine=getattr(_task, "engine", None),
             kind=getattr(_task, "calculation", None)),
         "provenance": _folder_provenance(folder),
         # Only a described folder has stages, so only then is there anything
         # to count -- and `_folder_attempts` says so itself rather than this
         # door deciding for it.
-        "attempts": (_folder_attempts(folder) if described is not None
+        "attempts": (_folder_attempts(_calc) if _calc is not None
                      else {"ok": True, "shape": None, "stages": {}}),
         # WHAT EACH STAGE CAN CONTINUE FROM -- its default, the runs of the
         # stage before it with what each was, and `--cold` where it is a
         # choice (`job-system.md` § 5.4, plan W37): the Continue-from choice
         # reads the folder's answer, so it shows what prep would take.
-        "continue_from": (_folder_continue_from(folder)
-                          if described is not None else {}),
+        "continue_from": (_folder_continue_from(_calc)
+                          if _calc is not None else {}),
         # WHY THIS DESCRIPTION HAS NO BENCH, or null -- the prep entry's own
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
-        "bench_refusal": _folder_bench_refusal(folder, described),
+        "bench_refusal": _folder_bench_refusal(_task),
         # WHAT THE KIND FIXES of the stage table -- a transport description's
         # five rungs, in order -- by the reader's own answer
         # (`task.fixed_by_kind`), so the page offers no stage-table control
@@ -2352,12 +2366,12 @@ def api_task_setup_folder():
         # (`prep.shape_fixed`, the answer the save refuses with); null while
         # it may change, `{error}` when its readers refuse the folder's plan
         # (`web/task-setup.md` § 4).
-        "shape_fixed": _folder_shape_fixed(_task, folder),
+        "shape_fixed": _folder_shape_fixed(_calc),
         # WHICH STAGES ARE PREPARED AS A BENCHMARK -- each with the prep
         # entry's own sentence (`prep.prepared_already`), which the page
         # shows in place of a Prep it would refuse; a task's stages are the
         # ladder's below.
-        "prepared": (_folder_prepared(folder) if described is not None
+        "prepared": (_folder_prepared(_calc) if _calc is not None
                      else {"bench": {}}),
         # THE TASK'S LADDER, as `prep task` shows it before it asks: each
         # stage described, prepared or launched with the ready door's words,
@@ -2365,7 +2379,7 @@ def api_task_setup_folder():
         # GROUPS: each stage's number, whether the rule lets it share the
         # group above and why not, and where each group stands
         # (`engines/stages.md` § 2; `web/task-setup.md` § 5.3, § 11).
-        **(_folder_ladder(folder) if described is not None
+        **(_folder_ladder(_calc) if _calc is not None
            else {"ladder": {"stages": [], "offer": []},
                  "groups": {"stages": [], "groups": [], "shared": []}}),
     })
@@ -2381,7 +2395,7 @@ def _folder_fixed(task) -> Optional[dict]:
     return None if fixed is None else {"stages": list(fixed["stages"])}
 
 
-def _folder_ladder(folder) -> dict:
+def _folder_ladder(calc) -> dict:
     """``{"ladder": {stages, offer}, "groups": {stages, groups}}`` -- the
     ready door's answer for every stage (`ready.ladder`) and the groups
     `prep task` offers (`ready.prep_offer`), the one `prep task` and
@@ -2394,8 +2408,9 @@ def _folder_ladder(folder) -> dict:
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.group import linked, upstream_of, why_not_join
     from molbuilder.jobset.ready import task_state
+    folder = calc.base
     try:
-        state = task_state(folder)
+        state = task_state(calc)
         task, text = state.task, state.template_text
         answers, gs = state.stages, state.groups
         # EACH STAGE'S LINKS, not a verdict: the page applies the rule to
@@ -2408,7 +2423,7 @@ def _folder_ladder(folder) -> dict:
             # the launched group's -- the page shows it and composes none.
             above = [s.name for s in task.stages[:i]
                      if i and s.group == task.stages[i - 1].group]
-            why_same = (why_not_join(folder, task, st.name, above, text)
+            why_same = (why_not_join(task, st.name, above, text)
                         if above else None)
             if why_same is None and above and any(
                     b.launched for s, b in zip(task.stages, answers)
@@ -2416,9 +2431,9 @@ def _folder_ladder(folder) -> dict:
                 why_same = (f"group {task.stages[i - 1].group} was launched "
                             f"-- its members are fixed")
             rows.append({"stage": st.name, "group": st.group,
-                         "builds_on": sorted(upstream_of(folder, task,
-                                                         st.name, text)),
-                         "linked": linked(folder, task, st.name, text),
+                         "builds_on": sorted(upstream_of(task, st.name,
+                                                         text)),
+                         "linked": linked(task, st.name, text),
                          "launched": a.launched,
                          "why_same": why_same})
         return {
@@ -2475,17 +2490,17 @@ def _folder_frame_set(task, folder):
         cited.structure if isinstance(cited, CitedPair) else None)
 
 
-def _folder_shape_fixed(task, folder) -> Optional[dict]:
-    """``prep.shape_fixed`` of a description that reads -- ``None`` with no
-    description, or while its shape may change.  Fail-soft, like the
-    folder's other parts: what its readers refuse -- a plan written before
-    the reader's format -- is ``{"error"}``, said on the shape card."""
-    if task is None or not hasattr(task, "stages"):
+def _folder_shape_fixed(calc) -> Optional[dict]:
+    """``prep.shape_fixed`` of a calculation that opens -- ``None`` with
+    none, or while its shape may change.  Fail-soft, like the folder's
+    other parts: what its readers refuse -- a plan written before the
+    reader's format -- is ``{"error"}``, said on the shape card."""
+    if calc is None:
         return None
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.prep import shape_fixed
     try:
-        return shape_fixed(pathlib.Path(folder), task)
+        return shape_fixed(calc)
     except (OSError, ValueError, PrepError) as exc:
         return {"error": str(exc)}
 
@@ -2499,19 +2514,16 @@ def _folder_set_to(folder):
     return "(this machine)" if name == LOCAL_TARGET else name
 
 
-def _folder_prepared(folder) -> dict:
+def _folder_prepared(calc) -> dict:
     """``{"bench": {stage: why}}``: the stages prepared as a benchmark, and
     the prep entry's own sentence for each -- what a prep of it would
     answer, the way back in it (`job-system.md` § 5.0).  Fail-soft, like
     the folder's other parts."""
     from molbuilder.jobset.prep import prepared_already
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import read_task
     try:
-        task = read_task(folder / TASK_FILENAME)
         said = {}
-        for st in task.stages:
-            why = prepared_already(folder, task, "bench", st.name)
+        for st in calc.task.stages:
+            why = prepared_already(calc, "bench", st.name)
             if why:
                 said[st.name] = why
         return {"bench": said}
@@ -2565,9 +2577,11 @@ def api_task_setup_commands():
     from_at_prep = prepared = False
     if picked and kind == "task":
         from molbuilder.jobset.continuation import force_constant_stage
+        from molbuilder.calculation import open as open_calculation
         from molbuilder.jobset.ready import task_state
         try:
-            state = task_state(dest)
+            calc = open_calculation(dest)
+            state = task_state(calc)
         except (OSError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         task = state.task
@@ -2581,7 +2595,9 @@ def api_task_setup_commands():
         from_at_prep = any(force_constant_stage(task, m)
                            for g in gs for m in g.members)
     elif one_stage and kind == "bench":
-        prepared = stages[0] in _folder_prepared(dest).get(kind, {})
+        from molbuilder.calculation import open as open_calculation
+        prepared = stages[0] in _folder_prepared(
+            open_calculation(dest)).get(kind, {})
     return jsonify({"ok": True, "lines": stage_lines(
         kind, base=dest, groups=(groups if picked else ()),
         stages=(stages if one_stage and not picked else ()),
@@ -2589,20 +2605,14 @@ def api_task_setup_commands():
         target=target, prepared=prepared, from_at_prep=from_at_prep)})
 
 
-def _folder_bench_refusal(folder, described):
+def _folder_bench_refusal(task):
     """The folder answer's ``bench_refusal``: the entry's reason this
     description takes no bench, or ``None`` -- also when there is no
-    readable description to ask, since then there is no Measure step."""
-    if described is None:
+    readable description to ask (``task`` ``None`` or the reader's error),
+    since then there is no Measure step."""
+    if task is None or not hasattr(task, "stages"):
         return None
     from molbuilder.jobset.prep_inputs import bench_refusal
-    from molbuilder.task import FILENAME as TASK_FILENAME, read_task
-    # A DESCRIPTION THAT DOES NOT READ offers no Measure step: the folder
-    # answer says why beside it (its `description` is the reader's error).
-    try:
-        task = read_task(folder / TASK_FILENAME)
-    except (OSError, ValueError):
-        return None
     return bench_refusal(task)
 
 

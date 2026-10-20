@@ -210,7 +210,7 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
 
 
 def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
-    """The text goes through `task.read_task` — the same door `prep` uses — so
+    """The text goes through `task.from_text` — the same door `prep` uses — so
     a browser cannot become a second, drifting writer of descriptions."""
     d = _fresh_calc_dir(isolated_projects_root)
     try:

@@ -19,6 +19,7 @@ import threading
 
 import numpy as np
 import pytest
+from molbuilder.calculation import open as open_calculation
 
 pytestmark = pytest.mark.e2e
 
@@ -77,7 +78,7 @@ def sweep(isolated_projects_root, monkeypatch):
                     env_init={"activation": "conda activate",
                                        "preamble": "true"}).to_json() + "\n")
 
-    prep_bench(calc, "coarse",
+    prep_bench(open_calculation(calc), "coarse",
                allocation=Resources(mpi_np=8, cpus_per_task=8),
                emit_sbatch=False)
     bench = calc / "01_coarse" / "bench"
