@@ -73,6 +73,10 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
     # taken over into a new run; not restart rows, a section-level fact.
     assert W.warm_list("siesta", "transport").scratch == (".TSGFL", ".TSGFR")
     assert W.warm_list("siesta", "optimization").scratch == ()
+    # ...AND THE FOLDER OF THE RUN'S OWN IT LIVES IN -- the fourth section
+    # fact, stated together with `scratch` (job-contracts.md § 4.2a).
+    assert W.warm_list("siesta", "transport").scratch_dir == "tsgf"
+    assert W.warm_list("siesta", "optimization").scratch_dir is None
 
 
 # --------------------------------------------------------------------- #

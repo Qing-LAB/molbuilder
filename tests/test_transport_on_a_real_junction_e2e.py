@@ -1663,35 +1663,66 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
             first.relative_to(run.bundle)), nxt
 
 
-def test_the_leads_greens_functions_are_computed_once_per_voltage(junction):
-    """§ 2a.11 *What a run's points share*: the device run holds one pair of
-    surface Green's function files per voltage, at the run's level and in no
-    point; the first frame's point at each voltage computed them, and every
-    later frame's point found and read them, as the engine says in its own
-    output (*Using GF-file*).
+def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
+    """§ 2a.11 *What a run's points share*: the device run keeps the leads'
+    surface Green's function files in its own `tsgf/`, stamped the run's
+    scratch; the walk runs round by round -- every frame's point at a
+    voltage before the next voltage -- and empties the folder as each
+    round begins and when it ends, saying what it removed in its log; the
+    round's first point computed the pair and every later frame's point
+    found and read it, as the engine says in its own output (*Using
+    GF-file*); `status device` says the folder is empty, and the stage's
+    line before a launch says the size from the leads' own orbital count.
 
-    MUTATION THIS MUST FAIL AGAINST: the `GF` path left at the point (a pair
-    in every point folder, none at the run); `GF.ReUse` off (the engine
-    rewrites the file and never says it used one)."""
-    from molbuilder.runs import openable
+    MUTATION THIS MUST FAIL AGAINST: the `GF` path left at the point or
+    loose in the run (no file ever in `tsgf/`, nothing emptied); the frame
+    loop outside (a v0.2 point before the last v0 point); the emptying
+    skipped (the pair still in the folder at the end); `GF.ReUse` off (no
+    *Using GF-file*); the estimate not reading the lead's run."""
+    from molbuilder import calcdirs
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.parse import detect
+    from molbuilder.runs import openable, run_of
     from molbuilder.task import read_task
-    from molbuilder.transport.transiesta import LEAD_NAMES, lead_gf_file
+    from molbuilder.transport.gf_files import status_line
     run = junction.from_pair
-    label = read_task(run.bundle / "task.json").label
+    task = read_task(run.bundle / "task.json")
     device = run.bundle / "04_device" / "run-0"
-    for v in _BIAS:
-        for lead in LEAD_NAMES:
-            assert (device / lead_gf_file(label, v, lead)).is_file(), (v, lead)
+    folder = device / "tsgf"
+    assert folder.is_dir() and calcdirs.read(folder).role == calcdirs.SCRATCH
+    assert [p.name for p in folder.iterdir() if ".TSGF" in p.name] == []
+    log = next((run.bundle / "04_device" / "launch").glob("*.log")).read_text()
+    lines = [ln.split("] ", 1)[1] for ln in log.splitlines() if "] [" not in ln
+             and "] " in ln]
+    starts = [ln.split("-> ", 1)[1].split(" starts")[0]
+              for ln in lines if " starts" in ln and "-> " in ln]
+    # THE ROUNDS: every frame at the first voltage, then every frame at the
+    # next -- the frame loop inside.
+    volts_of = lambda name: name.rsplit("/", 1)[1]
+    assert starts and [volts_of(n) for n in starts] == sorted(
+        [volts_of(n) for n in starts], key=lambda t: float(t[1:])), starts
+    emptied = [ln for ln in lines if "tsgf/" in ln]
+    assert len(emptied) == len(_BIAS) + 1, emptied
+    assert emptied[0].endswith("tsgf/ empty"), emptied
+    assert all(" emptied -- " in ln and ".TSGF" in ln for ln in emptied[1:]), emptied
     for f in range(_N_FRAMES):
         for v in _BIAS:
             p = _frame_point(run, "04_device", f, v)
             assert not [x.name for x in p.iterdir() if ".TSGF" in x.name], p
-            # THE POINT'S OUTPUT, the file the run door opens for its folder
-            # (`runs.openable`); the engine's own line in it.
             output, trail = openable(p)
             assert output is not None, trail
             said = Path(output).read_text(errors="replace")
             assert ("Using GF-file" in said) == (f > 0), (f, v)
+    _said(run, "status device", "tsgf/: empty")
+    # BEFORE A LAUNCH, THE SIZE: from the leads' run outputs, read through
+    # the registry as the line reads them, and the prepared decks.
+    lead_out = run_of(stage_home(run.bundle, task, "electrode_L").dir
+                      / "run-0").stdout
+    n_orb = detect(str(lead_out)).parse(str(lead_out)).runtime_info["n_orbitals"]
+    line = status_line(run.bundle, task, stage_home(run.bundle, task,
+                                                    "device").dir, None)
+    assert line.startswith("tsgf/: one pair at a time, about ") and \
+        f"({n_orb} orbitals × " in line and " GiB a lead at 0 V" in line, line
 
 
 def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(

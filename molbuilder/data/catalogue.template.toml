@@ -2752,6 +2752,49 @@ How far past each lead's Fermi level the non-equilibrium part of TranSIESTA's in
 5, TranSIESTA's own default, catches the Fermi functions' tails; TranSIESTA stops a run below 2.5 (SIESTA 5.4.2 `m_ts_contour_neq.f90`).  A plain number -- the deck writes no unit word, because TranSIESTA reads it in kT.
 """
 
+[item.negf_neq_spacing_ev]
+stages = ["device"]
+kind = "deck"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "%block TS.Contour.nEq.line"
+engine_key = "%block TS.Contour.nEq.line"
+expands = ["%block TS.Contour.nEq.line"]
+manual = "SIESTA 5.4.2 TranSIESTA §'Non-equilibrium contour'"
+type = "float"
+value = 0.01
+default = 0.01
+unit = "eV"
+range = [0.001, 0.1]
+group = "stage"
+label = "Bias window's energy spacing"
+tier = "advanced"
+help = """
+The spacing of the energy points on the line through the bias window, from -cutoff kT - |V|/2 to |V|/2 + cutoff kT (the cutoff is the item above).  0.01 eV is TranSIESTA's own default; the deck writes the whole block at every device point, so the choice is on the card and never the engine's silent one (transport.md 2a.11).
+It is a lever on the leads' surface Green's-function files: the files hold one matrix per energy point, so a coarser spacing means fewer points and smaller files, and a less finely integrated non-equilibrium density.  Unread at 0 V.  Prep refuses a spacing that leaves fewer than two points in the narrowest window the description sweeps.
+"""
+
+[item.ts_elecs_out_of_core]
+stages = ["device"]
+kind = "engine"
+category = ["execution"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Elecs.Out-of-core"
+engine_key = "TS.Elecs.Out-of-core"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
+type = "bool"
+value = true
+default = true
+group = "stage"
+label = "Keep the leads' Green's functions as files"
+tier = "advanced"
+help = """
+Whether TranSIESTA writes each lead's surface Green's function to a file before its first SCF iteration and reads it back at every iteration (true, TranSIESTA's own default), or keeps the self-energies in memory and recomputes them at every iteration (false).
+The files are large -- 16 bytes per lead orbital squared, per k-point, per energy point: 49 GiB a lead on the Au-BDT-Au junction -- and live in the run's tsgf/ folder, one voltage's pair at a time (transport.md 2a.11).  False costs the recursion's time at every iteration and keeps the folder empty.
+"""
+
 [item.ts_scf_dq_converge]
 stages = ["device"]
 kind = "engine"

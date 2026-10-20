@@ -352,7 +352,8 @@
             // here, or where to ask (results.md § 2.4) -- the server's
             // words, beside the detail.
             tr.appendChild(td((s.detail || "")
-                + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")));
+                + (s.standing && s.standing.say ? " \u00b7 " + s.standing.say : "")
+                + (s.tsgf ? " \u00b7 " + s.tsgf : "")));
             tr.appendChild(td(""));
             tr.appendChild(td(""));
             table.appendChild(tr);

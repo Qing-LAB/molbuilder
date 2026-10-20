@@ -1377,7 +1377,8 @@ The frame is the structure's — the citation's frames, never typed — and the
 voltage is the calculation's — `task.json`'s list (§ 2a.10). A device point is
 one of each, and either axis may be one. *(This replaces the ruling of
 2026-09-16, "a frame group runs at one bias", which bounded the walk, not the
-physics; the walk takes the second level as one more loop.)*
+physics; the walk runs a voltage at every frame, then the next voltage —
+§ 2a.11, *What a run's points share*.)*
 
 - **Within a frame**, the voltages chain as a sweep does (§ 2a.11): the 0 V
   point from the seed's density, each further voltage from the converged point
@@ -1385,7 +1386,7 @@ physics; the walk takes the second level as one more loop.)*
 - **Across frames**, nothing chains: each frame is a geometry in its own right,
   so its 0 V point starts from the seed's density, never from another frame.
 - **A voltage that does not finish ends that frame's chain**, and the walk goes
-  on to the next frame.
+  on with the other frames.
 - **Under the low-bias approximation** each frame runs once, at 0 V, and its
   I–V is computed from its own T(E, 0) at the listed voltages.
 
@@ -1728,10 +1729,10 @@ voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
     │                       the gathered inputs, kept once as taken; every
     │                       point's own copy is taken from the run upstream,
     │                       as these are
-    ├── <label>.v0.TSGFL, <label>.v0.TSGFR, <label>.v0.2.TSGFL, …
-    │                       the leads' surface Green's functions, one pair
-    │                       per voltage: the engine's scratch, written by the
-    │                       first point at that voltage and read by the rest
+    ├── tsgf/               the leads' surface Green's functions -- the one
+    │                       pair of the voltage being worked on, written by
+    │                       the round's first point, read by the rest, emptied
+    │                       as each round begins and when the walk ends
     │                       (*What a run's points share*, below)
     ├── run.json            the run's one launch record
     ├── v0/                 a point: its deck, its run script, its own copies
@@ -1749,8 +1750,8 @@ voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
 A point folder holds everything its engine reads, as every run folder does
 (`project-layout.md` § 1.0) — its own copies of the run's inputs; the run keeps
 them once, clean, as their source — but for the leads' surface Green's
-functions, which the engine reads from the run above the point and which are
-the run's on purpose (*What a run's points share*, below). The stage folder
+functions, which the engine reads from the run's `tsgf/` above the point and
+which are the run's on purpose (*What a run's points share*, below). The stage folder
 holds no deck at the stage level: every deck is a point's.
 
 **A point is done or not done** — read from the point's own files by one door
@@ -1768,8 +1769,10 @@ outputs. A point has no record of its own beyond that: *queued*, *running*,
 and its points' files — each point's run by the one status door, the run
 finished once every point's has (`job-system.md`, *What marks each state*).
 
-**The walk.** `launch task` sends one job walking the run's points not done, in
-bias order. Each point starts as it would on the first walk — **every point not
+**The walk.** `launch task` sends one job walking the run's points not done —
+**voltage by voltage, every frame's point at a voltage before the next
+voltage** (*What a run's points share*, below: the leads' files are the
+round's). Each point starts as it would on the first walk — **every point not
 done is redone from the same start**: the 0 V point from the seed's density
 (its own copy, taken from the seed's run); a later point from the converged density (`.TSDE`) of
 the closest done point before it, or of the point before it in this walk — the
@@ -1781,9 +1784,9 @@ its run gathered, which its own `.gathered-from` names (`status <stage>`: *from
 what it gathered*) — the file catalogue's two words for the two starts
 (`project-layout.md` § 5). The device
 walk ends a frame's chain at a voltage that does not finish — the voltages
-after it in that frame would start from it — and goes on to the next frame;
-the transmission walk goes on — its points are independent — and says which
-did not.
+after it in that frame would start from it — and goes on with the other
+frames; the transmission walk goes on — its points are independent — and says
+which did not.
 
 **Launched again — the run/stage contract's rule 3, read at the point**
 (`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
@@ -1792,9 +1795,9 @@ did not.
 engine's results the readers and the next rungs use, the run's own account:
 output, conclusion, logs) copied into the new run's point folder, **but not
 the engine's scratch** (`warm-files.toml` `[transport] scratch`: TranSIESTA's
-`.TSGFL` / `.TSGFR`, the leads' surface Green's functions — the run's files,
-not a point's, recomputed once per voltage by every run, and left wherever
-they lie), its `.continued-from` naming the run that
+`.TSGFL` / `.TSGFR`, the leads' surface Green's functions — the round's pair
+in the run's `tsgf/`, computed once per voltage by every run and emptied by
+the walk), its `.continued-from` naming the run that
 **computed** it (one hop: a point taken over from a point itself taken over
 names the run that ran it) — so a point taken over keeps the inputs it was
 computed from, and their `.gathered-from`, whatever the new run gathered —
@@ -1867,7 +1870,7 @@ does not:
 │   ├── f000/v0/ f000/v0.2/ f001/v0/ …   each point's prepared deck
 │   └── run-0/                   one run: every point
 │       ├── .gathered-from  <label>_L-electrode.TSHS  <label>_R-electrode.TSHS  <label>.DM
-│       ├── <label>.v0.TSGFL  <label>.v0.TSGFR  <label>.v0.2.TSGFL  …   ← once per voltage, every frame's
+│       ├── tsgf/                                   ← the round's one pair, every frame's at that voltage
 │       └── f000/v0/ f000/v0.2/ f001/v0/ …
 └── 05_transmission/
     ├── f000/v0/ f000/v0.2/ f001/v0/ …
@@ -1890,7 +1893,7 @@ right — so **each frame's first point starts from the seed's density** (its
 own copy, taken from the seed's run, its `.gathered-from`), never from
 another frame, and a
 voltage that does not finish ends **its frame's** chain while the walk goes on
-to the next frame. The seed is frame 0's geometry (the approximate gate,
+with the other frames. The seed is frame 0's geometry (the approximate gate,
 § 2a.9: a nearby geometry's density is a start, not a result). `status` counts
 *k of N points done (F frames × V voltages)*; warm takes the done points over
 and runs the rest — a point not done starting from the closest done voltage
@@ -1903,51 +1906,180 @@ unless waited on (`execution/job-system.md` § 6.0).
 > *"we shall reuse the tsgf files wherever possible for a clustered
 > calculation of transport when electrodes are shared, the only thing that is
 > changed is the bridging components … otherwise we are wasting a lot of space
-> and time on things that are the same"*
+> and time on things that are the same"* · *"having 100 points in bias means
+> 40GB file would grow into 4TB, that's too much"* · *"a special dir that
+> basically stores this particular file in one place … such that this is
+> easily managed, checked and it becomes easy to make sure only one file
+> exist when working on a single bias point … the next bias point will remove
+> other data, and save a new one there"*
 
-Before TranSIESTA's first SCF iteration it computes each lead's **surface
-Green's function** on the whole contour — every energy point, every k-point —
-and writes it to a file it reads back at every iteration (`TS.Elecs.Out-of-core`,
-true by default): the `.TSGFL` / `.TSGFR` of a device point, 49 GB each on the
-Au–BDT–Au junction. The file depends on the **lead** (its atoms, orbitals and
-cell), the device's **cell and k-points**, the **spin**, the lead's **chemical
-potential** — the voltage — and the **contour** (§ 2a.9, *Two kinds of
-sharing*). None of these is the bridge's: every frame of a run at one voltage
-needs the same two files, and until 2.19.0 every frame computed and wrote its
-own.
+**What the file is.** Before its first SCF iteration TranSIESTA computes, for
+each lead, the lead's **surface Green's function** — a matrix over the lead's
+orbitals — once for every energy point of its contour and every k-point in
+the electrode plane, writes them to a file it reads back at every iteration
+(`TS.Elecs.Out-of-core`, true by default), and names the file in the lead's
+`%block TS.Elec.<lead>`. The file depends on the **lead** (its atoms, orbitals
+and cell), the device's **cell and k-points**, the **spin**, the lead's
+**chemical potential** — the voltage — and the **contour** (§ 2a.9, *Two kinds
+of sharing*). Nothing of the bridge is in it: every frame of a run at one
+voltage needs the same two files, and two voltages never share one.
 
-**The rule.** The leads' surface Green's functions are **the run's, once per
-voltage**: the device deck names each lead's file in the run's folder, above
-the point's — `GF <to the run>/<label>.<voltage>.TSGF<lead>` in its
-`%block TS.Elec.<lead>`, the engine's own default name
-(`<label>.TSGF<lead>`, `ts_electrode.F90`) with the point's voltage token in it
-— and asks the engine to reuse it (`GF.ReUse true`, the block's line, which
-outranks `TS.Elecs.GF.ReUse`; `m_ts_options.F90`, `ts_electrode.F90`). The
-first point the walk runs at a voltage finds no file and writes it; every
-later point at that voltage — the next frames' — finds it, **checks it**
-(`check_Green`: spin, cell, atoms, coordinates, orbitals, Bloch expansion, the
-chemical potential, the k-points and their weights, every contour energy) and
-reads it, saying *Using GF-file* in its output. A file that fails the check
-stops the point with TranSIESTA's own words (*Error in GFfile … Please move or
-delete*). The check reads the file's header: a point killed while writing the
-file — the wall, the node — leaves one the next frame's point at that voltage
-accepts and then fails reading (*ERROR in reading GF file*), as does every
-later frame at that voltage in that run, the walk going on frame by frame; a
-launch again opens a new run and computes the pair afresh. The walk runs
-points one after another, so no two write one file at once. A point with no
-level (one frame, one voltage) is the run itself, and its pair sits in the
-run's folder as every run's does.
+**What it costs.** The size is the count of those matrices times the size of
+one, as the engine itself estimates it (`m_ts_electrode.F90`
+`print_Elec_Green`; its "GB" is 1024-based, `byte_count.F90`, so GiB
+throughout here):
 
-What follows for the rest of the contract: the files are the **run's scratch**
-(`warm-files.toml` `[transport] scratch`), never carried, never taken over —
-a run launched again computes each voltage's pair once more, as it computed
-them before — and the checkpoint leaves them out as it did (`*.TSGF*`,
-`runtime_config`). The transmission writes none: tbtrans builds each lead's
-self-energy in core (`TBT.Elecs.Out-of-core`, false by default,
-`m_tbt_options.F90`), and its deck's electrode blocks say so in place of a
-`GF` line. The gather's agreement check renders the upstream deck **at the
-point** it compares (`gather.rung_deck_now`), so a device deck's `GF` path —
-the point's own words — agrees with the one that ran.
+> size ≈ 16 bytes × (lead orbitals)² × spins × k-points × (energy points + 2)
+
+The Au–BDT–Au junction, from its own lead and device outputs:
+
+| factor | value | where it comes from |
+|---|---|---|
+| lead orbitals | 1425 | the orbitals of the lead's `used-atoms`, which is the whole lead run (75 Au atoms, 19 orbitals each with this basis): the lead run's `initatomlists:` line |
+| one matrix | 16 × 1425² bytes = 31.0 MiB | complex numbers |
+| spins | 1 | a restricted junction; a polarized one doubles the file |
+| k-points | 13 | the 5×5×1 grid in the electrode plane, k and −k counted once (time reversal, the only symmetry TranSIESTA's grid uses): 25 → 13 |
+| energy points at 0 V | 123 | the equilibrium contour: a 10 eV pole energy at 300 K gives *int(10 / (π kT))* = 123 poles |
+| per lead | 31.0 MiB × 13 × 125 = 49.2 GiB | what SIESTA printed: *Estimated file size: 49.170 GB* |
+
+At a finite bias the contour holds a second set of poles (one per reservoir)
+and a **line through the bias window**, from −|V|/2 − *cutoff*·kT to
+|V|/2 + *cutoff*·kT at a spacing. On the test tree's small junction at 0.2 V
+that is 123 + 123 + 46 energy points: 294 against 125 with the formula's
++2, 2.35 times the equilibrium file.
+
+**Where it lives — one folder, one pair.** A device run keeps the files in
+**`tsgf/`, a folder of its own inside the run**: `run-<n>/tsgf/`
+([`job-contracts.md`](?doc=execution/job-contracts.md) *Directories*). The
+folder's name is the vocabulary's — `warm-files.toml` `[transport]
+scratch_dir`, the fourth fact a swept section states (§ 4.2a) — and every
+writer and reader of it takes it from there. The files are named on the
+engine's own name with the voltage in it, `<label>.<voltage>.TSGF<lead>`
+(`transiesta.lead_gf_file`: `AuBDT.v0.2.TSGFL`), and live nowhere else: a
+point's folder never holds one.
+
+Whoever opens a device run opens its `tsgf/` with it, through the one opener
+(`materialize`, [`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.2): prep for `run-0`, the launch for every run after. The folder is
+Python's, as every folder of the tree is (invariant 6a), and it is stamped
+with its `calcdir.json`, role **`scratch`** (§ 1.4a, invariant 6b): the run
+door and the Results sidebar read the role and say *the engine's scratch of
+the run above*, the Results tab opens no file in it, and the checkpoint keeps
+the marker, so a restore brings the folder back empty. TranSIESTA opens the
+path as the deck gives it and makes no folder (`m_ts_gf.F90`).
+
+The device deck names each lead's file from the point's folder — `GF
+../../tsgf/AuBDT.v0.2.TSGFL` from `f001/v0.2/`, `GF ./tsgf/…` from a run with
+no level, which is the run itself (`stages.Point.to_run`) — and asks the
+engine to reuse it: `GF.ReUse true`, the block's line, which outranks
+`TS.Elecs.GF.ReUse` (`m_ts_options.F90`, `ts_electrode.F90`).
+
+**A round is every frame's point at one voltage.** A run of points is walked
+**round by round — voltage by voltage, every frame's point at a voltage
+before the next voltage**: the bias loop outside, the frame loop inside.
+
+```
+round v0:    tsgf/ emptied, then
+             f000/v0    writes tsgf/<label>.v0.TSGFL and .TSGFR
+             f001/v0    finds them, checks them, reads them ("Using GF-file")
+             f002/v0    the same
+round v0.2:  tsgf/ emptied, then
+             f000/v0.2  writes the v0.2 pair; its SCF starts from f000/v0's .TSDE
+             f001/v0.2  reads it; starts from f001/v0's .TSDE
+             …
+walk's end:  tsgf/ emptied
+```
+
+- **One pair in `tsgf/`, the round's.** The walk script empties the folder as
+  each round begins and once more when the walk ends. The emptying is a
+  step of the walk script of its own (`submit._walk_script`): it stands
+  before the first point of the round that this walk runs — a round whose
+  every point was taken over has none — and after the last step of the
+  walk, and it runs after a failed member too. It removes the file family
+  (`*.TSGF*`) and nothing else, and writes to the walk's log what it
+  removed, the size in `du`'s words: `[group] tsgf/ emptied --
+  AuBDT.v0.TSGFL AuBDT.v0.TSGFR (99G)`. At every moment the folder holds
+  the pair of the voltage being worked on, or nothing. A hundred voltages
+  at 40 GiB a lead cost 80 GiB on disk, never 8 TiB, and a walk that reaches
+  its end leaves nothing behind.
+- **The pair's writer is the round's first point this walk runs** — when
+  `f000/v0.2` was taken over from an earlier run, `f001/v0.2` writes.
+- **The points are listed as before.** The one door that answers a rung's
+  points (`stages.rung_points`: frames outer, each frame's voltages one
+  chain) and everything that lists them — `status`'s rows, the record's
+  `by_point`, the Results ladder — keep that order; the walk alone runs them
+  round by round.
+- **What a point starts from is unchanged**: a frame's first voltage from
+  the seed's density, each later voltage from the same frame's previous
+  voltage, which ran one round earlier; frames never start from one another
+  (§ 2a.9, *Both axes*). A frame whose point fails is skipped at every later
+  round — its chain ends there — and the walk goes on with the other frames.
+  A round's pair is emptied whether its last point succeeded or not.
+- **Frames only** (one voltage, or the low-bias approximation) is one round
+  at 0 V, the pair named `<label>.v0.TSGF<lead>` (`Point.bias_v`), emptied at
+  the walk's end: such a device keeps nothing. **A device that runs once** —
+  one frame, one voltage, no walk — keeps its one pair in its run's `tsgf/`;
+  nothing comes after it to empty the folder.
+- **A walk that did not reach its end** — stopped by you, a kill, a wall, a
+  node lost — leaves the round's pair, or one file of it when the stop fell
+  between the two writes, in that run's `tsgf/`. The run is yours to recover
+  (`job-system.md`, *runs are yours*): no verb removes it, `status` names
+  it on that run's line, and a launch again opens the next run with an
+  empty folder.
+- **Launched again**, warm or cold, a run computes the pair of each voltage
+  it walks once more; a point taken over never needed the file again. The
+  files are the engine's scratch (`warm-files.toml` `[transport] scratch`):
+  never carried, never taken over, left out of the checkpoint (`*.TSGF*`,
+  `runtime_config`).
+- **The engine checks what it finds.** A later point at the voltage checks
+  the file against its own deck before reading it (`check_Green`: spin, cell,
+  atoms, coordinates, orbitals, Bloch expansion, the chemical potential, the
+  k-points and their weights, every contour energy), says *Using GF-file* and
+  reads it — or, failing the check, says so and stops the point with
+  TranSIESTA's words (*Error in GFfile … Please move or delete*). The check
+  reads the header: a point killed while writing the file leaves one the next
+  frame's point accepts and then fails reading (*ERROR in reading GF file*),
+  as does every later frame at that voltage in that run; the next round
+  empties it, and a launch again computes it afresh. The walk runs points one
+  after another, so no two write one file at once.
+- **The transmission writes none**: tbtrans builds each lead's self-energy in
+  core (`TBT.Elecs.Out-of-core`, false by default, `m_tbt_options.F90`), and
+  its deck's electrode blocks say so in place of a `GF` line. The gather's
+  agreement check renders the upstream deck **at the point** it compares
+  (`gather.rung_deck_now`), so a device deck's `GF` path — the point's own
+  words — agrees with the one that ran.
+
+**Checked by the status verb, and said before the launch.** The device
+stage's row — `jobset status`, the Task setup tab's stage row, the Results
+ladder — carries one line about the files, read by one door
+(`transport/gf_files.py`) from the files on disk and never from a re-resolved
+description. The stage's row reads the newest run's `tsgf/`, and where the
+stage has older runs says each run's after it, newest first.
+
+| the device | the line |
+|---|---|
+| prepared, its leads not yet run | *tsgf/: one pair at a time; the size is known once the leads have run* |
+| prepared, its leads run | *tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 116.0 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 125 and 294 energies)*. The orbital count is read from each lead run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: *L 49.2 GiB, R 31.0 GiB a lead at 0 V*. With the file switched off: *tsgf/: none — the self-energies are kept in memory* |
+| launched, a run going or done | *tsgf/: the v0.2 pair, 2 files, 98.3 GiB* · *tsgf/: one file, `AuBDT.v0.2.TSGFL`, 49.2 GiB — a walk that did not reach its end; yours to remove* · *tsgf/: 4 files, 196.6 GiB — …; the walk leaves one pair at most, so these are an edit's* · *tsgf/: empty* · *tsgf/: none — the self-energies are kept in memory* · *tsgf/: not there* (a run made before 2.22.0, whose pair lies in the run's folder). A stage with several runs says each run's, newest first: *run-1: the v0.2 pair …; run-0: empty* |
+
+**The levers** — three on the device's tab and the k-grid on the shared
+panel (§ 2a.13); every one written explicitly, never left to the engine:
+
+| lever | item | what it moves | a 49.2 GiB lead, as an example |
+|---|---|---|---|
+| the k-points in the electrode plane | `kgrid` (the shared panel: one grid for every SCF rung) | the k-point count, linearly; it also converges the density and the transmission | 3×3×1 → 5 k-points: 18.9 GiB |
+| the equilibrium contour's poles | `negf_eq_pole_ev` | the pole count, *int(E / (π kT))*: 10 eV at 300 K is 123 poles; fewer poles integrate the equilibrium density less finely; TranSIESTA refuses fewer than 20 | 5 eV → 61 poles: 24.8 GiB |
+| the bias window's spacing | `negf_neq_spacing_ev` — the `delta` of `%block TS.Contour.nEq.line`, 0.01 eV, TranSIESTA's own default | the line's point count, *(|V| + 2·cutoff·kT) / delta*, rounded; coarser integrates the non-equilibrium density less finely | at 0.2 V, 0.02 eV → 23 line points in place of 46: 106.6 GiB in place of 116 |
+| no file at all | `ts_elecs_out_of_core` — `TS.Elecs.Out-of-core`, true by default | false keeps the self-energies in memory and recomputes them at every SCF iteration: the disk to nothing, the time per iteration up by the recursion's cost; `tsgf/` stays empty | — |
+
+The spacing's block is written at every device point, with the window the
+cutoff gives: `from − cutoff kT − |V|/2 to |V|/2 + cutoff kT`, rendered from
+`negf_neq_fermi_cutoff_kt` and never typed a second time. TranSIESTA reads it
+only under bias. Its range is 0.001–0.1 eV, and prep refuses a spacing that
+leaves fewer than two points in the narrowest window the description sweeps
+— the smallest voltage other than 0, since the block is unread at 0 V; a
+description with no such voltage has no check. The floor of two is ours:
+TranSIESTA itself stops only at none.
 
 #### Attempts, and what is never overwritten
 
@@ -2336,6 +2468,8 @@ naming one there is refused where it is written (§ 3.8.9).
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
 | *the equilibrium contour* | `contour.eq` in each `%block TS.ChemPot.<name>` | **Stated, not left to the engine**: a circle and a tail whose lower bound sits below the seed's lowest eigenvalue — the manual's own rule. Without `contour.eq` TranSIESTA falls back to a continued fraction of 42 poles (`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses a contour that cannot cover the spectrum | 2 |
 | `ts_elecs_eta_ev` | `TS.Elecs.Eta` | The leads' self-energy broadening in the device's NEGF loop. 1 meV, TranSIESTA's own default, written | 3 |
+| `negf_neq_spacing_ev` | `delta` in `%block TS.Contour.nEq.line` | **The bias window's energy spacing**, 0.01 eV — TranSIESTA's own default, written at every device point with the window the cutoff gives (§ 2a.11, *What a run's points share*: a lever on the leads' files); the block is unread at zero bias | 3 |
+| `ts_elecs_out_of_core` | `TS.Elecs.Out-of-core` | **Whether the leads' surface Green's functions are kept as files** (true, TranSIESTA's own default) or recomputed in memory at every SCF iteration (false: no `tsgf/` file, more time per iteration) — § 2a.11, *What a run's points share* | 3 |
 | `ts_scf_dq_converge` · `ts_scf_dq_tolerance` | `TS.SCF.dQ.Converge` · `TS.SCF.dQ.Tolerance` | **The device's charge check.** On (TranSIESTA's default), the NEGF cycle counts as converged only when the device's electrons are off by less than the tolerance — blank is not set, TranSIESTA's thousandth of the electrons on the atoms that are not buffer atoms (`m_ts_options.F90`, `scfconvergence_test.F`). Off lets a run whose density has stopped changing finish with its charge off; SIESTA writes the Hamiltonian the transmission reads only on convergence (`final_H_f_stress.F`) *(2.3.0)* | 3 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening of the device. **Inert at zero bias** — there is no non-equilibrium window to integrate. **Blank is not set** — the line is not written and TranSIESTA takes a tenth of the smallest lead broadening; **0 is written as 0** — no broadening on the device, a value of its own (below) | 3 |
 | `negf_neq_fermi_cutoff_kt` | `TS.Contours.nEq.Fermi.Cutoff` | How far past each lead's Fermi level the bias window reaches, in kT. 5, TranSIESTA's own default, written; **refused below 2.5**, where TranSIESTA stops the run (`at_least`, `m_ts_contour_neq.f90:141-144`) *(2.1.0)* | 3 |
@@ -4102,7 +4236,7 @@ flowchart LR
 >   density) forward, so `V_{i+1}` converges from `V_i` instead of from
 >   scratch — and therefore **ends a frame's chain at a failed point**:
 >   walking on in that frame would converge from a state the failure
->   poisoned, and the next frame starts from the seed, as every frame does;
+>   poisoned, and the other frames start from the seed, as every frame does;
 > - the **transmission** walk hands nothing forward — each point re-reads
 >   the device's saved H — so a bad point says nothing about the next: the
 >   walk **continues**, and the exit code reports any failure.

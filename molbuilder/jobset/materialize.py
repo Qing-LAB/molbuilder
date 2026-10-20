@@ -607,6 +607,18 @@ def open_container(base, folder, plan) -> Path:
     return folder
 
 
+def open_scratch(base, folder, plan) -> Path:
+    """Make a run's scratch folder -- a device run's ``tsgf/``, the engine's
+    scratch of the run above it (`engines/transport.md` § 2a.11) -- and say
+    what it is (`calcdirs.SCRATCH`, invariant 6b): the run door and the
+    Results sidebar read the role, and the checkpoint keeps the marker, so a
+    restore brings the folder back empty.  Returns ``folder``."""
+    base, folder = Path(base), Path(folder)
+    plan.folder(folder)
+    plan.text(*calcdirs.record(folder, role=calcdirs.SCRATCH, root=base))
+    return folder
+
+
 def _stamp_containers(base: Path, dirs, plan) -> None:
     """Each of ``dirs`` below the calculation root, stamped a container --
     outermost first."""
@@ -678,7 +690,10 @@ def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
                    ) -> SweepRun:
     """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
     folder, holding copies of that point's prepared files (its deck, run
-    script and the shared package; :func:`bring_files`).  The run is the
+    script and the shared package; :func:`bring_files`), and the run's
+    scratch folder where the rung keeps one.  ``points`` is the listing
+    order (frames outer); the walk runs them round by round
+    (`engines/transport.md` § 2a.11).  The run is the
     stage's newest when it has not been launched -- reused, and emptied
     whole first (:func:`empty_run`) -- else the next (a launch again,
     `job-system.md` § 5.4, rule 3).  Each point
@@ -702,6 +717,10 @@ def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
     for pdir, pt in points:
         open_run(base, pdir, plan)
         bring_files(jobset, job, base, sources[pt], pdir, rn, plan)
+    # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
+    # § 2a.11): the rung declares it (`Job.scratch_dir`).
+    if job.scratch_dir:
+        open_scratch(base, run / job.scratch_dir, plan)
     return SweepRun(stage=stage_name, dir=run, points=points, fresh=fresh)
 
 
@@ -997,6 +1016,10 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # directory is structurally identical to a stage's own, and § 1.4 calls
     # one a run and the other a container.
     open_run(base, attempt, plan)
+    # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
+    # § 2a.11): the rung declares it (`Job.scratch_dir`).
+    if job.scratch_dir:
+        open_scratch(base, attempt / job.scratch_dir, plan)
 
     brought = bring_files(jobset, job, base, stage_dir, attempt, rn, plan)
 

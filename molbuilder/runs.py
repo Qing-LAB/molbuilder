@@ -1036,6 +1036,15 @@ def folder_answer(directory) -> Dict[str, Any]:
             elif run is not None:
                 attempts.append("no run here yet: nothing has been launched "
                                 "in this folder")
+        elif place.role == calcdirs.SCRATCH:
+            # THE ENGINE'S SCRATCH OF THE RUN ABOVE -- a device run's
+            # `tsgf/` (`engines/transport.md` § 2a.11): read alone, no run
+            # asked of it, nothing in it opens.
+            chosen = None
+            attempts.append(
+                "the engine's scratch of the run above (its leads' surface "
+                "Green's function files, one voltage's pair at a time): "
+                "nothing in it opens (engines/transport.md § 2a.11)")
         elif place.role == calcdirs.CONTAINER:
             chosen = _container_product(d, place, label, stage, attempts)
             attempts.append(

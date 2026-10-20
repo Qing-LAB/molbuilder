@@ -2697,8 +2697,10 @@ function taskPrepCard(task) {
         const members = el("ul", { class: "ts-planlist" });
         for (const st of g.members) {
             const r = said[st] || {};
+            // A device rung's line about the leads' files rides its detail
+            // (`engines/transport.md` § 2a.11).
             const detail = el("span", { class: "ts-plan-detail" },
-                              r.detail || "");
+                              (r.detail || "") + (r.tsgf ? " \u00b7 " + r.tsgf : ""));
             if (r.why) detail.title = r.why;
             members.appendChild(el("li", {},
                 el("span", { class: "ts-planrow" },

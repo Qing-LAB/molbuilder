@@ -56,7 +56,11 @@ SCHEMA = "molbuilder/calcdir@1"
 #: *support* are DERIVED readings of these two (§ 1.4a) -- not roles.
 CONTAINER = "container"
 RUN = "run"
-ROLES = (CONTAINER, RUN)
+#: The engine's scratch of the run above it -- a device run's ``tsgf/``
+#: (`engines/transport.md` § 2a.11): read alone, no run asked of it
+#: (project-layout.md § 1.4a, invariant 6b).
+SCRATCH = "scratch"
+ROLES = (CONTAINER, RUN, SCRATCH)
 
 
 @dataclass(frozen=True)

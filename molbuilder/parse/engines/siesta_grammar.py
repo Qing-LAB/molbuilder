@@ -1071,6 +1071,13 @@ TS_GF_REUSED = re.compile(r"^\s*Using GF-file\s+'([^']+)'", re.IGNORECASE)
 #: in a simple, face- or body-centred cubic cell, ``Src/madelung.f``).
 EMADEL = re.compile(r"^\s*siesta:\s+Emadel\s*=\s*(\S+)", re.IGNORECASE)
 
+#: THE ORBITAL COUNT (``Src/atomlist.f``): ``initatomlists: Number of atoms,
+#: orbitals, and projectors: <na> <no> <nkb>`` -- a lead run's is what the
+#: device's file estimate is built on (`engines/transport.md` § 2a.11).
+ORBITAL_COUNT = re.compile(
+    r"^\s*initatomlists:\s*Number of atoms, orbitals, and projectors:"
+    r"\s*(\d+)\s+(\d+)\s+(\d+)", re.IGNORECASE)
+
 
 def ts_charge_values(text: str) -> List[float]:
     """The numbers on a charge-distribution row: one, or one per spin

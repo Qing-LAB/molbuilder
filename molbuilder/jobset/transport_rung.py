@@ -369,7 +369,7 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
         try:
             spec = _siesta_spec_for(struct, cfg, names=names,
                                     calculation="transport", state=state,
-                                    point=point)
+                                    point=point, scratch_dir=scratch_dir_of(base))
         except ValueError as exc:
             # `transport_spec` refuses an unknown rung with a message
             # written FOR a person, and `user_error_as_prep` translates
@@ -377,6 +377,14 @@ def transport_spec(task, stage: str, struct, config, state, point=None, *,
             # deliberately, so a TypeError still looks like the bug it is.
             raise PrepError(str(exc)) from exc
     return spec, cfg
+
+
+def scratch_dir_of(base) -> Optional[str]:
+    """The folder of a device run's own its leads' files live in -- the
+    vocabulary's ``scratch_dir`` (`warm-files.toml` [transport]), the one
+    spelling every writer and reader takes."""
+    from ..warmfiles import warm_list
+    return warm_list("siesta", "transport", base).scratch_dir
 
 
 def at_frame(struct, point):
@@ -404,6 +412,6 @@ def at_bias(cfg, volts):
             else dataclasses.replace(cfg, bias_voltage_v=float(volts)))
 
 
-__all__ = ["provide_pseudos", "resolve_transport", "transport_parts",
+__all__ = ["provide_pseudos", "resolve_transport", "transport_parts", "scratch_dir_of",
            "transport_rung", "transport_sources", "composed_for_prep",
            "transport_spec", "at_frame", "at_point", "at_bias"]

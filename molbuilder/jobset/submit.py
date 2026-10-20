@@ -2052,7 +2052,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
                  member_word: str = "trial",
                  bound_s: Optional[int] = None,
                  stop_on_failure: bool = False,
-                 chains: Optional[List[Any]] = None) -> str:
+                 chains: Optional[List[Any]] = None,
+                 empties: Optional[Dict[int, str]] = None,
+                 empty_at_end: Optional[str] = None) -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
@@ -2073,6 +2075,12 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     in the background, a cancel), it starts no further member.  What the
     scheduler tells the job it reads in molbuilder's names, which the job's
     header says once for everything it starts (`kinds.Kind.job_lines`).
+    ``empties`` names, by the index of the step it stands before, a folder
+    whose scratch family the walk empties there -- a device run's ``tsgf/``
+    as each round begins -- and ``empty_at_end`` the folder emptied after
+    the last step, a failed member's included; both from the folder the
+    walk runs in (`engines/transport.md` § 2a.11).  Stopped by the person,
+    the walk starts no further member and empties nothing more.
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
@@ -2107,6 +2115,26 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
         f'{member_word}" >> "$LOG"; exit 130; }}',
         "trap _walk_stopped INT TERM HUP",
+        # THE RUN'S SCRATCH FOLDER, EMPTIED (`engines/transport.md` § 2a.11,
+        # *What a run's points share*): the file family alone, and what
+        # went, with its size in du's words, to the log.
+        "empty_scratch() {",
+        '    _d="$1"',
+        '    if [ ! -d "${_d}" ]; then',
+        f'        echo "[group] {when} $(basename "${{_d}}")/ not there -- '
+        f'nothing emptied" >> "$LOG"; return 0',
+        "    fi",
+        '    _gone=$(cd "${_d}" && ls *.TSGF* 2>/dev/null | tr "\\n" " ")',
+        '    if [ -n "${_gone}" ]; then',
+        '        _size=$(cd "${_d}" && du -ch *.TSGF* 2>/dev/null | tail -1 '
+        '| cut -f1)',
+        '        rm -f -- "${_d}"/*.TSGF*',
+        f'        echo "[group] {when} $(basename "${{_d}}")/ emptied -- '
+        f'${{_gone}}(${{_size}})" >> "$LOG"',
+        "    else",
+        f'        echo "[group] {when} $(basename "${{_d}}")/ empty" >> "$LOG"',
+        "    fi",
+        "}",
         "run_member() {",
         '    _name="$1"; _dir="$2"; shift 2',
         "    _t0=$(date +%s)",
@@ -2132,6 +2160,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     import shlex as _shlex
     chain_of = {c: i for i, c in enumerate(dict.fromkeys(chains or [None]))}
     for k, (member, folder, run_sh, args, before) in enumerate(steps):
+        if empties and k in empties:
+            lines.append(f'empty_scratch {_shlex.quote(empties[k])}')
         call = (f'run_member "{member}" "{folder}" "{run_sh}"'
                 + (f" {args}" if args else ""))
         # THE MEMBERS AFTER A FAILED ONE IN ITS CHAIN WOULD START FROM IT:
@@ -2168,6 +2198,8 @@ def _walk_script(name: str, steps, *, where: str, log: str,
                   f'    echo "[group] {when} {member} not run -- its chain '
                   f'stopped at a failed member" >> "$LOG"',
                   "fi"]
+    if empty_at_end:
+        lines.append(f"empty_scratch {_shlex.quote(empty_at_end)}")
     lines += [f'echo "[group] {when} done fails=${{fails}}" >> "$LOG"',
               "exit $(( fails > 0 ))", ""]
     return "\n".join(lines)
@@ -2357,8 +2389,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     frame's first, from its own gathered inputs: frames never start from
     one another (§ 2a.9 *Both axes*).  A rung that hands nothing forward
     (the transmission) walks on past a point that fails; one that does ends
-    that frame's chain there, and the walk goes on to the next frame.  The
-    walk is the one walk script (:func:`_walk_script`); the header is its
+    that frame's chain there, and the walk goes on with the other frames.
+    THE WALK RUNS ROUND BY ROUND -- every frame's point at a voltage before
+    the next voltage (§ 2a.11, *What a run's points share*) -- and, where
+    the rung keeps the engine's scratch in a folder of the run's own
+    (`Job.scratch_dir`), empties that folder as each round begins and when
+    the walk ends.  The walk is the one walk script (:func:`_walk_script`); the header is its
     prep's, written for every point, their walls summed (`group.envelope`,
     `prep.prep_calculation`) -- the points done before walk on past."""
     from ..runrecord import launch_record, next_run, read_continued_from
@@ -2370,8 +2406,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     stage_dir, run, prev = m.container, m.run_dir, m.ran
     vocabulary = warm_list(jobset.engine, "transport", base)
     # THE ENGINE'S SCRATCH (`warm-files.toml` [transport] scratch, by
-    # suffix): recomputed by every run, so never taken over, wherever a
-    # run holds it.
+    # suffix): recomputed by every run, so never taken over -- it lies in
+    # the run's own folder for it (`Job.scratch_dir`), and a run made
+    # before held it in its points.
     from ..runfiles import compose
 
     def scratch(name: str) -> bool:
@@ -2422,16 +2459,29 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
                         if f.is_file() and not scratch(f.name))),
             plan.writes)
-    # THE WALK: each frame's voltages in bias order, a point's start the
-    # point before it in ITS frame (`engines/transport.md` § 2a.9).
+    # THE WALK: round by round -- every frame's point at a voltage, then the
+    # next voltage (`engines/transport.md` § 2a.11) -- a point's start the
+    # point before it in ITS frame (§ 2a.9), which ran a round earlier.
     order = [pt for _p, pt in m.points]
+    rounds = list(dict.fromkeys(pt.volts for pt in order))
 
     def _before(pt):
         mine = [q for q in order if q.frame == pt.frame]
         k = mine.index(pt)
         return mine[k - 1] if k > 0 else None
+    walked.sort(key=lambda pp: (rounds.index(pp[1].volts),
+                                order.index(pp[1])))
+    # THE RUN'S SCRATCH FOLDER, emptied as each round begins -- before the
+    # round's first point this walk runs -- and when the walk ends.
+    scratch_at = (f"{run.name}/{job.scratch_dir}" if job.scratch_dir
+                  else None)
+    empties: Dict[int, str] = {}
+    seen_rounds: set = set()
     steps, said, chains = [], [], []
     for pdir, pt in walked:
+        if scratch_at and pt.volts not in seen_rounds:
+            seen_rounds.add(pt.volts)
+            empties[len(steps)] = scratch_at
         prior = _before(pt)
         try:
             check_launch_matches_deck(stage_dir / pt.rel, job, bench=False)
@@ -2471,7 +2521,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", jobset: JobSet, base: Path,
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
         member_word="point", log=log,
-        stop_on_failure=bool(hand), chains=chains)
+        stop_on_failure=bool(hand), chains=chains,
+        empties=empties, empty_at_end=scratch_at)
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / gn.name(".run.sh"), script)

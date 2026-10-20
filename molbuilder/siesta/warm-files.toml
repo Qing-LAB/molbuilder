@@ -27,9 +27,11 @@
 #                 write whenever the file carries
 # and the facts a section states of its kind: `resumes`, whether a re-run of
 # that kind of run continues from what the last one left (true unless
-# stated); for a sweep, `along`, what a done point hands the next, and
-# `scratch`, the engine's scratch at a point -- never carried, never taken
-# over into a new run (engines/transport.md 2a.11).
+# stated); for a sweep, `along`, what a done point hands the next,
+# `scratch`, the engine's scratch at a run -- never carried, never taken
+# over into a new run -- and `scratch_dir`, the folder of the run's own it
+# lives in; the two are stated together or not at all
+# (engines/transport.md 2a.11, job-contracts.md 4.2a).
 #
 # What an edit does: drop a row's `carry` to stop a file carrying (withhold
 # .DM for one debugging ladder); add a row for a file a new engine build
@@ -89,14 +91,21 @@ along = [".TSDE"]               # WHAT A SWEEP HANDS FROM POINT TO POINT: a
                                 # closest, previously, calculated bias"
                                 # (engines/transport.md 2a.11)
 scratch = [".TSGFL", ".TSGFR"]  # THE ENGINE'S SCRATCH AT A RUN: the leads'
-                                # surface Green's functions, one pair per
-                                # voltage in the run's folder, written by
-                                # the first point at that voltage and read
-                                # by every other frame's (tens of GB each)
-                                # -- never carried, never taken over into a
-                                # new run, always large to the checkpoint
+                                # surface Green's functions in the run's
+                                # tsgf/ -- the one pair of the voltage being
+                                # worked on, written by the round's first
+                                # point, read by every other frame's, emptied
+                                # by the walk as each round begins and when
+                                # the walk ends (tens of GiB each) -- never carried,
+                                # never taken over into a new run, always
+                                # large to the checkpoint
                                 # (engines/transport.md 2a.11, *What a run's
                                 # points share*)
+scratch_dir = "tsgf"            # WHERE A DEVICE RUN KEEPS THEM: the folder
+                                # of the run's own that the deck names, the
+                                # run script creates, the walk empties and
+                                # `status` reads -- the one spelling of its
+                                # name (job-contracts.md, Directories)
 
 [[transport.file]]
 suffix = ".TSHS"                # TranSIESTA Hamiltonian + overlap.

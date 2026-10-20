@@ -144,11 +144,16 @@ class TestStages:
         # The device writes the Hamiltonian the transmission attaches to
         # (`ts_hs_save`, the role item shared with the leads) and states the
         # self-energy broadening its NEGF loop uses (2026-10-08, F16), the
-        # bias window's reach, its inversion and its Hartree plane (2.1.0).
+        # bias window's reach, its inversion and its Hartree plane (2.1.0),
+        # and the two levers on the leads' surface Green's function files --
+        # the bias window's spacing and the file switch (2.22.0,
+        # `transport.md` § 2a.11, *The levers*).
         assert owned["device"] == {"negf_eq_pole_ev", "negf_neq_eta_ev",
                                    "bias_voltage_v", "ts_hs_save",
                                    "ts_elecs_eta_ev",
                                    "negf_neq_fermi_cutoff_kt",
+                                   "negf_neq_spacing_ev",
+                                   "ts_elecs_out_of_core",
                                    "ts_scf_dq_converge",
                                    "ts_scf_dq_tolerance",
                                    "ts_solution_method", "ts_hartree_fix",

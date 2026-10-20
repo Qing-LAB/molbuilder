@@ -103,7 +103,7 @@ TS_DEVICE_SECTION = _sc.Section(
     ("bias_voltage_v", "electrodes_bulk", "ts_elecs_eta_ev",
      "negf_eq_pole_ev", "negf_neq_eta_ev", "negf_neq_fermi_cutoff_kt",
      "ts_scf_dq_converge", "ts_scf_dq_tolerance",
-     "ts_solution_method", "ts_hartree_fix"),
+     "ts_solution_method", "ts_hartree_fix", "ts_elecs_out_of_core"),
     note=(
         "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
         "# not set is not written, and TranSIESTA applies its own rule there:",
@@ -161,7 +161,7 @@ TBT_SECTION = _sc.Section(
     ))
 
 
-def _device_layout(derived, frame, state_block, point):
+def _device_layout(derived, frame, state_block, point, scratch_dir):
     """The device rung -- TranSIESTA's open-boundary NEGF run, at one bias.
 
     Read by `siesta` alone, so it carries TranSIESTA's settings and no
@@ -190,19 +190,24 @@ def _device_layout(derived, frame, state_block, point):
         state_block,
         _sl.mpi_section(algorithm=derived.get("algorithm")),
         _sc.Block("what this rung runs", _emit_device_run),
-        # THE LEADS' SURFACE GREEN'S FUNCTIONS ARE THE RUN'S (§ 2a.11, *What
-        # a run's points share*): the block names them up at the run, the
-        # point's own way there.
+        # THE LEADS' SURFACE GREEN'S FUNCTIONS ARE THE RUN'S, in its
+        # scratch folder (§ 2a.11, *What a run's points share*): the block
+        # names them there from the point's folder.
         _sc.Block("the junction: its electrodes and reservoirs",
-                  _electrode_block(point.to_run if point is not None
-                                   else ".")),
+                  _electrode_block(
+                      f"{point.to_run if point is not None else '.'}"
+                      f"/{scratch_dir}")),
         TS_DEVICE_SECTION,
+        # THE BIAS WINDOW'S LINE, written at every point with the window the
+        # cutoff gives; TranSIESTA reads it under bias alone (§ 2a.11).
+        _sc.Block("the non-equilibrium contour -- the bias window's line",
+                  _emit_neq_contour),
         TS_ELECTRODE_SECTION,
         _sl.OUTPUT_SECTION,
     )
 
 
-def _transmission_layout(derived, frame, state_block, point):
+def _transmission_layout(derived, frame, state_block, point, scratch_dir):
     """The transmission rung -- `tbtrans` on the device's converged
     Hamiltonian.
 
@@ -351,6 +356,46 @@ def _electrode_block(gf_in):
     return render
 
 
+def _enginescratch_dir_of() -> Optional[str]:
+    """The engine's own vocabulary's scratch folder (`warm-files.toml`
+    [transport] ``scratch_dir``) -- what a deck rendered with none handed
+    names (`engines/transport.md` § 2a.11)."""
+    from ..warmfiles import warm_list
+    return warm_list("siesta", "transport").scratch_dir
+
+
+def _emit_neq_contour(struct, cfg) -> str:
+    """``%block TS.Contours.nEq`` and ``%block TS.Contour.nEq.line`` -- the
+    bias window's line, the block TranSIESTA builds itself when none is
+    written (`m_ts_contour_neq.f90`), written at every device point so the
+    spacing is a choice on the card and never the engine's silent one
+    (`engines/transport.md` § 2a.11, *The levers*).  Its window is the
+    cutoff's (`negf_neq_fermi_cutoff_kt`), rendered from that item and never
+    typed a second time; its spacing the card's (`negf_neq_spacing_ev`).
+    TranSIESTA reads the block under bias alone."""
+    cutoff = _sc.parameter("negf_neq_fermi_cutoff_kt", "siesta", config=cfg)
+    delta = _sc.parameter("negf_neq_spacing_ev", "siesta", config=cfg)
+    kt = float(cutoff.value)
+    return "\n".join([
+        *_notes(cfg, [*delta.note()]),
+        "",
+        "# THE BIAS WINDOW'S LINE, as TranSIESTA would build it when none is",
+        "# written (m_ts_contour_neq.f90): from -cutoff kT - |V|/2 to |V|/2 +",
+        "# cutoff kT, the cutoff TS.Contours.nEq.Fermi.Cutoff's above, at the",
+        "# spacing set on the card.  Read under bias alone.",
+        "%block TS.Contours.nEq",
+        "  line",
+        "%endblock TS.Contours.nEq",
+        "",
+        "%block TS.Contour.nEq.line",
+        "  part line",
+        f"    from - {kt:g} kT - |V|/2 to |V|/2 + {kt:g} kT",
+        f"      delta {float(delta.value):g} eV",
+        "        method mid-rule",
+        "%endblock TS.Contour.nEq.line",
+    ])
+
+
 def _emit_tbt_window(struct, cfg) -> str:
     """``%block TBT.Contour.window`` -- the energy grid T(E) is computed on.
 
@@ -383,7 +428,7 @@ def _emit_tbt_window(struct, cfg) -> str:
     ])
 
 
-def _electrode_layout(derived, frame, state_block, point):
+def _electrode_layout(derived, frame, state_block, point, scratch_dir):
     """An electrode rung: a genuinely periodic BULK calculation.
 
     Read down it and the difference from the seed is three lines — and each
@@ -438,7 +483,7 @@ def _emit_electrode_header(struct, cfg) -> str:
     ])
 
 
-def _seed_layout(derived, frame, state_block, point):
+def _seed_layout(derived, frame, state_block, point, scratch_dir):
     """The seed rung: an ordinary periodic SIESTA pass (§ 1, stage 1).
 
     Read down it and you have read the deck's SCIENCE, in order.  Not the
@@ -634,7 +679,8 @@ def _k_mesh_block(mesh, *, advice=()):
 
 def transport_spec(struct: Structure, cfg, *,
                    stage_token: Optional[str] = None,
-                   state=None, point=None) -> "_sc.DeckSpec":
+                   state=None, point=None,
+                   scratch_dir: Optional[str] = None) -> "_sc.DeckSpec":
     """The ``DeckSpec`` for one transport rung.
 
     ``point`` is the deck's point of a rung that runs per point
@@ -642,6 +688,10 @@ def transport_spec(struct: Structure, cfg, *,
     device deck names the run's shared files the way the point reaches
     them (`Point.to_run`); ``None`` for a rung that runs once, or a deck
     rendered for no point in particular, whose way to the run is ``.``.
+    ``scratch_dir`` is the folder of the run's own the leads' files live in
+    -- the vocabulary's (`warm-files.toml` [transport] ``scratch_dir``,
+    `engines/transport.md` § 2a.11), which prep hands down; a caller that
+    hands none gets the engine's own file's.
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
     calculation's own template ⊕ this rung's overrides, as
@@ -683,7 +733,7 @@ def transport_spec(struct: Structure, cfg, *,
               "device": _device_layout,
               "transmission": _transmission_layout}[shape](
                   derived, frame, _state_block(state, on_junction=handed),
-                  point)
+                  point, scratch_dir or _enginescratch_dir_of())
     return _sc.DeckSpec(
         engine="siesta",
         engine_frame=frame,

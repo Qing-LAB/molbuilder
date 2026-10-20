@@ -223,6 +223,11 @@ _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
                   "channels": ["*"], "report": ["*"]}
 _JOB_ABSENT = {"point": {}, "finish": None, "resumes": True,
                "placement": None, "members": None, "written_at": None,
+               # A PREP BEFORE 2.22.0 kept no scratch folder: its device
+               # deck names the leads' files loose in the run, and a launch
+               # again of it empties nothing (`engines/transport.md`
+               # § 2a.11); a prep again gives the stage the folder.
+               "scratch_dir": None,
                # A PREP BEFORE 2026-10-11 recorded nothing it was told:
                # launch's check plans it as told nothing beside the
                # description, and one told flags is refused there, naming
@@ -440,7 +445,9 @@ def _migrate_records(base: Path):
             # KEPT AS WHAT IT WAS WRITTEN BEFORE: the records' rule (W57,
             # the members 2026-10-07), else the groups' release (2.7.0).
             writes.append((js_path, json_text(body),
-                           ".pre-2.7.0" if missing <= {"written_at", "asked"}
+                           ".pre-2.22.0" if missing <= {"scratch_dir"}
+                           else ".pre-2.7.0"
+                           if missing <= {"written_at", "asked", "scratch_dir"}
                            else ".pre-w57"))
             said.append(f"{js_path.relative_to(base)}: {filled} job(s) -- "
                         + "; ".join(

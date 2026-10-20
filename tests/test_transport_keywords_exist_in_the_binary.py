@@ -134,6 +134,11 @@ _ASSEMBLED_PREFIXES = {
     "TS.ChemPot.":  "TS.ChemPot.",  # one block per chemical potential
     "TBT.Contour.": "TBT.Contour.",  # one block per TBtrans energy contour
     "TS.ChemPots":  "ChemPots",     # the list block; `TS.` is added at runtime
+    # THE BIAS WINDOW'S LINE (`engines/transport.md` § 2a.11): the engine
+    # assembles `TS.Contours.nEq` and `TS.Contour.nEq.<name>` from a prefix
+    # and the part (`m_ts_io_ctype.f90`); the literals it holds are the tails.
+    "TS.Contours.nEq": "Contours.nEq",
+    "TS.Contour.nEq.": "Contour.nEq.",
 }
 
 

@@ -96,6 +96,11 @@ class StageStatus:
     #: to ask (`runs.standing_of`; `web/results.md` § 2.4); ``None`` for
     #: any other state.
     standing: Optional[Dict[str, Any]] = None
+    #: A device rung's one line about the leads' surface Green's function
+    #: files -- what its run's ``tsgf/`` holds, or the size each lead's
+    #: will have (`transport.gf_files.status_line`, `engines/transport.md`
+    #: § 2a.11); ``None`` for every other rung.
+    tsgf: Optional[str] = None
     #: Whether this stage, launched again, continues from its own latest run
     #: -- the job's one fact (`Job.relaunch_continues`), which `launch`
     #: asks too, so the status says what launching it again will do
@@ -439,7 +444,9 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         relaunch_continues=job.relaunch_continues,
         script=str(job.script), carries=[w.name for w in job.warm],
         resources=resources_text(job.resources), points=pts,
-        gathered=_gathered_lines(run))
+        gathered=_gathered_lines(run),
+        tsgf=_tsgf_line(base, task, job, d, run if launch else None,
+                        attempts_in(d)))
 
 
 def points_summary(pts) -> str:
@@ -555,7 +562,34 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         resources=resources_text(job.resources),
         # WHAT THE RUN GATHERED (a transport rung), beside what it declares.
         gathered=_gathered_lines(observed) if attempt is not None else [],
+        tsgf=_tsgf_line(base, task, job, home,
+                        attempt if launch else None, attempts_in(home)),
     )
+
+
+def _tsgf_line(base, task, job, stage_dir, run_dir, attempts) -> Optional[str]:
+    """The line about the leads' files of a rung that keeps them in a
+    scratch folder (`Job.scratch_dir`; `transport.gf_files.status_line`):
+    the newest run's -- ``run_dir`` ``None`` for a stage not launched, which
+    is answered with the estimate -- and, where the stage has older runs,
+    each older run's after it, newest first; ``None`` for every other
+    rung."""
+    if task is None or not job.scratch_dir:
+        return None
+    from ..paths import attempt_dir
+    from ..transport.gf_files import status_line
+    first = status_line(base, task, stage_dir, run_dir, job.scratch_dir)
+    if run_dir is None or first is None or len(attempts) < 2:
+        return first
+    newest = attempt_dir(Path(stage_dir), max(attempts))
+    older = [status_line(base, task, stage_dir, attempt_dir(Path(stage_dir), n),
+                         job.scratch_dir)
+             for n in sorted(attempts, reverse=True) if n != max(attempts)]
+    return "; ".join([f"{newest.name}: {first}"]
+                     + [f"{attempt_dir(Path(stage_dir), n).name}: {ln}"
+                        for n, ln in zip(
+                            [n for n in sorted(attempts, reverse=True)
+                             if n != max(attempts)], older)])
 
 
 def _not_prepared(ref: StageRef, r) -> StageStatus:
@@ -767,7 +801,8 @@ def render_status(status: JobSetStatus) -> str:
     rows = [(s.ref.seq_text, s.ref.name,
              str(s.group) if s.group is not None else "-",
              s.attempt or "-", s.state,
-             s.converged or "-", ", ".join(s.warm_files) or "-", s.detail)
+             s.converged or "-", ", ".join(s.warm_files) or "-",
+             s.detail + (f" \u00b7 {s.tsgf}" if s.tsgf else ""))
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
@@ -911,6 +946,10 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         # (`engines/transport.md` § 2a.11): the inputs it started from.
         rows.append(("gathered", "; ".join(s.gathered)))
 
+    if s.tsgf:
+        # THE LEADS' FILES (`engines/transport.md` § 2a.11): the newest
+        # run's scratch folder, or the size to come.
+        rows.append(("tsgf", s.tsgf))
     tries = ", ".join(attempt_name(n) for n in s.attempts) or "-"
     rows.append(("attempt", f"{s.attempt or '-'}"
                             + (f"   (of {tries})" if len(s.attempts) > 1

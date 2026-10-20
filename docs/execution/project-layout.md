@@ -505,7 +505,7 @@ would be a second home for one fact.
   "of":     "../.." }
 ```
 
-* **`role` is `container` or `run`** — § 1.4's own two words, no third.
+* **`role` is `container`, `run` or `scratch`** — § 1.4's two words, and the one folder that is neither: a device run's `tsgf/`, the engine's scratch of the run above it (invariant 6b; [`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 * **`of` is relative, always** — to the calculation root. That is what survives
   renaming or moving a whole calculation, and it is the convention
   `.gathered-from` already uses for the same reason. Copy an attempt out on its
@@ -546,6 +546,7 @@ readings of a `container` or a `run`, and each falls out of the authority:
 | `run`, under a stage's directory | an **attempt**, index from its name | the authority maps the parent |
 | `run`, matching a job itself | a **trial** | the authority maps it as a bench point |
 | `run`, and it IS the root | the flat shape's single run | `task.json`'s `shape` |
+| `scratch`, under a run | the run's **scratch folder** — read alone, no run asked of it, nothing in it opens | the role says it; the run above is the authority's |
 
 #### Absence narrows the answer; it does not refuse the directory
 
@@ -3076,9 +3077,11 @@ than no invariant, because it fails a directory that is working correctly.
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory this tree makes below the calculation root carries a
    `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by
-   the one opener (§ 1.6.2), a benchmark's folders and `launch/` among them. So
-   *container-or-run* — § 1.4's rule — is answerable for every directory this
-   tree makes, without reading a filename. **This is 6a's dividend**: Python
+   the one opener (§ 1.6.2), a benchmark's folders, `launch/` and a device
+   run's `tsgf/` (role `scratch`: the engine's scratch of the run above it,
+   read alone, no run asked of it — [`engines/transport.md`](?doc=engines/transport.md)
+   § 2a.11) among them. So *container-or-run-or-scratch* — § 1.4's rule — is
+   answerable for every directory this tree makes, without reading a filename. **This is 6a's dividend**: Python
    makes them all, so Python can stamp them all. A directory carrying neither
    is not refused — it is read alone, and told so (§ 1.4a), which is what a
    tree written before this rule, or a run directory copied out of one, gets.

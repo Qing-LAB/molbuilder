@@ -93,8 +93,9 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
 
 def lead_gf_file(job_name: str, volts: float, lead: str) -> str:
     """THE ONE SPELLING of a lead's surface Green's function file at a
-    voltage -- the run's, shared by every point at that voltage
-    (`engines/transport.md` § 2a.11, *What a run's points share*): the
+    voltage -- the run's, in its scratch folder, shared by every frame's
+    point at that voltage (`engines/transport.md` § 2a.11, *What a run's
+    points share*): the
     engine's own default name, ``<SystemLabel>.TSGF<lead>`` (SIESTA 5.4.2
     `ts_electrode.F90`:373-377), with the point's voltage token in it, so
     the points of one voltage share one pair and two voltages never do
@@ -466,12 +467,13 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
     5.4.2 run (§ 6.1b: 27 / 27 atoms at 1-27 and 94-120, as written).
 
     ``gf_in`` is the folder, relative to the deck, where the device run
-    keeps the leads' surface Green's functions -- the run's, one pair per
-    voltage, shared by every point at that voltage (`engines/transport.md`
-    § 2a.11, *What a run's points share*; `lead_gf_file`): the device deck
-    hands its point's way up to the run (`stages.Point.to_run`).  ``None``
-    is the transmission's: tbtrans writes no such file, and its blocks say
-    so in place of the ``GF`` lines.
+    keeps the leads' surface Green's functions -- the run's ``tsgf/``, the
+    round's one pair, shared by every frame's point at that voltage
+    (`engines/transport.md` § 2a.11, *What a run's points share*;
+    `lead_gf_file`): the point's way up to the run and the folder's name
+    (`stages.Point.to_run`, the vocabulary's ``scratch_dir``).  ``None`` is
+    the transmission's: tbtrans writes no such file, and its blocks say so
+    in place of the ``GF`` lines.
     """
     # TWO LEADS, ALWAYS: no other label is one (`sort.ELECTRODE_LABELS`),
     # and the sort refuses a junction missing either before any deck is
@@ -527,26 +529,28 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
         "smaller")
     lines.append(
         "# lead cell up to it (SIESTA 5.4.2 ts_electrode.F90).")
-    # THE LEADS' SURFACE GREEN'S FUNCTIONS, the run's once per voltage
-    # (`engines/transport.md` § 2a.11, *What a run's points share*): the
-    # device deck names each lead's file in its run's folder and asks the
-    # engine to reuse it -- the block's `GF.ReUse` outranks the global
-    # `TS.Elecs.GF.ReUse` (`m_ts_options.F90`:472-491).  The transmission
-    # names none: tbtrans builds each self-energy in core.
+    # THE LEADS' SURFACE GREEN'S FUNCTIONS, the run's, one voltage's pair
+    # at a time in its scratch folder (`engines/transport.md` § 2a.11,
+    # *What a run's points share*): the device deck names each lead's file
+    # there and asks the engine to reuse it -- the block's `GF.ReUse`
+    # outranks the global `TS.Elecs.GF.ReUse` (`m_ts_options.F90`:472-491).
+    # The transmission names none: tbtrans builds each self-energy in core.
     if gf_in is not None:
         lines.append(
             "# `GF` / `GF.ReUse` in each block: the lead's surface Green's "
             "function on this")
         lines.append(
-            "# run's contour at this voltage is the RUN's file, written by "
-            "the first point")
+            "# run's contour at this voltage is the RUN's file, in its "
+            "scratch folder,")
         lines.append(
-            "# at this voltage and read by every other frame's point there "
-            "(transport.md")
+            "# written by the round's first point and read by every other "
+            "frame's point")
         lines.append(
-            "# 2a.11): the engine checks it against this deck before "
-            "reading it")
-        lines.append("# (m_ts_gf.F90 check_Green) and stops on a mismatch.")
+            "# at this voltage (transport.md 2a.11): the engine checks it "
+            "against this deck")
+        lines.append(
+            "# before reading it (m_ts_gf.F90 check_Green) and stops on a "
+            "mismatch.")
     else:
         lines.append(
             "# No `GF` line: tbtrans builds each lead's self-energy in core "

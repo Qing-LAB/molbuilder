@@ -511,10 +511,38 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
 # --------------------------------------------------------------------- #
 
 
+def _bias_window_points(cfg) -> List[Issue]:
+    """The device point's bias window at its spacing, counted as TranSIESTA
+    counts it (`transport.gf_files.line_points`); fewer than two points is
+    an error naming the spacing.  0 V has no window and no check."""
+    from ..constants import BOLTZMANN_EV_K
+    from ..transport.gf_files import line_points
+    volts = abs(float(getattr(cfg, "bias_voltage_v", 0.0) or 0.0))
+    if volts <= 1e-5:
+        return []
+    delta = float(getattr(cfg, "negf_neq_spacing_ev", 0.01) or 0.01)
+    cutoff = float(getattr(cfg, "negf_neq_fermi_cutoff_kt", 5.0) or 5.0)
+    kt = BOLTZMANN_EV_K * float(getattr(cfg, "electronic_temperature", 300.0)
+                                or 300.0)
+    window = volts + 2 * cutoff * kt
+    n = line_points(window, delta)
+    if n >= 2:
+        return []
+    return [Issue(
+        "error",
+        f"negf_neq_spacing_ev = {delta:g} eV leaves the bias window at "
+        f"{volts:g} V ({window:.4f} eV wide: |V| plus {cutoff:g} kT each "
+        f"side at {kt / BOLTZMANN_EV_K:g} K) {n} point(s); the line needs "
+        f"two or more -- set the spacing below {window / 2:.4f} eV "
+        f"(engines/transport.md 2a.11)",
+        "config.negf_neq_spacing_ev")]
+
+
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray],
                      *, dest_dir=None, calculation: str = "",
                      k_meshes=None, refused=frozenset(),
+                     rung: Optional[str] = None,
                      **_) -> List[Issue]:
     """SIESTA-specific checks.
 
@@ -649,6 +677,13 @@ def _validate_siesta(struct: Structure, cfg,
         _kmesh.mesh_for(cfg, getattr(struct, "axis_kind", None),
                         kind=calculation or "optimization"),)) if m is not None)
     issues += _kmesh.check(meshes, struct, cell=cell, refused=refused)
+
+    # THE BIAS WINDOW'S LINE (`engines/transport.md` § 2a.11, *The levers*):
+    # a device point under bias whose spacing leaves its window fewer than
+    # two points is refused -- the floor is ours; TranSIESTA stops at none.
+    if (calculation == "transport" and rung == "device"
+            and "negf_neq_spacing_ev" not in refused):
+        issues += _bias_window_points(cfg)
 
     if cell is None:
         return issues

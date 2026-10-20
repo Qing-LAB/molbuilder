@@ -2350,8 +2350,8 @@ points done or not done, read from each point's own files
 with a benchmark's walk and a group's is the **walk script** alone — one
 generator for every job that runs several members in order — each with its
 own settings: a device sweep hands each point the one before's `.TSDE` in its
-frame, and a point that does not finish ends its frame's chain — the next
-frame starting from the seed, as every frame does (`engines/transport.md`
+frame, and a point that does not finish ends its frame's chain — the other
+frames starting from the seed, as every frame does (`engines/transport.md`
 § 2a.9); a benchmark, a group and a transmission sweep walk on.
 
 **The placement is decided once, at prep, and recorded**

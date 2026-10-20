@@ -1946,8 +1946,11 @@ result files entirely.  So the file holds a
 section per calculation type, extending it. Beside its rows a section states
 the facts of its kind: `resumes` (whether a re-run continues from what the
 last one left), and for a swept kind `along` (what a done point hands the
-next) and `scratch` (the engine's scratch at a run — its points' shared
-files, never carried, never taken over into a new run; [`engines/transport.md`](?doc=engines/transport.md)
+next), `scratch` (the engine's scratch at a run — its points' shared
+files, never carried, never taken over into a new run) and `scratch_dir`
+(the folder of the run's own those files live in, `tsgf/`; stated together
+with `scratch` or not at all — a section with one and not the other is
+refused, naming the pair; [`engines/transport.md`](?doc=engines/transport.md)
 § 2a.11):
 
 ```toml
@@ -2601,6 +2604,7 @@ for not clobbering a previous output, not a name for a stage.
 | **benchmark** | `bench/` inside the stage it measures; **flat**, where no stage directory exists, `bench_<seq>_<stage>/` at the root | a benchmark nests in what it measures (`project-layout.md § 3`) — and in flat the token qualifies the container's own name, or two stages' benchmarks would share one directory and overwrite each other (2026-08-12 plan A5).  Underscore-joined, so it cannot be read as a trial's dash-joined `bench-<point>` |
 | **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
 | **bias point** *(a swept transport rung)* | `v<V>` — the voltage as `%g`: `v0`, `v0.2`, `v-0.5`; inside the run, `<NN>_<rung>/run-<n>/v<V>/`, and prep's decks at `<NN>_<rung>/v<V>/`, which every run copies | a point is a level inside ONE run, never a run of its own ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11); one spelling, `task.bias_token` — the decks, the gather, the walk and the codec's refusal of two points sharing a folder all read it |
+| **the leads' surface Green's functions** *(a device run)* | `tsgf/` inside the run — `<NN>_device/run-<n>/tsgf/<label>.<v>.TSGF<lead>`, the voltage as the bias point's token, the lead its block's name (`L`, `R`) | one folder for the one file family the device writes and reads and keeps only while a point needs it: the round's pair, emptied by the walk as each round begins and when the walk ends; opened with the run by the one opener, stamped `scratch` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11, *What a run's points share*) |
 | **launch group** | `launch/` — in the folder its members share: the calculation's root for stages sent as one job, the stage's folder for a bias sweep's walk, the benchmark container for its trials | the submission's own machinery — `<group>.run.sh`, `<group>.sbatch`, `<group>.log`, SLURM's `slurm.%j.out` / `.err` — kept apart from every run it starts (`runfiles.LAUNCH_DIR`; the files: [`project-layout.md`](?doc=execution/project-layout.md) § 5) |
 | ~~**warm state moved aside**~~ | ~~`<label>-restart-aside-<UTC>/`~~ | **RETIRED 2026-08-18 (user).** `--cold` moved prior state here rather than overwriting it; keeping a state is `molbuilder checkpoint save` and it is never automatic, so a second preservation mechanism with its own name was one too many. `--cold` names what it would remove and refuses; `--force` removes it. *(The name stayed reserved, the sweep skipping it, until 2026-10-04 -- for folders written before the change: old runs are not a design input, user 2026-10-03; plan D27.)* |
 

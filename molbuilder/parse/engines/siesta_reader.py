@@ -997,6 +997,13 @@ class SiestaReader:
             row[field] = value
             return
 
+    def _on_orbital_count(self, line: str, line_no: int) -> None:
+        """The run's atom and orbital counts, as the output states them."""
+        m = _G.ORBITAL_COUNT.match(line)
+        if m:
+            self.runtime_info["n_atoms_stated"] = int(m.group(1))
+            self.runtime_info["n_orbitals"] = int(m.group(2))
+
     def _on_emadel(self, line: str, line_no: int) -> None:
         m = _G.EMADEL.match(line)
         if m:
@@ -1142,6 +1149,11 @@ class SiestaReader:
                         aliases=["Using GF-file '...'"],
                         start=matches_regex_ci(_G.TS_GF_REUSED.pattern),
                         on_start=self._on_ts_gf_reused),
+            SectionRule(name="orbital_count",
+                        aliases=["initatomlists: Number of atoms, orbitals, "
+                                 "and projectors: ..."],
+                        start=matches_regex_ci(_G.ORBITAL_COUNT.pattern),
+                        on_start=self._on_orbital_count),
             SectionRule(name="emadel", aliases=["siesta: Emadel = ..."],
                         start=matches_regex_ci(_G.EMADEL.pattern),
                         on_start=self._on_emadel),

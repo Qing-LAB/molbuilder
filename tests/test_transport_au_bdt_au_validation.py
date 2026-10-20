@@ -183,7 +183,8 @@ def _struct_with_sidecar():
     return StructureCodec().load(_FIX_XYZ)
 
 
-def _live_device_deck(label="au_bdt_au_test", rung="device", point=None):
+def _live_device_deck(label="au_bdt_au_test", rung="device", point=None,
+                      **over):
     """A NEGF rung's deck through the LIVE path -- the same call `prep` makes:
     the device's by default, the transmission's when a check is about what
     tbtrans reads (the two are separate texts, `transport.md` § 6.1b); at
@@ -202,7 +203,7 @@ def _live_device_deck(label="au_bdt_au_test", rung="device", point=None):
     # is the rung's answer, not a default the spec supplies.
     cfg = at_point(dataclasses.replace(
         SiestaConfig(system_label=label),
-        **role_answers("siesta", "transport", rung)), point)
+        **role_answers("siesta", "transport", rung), **over), point)
     token = {"device": "04_device", "transmission": "05_transmission"}[rung]
     spec = spec_for(struct, cfg, calculation="transport",
                     names=RunNames.of(label, token, "hierarchical"),
@@ -298,16 +299,18 @@ def _electrode_rows(deck: str, lead: str) -> dict:
 def test_the_leads_greens_functions_are_the_runs_once_per_voltage():
     """`engines/transport.md` § 2a.11, *What a run's points share*: a device
     point's deck names each lead's surface Green's function in its RUN's
-    folder, the file named on the voltage, and asks the engine to reuse it
-    -- so two frames at one voltage name the same file, two voltages never
-    do, a point with no level names the run itself, and the transmission
-    names none (tbtrans writes no such file).
+    scratch folder (`tsgf/`, the vocabulary's), the file named on the
+    voltage, and asks the engine to reuse it -- so two frames at one
+    voltage name the same file, two voltages never do, a point with no
+    level names the run's own folder, and the transmission names none
+    (tbtrans writes no such file).
 
     MUTATION THIS MUST FAIL AGAINST: the path left at the point (every
-    frame writes its own 49 GB pair); the voltage dropped from the name
+    frame writes its own 49 GiB pair); the voltage dropped from the name
     (the second voltage reads the first's file and the engine dies on the
-    chemical potential); `GF.ReUse` not written; a `GF` line in the
-    transmission's blocks."""
+    chemical potential); the folder dropped (the pair lies loose in the
+    run); `GF.ReUse` not written; a `GF` line in the transmission's
+    blocks."""
     from pathlib import PurePosixPath
 
     from molbuilder.transport.stages import Point
@@ -333,17 +336,123 @@ def test_the_leads_greens_functions_are_the_runs_once_per_voltage():
 
     f0 = {k: resolved(v) for k, v in named(Point(frame=0, volts=0.2, of=3)).items()}
     f1 = {k: resolved(v) for k, v in named(Point(frame=1, volts=0.2, of=3)).items()}
-    assert f0 == f1 == {"L": "run-0/au_bdt_au_test.v0.2.TSGFL",
-                        "R": "run-0/au_bdt_au_test.v0.2.TSGFR"}, (f0, f1)
+    assert f0 == f1 == {"L": "run-0/tsgf/au_bdt_au_test.v0.2.TSGFL",
+                        "R": "run-0/tsgf/au_bdt_au_test.v0.2.TSGFR"}, (f0, f1)
     other = {k: resolved(v) for k, v in named(Point(frame=1, volts=0.0, of=3)).items()}
-    assert other == {"L": "run-0/au_bdt_au_test.v0.TSGFL",
-                     "R": "run-0/au_bdt_au_test.v0.TSGFR"}, other
+    assert other == {"L": "run-0/tsgf/au_bdt_au_test.v0.TSGFL",
+                     "R": "run-0/tsgf/au_bdt_au_test.v0.TSGFR"}, other
     alone = {k: resolved(v) for k, v in named(None).items()}
-    assert alone == {"L": "run-0/au_bdt_au_test.v0.TSGFL",
-                     "R": "run-0/au_bdt_au_test.v0.TSGFR"}, alone
+    assert alone == {"L": "run-0/tsgf/au_bdt_au_test.v0.TSGFL",
+                     "R": "run-0/tsgf/au_bdt_au_test.v0.TSGFR"}, alone
     for lead in ("L", "R"):
         rows = _electrode_rows(_live_device_deck(rung="transmission"), lead)
         assert "gf" not in rows and "gf.reuse" not in rows, rows
+
+
+def test_the_device_deck_writes_the_bias_windows_line_and_the_file_switch():
+    """`engines/transport.md` § 2a.11, *The levers*: the device deck writes
+    the bias window's line at every point -- `TS.Contours.nEq` naming
+    `line`, and `TS.Contour.nEq.line` with the window the cutoff item gives
+    and the spacing the card sets -- and the file switch,
+    `TS.Elecs.Out-of-core`, TranSIESTA's own defaults written rather than
+    left to it.  A spacing or a switch set on the card reaches the deck.
+
+    MUTATION THIS MUST FAIL AGAINST: the block not written (the engine's
+    silent 0.01 eV); the window typed with a number of its own rather than
+    the cutoff item's; the switch left to the engine."""
+    from molbuilder.parse.fdf import fdf_key, fdf_true, read_fdf
+    from molbuilder.transport.stages import Point
+
+    def read(**over):
+        scalars, blocks = read_fdf(_live_device_deck(
+            point=Point(frame=None, volts=0.2), **over))
+        return scalars, blocks
+
+    scalars, blocks = read()
+    assert blocks[fdf_key("TS.Contours.nEq")] == [["line"]], blocks
+    rows = {r[0].lower(): r[1:] for r in blocks[fdf_key("TS.Contour.nEq.line")]}
+    assert rows["part"] == ["line"] and rows["method"] == ["mid-rule"], rows
+    assert rows["delta"] == ["0.01", "eV"], rows
+    assert " ".join(rows["from"]) == "- 5 kT - |V|/2 to |V|/2 + 5 kT", rows
+    assert fdf_true(scalars[fdf_key("TS.Elecs.Out-of-core")]), scalars
+
+    scalars, blocks = read(negf_neq_spacing_ev=0.02,
+                           negf_neq_fermi_cutoff_kt=7.5,
+                           ts_elecs_out_of_core=False)
+    rows = {r[0].lower(): r[1:] for r in blocks[fdf_key("TS.Contour.nEq.line")]}
+    assert rows["delta"] == ["0.02", "eV"], rows
+    assert " ".join(rows["from"]) == "- 7.5 kT - |V|/2 to |V|/2 + 7.5 kT", rows
+    assert not fdf_true(scalars[fdf_key("TS.Elecs.Out-of-core")]), scalars
+
+
+def test_the_file_estimate_is_the_engines_own():
+    """`engines/transport.md` § 2a.11, *What it costs*: the size a lead's
+    surface Green's function file will have, from the device deck as prep
+    writes it and the lead's orbital count, is what TranSIESTA itself
+    prints at the run's start -- two runs of ours, read off their outputs:
+    the Au–BDT–Au junction at 0 V (1425 orbitals, 5×5×1, 123 poles at 300 K:
+    *49.170 GB*) and the test tree's chain at 0.2 V (208 orbitals, its lead
+    run's own count, one k-point, 123 + 123 poles and a 46-point line:
+    *194.092 MB*; SIESTA's units are 1024-based, and its print adds a few
+    KiB of header to the matrices).
+
+    MUTATION THIS MUST FAIL AGAINST: the k-points counted as the grid's
+    (25, not 13); the +2 dropped; the second reservoir's poles or the line
+    left out under bias; the window's kT taken at another temperature."""
+    from molbuilder.transport.gf_files import estimate_from
+    from molbuilder.transport.stages import Point
+    gib, mib = 1024 ** 3, 1024 ** 2
+    at_0v = _live_device_deck(point=None, kgrid=(5, 5, 1),
+                              negf_eq_pole_ev=10.0, electronic_temperature=300.0)
+    assert abs(estimate_from(at_0v, 1425) / gib - 49.170) < 0.001
+    at_bias = _live_device_deck(point=Point(frame=None, volts=0.2),
+                                kgrid=(1, 1, 1), negf_eq_pole_ev=10.0,
+                                electronic_temperature=300.0)
+    # SIESTA's print adds its header -- the cell, the coordinates, the
+    # k-points, the energies -- a few KiB beside the matrices: 6 KiB here.
+    assert abs(estimate_from(at_bias, 208) / mib - 194.092) < 0.01
+    # THE GRID AS TRANSIESTA PLACES IT (`find_kgrid.F`): an even grid holds
+    # Gamma and the zone boundary unshifted -- 4×4×1 is 10 points, 8 with
+    # the half-step shift.
+    from molbuilder.transport.gf_files import k_points_time_reversed
+    assert k_points_time_reversed([(4, 0.0), (4, 0.0), (1, 0.0)]) == 10
+    assert k_points_time_reversed([(4, 0.5), (4, 0.5), (1, 0.0)]) == 8
+
+
+def test_prep_refuses_a_spacing_that_leaves_the_bias_window_under_two_points():
+    """`engines/transport.md` § 2a.11, *The levers*: a device point under
+    bias whose spacing leaves its window fewer than two points is refused
+    at prep's settings gate, naming the spacing; 0 V has no window and no
+    check.  The floor is ours -- TranSIESTA stops at none.
+
+    MUTATION THIS MUST FAIL AGAINST: the gate dropped; the window counted
+    without the cutoff's kT; 0 V checked."""
+    import dataclasses
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.transport_rung import at_point
+    from molbuilder.template import role_answers
+    from molbuilder.transport.stages import Point
+    from molbuilder.validation import validate
+    struct = _struct_with_sidecar()
+
+    def findings(volts, **over):
+        cfg = at_point(dataclasses.replace(
+            SiestaConfig(system_label="au_bdt_au_test"),
+            **role_answers("siesta", "transport", "device"), **over),
+            Point(frame=None, volts=volts))
+        return [i for i in validate(struct, cfg, calculation="transport",
+                                    rung="device")
+                if i.where == "config.negf_neq_spacing_ev"]
+
+    # 0.001 V at 10 K: a 0.0096 eV window -- 0.1 eV leaves it no point.
+    refused = findings(0.001, negf_neq_spacing_ev=0.1,
+                       electronic_temperature=10.0)
+    assert [i.severity for i in refused] == ["error"], refused
+    assert "0 point(s)" in refused[0].message and "two or more" in refused[0].message
+    assert findings(0.001, negf_neq_spacing_ev=0.001,
+                    electronic_temperature=10.0) == []
+    assert findings(0.0, negf_neq_spacing_ev=0.1,
+                    electronic_temperature=10.0) == []
 
 
 def test_the_device_deck_states_its_identity_and_method():

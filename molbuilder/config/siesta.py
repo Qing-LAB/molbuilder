@@ -472,6 +472,12 @@ class SiestaConfig:
 
     negf_neq_fermi_cutoff_kt: float = 5.0
 
+    # THE BIAS WINDOW'S LINE and the leads' files (`engines/transport.md`
+    # § 2a.11, *The levers*): TranSIESTA's own defaults, written.
+    negf_neq_spacing_ev: float = 0.01
+
+    ts_elecs_out_of_core: bool = True
+
     ts_scf_dq_converge: bool = True
 
     # BLANK IS NOT SET: TranSIESTA's own tolerance, a thousandth of the

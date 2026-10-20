@@ -102,8 +102,12 @@ machine and reads `failed` everywhere; a run past its wall is over anywhere
 (`running-a-job.md` § 4.2). **Then 2.21.0**: a running run's row and
 the monitor's line say where it is — the SCF row's phase and iteration,
 or a device's set-up until its first SCF row (`model/parse.md` § 2b,
-`doing`). Open, with the user's yes: the chat card's layout as data per
-receiver (a layout file; the one card built once).
+`doing`). **Then 2.22.0, contract first**: the leads' surface Green's
+functions in a device run's own `tsgf/`, one pair at a time, the walk
+round by round; what the files cost and the four levers; the size said on
+the device's row before the launch (`transport.md` § 2a.11, *What a run's
+points share*). Open, with the user's yes: the chat card's layout as data
+per receiver (a layout file; the one card built once).
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs

@@ -374,6 +374,11 @@ class Job:
     #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung
     #: and a PySCF vibration.
     resumes:    bool            = True
+    #: THE FOLDER OF THE RUN'S OWN the engine's scratch lives in -- a device
+    #: run's ``tsgf/`` (`engines/transport.md` § 2a.11), the vocabulary's
+    #: ``scratch_dir`` on the rung that writes it; opened with every run of
+    #: the stage (`materialize.open_scratch`).  ``None``: no scratch folder.
+    scratch_dir: Optional[str]  = None
     #: WHERE IT WAS PLACED: a run prepared for a queue -- the queue its
     #: request was placed on at prep (``domain``, ``partition``, ``qos``,
     #: bound on the target's record) and where each value came from
@@ -424,6 +429,7 @@ class Job:
             "point": dict(self.point),
             "finish": self.finish,
             "resumes": bool(self.resumes),
+            "scratch_dir": self.scratch_dir,
             "placement": ({k: (dict(v) if isinstance(v, dict) else v)
                            for k, v in self.placement.items()}
                           if self.placement is not None else None),
@@ -455,6 +461,8 @@ class Job:
             point=dict(d["point"]),
             finish=(str(d["finish"]) if d["finish"] is not None else None),
             resumes=bool(d["resumes"]),
+            scratch_dir=(str(d["scratch_dir"]) if d["scratch_dir"]
+                         else None),
             placement=(dict(d["placement"]) if d["placement"] is not None
                        else None),
             members=([str(n) for n in d["members"]]
@@ -526,8 +534,8 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 #: Every key a job in `job-set.json` carries, always (`job-contracts.md`
 #: § 6.1) -- the one list the writer's dict and the reader's check share.
 JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
-            "finish", "resumes", "placement", "members", "written_at",
-            "asked")
+            "finish", "resumes", "scratch_dir", "placement", "members",
+            "written_at", "asked")
 
 
 class WrittenBefore(ValueError):

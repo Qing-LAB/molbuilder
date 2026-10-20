@@ -50,6 +50,7 @@ from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam, siesta_provide_pseudos
 from .transport_rung import (at_frame, at_point, composed_for_prep,
+                             scratch_dir_of,
                              provide_pseudos, transport_parts,
                              transport_sources)
 
@@ -732,6 +733,9 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
         # (`model.Resources.program`, `engines/transport.md` § 6.1b).
         return dataclasses.replace(
             job, warm=warm_declaration(stage, task.label, base),
+            # THE RUN'S SCRATCH FOLDER (`engines/transport.md` § 2a.11): the
+            # device's, the vocabulary's name.
+            scratch_dir=scratch_dir_of(base) if stage == "device" else None,
             resources=(dataclasses.replace(job.resources, program="tbtrans")
                        if stage == "transmission" else job.resources))
     return Rung(struct=struct, render_kind="transport", configure=configure,
@@ -739,8 +743,11 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
                 # THE DECK'S POINT reaches the spec: the device names its
                 # run's shared files the way its point reaches them
                 # (`engines/transport.md` § 2a.11).
-                spec_extra=lambda element, cfg, point: {"state": state,
-                                                        "point": point},
+                spec_extra=lambda element, cfg, point: {
+                    "state": state, "point": point,
+                    # WHERE THE DEVICE KEEPS THE LEADS' FILES: the
+                    # vocabulary's folder (`engines/transport.md` § 2a.11).
+                    "scratch_dir": scratch_dir_of(base)},
                 points=points, at_point=at_point,
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
