@@ -225,6 +225,21 @@ def warm_list(engine: str, kind: Optional[str] = None,
                                  if kind else None))
 
 
+def scratch_families(engine: Optional[str]) -> Tuple[str, ...]:
+    """THE ENGINE'S SCRATCH, as families of file names -- ``*<suffix>`` for
+    every suffix any section of its vocabulary names ``scratch``
+    (`job-contracts.md` § 4.2a: recomputed by every run, never carried, never
+    taken over) -- the one answer to *is this file the engine's scratch*:
+    what a save never stores (`checkpointing.md` S1) and what `jobset
+    scratch` empties.  The vocabulary molbuilder ships, never a
+    calculation's own copy, which is a file somebody can edit between a save
+    and a restore (S1c); ``()`` for an engine with none."""
+    if not engine or not _rules_path(engine).is_file():
+        return ()
+    return tuple(sorted({f"*{suffix}" for _section, suffixes
+                         in _load(engine).scratch for suffix in suffixes}))
+
+
 def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     """Read and validate the rules file, preserving file order.
 

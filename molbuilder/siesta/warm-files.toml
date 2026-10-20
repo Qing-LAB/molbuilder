@@ -97,8 +97,9 @@ scratch = [".TSGFL", ".TSGFR"]  # THE ENGINE'S SCRATCH AT A RUN: the leads'
                                 # point, read by every other frame's, emptied
                                 # by the walk as each round begins and when
                                 # the walk ends (tens of GiB each) -- never carried,
-                                # never taken over into a new run, always
-                                # large to the checkpoint
+                                # never taken over into a new run, never
+                                # saved by the checkpoint (checkpointing.md
+                                # S1), emptied by `jobset scratch`
                                 # (engines/transport.md 2a.11, *What a run's
                                 # points share*)
 scratch_dir = "tsgf"            # WHERE A DEVICE RUN KEEPS THEM: the folder

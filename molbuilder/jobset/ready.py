@@ -58,6 +58,11 @@ class Readiness:
     #: The members of the job it is prepared in (`Job.members`, or itself
     #: alone) -- ``None`` when not prepared.
     job_members: Optional[List[str]] = None
+    #: A stage prepared and never launched by ANOTHER molbuilder, in words
+    #: (``molbuilder 2.17.1``) -- its first launch plans it again as prep
+    #: would now and refuses it if prep would write it differently (R-L15),
+    #: so its next step says so -- ``None`` when this one prepared it.
+    prepared_by: Optional[str] = None
 
     @property
     def state(self) -> str:
@@ -80,9 +85,12 @@ class Readiness:
                         "unreadable": "its launch record does not read: ",
                         "again": "prepare its group again: "}.get(
                             self.blocked, "waits for: ") + first
-            return "ready to launch -- " + ("; ".join(self.takes)
-                                            if self.takes else
-                                            "takes nothing from another run")
+            return ("ready to launch"
+                    + (f" (prepared by {self.prepared_by}: its launch "
+                       f"compares it with what prep writes now)"
+                       if self.prepared_by else "")
+                    + " -- " + ("; ".join(self.takes) if self.takes else
+                                "takes nothing from another run"))
         if not self.ready:
             return "waits before it can be prepared: " + first
         return "; ".join(self.takes) if self.takes else "builds on nothing"
@@ -124,6 +132,13 @@ class GroupAnswer:
         preparable -- a force-constant stage once its `relax` has finished."""
         return not self.launched and all(
             a.prepared or a.ready for a in self.answers)
+
+    @property
+    def prepared_by(self) -> Optional[str]:
+        """Another molbuilder that prepared a member, in words, or ``None``
+        (:attr:`Readiness.prepared_by`)."""
+        return next((a.prepared_by for a in self.answers if a.prepared_by),
+                    None)
 
     @property
     def launchable(self) -> bool:
@@ -406,8 +421,7 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
     plan, read once."""
     from .continuation import continuation_answer, force_constant_stage
     from .materialize import ever_launched
-    base, task = Path(calc.base), calc.task
-    template_text, jobset = calc.template_text, calc.jobset
+    task, jobset = calc.task, calc.jobset
     from .group import number_of
     group = number_of(task, stage)
     job = job_of(jobset, stage)
@@ -444,7 +458,8 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
                              job_members=members)
         return Readiness(stage, group, prepared=True, ready=True,
                          takes=_takes_lines(cont, gather),
-                         job_members=members)
+                         job_members=members,
+                         prepared_by=_prepared_by_another(calc, job))
     if group is not None and jobset is not None:
         # PUT INTO A LAUNCHED GROUP it was not launched with: its prep, and
         # its group's launch, are refused -- said here, with the way on.
@@ -477,6 +492,29 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
                              f"{exc}")
     return Readiness(stage, group, ready=True,
                      takes=[takes_sentence(items)] if items else [])
+
+
+def _prepared_by_another(calc, job) -> Optional[str]:
+    """The molbuilder that prepared ``job``'s files, in words, when it is
+    not this one -- read off its deck's own record (`script_emit.written_by`)
+    where prep wrote it: the stage's folder, or a run of points' first
+    point (`transport.stages.point_folders`) -- else ``None``: this one wrote
+    it, or the deck is not there to say."""
+    from .. import __version__
+    from ..script_emit import molbuilder_words, written_by
+    from ..transport.stages import point_folders
+    from .materialize import job_dir_names
+    try:
+        folder = (Path(calc.base)
+                  / job_dir_names(calc.jobset, calc.shape)[job.name])
+        points = (point_folders(calc.base, calc.task, job.name)
+                  if calc.task.calculation == "transport" else [])
+        text = ((points[0][0] if points else folder) / job.script
+                ).read_text(errors="replace")
+    except (OSError, ValueError, KeyError):
+        return None
+    by = written_by(text)
+    return None if by == __version__ else molbuilder_words(by)
 
 
 def _takes_lines(cont, gather) -> List[str]:
@@ -573,7 +611,7 @@ def prep_offer(gs: List[GroupAnswer]) -> List[int]:
 
 
 def launch_offer(gs: List[GroupAnswer]) -> List[int]:
-    """The groups `launch task` sends with nothing named (L1): prepared as
+    """The groups `launch task` sends with nothing named (`job-system.md`, *The task*): prepared as
     described, never launched, and what each member takes is there."""
     return [g.number for g in gs if g.launchable]
 

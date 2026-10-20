@@ -834,7 +834,7 @@ class Resolved:
 
 def _resolve_stage(stage, *, task, template, template_text, environment,
                    allocation=None, chosen=None, sweep=None, pins=None,
-                   translation=None, home=None, target=None,
+                   translation=None, home, target=None,
                    provenance=None) -> Resolved:
     """Step 2, once (`script-preparation.md` § 3.0): the allocation folded --
     the caller's ask over the description's, and its reporting policy -- and
@@ -2135,7 +2135,8 @@ class Described:
         return self.calc.template_text
 
 
-def checked(base, described: Described, *, target) -> Described:
+def checked(base, described: Described, *, target,
+            environment=None) -> Described:
     """CHECKPOINTS 3 AND 4 (`job-system.md` § 5.0), on ``described``:
 
     3 · § 6.6's PREFLIGHT, at its live moment (R5, 2026-08-12): prep on a
@@ -2148,7 +2149,9 @@ def checked(base, described: Described, *, target) -> Described:
     machine's -- which says how a shell enters an environment there, or the
     prep is refused before anything is written (W52); and WHICH FILES
     ANSWERED, as they were read -- what STAGE-PLAN.md, the pipeline log and
-    the ledger's *prepared* line each say (`configuration.md` § 2.2)."""
+    the ledger's *prepared* line each say (`configuration.md` § 2.2).
+    ``environment`` is the record a caller already read -- launch's, once
+    for the whole launch (`submit._machine_of`) -- never read again."""
     from ..runtime_config import config_provenance
     from ..validation.task import preflight
     base = Path(base).resolve()
@@ -2160,7 +2163,8 @@ def checked(base, described: Described, *, target) -> Described:
             "the description fails its own preflight "
             "(engines/stages.md § 6.6):\n  - "
             + "\n  - ".join(i.message for i in errors))
-    described.environment = machine_record(base, target)
+    described.environment = (environment if environment is not None
+                             else machine_record(base, target))
     require_activation(target, described.environment, base=base)
     described.provenance = config_provenance(
         project_dir=base, target=target, record=described.environment)

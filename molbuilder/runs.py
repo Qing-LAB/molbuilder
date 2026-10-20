@@ -641,6 +641,18 @@ def about(path) -> Dict[str, Any]:
     return _row_about(p, label)
 
 
+def _copy_of_its_machine(base):
+    """The calculation's copy of its machine's record, through its door
+    (`record.calculation_environment`) -- ``None`` when there is none or it
+    does not read here: an answer about a run reads on without it."""
+    from molbuilder.scheduler.record import (UnknownTarget,
+                                             calculation_environment)
+    try:
+        return calculation_environment(base)
+    except UnknownTarget:
+        return None
+
+
 def _sent_here(rec) -> bool:
     """WHETHER THIS SERVER RUNS ON THE MACHINE A JOB WAS SENT TO -- the
     one rule the standing and the scheduler's answer are asked by
@@ -669,8 +681,6 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
     from molbuilder.parse.dirs.rundir import run_state_of
     from molbuilder.runrecord import (LaunchRecordError, launch_record,
                                       record_ended)
-    from molbuilder.scheduler import read_environment
-    from molbuilder.scheduler.record import calculation_record
     st = run_state_of(folder, names, run, launched_in=launched_in)
     if st.state not in LIVE_STATES and not st.by_wall:
         return st
@@ -683,7 +693,7 @@ def concluded(folder, names, *, base, run=None, launched_in=None):
     if (not launch or launch.get("mode") != "submit"
             or not launch.get("job_id") or launch.get("ended")):
         return st
-    rec = read_environment(calculation_record(base))
+    rec = _copy_of_its_machine(base)
     if not _sent_here(rec):
         return st
     got = _listed_lately(rec.scheduler, str(launch["job_id"]))
@@ -744,13 +754,11 @@ def standing_of(launch, base) -> Optional[Dict[str, Any]]:
     names; anywhere else the row says where to ask.  ``None`` for a run
     with no job id (a run here).  ``launch`` is the run's launch record,
     ``base`` its calculation's folder (the record copy's)."""
-    from molbuilder.scheduler import read_environment
     from molbuilder.scheduler.queue import standing
-    from molbuilder.scheduler.record import calculation_record
     jid = (launch or {}).get("job_id")
     if not jid:
         return None
-    rec = read_environment(calculation_record(base))
+    rec = _copy_of_its_machine(base)
     machine = (rec.machine if rec is not None else None) or "its machine"
     got = standing(rec.scheduler, str(jid)) if _sent_here(rec) else None
     if got is None:

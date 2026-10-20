@@ -131,6 +131,12 @@ TEMPERATURE_K: Mapping[str, float] = {
 }
 
 
+def gib_words(n_bytes: float) -> str:
+    """A size in bytes as a person reads it -- ``49.2 GiB`` -- the one
+    spelling every line about a file's size uses."""
+    return f"{n_bytes / 1024 ** 3:.1f} GiB"
+
+
 def convert(value: float, unit: Optional[str], table: Mapping[str, float], *,
             what: str, source: str, default: Optional[str] = None) -> float:
     """*value* written in *unit*, as the number *table* is keyed to.

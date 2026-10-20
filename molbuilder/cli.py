@@ -3225,8 +3225,13 @@ def cmd_checkpoint_list(limit, check, path):
         click.echo("   nothing unsaved (by size and timestamp; --check "
                    "compares content).")
     if status.ignore_edited:
-        click.echo("   note: .gitignore's generated block was edited by hand. "
-                   "The next save rewrites it from the classification.")
+        # NOT WHAT THIS MOLBUILDER GENERATES -- edited by hand, or written by
+        # one whose classification differed (I2b): the cause is not known
+        # here, so it is not said.
+        click.echo("   note: .gitignore's generated block is not what this "
+                   "molbuilder generates (edited, or written by another "
+                   "release).  The next save rewrites it from the "
+                   "classification.")
 
 
 @cmd_checkpoint.command("tag", short_help="name a state so you can find it")

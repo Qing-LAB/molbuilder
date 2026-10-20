@@ -166,7 +166,7 @@ instrument recorded SIGTERM on Sol job 65999920 (SCHED-R).
 
 ---
 
-## 1s. What is computed vs how it runs — the evaluation, and the separation *(2026-10-20; the user's yes: "build it as 2.24.0 after 2.23.2")*
+## 1s. What is computed vs how it runs — the evaluation, and the separation *(2026-10-20; the user's yes: "build it as 2.24.0 after 2.23.2" — now 2.25.0, after the scratch release took 2.24.0)*
 
 *(the user, 2026-10-20: "it is completely stupid to have this involved in a
 job scheduling"; "carefully evaluate the jobset logic and see how much
@@ -237,8 +237,52 @@ review, pushed so Sol's calculation moves (done); 2.23.3 — the same review's
 launch errors, which this does not touch: a run here never told its wall,
 tracebacks at the launch's boundary, the status read after a send written as
 a refusal, the machine record read twice, a relaunch checked against its old
-run's files, the request sent from a second source; then this as 2.24.0,
-contract first.
+run's files, the request sent from a second source -- shipped as 2.24.0 with
+the engine's scratch never saved and `jobset scratch`; then the layers
+(§ 1t) as 2.24.1; then this as 2.25.0, contract first.
+
+## 1t. The layers, measured — every upward import *(2026-10-20; the two rule conflicts and `Calculation`'s floor await the user's yes)*
+
+*(the user, 2026-10-20: "my challenge to you is to make sure your design of
+this is correctly arranged through framework and well separated layers such
+that we are not dealing with random handcrafted bugs")* — after `jobset
+migrate` met numpy through `Task.label` → `transport.stages` → `structure`.
+
+A scan of every `molbuilder` import, at a module's top or inside a function,
+against `architecture.md` § 3 (import depth L1/L2/L3) and
+`execution/architecture.md` § 2.1 (floors 1–7): **35 upward imports**, all but
+three inside functions — which is how review missed them. They are a dozen
+facts on the wrong floor:
+
+| the fact | lives on | asked from | belongs |
+|---|---|---|---|
+| a lead's own stem and its budget (`rung_label`, `lead_tail_bytes`) | `transport.stages` | `Task.label` | names (floor 1) |
+| a stage's number, folder and file names (`stage_home`, `run_names`, `job_dir_names`, `open_container`) | `materialize` (4) | `group`, `plan`, `transport_rung`, `engines` (3) | one naming module below the plan |
+| what a stage builds on (`source_stage`, `stage_before`, `force_constant_stage`) | `continuation` (4) | `group` (3) | the ladder's rule (3) |
+| launched or not (`ever_launched`, `launched_stage`) | `materialize`, `ready` (4) | `group`, `transport_rung` (3) | asked from floor 4 and up only |
+| a plan's job by stage (`ready.job_of`) | `ready` (4) | `commands.way_back` (3) | `JobSet.job` |
+| the way back / migrate sentence | `commands` (3) | `task`, `jobset.machine` (2, 1) | floor 1 (`identity`, as the checkpoint words) |
+| a description's default ladder (`fresh_stages`) | `task` | → `pyscf.stages` | the ladder producers |
+| a whole calculation (`Calculation`, holding the plan) | listed floor 2 | opened by `runs` (2), `jobset.machine` (1) | floor 3, opened from 3 up |
+| the template catalogue's item facts | `template` (L2) | `identity`, `electronic_state`, `task`, `parse.contract` | the catalogue as floor-1 data; the template file's door on 2 |
+| the queues and the fit, as a table (`queue_table`) | `ask` (5) | `placement` (3) | placement (3) |
+| a run converged (`converged_of`) | `runstatus` (6) | `continuation.done` (4) | the run's records (1) |
+| `WrapperError` | `runwrap` (3) | `jobset.errors` (1) | `jobset.errors` |
+
+**Two rule conflicts**, each with the recommendation: the Results tab's
+readers of `task.json` and `job-set.json` (`parse/sidecars`, floor 1) read
+through their owners' doors (A16) on floors 2–3 — **each such reader sits on
+its record's floor, registered into the parse registry, which imports none**;
+`calcdirs.root_of` (1) asks `task.described` (2) — **"is this folder
+described" is a name fact, moved to floor 1, `task` asking it**.
+
+**Order agreed with the release plan**: 2.23.3 — the launch's errors and the
+2.23.2 review's (the last-run cutoff at the writer's shipping, a lead's files
+named on the Task setup card through `stage_home`, `_kept_as`'s tie, paths
+said relative, a corrupt record as the migration's refusal, `status` naming
+the prep for a stage another molbuilder prepared) -- shipped in 2.24.0;
+**2.24.1 — this table**, each fact moved to its floor, both layer documents
+corrected, done when the scan reports none; 2.25.0 — § 1s.
 
 ## 0. Rule R3, restated
 

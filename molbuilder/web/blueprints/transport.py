@@ -283,7 +283,6 @@ def api_transport_record() -> Any:
     transport calculation's; 404 for nothing there.
     """
     from pathlib import Path
-    from molbuilder.runs import place_of
     from molbuilder.transport.record import RecordError, collect_record
     from .files import _PickerError, _resolve_within_roots
 

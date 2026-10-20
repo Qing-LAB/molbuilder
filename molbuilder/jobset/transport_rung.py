@@ -229,6 +229,43 @@ def transport_sources(element):
                    SET_AFTER["rung_label"])
 
 
+def compose_refusals() -> tuple:
+    """What reading or composing a junction raises for the person to fix --
+    the composition's, the sort's, the order record's and a cited run's
+    deck record -- said by every door that asks as its refusal
+    (:class:`PrepError`): prep (:func:`composed_for_prep`) and the gather
+    (`gather.composed_junction`) alike."""
+    from ..atom_permutation import PermutationError
+    from ..deck_record import DeckRecordUnreadable
+    from ..transport.compose import ComposeError
+    from ..transport.sort import SortError
+    return (ComposeError, SortError, PermutationError, DeckRecordUnreadable)
+
+
+def junction_record(calc):
+    """The junction record beside ``task.json``, read for THIS citation --
+    ``(the junction or None, why, the projects tree's root)``: ``why`` the
+    reasons a record found is not usable (`compose.load_compose_record`).
+    The one read of it, by prep and the gather; refused as
+    :func:`compose_refusals` say.  The tree root is resolved BEFORE the
+    record is loaded: the reload re-runs the § 3 lead gates, and their
+    principal-layer half reads the CITED directory's own .ion files, which
+    the travelled folder does not carry -- absent (the folder moved out of
+    its tree), that half degrades to UNVERIFIED honestly."""
+    from ..projects import find_projects_root
+    from ..transport.compose import load_compose_record
+    base, task = calc.base, calc.task
+    try:
+        root = find_projects_root(base)
+        why: list = []
+        composed = load_compose_record(base, citation=task.slots["junction"],
+                                       tree_root=root, why=why,
+                                       swap_electrodes=task.swap_electrodes)
+    except compose_refusals() as exc:
+        raise PrepError(str(exc)) from exc
+    return composed, why, root
+
+
 def composed_for_prep(calc, plan, *, afresh: bool = True):
     """The junction a transport calculation's rungs describe: the record
     beside ``task.json`` when it is usable for THIS citation (the folder
@@ -243,25 +280,10 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
     prep writes, by one road (:func:`_written_and_read_back`)."""
-    from ..atom_permutation import PermutationError
-    from ..deck_record import DeckRecordUnreadable
-    from ..projects import find_projects_root
-    from ..transport.compose import (ComposeError, compose_junction,
-                                     load_compose_record)
-    from ..transport.sort import SortError
+    from ..transport.compose import compose_junction
     base, task = calc.base, calc.task
-    citation = task.slots["junction"]
+    composed, why, root = junction_record(calc)
     try:
-        # The tree root is resolved BEFORE the record is loaded: the
-        # reload re-runs the § 3 lead gates, and their principal-layer
-        # half reads the CITED directory's own .ion files, which the
-        # travelled folder does not carry.  Absent (the folder moved
-        # out of its tree), that half degrades to UNVERIFIED honestly.
-        root = find_projects_root(base)
-        why: list = []
-        composed = load_compose_record(base, citation=citation,
-                                       tree_root=root, why=why,
-                                       swap_electrodes=task.swap_electrodes)
         if composed is not None:
             # ITS ORDER FOUND (`engines/transport.md` § 1.1, *The first
             # prep*): the record written again by its one writer -- the
@@ -274,11 +296,10 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
         if refusal is not None:
             raise PrepError(refusal)
         return _written_and_read_back(
-            base, compose_junction(citation, tree_root=root,
+            base, compose_junction(task.slots["junction"], tree_root=root,
                                    swap_electrodes=task.swap_electrodes),
             plan, root=root, task=task)
-    except (ComposeError, SortError, PermutationError,
-            DeckRecordUnreadable) as exc:
+    except compose_refusals() as exc:
         raise PrepError(str(exc)) from exc
 
 

@@ -1385,10 +1385,9 @@ def described(base) -> bool:
 def of(base) -> Optional[Task]:
     """THE DESCRIPTION'S DOOR (`architecture.md` § 3.2, A16): the folder's
     ``task.json`` read and parsed, or ``None`` when the folder holds none.
-    One written before every description stated its kind and its notify
-    block whole (2026-10-06), or every stage its group (2026-10-11), is
-    refused naming the command that rewrites it, the calculation by its
-    folder."""
+    One written before a rule its writer now keeps -- each that
+    :func:`_written_before` names -- is refused naming the command that
+    rewrites it, the calculation by its folder."""
     path = path_of(base)
     if not path.is_file():
         return None

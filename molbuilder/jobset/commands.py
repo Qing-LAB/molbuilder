@@ -147,11 +147,11 @@ class LaunchFlag:
 
 
 #: EVERY FLAG A LAUNCH READS beside the work it names and how it asks
-#: (`--mode`, `--yes`, `--dry-run`, the continuation's `--cold`, `--from`,
-#: `--gather`): what the verb refuses where it would not be read
-#: (`_cli._refuse_flags_without_effect`), what a line offering the launch in
-#: another mode keeps (:func:`launch_with`), and what the line a launch
-#: sends restates (`submit._sbatch_request`).
+#: (`--mode`, `--yes`, `--dry-run`): what the verb records as typed and
+#: refuses where it would not be read (`_cli._refuse_flags_without_effect`),
+#: what a line offering the launch in another mode keeps
+#: (:func:`launch_with`), and what the line a launch sends restates
+#: (`submit._sbatch_request`).
 LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
     LaunchFlag("--time", modes=("submit", "ask"), kinds=(TASK, BENCH),
                what="a submitted job's wall, restated on the line that "
@@ -165,6 +165,14 @@ LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
                grouped=True),
     LaunchFlag("--foreground", modes=("direct",), kinds=(TASK, BENCH),
                what="waits for a run here"),
+    # WHAT A STAGE'S RUN TAKES (`job-system.md` § 5.4) -- a benchmark's
+    # trial starts cold always, from its deck (§ 7).
+    LaunchFlag("--cold", modes=("submit", "ask", "direct"), kinds=(TASK,),
+               what="a stage's run taking nothing from a run before"),
+    LaunchFlag("--from", modes=("submit", "ask", "direct"), kinds=(TASK,),
+               what="the run a stage's run continues from"),
+    LaunchFlag("--gather", modes=("submit", "ask", "direct"), kinds=(TASK,),
+               what="a transport rung's inputs, taken anew"),
 )
 
 
@@ -187,8 +195,8 @@ def launch_with(kind: str, *words, base, mode: str, typed=(),
     """The launch of ``words`` with ``mode`` stated, and the flags it was
     typed with (``typed``, ``(flag, value)`` pairs as the verb records them,
     a switch's value ``True``)
-    that ``mode`` reads (:data:`LAUNCH_FLAGS`; a flag no row names -- the
-    continuation's, `--yes` -- is every mode's).  What a
+    that ``mode`` reads (:data:`LAUNCH_FLAGS`; a flag no row names --
+    `--yes` -- is every mode's).  What a
     line says when it offers a launch again in another mode: the whole
     command, never *"the same command with --mode X"*, an edit to a line the
     person may never have typed -- a bare launch takes its mode from config

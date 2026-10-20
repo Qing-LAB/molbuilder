@@ -182,7 +182,7 @@ _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
                   "channels": ["*"], "report": ["*"]}
 _JOB_ABSENT = {"point": ({}, "w57"), "finish": (None, "w57"),
                "resumes": (True, "w57"), "placement": (None, "w57"),
-               "members": (None, "w57"),
+               "members": (None, "2026-10-07"),
                # A PREP BEFORE 2.7.0 recorded no `relax` run, and nothing it
                # was told: launch's check plans it as told nothing beside
                # the description, and one told flags is refused there,
@@ -208,16 +208,17 @@ _RULE_DAYS = {"m6": "2026-09-28", "w57": "2026-10-06"}
 def _kept_as(rules) -> str:
     """``.pre-<rule>`` -- the name an old file is kept under beside its
     rewrite, once: the EARLIEST of the ``rules`` it was written before, each
-    a plan's code (:data:`_RULE_DAYS`), a day (the template's retired and
-    renamed items carry theirs) or a release."""
+    a plan's code (:data:`_RULE_DAYS`), a day or a release (the template's
+    retired and renamed items carry either); two rules of one day are told
+    apart by name, so one file is kept under one name on every run."""
     import re
     from ..template import version_key
 
     def when(rule: str):
         day = _RULE_DAYS.get(rule, rule)
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
-            return (0, day, ())
-        return (1, "", version_key(rule))
+            return (0, day, (), rule)
+        return (1, "", version_key(rule), rule)
     return ".pre-" + min(rules, key=when)
 
 
@@ -242,6 +243,18 @@ def _refused_rewrite(path: Path, exc: Exception) -> "MigrateError":
 
 #: Not yet asked (:attr:`_Records._template_decision`).
 _UNDECIDED = object()
+
+
+def _read_raw(path: Path) -> dict:
+    """A record's JSON as it lies, for a rewrite -- one that does not read
+    as JSON at all is no older molbuilder's, and is the migration's refusal,
+    never a traceback."""
+    from ..persist import read_json
+    try:
+        return read_json(path)
+    except (OSError, ValueError) as exc:
+        raise MigrateError(f"{path} does not read ({exc}); nothing was "
+                           f"written.") from None
 
 
 @dataclass
@@ -272,18 +285,17 @@ class _Records:
     @classmethod
     def read(cls, base: Path) -> "_Records":
         from ..calculation import refusal
-        from ..persist import read_json
         from .. import task as _task
         from .materialize import sweep_set_dirs
         from .model import JobSet
         if not _task.described(base):
             raise MigrateError(refusal(base))
-        obj = read_json(_task.path_of(base))
+        obj = _read_raw(_task.path_of(base))
         jobsets: Dict[Path, dict] = {}
         for folder in [base, *sweep_set_dirs(base)]:
             path = JobSet.path_of(folder)
             if path.is_file():
-                jobsets[folder] = read_json(path)
+                jobsets[folder] = _read_raw(path)
         return cls(base=base, task=obj, jobsets=jobsets)
 
     def calculation(self, task) -> "Calculation":
@@ -518,7 +530,7 @@ def _migrate_records(rec: "_Records"):
             continue
         try:
             body = JobSet.from_dict(d).to_dict()
-        except ValueError as exc:
+        except (ValueError, KeyError, TypeError) as exc:
             raise _refused_rewrite(js_path, exc) from None
         writes.add(js_path, json_text(body),
                    {_JOB_ABSENT[k][1] for k in missing}
@@ -539,7 +551,7 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
     block -- the kind, and each command by the name the kind gives it, run
     from PATH as before (`scheduler/kinds.toml`).  Returns what changed and
     the file to write; nothing for a copy that reads, or none."""
-    from ..persist import json_text, read_json
+    from ..persist import json_text
     from ..scheduler.kinds import KindError, kind
     from ..scheduler.record import (SCHEMA, Environment, calculation_record,
                                     older_record)
@@ -547,7 +559,7 @@ def _migrate_machine_record(base: Path) -> Tuple[List[str], "_Writes"]:
     path = calculation_record(base)
     if not path.is_file():
         return [], writes
-    raw = read_json(path)
+    raw = _read_raw(path)
     if not older_record(raw):
         return [], writes
     word = raw.get("scheduler")
@@ -635,7 +647,7 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     files was prepared for the old names: its way on is said.  Decided,
     never done here: ``(said, moves, writes)``; nothing for a calculation
     whose leads' files are on their stems, or that has none."""
-    from ..paths import attempt_dir, attempts_in
+    from ..paths import attempt_dir, attempts_in, bench_container
     from ..persist import json_text
     from ..runfiles import RunNames, find
     from ..runrecord import newest_run
@@ -655,8 +667,12 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
         own = ([home.dir] + [attempt_dir(home.dir, n)
                              for n in attempts_in(home.dir)]
                if home.dir is not None and home.dir.is_dir() else [])
+        # ITS BENCHMARK'S LOG lies in its bench container, on the stem the
+        # lead's prep named it (`paths.bench_container`).
+        bench = base / bench_container(calc.shape, home.token)
+        logs_at = [base] + ([bench] if bench.is_dir() else [])
         stage_moves: List[Tuple[Path, Path]] = []
-        for folder in [base, *own]:
+        for folder in [*logs_at, *own]:
             for path, rf in find(folder, task.label, stage=home.token):
                 new = folder / dataclasses.replace(rf, label=home.label).name
                 stage_moves.append((path, new))
@@ -668,7 +684,7 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
         said += [f"{old.relative_to(base)} -> {new.name} (a lead's files "
                  f"are on its own stem, job-contracts.md 2.1 rule 2)"
                  for old, new in stage_moves]
-        if not any(old.parent != base for old, _new in stage_moves):
+        if not any(old.parent in own for old, _new in stage_moves):
             continue
         # PREPARED FOR THE OLD NAMES: its run script and header name them.
         # LAUNCHED, read off the old names as they were written -- the run
@@ -692,10 +708,11 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     return said, moves, writes
 
 
-#: The day the run script began recording a flat folder's last run
+#: When the run script began recording a flat folder's last run -- the
+#: release that brought it, 2.7.0, shipped 2026-10-13 16:41 UTC
 #: (`project-layout.md` § 5, the `<label>.last-run` row: `jobset migrate`
-#: writes it for runs launched before 2.7.0).
-_LAST_RUN_RECORDED_FROM = "2026-10-11"
+#: writes it for runs launched before), in a launch record's own spelling.
+_LAST_RUN_RECORDED_FROM = "2026-10-13T16:41:03Z"
 
 
 def _migrate_last_run(base: Path, task, moves
@@ -762,7 +779,8 @@ def migrate_state(base) -> List[str]:
     said, writes, task = _migrate_records(rec)
     m_said, m_writes = _migrate_machine_record(base)
     said += m_said
-    writes.update(m_writes)
+    for path, (text, rules) in m_writes.items():
+        writes.add(path, text, rules)
     calc = rec.calculation(task)
     n_said, moves = _migrate_run_numbers(calc)
     lead_said, lead_moves, lead_writes = _migrate_lead_names(calc)
@@ -802,7 +820,8 @@ def migrate_state(base) -> List[str]:
     taken = [new for _old, new in moves if new.exists()]
     if taken:
         raise MigrateError(
-            f"{', '.join(p.name for p in taken)} already exist -- a file is "
+            f"{', '.join(str(p.relative_to(base)) for p in taken)} already "
+            f"exist -- a file is "
             f"never renamed over another; nothing was written.  Move "
             f"{'it' if len(taken) == 1 else 'them'} aside and run the "
             f"migration again.")
@@ -828,7 +847,8 @@ def migrate_state(base) -> List[str]:
         old.rename(new)
     if l_write is not None:
         write_bytes(l_write[0], l_write[1].encode("utf-8"))
-    said += [f"{path.name} kept as {kept[path].name}" for path in writes]
+    said += [f"{path.relative_to(base)} kept as {kept[path].name}"
+             for path in writes]
     said += n_said + lead_said + l_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "

@@ -20,8 +20,6 @@ it inspects the tree, changes nothing.
 
 from __future__ import annotations
 
-from .model import KIND_SWEEP
-
 import dataclasses
 import textwrap
 from dataclasses import dataclass, field
@@ -722,8 +720,18 @@ def _steps(base, task, groups, rows: List[StageStatus]) -> List[GroupStep]:
             step = ("changed", "prepared, its members changed",
                     prep_group_lines([n], base=base))
         elif not g.launched:
-            step = (("ready", "ready to launch",
-                     launch_lines("task", base=base, groups=[n]))
+            # PREPARED BY ANOTHER MOLBUILDER: its launch compares it with
+            # what prep writes now, and a difference is refused (R-L15) --
+            # the step says so, and the prep that answers it.
+            step = (("ready",
+                     "ready to launch" + (f" (prepared by {g.prepared_by}: "
+                                          f"its launch refuses it if prep "
+                                          f"would write it differently now)"
+                                          if g.prepared_by else ""),
+                     launch_lines("task", base=base, groups=[n])
+                     + ([f"{ln}   # if the launch refuses it, first"
+                         for ln in prep_group_lines([n], base=base)]
+                        if g.prepared_by else []))
                     if g.launchable else
                     ("waiting", "waits for: " + reason_of(g.why or ""), []))
         else:

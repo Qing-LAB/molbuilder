@@ -1408,22 +1408,19 @@ def test_the_geometry_is_compared_where_siesta_places_it(junction, case):
 
     from molbuilder.jobset.gather import composed_junction, rung_deck_now
     from molbuilder.siesta.engine_input import engine_input_differences
-    from molbuilder.task import of as task_of
-    from molbuilder.template import of as template_of
     from molbuilder.transport.sort import REGION_BRIDGE
     base = junction.single.bundle
-    task = task_of(base)
-    text = template_of(base, task.label).text
     from molbuilder.calculation import open as open_calculation
-    composed = composed_junction(open_calculation(base))
+    calc = open_calculation(base)
+    composed = composed_junction(calc)
     atom = composed.junction.regions[REGION_BRIDGE][0]
     positions = np.array(composed.junction.positions, dtype=float)
     positions[atom, 0] += case["moved_ang"]
     moved = dataclasses.replace(
         composed, junction=composed.junction.replace(positions=positions))
     differs = engine_input_differences(
-        rung_deck_now(base, task, "device", composed, template_text=text),
-        rung_deck_now(base, task, "device", moved, template_text=text))
+        rung_deck_now(calc, "device", composed),
+        rung_deck_now(calc, "device", moved))
     if case.get("names"):
         assert any(case["names"] in d for d in differs), differs
     else:
@@ -1478,8 +1475,7 @@ def test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it(
     point = next(p for p in rung_points(calc.task, "device",
                                         frames=frames_of(base))
                  if p.volts == case["volts"])
-    now = rung_deck_now(base, calc.task, "device", composed_junction(calc),
-                        template_text=calc.template_text, point=point)
+    now = rung_deck_now(calc, "device", composed_junction(calc), point=point)
     ran = _left_to_the_engine(now, case.get("left_out", []))
     for old, new in case.get("changed", []):
         assert old in now, (old, now)

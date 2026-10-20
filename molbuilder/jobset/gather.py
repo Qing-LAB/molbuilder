@@ -24,8 +24,33 @@ from .transport_rung import (at_frame, transport_rung, transport_sources,
                              transport_spec)
 
 
-def transport_inputs(calc, stage: str, *,
-                     point=None) -> List[Tuple[RunRef, str]]:
+class _ReadOnce:
+    """What one gather reads for all its points: the junction, and each
+    upstream rung's deck as it renders now, by the point it is rendered at
+    -- one render for a rung that runs once, whichever point asks
+    (`engines/transport.md` § 6.1)."""
+
+    def __init__(self, calc):
+        self.calc = calc
+        self._junction = None
+        self._decks: dict = {}
+
+    def junction(self):
+        if self._junction is None:
+            self._junction = composed_junction(self.calc)
+        return self._junction
+
+    def deck_now(self, stage: str, point) -> str:
+        key = (stage, point)
+        if key not in self._decks:
+            self._decks[key] = rung_deck_now(self.calc, stage,
+                                             self.junction(), point=point)
+        return self._decks[key]
+
+
+def transport_inputs(calc, stage: str, *, point=None,
+                     once: Optional[_ReadOnce] = None
+                     ) -> List[Tuple[RunRef, str]]:
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs: ``[(the run it comes from, filename)]``, decided at the
     stage's first launch, or a launch that gathers anew (`job-system.md`
@@ -49,17 +74,17 @@ def transport_inputs(calc, stage: str, *,
 
     A run that fails a gate is refused by name, with what to do.  What was
     taken from where lands in ``.gathered-from`` beside the copies, so a
-    result can always say which electrode run fed it.
+    result can always say which electrode run fed it.  ``once`` is what the
+    gather this belongs to reads for all its points (:class:`_ReadOnce`).
     """
     from ..transport.stages import (frames_of, inputs_of, points_in,
                                      products_of, rung_points)
     from .continuation import done, usable
 
-    base, task = Path(calc.base), calc.task
-    template_text, jobset = calc.template_text, calc.jobset
+    base, task, jobset = Path(calc.base), calc.task, calc.jobset
+    once = once if once is not None else _ReadOnce(calc)
     inputs = inputs_of(task, stage)
     gathered: List[tuple] = []
-    composed = None              # the junction, read once, when first needed
     for upstream, filename in inputs:
         home = stage_home(base, task, upstream)
         token, up_dir = home.token, home.dir
@@ -80,10 +105,8 @@ def transport_inputs(calc, stage: str, *,
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
         redo = redo_launched(upstream, calc=calc)
-        # PREPARED, by the one door (`ready.job_of`), in the plan as the
-        # verb read it.
-        from .ready import job_of
-        if job_of(jobset, upstream) is None:
+        # PREPARED, by the plan's own answer, as the verb read it.
+        if jobset is None or jobset.job(upstream) is None:
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has not been prepared -- run it first --\n"
@@ -172,13 +195,9 @@ def transport_inputs(calc, stage: str, *,
         # re-pointed junction leaves as it was -- comments and molbuilder's
         # records aside, an explicit engine default the same as none; never
         # which molbuilder wrote it (`siesta.engine_input`).
-        if composed is None:
-            composed = composed_junction(calc)
-        now = rung_deck_now(base, task, upstream, composed,
-                             template_text=template_text,
-                             # THE UPSTREAM'S OWN POINTS (`rung_points`): a
-                             # rung that runs once ran at 0 V, on frame 0.
-                             point=(point if up_points else None))
+        # THE UPSTREAM'S OWN POINTS (`rung_points`): a rung that runs once
+        # ran at 0 V, on frame 0 -- one render for every point asking.
+        now = once.deck_now(upstream, point if up_points else None)
         # THE DECK THAT RAN, asked of its run's folder through the run door
         # (`runs.run_of`): a reader of a run takes the folder.
         from ..runs import run_of
@@ -223,7 +242,8 @@ def gather_sources(calc, stage: str
     run."""
     from ..transport.stages import frames_of, rung_points
     base = Path(calc.base)
-    return [(pt, transport_inputs(calc, stage, point=pt))
+    once = _ReadOnce(calc)
+    return [(pt, transport_inputs(calc, stage, point=pt, once=once))
             for pt in (rung_points(calc.task, stage, frames=frames_of(base))
                        or (None,))]
 
@@ -250,39 +270,29 @@ def composed_junction(calc):
     refused by its state, in the words prep says it with
     (`transport_rung.no_usable_record`); a refusal of the composition's is
     said as the gather's (:class:`PrepError`), as every door that asks the
-    gather catches it."""
-    from ..projects import find_projects_root
-    from ..transport.compose import ComposeError, load_compose_record
-    from ..transport.sort import SortError
-    from .transport_rung import no_usable_record
-    base, task = calc.base, calc.task
-    root = find_projects_root(base)
-    why: list = []
-    try:
-        composed = load_compose_record(base, citation=task.slots["junction"],
-                                       tree_root=root, why=why,
-                                       swap_electrodes=task.swap_electrodes)
-    except (ComposeError, SortError) as exc:
-        raise PrepError(str(exc)) from exc
+    gather catches it -- through the one read prep asks too
+    (`transport_rung.junction_record`)."""
+    from .transport_rung import junction_record, no_usable_record
+    composed, why, root = junction_record(calc)
     if composed is None:
         raise PrepError(no_usable_record(calc, why, root=root,
                                          afresh=False))
     return composed
 
 
-def rung_deck_now(base, task, stage: str, composed, *, template_text,
-                  point=None) -> str:
-    """The deck ``stage`` renders NOW -- its text exactly as `prep task`
-    writes it, from the current template, junction and the rung's run card
-    (`transport_rung`, `transport_spec`, `script_emit.render_deck`).
-    A transport deck records no machine sizing, so no allocation is
-    needed to render it."""
+def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
+    """The deck ``stage`` of ``calc`` renders NOW -- its text exactly as
+    `prep task` writes it, from the calculation's template, junction and
+    the rung's run card (`transport_rung`, `transport_spec`,
+    `script_emit.render_deck`).  A transport deck records no machine sizing,
+    so no allocation is needed to render it."""
     from .model import Resources
     from .prep_inputs import run_inputs
+    base, task = calc.base, calc.task
     # THE RUNG'S PINS, as `prep task` takes them from its card (`run_inputs`).
     _shape, pins = run_inputs(base, task, stage)
     struct, config, state, _element = transport_rung(
-        task, stage, composed, Resources(), template_text=template_text,
+        task, stage, composed, Resources(), template_text=calc.template_text,
         pins=pins or None)
     struct = at_frame(struct, point)
     spec, cfg = transport_spec(task, stage, struct, config, state, point,

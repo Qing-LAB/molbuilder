@@ -48,10 +48,12 @@ class _Here:
 def _scheduler_of(job):
     """The scheduler a queue job was sent to: the one its calculation's copy
     of its machine's record names (`configuration.md` M-3) -- ``None`` when
-    that copy does not read here."""
-    from .scheduler import read_environment
-    from .scheduler.record import calculation_record
-    rec = read_environment(calculation_record(job.calculation))
+    that copy does not read here (`record.calculation_environment`)."""
+    from .scheduler.record import UnknownTarget, calculation_environment
+    try:
+        rec = calculation_environment(job.calculation)
+    except UnknownTarget:
+        return None
     return rec.scheduler if rec is not None else None
 
 
@@ -113,9 +115,7 @@ def _shown(job, said: str) -> list:
 
 def _record(job, decision: str, **facts) -> None:
     """A stop's decision in the calculation's ledger -- in a described
-    calculation only, as a launch's (`submit._record`)."""
-    from pathlib import Path
-
+    calculation only: a job's address outlives a folder moved or deleted."""
     from .jobset.ledger import record
     from .task import described
     if described(job.calculation):

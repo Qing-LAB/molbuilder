@@ -988,7 +988,8 @@ def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
     task = task_of(bundle)
     container = bundle / bench_container(
         Shape.named(task.shape), stage_home(bundle, task, stage).token)
-    plan = plan_launch(open_calculation(bundle), JobSet.of(container),
+    plan = plan_launch(open_calculation(bundle),
+                       bench=(JobSet.of(container), container),
                        mode="submit", side=side, record=False,
                        told=dict(kind="bench", stage=stage, trial=None,
                                  mode="submit", flags=[]))

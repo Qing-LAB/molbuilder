@@ -976,6 +976,20 @@ def calculation_record(bundle_dir) -> Path:
     return Path(bundle_dir) / FILENAME
 
 
+def calculation_environment(bundle_dir) -> Optional["Environment"]:
+    """The record a calculation carries -- its copy of its machine's, taken
+    at its first prep (`configuration.md` M-3) -- read; ``None`` before its
+    first prep.  A copy that is there and does not read is refused by name
+    (:meth:`UnknownTarget.unreadable_copy`), never read past to another
+    scope's record: two stages of one calculation cannot disagree about
+    their machine."""
+    path = calculation_record(bundle_dir)
+    env = read_environment(path)
+    if env is None and path.is_file():
+        raise UnknownTarget.unreadable_copy(bundle_dir)
+    return env
+
+
 def calculation_machine(bundle_dir) -> Optional[str]:
     """The machine a calculation is set to -- the name its copy of its
     machine's record carries (`configuration.md` M-3: set at its first prep,
@@ -984,7 +998,10 @@ def calculation_machine(bundle_dir) -> Optional[str]:
     not read or names none.  The one reader
     of that name: Task setup's folder answer, the launch lines molbuilder
     prints and a re-probe's remedy ask it."""
-    env = read_environment(calculation_record(bundle_dir))
+    try:
+        env = calculation_environment(bundle_dir)
+    except UnknownTarget:
+        return None
     return getattr(env, "machine", None) if env is not None else None
 
 

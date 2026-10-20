@@ -229,6 +229,53 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     return None
 
 
+@dataclass(frozen=True)
+class ScratchFile:
+    """One file of the engine's scratch a calculation's runs hold -- its
+    stage (``None`` on the flat layout, where the stages share one folder),
+    where it lies, and its size in bytes."""
+    stage: Optional[str]
+    path: Path
+    size: int
+
+
+def scratch_in(calc) -> List[ScratchFile]:
+    """THE ENGINE'S SCRATCH a calculation's runs hold (`job-system.md`
+    § 5.3, *scratch*): every file of the families its engine's vocabulary
+    names scratch (`warmfiles.scratch_families`, the one answer the
+    checkpoint asks too) below each stage's folder -- on the flat layout the
+    calculation's own -- the stores and every dot-folder left out.  What
+    `jobset scratch` lists and empties; it reads names and sizes, never a
+    file."""
+    import fnmatch
+    from ..warmfiles import scratch_families
+    families = scratch_families(calc.task.engine)
+    base = Path(calc.base)
+    if not families:
+        return []
+
+    def under(folder: Path):
+        for here, dirs, files in os.walk(folder):
+            dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+            for name in sorted(files):
+                path = Path(here) / name
+                if (any(fnmatch.fnmatch(name, f) for f in families)
+                        and not path.is_symlink()):
+                    yield path
+    if not calc.shape.keeps_attempts_as_directories:
+        return [ScratchFile(None, p, p.stat().st_size) for p in under(base)]
+    return [ScratchFile(home.name, p, p.stat().st_size)
+            for home in ladder_homes(base, calc.task)
+            if home.dir is not None and home.dir.is_dir()
+            for p in under(home.dir)]
+
+
+class NamingError(ValueError):
+    """A job of a plan no file of its can be named for -- a deck named on
+    no stage, or not on its label -- the naming authority's refusal
+    (:func:`job_dir_names`, :func:`run_names`), said by every door."""
+
+
 def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
@@ -277,7 +324,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
             # stages' benchmarks can never collide.
             out[j.name] = trial_dir(sh, trial_token, j.name)
             continue
-        raise ValueError(
+        raise NamingError(
             f"job {j.name!r} ({j.script}): its deck names no stage -- not a "
             f"job prep wrote, so it has no folder to name.  A calculation "
             f"prepared before 2.17.0 names a lead's deck on its own label: "
@@ -436,7 +483,7 @@ def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
              else rung_label(jobset.name, job.name))
     rec = parse(Path(job.script).name, label)
     if rec is None or rec.stage is None:
-        raise ValueError(
+        raise NamingError(
             f"job {job.name!r}: its deck {job.script!r} is not named on "
             f"{label!r} with a stage (`runfiles.compose`)")
     return RunNames.of(label, rec.stage, shape.name, trial=trial)
@@ -1095,7 +1142,7 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 __all__ = [
     "StageHome", "stage_home", "ladder_homes", "described_refs", "Attempt",
     "CONTINUED", "GATHERED", "HandOver", "hand_over",
-    "bench_owner", "bench_stage_of", "trial_dir",
+    "bench_owner", "bench_stage_of", "trial_dir", "scratch_in", "ScratchFile",
            "trial_work_dir",
            "materialize", "job_dir_names", "stage_refs",
            "latest_attempt", "run_dir",

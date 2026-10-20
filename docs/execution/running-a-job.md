@@ -579,7 +579,9 @@ their proper channel/parameter")*. The launch tells the job the wall it was
 sent with — `MB_WALL_S`, the seconds of the header's wall or the launch's
 `--time`, the value `run.json`'s `placed_on.time` records, on the send line
 beside the launch claim ([`scheduler.md`](?doc=execution/scheduler.md) § 6a)
-and in a direct run's environment when the run states a wall — and the
+and in a direct run's environment when the run states a wall — each
+member of a walk run here told its own card's, its clock its own start —
+and the
 header says when the job started (`MB_JOB_STARTED`, § 2.1b of
 [`run-reports.md`](?doc=execution/run-reports.md)). From the two the run
 script counts what is left when it starts the engine, and hands the engine

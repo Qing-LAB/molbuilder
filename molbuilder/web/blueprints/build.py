@@ -2051,7 +2051,8 @@ def api_task_setup_prep_plan():
 
     rows = []
     for st in task.stages:
-        token = stage_home(folder, task, st.name).token
+        home = stage_home(folder, task, st.name)
+        token = home.token
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
                      "ask": _ask_of(st.name),
@@ -2069,7 +2070,10 @@ def api_task_setup_prep_plan():
                      # ...spelled as THIS shape spells them: an attempt's
                      # `run.json`, a flat stage's first run's
                      # `<base>-run0.run.json` (plan D22, W57 decision 2).
-                     "files": manifest(task.label, token,
+                     # ...ON THE LABEL ITS FILES CARRY: a transport lead's
+                     # own stem (`StageHome.label`, `job-contracts.md` § 2.1
+                     # rule 2).
+                     "files": manifest(home.label, token,
                                        shape=shape.name, engine=task.engine,
                                        calculation=task.calculation)})
     bench = None
@@ -2408,7 +2412,6 @@ def _folder_ladder(calc) -> dict:
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.group import linked, upstream_of, why_not_join
     from molbuilder.jobset.ready import task_state
-    folder = calc.base
     try:
         state = task_state(calc)
         task, text = state.task, state.template_text

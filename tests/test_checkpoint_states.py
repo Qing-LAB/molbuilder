@@ -181,6 +181,40 @@ def test_every_regular_file_is_in_exactly_one_store(calc):
         "ordinary directory")
 
 
+def test_the_engines_scratch_is_in_neither_store_and_stays(tmp_path,
+                                                           checkpoint_config):
+    """S1's second exclusion: what the engine's vocabulary names scratch --
+    asked of it, never listed here -- is in neither store, reads as no
+    unsaved work, and a restore leaves it where it lies.  The failure it
+    guards: a device run's two Green's-function files (98 of 99 GB on Sol)
+    copied into every save, or swept away by a restore while a run reads
+    them."""
+    from molbuilder.warmfiles import scratch_families
+    checkpoint_config(size_limit_bytes=1024)
+    root = tmp_path / "AuBDTAu_device"
+    (root / "04_device" / "run-0" / "tsgf").mkdir(parents=True)
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    repo = Repo(str(root))
+    first = repo.init(engine="siesta", note="set up")
+    families = scratch_families("siesta")
+    assert families, "the SIESTA vocabulary names its scratch"
+    scratch = [root / "04_device" / "run-0" / "tsgf" / f"job{pat[1:]}"
+               for pat in families]
+    for path in scratch:
+        path.write_bytes(BIG)                     # big by size, too
+    (root / "04_device" / "run-0" / "job.TSDE").write_bytes(BIG)
+    state = repo.save("a device run")
+    tracked, archived = _tracked(repo), _archived(repo, state)
+    for path in scratch:
+        key = key_of(root, path)
+        assert key not in tracked and key not in archived, key
+    assert "04_device/run-0/job.TSDE" in archived, "the rest is still stored"
+    assert repo.status(deep=True).clean, "scratch is no unsaved work"
+    repo.restore(first.id, force=True)
+    assert all(p.is_file() for p in scratch), "a restore leaves the scratch"
+    assert not (root / "04_device" / "run-0" / "job.TSDE").exists()
+
+
 def test_the_two_stores_are_never_stored(calc):
     (calc.root / "big.bin").write_bytes(BIG)
     state = calc.save("one big file")
@@ -1394,8 +1428,8 @@ def test_an_archive_published_but_never_committed_costs_nothing(calc,
     import molbuilder.checkpoint as cp
     real = cp.publish_archive
 
-    def publish_then_die(root, big):
-        real(root, big)
+    def publish_then_die(root, big, *rest):
+        real(root, big, *rest)
         raise OSError("killed after publishing, before the commit")
 
     (calc.root / "big.bin").write_bytes(BIG)
@@ -2726,7 +2760,11 @@ def _the_block_matches(shipped, engine):
     repo = Repo(str(root))
     repo.init(engine=engine, note="set up")
 
-    allowed = set(get_checkpoint(engine)["always_large"]) | {ARCHIVE_DIR + "/"}
+    from molbuilder.warmfiles import scratch_families
+    # S1a: the archive's patterns, and the engine's scratch asked of its own
+    # vocabulary (S1) -- nothing else.
+    allowed = (set(get_checkpoint(engine)["always_large"])
+               | set(scratch_families(engine)) | {ARCHIVE_DIR + "/"})
     text = (root / ".gitignore").read_text()
     block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
                 .split("=== molbuilder checkpoint END ===")[0]

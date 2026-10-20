@@ -320,6 +320,23 @@ def inputs_of(task, stage: str):
     return stage_inputs(stage, task.label)
 
 
+def hands_on(stage: str, task_label: str, base_dir) -> list:
+    """What a point of ``stage`` hands to the next point's start -- the
+    calculation's ``along`` row (`warm-files.toml` [transport]), of the
+    files this rung itself declares (:func:`warm_declaration`: the device's
+    ``.TSDE``; the transmission declares none) -- ``[]`` for a rung with no
+    points (`engines/transport.md` § 2a.11).  The one answer the walk hands
+    on by and :func:`products_of` asks a point to hold."""
+    if stage not in per_point_rungs():
+        return []
+    from ..runfiles import compose
+    from ..warmfiles import warm_list
+    own = {w.name for w in warm_declaration(stage, task_label, base_dir)}
+    return [f for f in (compose(task_label, suf) for suf
+                        in warm_list("siesta", "transport", base_dir).along)
+            if f in own]
+
+
 def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     """What a run of ``stage`` must hold to be DONE: every file a rung
     downstream takes from it (:func:`stage_inputs`, the DAG, read the other
@@ -346,12 +363,9 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
                       if up == stage})
     # WHAT A POINT HANDS TO THE NEXT POINT is a per-point rung's alone: the
     # seed has no points, and its restart state is its own `.DM` (§ 2a.15).
-    if base_dir is not None and stage in per_point_rungs():
-        from ..warmfiles import warm_list
-        own = {w.name for w in warm_declaration(stage, task_label, base_dir)}
-        along = [compose(task_label, suf)
-                 for suf in warm_list("siesta", "transport", base_dir).along]
-        out += [f for f in along if f in own and f not in out]
+    if base_dir is not None:
+        out += [f for f in hands_on(stage, task_label, base_dir)
+                if f not in out]
     return out
 
 

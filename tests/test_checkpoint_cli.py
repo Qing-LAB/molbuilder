@@ -492,4 +492,4 @@ def test_list_says_when_the_generated_ignore_block_was_edited(mb, calc):
     gi.write_text(gi.read_text().replace(".binsnapshots/",
                                          ".binsnapshots/\n*.XV"))
     said = _said(mb("list")).lower()
-    assert "edited by hand" in said
+    assert "not what this molbuilder generates" in said

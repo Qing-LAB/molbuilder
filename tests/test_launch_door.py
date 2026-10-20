@@ -163,22 +163,23 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     MUTATION THIS MUST FAIL AGAINST: the send comparing nothing."""
     import os
 
-    from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.submit import SubmitError, plan_launch, send_launch
     from molbuilder.jobset.ask import Said
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
-    js = JobSet.of(bundle)
     attempt = bundle / "01_coarse" / "run-0"
 
     def plan():                  # the queue its prep placed it on: `debug`
-        return plan_launch(open_calculation(bundle), js, mode="submit",
+        return plan_launch(open_calculation(bundle), mode="submit",
                            only="coarse",
                            told=dict(kind="task", stage="coarse", trial=None,
                                      mode="submit", flags=[]))
 
     shown = plan()
-    deck = next(attempt.glob("*.fdf"))
+    # THE FILE THE PLAN READ -- prep's deck in the stage's folder, which the
+    # run is filled from at the send (`_Member.read_from`).
+    deck = next((bundle / "01_coarse").glob("*.fdf"))
+    assert any(deck.name in r for r in shown.reads), shown.reads
     st = deck.stat()
     os.utime(deck, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))
     with pytest.raises(SubmitError) as e:

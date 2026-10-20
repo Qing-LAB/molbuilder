@@ -180,6 +180,26 @@ class Kind:
         return [ln.strip() for ln in header_text.splitlines()
                 if ln.startswith(prefix)]
 
+    def directive_value(self, key: str,
+                        lines: Sequence[str]) -> Optional[str]:
+        """The value directive ``key`` (:data:`DIRECTIVES`) carries among a
+        written header's directive ``lines`` (:meth:`directive_lines_of`) --
+        the reading of what :meth:`directive` writes, by its own spelling,
+        for a directive of one value -- or ``None`` where the header carries
+        none."""
+        spelled = self.header[key]
+        if isinstance(spelled, list) or spelled.count("{") != 1:
+            raise ValueError(f"{self.name}: {key!r} is not a directive of "
+                             f"one value")
+        head, rest = spelled.split("{", 1)
+        tail = rest.split("}", 1)[1]
+        lead = f"{self.header['prefix']} {head}"
+        for line in lines:
+            if (line.startswith(lead) and line.endswith(tail)
+                    and len(line) > len(lead) + len(tail)):
+                return line[len(lead):len(line) - len(tail)]
+        return None
+
     # ----- what it tells a running job -------------------------------- #
 
     def job_lines(self) -> List[str]:

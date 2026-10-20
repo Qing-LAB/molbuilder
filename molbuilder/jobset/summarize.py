@@ -194,9 +194,11 @@ def _read_environment(bundle: Path) -> Dict:
     Through the one door (N1): it reads the object and asks it for its own
     dict, so the shape a result records is the shape the record has.
     """
-    from ..scheduler import read_environment
-    from ..scheduler.record import calculation_record
-    env = read_environment(calculation_record(bundle))
+    from ..scheduler.record import UnknownTarget, calculation_environment
+    try:
+        env = calculation_environment(bundle)
+    except UnknownTarget:
+        env = None
     return env.to_dict() if env is not None else {}
 
 
@@ -658,7 +660,6 @@ def sweep_view(calc, jobset) -> Dict:
     """
     from .runstatus import jobset_status
 
-    bundle = Path(calc.base)
     # ONE record-builder, shared with `run_summarize_jobset` -- so the
     # verdict this view shows is the verdict that gets written, down to
     # `choice["mechanism"]`.  Composing it here a second time is what B2

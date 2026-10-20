@@ -11,6 +11,8 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ..units import gib_words
+
 #: What the engine stores per matrix element: a complex double.
 _BYTES = 16
 
@@ -46,11 +48,11 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
     volts = sorted({_voltage_of(p.name, label) for p in files})
     if len(files) == 2 and len(volts) == 1:
         return (f"{scratch_dir}/: the {volts[0]} pair, 2 files, "
-                f"{_gib(size)}")
+                f"{gib_words(size)}")
     if len(files) == 1:
-        return (f"{scratch_dir}/: one file, {files[0].name}, {_gib(size)} "
+        return (f"{scratch_dir}/: one file, {files[0].name}, {gib_words(size)} "
                 f"-- a walk that did not reach its end; yours to remove")
-    return (f"{scratch_dir}/: {len(files)} files, {_gib(size)} -- "
+    return (f"{scratch_dir}/: {len(files)} files, {gib_words(size)} -- "
             f"{', '.join(p.name for p in files)}; the walk leaves one "
             f"pair at most, so these are an edit's")
 
@@ -59,10 +61,6 @@ def _voltage_of(name: str, label: str) -> str:
     """The voltage token in ``<label>.<voltage>.TSGF<lead>``."""
     rest = name[len(label) + 1:] if name.startswith(label + ".") else name
     return rest.split(".TSGF", 1)[0]
-
-
-def _gib(n_bytes: float) -> str:
-    return f"{n_bytes / 1024 ** 3:.1f} GiB"
 
 
 # ---- the estimate ------------------------------------------------------------
@@ -238,10 +236,10 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
         deck = _reads(path)
         energies.append(energy_points(deck) + 2)
         if same:
-            sizes.append(f"{_gib(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
+            sizes.append(f"{gib_words(file_bytes(orbitals['L'], deck))} a lead at {v:g} V")
         else:
             sizes.append(", ".join(
-                f"{lead} {_gib(file_bytes(n, deck))}"
+                f"{lead} {gib_words(file_bytes(n, deck))}"
                 for lead, n in orbitals.items()) + f" a lead at {v:g} V")
     k = k_points_time_reversed(first.grid)
     orbs = (f"{orbitals['L']} orbitals" if same

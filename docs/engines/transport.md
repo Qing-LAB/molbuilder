@@ -2019,18 +2019,19 @@ walk's end:  tsgf/ emptied
   at 0 V, the pair named `<label>.v0.TSGF<lead>` (`Point.bias_v`), emptied at
   the walk's end: such a device keeps nothing. **A device that runs once** —
   one frame, one voltage, no walk — keeps its one pair in its run's `tsgf/`;
-  nothing comes after it to empty the folder.
+  nothing comes after it to empty the folder, and `jobset scratch --empty`
+  removes it once you no longer want it (`job-system.md` § 5.3).
 - **A walk that did not reach its end** — stopped by you, a kill, a wall, a
   node lost — leaves the round's pair, or one file of it when the stop fell
   between the two writes, in that run's `tsgf/`. The run is yours to recover
-  (`job-system.md`, *runs are yours*): no verb removes it, `status` names
-  it on that run's line, and a launch again opens the next run with an
-  empty folder.
+  (`job-system.md`, *runs are yours*): `status` names it on that run's
+  line, `jobset scratch --empty` removes it once the run is not going, and a
+  launch again opens the next run with an empty folder.
 - **Launched again**, warm or cold, a run computes the pair of each voltage
   it walks once more; a point taken over never needed the file again. The
   files are the engine's scratch (`warm-files.toml` `[transport] scratch`):
-  never carried, never taken over, left out of the checkpoint (`*.TSGF*`,
-  `runtime_config`).
+  never carried, never taken over, never saved by a checkpoint — which asks
+  this vocabulary (`checkpointing.md` S1).
 - **The engine checks what it finds.** A later point at the voltage checks
   the file against its own deck before reading it (`check_Green`: spin, cell,
   atoms, coordinates, orbitals, Bloch expansion, the chemical potential, the

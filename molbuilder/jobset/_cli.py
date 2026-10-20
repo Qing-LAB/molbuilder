@@ -42,92 +42,81 @@ from .model import FILENAME as _JOBSET_FILE
 from ..runfiles import engines as _rf_engines
 
 
-def _load(bundle: str) -> tuple:
-    """Load ``<bundle>/job-set.json`` -> (JobSet, bundle Path).
+def _sweeps_in(base: Path) -> list:
+    """The bench containers below ``base`` holding a sweep's set, as
+    relative paths -- asked for (`materialize.sweep_set_dirs`, the search
+    counterpart of `bench_container`) and read before they are named: one
+    that will not load is left out rather than described as something it
+    might not be."""
+    from .materialize import sweep_set_dirs
+    sweeps = []
+    for d in sweep_set_dirs(base):
+        try:
+            s = JobSet.of(d)
+            if s is not None and s.kind == KIND_SWEEP:
+                sweeps.append(str(d.relative_to(base)))
+        except (OSError, ValueError):  # unreadable: not evidence of anything
+            pass
+    return sweeps
 
-    **When it is absent the refusal reads the folder first**, because the
-    same absence means three different things and only one of them is
-    "nothing has happened here": a sweep keeps its set in the bench
-    container rather than the root, a described calculation is simply not
-    prepared yet, and a bare directory has not been described at all.
-    Asked by `launch` and `status` when the calculation they opened holds
-    no plan, so what it says is about the STATE it found and not about the
-    verb that arrived.
-    """
+
+def _nothing_prepared(calc) -> str:
+    """R-L1, said once: a described calculation with no run prepared --
+    THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a detected
+    problem carries the invocation that repairs it): its first group's
+    prep, and a benchmark prepared beside it named, since it is not the run
+    (`job-system.md` § 4)."""
+    from .commands import command, words_for
+    base, task = Path(calc.base), calc.task
+    sweeps = _sweeps_in(base)
+    first = (task.stages[0].group,) if task.stages else ()
+    what = (f"no {_JOBSET_FILE} in {base}" if calc.jobset is None else
+            f"{_JOBSET_FILE} in {base} holds none of the description's "
+            f"stages")
+    bench = (f"\nA benchmark is prepared in "
+             f"{', '.join(sweeps[:3])}{'...' if len(sweeps) > 3 else ''}"
+             f" -- its own verbs are `launch bench` and `summarize "
+             f"bench`." if sweeps else "")
+    return (f"{what}: this calculation is described "
+            f"but no run is prepared yet.  `prep` derives the set from the "
+            f"description (job-system.md § 4):\n"
+            f"    {command('prep', *words_for('task', groups=first), base=base)}"
+            + bench)
+
+
+def _load(bundle: str) -> tuple:
+    """``(JobSet, folder)`` of a folder that holds no description -- a
+    benchmark's bench container, which `status` reads against its
+    calculation.  **When it holds no set the refusal reads the folder
+    first**: a hand-built sweep in a container below, one of a
+    calculation's own folders (its root named, the one door's sentence), or
+    nothing here at all."""
     base = Path(bundle)
     try:
         js = JobSet.of(base)
     except ValueError as e:                      # bad schema / shape
         raise click.ClickException(str(e))
-    if js is None:
+    if js is not None:
+        return js, base
+    sweeps = _sweeps_in(base)
+    if sweeps:
         from ..task import FILENAME as _TASK_FILE
-        from ..task import described as _described
-        described = _described(base)
-        # WHERE A SWEEP'S SET LIVES IS ASKED FOR, not spelled here.
-        # `materialize.sweep_set_dirs` is the search counterpart of
-        # `bench_container`, and lives beside it so the layout has one home.
-        from .materialize import sweep_set_dirs
-        # AND IT IS READ BEFORE IT IS NAMED.  Calling every set below the root
-        # "a sweep" is the message claiming what it has not checked; `kind` is
-        # in the file.  One that will not load is left out entirely rather
-        # than described as something it might not be.
-        sweeps = []
-        for _d in sweep_set_dirs(base):
-            try:
-                _s = JobSet.of(_d)
-                if _s is not None and _s.kind == KIND_SWEEP:
-                    sweeps.append(str(_d.relative_to(base)))
-            except (OSError, ValueError):  # unreadable: not evidence of anything
-                pass
-        from .commands import bundle_flag, command, words_for
-        if described:
-            # THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a
-            # detected problem carries the invocation that repairs it).  The
-            # rung is in hand -- the description is right there -- so naming
-            # `<stage>` would be this refusal declining to read a file it has
-            # already found: its first group.  A benchmark prepared here is
-            # named beside it -- it is not the run.  A description that does
-            # not read leaves the group out: `prep` then says what is wrong
-            # with it, and never a `<group>` nobody can type.
-            _first = ()
-            try:
-                from ..task import of as _task_of
-                _t = _task_of(base)
-                _first = (_t.stages[0].group,) if _t.stages else ()
-            except (OSError, ValueError):  # mid-edit: its own error, at prep
-                pass
-            bench = (f"\nA benchmark is prepared in "
-                     f"{', '.join(sweeps[:3])}{'...' if len(sweeps) > 3 else ''}"
-                     f" -- its own verbs are `launch bench` and `summarize "
-                     f"bench`." if sweeps else "")
-            raise click.ClickException(
-                f"no {_JOBSET_FILE} in {base}: this calculation is described "
-                f"but no run is prepared yet.  `prep` derives the set from "
-                f"the description (job-system.md § 4):\n"
-                f"    {command('prep', *words_for('task', groups=_first), base=base)}"
-                + bench)
-        if sweeps:
-            where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
-            raise click.ClickException(
-                f"no {_JOBSET_FILE} at the root of {base}, and no "
-                f"{_TASK_FILE}: a hand-built sweep is prepared in {where}, "
-                f"and its verbs are `launch bench` and `summarize bench` -- "
-                f"which read a sweep through its description, so a "
-                f"description-less one is launched and read by hand.")
-        # INSIDE A CALCULATION -- one of its stage or attempt folders -- is
-        # not "nothing here": the folder says which calculation it belongs
-        # to (`calcdirs.root_of`, `project-layout.md` § 1.4a), and that is
-        # where the verb works -- said as the one door says it.
-        from .. import calcdirs
-        from ..calculation import refusal
-        root = calcdirs.root_of(base)
-        if root is not None and Path(root).resolve() != base.resolve():
-            raise click.ClickException(refusal(base))
+        where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
         raise click.ClickException(
-            f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
-            "describes it and `prep` derives it (job-system.md § 4); run "
-            "`molbuilder jobset init` first.")
-    return js, base
+            f"no {_JOBSET_FILE} at the root of {base}, and no "
+            f"{_TASK_FILE}: a hand-built sweep is prepared in {where}, "
+            f"and its verbs are `launch bench` and `summarize bench` -- "
+            f"which read a sweep through its description, so a "
+            f"description-less one is launched and read by hand.")
+    from .. import calcdirs
+    from ..calculation import refusal
+    root = calcdirs.root_of(base)
+    if root is not None and Path(root).resolve() != base.resolve():
+        raise click.ClickException(refusal(base))
+    raise click.ClickException(
+        f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
+        "describes it and `prep` derives it (job-system.md § 4); run "
+        "`molbuilder jobset init` first.")
 
 
 def _calc_of(folder):
@@ -1181,7 +1170,7 @@ def _launch_unit(calc, *, dry_run: bool = False):
     its answer, which the launch writes down after its save (``None`` when
     none was put).  With nobody to ask, refused, naming each line."""
     from .ask import choose
-    from .commands import block, command, launch_lines
+    from .commands import block, launch_lines
     from .ready import task_state
     base = calc.base
     try:
@@ -1202,9 +1191,7 @@ def _launch_unit(calc, *, dry_run: bool = False):
         again = [a.stage for g in gs for a in g.answers if a.launched]
         if not again:
             if not any(a.prepared for g in gs for a in g.answers):
-                raise click.ClickException(
-                    "nothing is prepared yet -- prepare first:\n    "
-                    + command("prep", "task", base=base))
+                raise click.ClickException(_nothing_prepared(calc))
             raise click.ClickException(
                 text + "\nno prepared group can go yet -- each one above "
                 "waits for what it says.")
@@ -1817,12 +1804,15 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
     # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 6.0, step 5): the
     # entry writes its own, and the verb the ones it says before it calls
     # the entry -- in a described calculation only, a folder that is not one
-    # getting no ledger of ours; a dry run writes nothing.
-    # WHAT WAS NAMED: a benchmark's stage and, optionally, one trial by
-    # position; a task's group by --group, or one stage by --stage
-    # (`job-system.md` § 5.3).
-    said = {"kind": kind, "stage": list(stages) or None, "group": group,
-            "trial": None, "mode": mode}
+    # getting no ledger of ours; a dry run writes nothing.  WHAT THE VERB
+    # WAS TOLD, one record filled in as the verb learns it -- the kind, what
+    # was named (a benchmark's stage and one trial by position; a task's
+    # group by --group, or one stage by --stage, § 5.3), the mode and where
+    # it came from, the flags as typed, which config files answered -- on
+    # every line, the verb's refusals and the entry's alike.
+    told = {"kind": kind, "stage": list(stages) or None, "group": group,
+            "trial": None, "mode": mode,
+            "flags": _typed(click.get_current_context())}
     try:
         stage, trial, stages = _stage_words(
             kind, words, stages, "launch",
@@ -1838,9 +1828,8 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
                 "group to launch, or one stage (job-system.md § 5.3).")
         if kind == "task" and stages:
             stage = stages[0]
-        said = {"kind": kind, "stage": stage, "group": group,
-                "trial": trial, "mode": mode}
-        _launch(said, kind, stage, trial, bundle, mode, dry_run,
+        told.update(stage=stage, trial=trial)
+        _launch(told, kind, stage, trial, bundle, mode, dry_run,
                 time_text, auto_yes, trial_timeout_min, only_side, cold,
                 group, from_attempt=from_attempt, gather=gather,
                 foreground=foreground)
@@ -1851,33 +1840,50 @@ def submit_cmd(kind: str, words, group, stages, bundle: str, mode: str,
         from ..task import described as _described
         if not dry_run and _described(bundle):
             _ledger(bundle, "launch", "refused", reason=e.format_message(),
-                    **said)
+                    **told)
         raise
 
 
-def _how_runs_ended(results, plan, js, base, calc):
+def _typed(ctx) -> list:
+    """THE LAUNCH FLAGS AS TYPED, ``[flag, value]`` in the help's order --
+    each row of the one table (`commands.LAUNCH_FLAGS`) the line gave a
+    value: recorded with what the verb was told, refused where it would not
+    be read, and carried by every line that offers this launch again in
+    another mode (`commands.launch_with`)."""
+    from .commands import LAUNCH_FLAGS
+    rows = {r.flag for r in LAUNCH_FLAGS}
+    out = []
+    for param in ctx.command.params:
+        flag = next((o for o in param.opts if o in rows), None)
+        value = ctx.params.get(param.name)
+        if flag is not None and value not in (None, False):
+            out.append([flag, value])
+    return out
+
+
+def _how_runs_ended(results, plan, calc, sweep):
     """A RUN HERE, WAITED ON, IS SAID AS IT ENDED (`job-system.md`, *A run
     here, waited on*): every member of a submission that ran here is read
     through the one status door -- the rows `jobset status` prints, a swept
     rung's from its points, a benchmark's trials against its calculation, as
     `status` reads them -- and a submission any member of which did not
-    finish is ``failed``, the row's own words its ``detail``."""
+    finish is ``failed``, the row's own words its ``detail``.  It runs
+    after the send, so nothing here is a refusal: a status that does not
+    read is said on each submission's line, and the launch ends with 1."""
     if not any(r.status == "ran" for r in results):
         return results
     from dataclasses import replace
-    from .commands import command
-    from .materialize import bench_owner
     from .runstatus import jobset_status
-    at = base
     try:
         # THE ROWS ARE THE DESCRIPTION'S LADDER (A16: the calculation as
         # the verb opened it); a sweep's are its own trials.
-        rows = {s.ref.name: s for s in jobset_status(
-            calc, sweep=js if js.kind == KIND_SWEEP else None).stages}
+        rows = {s.ref.name: s for s in jobset_status(calc, sweep=sweep)
+                .stages}
     except (OSError, ValueError, KeyError) as exc:
-        raise click.ClickException(
-            f"the run ended, and how it ended could not be read: {exc}\n"
-            f"  {command('status', base=base)}")
+        return [replace(r, status="unread",
+                        detail=f"the run ended, and how it ended could not "
+                               f"be read: {exc}")
+                if r.status == "ran" else r for r in results]
     members = {s.name: [m.job.name for m in s.members]
                for s in plan.submissions}
     out = []
@@ -1898,25 +1904,17 @@ def _how_runs_ended(results, plan, js, base, calc):
     return out
 
 
-def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
+def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             dry_run: bool, time_text, auto_yes, trial_timeout_min, only_side,
             cold: bool, group=None, *, from_attempt=None,
             gather: bool = False, foreground: bool = False) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
-    refusal it raises).  ``said`` is what that line names, filled in as the
-    body learns it: the mode and where it came from, the stage as the
-    description spells it."""
+    refusal it raises).  ``told`` is what the verb was told, filled in as
+    the body learns it: the mode and where it came from, the stage as the
+    description spells it, which config files answered -- every line of
+    the ledger carries it."""
     mode_source = "--mode flag"
-    # THE FLAGS AS TYPED, ``(flag, value)`` in the help's order -- recorded
-    # with what the verb was told, and carried by every line that offers
-    # this launch again in another mode (`commands.launch_with`).
-    typed = [[f, v] for f, v in (
-        ("--time", time_text),
-        ("--trial-timeout", trial_timeout_min), ("--only", only_side),
-        ("--cold", True if cold else None), ("--from", from_attempt),
-        ("--gather", True if gather else None),
-        ("--foreground", True if foreground else None))
-        if v is not None]
+    typed = told["flags"]
 
     # ------------------------------------------------------------------ #
     #  Which work -- before which queue, which is read off this work      #
@@ -1926,16 +1924,18 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     held_q = None
     # THE CALCULATION, OPENED ONCE for the whole launch (A16): the plan
     # sent, every gate, the send and what it says after read this one.
+    calc = _calc_of(bundle)
+    bench = None
     if kind == "bench":
-        # the stage's own sweep record, from its bench container (§ 6.3)
-        calc = _calc_of(bundle)
-        stage = said["stage"] = _described_stage(stage, calc)
-        js, _container = _load_bench_set(calc, stage, "launch")
+        # the stage's own sweep record, from its bench container (§ 6.3) --
+        # with the folder it lies in, which the send reads it again from
+        stage = told["stage"] = _described_stage(stage, calc)
+        bench = _load_bench_set(calc, stage, "launch")
+        js = bench[0]
     else:
-        calc = _calc_of(bundle)
         js = calc.jobset
         if js is None:
-            _load(bundle)            # composes the *no plan* refusal
+            raise click.ClickException(_nothing_prepared(calc))
     base = calc.base
     _check_kind(kind, js)
     # This machine's `launch.mode` when no --mode is given (running-a-job
@@ -1944,6 +1944,16 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # with each mode.
     words = tuple(w for w in (stage, trial) if w is not None)
     groups = [group] if group is not None else []
+
+    def each_mode() -> str:
+        # THE LAUNCH AS TYPED, with each mode this machine takes -- a run
+        # here's line without a queue's flags, a queue's without a run
+        # here's (`commands.launch_with`).
+        from .commands import block, launch_with, takes_a_queue
+        return block([launch_with(kind, *words, base=base, mode=m,
+                                  typed=typed, groups=groups)
+                      for m in (("direct", "submit") if takes_a_queue(base)
+                                else ("direct",))])
     if mode is None:
         from ..runtime_config import get_launch_mode
         try:
@@ -1958,39 +1968,18 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             # a DETECTED scheduler would gate submission on detection, which
             # running-a-job.md § 5.4 forbids.  THE WAY ON AS COMMANDS, one
             # per mode the machine takes.
-            from .commands import block, launch_with, takes_a_queue
-            modes = (("direct", "submit") if takes_a_queue(base)
-                     else ("direct",))
             raise click.ClickException(
                 "no --mode, and molbuilder.json sets no `launch.mode`.\n"
                 "  'direct' runs it here with bash; 'submit' hands it to the "
                 "scheduler.  Set launch.mode once for this machine "
                 "(running-a-job.md § 5.4), or say the mode on the line:\n"
-                + block([launch_with(kind, *words, base=base, mode=m,
-                                     typed=typed, groups=groups)
-                         for m in modes]))
+                + each_mode())
         mode_source = "launch.mode (config)"
-    said.update(mode=mode, mode_source=mode_source)
-    def each_mode() -> str:
-        # THE LAUNCH AS TYPED, with each mode this machine takes -- a run
-        # here's line without a queue's flags, a queue's without a run
-        # here's (`commands.launch_with`).
-        from .commands import block, launch_with, takes_a_queue
-        return block([launch_with(kind, *words, base=base, mode=m,
-                                  typed=typed, groups=groups)
-                      for m in (("direct", "submit") if takes_a_queue(base)
-                                else ("direct",))])
+    told.update(mode=mode, mode_source=mode_source)
     _refuse_flags_without_effect(kind=kind, mode=mode, trial=trial,
                                  typed=typed, each_mode=each_mode)
     time_s = _duration(time_text)
     if kind == "bench":
-        for flag, said_it in (("--cold", cold), ("--from", from_attempt),
-                              ("--gather", gather)):
-            if said_it:
-                raise click.ClickException(
-                    f"{flag} chooses what a run of a stage takes -- a "
-                    f"benchmark's trial starts cold always, from its deck "
-                    f"(job-system.md § 7).")
         only = _pick_trial(js, trial)            # None: every trial
     else:
         # The description's spelling from here on -- what the ledger
@@ -2002,13 +1991,13 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             # launched before (`job-system.md`, *The task*, D3).
             picked, held_q = _launch_unit(calc, dry_run=dry_run)
             if isinstance(picked, int):
-                group = said["group"] = picked
+                group = told["group"] = picked
             else:
                 stage = picked
         if group is None:
-            stage = said["stage"] = _described_stage(stage, calc)
+            stage = told["stage"] = _described_stage(stage, calc)
             _refuse_unprepared(calc, stage)
-            only = stage = said["stage"] = _resolve_stage_name(js, stage)
+            only = stage = told["stage"] = _resolve_stage_name(js, stage)
         else:
             only = None
     # THE WORDS EVERY PRINTED LAUNCH REPEATS: the stage and its trial; a
@@ -2036,15 +2025,15 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # the question is about and what the send carries out are one object.  The
     # entry writes its own decisions down, with what this verb was told on
     # each line; a dry run writes nothing.
-    told = dict(kind=kind, stage=stage, group=group, trial=trial, mode=mode,
-                mode_source=mode_source, flags=typed, provenance=prov,
+    told.update(provenance=prov,
                 # A LAUNCH'S WALL, as typed: the value it restates is
                 # recorded in the launch record too (§ 6.0).
                 **({"time": time_text} if time_text else {}),
                 **({"trial_timeout_s": _bound_s, "side": only_side}
                    if grouped else {}))
     try:
-        plan = plan_launch(calc, js, mode=mode, only=only, side=only_side,
+        plan = plan_launch(calc, bench=bench, mode=mode, only=only,
+                           side=only_side,
                            time_s=time_s, trial_timeout_s=_bound_s,
                            told=told, record=not dry_run, cold=cold,
                            group=group, from_attempt=from_attempt,
@@ -2154,26 +2143,27 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # (user, 2026-10-05) -- `--yes` the answer given in advance.  With
         # nobody to ask the entry refuses it, written down, so a script is
         # never told it went (`submission.md` S4).
-        said = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
-                             footer=footer, here=(mode == "direct"),
-                             background=plan.background)
+        answer = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
+                               footer=footer, here=(mode == "direct"),
+                               background=plan.background)
         # 4 · THE SEND, and 5 · THE RECORD -- the answer written down, a *no*
         # too (W55 D6), and each submission the moment it goes: a run here
         # when it starts, a scheduler job when it has its id.
         try:
-            results = send_launch(plan, said=said)
+            results = send_launch(plan, said=answer)
         finally:
             if plan.saved:
                 # THE STATE A REDO OF THE GROUP RESTORES, named where the
                 # person reads it -- a send the scheduler then refuses too --
                 # as prep names its own (`checkpointing.md` § 9).
                 click.echo(plan.saved)
-        if not said:
+        if not answer:
             click.echo("nothing submitted." if mode == "submit"
                        else "nothing launched.")
             return
         if not plan.background:
-            results = _how_runs_ended(results, plan, js, base, calc)
+            results = _how_runs_ended(results, plan, calc,
+                                      js if kind == "bench" else None)
 
     verb = (("WOULD start in the background" if plan.background
              else "WOULD run") if dry_run
@@ -2182,7 +2172,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         tail = (f"job {r.job_id}" + (f" -- {r.detail}" if r.detail else "")
                 if r.job_id else
                 (f"rc={r.returncode}"
-                 + (f" -- {r.detail}" if r.status == "failed" and r.detail
+                 + (f" -- {r.detail}"
+                    if r.status in ("failed", "unread") and r.detail
                     else "")
                  if r.returncode is not None else
                  (r.detail or "") if r.status in ("started", "submitted")
@@ -2198,6 +2189,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
              else "pending  " if r.status == "stays pending"
              # A RUN HERE THAT DID NOT FINISH says so in its first word.
              else "FAILED   " if r.status == "failed"
+             else "UNREAD   " if r.status == "unread"
              else verb)
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.shown}] {tail}".rstrip())
@@ -2224,14 +2216,19 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                    + command("summarize", "bench", stage, base=base))
     elif not dry_run:
         # THE NEXT STEP, read after what was sent (`job-system.md`, *The
-        # task*, *The next step*): every group, and the line that moves it.
+        # task*, *The next step*): every group, and the line that moves it
+        # -- after the send, said, never a refusal.
         from .runstatus import jobset_status, render_steps
-        click.echo(render_steps(jobset_status(
-            calc, sweep=js if js.kind == KIND_SWEEP else None)))
+        try:
+            click.echo(render_steps(jobset_status(calc)))
+        except (OSError, ValueError, KeyError) as exc:
+            click.echo(f"the next step could not be read: {exc}\n    "
+                       + command("status", base=base))
     # A RUN HERE THAT DID NOT FINISH ENDS THE LAUNCH WITH 1 (`job-system.md`,
     # *A run here, waited on*): how it ended is on its line above, in the
     # status door's words, so a script trusting the exit status is told.
-    if not dry_run and any(r.status == "failed" for r in results):
+    if not dry_run and any(r.status in ("failed", "unread")
+                           for r in results):
         click.get_current_context().exit(1)
 
 
@@ -2413,6 +2410,82 @@ def migrate_cmd(bundle: str) -> None:
     click.echo(f"migrated {bundle}:")
     for line in said:
         click.echo(f"  {line}")
+
+
+@jobset_group.command("scratch",
+                      short_help="the engine's scratch a calculation's runs "
+                                 "hold -- listed; --empty removes it")
+@click.option("--empty", is_flag=True,
+              help="remove it from every run that is not queued or running, "
+                   "after one question naming how many files and how much.")
+@click.option("--yes", "-y", "auto_yes", is_flag=True,
+              help="answer that question yes in advance.")
+@_bundle_option()
+def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
+    """The engine's scratch a calculation's runs hold -- the files its
+    engine's vocabulary names scratch (TranSIESTA's leads' Green's functions,
+    `*.TSGFL` / `*.TSGFR`): recomputed by every run, never carried, never
+    saved by a checkpoint.  A run's walk empties them as it ends; a run that
+    stopped first, or one prepared before 2.22.0, leaves them behind.
+    Listed with each file's stage and size; ``--empty`` removes them from
+    every run not queued or running, after one question (job-system.md
+    § 5.3)."""
+    from ..units import gib_words
+    from .ask import confirm
+    from .commands import command
+    from .materialize import scratch_in
+    from .runstatus import jobset_status
+    calc = _calc_of(bundle)
+    base = Path(calc.base)
+    found = scratch_in(calc)
+    if not found:
+        click.echo(f"no engine scratch in {base}.")
+        return
+    click.echo("the engine's scratch its runs hold (never saved, "
+               "checkpointing.md S1):")
+    for f in found:
+        click.echo(f"  {f.stage or '-':<14} {gib_words(f.size):>10}  "
+                   f"{f.path.relative_to(base)}")
+    click.echo(f"  {len(found)} file(s), "
+               f"{gib_words(sum(f.size for f in found))}")
+    if not empty:
+        click.echo("to remove it from every run not queued or running:\n    "
+                   + command("scratch", base=base, flags=("--empty",)))
+        return
+    # A RUN GOING KEEPS ITS SCRATCH: queued or running, as the run door says
+    # (`jobset status`'s rows); on the flat layout, any stage going keeps
+    # the folder's.
+    try:
+        live = {s.ref.name for s in jobset_status(calc).stages
+                if s.state in ("queued", "running")}
+    except (OSError, ValueError, KeyError) as exc:
+        raise click.ClickException(
+            f"which runs are going could not be read, so nothing is "
+            f"removed: {exc}")
+    keep = [f for f in found
+            if (f.stage in live) or (f.stage is None and live)]
+    go = [f for f in found if f not in keep]
+    for stage in sorted({f.stage or "the folder" for f in keep}):
+        click.echo(f"  {stage}: queued or running -- its scratch is kept")
+    if not go:
+        click.echo("nothing to remove.")
+        return
+    size = sum(f.size for f in go)
+    said = confirm(f"about to remove {len(go)} file(s), {gib_words(size)}:",
+                   auto_yes=auto_yes, question="remove them?", default=False)
+    _ledger(base, "scratch", "question",
+            about="remove the engine's scratch", answer=said.words)
+    if not said.asked:
+        raise click.ClickException(
+            "nobody to ask, and no --yes: nothing was removed.")
+    if not said.yes:
+        click.echo("nothing was removed.")
+        return
+    for f in go:
+        f.path.unlink()
+    _ledger(base, "scratch", "emptied", bytes=size,
+            files=[str(f.path.relative_to(base)) for f in go])
+    click.echo(f"removed {len(go)} file(s), {gib_words(size)}.")
 
 
 @jobset_group.command("machines",

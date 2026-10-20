@@ -359,8 +359,9 @@ of a stage's own values and of `varies`, blank or set — **when its value
 runs as before without it** (each item's `runs`: any value of `copy_psml`,
 `optimizer = "geometric"`), and **renames a renamed one** in the same three
 places, keeping its value or its blank; it says each, and keeps the old file
-as `<name>.pre-<the release or day that retired or renamed it>` — `.pre-m6`
-or `.pre-2.1.0` when an earlier step of the same migration rewrites it too. A
+as `<name>.pre-<rule>`, once — the earliest rule it was written before
+(a plan's code, a day or a release; `migrate._kept_as`), whichever steps of
+the migration rewrite it. A
 retired value
 that no longer runs is refused by name, since taking it out would change the
 calculation, and deleting it is the person's; so is one item at two values

@@ -810,18 +810,33 @@ Each one names what it prevents and how to test it. **Status is in § 12.**
 ### Everything is saved
 
 **S1 — every regular file is in git or in the archive: never both, never
-neither.** **The two stores are the only exclusions** — `.git/` and
-`.binsnapshots/` — because a store cannot contain itself. That is the whole list,
-and it is a consequence rather than a policy: nothing was judged unworthy, the
-two directories simply cannot hold themselves.
+neither — but the two stores and the engine's scratch.** The list, each with
+its reason:
+
+1. **The two stores** — `.git/` and `.binsnapshots/` — because a store cannot
+   contain itself.
+2. **The engine's scratch** *(the user, 2026-10-20, after a prep on Sol copied
+   a device run's two lead Green's-function files, 98 of the folder's 99 GB, into
+   its save)* — the files the engine's own file vocabulary names `scratch`
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a,
+   `warm-files.toml`'s `scratch` rows: TranSIESTA's `*.TSGFL`, `*.TSGFR`). The
+   checkpoint judges nothing here: the engine's vocabulary already says these
+   are recomputed by every run, never carried and never taken over, and the
+   checkpoint asks it (`warmfiles.scratch_families`) — one answer to *is this
+   file kept*, not two. Not archived, not in git (the generated `.gitignore`
+   names them, S1a), never reported unsaved by `status`, and never swept by a
+   restore: they stay where they lie, the run's own, until the run's walk
+   empties them (`engines/transport.md` § 2a.11) or a person does
+   (`jobset scratch`).
 
 **No other category is exempt, including the ones it is tempting to exempt.**
-Editor leftovers, scratch that only exists mid-run, caches an engine could
-rebuild — all stored. Two reasons, and the second is the one that matters:
-storing them costs a little disk, which § 1 has already ruled is never an
-argument; and every exemption is a judgement about what is worth keeping, which
-§ 2.1 says this system does not make. A snapshot of *most* of a folder is not a
-snapshot of the folder.
+Editor leftovers, caches nothing names as an engine's scratch — all stored.
+Two reasons, and the second is the one that matters: storing them costs a
+little disk, which § 1 has already ruled is never an argument; and every
+exemption is a judgement about what is worth keeping, which § 2.1 says this
+system does not make — the engine's scratch is the engine vocabulary's word,
+not this system's. A snapshot of *most* of a folder is not a snapshot of the
+folder.
 
 > **Any future exception belongs here, in this list, with its reason** — never in
 > a constant inside a module. A file excluded by code nobody agreed to is
@@ -854,22 +869,25 @@ is what a restore does anyway"*, which assumed the thing it needed to require.
 - **Fails as:** both → a multi-gigabyte blob in git history forever. Neither →
   the file is in no snapshot, and a restore silently does not bring it back.
 - **Test:** walk every regular file and assert `archived` ≠ `tracked`, with
-  `.git/` and `.binsnapshots/` the only excluded paths. **No allow-list** — a
-  file is stored or the test fails. The walk must not reuse the same skip rule
-  the classification uses, or it can only ever agree with it.
+  `.git/` and `.binsnapshots/` the only excluded paths — and every file the
+  engine's vocabulary names scratch in **neither** store, still on disk after a
+  restore. **No allow-list** — a file is stored or the test fails. The walk
+  must not reuse the same skip rule the classification uses, or it can only
+  ever agree with it.
 - **Test, the links:** give a link a name an always-large entry matches, and
   assert it is in git, not in the archive, and comes back **as a link** after a
   restore. A fixture whose engine names no family cannot fail this, because
   nothing there is ignored by name.
 
 **S1a — `.gitignore` is generated from the classification, never hand-kept
-beside it.** One *source*, not merely one writer.
+beside it.** One *source*, not merely one writer: the archive's patterns and
+the engine's scratch (S1), nothing else.
 
 - **Fails as:** a hand-kept list answers to no rule. That is exactly how `*.MD`
   came to be ignored with nowhere else to go.
 - **Test:** assert the generated `.gitignore` contains **nothing that is not an
-  archive pattern**. That check catches the whole class, and no fixture can be
-  too short for it.
+  archive pattern or the engine's scratch**. That check catches the whole
+  class, and no fixture can be too short for it.
 
 **S1b — which store a file goes to is decided by measuring the file.** Its size
 is the property being tested, so its size is what is read. Names may only be
@@ -886,7 +904,9 @@ decide the answer.
 **S1c — the classification has one home, and it is molbuilder's config.** One
 `generic` entry plus optional per-engine hints, outside every calculation
 folder. A caller may name its engine; with no name `generic` is used, which is
-always correct.
+always correct. The engine's scratch (S1) is the engine's own vocabulary, the
+copy molbuilder ships — never a calculation's own `warm-files.toml`, which is a
+file somebody can edit between a save and a restore.
 
 - **Fails as:** a per-folder copy makes two folders behave differently with
   nothing on disk explaining why, and makes the classification a thing a person
@@ -897,7 +917,11 @@ always correct.
 
 ### The record can be trusted
 
-**I1 — an archive's content is never modified once written**, and since § 3 the
+**I1 — an archive's content is never modified once written** — but the
+engine's scratch, which is no entry of any state (S1): every save removes it
+from every published archive, an archive saved before the rule included, its
+MANIFEST and its name untouched, so every state is still named by what it holds
+(`checkpoint.prune_scratch`).  Since § 3 the
 name enforces it rather than the rule asking politely. A directory is the sha256
 of its own MANIFEST, so changed content is a *different* archive at a *different*
 path; the old one is still there, still correct, still named by what it holds.
@@ -910,14 +934,18 @@ also no legacy archive form to convert from: this is the first draft, so the
 format has no history and needs no migration
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1).
 
-**I2 — a MANIFEST is authoritative for its archive.** For every entry: the file
-exists, its size matches, its sha256 matches.
+**I2 — a MANIFEST is authoritative for its archive.** For every entry of a
+state — every entry but the engine's scratch (S1; `checkpoint.state_entries`,
+which every reader of a MANIFEST asks): the file exists, its size matches, its
+sha256 matches.
 
 - **Test:** run it over every archive in a folder. This is the single most
   valuable test in the system.
 
 **I2a — a restore is decided by what the save recorded, never by
-configuration.** Verified in code: after `Repo.restore` resolves its target,
+configuration** — the engine's scratch aside, which is in no state and is named
+by the engine's vocabulary molbuilder ships, never by a person's config (S1,
+S1c). Verified in code: after `Repo.restore` resolves its target,
 everything it does is driven by two records — `git ls-files` for the text and
 `verify_archive`'s MANIFEST for the big files. No config, no glob list, no
 engine name, and no size limit is consulted between the target resolving and the
@@ -1416,7 +1444,7 @@ conclude there is nothing to do.
 
 | Rule | | |
 |---|---|:--:|
-| **S1** | everything is stored; the two stores are the only exclusions | ✅ the fixed ignore tail is gone; a walk over a saved folder asserts it |
+| **S1** | everything is stored; the two stores and the engine's scratch are the only exclusions | ✅ the fixed ignore tail is gone; a walk over a saved folder asserts it; the scratch asked of the engine's vocabulary (2026-10-20) |
 | **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but archive patterns; a user's own entries are left alone |
 | **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring, and a big file never reaches `git add` at all |
 | **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`, the one config file; there is no narrower scope, and the accessor takes no directory |

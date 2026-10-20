@@ -638,7 +638,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
                   f"{what} {why}.  {first}\n{alt}{clean}{rule}")
 
 
-def relaunch(base, task, job, *, cold: bool = False, ran=None
+def relaunch(calc, job, *, cold: bool = False, ran=None
              ) -> Optional[Continuation]:
     """What ``job``'s stage, LAUNCHED AGAIN, continues from -- the door
     `launch` asks, as prep asks :func:`continuation_answer`
@@ -649,11 +649,12 @@ def relaunch(base, task, job, *, cold: bool = False, ran=None
     it carries -- when its kind resumes and it takes something from a run
     (`Job.relaunch_continues`); cold (``cold``), or a stage that takes
     nothing, continues from nothing: ``None``.  How that run ended is read
-    in the run door's order (:func:`read_run`) and said, never judged."""
+    in the run door's order (:func:`read_run`) and said, never judged.
+    ``calc`` is the calculation as the launch opened it (A16)."""
     from ..paths import Shape
     from ..runrecord import newest_run
     from .materialize import stage_home
-    base = Path(base)
+    base, task = Path(calc.base), calc.task
     stage = job.name
     if cold or not job.relaunch_continues:
         return None
