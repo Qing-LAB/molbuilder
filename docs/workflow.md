@@ -130,8 +130,8 @@ flowchart TB
     TASK --> PREP
     XYZ --> PREP
 
-    ENV["<b>the target machine</b> · <code>environment.json</code><br/><i>cores · GPUs · scheduler · the queues you can reach<br/>— never part of the folder above</i>"]
-    ASK["<b>what you ask for</b><br/><i>ranks · cores · time · GPUs</i><br/><i>said at the command, per run</i>"]
+    ENV["<b>the target machine</b> · <code>environment.json</code><br/><i>cores · GPUs · scheduler · the queues you can reach<br/>— probed on that machine, never part of the description,<br/>a copy kept beside it at the first prep</i>"]
+    ASK["<b>what you ask for</b><br/><i>ranks · threads · GPUs · wall · queue — a stage's run card, execution</i><br/><i>queue · wall · memory — the calculation's allocation</i><br/><i>both in task.json; a prep command's flag wins</i>"]
 
     ENV --> PREP
     ASK --> PREP
@@ -163,10 +163,18 @@ what**. The rule and its reasoning are
 
 ### Why the machine is not in there
 
-`environment.json` and the resources you ask for are deliberately **outside**
-the folder above. That is what lets you hand the same folder to a colleague on
-a different cluster, or benchmark it on a short queue and run it on a long one,
-**without editing it**. The rule is
+**The description holds no fact about a machine.** A machine's cores, GPUs,
+scheduler and queues are its record, `environment.json`, never part of the
+description — which is what lets you hand the same folder to a colleague on a
+different cluster, or benchmark it on a short queue and run it on a long one,
+**without editing a fact about either machine**. What a run *asks for* — its
+ranks, threads and GPUs, its queue, wall and memory — is its own statement
+in `task.json`: a stage's run card (`execution`) states its ranks, threads,
+GPUs, wall and queue; the calculation's `allocation` its queue, wall and
+memory — the memory there alone; the run card wins over the allocation, and
+the `prep` command over both. Nothing fills one in from the machine
+([`execution/architecture.md § 5.2`](?doc=execution/architecture.md)); the
+three — what the machine has, what you ask for, what a benchmark tries — are
 [`generator.md § 4.1`](?doc=execution/generator.md).
 
 **A machine's facts are probed ON that machine.** You can only probe the
@@ -179,12 +187,12 @@ where projects live, the server's settings — and how a shell enters an
 environment here, `env_init`. A job's queue, wall and memory are the job's
 own. The full split is [`configuration.md § 5`](?doc=configuration.md) M-1.
 
-**The folder says nothing about a machine at all** — not the ranks to use, and
-not even the ranks to *try*. What to measure is said at the command, and it is
-said **per stage**, because what runs fastest changes between a coarse step and
-a tight one: different grid, different matrix, different best rank count. So
-you measure one stage, and that stage's next run is offered what the
-measurement found ([`generator.md § 4.3a`](?doc=execution/generator.md)).
+**What to measure is declared too** — `task.json`'s `bench`, the points to
+try — and a benchmark is prepared **per stage** (`prep bench <stage>`),
+because what runs fastest changes between a coarse step and a tight one:
+different grid, different matrix, different best rank count. The measurement
+is a report you read; that stage's run uses what you then write on its run
+card ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 
 ### Every file, and who owns it
 
@@ -217,35 +225,37 @@ That is what stops two parts of the system disagreeing about what a file means.
 flowchart LR
     subgraph READ["reading"]
       A["<code>template.load_catalogue()</code><br/><i>the master list</i>"]
+      O["<code>calculation.open(base)</code><br/><i>the calculation, read once per verb:<br/>task.of · template.of · JobSet.of</i>"]
       B["<code>template.read_template(text)</code><br/><i>one calculation's answers</i>"]
       C["<code>task.of(base)</code><br/><i>the steps</i>"]
     end
     subgraph WRITE["writing"]
-      D["<code>template.template_with_values(cfg, engine)</code><br/><i>catalogue → this calculation</i>"]
-      E["<code>task.write_task(path, task)</code>"]
+      D["<code>template.template_with_values(cfg, engine=)</code><br/><i>catalogue → this calculation</i>"]
+      E["<code>task.write_task(base, task)</code>"]
       F["<code>describe.write_description(desc, dest)</code><br/><i>both files at once, all-or-nothing</i>"]
+      L["<code>JobSet.write(folder, plan=)</code><br/><i>the plan, job-set.json</i>"]
     end
     subgraph MAKE["making things runnable"]
       G["<code>resolve.resolve(...)</code><br/><i>answers + machine + your ask<br/>→ the settled configuration(s)</i>"]
       K["<code>script_emit.prepare_deck(spec, …)</code><br/><i>the engine's input file — validate,<br/>render, write, then check what the writer made</i>"]
-      H["<code>runwrap.write_run_wrapper(script, resources=)</code><br/><i>the wrapper AND the submission</i>"]
-      I["<code>materialize.materialize(jobset, base)</code><br/><i>makes the directories</i>"]
-      J["<code>submit.plan_launch(...)</code> → <code>send_launch</code><br/><i>the plan, shown and asked, then sent as shown</i>"]
+      H["<code>runwrap.write_run_wrapper(script, names=, resources=)</code><br/><i>the wrapper AND the submission</i>"]
+      I["<code>materialize.materialize(jobset, base, plan, shape=)</code><br/><i>makes the directories</i>"]
+      J["<code>submit.plan_launch(calc, mode=)</code> → <code>send_launch</code><br/><i>the plan, shown and asked, then sent as shown</i>"]
     end
     READ --> MAKE
     WRITE --> MAKE
     G --> K --> H
 ```
 
-Two things about this list are worth knowing, because they are the rules that
-were most recently paid for:
+Three rules hold for every door in this list:
 
 - **A generated file has ONE writer, and the writer keeps what you put in your
-  own section.** Every deck goes through `write_script`, which merges back the
-  `USER-CUSTOM` block from whatever was already on disk — so the one part of a
+  own section** — a deck's and a wrapper's, the files that have one. Every
+  deck and every wrapper goes through `write_script`,
+  which merges back the `USER-CUSTOM` block from whatever was already on
+  disk — so the one part of a
   generated file you are invited to edit survives the next `prep`. Any route
-  reaching for a plain write destroys those edits, and one did: wrappers were
-  written that way until 2026-08-17.
+  reaching for a plain write would destroy those edits.
 - **A door takes a whole thing, never a handful of its fields.** When a job's
   resources are handed to the wrapper writer, the *whole* set of resources
   goes, not `ranks` and `cores` picked out by hand. The reason is measured:
@@ -269,25 +279,36 @@ flowchart TB
     S2["<b>2 · settle the numbers</b><br/><i>template + description + machine + your ask</i><br/>→ the configuration(s), in memory. <b>Writes nothing.</b>"]
     S3["<b>3 · write the engine's input</b><br/>→ <code>01_coarse/&lt;label&gt;_01_coarse.fdf</code>"]
     S4["<b>4 · write the wrapper and the submission</b><br/><i>reads the deck just written</i>"]
-    S5["<b>5 · open the attempt</b><br/><i>copies what steps 3 and 4 wrote, and what it continues from</i>"]
+    S5["<b>5 · open the attempt</b><br/><i>copies what steps 3 and 4 wrote</i>"]
     S1 --> S2 --> S3 --> S4 --> S5
+    S5 -.->|"all five decided with nothing written —<br/>then the folder's state is saved, then written"| W["<b>the plan, carried out</b><br/><code>checkpoint.save_before</code> → <code>Plan.carry_out</code>"]
 ```
 
 **Why step 4 must come after step 3, and it is not just tidiness.** The wrapper
-reads the *finished* deck for two things it has no other source for: whether
-the calculation asks for the GPU (which decides the software environment the
-job activates) and how many atoms there are (which caps the number of
-processors). A wrapper written first would quietly pick the CPU environment and
-skip the cap — **and both wrong answers look exactly like the defaults**, so
-nothing would appear broken.
+says what the deck it ships beside will do, read from the *finished* deck:
+whether it lets the engine read the state a previous run left (what a retry
+and `--continue` will actually do) and, for a SIESTA deck, which history files
+it writes (each pointed at the run's own file) and how many atoms it has (the
+orbitals-per-rank notice, which caps nothing). A wrapper written first
+would describe a deck it had not seen. The environment it activates is the
+job's GPU request, never the deck's text
+([`execution/architecture.md § 9.2`](?doc=execution/architecture.md)).
 
 **Why step 5 copies, and renders nothing.** The deck and the wrapper are written
 once, in the stage's own folder; the attempt — the run directory, `run-0/` —
-receives copies of them and of the warm files it continues from. A copy because
-the engine writes to those very filenames, and a run directory hands the engine
-everything it needs and holds everything it produces
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.0, § 1.6.5): a link
-would let a run reach back into what it started from.
+receives copies of them. What it takes from another stage's run — the warm
+files it continues from — is its first launch's to take (`launch --from`),
+copied in then; a force-constant stage's `relax` geometry alone is written into
+its deck at prep. A copy because the engine writes to those very filenames, and
+a run directory hands the engine everything it needs and holds everything it
+produces ([`project-layout.md`](?doc=execution/project-layout.md) § 1.0,
+§ 1.6.5): a link would let a run reach back into what it started from.
+
+**Nothing is written until all five are decided.** Prep plans every step with
+nothing written, then saves the folder's state (`checkpoint.save_before`) and
+only then writes the plan (`Plan.carry_out`) — so a refusal writes nothing but
+its line in the ledger, and the state saved is the one a redo restores
+([`job-system.md § 5.0`](?doc=execution/job-system.md)).
 
 The step table with what each step may and may not do is
 [`script-preparation.md § 5`](?doc=execution/script-preparation.md); the
@@ -313,7 +334,7 @@ Three ways in, and they all end at the same files:
 |---|---|---|
 | working in a browser | the parameter tab, then the **Task setup** tab | the template, the description and the structure pair, in a folder you chose |
 | working at a terminal | `molbuilder jobset init` | the same files |
-| already have a folder | `molbuilder jobset prep task` | the runnable directory, every group |
+| already have a folder | `molbuilder jobset prep task` | the runnable directories of the groups you pick — `--group N`, or its question, which offers every group not prepared and preparable |
 
 The browser never writes an engine input. It renders the *form* from the
 catalogue and asks the server to produce the files, because getting a format
@@ -388,8 +409,9 @@ it at once — the verbs, the sidebar, the workspace store.
 in `molbuilder.json`, or `MOLBUILDER_PROJECTS=/scratch/u/projects` for
 one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 
-> **One address, one anchor — with one exception you will meet at `prep`.**
-> `--from 01_coarse/run-0` names an attempt *inside* the calculation, and is
+> **One address, one anchor — with one exception you will meet at `launch`.**
+> `--from 01_coarse/run-0` (and a force-constant stage's `prep --from
+> 01_relax/run-0`) names an attempt *inside* the calculation, and is
 > measured from the bundle, not from the projects root. That is deliberate:
 > a calculation is self-contained and travels, so the name of one of its own
 > attempts has to keep working after the folder is copied to a cluster
@@ -407,20 +429,16 @@ one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 > ```
 >
 > It is the one verb whose `--bundle` may not exist yet — that is what it
-> is for. (It was called `describe` until 2026-08-22, and took two loose
-> paths from the working directory, which let it create a calculation
-> outside the tree that no other verb would then touch.)
+> is for, and why it, too, takes its paths from the projects root: a
+> calculation created outside the tree is one no other verb would touch.
 
 
 ## 7. What is genuinely data-driven today, and what is not
 
 **This section is the honest one, and it is the reason the rest of the page is
-worth reading carefully.** Re-measured 2026-08-19. *(Its previous measurement,
-2026-08-17, predated the engine seam: it reported "the multi-step pipeline
-refuses PySCF outright — the registry has one entry." That was true that day
-and closed the next: the seam landed 2026-08-18, and the 2026-08-19
-end-to-end run drove a real PySCF calculation through describe → prep →
-submit → results.)*
+worth reading carefully.** Both engines ride the one pipeline — describe →
+prep → launch → results — through the engine seam (`jobset/engines.py`,
+`engine_seam`).
 
 ### Data-driven, and it works
 
@@ -443,22 +461,21 @@ reader can check, not an arm nobody thought about.
 ### Not yet — and it is a known, named gap
 
 **The WRAPPER writer still carries per-engine facts in its own body.**
-`runwrap.py` branches on which engine it is writing for in **four** places
-(measured 2026-08-19) — what a cold restart clears, how the label is read
-back out of a deck, how the launch line is formed. Those facts belong beside
-the engine's other seam answers, and moving them is the recorded seam item
-**W1** ([`backend-architecture.md § 5`](?doc=backend-architecture.md),
-scheduled in [`plans/plan.md`](?doc=plans/plan.md) § 2, **S1**). Until then, adding an
+`runwrap.py` branches on which engine it is writing for — what a cold restart
+clears, how the label is read back out of a deck, how the launch line is
+formed. Those facts belong beside the engine's other seam answers, and moving
+them is the recorded seam item **W1**
+([`backend-architecture.md § 5`](?doc=backend-architecture.md); its measured
+state, [`plans/plan.md`](?doc=plans/plan.md) § 2, **S1**). Until then, adding an
 engine edits `runwrap.py` — which is exactly what
 [`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
 files and edits none"* test exists to catch.
 
-**Every workflow now rides this pipeline.**  Spectra migrated in 2026-08
-(the vibration deck is a calculation KIND of the PySCF engine —
-`render_deck` runs it like any other; § 9's gates cover it), and transport
-migrated 2026-08-29 as the COMPOSITE: still a different KIND of job
+**Every kind rides this pipeline.** A vibration is a calculation KIND —
+`render_deck` runs its deck like any other, and § 9's gates cover it — and
+transport is a different KIND of job
 ([`execution/architecture.md § 0`](?doc=execution/architecture.md)) — one
-citation of a finished junction attempt, five derived stages — but prepared,
+citation of a finished junction run, five derived stages — prepared,
 launched and summarized through the ordinary jobset verbs
 ([`engines/transport.md`](?doc=engines/transport.md) § 1, § 3.1).
 
@@ -504,12 +521,14 @@ flowchart TB
         TS["<b>Task setup</b> — shape, stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation (job-contracts.md)"]
     end
     subgraph MACHINE["run it — the machine that will compute"]
-        PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps;<br/>workflow.md § 5); wrapper + dirs follow the deck"]
-        RUN["<b>launch → run</b> — one wrapper,<br/><code>&lt;label&gt;.run.sh</code> (execution/running-a-job.md);<br/>the deck phase-writes its artifact atomically"]
+        PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps,<br/>workflow.md § 5), wrapper + dirs follow the deck —<br/>planned whole, the folder's state saved, then written"]
+        RUN["<b>launch → run</b> — the plan shown and asked, the state saved<br/>at a group's first launch, the header prep wrote sent —<br/>one wrapper, <code>&lt;label&gt;.run.sh</code> (execution/running-a-job.md),<br/>the deck phase-writes its artifact atomically"]
+        SCR["<b>jobset scratch</b> — an engine's scratch a run left,<br/>listed, and emptied with --empty from every run not going<br/>(never saved by a checkpoint, and a restore removes it)"]
     end
     subgraph READ["read it — results presentation"]
         ART["<b>the artifacts</b> — trajectory · logs ·<br/><code>.spectra.json</code> (schema-versioned;<br/>readable sets, one home per format)"]
         RES["<b>Results tab</b> — phase chips, charts,<br/>thermo plots, mode viewer (web/results.md,<br/>web/spectra.md)"]
+        OBS["<b>jobset status · summarize</b> — where each stage<br/>has got to, and what has landed, added up<br/>(execution/job-system.md § 5.3)"]
     end
 
     CAT --> FORM
@@ -520,7 +539,9 @@ flowchart TB
     TS -->|"③ task preflight"| PREP
     PREP -->|"④ the science gate — STEP 3.3"| RUN
     RUN --> ART
+    RUN -.-> SCR
     ART -->|"⑤ the parse gates"| RES
+    ART -->|"⑤"| OBS
 ```
 
 **The five gates, and what each refuses** *(“science validation is a must” —
@@ -531,19 +552,14 @@ this table exists to rule out)*:
 |---|---|---|---|
 | **① live preflight** | on every form edit, Build tab (`/api/build/preflight`) | the same `validate(struct, cfg)` verdict gate ④ will give — surfaced while the person is still at the form | [`science/validation.md`](?doc=science/validation.md) § 4 |
 | **② the cell gate** | at Send, on the exported envelope | a box the calculation cannot use (degenerate cell, left-handed axes); *notices* (thin vacuum) hold the navigation, never the write | [`web/handover-procedure.md`](?doc=web/handover-procedure.md) |
-| **③ task preflight** | at Task-setup save, `describe`, and dispatch — the Transport tab's Send and `jobset init`'s transport arm are describes too (since 2026-09-30; they ran only the codec before) | a description that is not one: unknown keys, identity clashes (the § 6.6 check table), empty ladders (§ 6.5), bench entries that name no execution item and points that fit no item (§ 6.8; `generator.md` § 4.3a), a stage's value past its hard limit; it *warns* on a value, or a bias point, outside its recommended range ([`engines/template.md`](?doc=engines/template.md) § 5.3) | [`engines/stages.md`](?doc=engines/stages.md) §§ 6.5–6.8 |
+| **③ task preflight** | at every describe — Task-setup save, `jobset init` (its transport arm too), the Transport tab's Send — and at dispatch | a description that is not one: unknown keys, identity clashes (the § 6.6 check table), empty ladders (§ 6.5), bench entries that name no execution item and points that fit no item (§ 6.8; `generator.md` § 4.3a), a stage's value past its hard limit; it *warns* on a value, or a bias point, outside its recommended range ([`engines/template.md`](?doc=engines/template.md) § 5.3) | [`engines/stages.md`](?doc=engines/stages.md) §§ 6.5–6.8 |
 | **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges and choices (`validation/metadata.py`) + the electronic state's one family (charge, parity, open shell, what the engine can run — `validation/chemistry.py`) + the engine's and the kind's science (grid, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr. And at the record step, the placement check: a spec with no engine frame, and any atom outside the cell along a non-periodic lattice vector, are refused (`cell.require_placed`, `model/structure-periodicity.md` § 6.0, check 3) | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) §§ 3–4 (step 3.3) |
 | **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |
 
-*(Two asymmetries once stood here and both closed: the vibration kind had
-no gate ① for a few hours until the kind-aware preflight landed 2026-08-21
-— the Spectrum tab now runs the same live check Build does — and transport
-rode its own pre-JobSet render path until the composite migration on
-2026-08-29: its decks now render through prep like every other kind, and its
-own science is the KIND's — `_KIND_VALIDATORS["transport"]`, which fires on
-every rung.  *(This named "the TransiestaEngine preflight as its own extra
-gate"; that checker was keyed on `TransportConfig`, dispatched for no rung,
-and was deleted 2026-09-17.)*)*
+*(Every kind passes the same five gates: the Spectrum tab runs the same live
+check (①) Build does, and transport's decks render through prep like every
+other kind's, its own science the KIND's — `_KIND_VALIDATORS["transport"]`,
+which fires on every rung.)*
 
 ### Where the details live — the drill-down for each arrow
 
@@ -559,9 +575,6 @@ each in one owning document:
 | **which checks run for a given procedure**, and each check’s science | [`science/validation.md`](?doc=science/validation.md) § 1 (the layers), § 7 (where every validator lives — engine registry by config type, kind registry by declared fact) |
 | where a **person’s answers enter** the flow | § 6 of this page |
 
-*(These citations were verified against the code on 2026-08-21 — the
-validators tree in validation.md § 7 was found four files short and
-reconciled in the same pass.  A diagram is a claim like any other:
-reviewing cited diagrams against the code they draw is part of the audit
-playbook.)*
+*(A diagram is a claim like any other: reviewing cited diagrams against the
+code they draw is part of the audit playbook.)*
 

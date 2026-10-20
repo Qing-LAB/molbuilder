@@ -37,8 +37,9 @@ def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
     if not folder.is_dir():
         return (f"{scratch_dir}/: not there (a run made before 2.22.0, "
                 f"whose pair lies in the run's folder)")
+    from ..warmfiles import is_scratch
     files = sorted(p for p in folder.iterdir()
-                   if p.is_file() and ".TSGF" in p.name)
+                   if p.is_file() and is_scratch(p.name))
     if not files:
         deck = _a_device_deck(base, task, stage_dir)
         if deck is not None and not _reads(deck).out_of_core:

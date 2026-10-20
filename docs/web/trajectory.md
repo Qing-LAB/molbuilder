@@ -298,11 +298,10 @@ header. The header's source-path line has the username redacted.
   file the run door picks (`runs.openable`); a folder whose result is no
   trajectory — a transmission run's, its calculation's report — is refused
   naming that file and the Results tab, which shows it.
-- **A parse is cached by (path, mtime, size), and a just-written file is not
-  cached at all.** A snapshot taken within 200 ms of the file's own mtime is
-  read but not stored, because a growing log is often replaced atomically and a
-  parse of the half-written version would then answer for the whole one. The
-  cache holds 64 entries.
+- **One file is watched at a time, its parse kept with its mtime.** The server
+  holds the current file's parse and the mtime it was read at
+  (`blueprints/watch.py`, `_state`); a poll whose file has the same mtime is
+  answered from it, and a file whose mtime advanced is parsed again whole.
 - The viewer is a small **state machine** (idle → loading → loaded / watching →
   error). All the "which state resets what" rules — why a file-switch clears the
   view but keeps your preferences, why Refresh is a full reload — live in that

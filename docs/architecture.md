@@ -49,8 +49,8 @@ Two habits make the reuse rule work:
 
 | I need to… | Use | Do NOT | Detail |
 |---|---|---|---|
-| Check an env is present / has the right GPU · CUDA · ELPA codepath | `molbuilder envs {advise,bootstrap,clean,doctor,install,list,repair,validate}` (`envs/`); `scripts/install-env.sh bootstrap` is the shell wrapper that hands off to `envs bootstrap` | write a new doctor / checker | [`ops/installation.md`](?doc=ops/installation.md) |
-| Read `molbuilder.json` (launch mode · env names · paths · the server's sections) — and a machine's facts (its queues, its activation) from its record | `runtime_config.get_launch_mode` / `get_envs` / `get_paths` / `write_config_scope`; the record through `scheduler.machine_for`, its queues through `runtime_config.get_routing` | re-parse the JSON yourself | [`configuration.md`](?doc=configuration.md) § 4–5 |
+| Check an env is present / has the right GPU · CUDA · ELPA codepath | `molbuilder envs {bootstrap,clean,doctor,init-config,install,list,repair,validate}` (`envs/`); `scripts/install-env.sh bootstrap` is the shell wrapper that hands off to `envs bootstrap` | write a new doctor / checker | [`ops/installation.md`](?doc=ops/installation.md) |
+| Read `molbuilder.json` (launch mode · env names · paths · the server's sections) — and a machine's facts (its queues, its activation) from its record | `runtime_config.get_launch_mode` / `get_envs` / `get_paths` / `write_config_scope`; the record through `scheduler.machine_for` (a calculation's own copy alone, `scheduler.record.calculation_environment`), its queues through `runtime_config.get_routing` | re-parse the JSON yourself | [`configuration.md`](?doc=configuration.md) § 4–5 |
 | Emit a run wrapper / `.sbatch` for a job | `runwrap.render_wrappers` / `write_run_wrapper` / `render_sbatch` | hand-write shell / sbatch | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | Persist a versioned JSON artifact (`molbuilder/<name>@<major>`) | `persist.schema_major` / `check_schema` / `read_json` / `write_json` (atomic) | hand-roll the schema check + IO | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (data vocabulary) |
 | Persist the user's *unsaved* browser edits across tab switches / reload | the **workspace's byte storage** (`lib/workspace/` → `/api/workspace-storage/*`) — format-blind opaque snapshots | auto-save to, or directly bond an edit to, the project `.xyz` / `.json` | [`web/workspace.md`](?doc=web/workspace.md) |
@@ -58,16 +58,17 @@ Two habits make the reuse rule work:
 | Change the unit cell · vacuum · axis kinds · the box's origin | **`POST /api/structure/periodicity`** (web; the ONE door, `molview.data.commitPeriodicityOp` client-side) or **`periodicity_gate.apply_edit`** (Python) — the ops `vacuum` · `axis_kind` · `cell` · `box_corner` · `block` | write `cell` / `engine_offset` / `vacuum` / `axis_kind` directly, or compute a box in JS | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1–6.2 |
 | Ask what box a structure actually has (to draw it, or to emit it) | `struct.resolve_cell()` — the box, a computed **view**; `cell.engine_offset(struct)` — where the atoms sit in it (the offset the structure states, else the rule's centring); `cell.to_engine(struct)` — the cell and coordinates every engine is handed; `Structure.to_wire`'s `box_corner` — where a viewer draws it | read raw `cell` / `engine_offset` and assume `(0,0,0)`, or re-derive a bbox yourself | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 3, § 6.0 |
 | Parse an engine `.out` / sidecar into typed data | `parse.parse` / `parse.detect`; `runs.folder_answer` (a folder → what it is and holds, `model/parse.md` § 5) and `runs.run_of` (the run a file belongs to, `execution/architecture.md` § 3.2); `parse.dirs.job.run_status` (how a run dir is doing); an engine's output lines through its grammar and reading pass (`model/parse.md` § 4a) | write a bespoke parser, or a second pattern for a line the grammar already reads | [`model/parse.md`](?doc=model/parse.md); decoded-run view → [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
-| Run a *set* of related jobs (stage ladder / sweep) | the `jobset/` framework + `molbuilder jobset {init,status,prep,launch,summarize,migrate,machines,probe}` | reimplement dir isolation / sbatch chaining | [`execution/job-system.md`](?doc=execution/job-system.md) |
+| Run a *set* of related jobs (stage ladder / sweep) | the `jobset/` framework + `molbuilder jobset {init,prep,launch,status,summarize,scratch,probe,machines,migrate}` | reimplement dir isolation / sbatch chaining | [`execution/job-system.md`](?doc=execution/job-system.md) |
+| Read a calculation — its description, template and plan | `calculation.open(base)` → `Calculation`, opened once per verb and passed whole; each record through its owner's door, which takes the folder (`task.of`, `template.of`, `JobSet.of`) | join a record's name to a folder, or read `task.json` / `job-set.json` yourself | [`execution/architecture.md`](?doc=execution/architecture.md) § 3.2, rule A16 |
 | Know what a **stage** is, and what may vary between two of them | [`engines/stages.md`](?doc=engines/stages.md) — a stage is molbuilder's device, not the engine's; SIESTA has no idea a deck is the second of three | invent a per-tab notion of "stage" | [`engines/stages.md`](?doc=engines/stages.md) |
 | Lay out (or read) a whole **calculation directory** | [`execution/project-layout.md`](?doc=execution/project-layout.md) — the two shapes (flat / hierarchical), who writes each level, and what `prep` resolves on the target | assume one directory shape, or finish a deck on the laptop | [`execution/project-layout.md`](?doc=execution/project-layout.md) |
 | Name a calculation, or decide whether a run **continues** | [`execution/run-identity.md`](?doc=execution/run-identity.md) — continuing is what the engine does when it finds warm files keyed by the id it was given | derive an id from anything a run produced | [`execution/run-identity.md`](?doc=execution/run-identity.md) |
-| Benchmark GPU/CPU knobs on a target | `molbuilder jobset {prep,launch,summarize} bench <stage>` — benchmarking is `prep` whose parameters are a set (fold landed 2026-08-12; the legacy in-place `siesta-gpu` sweep was deleted 2026-08-13 -- the group itself was deleted 2026-08-17 and its one config helper is now `molbuilder jobset probe`) | reinvent the sweep / adapters | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
-| Snapshot / restore / branch a run dir (with big-binary safety) | `checkpoint.Repo` + `molbuilder checkpoint {init,save,list,tag,restore,config}` — **six verbs, and there is no `branch`** (a fork is what happens when you save from a restored state, `execution/checkpointing.md` § 7.1) | shuffle files by hand | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 (how to drive it); [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (what the history must guarantee — **read this before changing anything in `checkpoint.py`**) |
+| Benchmark GPU/CPU knobs on a target | `molbuilder jobset {prep,launch,summarize} bench <stage>` — benchmarking is `prep` whose parameters are a set; the machine it measures is the record `molbuilder jobset probe` writes | reinvent the sweep / adapters | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
+| Snapshot / restore / branch a run dir (with big-binary safety) | `checkpoint.Repo` + `molbuilder checkpoint {init,save,list,tag,restore,config}` — **six verbs, and there is no `branch`** (a fork is what happens when you save from a restored state, `execution/checkpointing.md` § 7.1); `checkpoint.save_before(path, what, engine=)`, the one save every act that changes a calculation calls first. An engine's scratch (`warmfiles.is_scratch`, the one answer) is in neither store and a restore removes it; `molbuilder jobset scratch` lists it and empties it from every run not going | shuffle files by hand | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 (how to drive it); [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (what the history must guarantee — **read this before changing anything in `checkpoint.py`**) |
 | See the whole thing done once, end to end, with a real molecule | [`execution/worked-example.md`](?doc=execution/worked-example.md) | infer the workflow from four contracts at once | [`execution/worked-example.md`](?doc=execution/worked-example.md) |
-| Build a calculation on a finished run (relax → transport) | **cite it** — `jobset init --slot junction=<path>`: a finished relaxation run's folder, read through the run door as the Results tab reads it, or a structure pair's `.xyz` recording the optimization (one frame or a frame set) (`compose.classify_citation`, its condition `CITATION_CONDITION`); `prep` composes from the citation (`transport/compose.py`).  The handoff bundle retired 2026-08-29 | copy geometry ad hoc; re-grow a bundle writer | [`engines/transport.md`](?doc=engines/transport.md) § 3.1; [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 5 (the closure) |
+| Build a calculation on a finished run (relax → transport) | **cite it** — `jobset init --slot junction=<path>`: a finished relaxation run's folder, read through the run door as the Results tab reads it, or a structure pair's `.xyz` recording the optimization (one frame or a frame set) (`compose.classify_citation`, its condition `CITATION_CONDITION`); `prep` composes from the citation (`transport/compose.py`) | copy geometry ad hoc; re-grow a bundle writer | [`engines/transport.md`](?doc=engines/transport.md) § 3.1; [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 5 (the closure) |
 | Build a structure (peptide / DNA / RNA / SMILES / name) | `molbuilder {peptide,dna,rna,smiles,name}` (`peptide.py` / `nucleic.py` / `smiles.py` / `pubchem.py` / `builders/backends/`) | new geometry code | [`engines/builders.md`](?doc=engines/builders.md) |
-| Emit a SIESTA / PySCF input | `jobset prep`: the engine describes the deck — `siesta.input.spec_for` · `pyscf.input.spec_for`, from `SiestaConfig` / `PySCFConfig`, return a `script_emit.DeckSpec` — and `script_emit.prepare_deck` validates, renders (`render_deck`), writes and checks it | template strings; **or a CLI verb** — there is no `molbuilder fdf`, no `molbuilder run` (both deleted 2026-08-11) and, since 2026-09-17, **no engine verb at all**: `molbuilder pyscf` was the last, and the "one recorded exception" this cell used to note is closed ([`process/conventions.md`](?doc=process/conventions.md) § 3).  A deck is rendered by `jobset prep`, on the machine that will run it | [`engines/siesta.md`](?doc=engines/siesta.md) § 1.1 · [`engines/pyscf.md`](?doc=engines/pyscf.md) |
+| Emit a SIESTA / PySCF input | `jobset prep`: the engine describes the deck — `siesta.input.spec_for` · `pyscf.input.spec_for`, from `SiestaConfig` / `PySCFConfig`, return a `script_emit.DeckSpec` — and `script_emit.prepare_deck` validates, renders (`render_deck`), writes and checks it | template strings; **or a CLI verb** — there is no engine verb, no `molbuilder fdf` and no `molbuilder run` ([`process/conventions.md`](?doc=process/conventions.md) § 3).  A deck is rendered by `jobset prep`, on the machine that will run it | [`engines/siesta.md`](?doc=engines/siesta.md) § 1.1 · [`engines/pyscf.md`](?doc=engines/pyscf.md) |
 | Carry a calculation's **parameters** from a browser to the machine that runs it | `<label>.template.toml` — one TOML file, every parameter with its value and a `kind` saying which layer owns it | invent a second description file, or finish the deck early | [`engines/template.md`](?doc=engines/template.md) |
 | Decide a calculation's charge and spin | `electronic_state.electronic_state` — the one answer for the form, the checks and every deck | reading `cfg.net_charge` / the spin fields raw, a per-engine rule | [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a |
 | Validate chemistry / open-shell / pseudos before emit | `validation/` (the one `validate()` pass; `check_electronic_state` for the charge and spin), `chemistry.analyze_structure` (the facts), `pseudos.check_coverage` | ad-hoc checks | [`science/validation.md`](?doc=science/validation.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md), [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) |
@@ -87,16 +88,16 @@ is `cli` and `web`, and `__main__`, the `python -m molbuilder` entry, which
 calls `cli`; every other module is L2. **The package root**
 (`molbuilder/__init__.py`) loads before every module inside it, so it imports
 only L1 — `structure` — and re-exports no builder: each caller imports the
-builder it uses from its own module *(the layer review, 2026-09-27: the root's
-re-exported peptide and nucleic builders loaded under every core module).* This is
+builder it uses from its own module, so a core module loads no builder. This is
 the load-bearing invariant — it is what stops the registry/abstraction tangle
 from growing back — and **review keeps it** (`process/code-audit.md` § 1c (e)),
 against the index below, *(user, 2026-09-27: "a static code review problem")*.
 What it prevents at run time shows up by itself: an upward import at a module's
 top fails every import of that module, and a file that ships beside a job and
 reaches into molbuilder fails there (`tests/test_monitor_watches_a_live_run_e2e.py`
-runs it). The proof that the current code complies is a workflow that finishes
-end to end, its monitor's report included (`process/code-audit.md` § 1c (e)).
+runs it). An upward import inside a function loads only when it is called, so
+no run shows it: review reads every import, a function's included (status:
+[`plans/plan.md`](?doc=plans/plan.md) § 1t).
 
 ```mermaid
 flowchart TB
@@ -122,8 +123,7 @@ flowchart TB
 
 **The L1 index, grouped by the object each module owns.** This is the one list
 of L1 modules — the map an import is reviewed against — so it states no count.
-*(Until 2026-09-27 `tests/test_layering.py` held a second copy, and a test
-compared the two.)* The diagram above draws the same set: a picture that
+The diagram above draws the same set: a picture that
 disagrees with the index is how *"which layer does this go in?"* becomes a
 guess.
 
@@ -177,26 +177,19 @@ the one home:
   `/api/spectra/load` carries the three constants the spectrum page converts
   with (`web/blueprints/spectra.py::_page_constants` — Hartree in eV and in
   kcal/mol, kelvin per cm⁻¹), so the browser holds no copy and nothing needs
-  pinning *(user, 2026-09-27: one source per fact. Until then four were
-  copied into `lib/spectra/core.js` and held equal by a test that read the
-  file, which `testing.md` gives no place; Boltzmann in Eh/K went on
-  2026-09-28, when the thermochemistry panel stopped deriving its reference
-  energy and read the file's)*.
+  pinning *(user, 2026-09-27: one source per fact)*.
 
-*(A third — a class body pasted into a script by `inspect.getsource`, its
-literals pinned to `constants` by a test — went on 2026-10-05: the class,
-`MolwatchEmitter`, travels beside the script as its own file and imports
-`constants` like any module, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3.)*
+A class a generated script needs is no second spelling either: it travels
+beside the script as its own file and imports `constants` like any module
+(`MolwatchEmitter`, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3).
 
 A value enters `constants` **in the same change that routes its call
-sites**, or not at all — three did not, on 2026-09-21, and the diff was
-read; a second home standing beside an unrouted first one is the thing
-this is meant to prevent.
+sites**, or not at all: a second home standing beside an unrouted first one
+is the thing this is meant to prevent.
 
-Anywhere else, import it. There is no lint: `082ba979` retired
-`test_one_home_for_a_constant.py` with the reasoning that *"the rule belongs
-in the document that owns the concept, and the drift is caught by reading the
-diff"* — this table is that rule.
+Anywhere else, import it. There is no lint: the rule belongs in the document
+that owns the concept, and the drift is caught by reading the diff — this
+table is that rule.
 
 Reading the table is how you answer *"where does this new function go?"* —
 find the object it acts on, and that is the module. A function that acts on a
@@ -217,8 +210,8 @@ concerns leak into each other — see
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `prep_task` / `prep_bench` (the prep entries, both doors — the five steps, `plan_stage`, `prep_calculation` and its tail `prep_jobset`, take only their answer); `plan_launch` → `send_launch` (the one launch entry: the plan, shown and asked, then sent as shown); `jobset_status`; `render_plan`; `JobSet.write` / `load`; CLI `molbuilder jobset {init,prep,launch,status,summarize,scratch,probe,machines,migrate}` — *the chaining producers (`stages_to_jobset` / `sweep_to_jobset`) died in the 2026-08-12 fold* | [`execution/job-system.md`](?doc=execution/job-system.md) |
-| `bench/` | L2 | the two library modules the jobset sweep uses: the machine-probed grid (`sweep_grid`) and the `bench-result@1` reader (the legacy `siesta-gpu` stack was deleted 2026-08-13) | `sweep_grid` (shared grid) — the sweep itself is `molbuilder jobset prep bench` | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
+| `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `prep_task` / `prep_bench` (the prep entries, both doors — the five steps, `plan_stage`, `prep_calculation` and its tail `prep_jobset`, take only their answer); `plan_launch` → `send_launch` (the one launch entry: the plan, shown and asked, then sent as shown); `jobset_status`; `render_plan`; `JobSet.of` / `write`; CLI `molbuilder jobset {init,prep,launch,status,summarize,scratch,probe,machines,migrate}` | [`execution/job-system.md`](?doc=execution/job-system.md) |
+| `bench/` | L2 | the two library modules the jobset sweep uses: the machine-probed grid (`sweep_grid`) and the `bench-result@1` reader | `sweep_grid` (shared grid) — the sweep itself is `molbuilder jobset prep bench` | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning), and the bundles that travel beside a job — the monitor's, a finish (`mb_vibration.pyz`, a SIESTA force-constant job's own last step, `engines/vibration.md` § 5.5), and the code a PySCF script imports (`mb_pyscf.pyz`, `engines/pyscf.md` § 3) | `render_wrappers`, `write_run_wrapper`, `render_sbatch`; `monitor_bundle`, `vibration_bundle`, `pyscf_bundle` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runtime_config` | L2 | reader for `molbuilder.json` (launch / envs / paths / the server's sections), and the door to a record's queues | `get_launch_mode`, `get_envs`, `get_paths`, `get_routing`, `write_config_scope` | [`configuration.md`](?doc=configuration.md) § 4 |
 | `diagnostics` | L2 | host capability detection + env-for-category routing | `get_capabilities().env_for_category(...)` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
@@ -243,7 +236,7 @@ current → target status matrix.
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `checkpoint` | L2 | git-backed **snapshot/restore of a whole calculation folder**; files over a size limit are stored beside git in a content-named archive (safety-critical) | `Repo.{init,save,restore,status,states,standing_at,resolve,tag,tags,classification,calculation}`; CLI `molbuilder checkpoint …`. **No `branch`** — a fork is what happens when you save from a restored state | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
+| `checkpoint` | L2 | git-backed **snapshot/restore of a whole calculation folder**; files over a size limit are stored beside git in a content-named archive, and an engine's scratch in neither — a restore removes it (safety-critical) | `Repo.{init,save,restore,status,states,standing_at,resolve,tag,tags,classification,calculation}`; `save_before` (the save `prep`, Task setup's Save and a group's first launch call first); CLI `molbuilder checkpoint …`. **No `branch`** — a fork is what happens when you save from a restored state | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
 | `validation/` | L2 | scientific-correctness analyzers + the per-engine `validate()` pass | `validation.validate(struct, cfg, prior=…)` (one gate per engine) | [`science/validation.md`](?doc=science/validation.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
 | `pseudos` | L2 | PSML pseudopotential parse + coverage/version checks (C1–C6) | `pseudos.check_coverage` | [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) |
 | `chemistry`, `residues` | L1 | structure analysis (the metals, charge, residues) | `chemistry.analyze_structure` (→ `ChemistryAnalysis`, facts) | [`model/chemistry.md`](?doc=model/chemistry.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
@@ -253,10 +246,10 @@ current → target status matrix.
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {advise,bootstrap,clean,doctor,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
+| `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {bootstrap,clean,doctor,init-config,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
 | `siesta/`, `pyscf/` | L2 | per-engine input emitters + stage rendering | `siesta.input.spec_for` · `pyscf.input.spec_for` → a `script_emit.DeckSpec`, which `jobset prep` renders, writes and checks (`script_emit.prepare_deck`); `molbuilder.siesta` exports `SiestaConfig`, `copy_pseudopotentials`, `find_psml`, and `molbuilder.pyscf` exports `PySCFConfig` | [`engines/siesta.md`](?doc=engines/siesta.md), [`engines/pyscf.md`](?doc=engines/pyscf.md) |
 | `builders/`, `peptide/`, `nucleic`, `smiles`, `pubchem` | L2 | structure synthesis | `build_peptide` / `build_dna` / `build_rna` / `build_from_smiles` / `build_from_name` | [`engines/builders.md`](?doc=engines/builders.md) |
-| `transport/` | L2 | TranSIESTA multi-run workflow — the composite: one citation → five rungs | `molbuilder jobset …` (no calculation-kind verb since 2026-09-17) | [`engines/transport.md`](?doc=engines/transport.md) |
+| `transport/` | L2 | TranSIESTA multi-run workflow — the composite: one citation → five rungs | `molbuilder jobset …` (`--calculation transport`; there is no calculation-kind verb) | [`engines/transport.md`](?doc=engines/transport.md) |
 
 ### Core types (L1) & surfaces (L3)
 
@@ -299,7 +292,7 @@ This index is deliberately thin — it routes you to the authoritative doc.
   decision, the routes that cross them, and the objects that travel between
   them — is [`execution/architecture.md`](?doc=execution/architecture.md). It is
   a **finer** grouping than the L1/L2/L3 index above: `jobset` is one import
-  tier here and spans four floors there.
+  tier here and spans six floors there (1 and 3–7).
 - **The domain docs are the authoritative per-subsystem source** for every row
   above: [`model/`](?doc=model/overview.md) (the L1 data model),
   [`science/`](?doc=science/overview.md) (correctness),

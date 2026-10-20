@@ -12,7 +12,8 @@ sits in the project tree; [`run-identity.md`](?doc=execution/run-identity.md) �
 the id every state and tag carries.
 
 A calculation lives in a folder: inputs, a relaxed geometry, a density matrix,
-logs. Checkpointing takes a **snapshot of that whole folder** when you say so, and
+logs. Checkpointing takes a **snapshot of that whole folder** when you say so —
+every file but an engine's own scratch, which every run recomputes (S1) — and
 any state you saved is one you can come back to — to rerun a stage, retune
 and try again, or start over from it.
 
@@ -54,9 +55,10 @@ folder that is cheap to store and wrong is worth nothing.
   somewhere else for that.
 - **It is not automatic.** Nothing is ever saved without you saying so (§ 9).
 - **It does not decide what is worth keeping.** Point it at a folder and it
-  saves the folder — all of it. Whether a benchmark's throwaway trials deserve
-  keeping is decided by whoever runs the benchmark, by choosing what to point
-  this at.
+  saves the folder — all of it but an engine's scratch, which the engines' own
+  file vocabularies name, not this system (S1). Whether a benchmark's throwaway
+  trials deserve keeping is decided by whoever runs the benchmark, by choosing
+  what to point this at.
 - **It does not run on the cluster.** Saving is a decision, and decisions happen
   where you are, not on a compute node.
 - **It is not a way to move a calculation between machines.** It records
@@ -102,7 +104,8 @@ Two things make this a fair deal rather than a trap:
 
 That middle row is the only decision it owns, and it is mechanical: git is bad at
 very large files, so those go somewhere else. A storage detail, not an opinion
-about what matters.
+about what matters. An engine's scratch, stored nowhere, does not break the
+last row: the engines' own vocabularies name it, and checkpointing asks (S1).
 
 > **This is not where the design started; it is what it learned.** A trajectory
 > file (`*.MD`) sat outside every snapshot for months because it was *large* —
@@ -143,11 +146,14 @@ cat .binsnapshots/<digest>/<path>    # …and the file sits there under the same
 
 ## 3. The overall shape
 
-Two stores. Every file is in exactly one of them.
+Two stores. Every file is in exactly one of them — but an engine's scratch,
+which is in neither (S1).
 
 ```mermaid
 flowchart LR
-    F["<b>a file in the folder</b>"] --> Q{"bigger than<br/>the size limit?"}
+    F["<b>a file in the folder</b>"] --> S{"an engine's<br/>scratch?"}
+    S -->|"yes"| N["<b>in neither store</b><br/>a restore removes it (S1)"]
+    S -->|"no"| Q{"bigger than<br/>the size limit?<br/>(an always-large family<br/>is not measured: yes)"}
     Q -->|"no"| G[("<b>git</b><br/>.git/<br/>diffable, cheap")]
     Q -->|"yes"| A[("<b>the archive</b><br/>.binsnapshots/&lt;digest&gt;/<br/>whole copies + a checksum list")]
     G -.->|"the state carries the digest,<br/>which is both the name and the proof"| A
@@ -156,7 +162,8 @@ flowchart LR
 **The archive is named by what it contains, not by the state it belongs to.**
 Its directory is the sha256 of its own MANIFEST. That one value does three jobs
 at once: it *locates* the archive, it *proves* the archive (I2b), and it makes an
-archive impossible to modify without becoming a different archive (I1).
+archive impossible to change without becoming a different archive — the one
+removal I1 names aside (I1).
 
 Three things follow, and each removes a problem rather than adding a mechanism:
 
@@ -170,7 +177,8 @@ Three things follow, and each removes a problem rather than adding a mechanism:
   locking (S9).
 
 **Which store, by measuring — not by file type.** A file over the limit goes to
-the archive; everything else to git. Extensions are not consulted, because a name
+the archive; everything else to git (an engine's scratch aside, S1). Extensions
+are not consulted, because a name
 is not the property being tested: a 4 GB `.EIG` nobody listed would be committed,
 and an empty `.DM` somebody did list would be archived.
 
@@ -190,7 +198,7 @@ can make a save faster; it can never make it store less.**
 ```text
 bdt-relax/                           the folder: the user typed this name
 ├── .git/                            the text history
-├── .gitignore                       generated — lists exactly what the archive holds
+├── .gitignore                       generated — the archive's patterns and the engines' scratch (S1a)
 ├── .binsnapshots/                   the archive
 │   ├── a19f0b72…c8e5/                 named by the sha256 of its own MANIFEST
 │   │   ├── 01_coarse/run-0/BDT_Au_relax.DM
@@ -227,7 +235,7 @@ lets one archive hold a `.DM` from every stage without them colliding. Every par
 is checked so a restore cannot be steered out of the folder, nor into the
 history it is restoring from: no leading `/`, no `..`, and no component naming
 a store. Other hidden files are ordinary files and are stored like any other —
-S1 exempts no category but the two stores.
+S1 exempts no category but the two stores and an engine's scratch.
 
 **Identical content is stored once.** Two saves that both contain an unchanged
 `.DM` record the same sha256, so the second links to the first's file rather than
@@ -243,8 +251,10 @@ it can tell.
 | **git** | the history of everything small | `checkpoint save` |
 | **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `checkpoint save` |
 | **`MANIFEST.do_not_edit`** | what is in one archive, with a sha256 each — the name is the reminder (I2b) | `checkpoint save` |
-| **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `checkpoint save` only |
+| **`.gitignore`** | what git skips — *generated* from the classification: the archive's patterns and the engines' scratch (S1a) | `checkpoint save` only |
 | **the config** | the size limit and the per-engine hints | you, in molbuilder's config |
+| **the engines' file vocabularies** — `molbuilder/<engine>/warm-files.toml`, the `scratch` its sections state | which files are an engine's scratch, stored nowhere (S1) — every engine's, for every folder | shipped with molbuilder |
+| **the folder's engine** — `molbuilder.engine` in `.git/config` | which config entry's always-large families this folder's saves use | `Repo.name_engine`, once (below) |
 | **`molbuilder checkpoint …`** | the verbs you type (§ 5) | — |
 | **`Repo`** (`molbuilder/checkpoint.py`) | the class every surface goes through | — |
 
@@ -253,9 +263,47 @@ with every other setting, and it holds the size limit and three entries:
 **`generic`** — save everything, choose the store by size — plus **`siesta`** and
 **`pyscf`**, which name the file families that are always large so those can skip
 the measuring. A caller may name its engine to get the matching entry; with no
-name `generic` is used, which is always correct and merely measures more.
+name `generic` is used, which is always correct and merely measures more. An
+entry `molbuilder.json` names replaces the shipped entry of that name; a new
+name adds an engine. Each entry is a list of globs matched on a file's *name* —
+a pattern holding `/` is refused, since git would read it as a path the size
+check never matches, and that file would be in no store. The section holds
+`size_limit_bytes` and `engines` and nothing else
+(`runtime_config._validate_checkpoint`). `molbuilder checkpoint config` prints
+the size limit and the always-large families a folder is saved under, and,
+under `in neither`, the engines' scratch (below) — never saved, removed by a
+restore, named by the engines' own `warm-files.toml` and not by
+`molbuilder.json`.
 
-**The size limit is 10 MB, and you can change it.** That is the whole of the
+**The engines' scratch is not in this config.** It is the families of file
+names the engines' own vocabularies name `scratch` — `*<suffix>` for each
+suffix any section of any shipped `molbuilder/<engine>/warm-files.toml`
+states there (`warmfiles.scratch_families`, read once a process: SIESTA's
+`*.TSGFL`, `*.TSGFR`; PySCF none). No engine is asked: no engine writes
+another's files, so whether a file is scratch needs no record of the
+folder's engine, and every folder gets one answer, `warmfiles.is_scratch(name)`,
+the one every reader of the engines' scratch asks
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). Here the
+save, the status, the restore and every reader of a MANIFEST
+(`state_entries`) ask it; `checkpoint.classification_for` hands the families
+beside the size limit and the always-large families, for the `.gitignore` a
+save generates and for `checkpoint config` to print (S1, S1c).
+
+**Which engine a folder's saves use is recorded in the folder, once.** It is
+`molbuilder.engine` in the folder's own git config — inside `.git/`, which is
+never stored and is no file anybody edits (`Repo.name_engine`). It picks one
+thing: the config entry whose always-large families skip the measuring. A
+`checkpoint init --engine` records it — on a folder it makes a checkpoint
+folder, and on one that already is and records none — and so does the first
+save of a folder with no history that an act takes (`checkpoint.save_before`,
+§ 9), whose caller names the calculation's engine. A history an act finds
+keeps the engine it records, or none — the save before an act records none:
+recorded then, the engine would change the generated `.gitignore` (§ 3.1) and
+make a state of nothing the person changed. A recorded engine is never replaced. A folder that records none is
+saved under `generic`: every file is measured.
+
+**The size limit is 10 MB, and you can change it** — `size_limit_bytes`, a
+positive whole number of bytes. That is the whole of the
 decision § 3's diagram turns on, so it is written here as a number rather than
 left for whoever writes the code to invent. It is a *storage* threshold and
 nothing else — moving it changes where a file is kept, never whether it is kept
@@ -328,7 +376,8 @@ molbuilder checkpoint restore 4f9ca71
 molbuilder checkpoint restore stage1-good
 molbuilder checkpoint restore 4f9ca71 --force   # answers yes, for a script
 
-# which files count as "big" here
+# which files count as "big" here: the size limit and the always-large families;
+# and the engines' scratch, in neither store
 molbuilder checkpoint config
 ```
 
@@ -350,25 +399,34 @@ A history is only useful if you can pick from it a month later, and everything
 you read when you come back is something you wrote:
 
 ```text
-molbuilder checkpoint list
+$ molbuilder checkpoint list
+-> e30bb92  stage 2 at 300 Ry -- forces now below 0.02
+      2026-08-08T16:30:12+02:00   from b2e033d
+   7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1
+      2026-08-08T14:02:11+02:00   from b2e033d
+   b2e033d  stage 1 converged, 41 steps -- before retightening  [stage1-good]
+      2026-08-08T11:40:05+02:00   from 4f9ca71
+   4f9ca71  set up
+      2026-08-08T09:15:40+02:00   from -
 
-  4f9ca71  set up                                          09:15
-  b2e033d  stage 1 converged, 41 steps -- before            11:40   from 4f9ca71
-           retightening                            [stage1-good]
-  7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1   14:02   from b2e033d
-  e30bb92  stage 2 at 300 Ry -- forces now below 0.02       16:30   from b2e033d
+-> is where this folder stands (e30bb92).
+   nothing unsaved (by size and timestamp; --check compares content).
 ```
+
+Newest first, each state with its tags, the time it was taken and the state it
+came from; `->` marks where the folder stands. Unsaved files are named one per
+line under `N unsaved change(s) here`, in place of the last line.
 
 **The question you bring to this list is never *where was I*** — the list answers
 that — it is **why did I stop here, and what was I about to do?** So a generated
 note (`saved 2026-08-08T14:02:11Z`) is worse than none: it answers neither,
-it repeats the timestamp column, and five of them in a row is a list you cannot
-choose from. A caller offering a save may **draft** the note, since it knows what
-it is about to change; you confirm or edit it (§ 9).
+it repeats the time printed under it, and five of them in a row is a list you
+cannot choose from. A caller offering a save may **draft** the note, since it
+knows what it is about to change; you confirm or edit it (§ 9).
 
-**The last two states are visibly alternatives** — both say `from b2e033d`. That
-is the whole mechanism for branching, and it is covered in § 7.1: nothing was
-declared, nothing was named, and both attempts are intact.
+**The two newest states are visibly alternatives** — both say `from b2e033d`.
+That is the whole mechanism for branching, and it is covered in § 7.1: nothing
+was declared, nothing was named, and both attempts are intact.
 
 **`list` answers cheaply, and says so.** It compares size and timestamp, not
 content, because it runs constantly and nothing moves while it does (§ 7.2).
@@ -392,17 +450,41 @@ in no commit and git cannot show it.
 
 ```mermaid
 flowchart TB
-    S["checkpoint save"] --> R{"is .gitignore<br/>what it should be?"}
-    R -->|"edited by hand"| STOP1["refuse or repair<br/>— an edited ignore list<br/>silently drops files"]
-    R -->|"yes"| M["measure every file"]
-    M --> B["big ones → build the archive in a<br/>private staging dir"]
-    B --> V["hash the source, copy,<br/><b>re-hash the copy</b>, compare"]
-    V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
-    V -->|"match"| W["write MANIFEST"]
-    W --> D["its sha256 is the<br/>archive's name (§ 3)"]
-    D --> SW["publish it there<br/>— already present?<br/><b>check it before reusing it</b>"]
-    SW --> C["record the state,<br/>carrying the same digest"]
+    S["checkpoint save -m …"] --> N{"a note, and a<br/>calculation name<br/>needing no repair?"}
+    N -->|"no"| X0["refuse — nothing saved (L3)"]
+    N -->|"yes"| R["regenerate .gitignore's block<br/>from the classification (S1a, I2b)"]
+    R --> M["walk every file but the two stores<br/>and the engines' scratch (S1);<br/>measure each"]
+    M --> U["an engine's scratch an older save<br/>tracked leaves git's index first (S1)"]
+    U --> GT["the small ones → git's index;<br/>a big one an older save tracked<br/>leaves it (S7)"]
+    GT --> H["hash the big ones,<br/>eight at a time"]
+    H -->|"a name the MANIFEST cannot carry,<br/>or a file that cannot be read"| X1["refuse — nothing saved"]
+    H --> D["MANIFEST → its sha256<br/>is the archive's name (§ 3)"]
+    D --> P{"already published<br/>under that name?"}
+    P -->|"yes"| CK{"the cheap check:<br/>record, existence, size"}
+    CK -->|"fails"| X2["refuse — nothing saved"]
+    CK -->|"passes"| Q
+    P -->|"no"| B["build it in a private staging dir:<br/>copy, or hard-link content already archived;<br/><b>re-hash every file</b>, compare"]
+    B -->|"differ"| X3["fail — a corrupt copy must<br/>never become self-consistent"]
+    B -->|"match"| W["write MANIFEST,<br/>rename into place"]
+    W --> Q{"anything changed,<br/>in either store?"}
+    Q -->|"no"| SAME["no new state —<br/>the folder stands where it stood"]
+    Q -->|"yes"| C["record the state,<br/>carrying the same digest"]
+    SAME --> PR["clear the engines' scratch<br/>from every published archive (I1) —<br/>never failing the save"]
+    C --> PR
 ```
+
+**A save fingerprints its large files eight at a time** (`sha256_all`): every
+large file is read for its sha256 on every save, so that read is a save's
+floor, and the hash runs side by side; a restore's verify (§ 7) reads its
+archive the same way. A file that does not read ends the read — the files not
+yet begun are never read. The re-hash of a copy and an exact `status` read one
+file at a time.
+
+**An engine's scratch an older save stored leaves at two moments.** A copy
+git tracks leaves git's index before anything is added, so its new bytes never
+reach `.git/objects`; a copy an archive holds is cleared from every published
+archive at the end of the save — after it records its state, or finds nothing
+changed — and the clearing never fails the save (I1).
 
 **The archive is written before the state is recorded.** It is named by its own
 content (§ 3), so it does not need the state's name and does not wait for it. The
@@ -467,14 +549,17 @@ handles "somebody got there first" (S9).
 flowchart TB
     R["restore &lt;ref&gt;"] --> D0{"does &lt;ref&gt;<br/>resolve?"}
     D0 -->|"no"| X0["refuse — not a state id<br/>and not a tag"]
-    D0 -->|"yes"| D3{"does the target's<br/>archive verify?"}
+    D0 -->|"yes"| D3{"does the target carry a digest,<br/>and its archive verify —<br/>every entry of the state (I2)?"}
     D3 -->|"no"| X3["refuse — before any change"]
-    D3 -->|"yes"| D1{"anything here<br/>not saved?"}
+    D3 -->|"yes"| F{"--force?"}
+    F -->|"yes"| G
+    F -->|"no"| D1{"anything here<br/>not saved?"}
     D1 -->|"yes"| Q["name it — text AND big files —<br/>and say it will be lost<br/>unless it is saved first"]
     Q -->|"no / no answer"| X1["stop — nothing touched"]
-    Q -->|"yes, or --force"| G
+    Q -->|"yes"| G
     D1 -->|"no"| G["restore the text from git"]
-    G --> B["copy the big files back"]
+    G --> SW["remove what the target did not hold —<br/>an engine's scratch always (S1) —<br/>and every folder that leaves empty"]
+    SW --> B["copy the big files back"]
 ```
 
 **Two refusals, then one question, and the order is the rule.** The refusals
@@ -501,6 +586,14 @@ work, and a folder no verb can move is that promise failing.
 **What must never happen is a half-restore**: text from one save and binaries
 from another, a state no save ever held and nothing can diagnose afterwards.
 That is why the archive is verified *before* the text is touched.
+
+**What the sweep removes is decided by two records and one answer** (I2a):
+`git ls-files` and the target's MANIFEST say what the target holds, and
+`warmfiles.is_scratch` says what no state holds. An engine's scratch is removed
+like every file the target does not hold — a copy git restored from a state
+saved before the rule included among them — so a device run's `tsgf/` comes
+back holding only its marker (`calcdir.json`, text the state holds) where the
+target holds that run, and a run folder the target never had is removed whole.
 
 **The decision ledger is part of the state, and a restore writes nothing**
 *(2026-10-08, B8 C2 / R2-1)*. `jobset-decisions.log` is text the state holds,
@@ -534,21 +627,28 @@ molbuilder checkpoint save -m "stage 2 at 300 Ry -- forces now below 0.02"
 ```
 
 ```text
-molbuilder checkpoint list
+$ molbuilder checkpoint list
+-> e30bb92  stage 2 at 300 Ry -- forces now below 0.02
+      2026-08-08T16:30:12+02:00   from b2e033d
+   7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1
+      2026-08-08T14:02:11+02:00   from b2e033d
+   b2e033d  stage 1 converged, 41 steps
+      2026-08-08T11:40:05+02:00   from 4f9ca71
+   4f9ca71  set up
+      2026-08-08T09:15:40+02:00   from -
 
-  4f9ca71  set up                                          09:15
-  b2e033d  stage 1 converged, 41 steps                     11:40   from 4f9ca71
-  7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1  14:02   from b2e033d
-  e30bb92  stage 2 at 300 Ry -- forces now below 0.02      16:30   from b2e033d
+-> is where this folder stands (e30bb92).
+   nothing unsaved (by size and timestamp; --check compares content).
 ```
 
 **Both attempts are there, and the list says they are alternatives** — they share
 a parent. You declared nothing, named nothing, and ran no extra command.
 
-**Why the original is intact: nothing is ever rewritten.** A state, once saved,
-is never modified or removed. Restoring `b2e033d` changed the *folder*; it did
-not touch `7a1c0e4`, which still holds every byte of the 200 Ry attempt. Going
-back to it is one more restore.
+**Why the original is intact: nothing a state holds is ever rewritten.** A
+state, once saved, is never modified or removed (the one removal from an
+archive is an engine's scratch, which no state holds — I1). Restoring
+`b2e033d` changed the *folder*; it did not touch `7a1c0e4`, which still holds
+every byte of the 200 Ry attempt. Going back to it is one more restore.
 
 **Where the fork comes from: every state records the state it came from.** Step 3
 saved while the folder stood at `b2e033d`, so the new state's parent is
@@ -635,6 +735,7 @@ sentence on a screen that corrects itself the next time something real happens
 | | |
 |---|---|
 | **`save`** | checksums every large file, always — it has no choice, since the digest **is** the archive's name (§ 3) |
+| **the save an act takes first** (`checkpoint.save_before`, § 9) | is a `save`: whether the folder was already saved is that save's answer, by content — the state the folder stands at is named when the save records none — never the cheap read's *clean* |
 | **`restore`** | verifies the target archive (I2), then asks what is unsaved **by content**, so a folder called clean a second ago is still stopped — unless `--force` already answered, in which case it does not ask (§ 7) |
 | **a Refresh** | asks the exact question on demand, for when you want certainty *now* rather than the system paying for it continuously |
 
@@ -713,8 +814,9 @@ act, since that state is the one a redo restores.
 | **Where it saves** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — once every check has passed (what it will build is decided) and before it writes anything; a group's first `launch`, once its plan stands and before it copies anything in or sends — the state a launched stage's way back restores, every run its group builds on in it ([`job-system.md`](?doc=execution/job-system.md) § 6.0, step 4); Task setup's Save, before it writes the description |
 | **Who decides** | the act that changes the folder: it always saves, and says so — the terminal prints the state and its note, the tab shows them |
 | **The note** | the time the state was taken, then what the act is about to change, each group by its number and its members (a group is its members, never its number — [`engines/stages.md`](?doc=engines/stages.md) § 2): `2026-10-03 14:05:12 · before prep task group 1 (coarse), group 2 (medium, tight)`, `… · before launch task group 2 (medium, tight)`, `… · before prep task: the junction's order record` (a transport calculation's older junction, `prep task` with no group named — [`engines/transport.md`](?doc=engines/transport.md) § 1.1), `… · before saving the description` |
+| **The engine** | every caller names the calculation's engine; a folder with no history records it with its first state (`Repo.name_engine`, § 4), so its always-large families skip the measuring; a history that exists keeps the engine it records. An engine's scratch is left out whatever the folder records (S1) |
 | **No history yet** | the folder gets its first state |
-| **Nothing changed** | no new state: the one the folder stands at is named |
+| **Nothing changed** | no new state: the one the folder stands at is named. Whether anything changed is the save's own answer, by content (`Repo.save`, which checksums every large file, § 7.2) — never the cheap read |
 | **The last stage** | nothing asks, because nothing follows. A surface showing a finished, unsaved run should say it is unsaved |
 
 **Never during a run**, which may be a queued job — a prompt would block a queue
@@ -764,10 +866,18 @@ molbuilder checkpoint save -m "stage 2 at 400 Ry -- no better than 300, 3x slowe
 ```
 
 ```text
-  b2e033d  stage 1 converged, 41 steps                     11:40   from 4f9ca71
-  7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1  14:02   from b2e033d
-  e30bb92  stage 2 at 300 Ry -- forces below 0.02          16:30   from b2e033d
-  1f8d5c0  stage 2 at 400 Ry -- no better, 3x slower       18:05   from b2e033d
+$ molbuilder checkpoint list -n 4
+-> 1f8d5c0  stage 2 at 400 Ry -- no better than 300, 3x slower
+      2026-08-08T18:05:27+02:00   from b2e033d
+   e30bb92  stage 2 at 300 Ry -- forces below 0.02
+      2026-08-08T16:30:12+02:00   from b2e033d
+   7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1
+      2026-08-08T14:02:11+02:00   from b2e033d
+   b2e033d  stage 1 converged, 41 steps
+      2026-08-08T11:40:05+02:00   from 4f9ca71
+
+-> is where this folder stands (1f8d5c0).
+   nothing unsaved (by size and timestamp; --check compares content).
 ```
 
 Three attempts, one parent, none of them privileged and none of them lost.
@@ -788,7 +898,8 @@ from molbuilder.checkpoint import Repo
 
 repo = Repo("projects/BDT-Au/optimization/bdt-relax")
 if not repo.initialized:
-    repo.init(engine="siesta")          # engine picks the always-large hints
+    repo.init(engine="siesta")          # the engine picks the always-large
+                                        # hints (§ 4)
 
 state = repo.save(note="stage 1 converged, 41 steps -- before retightening")
 print(state.id if state else "nothing changed")
@@ -810,31 +921,42 @@ Each one names what it prevents and how to test it. **Status is in § 12.**
 ### Everything is saved
 
 **S1 — every regular file is in git or in the archive: never both, never
-neither — but the two stores and the engine's scratch.** The list, each with
+neither — but the two stores and an engine's scratch.** The list, each with
 its reason:
 
 1. **The two stores** — `.git/` and `.binsnapshots/` — because a store cannot
    contain itself.
-2. **The engine's scratch** *(the user, 2026-10-20, after a prep on Sol copied
+2. **An engine's scratch** *(the user, 2026-10-20, after a prep on Sol copied
    a device run's two lead Green's-function files, 98 of the folder's 99 GB, into
-   its save)* — the files the engine's own file vocabulary names `scratch`
-   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a,
-   `warm-files.toml`'s `scratch` rows: TranSIESTA's `*.TSGFL`, `*.TSGFR`). The
-   checkpoint judges nothing here: the engine's vocabulary already says these
-   are recomputed by every run, never carried and never taken over, and the
-   checkpoint asks it (`warmfiles.scratch_families`) — one answer to *is this
-   file kept*, not two. Not archived, not in git (the generated `.gitignore`
-   names them, S1a), never reported unsaved by `status`, and never swept by a
-   restore: they stay where they lie, the run's own, until the run's walk
-   empties them (`engines/transport.md` § 2a.11) or a person does
-   (`jobset scratch`).
+   its save)* — the files the engines' own file vocabularies name `scratch`
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a, the
+   `scratch` a section of `warm-files.toml` states: TranSIESTA's `*.TSGFL`,
+   `*.TSGFR`). The checkpoint judges nothing here: the vocabulary already says
+   these are recomputed by every run, never carried and never taken over, and
+   the checkpoint asks the one answer every reader asks
+   (`warmfiles.is_scratch`, over the families every engine's shipped
+   vocabulary names — § 4) — one answer to *is this file kept*, not two. Not
+   archived, not in git (the generated `.gitignore` names them, S1a), never
+   reported unsaved by `status` — a name git reports for one an older save
+   tracked, *deleted* once a walk emptied its folder among them — and
+   **removed by a restore**, like every file the target does not hold (I2a).
+   Between saves they are the run's own: the run's walk empties them
+   (`engines/transport.md` § 2a.11), or a person does (`jobset scratch
+   --empty`, `job-system.md` § 5.3). The save, the status and the restore's
+   sweep walk the folder through one function (`walk_entries`); the walks of
+   what a store takes (`walk_files`, `walk_symlinks`) pass these files over,
+   and the restore's sweep removes them. **What an earlier save stored goes:** a save takes the scratch out of
+   git's index where an older save tracked it, before anything is added, and
+   clears it from every archive published before, at the save's end (I1); every reader of a MANIFEST leaves it out (`state_entries`), so no
+   state needs it back. The families are every engine's, whatever engine the
+   folder records.
 
 **No other category is exempt, including the ones it is tempting to exempt.**
 Editor leftovers, caches nothing names as an engine's scratch — all stored.
 Two reasons, and the second is the one that matters: storing them costs a
 little disk, which § 1 has already ruled is never an argument; and every
 exemption is a judgement about what is worth keeping, which § 2.1 says this
-system does not make — the engine's scratch is the engine vocabulary's word,
+system does not make — an engine's scratch is the engines' vocabularies' word,
 not this system's. A snapshot of *most* of a folder is not a snapshot of the
 folder.
 
@@ -869,8 +991,8 @@ is what a restore does anyway"*, which assumed the thing it needed to require.
 - **Fails as:** both → a multi-gigabyte blob in git history forever. Neither →
   the file is in no snapshot, and a restore silently does not bring it back.
 - **Test:** walk every regular file and assert `archived` ≠ `tracked`, with
-  `.git/` and `.binsnapshots/` the only excluded paths — and every file the
-  engine's vocabulary names scratch in **neither** store, still on disk after a
+  `.git/` and `.binsnapshots/` the only excluded paths — and every file an
+  engine's vocabulary names scratch in **neither** store, and gone after a
   restore. **No allow-list** — a file is stored or the test fails. The walk
   must not reuse the same skip rule the classification uses, or it can only
   ever agree with it.
@@ -881,12 +1003,12 @@ is what a restore does anyway"*, which assumed the thing it needed to require.
 
 **S1a — `.gitignore` is generated from the classification, never hand-kept
 beside it.** One *source*, not merely one writer: the archive's patterns and
-the engine's scratch (S1), nothing else.
+the engines' scratch (S1), nothing else.
 
 - **Fails as:** a hand-kept list answers to no rule. That is exactly how `*.MD`
   came to be ignored with nowhere else to go.
 - **Test:** assert the generated `.gitignore` contains **nothing that is not an
-  archive pattern or the engine's scratch**. That check catches the whole
+  archive pattern or the engines' scratch**. That check catches the whole
   class, and no fixture can be too short for it.
 
 **S1b — which store a file goes to is decided by measuring the file.** Its size
@@ -901,12 +1023,16 @@ decide the answer.
 - **Test:** an unlisted file above the limit and an unlisted file below it, each
   asserted into the right store — no pattern involved in either direction.
 
-**S1c — the classification has one home, and it is molbuilder's config.** One
-`generic` entry plus optional per-engine hints, outside every calculation
-folder. A caller may name its engine; with no name `generic` is used, which is
-always correct. The engine's scratch (S1) is the engine's own vocabulary, the
-copy molbuilder ships — never a calculation's own `warm-files.toml`, which is a
-file somebody can edit between a save and a restore.
+**S1c — the classification lives outside every calculation folder.** The size
+limit and the always-large hints are molbuilder's config — one `generic` entry
+plus optional per-engine hints. A caller may name its engine; with no name
+`generic` is used, which is always correct. An engine's scratch (S1) is named
+by the engines' own vocabularies, the copies molbuilder ships, every engine's
+and read once a process — never a calculation's own `warm-files.toml`, which
+is a file somebody can edit between a save and a restore. The one thing the
+folder holds is *which* engine — `molbuilder.engine` inside `.git/`, set once
+and never replaced (§ 4) — a name to look up for the always-large hints, not
+a classification.
 
 - **Fails as:** a per-folder copy makes two folders behave differently with
   nothing on disk explaining why, and makes the classification a thing a person
@@ -917,25 +1043,38 @@ file somebody can edit between a save and a restore.
 
 ### The record can be trusted
 
-**I1 — an archive's content is never modified once written** — but the
-engine's scratch, which is no entry of any state (S1): every save removes it
-from every published archive, an archive saved before the rule included, its
-MANIFEST and its name untouched, so every state is still named by what it holds
-(`checkpoint.prune_scratch`).  Since § 3 the
-name enforces it rather than the rule asking politely. A directory is the sha256
-of its own MANIFEST, so changed content is a *different* archive at a *different*
-path; the old one is still there, still correct, still named by what it holds.
-There is no write that can modify an archive in place — only a write that creates
-another one.
+**I1 — an archive's content is never changed once written, with one
+removal.** The name enforces it rather than the rule asking politely: a
+directory is the sha256 of its own MANIFEST (§ 3), so changed content is a
+*different* archive at a *different* path; the old one is still there, still
+correct, still named by what it holds. No write adds a file to a published
+archive or changes one in it — changed content is a write that creates another
+archive — and re-publishing an archive that already exists is a no-op rather
+than a rebuild.
 
-Re-publishing an archive that already exists is therefore a no-op rather than a
-rebuild, and there is no operation anywhere that edits one in place. There is
-also no legacy archive form to convert from: this is the first draft, so the
-format has no history and needs no migration
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1).
+**The one removal is an engine's scratch, which is no entry of any state
+(S1).** A save clears it from every published archive at its end — after it
+records its state, or finds nothing changed — (`checkpoint.prune_scratch`) — an archive saved before the engines'
+scratch was left out is the only kind that holds any. It reads each archive's
+MANIFEST and removes the files whose keys `warmfiles.is_scratch` names, with
+the folders they leave empty up to the archive's own; the MANIFEST and the
+archive's name stay. The MANIFEST still lists those files, and every reader of
+it asks `state_entries`, which leaves them out (I2), so every state is still
+named by what it holds and still verifies. A staging directory — a name that
+is no sha256, or no MANIFEST yet: a save still writing — is never entered.
+**The clearing never fails a save**: a file already gone, an archive that does
+not read, a permission error — each is passed over. When every archive was
+cleared, the folder records the families it cleared them of
+(`molbuilder.scratchCleared` in `.git/config`), and the next saves skip the
+walk until the shipped vocabularies name other families; a lost record costs
+one more walk. Every other sentence here that says an archive never loses a
+file points to this one.
+
+There is no legacy archive form to convert from: the format needs no
+migration ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1).
 
 **I2 — a MANIFEST is authoritative for its archive.** For every entry of a
-state — every entry but the engine's scratch (S1; `checkpoint.state_entries`,
+state — every entry but an engine's scratch (S1; `checkpoint.state_entries`,
 which every reader of a MANIFEST asks): the file exists, its size matches, its
 sha256 matches.
 
@@ -943,13 +1082,17 @@ sha256 matches.
   valuable test in the system.
 
 **I2a — a restore is decided by what the save recorded, never by
-configuration** — the engine's scratch aside, which is in no state and is named
-by the engine's vocabulary molbuilder ships, never by a person's config (S1,
-S1c). Verified in code: after `Repo.restore` resolves its target,
-everything it does is driven by two records — `git ls-files` for the text and
-`verify_archive`'s MANIFEST for the big files. No config, no glob list, no
-engine name, and no size limit is consulted between the target resolving and the
-last byte landing.
+configuration.** What a restore removes and what it copies back are decided by
+two records — `git ls-files` for the text, and the target's MANIFEST, verified
+and read through `state_entries`, for the big files — and by one answer
+besides, `warmfiles.is_scratch`: an engine's scratch is in no state, and is
+named by the vocabularies molbuilder ships, never by a person's config (S1,
+S1c), so the sweep removes it like every file the target does not hold — a copy
+git restored from a state saved before the rule included among them. The
+restore reads no classification: no size limit and no always-large family
+decides what is removed or copied back. The question asked before the folder
+changes (§ 7) measures what is big on disk now, which is I2c's and not this
+rule's.
 
 - **Why it matters:** the classification lives outside the folder and can be
   edited at any time. Because a restore never re-derives, every archive already
@@ -970,6 +1113,13 @@ they fail in opposite directions:
 `.gitignore` records a derivation, so the derivation is the check* — and
 regeneration says which line is wrong, where a digest could only say that
 something is.
+
+**A block that differs is said, and the next save rewrites it.** `checkpoint
+list` prints *note: .gitignore's generated block is not what this molbuilder
+generates (edited, or written by another release).  The next save rewrites it
+from the classification.*, and the panel's state carries `ignore_edited`. The
+cause is not known there, so it is not guessed: a block written by a release
+whose classification differed reads the same as a hand edit, until that save.
 
 > **Why `.gitignore` does not get a digest, when the instruction was to give it
 > the same check.** A stored digest cannot catch the attack it would be for.
@@ -1051,7 +1201,8 @@ I2a made the *action* config-free; this is its other half.
 differs from the state you stand at: changed, added and deleted alike. This rule
 adds exactly one thing to that, and nothing else: *where those differences are
 measured from*. For big files it is **the MANIFEST of the state you stand at,
-unioned with what is big on disk now** — the MANIFEST because it is the record
+unioned with what is big on disk now** — both without an engine's scratch,
+which is no unsaved work (S1) — the MANIFEST because it is the record
 of what that state held, and what-is-big-now because that is the only way a file
 created since the save is noticed at all. Never the glob list.
 
@@ -1086,7 +1237,10 @@ rather than a violation. Do not let a check written for one shape fail the other
 
 ### A save or a restore completes, or does not happen
 
-**A1 — archiving is build, verify, publish** (§ 6). *Nothing is deleted:* an archive at a given name always holds the same content, so publishing is *create if absent* and there is never an old one to remove.
+**A1 — archiving is build, verify, publish** (§ 6). *Publishing deletes
+nothing:* an archive at a given name always holds the same content, so
+publishing is *create if absent* and there is never an old one to remove. (The
+one removal from a published archive is not publishing's: I1.)
 
 - **Test:** kill the process between each step; afterwards the archive set is the
   old one or the new one, never a mixture.
@@ -1444,13 +1598,13 @@ conclude there is nothing to do.
 
 | Rule | | |
 |---|---|:--:|
-| **S1** | everything is stored; the two stores and the engine's scratch are the only exclusions | ✅ the fixed ignore tail is gone; a walk over a saved folder asserts it; the scratch asked of the engine's vocabulary (2026-10-20) |
-| **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but archive patterns; a user's own entries are left alone |
+| **S1** | everything is stored; the two stores and an engine's scratch are the only exclusions | ✅ a walk over a saved folder asserts it; an engine's scratch, asked of the shipped vocabularies in a folder that records no engine, is asserted in neither store, no unsaved work, and removed by a restore with the run folder the target never had. A save untracking scratch an older save tracked is unasserted — § 13.4's waiting table |
+| **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but the archive's patterns and the engines' scratch; a user's own entries are left alone |
 | **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring, and a big file never reaches `git add` at all |
-| **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`, the one config file; there is no narrower scope, and the accessor takes no directory |
-| **I1** | archived content is never modified | ✅ structural — the name is the content digest, so changed content is a different archive |
-| **I2** | a MANIFEST is authoritative | ✅ existence, size and sha256 for every entry, run over every archive in the folder |
-| **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |
+| **S1c** | the classification lives outside every calculation folder | ✅ the size limit and the hints in `molbuilder.json`, the one config file, whose accessor takes no directory; the engines' scratch from the vocabularies molbuilder ships, never a calculation's copy |
+| **I1** | archived content is never changed, but for an engine's scratch | ✅ structural — the name is the content digest, so changed content is a different archive. The one removal (`prune_scratch`) takes an archive's scratch and keeps every other file and the MANIFEST |
+| **I2** | a MANIFEST is authoritative | ✅ existence, size and sha256 for every entry of a state (`state_entries`), run over every archive in the folder, and over an archive whose scratch was cleared while its MANIFEST still lists it |
+| **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes and copies back is decided by git and the MANIFEST, never by the size limit or the hints; `warmfiles.is_scratch` is the one answer besides, and the sweep removes what it names (§ 11) |
 | **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered or missing MANIFEST is named on the cheap read as well as at restore, an edited ignore block detected; **and a save checks an archive it would reuse rather than trusting its name** — cheaply, the way git never re-reads its object store on commit; the exact comparison stays where the bytes are used (§ 7) |
 | **I2c** | the warning is measured against the records, not the config | ✅ the standing state's MANIFEST unioned with what is big now; a file the classification stopped matching is still named |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
@@ -1492,11 +1646,12 @@ looks like something newly created — the exact opposite of the truth, and an
 invitation to save over the loss. So a missing archive, a missing digest, and a
 MANIFEST that does not hash to its own name are each named where they are found.
 
-**Nothing is ever reclaimed, and under A6 almost nothing can be.** A6 says every
-state you saved stays listed and restorable *forever*, so every state is
-permanent, so every archive a state names is permanently needed. There is no
-garbage to collect, and a `prune` that swept "unreachable" archives would find
-none.
+**Nothing a state holds is ever reclaimed, and under A6 almost nothing can be.**
+A6 says every state you saved stays listed and restorable *forever*, so every
+state is permanent, so every archive a state names is permanently needed. There
+is no garbage to collect, and a `prune` that swept "unreachable" archives would
+find none. The one thing a save frees is an engine's scratch an archive still
+holds from before the families were left out — bytes no state holds (I1).
 
 > **An earlier draft described mark-and-sweep from the reachable history, the way
 > `git gc` works.** That story came from a design where a line of work could be
@@ -1559,7 +1714,7 @@ This is the rule this module learned the hard way, and it is worth the whole
 section.
 
 There **is** a test that walks a saved folder and asserts every file is in git or
-in the archive. It is correctly written. It did not catch `*.MD` sitting in
+in the archive (an engine's scratch aside, S1). It is correctly written. It did not catch `*.MD` sitting in
 neither store for months — because **a walk can only judge files the fixture
 created, and no fixture ever created a `.MD`.**
 
@@ -1569,7 +1724,10 @@ created, and no fixture ever created a `.MD`.**
 >   is stored;
 > - make an *unlisted* file above the size limit and one below it → assert each
 >   lands in the right store;
-> - assert the "never stored" list is exactly `.binsnapshots/` and nothing else.
+> - assert nothing under the two stores is stored, and that a file of every
+>   family the engines' shipped vocabularies name scratch is in neither store —
+>   the families asked of the vocabularies (`warmfiles.scratch_families`), never
+>   listed in the test.
 >
 > Adding a pattern to the config extends the test. Adding an engine gets a full
 > suite for free. Nobody has to remember.
@@ -1580,9 +1738,10 @@ A generated fixture is better than a hand-written one and still only covers what
 the config knows about. Two assertions are made about the **rules themselves**,
 so no fixture can be too small for them:
 
-- **Every pattern in the generated `.gitignore` is an archive pattern.** If git
-  is told to skip something the archive does not take, that file is in no store —
-  and this catches it without any file existing at all.
+- **Every pattern in the generated `.gitignore` is an archive pattern or a
+  family the engines' vocabularies name scratch.** If git is told to skip
+  anything else the archive does not take, that file is in no store — and this
+  catches it without any file existing at all.
 - **The ignore file matches what regenerating it would produce.** `.gitignore`
   records a *derivation*, so the derivation is the check (I2b).
 
@@ -1600,16 +1759,16 @@ so no fixture can be too small for them:
 
 ### 13.4 Where each rule is asserted
 
-All seven `test_checkpoint_*.py` files are here. A file in no row is a file
+All six `test_checkpoint_*.py` files are here. A file in no row is a file
 nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
 |---|---|
-| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two attempts each, big files at depth, symlinked pseudopotentials) and assert each is in exactly one store; the generated ignore block holds nothing the archive does not take; and a big file never reaches git's object database. **The walk is the test's own `os.walk`**, excluding the two stores by literal name — never the module's `walk_files`, which is what the classification itself iterates (S1's bullet) |
+| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two attempts each, big files at depth, symlinked pseudopotentials) and assert each is in exactly one store; the generated ignore block holds nothing but the archive's patterns and the engines' scratch; and a big file never reaches git's object database. **The walk is the test's own `os.walk`**, excluding the two stores by literal name — never the module's `walk_files`, which is what the classification itself iterates (S1's bullet). And an engine's scratch (`test_the_engines_scratch_is_in_neither_store_and_a_restore_removes_it`): in a folder initialised with no engine, a file of each family the shipped vocabularies name (`scratch_families`, asked), big by size too, in a run folder the first state never held, is in neither store after a save and reads as nothing unsaved; a forced restore to the first state removes it and leaves no run folder behind |
 | S1b, the classification end to end | `test_checkpoint_states.py` — a fixture **generated from the config**: every engine, every pattern it names, one file each, all archived on size alone being wrong; plus an unlisted file either side of the limit |
-| S1b, S1c | `test_checkpoint_config.py` — the size gate and the one home |
-| I1 | `test_checkpoint_states.py` — changed content lands at a different name and the old archive still holds its bytes |
-| I2 | `test_checkpoint_states.py` — **its own three conditions, each on its own**: a listed file that is gone, a size that disagrees, a sha that does not match; plus a run of `verify_archive` over **every** archive a multi-state folder accumulated |
+| S1b, S1c | `test_checkpoint_config.py` — the size gate (10 MB unset, changeable); `generic` names nothing; an engine's entry, a configured one replacing the shipped one, a new one added, an unknown one falling back to `generic`; a malformed section refused; and the config read from one scope only |
+| I1 | `test_checkpoint_states.py` — changed content lands at a different name and the old archive still holds its bytes; and the one removal (`test_a_save_clears_the_scratch_an_older_archive_holds`): an archive published holding the scratch loses it to `prune_scratch`, which keeps every other file and the MANIFEST |
+| I2 | `test_checkpoint_states.py` — **its own three conditions, each on its own**: a listed file that is gone, a size that disagrees, a sha that does not match; plus a run of `verify_archive` over **every** archive a multi-state folder accumulated, and over that cleared archive, whose MANIFEST still lists the scratch — it verifies, its entries every file but the scratch |
 | A1 | `test_checkpoint_states.py` — killed at **each** step: mid-copy, and as the MANIFEST is written; plus the interruption § 6 describes — an archive published but never committed, after which the next save adopts that exact archive instead of building a second |
 | A2 | `test_checkpoint_states.py` — a corrupted archive is refused and the folder is byte-identical; and, with unsaved work present too, **the archive is what refuses** — nobody is asked to accept a loss for an operation that cannot happen |
 | I2a | `test_checkpoint_states.py` — restore under **every mutation the rule names**: a different engine, an emptied hint list, and the config file deleted outright; the tree is byte-identical each time |
@@ -1630,7 +1789,7 @@ nobody is maintaining against this document, which is how the two drift.
 | S9 | `test_checkpoint_states.py` — four threads publish one archive at once; **and two concurrent `save`s of one folder**, which is the rule's own wording: losing a race for git's index is a refusal and is allowed, corruption is not |
 | the five refusals | `test_checkpoint_states.py` — `GitNotInstalledError` is raised where git is absent and says how to fix it, which is what makes it worth separating from the faults (§ 15) |
 | volume | `test_checkpoint_states.py` — 500 large files in one folder: all archived, none in git's object database, and the save does not fail for the length of its own `git add` |
-| A3, S2, S3, S4, S6, L8, S5's run-layer half | **not yet written** — the table below says what each waits on: A3's and S3's surfaces exist and their tests are owed; the rest wait on a surface that does not |
+| A3, S2, S3, S4, S6, L8, S5's run-layer half, and a save untracking the scratch an earlier save tracked (S1) | **not yet written** — the table below says what each waits on: A3's, S3's and the untracking's surfaces exist; the rest wait on a surface that does not |
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
 | the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, the question asked at a terminal, and **that a remedy a refusal names actually works**: the whole round trip, refusal → repair → save, exit codes included, since 2 is *your input* and 1 is *the machine* |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
@@ -1642,7 +1801,7 @@ nobody is maintaining against this document, which is how the two drift.
 | § 7.2's blind spot, at **both** edges and with its door shut | `test_checkpoint_states.py` — three tests, because one of them alone reads as a narrower promise than the section makes. A same-size rewrite dated *at* the state is missed (the near edge); one dated **an hour before** it is missed too and the exact read still catches it (the far edge — this is the `rsync -a` case, and pinning it is what keeps the section's wording honest); and a rerun writing byte-identical output reads clean, which is the outcome destroyed by the one repair that would close the far edge — comparing against the archive's own copy, whose mtime is stuck at the first time those bytes were archived (§ 12). All three mutation-checked: tightening `>` to `!=`, adopting that repair, or hashing on the display each fails at least two of them |
 
 **A rule in no row is the same failure as a file in no row, and quieter.** The
-seven entries below are stated, tracked and deliberately unasserted — a test
+eight entries below are stated, tracked and unasserted — a test
 written against a surface that does not exist can only pin a guess about it.
 Naming what each waits on is what stops them being forgotten on the day it
 lands.
@@ -1661,6 +1820,7 @@ lands.
 | **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against (plan § 2, W45) |
 | **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly (plan § 2, W45) |
 | **S5**, its second half — the *run layer* never rewrites the id | a produce and a run. The half checkpointing owns is asserted today (§ 13.4); this is the one that needs something to run |
+| **S1** — an engine's scratch an earlier save tracked in git leaves git's index at the next save, before anything is added, the file left where it lies | nothing: the save's untracking (`checkpoint._untrack`) exists — unasserted |
 
 *This table lists only rules that are **waiting**. It used to carry a copy of
 the rows above it as well, naming three test files that no longer exist —
@@ -1698,13 +1858,19 @@ the rows above it as well, naming three test files that no longer exist —
 | `molbuilder/checkpoint.py` | all of it — `Repo` is the class every surface goes through; `State` / `Tag` / `FolderStatus` are the vocabulary of § 5 |
 | `Repo.init` / `.save` / `.restore` | the three verbs everything else is built on |
 | `Repo.tag` / `.states` / `.status` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb. **No `diff`** either: it is listed as unbuilt in § 16 |
-| `Repo.classification` | which files are large here — reads molbuilder's own config and takes **no directory**, which is the shape of S1c |
-| `Repo._manifest_of` | what a state held, and the one place damage to that record is named (I2b) |
+| `Repo.classification` · `classification_for(engine)` | the size limit and the always-large families from molbuilder's own config, for the engine the folder records, and the engines' scratch families (`warmfiles.scratch_families`, every engine's, whatever the folder records) for the generated `.gitignore` and `checkpoint config` — taking **no directory**, which is the shape of S1c |
+| `warmfiles.is_scratch` | the one answer to *is this file an engine's scratch* — the save, the status, the restore and every reader of a MANIFEST ask it (S1, § 4) |
+| `Repo.name_engine` | records the folder's engine in `.git/config` (`molbuilder.engine`) when none is recorded — by `init`, on a folder it makes a checkpoint folder (the history's first save, `save_before`'s among them) or one that already is; it picks the always-large hints alone (§ 4) |
+| `walk_entries` | the one walk of a folder — the save's, the status's and the restore's sweep — never entering the two stores; an engine's scratch it yields, the walks of what a store takes (`walk_files`, `walk_symlinks`) pass over, and the restore's sweep removes (S1) |
+| `state_entries` · `prune_scratch` | a state's entries: a MANIFEST's, an engine's scratch left out, asked by every reader of one (I2); an engine's scratch cleared from every published archive once a save records its state, never failing it (I1) |
+| `sha256_all` | a save's fingerprints of its large files and a restore's verify, eight at a time; a file that does not read ends the read (§ 6) |
+| `save_before` · `Kept` | the save an act takes before it changes the folder — a `save`, so *already saved* is answered by content (§ 7.2) — and the line both doors show (§ 9) |
+| `Repo._manifest_of` | a state's MANIFEST, read off its own record — what the state held is its entries (`state_entries`) — and the one place damage to that record is named (I2b) |
 | the note + calculation-name builder | the naming rules (L3) — written and read through one parser so the two cannot drift |
 | `CheckpointError` and its five subclasses | what a refusal raises. `CalculationNameError` and `NestedRepoRefusedError` are the ones a **user** resolves; `GitNotInstalledError` and the rest are faults. **Every surface must bucket them by class, on every verb** — a blanket `except CheckpointError` reports "fix your input" for a broken disk, or a broken disk for a name the user fixes in one command. Both inversions have happened here, in both directions |
 | `molbuilder/web/blueprints/checkpoint.py` | the HTTP routes the sidebar calls |
 | `molbuilder/web/static/lib/projects/checkpoint.js` | the sidebar panel — the surface where L3's note is actually asked for |
-| `tests/test_checkpoint_*.py` | seven files — § 13.4 maps them to rules |
+| `tests/test_checkpoint_*.py` | six files — § 13.4 maps them to rules |
 
 ---
 

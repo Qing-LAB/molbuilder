@@ -3326,8 +3326,9 @@ def cmd_checkpoint_restore(state, force, path):
 def cmd_checkpoint_config(path):
     """Show the classification this folder is saved under.
 
-    It lives in molbuilder.json, not in the folder: one home, so two folders
-    cannot behave differently for no recorded reason.  Edit it there.
+    The size limit and the always-large families live in molbuilder.json,
+    the engines' scratch in their shipped warm-files.toml -- never in the
+    folder, so two folders cannot behave differently for no recorded reason.
     """
     repo = _repo_or_exit(path)
     cls = repo.classification()
@@ -3343,8 +3344,16 @@ def cmd_checkpoint_config(path):
         click.echo("              it can never make it store less")
     else:
         click.echo("always large  (none) -- every file is measured")
-    click.echo("\nedit molbuilder.json to change it "
-               "(docs/execution/checkpointing.md § 4)")
+    scratch = cls["scratch"]
+    click.echo("in neither    " + (", ".join(scratch) if scratch else "(none)"))
+    click.echo("              an engine's scratch, recomputed by every run: "
+               "never saved,")
+    click.echo("              and a restore removes it -- named by the "
+               "engines' own")
+    click.echo("              warm-files.toml, not by molbuilder.json "
+               "(checkpointing.md S1)")
+    click.echo("\nedit molbuilder.json to change the size limit or the "
+               "families (docs/execution/checkpointing.md § 4)")
 
 
 # --------------------------------------------------------------------- #

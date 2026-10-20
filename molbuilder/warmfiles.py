@@ -35,8 +35,10 @@ the last one left -- a fact no row can say.  :func:`warm_list` answers it.
 """
 from __future__ import annotations
 
+import fnmatch
 import tomllib
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -153,10 +155,8 @@ class WarmList:
     #: What a sweep of this kind hands from a done point to the next, by
     #: suffix -- the section's ``along`` (`engines/transport.md` § 2a.11).
     along: Tuple[str, ...] = ()
-    #: The engine's scratch at a run of this kind, by suffix -- the
-    #: section's ``scratch``: never carried, never taken over.
-    scratch: Tuple[str, ...] = ()
-    #: The folder of the run's own the scratch lives in -- the section's
+    #: The folder of the run's own an engine's scratch lives in (which
+    #: files are scratch is :func:`is_scratch`'s, never this list's) -- the section's
     #: ``scratch_dir`` (``tsgf``); ``None`` for a kind that states none.
     scratch_dir: Optional[str] = None
 
@@ -220,24 +220,36 @@ def warm_list(engine: str, kind: Optional[str] = None,
     return WarmList(engine=engine, kind=kind, path=doc.path, own=own,
                     rules=rules, resumes=resumes,
                     along=(dict(doc.along).get(kind, ()) if kind else ()),
-                    scratch=(dict(doc.scratch).get(kind, ()) if kind else ()),
                     scratch_dir=(dict(doc.scratch_dir).get(kind)
                                  if kind else None))
 
 
-def scratch_families(engine: Optional[str]) -> Tuple[str, ...]:
-    """THE ENGINE'S SCRATCH, as families of file names -- ``*<suffix>`` for
-    every suffix any section of its vocabulary names ``scratch``
-    (`job-contracts.md` § 4.2a: recomputed by every run, never carried, never
-    taken over) -- the one answer to *is this file the engine's scratch*:
-    what a save never stores (`checkpointing.md` S1) and what `jobset
-    scratch` empties.  The vocabulary molbuilder ships, never a
-    calculation's own copy, which is a file somebody can edit between a save
-    and a restore (S1c); ``()`` for an engine with none."""
-    if not engine or not _rules_path(engine).is_file():
-        return ()
-    return tuple(sorted({f"*{suffix}" for _section, suffixes
-                         in _load(engine).scratch for suffix in suffixes}))
+@lru_cache(maxsize=1)
+def scratch_families() -> Tuple[str, ...]:
+    """THE ENGINES' SCRATCH, as families of file names -- ``*<suffix>`` for
+    every suffix any section of any engine's shipped vocabulary names
+    ``scratch`` (`job-contracts.md` § 4.2a: recomputed by every run, never
+    carried, never taken over): SIESTA's ``*.TSGFL``, ``*.TSGFR``.  No engine
+    is asked for: the files are named by what wrote them, and no engine
+    writes another's, so a folder needs no record of its engine for this
+    answer.  The vocabularies molbuilder ships, never a calculation's own
+    copy, which is a file somebody can edit between a save and a restore
+    (`checkpointing.md` S1c) -- and so read once a process."""
+    from .runfiles import engines
+    return tuple(sorted({f"*{suffix}" for engine in engines()
+                         if _rules_path(engine).is_file()
+                         for _section, suffixes in _load(engine).scratch
+                         for suffix in suffixes}))
+
+
+def is_scratch(name: str) -> bool:
+    """Whether a file of this name is an engine's scratch
+    (:func:`scratch_families`) -- THE ONE ANSWER every reader asks: the
+    checkpoint, which stores it nowhere and leaves it in no restored folder
+    (`checkpointing.md` S1); `jobset scratch`, which lists and empties it;
+    a run of points' take-over, which never copies it; and the device's
+    status line (`engines/transport.md` § 2a.11)."""
+    return any(fnmatch.fnmatch(name, family) for family in scratch_families())
 
 
 def _load(engine: str, base_dir=None) -> WarmFilesDoc:
@@ -263,9 +275,15 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
             f"no {FILENAME} for engine {engine!r} (expected {path}). "
             f"An engine's warm-state vocabulary is this ONE file "
             f"(job-contracts.md 4.2a).")
-    with open(path, "rb") as fh:
-        raw = tomllib.load(fh)
-    check_schema(str(raw.pop("schema", "")), SCHEMA, label=str(path))
+    # A FILE THAT DOES NOT READ is this module's refusal, naming it -- the
+    # kind every door that reads the vocabulary says as the person's
+    # (a launch's among them), never a parser's own exception.
+    try:
+        with open(path, "rb") as fh:
+            raw = tomllib.load(fh)
+        check_schema(str(raw.pop("schema", "")), SCHEMA, label=str(path))
+    except (tomllib.TOMLDecodeError, ValueError) as exc:
+        raise WarmFilesError(f"{path} does not read: {exc}") from None
     file_engine = raw.pop("engine", None)
     if file_engine != engine:
         raise WarmFilesError(

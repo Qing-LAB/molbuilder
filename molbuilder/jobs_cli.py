@@ -31,75 +31,6 @@ def jobs_group() -> None:
     """
 
 
-class _Here:
-    """The cluster a scheduler here answers for, as it names it -- asked
-    once a command for each scheduler, and only when a queue job is asked
-    of."""
-    def __init__(self):
-        self._asked = {}
-
-    def cluster(self, scheduler):
-        if scheduler not in self._asked:
-            from .scheduler.queue import cluster
-            self._asked[scheduler] = cluster(scheduler)
-        return self._asked[scheduler]
-
-
-def _scheduler_of(job):
-    """The scheduler a queue job was sent to: the one its calculation's copy
-    of its machine's record names (`configuration.md` M-3) -- ``None`` when
-    that copy does not read here (`record.calculation_environment`)."""
-    from .scheduler.record import UnknownTarget, calculation_environment
-    try:
-        rec = calculation_environment(job.calculation)
-    except UnknownTarget:
-        return None
-    return rec.scheduler if rec is not None else None
-
-
-def _going(job, here: _Here):
-    """``(going, said)`` -- whether the job is still going, its process or
-    the scheduler's list, ``None`` where this machine cannot ask -- and
-    that in words."""
-    from .joblist import going_here, this_host
-    if job.how == "here":
-        going = going_here(job)
-        return going, {True: "its process is going",
-                       False: "its process has ended",
-                       None: (f"on {job.host}: ask there"
-                              if job.host != this_host() else
-                              "this machine cannot tell")}[going]
-    from .scheduler.queue import listed
-    scheduler = _scheduler_of(job)
-    if scheduler is None:
-        from .scheduler.record import UnknownTarget, calculation_record
-        if calculation_record(job.calculation).is_file():
-            # THERE AND NOT READ, said as the record's own refusal says it
-            # -- an older molbuilder's copy naming `jobset migrate`.
-            return None, " ".join(
-                str(UnknownTarget.unreadable_copy(job.calculation)).split())
-        return None, ("its calculation's record of its machine is not here, "
-                      "so its scheduler cannot be asked")
-    answers = here.cluster(scheduler)
-    if job.cluster is not None and answers != job.cluster:
-        return None, (f"sent to cluster {job.cluster}: ask there"
-                      if answers is not None else
-                      "the scheduler cannot be asked here")
-    # THE SCHEDULER'S OWN WORDS for a job it holds -- its state and reason,
-    # so a job it took and will never start says why (`job-system.md`
-    # § 6.0a; `scheduler.md` R6).
-    answer = listed(scheduler, job.job_id)
-    if answer is None:
-        return None, "the scheduler cannot be asked here"
-    going, said = answer
-    if going:
-        return True, "the scheduler lists it" + (f": {said}" if said else "")
-    # ENDED, in its words while it still lists the job -- ``FAILED
-    # (NonZeroExitCode)`` -- and only then forgotten.
-    return False, (f"the scheduler lists it ended: {said}" if said
-                   else "the scheduler no longer lists it")
-
-
 def _shown(job, said: str) -> list:
     """The job, as `status` and `stop` show it: its id, how it went and what
     it is doing, when it went, and its calculation's status line."""
@@ -129,9 +60,9 @@ def cmd_jobs_status() -> None:
     scheduler, and each member's run as `jobset status` reads it.  A job
     that has ended is shown once, then its file is removed."""
     from .jobset.runstatus import job_members
-    from .joblist import JobFileError, every, forget
+    from .joblist import Asked, JobFileError, every, forget, is_going
     jobs = every()
-    here = _Here()
+    here = Asked()
     if not jobs:
         click.echo("no job launched from this machine is on file.")
         return
@@ -139,7 +70,7 @@ def cmd_jobs_status() -> None:
         if isinstance(job, JobFileError):
             click.echo(f"a job's file that does not read: {job}")
             continue
-        going, said = _going(job, here)
+        going, said = is_going(job, here)
         for line in _shown(job, said):
             click.echo(line)
         for stage, run, state in job_members(job.calculation,
@@ -162,7 +93,8 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
     reaches the engine -- or a queue job, its scheduler's cancel.  Shown and asked
     first; the calculation's ledger records the stop."""
     from .jobset.ask import confirm
-    from .joblist import JobFileError, NotGoing, find, signal_here
+    from .joblist import (Asked, JobFileError, NotGoing, find,
+                          is_going, scheduler_of, signal_here)
     try:
         job = find(job_id)
     except JobFileError as exc:
@@ -172,7 +104,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
         raise click.ClickException(
             f"no job {job_id} is on file -- `molbuilder jobs status` lists "
             f"them")
-    going, saying = _going(job, _Here())
+    going, saying = is_going(job, Asked())
     if going is None:
         raise click.ClickException(
             f"{job.id}: {saying} -- nothing was stopped")
@@ -206,7 +138,7 @@ def cmd_jobs_stop(job_id: str, yes: bool) -> None:
             how = f"SIGTERM to its process group, {job.pid}"
         else:
             from .scheduler.queue import cancel
-            how = cancel(_scheduler_of(job), job.job_id)
+            how = cancel(scheduler_of(job), job.job_id)
     except NotGoing as exc:
         raise click.ClickException(
             f"{exc} -- `molbuilder jobs status` says how") from None

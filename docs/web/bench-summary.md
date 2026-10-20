@@ -218,9 +218,13 @@ this be read"*), the HTTP refusals, and JSON.
 > file's own directory points at paths that do not exist — and the failure is
 > silent, not loud: every trial reads `unknown`, every measurement is `None`,
 > and the page shows a sweep that looks like one which simply has not started.
-> `bundle_for_sweep_file` asks the naming authority where the trials should be
-> and walks up until they are actually there, so the answer is checked against
-> the disk rather than guessed by climbing a fixed number of levels.
+> So the route asks whose bench container the file's folder is
+> (`materialize.bench_owner`: the calculation root through its one door,
+> `calcdirs.root_of`, and the folder matched against that calculation's
+> declared bench containers), opens that calculation
+> (`calculation.open`), and composes the sweep from it
+> (`summarize.sweep_view(calc, jobset)`); a folder that is no stage's bench
+> container of a calculation molbuilder described is refused (400).
 
 **Read-only means the record and the proposal, not every byte.** `sweep_view`
 never writes `bench-result.json`, and the report is `summarize`'s to print —

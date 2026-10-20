@@ -56,7 +56,7 @@ copies.
 ```mermaid
 flowchart TD
   subgraph TABS["The tab pages — thin consumers, the roster is tabs.md § 1"]
-    T["Molbuilder · Structure-opt · Spectrum · Transport<br/>Task setup · Results · This machine · Documents"]
+    T["Molbuilder · Structure-opt · Spectrum · Transport<br/>Task setup · Results · This machine · Documents · JupyterNB"]
   end
   subgraph MODS["Reusable front-end modules"]
     MV["MolView · VibrationView — the sibling 3D viewers"]
@@ -133,7 +133,7 @@ re-read 2026-09-29).
 Two cross-cutting contracts round out the domain (not mountable modules, but the
 rules every tab obeys): [`web-api.md`](?doc=web/web-api.md) (the server routes) and
 [`ui-contract.md`](?doc=web/ui-contract.md) (the CSS/layout conventions). And the
-[`tabs.md`](?doc=web/tabs.md) consumer doc shows how the six pages wire it all
+[`tabs.md`](?doc=web/tabs.md) consumer doc shows how the nine pages wire it all
 together.
 
 ## 5. The seam contract — the doors deliberately differ
@@ -171,8 +171,12 @@ projects, xyz-io — fully ES modules). What remains classic is the **Results-si
 stack and some shared plumbing**:
 
 - **Hybrid** (one foot in ESM — they `import` their deps as a module, but their
-  own body is still a classic IIFE): `trajectory`, `transport`, the one converted
-  presenter (`inspectors/structure`), and all four tab controllers.
+  own body is still a classic IIFE): `trajectory`, the three converted
+  presenters (`inspectors/structure`, `inspectors/spectra`,
+  `inspectors/transport`), and the three page controllers that mount MolView
+  (`selection-bootstrap`, `structure-optimization/viewer.js`,
+  `lib/transport/core.js`) — the op tabs' own modules are ES modules
+  ([`tabs.md`](?doc=web/tabs.md)).
 - **Still classic** (global scripts): the `spectra` engine, the `presenters`
   registry (+ its other viewers), the `results` shell, `form-schema`, the runtime
   registry itself, and the loose primitives (`markdown-render`, `detection-chip`,

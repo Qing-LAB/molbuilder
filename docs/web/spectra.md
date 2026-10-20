@@ -55,9 +55,9 @@ lands on both pages at once.
 ```mermaid
 flowchart TD
   ENG["lib/spectra/core.js — the whole spectra viewer<br/>form · chart · mode table · excited-state panel · 3D mode animation"]
-  TAB["/spectrum-calculation<br/>(spectra/viewer.js — compute + view)"] --> ENG
+  TAB["/spectrum-calculation<br/>(spectra/viewer.js — describe and Send; no result)"] --> ENG
   RES["Results tab<br/>(inspectors/spectra.js — view a *.spectra.json)"] --> ENG
-  ENG --> API["POST /api/task-setup/handover — hand the description to Task setup<br/>POST /api/spectra/load — read a finished .spectra.json"]
+  ENG --> API["GET /api/build/schema/pyscf and /siesta?calculation=vibration — the two forms<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json"]
 ```
 
 ## 2. The spectrum chart
@@ -457,7 +457,7 @@ that clause.
 The maths lives in `spectra/results.py :: motion_share_by_element`; the sentence
 is assembled in `lib/spectra/core.js :: _reportSwing`.
 
-## 5. The standalone tab — from a structure to a script
+## 5. The standalone tab — from a structure to a description
 
 On `/spectrum-calculation` the page is a short vertical workflow:
 

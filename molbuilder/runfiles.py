@@ -1391,7 +1391,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              door="transport.compose.read_provenance"),
     Artifact(name=GITIGNORE_FILE,
              what="which files the saved states keep by content in "
-                  "`.binsnapshots/` rather than in git",
+                  "`.binsnapshots/` rather than in git, and the engines' "
+                  "scratch, which they keep nowhere",
              when="setup", level="calculation", kind="record",
              writer="`checkpoint.save_before`, before every Save and prep and a "
                     "group's first launch",
@@ -1408,14 +1409,16 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "group's first launch",
              door="checkpoint.Repo"),
     Artifact(name=CALCDIR_FILE,
-             what="what this folder is in its calculation — a container or "
-                  "a run — and where the calculation is",
+             what="what this folder is in its calculation — a container, "
+                  "a run, or a run's scratch folder — and where the "
+                  "calculation is",
              when="prep", level="stage", kind="record",
              writer="the code that makes the folder: prep and launch "
                     "(`materialize.open_run` -- a stage's attempt, a bias "
                     "point's, a benchmark trial's, and the containers above "
-                    "each -- and `materialize.open_container`, a "
-                    "submission's `launch/` and `pseudos/`)",
+                    "each -- `materialize.open_container`, a "
+                    "submission's `launch/` and `pseudos/`, and "
+                    "`materialize.open_scratch`, a device run's `tsgf/`)",
              door="calcdirs.read"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",

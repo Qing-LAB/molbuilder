@@ -257,9 +257,9 @@ have undone that.
 § 1.3's mechanism — *the default selection is a group each engine declares* — is
 already live in the catalogue and already per-engine. Before this landed SIESTA
 declared 11 items in `group = "stage"` and PySCF declared 3, so PySCF's group
-described about a third of its own ladder. **It is 28 and 12 now** (`negf_neq_fermi_cutoff_kt` joined at 2.1.0, the two charge-check items at 2.3.0, `h_tolerance` at 2.9.5; the
-vibration kind's six electronic-structure-probe selectors left the group on
-2026-09-24 — nothing steps them per stage; [`engines/vibration.md`](?doc=engines/vibration.md)
+described about a third of its own ladder. **It is 30 and 12 now** (the
+vibration kind's six electronic-structure-probe selectors are not in it —
+nothing steps them per stage; [`engines/vibration.md`](?doc=engines/vibration.md)
 § 3.1), and the same UI, the same `varies` machinery and the same resolver
 serve both engines.
 
@@ -331,14 +331,13 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 |---|---|---|---|
 | `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | *(2)* `system_label`, `psml_lib` | *(1)* `job_name` |
 | `profile` | set once for the calculation | *(18)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(29)* `method`, `basis`, `functional`, `dispersion`, `solvent`, … |
-| **`stage`** | **the settings that typically vary across a sequence** | *(28)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ`, the transport rungs' own, … | *(12)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level`, … |
+| **`stage`** | **the settings that typically vary across a sequence** | *(30)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ`, the transport rungs' own, … | *(12)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level`, … |
 | `budget` | what it is allowed to spend | *(7)* `max_scf_iter`, `scf_must_converge`, `relax_steps`, `block_size`, `parallel_over_k`, `diag_algorithm`, `ts_solution_method` | *(1)* `scf_max_cycle` |
 | `output` | what the run writes | *(17)* the `write_*` set, `verbose_comments`, the transmission's `tbt_*` outputs and `tbt_progress`, `ts_hs_save` | *(10)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory`, `verbose_comments`, `write_molwatch_log`, `es_n_*` |
-| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | *(7)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart`, `continue_retries` | *(5)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart` |
+| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, how a run resumes, and how long before its wall it stops | *(8)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart`, `continue_retries`, `wall_slack` | *(6)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart`, `wall_slack` |
 
 The counts are the whole group — an item the engine shares with the other
-counted in both *(recounted 2026-10-16, `copy_psml` retired)* — the names a
-readable sample where the group is long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
+counted in both — the names a readable sample where the group is long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
 the five items that declare no `engines` list and therefore apply everywhere
 (`verbose_comments`, `write_molwatch_log`, `gpu_count`, `max_memory_mb`,
 `use_gpu`)
@@ -804,7 +803,7 @@ decks that are subtly wrong for the machine they run on.
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `use_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at prep (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
-| **what a rung needs from the runs before it** | a transport rung's `.TSHS` / `.TSDE` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`jobset/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
+| **what a rung needs from the runs before it** | a transport rung's `.DM`, `.TSHS`, `.TS.HSX` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`jobset/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
 > (clarified 2026-08-07, because the wording invited the other reading).
@@ -865,7 +864,9 @@ target's record. Each is stated or refused; none has a default
 `job-contracts.md § 6.2` lists the eigensolver as a config value that becomes a
 `.fdf` keyword and the GPU request as one *derived from* the `.fdf`.
 `running-a-job.md § 2.3` says which of the two actually moves the wrapper:
-**only `Diag.ELPA.GPU true` re-routes**, to `molbuilder-siesta-gpu`. CPU-ELPA
+**only a job that uses a GPU re-routes**, to `molbuilder-siesta-gpu` — the
+job's GPU request (`jobset.model.gpu_request`), the same `use_gpu` the deck
+writes as `Diag.ELPA.GPU .true.`. CPU-ELPA
 does not, because the packaged SIESTA carries ELPA through ELSI and runs it on
 CPU. The two environments differ by **provenance** — one installs from packages
 anywhere, the other has to be built from source — so this is not a hardware
@@ -1067,10 +1068,11 @@ override, a pin, or a benchmark axis, so a column the table offers is a column
 `prep` will accept, by construction rather than by agreement.
 
 Concretely, for SIESTA that means the physics settings, and **not** the run
-settings: `restart`, `continue_retries`, `use_gpu`, `diag_algorithm`,
-`block_size` and `parallel_over_k`, which a person answers on the run card,
-nor `mpi_np`, `omp_threads`, `gpu_count` or `max_memory_mb`, which the machine
-answers. *(`restart`, `continue_retries` and `use_gpu` were columns until
+settings (`template.run_settings`): `restart`, `continue_retries`,
+`wall_slack`, `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`,
+`ts_solution_method` and `ts_elecs_out_of_core`, which a person answers on
+the run card, nor `mpi_np`, `omp_threads`, `gpu_count` or `max_memory_mb`,
+which the machine answers. *(`restart`, `continue_retries` and `use_gpu` were columns until
 2026-09-30.)* A surface that instead borrows the parameter form's list gets
 a different and smaller answer, because that form filters out the whole staging
 panel on purpose: it does not ask a person how many ranks the scheduler granted.
@@ -1178,7 +1180,7 @@ to ask it is refused, naming the line that picks them. `prep bench
 coarse`, not `prep bench`; `--from 01_coarse/run-0`, not `--from run-0`.
 Taking the lone stage without asking would be a rule that holds only at length
 one and silently stops holding when a second stage is added — the implicit kind
-this section exists to delete. The cost is one answer, or one `--stage`; what it buys is that the command a user
+this section exists to delete. The cost is one answer, or one `--group`; what it buys is that the command a user
 learns on their first calculation is the command that still works on their
 tenth.
 
@@ -1861,9 +1863,9 @@ ever disagree that one wins.
 projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 ├── <label>.template.toml               ← the science backbone
 ├── task.json                          ← what each stage tunes, and the run id
-├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
+├── pseudos/  Au.psml  S.psml  …       ← shared, stored ONCE
 ├── 01_coarse/                         ← written by `prep`, on the target
-│   ├── <label>_01_coarse.fdf             ← template ⊕ coarse ⊕ this machine
+│   ├── <label>_01_coarse.fdf             ← template ⊕ coarse ⊕ its run card
 │   ├── <label>_01_coarse.run.sh          ← its wrapper, for this machine
 │   ├── mb_monitor.pyz                 ← the monitor's one file, beside it
 │   ├── Au.psml  …                     ← a real copy of the shared pseudopotential
@@ -1871,7 +1873,7 @@ projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 └── 02_tight/
     ├── <label>_02_tight.fdf
     └── run-0/
-        ├── <label>.XV                 ← a real copy of the coarse run you chose
+        ├── <label>.XV                 ← real copies, from the coarse run it continues
         └── <label>.DM                    (SIESTA names these, so they are bare)
 ```
 
@@ -1887,7 +1889,7 @@ and never a filename (`run-identity.md § 2.0a`). A molbuilder-named file adds
 flowchart LR
     T["<b>&lt;label&gt;.template.toml</b><br/>functional · basis · k-grid<br/>every parameter — the hardware's<br/>named, not answered"]
     J["<b>task.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
-    M["<b>this machine</b><br/>ranks · solver · GPU"]
+    M["<b>its run card, or prep's flags</b><br/>ranks · solver · GPU<br/>for the machine it runs on"]
     DC["<b>01_coarse/&lt;label&gt;_01_coarse.fdf</b>"]
     DT["<b>02_tight/&lt;label&gt;_02_tight.fdf</b>"]
     T --> DC
@@ -1905,10 +1907,12 @@ its own stage directory, on the machine that will run it.
 **The deck is rendered where the machine is known, and that is not deferral for
 its own sake.** Some of what goes *inside* a `.fdf` is a fact about the hardware:
 the BENCH-MARKS window a `BlockSize` may use is drawn from the rank count and
-whether there is a GPU (`siesta/input.py` `_block_size_bounds`), and `Diag.ELPA.GPU` picks both the numerics
-and the conda environment the wrapper activates (§ 5). A deck finished on a
+whether there is a GPU (`siesta/input.py` `_block_size_bounds`), and whether
+the job uses a GPU picks both the numerics (`Diag.ELPA.GPU`) and the conda
+environment the wrapper activates — the job's GPU request
+(`jobset.model.gpu_request`), the same `use_gpu` the deck writes (§ 5). A deck finished on a
 laptop is either wrong for the cluster or guessing. So the parent carries a
-**template** and `prep` completes it — the same shape `bench prep` already ships,
+**template** and `prep` completes it — the same shape `prep bench` already ships,
 where the bundle is portable until the target formats it
 (`project-layout.md § 2.2`).
 
@@ -2014,8 +2018,8 @@ there; producing twice is `execution/run-identity.md § 6`, and those files are
 the point.
 
 **And a produce that replaces an earlier one may make the folder match the
-description exactly — because it checkpoints first.** Remove a stage, or disable
-one, and the deck it produced last time is still there, with a wrapper that still
+description exactly — because it checkpoints first.** Remove a stage, and the
+deck it produced last time is still there, with a wrapper that still
 runs it, describing a calculation the description no longer contains. Left alone
 that breaks the premise every rule here rests on: that a folder's contents are
 what its description says they are.
@@ -2024,7 +2028,8 @@ The answer is not to tiptoe around the orphans. It is
 [`molbuilder checkpoint`](?doc=execution/running-a-job.md) § 6, which already puts
 a run directory under a git-backed history — text tracked (including the small
 `.XV` / `.CG`, *"so a restore brings back a resumable state"*), large binaries
-archived by content and deduped:
+archived by content and stored once, and the engine's scratch in neither
+store ([`checkpointing.md`](?doc=execution/checkpointing.md) S1):
 
 > **A replacing produce checkpoints the folder before it writes anything.**
 > A stage the description no longer contains keeps its files, untouched
@@ -2032,18 +2037,13 @@ archived by content and deduped:
 > nothing is lost, because the prior state is a commit — restore it, or
 > branch from it.
 
-A produce that only rewrites decks changes only text, so that half is cheap.
-**The binary half is not, today.** The archive is keyed by commit sha and copies
-every big binary on every checkpoint — the *"deduped by content"* in the shipped
-guide describes deduping basenames within one MANIFEST, not storage across
-checkpoints (`execution/checkpointing.md`, I1 and § 12 *Disk cost*). A mission
-checkpointed at
-both of § 7.3's boundaries pays two full copies of its `.DM` set per stage, so a
-careful five-stage run would pay ten unless the store is content-addressed first.
-**Storing identical content once was therefore a prerequisite for § 7.3 rather
-than a later optimisation**,
-and it landed on 2026-08-06: content already in the archive is hard-linked, so a
-checkpoint of unchanged binaries costs no disk.
+A produce that only rewrites decks changes only text, so that half is cheap —
+and so is the binary half: an archive is named by the sha256 of its own
+MANIFEST, and a large file whose content an earlier archive already holds is
+hard-linked into the new one, so a checkpoint of unchanged binaries costs no
+disk ([`checkpointing.md`](?doc=execution/checkpointing.md) § 3.1, I1, § 12
+*Disk cost*). That is what lets a mission be checkpointed at both of § 7.3's
+boundaries without paying for its `.DM` set twice per stage.
 
 The warm files are never removed by any of this: they belong to the calculation,
 not to any one stage (`execution/run-identity.md § 6`).
@@ -2188,7 +2188,9 @@ were written for a flat directory and would silently have lost data in a tree.
   target's record names a scheduler with no queue. Everything site-specific is
   baked at generate/prep, and at run time the wrapper reads only the
   allocation -- what the scheduler granted, in molbuilder's names, said by the
-  job's header -- and the hardware.
+  job's header; for a run here, the wall its launch tells it (`MB_WALL_S`,
+  [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) -- and the
+  hardware.
 - **The run id, its normalisation, and the engine's identity group** —
   [`execution/run-identity.md`](?doc=execution/run-identity.md).
 - **The run directory, filenames, reserved script blocks, warm-restart files, the

@@ -20,8 +20,7 @@ front of it**.
 
 ## 1. Running it
 
-**`serve` is a group of verbs** *(2026-08-28; the bare `molbuilder serve`
-form was retired with it — a verb is named, never implied)*:
+**`serve` is a group of verbs** — a verb is named, never implied:
 
 ```bash
 python -m molbuilder serve start        # background: detach, log, pidfile
@@ -105,10 +104,10 @@ question, not a verdict: without a diagnosis, an automatic kill could
 interrupt real user work on a guess. The order is diagnosis first
 (the stack dump above), then a **human** decides (`serve restart`).
 
-**`serve status` with no `--port` surveys.** It used to default to 8000, so a
-molbuilder on any other port was reported *"not running"* — the one answer
-worse than none, because it is confidently wrong while the port sits on disk
-(`runtime_dir()` holds one `serve-<port>.pid` per server). With no `--port` it
+**`serve status` with no `--port` surveys.** A status that answered for one
+default port would report a molbuilder on any other port *"not running"* —
+the one answer worse than none, because it is confidently wrong while the
+port sits on disk (`runtime_dir()` holds one `serve-<port>.pid` per server). With no `--port` it
 lists every server that has a pidfile, each verified with `pid_state` and each
 probed for an answer, and says whether a notebook is held beside it; naming a
 `--port` gives the single-server detail exactly as before. A miss on a named
@@ -125,8 +124,8 @@ detections and respawns reads in one place, whoever asked and whenever.
 
 ### 1.0d `serve foreground` — the terminal-bound run
 
-Exactly the old behaviour under its honest name: supervisor + child in
-your terminal, `Ctrl-C` to stop. The development mode.
+Supervisor + child in your terminal, `Ctrl-C` to stop. The development
+mode.
 
 Flags (shared by `foreground` and `start`; `molbuilder/cli.py`):
 
@@ -252,6 +251,21 @@ python -c "from molbuilder.web.app import create_app; \
 print([str(r) for r in create_app(config={}).url_map.iter_rules() if 'bench' in str(r)])"
 ```
 
+**Update every molbuilder that opens a calculation before a newer one saves
+there — this server included, restarted.** The server saves and restores
+calculations too (the checkpoint routes, Task setup's Prep and Save), and a
+molbuilder older than the records it reads reads them wrong. From 2.24.0 a
+save removes the engine's scratch from every archive of the calculation's
+checkpoint and keeps each archive's MANIFEST and name
+([`checkpointing.md`](?doc=execution/checkpointing.md) S1, I1). A molbuilder
+before 2.24.1 can check a MANIFEST entry of the scratch against its file —
+any release before 2.24.0, and 2.24.0 on a history that records no engine —
+so on such a folder it calls the archive damaged: it refuses to restore a
+state whose archive lost its scratch, and refuses a save that would reuse
+such an archive. So on every machine that opens the same calculation folders
+— the cluster you prep on, this server, a laptop holding a copy — update
+molbuilder and `serve restart` before the first save with 2.24.1.
+
 There is **no `--workers` flag and no built-in production server** — `serve`
 always runs Flask/Werkzeug's dev server in one process. To run it under gunicorn
 or behind nginx, *you* wrap it; molbuilder doesn't spawn workers, and its rate
@@ -281,10 +295,8 @@ TLS-terminating proxy (and binding loopback), or knowingly passing
 > So `molbuilder serve start --host 0.0.0.0 --cert … --key …` passes the guard yet
 > exposes a **public, unauthenticated, fully read/write/delete `projects/` tree** —
 > TLS only encrypts the wire. (The guard's own message says so: *"TLS IS NOT
-> AUTHENTICATION — it encrypts the wire and gates nothing"*. It read *"molbuilder
-> has no built-in auth"* until 2026-09-21 — true of a server with no `auth`
-> section, false of one with providers configured — so it now states the
-> condition instead of the unconditional claim.) A real public deployment must
+> AUTHENTICATION — it encrypts the wire and gates nothing"*.) A real public
+> deployment must
 > **turn auth on** (§3) **or** sit behind a
 > proxy that authenticates (§2); `--cert/--key` alone is defense-in-depth, not
 > access control.
@@ -512,8 +524,8 @@ using the server is disconnected, and workspace writes still in flight are lost
 ## 5. Configuration — `molbuilder.json`
 
 The server reads **`molbuilder.json`** from ONE place — the config directory
-(`configuration.md` § 2.1c). It searched three until 2026-08-31; a
-`./molbuilder.json` is no longer read at all:
+(`configuration.md` § 2.1c); a `./molbuilder.json` in the launch directory is
+not read:
 
 ```mermaid
 flowchart LR
@@ -549,17 +561,10 @@ the file may hold, what it is for and who reads it is
 There are **no server environment-variable knobs** — in particular
 `MOLBUILDER_LOG` appears in a code comment but is *not* wired, so don't rely on it.
 
-**No config file ships in this repository, deliberately** *(2026-09-12)*.
-Until then two did — a `molbuilder.json.example` and a `molbuilder.asu-sol.json`
-carrying one cluster's real partition, QOS and GPU settings. Both are deleted: a
-configuration file is **yours**, and a repository that keeps a copy is keeping
-somebody's machine in version control. Two things made it concrete rather than
-tidy-minded — the example was a *second* template for a job
-`molbuilder envs init-config` already does by generating one, so one of the two
-was always the stale one (on 2026-09-12 it was still sending people to the
-retired `~/.molbuilder/` for their secrets); and the site preset advertised a
-`--mem` estimator from a module that does not exist, so it promised protection
-from the exact OOM it would let you hit.
+**No config file ships in this repository, deliberately**: a configuration
+file is **yours**, and a repository that keeps a copy keeps somebody's machine
+in version control — and a second template beside the one
+`molbuilder envs init-config` generates is the one that goes stale.
 
 **Where the template comes from now:** `molbuilder envs init-config` writes it,
 and `envs bootstrap` runs that at the end of a first install. It seeds every
@@ -592,13 +597,9 @@ else `~/.config/molbuilder`** (`molbuilder.config_dir.config_dir`,
 one `molbuilder auth-setup` writes to, so a wizard-generated deployment and a
 hand-made one put their secrets in the same place.
 
-> **Corrected 2026-08-26, and settled 2026-08-31.** This section was headed
-> *"The `~/.molbuilder/` directory"* and told you to create one, while the
-> code had always used `config_dir()`. The 2026-08-26 note said "nothing
-> needs moving — point `secret_key_file` wherever your files already are",
-> and that advice is now void in both halves: `secret_key_file` is retired
-> (§ 2.1e) and `~/.molbuilder/` no longer exists. **Files there must move**
-> to the config directory, where the wizard and the server both look.
+> **Files in an older `~/.molbuilder/` must move** to the config directory,
+> where the wizard and the server both look: `~/.molbuilder/` is not read, and
+> `secret_key_file` is refused by name (`configuration.md` § 2.1e).
 
 Being able to move the directory is not decoration. On an HPC login node
 `$HOME` is NFS-mounted and often snapshotted; `MOLBUILDER_CONFIG_DIR=/scratch/$USER/molbuilder`
@@ -618,7 +619,7 @@ mkdir -p -m 700 "$cfg"
 # The Flask session-signing key.  Nothing references it BY PATH -- the name
 # and the location are the contract (configuration.md § 2.1e), and the server
 # creates it on first run if you skip this.  Every credential lives in
-# `secrets/` as of 2026-09-20; nothing molbuilder keeps sits beside the config.
+# `secrets/`; nothing molbuilder keeps sits beside the config.
 mkdir -p -m 700 "$cfg/secrets"
 python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secrets/secret_key"
 chmod 600 "$cfg/secrets/secret_key"

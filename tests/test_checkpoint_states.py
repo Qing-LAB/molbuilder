@@ -181,28 +181,31 @@ def test_every_regular_file_is_in_exactly_one_store(calc):
         "ordinary directory")
 
 
-def test_the_engines_scratch_is_in_neither_store_and_stays(tmp_path,
-                                                           checkpoint_config):
-    """S1's second exclusion: what the engine's vocabulary names scratch --
-    asked of it, never listed here -- is in neither store, reads as no
-    unsaved work, and a restore leaves it where it lies.  The failure it
-    guards: a device run's two Green's-function files (98 of 99 GB on Sol)
-    copied into every save, or swept away by a restore while a run reads
-    them."""
+def test_the_engines_scratch_is_in_neither_store_and_a_restore_removes_it(
+        tmp_path, checkpoint_config):
+    """S1's second exclusion: what an engine's vocabulary names scratch --
+    asked of it, never listed here, and of no engine the folder records --
+    is in neither store, reads as no unsaved work, and a restore removes it
+    as it removes every file the target does not hold, leaving no run folder
+    the target never had.  The failure it guards: a device run's two
+    Green's-function files (98 of 99 GB on Sol) copied into every save, and
+    a restore that leaves a `run-N/` behind which every reader counts as an
+    attempt."""
     from molbuilder.warmfiles import scratch_families
     checkpoint_config(size_limit_bytes=1024)
     root = tmp_path / "AuBDTAu_device"
-    (root / "04_device" / "run-0" / "tsgf").mkdir(parents=True)
+    root.mkdir()
     (root / "job.fdf").write_text("SystemLabel job\n")
     repo = Repo(str(root))
-    first = repo.init(engine="siesta", note="set up")
-    families = scratch_families("siesta")
+    first = repo.init(note="set up")              # no engine recorded
+    families = scratch_families()
     assert families, "the SIESTA vocabulary names its scratch"
-    scratch = [root / "04_device" / "run-0" / "tsgf" / f"job{pat[1:]}"
-               for pat in families]
+    run = root / "04_device" / "run-0"
+    (run / "tsgf").mkdir(parents=True)
+    scratch = [run / "tsgf" / f"job{pat[1:]}" for pat in families]
     for path in scratch:
         path.write_bytes(BIG)                     # big by size, too
-    (root / "04_device" / "run-0" / "job.TSDE").write_bytes(BIG)
+    (run / "job.TSDE").write_bytes(BIG)
     state = repo.save("a device run")
     tracked, archived = _tracked(repo), _archived(repo, state)
     for path in scratch:
@@ -211,8 +214,42 @@ def test_the_engines_scratch_is_in_neither_store_and_stays(tmp_path,
     assert "04_device/run-0/job.TSDE" in archived, "the rest is still stored"
     assert repo.status(deep=True).clean, "scratch is no unsaved work"
     repo.restore(first.id, force=True)
-    assert all(p.is_file() for p in scratch), "a restore leaves the scratch"
-    assert not (root / "04_device" / "run-0" / "job.TSDE").exists()
+    assert not any(p.exists() for p in scratch), "a restore removes it"
+    assert not run.exists(), "and leaves no run the target never had"
+
+
+def test_a_save_clears_the_scratch_an_older_archive_holds(tmp_path,
+                                                         checkpoint_config):
+    """I1's one removal: an archive published while the scratch was stored
+    loses those files at the next save -- its MANIFEST and name kept, every
+    other file kept -- and still verifies, so the state it belongs to still
+    restores.  The failure it guards: 98 GB of Green's functions an older
+    save copied into `.binsnapshots/` held forever, or a clearing that takes
+    a file a state needs."""
+    from molbuilder.checkpoint import (archive_dir, prune_scratch,
+                                       publish_archive, verify_archive)
+    from molbuilder.warmfiles import scratch_families
+    checkpoint_config(size_limit_bytes=1024)
+    root = tmp_path / "AuBDTAu_device"
+    (root / "04_device" / "run-0" / "tsgf").mkdir(parents=True)
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    repo = Repo(str(root))
+    repo.init(engine="siesta", note="set up")
+    run = root / "04_device" / "run-0"
+    scratch = run / "tsgf" / f"job{scratch_families()[0][1:]}"
+    scratch.write_bytes(BIG)
+    (run / "job.TSDE").write_bytes(BIG)
+    # AN OLDER SAVE'S ARCHIVE: the scratch among its large files.
+    digest = publish_archive(root, [run / "job.TSDE", scratch])
+    adir = archive_dir(root, digest)
+    assert (adir / key_of(root, scratch)).is_file()
+    subprocess.run(["git", "config", "--unset", "molbuilder.scratchCleared"],
+                   cwd=root, check=False)
+    prune_scratch(root)
+    assert not (adir / key_of(root, scratch)).exists(), "the scratch is gone"
+    assert (adir / "04_device/run-0/job.TSDE").is_file(), "the rest stays"
+    assert (adir / "MANIFEST.do_not_edit").is_file()
+    assert set(verify_archive(root, digest)) == {"04_device/run-0/job.TSDE"}
 
 
 def test_the_two_stores_are_never_stored(calc):
@@ -1708,9 +1745,12 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
     """S1a's test, and no fixture can be too short for it.
 
     If git is told to skip something the archive does not take, that file is in
-    no store -- and this catches it without any file existing at all.
+    no store -- and this catches it without any file existing at all.  The
+    one family besides the archive's is the engines' scratch, which no store
+    takes on purpose (S1), asked of their vocabularies.
     """
     from molbuilder.checkpoint import ARCHIVE_DIR
+    from molbuilder.warmfiles import scratch_families
     always = calc.classification()["always_large"]
     text = (calc.root / ".gitignore").read_text()
     block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
@@ -1719,7 +1759,8 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        assert line in set(always) | {ARCHIVE_DIR + "/"}, (
+        assert line in (set(always) | set(scratch_families())
+                        | {ARCHIVE_DIR + "/"}), (
             f"{line!r} is ignored by git and taken by nothing")
 
 
@@ -2761,10 +2802,10 @@ def _the_block_matches(shipped, engine):
     repo.init(engine=engine, note="set up")
 
     from molbuilder.warmfiles import scratch_families
-    # S1a: the archive's patterns, and the engine's scratch asked of its own
-    # vocabulary (S1) -- nothing else.
+    # S1a: the archive's patterns, and the engines' scratch asked of their
+    # vocabularies (S1) -- nothing else.
     allowed = (set(get_checkpoint(engine)["always_large"])
-               | set(scratch_families(engine)) | {ARCHIVE_DIR + "/"})
+               | set(scratch_families()) | {ARCHIVE_DIR + "/"})
     text = (root / ".gitignore").read_text()
     block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
                 .split("=== molbuilder checkpoint END ===")[0]

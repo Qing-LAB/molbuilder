@@ -182,8 +182,10 @@ count from the job's start, never their own. No scheduler is asked: the
 count is the same in a job that cannot reach its scheduler's commands. The
 launch record is read on each wake until it is there — the sender writes it
 as the scheduler answers, and a job can start first. Each `[STATUS]` line
-says the count — *wall 4h: 21m left* — and a run with no wall stated (a run
-here) says none. A record or a wall that does not read, or a header that
+says the count — *wall 4h: 21m left* — and a run here says none: its launch
+record names no queue and so no wall, though its engine is told the wall
+its own job states ([`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 3.6). A record or a wall that does not read, or a header that
 states no start (one written before it did), is said once in a `[WALL]`
 line, and nothing is counted. **A run of points' points count nothing**: the
 run's one launch record lies in the run's folder, and each point's monitor,

@@ -213,7 +213,8 @@ class Said:
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
             prompt=None, question: str = "submit this?",
-            err: bool = False, other=None, default: bool = True) -> Said:
+            err: bool = False, other=None, default: bool = True,
+            unanswered: str = "nothing sent") -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
@@ -228,6 +229,8 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     :attr:`Said.other` and its words ``word``.  ``prompt`` then returns what
     was typed.  ``default`` is what Enter answers: yes, but for a question
     whose yes cannot be taken back (`molbuilder jobs stop`, ``[y/N]``).
+    ``unanswered`` is what nobody's answer leaves undone, said in the
+    record of the question (``nothing sent``, ``nothing removed``).
     """
     import click
     # THROUGH THE GUARDED DOOR: a bare `sys.stdin.isatty()` raises on exactly
@@ -245,7 +248,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
         # permission: nothing goes, and the launch REFUSES -- naming the
         # flag -- so a script reading the exit code is not told it went
         # (`submission.md` S4; `job-system.md` § 6.0, step 3).
-        return Said(False, "no answer (not a terminal): nothing sent",
+        return Said(False, f"no answer (not a terminal): {unanswered}",
                     asked=False)
     if other is None:
         prompt = prompt or (lambda: click.confirm(f"  {question}",

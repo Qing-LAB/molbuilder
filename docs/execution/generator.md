@@ -287,7 +287,7 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 | | stated in | shape |
 |---|---|---|
 | **capability** | the target machine's record, `environment.json` — **its hardware and its queues**, probed on that machine and copied here ([`configuration.md` § 5](?doc=configuration.md)) | the domain menu (probed into `environment.json`) carries **limits** (`max_time`, `max_mem_gb`, `node_types`) and the **probed GPU inventory** of each row — the facts § 4.3a's GPU family and its cell-by-cell fit check read |
-| **allocation** | the command, at `prep` — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, and the domain |
+| **allocation** | `task.json` — a stage's run card (`execution`), then the description's `allocation` — with `prep`'s flags over both (`prep_inputs.prep_run_inputs`) — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, memory, and the domain |
 | **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
 
 ### 4.2 The third `prep` input: a parameter **pin**
@@ -354,7 +354,7 @@ because both halves are real and they are different acts:
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
 | **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template for the bench's trials *(user rule, 2026-08-20)* — and only for them: what the RUN uses is `execution`, its own block (below) |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
-| **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep task` |
+| **what was fastest** | `<stage>/bench/bench-result.json` | **measured** — a report a person reads; the next `prep task` reads only what that person then writes in `execution` (`prep_inputs.prep_run_inputs`: no second rung) |
 
 > **Precedence when several sources name one knob** — the full ladder is
 > [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a run's
@@ -611,9 +611,9 @@ framework rule, not a script patch)*:
 - **`summarize` is allocation-blind**, spanning
   whichever trials have landed: `job-set.json`
   records each trial's point (the coordinate as data, never parsed back
-  from a name), the winner is matched by its label, and the proposal's
-  `[pins]` carry the winner's value coordinates — already pin-shaped for
-  the precedence overlay above.
+  from a name), the winner is matched by its label, and the report's
+  `execution` block carries the winner's value coordinates — what a person
+  writes into `task.json` for the run to use (§ 4.3a).
 - **Comparability is stated, not assumed**: CPU trials compare across
   same-silicon partitions; GPU numbers are the GPU build's own; the
   verdict reports per-combination facts and choosing stays yours
@@ -663,13 +663,14 @@ the maximum?* — is § 4.1's priority trade, and no measurement settles it:
 | **the benchmark** | a short, high-priority domain | trials are minutes — SCF capped, MD steps zeroed — so they fit a short limit and get scheduled quickly |
 | **the real run** | a long domain — on Sol, `public`/`general` at 7 days, `highmem` at 2, or `long` QOS at 14 | the calculation needs the time; and the more resources it asks for, the longer it waits |
 
-**So the two halves of `bench-result@1` are not a nicety — they are what makes
-this work**, and the existing split is already the right one:
+**So what `bench-result@1` carries splits by whether it crosses**, and the
+record holds no sizing at all — no wall, no memory (`project-layout.md`
+§ 2.3.2):
 
-| half | what it is | crosses to another cluster? |
+| part | what it is | crosses to another cluster? |
 |---|---|---|
 | **`choice`** | the **mechanism** — which engine build, ranks per GPU, block size | **yes, unchanged** — provided the node type is comparable |
-| **`recommend`** | **sizing measured on that machine** — memory from peak + 15%, walltime from seconds-per-iteration × assumed iterations | **no.** It is a measurement of a specific node, and it is labelled as a starting point for exactly this reason |
+| **`points`** | each trial's measurement — its timings and what the monitor sampled, on the node it landed on | **no.** It is a measurement of specific nodes, which is why each trial records the machine it ran on (§ 4.4b) |
 
 > **⭐ The condition is checkable — but only against the MACHINE, and a queue
 > cannot answer for it** *(rewritten 2026-08-27)*. `choice` carries *"provided
@@ -792,7 +793,9 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 
 ## 6. The module map — one direction, no cycles
 
-**Top-down, and each module is named for the floor it serves.** A module may
+**Top-down, and each module is named for the floor it serves** — the picture
+names the modules this document leans on; every module's floor is
+[`architecture.md`](?doc=execution/architecture.md) § 2.1's table. A module may
 import downward and never upward, which is
 [`execution/architecture.md`](?doc=execution/architecture.md) § 1's floor rule
 expressed as files *(the link said bare `architecture.md`, which resolves to
@@ -801,13 +804,13 @@ the ROOT doc of that name — a wrong page, worse than a dead one; F-9,
 
 ```mermaid
 flowchart TB
-    F7["<b>7 · surfaces</b><br/><code>cli/</code> · <code>web/</code>"]
-    F6["<b>6 · observe</b><br/><code>jobset/runstatus</code> · <code>parse/dirs</code>"]
+    F7["<b>7 · surfaces</b><br/><code>cli</code> · <code>jobset/_cli</code> · <code>web/</code>"]
+    F6["<b>6 · observe</b><br/><code>jobset/runstatus</code> · <code>jobset/summarize</code>"]
     F5["<b>5 · launch</b><br/><code>jobset/submit</code>"]
-    F4["<b>4 · layout</b><br/><code>jobset/materialize</code> · <code>jobset/shape</code>"]
-    F3["<b>3 · plan &amp; render</b><br/><code>resolve/</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
+    F4["<b>4 · layout</b><br/><code>jobset/materialize</code> · <code>jobset/gather</code>"]
+    F3["<b>3 · plan &amp; render</b><br/><code>resolve</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
     F2["<b>2 · description</b><br/><code>task</code> · <code>template</code>"]
-    F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>environment</code>"]
+    F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>runfiles</code> · <code>paths</code> (<code>Shape</code>) · <code>scheduler/</code> · <code>parse</code>"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
 ```
 
@@ -819,7 +822,7 @@ flowchart TB
 | **`template.py`** | 2 | read and write `<label>.template.toml`; the `Item` type; narrow the catalogue to one engine and fill in values (`template_with_values`) | a template that was written by a CLI command and read back by nothing — `prep` now rebuilds the config from it |
 | **`resolve.py`** | 3 | template + task + `Environment` + **allocation** + sweep + pins (+ the specialisation's `MachineTranslation`) → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder (folding at step 6) |
 
-**`resolve/` is the hinge, and it is where the duplication dies.** Everything
+**`resolve` is the hinge, and it is where the duplication dies.** Everything
 `bench/` does that is not measurement-specific is one of `prep`'s five steps; once
 the resolver returns a list, the benchmark's build-and-lay-out half has nothing
 left to implement.
@@ -856,16 +859,22 @@ already have happened at each step, what it leaves behind, and what it may not d
 states it at three resolutions.
 
 Two of its rules bear directly on § 6.1 above. **Step 4 follows step 3 as a data
-dependency, not a convention**: the wrapper reads the rendered deck for the
-environment and the rank count, and a wrapper written first gets both wrong
-*silently, because both wrong answers are also the defaults*. **Step 5 links; it
-never copies and never renders**: everything under the tree points at what steps
-3 and 4 wrote at the root.
+dependency, not a convention**: the wrapper reads the rendered deck for what
+it will do — whether it reads the state a previous run left, which history
+files it writes, and a SIESTA deck's atom count — and a wrapper written first
+would describe a deck it had not seen. The environment it activates is the
+job's GPU request (`jobset.model.gpu_request`), never the deck's text.
+**Step 5 copies;
+it never renders**: each run folder receives a real copy of what steps 3 and 4
+wrote in the stage's folder (`materialize.bring_files`), never a link.
 
-> **Why the artifacts land at the root and the tree holds links** — the same
-> reason § 3.1 gives for objects. One home for a fact, and a reference to it
-> everywhere else. A copy per attempt would be a second home that drifts the
-> first time somebody edits one.
+> **Why a copy and not a link** — a run folder holds everything its engine
+> reads, and a link holds nothing once the folder is moved to another machine;
+> for a file the engine writes, a link would reach back and overwrite the
+> result it was taken from ([`project-layout.md`](?doc=execution/project-layout.md)
+> § 1.5, *Where a run happens*). The stage's folder stays the one home of
+> what was rendered: a run's copy is never rendered again, and a stage
+> prepared again is prepared whole.
 
 ---
 

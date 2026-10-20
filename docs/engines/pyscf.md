@@ -42,12 +42,12 @@ flowchart LR
         S["Structure"]
         C["PySCFConfig<br/>(config/pyscf.py)"]
     end
-    PREP["CLI: molbuilder jobset prep<br/>(via the template)"]
+    PREP["molbuilder jobset prep task<br/>(or Task setup's Prep — the same function),<br/>from the description and its template"]
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no script</i>"]
-    R["spec_for(struct, config, *, names) → DeckSpec<br/>pyscf/input.py"]
+    R["spec_for(struct, config, *, names, calculation) → DeckSpec<br/>pyscf/input.py"]
     P["prepare_deck(spec, …)<br/>script_emit.py<br/><i>validate → render_deck → write → check</i>"]
-    PY["job.py — a runnable script"]
-    RUN["running it → job.log · job.chk ·<br/>*_optimized.xyz · job.molwatch.log · …"]
+    PY["&lt;label&gt;_&lt;NN&gt;_&lt;stage&gt;.py — a runnable script,<br/>with its run script and mb_pyscf.pyz beside it"]
+    RUN["jobset launch task runs it (its run script) →<br/>&lt;label&gt;_&lt;NN&gt;_&lt;stage&gt;.log · &lt;label&gt;.chk ·<br/>*_optimized.xyz · …molwatch.log · …"]
     S --> R
     C --> R
     PREP --> R
@@ -75,8 +75,8 @@ flowchart LR
 >
 > A deck is written by `jobset prep` from a description — `spec_for` →
 > `prepare_deck`, the same three steps with the description in front of them
-> instead of a command line; `prep.py:651` already builds a full `EngineSeam`
-> for PySCF, so nothing had to be built to replace the verb.
+> instead of a command line; `jobset/engines.py::engine_seam` builds a full
+> `EngineSeam` for PySCF, so nothing had to be built to replace the verb.
 
 - **Backend.** `spec_for(struct, config, *, names, calculation=…)` returns the
   `.py` deck's `script_emit.DeckSpec` — its layout, how each setting is
@@ -491,8 +491,10 @@ one for me*.
 
 A PySCF deck is its own engine, so the wall reaches it as a deadline it
 reads at start from its environment — `MB_WALL_S` (the seconds the job was
-sent with: the launch sets it, on the send line or in a direct run's
-environment), `MB_JOB_STARTED` (the job's start, an epoch second: the
+sent with, set by the launch: on a queue, on the send line — the wall of the
+header prep wrote, or the launch's `--time` restating it; a run here, in its
+environment — its run card's wall, each member of a walk its own; a run
+whose card states no wall is told none), `MB_JOB_STARTED` (the job's start, an epoch second: the
 header sets it, or the run script where the header stated none) and
 `MB_WALL_SLACK_S` (the run card's `wall_slack`: the run script sets it)
 ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6);
@@ -509,6 +511,7 @@ any of them absent, no deadline, and the deck runs until it is done.
   — the log's footer carries the error and the run reads `failed` with that
   reason, since a spectrum half computed is no result; a launch runs it
   again, its relaxation phase resuming as above.
+
 ## 4. The unified molwatch-log format
 
 `<job>.molwatch.log` is the engine-agnostic per-step trajectory log — **this is the

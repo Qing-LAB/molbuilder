@@ -170,7 +170,7 @@ flowchart TD
     LH["the lead's .TSHS<br/>H(R), S(R) and its Fermi level E_F"]
     SE["Σ_L, Σ_R at each energy E<br/>and each k-point in the electrode plane<br/>the endless lead summed exactly (Lopez Sancho)<br/>from H − E_F·S: aligned to the lead's own E_F"]
     DEV["4 · device — TranSIESTA, NEGF<br/>samples kgrid × 1, z forced to 1<br/>G = [E·S − H − Σ_L − Σ_R]⁻¹"]
-    DH["the device's .TSHS<br/>its converged H(R), S(R), per bias"]
+    DH["the device's .TS.HSX<br/>its converged H(R), S(R), per bias"]
     TB["5 · transmission — tbtrans<br/>samples tbt_k_grid × 1, z forced to 1<br/>Σ rebuilt at its own k-points"]
     T["T(E) = Σ over k of w_k · Tr[Γ_L G Γ_R G†]"]
     KG --> SEED
@@ -683,8 +683,9 @@ it is for the cited junction. **No usable record** is one of three: none yet
 named the other way round (`swap_electrodes`), or an older one whose junction
 composed again is another (below). A prep composes afresh — and writes the
 record again — only when there is no usable one and no stage is launched
-(`transport_rung.composed_for_prep`); the gather reads the same record, and
-compares an older one in memory, writing nothing.
+(`transport_rung.composed_for_prep`); the gather reads the same record, by
+the same one read (`transport_rung.junction_record`), and compares an older
+one in memory, writing nothing.
 
 **A junction whose sidecar states no order record** — written before the
 field, `atom_order` absent — is known by what the file states, never by the
@@ -1126,10 +1127,10 @@ flowchart TB
 
     SEED["<b>01 seed</b><br/><i>C:</i> SCF schedule<br/><i>D:</i> closed periodic solver"]
     EL["<b>02 / 03 electrodes</b><br/><i>C:</i> SCF schedule · <b>lead transport-axis k</b><br/><i>D:</i> bulk solver · writes its Hamiltonian"]
-    DEV["<b>04 device</b><br/><i>C:</i> SCF schedule · NEGF contour · <b>bias V</b><br/><i>D:</i> NEGF solver · transport-axis k = 1"]
-    TBT["<b>05 transmission</b><br/><i>C:</i> energy window · points · broadening · outputs<br/><i>D:</i> the transmission binary"]
+    DEV["<b>04 device</b><br/><i>C:</i> SCF schedule · NEGF contour<br/><i>D:</i> NEGF solver · transport-axis k = 1 · <b>its bias point</b>"]
+    TBT["<b>05 transmission</b><br/><i>C:</i> energy window · points · broadening · outputs<br/><i>D:</i> the transmission binary · <b>its bias point</b>"]
 
-    DEV -.->|"the ONE Class C parameter<br/>that binds downstream:<br/>each transmission point reads<br/>ITS OWN point's Hamiltonian"| TBT
+    DEV -.->|"the bias point, the one value<br/>that binds downstream (Class D):<br/>each transmission point reads<br/>ITS OWN point's Hamiltonian"| TBT
 ```
 
 **Class E is deliberately absent from the picture.** Cores, memory and wall time
@@ -1786,7 +1787,14 @@ what it gathered*) — the file catalogue's two words for the two starts
 walk ends a frame's chain at a voltage that does not finish — the voltages
 after it in that frame would start from it — and goes on with the other
 frames; the transmission walk goes on — its points are independent — and says
-which did not.
+which did not. The walk's files are the stage's, in its `launch/` folder:
+the header prep wrote for a queue, `<label>_<NN>_<stage>-sweep.sbatch` (the
+device's `AuBDT_04_device-sweep.sbatch`) — one allocation for every point,
+their walls summed (`group.envelope`), sent as it is at every launch of the
+rung, warm or cold, the wall alone restated by `--time` — the walk script the
+launch writes, `…-sweep.run.sh`, and its log, `…-sweep.log`
+(`submit._points_walk`). Run here, each point is told its card's wall
+(`MB_WALL_S`, `running-a-job.md` § 3.6).
 
 **Launched again — the run/stage contract's rule 3, read at the point**
 (`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
@@ -1794,10 +1802,10 @@ which did not.
 **done** there is taken over — the done point's folder whole (its inputs, the
 engine's results the readers and the next rungs use, the run's own account:
 output, conclusion, logs) copied into the new run's point folder, **but not
-the engine's scratch** (`warm-files.toml` `[transport] scratch`: TranSIESTA's
+an engine's scratch** (the one answer, `warmfiles.is_scratch`: TranSIESTA's
 `.TSGFL` / `.TSGFR`, the leads' surface Green's functions — the round's pair
 in the run's `tsgf/`, computed once per voltage by every run and emptied by
-the walk), its `.continued-from` naming the run that
+the walk, *What a run's points share* below), its `.continued-from` naming the run that
 **computed** it (one hop: a point taken over from a point itself taken over
 names the run that ran it) — so a point taken over keeps the inputs it was
 computed from, and their `.gathered-from`, whatever the new run gathered —
@@ -1810,8 +1818,11 @@ always one run whole.
 **The transmission takes one device run whole**: its first launch gathers each point's
 `.TS.HSX` from the device's **newest** run, every point of it done — the rule
 every hand-over follows (`job-system.md`, *The task*, *What a stage takes, and
-when*) — or is refused, with the device's launch-again line; never 0 V from
-one run and 0.4 V from another.
+when*) — or is refused by that run's state, with the way on: still queued or
+running, the refusal counts its points done and says to let it finish; never
+launched, it names the launch line; ended with points not done, it names
+those points and says to launch it again, the next run taking the done points
+over (`gather.transport_inputs`); never 0 V from one run and 0.4 V from another.
 
 **What it costs to be wrong about a point.** A point that does not converge
 within its iteration limit does not converge on the next walk either: the same
@@ -1964,9 +1975,17 @@ Whoever opens a device run opens its `tsgf/` with it, through the one opener
 Python's, as every folder of the tree is (invariant 6a), and it is stamped
 with its `calcdir.json`, role **`scratch`** (§ 1.4a, invariant 6b): the run
 door and the Results sidebar read the role and say *the engine's scratch of
-the run above*, the Results tab opens no file in it, and the checkpoint keeps
-the marker, so a restore brings the folder back empty. TranSIESTA opens the
-path as the deck gives it and makes no folder (`m_ts_gf.F90`).
+the run above*, and the Results tab opens no file in it. **The checkpoint
+saves the marker and never the files** (`checkpointing.md` S1): a save leaves
+the `*.TSGFL` / `*.TSGFR` files out of both stores, and a restore removes them
+as it removes every file the target does not hold — so a restore brings the
+folder back empty where the target holds its marker, and where the target
+never had the run, the folders its sweep empties go too: no run folder the
+target never had is left. Otherwise they stay where they lie until the walk
+empties the folder (below), `jobset scratch --empty` removes them
+(`job-system.md` § 5.3), or a launch empties a run never launched before it
+fills it (`materialize.empty_run`). TranSIESTA opens the path as the deck
+gives it and makes no folder (`m_ts_gf.F90`).
 
 The device deck names each lead's file from the point's folder — `GF
 ../../tsgf/AuBDT.v0.2.TSGFL` from `f001/v0.2/`, `GF ./tsgf/…` from a run with
@@ -1995,10 +2014,19 @@ walk's end:  tsgf/ emptied
   step of the walk script of its own (`submit._walk_script`): it stands
   before the first point of the round that this walk runs — a round whose
   every point was taken over has none — and after the last step of the
-  walk, and it runs after a failed member too. It removes the file family
-  (`*.TSGF*`) and nothing else, and writes to the walk's log what it
-  removed, the size in `du`'s words: `[group] tsgf/ emptied --
-  AuBDT.v0.TSGFL AuBDT.v0.TSGFR (99G)`. At every moment the folder holds
+  walk, and it runs after a failed member too; a walk that is stopped —
+  Ctrl-C, a lost terminal, a cancel, its wall — starts no further step
+  (its trap), so it empties nothing more. It removes the files the one
+  answer names an engine's scratch, in that folder and nothing else — its
+  globs rendered from the vocabularies molbuilder ships
+  (`warmfiles.scratch_families`, through `submit._empty_scratch_fn`):
+  `*.TSGFL *.TSGFR` — and only a walk that empties a folder carries the
+  step. It writes one
+  line to the walk's log, its time first (`date '+%Y-%m-%dT%H:%M:%S'`):
+  what it removed, the size in `du`'s words — `[group] <time> tsgf/
+  emptied -- AuBDT.v0.TSGFL AuBDT.v0.TSGFR (99G)` — or `[group] <time> tsgf/ empty`
+  when it found none, or `[group] <time> tsgf/ not there -- nothing
+  emptied` when the run has no such folder. At every moment the folder holds
   the pair of the voltage being worked on, or nothing. A hundred voltages
   at 40 GiB a lead cost 80 GiB on disk, never 8 TiB, and a walk that reaches
   its end leaves nothing behind.
@@ -2024,14 +2052,25 @@ walk's end:  tsgf/ emptied
 - **A walk that did not reach its end** — stopped by you, a kill, a wall, a
   node lost — leaves the round's pair, or one file of it when the stop fell
   between the two writes, in that run's `tsgf/`. The run is yours to recover
-  (`job-system.md`, *runs are yours*): `status` names it on that run's
-  line, `jobset scratch --empty` removes it once the run is not going, and a
-  launch again opens the next run with an empty folder.
+  (`job-system.md`, *runs are yours*): `status` names it on the device's
+  row (each run's line under its name where the stage has several runs),
+  `jobset scratch --empty` removes it once that
+  run is no longer going (each run going keeps its own, `job-system.md`
+  § 5.3), and a launch again opens the next run with an empty folder.
 - **Launched again**, warm or cold, a run computes the pair of each voltage
   it walks once more; a point taken over never needed the file again. The
-  files are the engine's scratch (`warm-files.toml` `[transport] scratch`):
-  never carried, never taken over, never saved by a checkpoint — which asks
-  this vocabulary (`checkpointing.md` S1).
+  files are an engine's scratch, which `warm-files.toml` `[transport]
+  scratch` names and **one answer** says to every reader —
+  `warmfiles.is_scratch`, over `warmfiles.scratch_families()`: the families
+  every engine's vocabulary molbuilder ships names `scratch`, read once a
+  process. No engine is asked, since no engine writes another's files, and
+  a calculation's own `warm-files.toml` decides none of it. The checkpoint
+  (`checkpointing.md` S1), `jobset scratch`, the take-over and the status
+  line below ask it, and the walk's emptying is rendered from its families.
+  The files are never
+  gathered — no rung takes them (`stage_inputs`) — never carried, never
+  taken over (a point taken over is copied without them), and never saved by
+  a checkpoint.
 - **The engine checks what it finds.** A later point at the voltage checks
   the file against its own deck before reading it (`check_Green`: spin, cell,
   atoms, coordinates, orbitals, Bloch expansion, the chemical potential, the
@@ -2051,19 +2090,23 @@ walk's end:  tsgf/ emptied
   words — agrees with the one that ran.
 
 **Checked by the status verb, and said before the launch.** The device
-stage's row — `jobset status`, the Task setup tab's stage row, the Results
-ladder — carries one line about the files, read by one door
-(`transport/gf_files.py`) from the files on disk and never from a re-resolved
-description. The stage's row reads the newest run's `tsgf/`, and where the
-stage has older runs says each run's after it, newest first.
+stage's row — `jobset status` (after the row's detail, ` · ` between them,
+and as its own `tsgf` row in `status device`), the Task setup tab's stage
+row, the Results ladder — carries one line about the files, read by one door
+(`transport/gf_files.py`, `status_line`) from the files on disk and never
+from a re-resolved description. The stage's row reads the newest run's
+`tsgf/`, and where the stage has older runs says each run's after it, newest
+first. The lines, as the door prints them:
 
 | the device | the line |
 |---|---|
-| prepared, its leads not yet run | *tsgf/: one pair at a time; the size is known once the leads have run* |
-| prepared, its leads run | *tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 116.0 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 125 and 294 energies)*. The orbital count is read from each lead run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: *L 49.2 GiB, R 31.0 GiB a lead at 0 V*. With the file switched off: *tsgf/: none — the self-energies are kept in memory* |
-| launched, a run going or done | *tsgf/: the v0.2 pair, 2 files, 98.3 GiB* · *tsgf/: one file, `AuBDT.v0.2.TSGFL`, 49.2 GiB — a walk that did not reach its end; yours to remove* · *tsgf/: 4 files, 196.6 GiB — …; the walk leaves one pair at most, so these are an edit's* · *tsgf/: empty* · *tsgf/: none — the self-energies are kept in memory* · *tsgf/: not there* (a run made before 2.22.0, whose pair lies in the run's folder). A stage with several runs says each run's, newest first: *run-1: the v0.2 pair …; run-0: empty* |
+| prepared, its leads not yet run | `tsgf/: one pair at a time; the size is known once the leads have run` |
+| prepared, its leads run | `tsgf/: one pair at a time, about 49.2 GiB a lead at 0 V and 116.0 GiB a lead at 0.2 V (1425 orbitals × 13 k-points × 125 and 294 energies)`. The orbital count is read from each lead's newest run's output (the reading pass's `n_orbitals`). The rest is read from the device's prepared deck — any frame's at each voltage, the decks being the same across frames: the k-grid, counted as TranSIESTA counts it (k and −k once), the pole energy and the temperature, the cutoff and the spacing, the spin. A frames-only or low-bias device has the 0 V number alone. Two leads that differ are said each: `L 49.2 GiB, R 31.0 GiB a lead at 0 V` and `(L 1425, R 1100 orbitals × …)`. A lead's output that does not give its orbital count: `tsgf/: one pair at a time; the size cannot be said -- L: <its output's name> states no orbital count` (or `does not read: <why>`). With the file switched off: `tsgf/: none -- the self-energies are kept in memory` |
+| launched, a run going or done | `tsgf/: the v0.2 pair, 2 files, 98.3 GiB` · `tsgf/: one file, AuBDT.v0.2.TSGFL, 49.2 GiB -- a walk that did not reach its end; yours to remove` · `tsgf/: 4 files, 196.6 GiB -- AuBDT.v0.2.TSGFL, AuBDT.v0.2.TSGFR, AuBDT.v0.4.TSGFL, AuBDT.v0.4.TSGFR; the walk leaves one pair at most, so these are an edit's` · `tsgf/: empty` · `tsgf/: none -- the self-energies are kept in memory` · `tsgf/: not there (a run made before 2.22.0, whose pair lies in the run's folder)`. A file counts when the one answer names it an engine's scratch (`warmfiles.is_scratch`: `*.TSGFL`, `*.TSGFR`). A stage with several runs says each run's, newest first, each after its run's name: `run-1: tsgf/: the v0.2 pair, 2 files, 98.3 GiB; run-0: tsgf/: empty` |
 
-**The levers** — three on the device's tab and the k-grid on the shared
+**The levers** — two on the device's tab, one on the device's run card
+(Task setup, `task-setup.md` § 6.2b: a run setting, the catalogue's
+`execution` category, which no rung's tab offers) and the k-grid on the shared
 panel (§ 2a.13); every one written explicitly, never left to the engine:
 
 | lever | item | what it moves | a 49.2 GiB lead, as an example |
@@ -2071,7 +2114,7 @@ panel (§ 2a.13); every one written explicitly, never left to the engine:
 | the k-points in the electrode plane | `kgrid` (the shared panel: one grid for every SCF rung) | the k-point count, linearly; it also converges the density and the transmission | 3×3×1 → 5 k-points: 18.9 GiB |
 | the equilibrium contour's poles | `negf_eq_pole_ev` | the pole count, *int(E / (π kT))*: 10 eV at 300 K is 123 poles; fewer poles integrate the equilibrium density less finely; TranSIESTA refuses fewer than 20 | 5 eV → 61 poles: 24.8 GiB |
 | the bias window's spacing | `negf_neq_spacing_ev` — the `delta` of `%block TS.Contour.nEq.line`, 0.01 eV, TranSIESTA's own default | the line's point count, *(|V| + 2·cutoff·kT) / delta*, rounded; coarser integrates the non-equilibrium density less finely | at 0.2 V, 0.02 eV → 23 line points in place of 46: 106.6 GiB in place of 116 |
-| no file at all | `ts_elecs_out_of_core` — `TS.Elecs.Out-of-core`, true by default | false keeps the self-energies in memory and recomputes them at every SCF iteration: the disk to nothing, the time per iteration up by the recursion's cost; `tsgf/` stays empty | — |
+| no file at all | `ts_elecs_out_of_core` (the device's run card) — `TS.Elecs.Out-of-core`, true by default | false keeps the self-energies in memory and recomputes them at every SCF iteration: the disk to nothing, the time per iteration up by the recursion's cost; `tsgf/` stays empty | — |
 
 The spacing's block is written at every device point, with the window the
 cutoff gives: `from − cutoff kT − |V|/2 to |V|/2 + cutoff kT`, rendered from
@@ -2101,16 +2144,26 @@ history, a state to restore and compare
 > **By copy, at the rung's first launch, with provenance recorded — never by
 > reading another run's directory at run time.**
 
-Before a stage runs, what it consumes is copied into its run's directory: the
-leads' Hamiltonians, the seed's density, the device's converged Hamiltonian —
-into the run's own folder, kept clean there; each point of a sweep holds its own
-copies of them, and each transmission point its own device point's Hamiltonian
-(the bias sweep above). Three conditions gate every copy — the upstream stage must have
-been prepared, its **newest** attempt must have **finished** and run the deck this
-composition renders, and that attempt must actually hold the file — and each
-refusal names what to do first. A record of what was taken from where lands
-beside the copies, so a transmission can always say which lead runs and which
-device run it rests on.
+Before a stage runs, what it consumes is copied into its run's directory — the
+rows of `stage_inputs`, as real files, never links (`materialize.hand_over`):
+the device takes the seed's `<label>.DM` and each lead's
+`<label>_L-electrode.TSHS` / `<label>_R-electrode.TSHS`; the transmission
+takes the device's `<label>.TS.HSX` and the same two `.TSHS`. A run that has
+points keeps once, in the run's own folder, what every point takes from one
+run (`submit._gather_sweep`), and each point holds its own copies of
+everything it takes — each transmission point its own device point's
+`.TS.HSX` (the bias sweep above). The leads' surface Green's functions are
+never among them: no rung takes them, and the transmission computes its own
+in memory (*What a run's points share*). Three conditions gate every copy —
+the upstream stage must have been prepared, its **newest** attempt must have
+**finished** and run the same engine input as the deck that rung renders now
+(§ 6.1), and that attempt must actually hold the file — and each refusal
+names what to do first. A record of what was taken from where lands beside
+the copies (`.gathered-from`), so a transmission can always say which lead
+runs and which device run it rests on. A rung launched again takes the
+inputs its newest launched run was given, copied again from the runs its
+record names (`submit._carry_the_gather`); `--gather` takes them anew from
+the newest runs upstream, under the same gates (`job-system.md` § 5.4).
 
 Copying rather than referencing is what lets a run directory hold everything it
 needs: it survives being moved to a cluster, archived, or handed to someone
@@ -2787,8 +2840,8 @@ The road is the composite, through the ordinary `jobset` verbs:
 #    L-electrode / R-electrode and frozen), and let it CONCLUDE.
 
 # 1. describe the transport calculation: one slot, the finished attempt
-molbuilder jobset init --calculation transport --shape hierarchical \
-    --bundle BDT-Au/transport/BDTTrans \
+molbuilder jobset init --calculation transport --engine siesta \
+    --shape hierarchical --bundle BDT-Au/transport/BDTTrans \
     --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
     --bias 0.0,0.2 --no-low-bias-approximation
 
@@ -2812,6 +2865,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
+| `jobset scratch [--empty] [-y]` | list the leads' surface Green's function files (`*.TSGFL`, `*.TSGFR`) the calculation's runs hold — a device that ran once, a walk that stopped before its end, a run prepared before 2.22.0 — each with its stage, size and path; a run still going keeps its own — held by a job launched from this machine that is going or whose state this machine cannot tell, or read queued or running by the run door — each kept file said with why; `--empty` removes the rest after one question, `remove them? [y/N]` (`job-system.md` § 5.3) | `jobset/_cli.py::scratch_cmd`, `jobset/runstatus.py::scratch_answer`, `jobset/materialize.py::scratch_in` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
 **Gotchas:** the citation names a run's folder or a pair's `.xyz`
@@ -3261,8 +3315,11 @@ marked **[new]**.
         ▼
   jobset prep task --group <N>       on the machine that will run it
         │
-        ├─ compose_junction(...)     THE ONE NEW INPUT MODEL: copy the citation,
-        │                            sort, gate, derive both electrode cells
+        ├─ composed_for_prep(...)    THE ONE NEW INPUT MODEL: the junction
+        │                            record read (junction_record), or, with
+        │                            none usable and nothing launched,
+        │                            compose_junction: copy the citation, sort,
+        │                            gate, derive both electrode cells
         │
         ├─ resolve(template_text, task, SiestaConfig, allocation=...)
         │       config_from_template → the contract rows filled from the
@@ -3272,11 +3329,19 @@ marked **[new]**.
         ├─ spec_for(struct, cfg, names=…, calculation="transport")  [new arm]
         │       → DeckSpec(layout=<one of the four tables>)
         │
-        └─ prepare_deck(spec, struct, cfg, path)
-                validate → render → write → READ BACK AND CHECK
-                → the deck, its .validation.txt, the USER-CUSTOM zone
+        ├─ prepare_deck(spec, struct, cfg, path)
+        │       validate → render → write → READ BACK AND CHECK
+        │       → the deck, its .validation.txt, the USER-CUSTOM zone
+        │
+        └─ the job's facts: the transmission's Resources.program = tbtrans,
+                the device's scratch_dir = tsgf; run-0 opened
 
-  jobset launch task --stage <stage> Resources.program = tbtrans on stage 5
+  jobset launch task [--group N | --stage <stage>]
+        ├─ a rung's first launch (or --gather): gather.gather_sources —
+        │       the three gates, then the inputs copied into the run
+        └─ sends what prep wrote — its header to the scheduler, or its
+                run script here; a run of points goes as one walk, its
+                walk script written by the launch (submit._points_walk)
 ```
 
 The only genuinely transport-specific code in that chain is the **input model** —
@@ -4219,11 +4284,12 @@ flowchart LR
     CITE["the CITED junction<br/>(a run, read by the run door;<br/>a pair: frames + sidecar)"]
     CITE --> SEED["01_seed<br/>(diagon SCF, kz=1 -> .DM)"]
     CITE --> EL["02_electrode_L / 03_electrode_R<br/>(derived bulk cells, dense kz,<br/>diagon single-point, TS.HS.Save)"]
-    SEED -->|".DM"| DEVICE["04_device<br/>(SolutionMethod transiesta,<br/>TS.Elec -> <label>_L/_R.TSHS)"]
-    EL -->|"<label>_L.TSHS · <label>_R.TSHS"| DEVICE
+    SEED -->|"&lt;label&gt;.DM"| DEVICE["04_device<br/>(SolutionMethod transiesta,<br/>TS.Elec -> &lt;label&gt;_L-electrode.TSHS,<br/>&lt;label&gt;_R-electrode.TSHS;<br/>the leads' Green's functions in its run's tsgf/)"]
+    EL -->|"&lt;label&gt;_L-electrode.TSHS · &lt;label&gt;_R-electrode.TSHS"| DEVICE
     DEVICE -->|".TSDE: a converged point starts the next"| DEVICE
-    DEVICE -->|"<label>.TS.HSX (5.x; the 4.x device .TSHS retired)"| TBT["05_transmission<br/>(tbtrans; the deck says<br/>TBT.HS <label>.TS.HSX)"]
-    TBT --> RESULT["<label>.transport.json + .transport.nc<br/>(summarize task; T(E) per point, G(E_F), I-V)"]
+    DEVICE -->|"&lt;label&gt;.TS.HSX, each point its own"| TBT["05_transmission<br/>(tbtrans; the deck says<br/>TBT.HS &lt;label&gt;.TS.HSX)"]
+    EL -->|"the same two .TSHS"| TBT
+    TBT --> RESULT["&lt;label&gt;.transport.json + .transport.nc<br/>(summarize task; T(E) per point, G(E_F), I-V)"]
 ```
 
 > **A bias sweep is one submission, and the two walks over its points fail
@@ -4374,11 +4440,11 @@ flowchart TB
 
     subgraph RUN["five executions, five directories"]
       direction TB
-      S1["<b>01_seed</b>/run-N<br/>siesta &lt;label&gt;.fdf<br/>writes &lt;label&gt;.DM"]
-      S2["<b>02_electrode_L</b>/run-N<br/>siesta &lt;stem_L&gt;.fdf<br/>writes &lt;stem_L&gt;.TSHS"]
-      S3["<b>03_electrode_R</b>/run-N<br/>siesta &lt;stem_R&gt;.fdf<br/>writes &lt;stem_R&gt;.TSHS"]
-      S4["<b>04_device</b>/run-N — a folder per bias point<br/>siesta &lt;label&gt;.fdf<br/>NEGF SCF -> &lt;label&gt;.TS.HSX + .TSDE"]
-      S5["<b>05_transmission</b>/run-N — a folder per bias point<br/><b>tbtrans</b> &lt;label&gt;.fdf<br/>-> &lt;label&gt;.TBT.nc"]
+      S1["<b>01_seed</b>/run-N<br/>siesta &lt;label&gt;_01_seed.fdf<br/>writes &lt;label&gt;.DM"]
+      S2["<b>02_electrode_L</b>/run-N<br/>siesta &lt;stem_L&gt;_02_electrode_L.fdf<br/>writes &lt;stem_L&gt;.TSHS<br/>(stem_L = &lt;label&gt;_L-electrode)"]
+      S3["<b>03_electrode_R</b>/run-N<br/>siesta &lt;stem_R&gt;_03_electrode_R.fdf<br/>writes &lt;stem_R&gt;.TSHS<br/>(stem_R = &lt;label&gt;_R-electrode)"]
+      S4["<b>04_device</b>/run-N — a folder per point (frame, voltage)<br/>siesta &lt;label&gt;_04_device.fdf<br/>NEGF SCF -> &lt;label&gt;.TS.HSX + .TSDE<br/>the leads' Green's functions in run-N/tsgf/"]
+      S5["<b>05_transmission</b>/run-N — a folder per point (frame, voltage)<br/><b>tbtrans</b> &lt;label&gt;_05_transmission.fdf<br/>-> &lt;label&gt;.TBT.nc"]
     end
 
     S1 ==>|"&lt;label&gt;.DM"| S4
@@ -4405,7 +4471,13 @@ and a rung's first launch walks it, with what every stage continues from
 
 The newest attempt is the one asked: one that fails a gate is refused by
 name, never passed over for an older one (`job-system.md`, *The task*, D5) —
-and the copy records its provenance in `.gathered-from`.  The engine-input
+and the copy records its provenance in `.gathered-from`.  One gather reads
+the junction record once (`transport_rung.junction_record`, the one read
+prep asks too) and renders each upstream rung's deck once for each point it
+is compared at — once for a rung that runs once, whichever point asks
+(`gather.rung_deck_now`, `gather._ReadOnce`); a record or a composition that
+does not read is the gather's refusal, said in its reader's words
+(`transport_rung.compose_refusals`).  The engine-input
 gate is the load-bearing one: it is what makes "the device's H and the
 electrodes' H were built on the same basis, XC, mesh and electronic
 temperature" a *checked* fact rather than a hope (§ 5).

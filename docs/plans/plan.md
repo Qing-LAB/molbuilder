@@ -40,133 +40,80 @@ V1.40, T-CO2) and step 1's list brought to them. **Ordered 2026-10-13** *(user:
 queue and the milestone table, drifted apart and behind the work, replaced by
 one list in priority order (§ 0a, *THE ORDER*). There is no other to-do list:
 this file is it.
+**Consolidated 2026-10-20** *(user: "conslidate the plan and give me an
+update")*: the handover rewritten for where things stand (the 2026-10-18 one
+is [`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
+verbatim); one queue, *NOW*, at the head of § 0a, each item placed with its
+reason; § 1u, the memory a run needs, added; §§ 1s and 1t point to the queue
+instead of carrying their own order.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-10-18, evening)*
+## ▶ HANDOVER — where we are, and where to start *(2026-10-20)*
 
-**Where we are.** THE ORDER NOW *(the user, 2026-10-18: "focus on getting the
-transport calculation done correctly. Make sure you get the multi-frame support
-correctly. Make sure you get the result parser to be correctly working, and
-that is your job")* is done on this machine: the transport calculation, the
-multi-frame support and the result parser each read whole, contract against
-code, every finding fixed (2.13.1–2.13.2; what each read found is in the
-changelog's rows); the five items of API unification (2.13.3); V1.39 whole —
-the reader serving one shape, the consumers, both writers, the NetCDF data
-file (2.13.3–2.15.0); `netcdf4` listed where a python of ours imports it
-(2.15.1–2.15.2); then, on the user's *"continue to fix other issues"*: V1.33
-(2.15.3), W48 (2.15.4), V1.37 (closed by 2.15.0) and W44 (closed with no code:
-the gather at a rung's first launch is the check, the contracts said
-otherwise and are rewritten). **The plan was consolidated the same evening**
-*(the user: "consolidate all review results, validate all findings, archive
-properly and clean up plan")*: three read-only readers re-derived every
-finding in this file against the code at `5d0a33de`, each verdict re-read at
-its cited line before anything moved; 34 rows left § 2 for
-[`archive/2026-10-18-plan-rows.md`](?doc=archive/2026-10-18-plan-rows.md), each
-verbatim under its verdict; the found lists of §§ 5s–5w, 7 and 8 carry what
-is fixed struck and what stands at its line of today; the push history this
-handover carried from 2.0.0 to 2.13.2 is
-[`archive/2026-10-18-plan-consolidation.md`](?doc=archive/2026-10-18-plan-consolidation.md).
+**Where we are.** Shipped since the last handover (2026-10-18; it is
+[`archive/2026-10-20-plan-handover.md`](?doc=archive/2026-10-20-plan-handover.md),
+verbatim), each row in the changelog: 2.16.3–2.18.0 (the seven-lane review's
+fixes, the twelve design calls, the wall reaching every engine), 2.19.0 and
+2.22.0 (the leads' surface Green's functions, once per voltage, in a device
+run's own `tsgf/`), 2.20.0–2.21.0 (a lost sent run reads `failed`; a running
+run's row says where it is), 2.23.0 (the chat card's layout as data),
+2.23.1–2.23.2 (records through their owner's door; `jobset migrate` reviewed
+whole), and **2.24.0** (`d77bb564`, pushed): the engine's scratch is never
+saved by the checkpoint, and the copies older saves made are pruned; `jobset
+scratch` lists and empties it; the launch sends the request prep wrote, tells
+a run here its wall, and refuses at its boundary instead of a traceback.
+Checked by the fast batch (6713 passed, none failed) and the real-junction
+e2e (153 passed). **Then 2.24.1**: the 2.24.0 review's errors — one answer to
+*is this an engine's scratch* (`warmfiles.is_scratch`), a restore that
+removes it, the save before an act decided by content, `jobset scratch`
+judged per run, the launch's refusals in words — and every document brought
+to the code by nine readers and two rounds of fresh verifiers; fast batch
+6,714 passed, real-junction e2e 153 passed.
 
-**Reviewed whole, the same evening** *(the user: "use agents to do thorough
-document and code full reviews and validate all those findings … detect
-handcrafted code … fix the mistakes and inconsistencies")*: seven fresh
-readers, one lane each — transport, multi-frame, optimization, spectrum, Task
-setup and the hand-over, execution and launch, the result parser — each read
-its contracts and code whole; their 90 findings were re-read at the cited
-lines, and every measured error was fixed in 2.16.3 (the changelog's row says
-what; [`archive/2026-10-18-review-findings.md`](?doc=archive/2026-10-18-review-findings.md)
-holds every finding with its verdict). Two fresh reviewers then read the
-whole diff, and their findings were fixed before the push. **The twelve
-design calls and the two open rows were built the next day as 2.17.0** (the
-user, 2026-10-19: "go ahead and validate every finding, then fix them"): the
-GPU build's absence said at prep, never a veto (E13); the thermal spread
-served per mode (S3); one domain per allowed partition+QoS pair, no QoS
-preferred (E3); a lead's files on its own stem (T13); the held set and the
-SystemLabel read by the one pass (P4); and M9, M10, E2, P2, K14, K19, O6, K5,
-K22 — the changelog's 2.17.0 row says what each is; the archive's record
-carries the rows as they stood. **The same day, from the Sol runs, 2.18.0**:
-the wall reaches every engine through its own channel and a SIESTA wall stop
-reads as what it is (`OUT_OF_TIME`); a warm file written as its job died is
-named at the next launch; a queued job's standing on the ladder, through
-the scheduler kind; the listener's reports on the This machine tab; the
-monitor stdlib-only on any python, its vocabulary split from the log's
-writer. **Then 2.19.0, the user's yes on the 49 GB `.TSGFL` of every
-device point**: the leads' surface Green's functions are the run's, once
-per voltage, named in the device deck's `TS.Elec` blocks the point's own
-way up and reused by every frame's point at that voltage
-(`transport.md` § 2a.11, *What a run's points share*). **Then 2.20.0,
-from Sol's device job that died with nothing written**: a sent run the
-scheduler no longer lists is written down once by the first reader on that
-machine and reads `failed` everywhere; a run past its wall is over anywhere
-(`running-a-job.md` § 4.2). **Then 2.21.0**: a running run's row and
-the monitor's line say where it is — the SCF row's phase and iteration,
-or a device's set-up until its first SCF row (`model/parse.md` § 2b,
-`doing`). **Then 2.22.0, contract first**: the leads' surface Green's
-functions in a device run's own `tsgf/`, one pair at a time, the walk
-round by round; what the files cost and the four levers; the size said on
-the device's row before the launch (`transport.md` § 2a.11, *What a run's
-points share*). **Then 2.23.0, contract first**: the chat card's layout as
-data per receiver — one layout file, read beside the job and by the server,
-a copy in the config dir replacing it whole (`run-reports.md` § 4.1c).
-**Then 2.23.1, from Sol's `jobset migrate` and `launch`**: a calculation's
-records through their owner's door, the calculation passed whole to every
-function that asks about it (rule A16, `architecture.md` § 3.2), one writer
-staging every temp beside its target, and two decks compared as SIESTA reads
-them — every SIESTA keyword's default stated (K9's declaration), the
-engine's scratch, the bias-only contours, the contour it builds itself,
-every difference said (`transport.md` § 6.1). **Open, awaiting the user's
-yes**: whether keywords that steer only how the engine runs —
-`Diag.ParallelOverK`, `BlockSize`, `Diag.Algorithm`, the catalogue's
-`execution` category — count in the same-input comparison; an older device
-run here differs from today's render in `Diag.ParallelOverK` alone.
-**Open, the user's yes given (2026-10-19)**: a full-text, full-code review
-of `transport.md` and the frame-set contract against the code, two fresh
-rounds — the first two reviewers were cut off by the session limit.
+**On Sol, the user's:** `git pull` to 2.24.1, then `jobset prep task --group
+3` and `jobset launch task --group 3 --mode submit` on
+`AuBDTAu/transport/AuBDTAu_singlebias_equilibrium` — the prep that sat
+copying the 98 GB `.TSGFL`/`.TSGFR` pair is what 2.24.0 fixed; `jobset
+scratch --empty` frees the pair. **The transmission's k-grid** is molbuilder's
+default, three times the SCF's in the electrode plane: 15×15×1 on the 5×5
+SCF grid, 113 k-points after time reversal (TBtrans's own output) against a
+9×9×1's 41 — the 2.8× that explains the user's two days on 64 ranks against
+the report's 23 h (`projects/AuBDTAu/Time.docx`); the broadening (1 meV, the
+device's a tenth) is the report's. The lateral cell is 5×5 Au(111), 14.7 Å:
+9×9 is already 0.055 Å⁻¹. Once the local 15×15 run ends, its own file gives
+3×3 → 5×5 → 15×15 at no compute (15 = 3 × 5) — the convergence measured,
+offered to the user. Memory for its transmission, measured here
+on `lowbias_local` (the same junction, the user's word; 2974 device orbitals): 0.77 GB per
+TBtrans rank, from TBtrans's own `[memory]` lines and the monitor's peak
+(12.31 GB on 16 ranks) — 64 ranks ≈ 50 GB; its wall, from the local run's
+progress lines (≈ 150 h on 16 ranks of a 2016 Xeon), ≈ 37 h at most on 64.
 
-**What decides next is the user's, on Sol**: the junction (E13), the
-multi-frame run, a vibration on 2.15.x — the PySCF environment there needs
-`molbuilder envs doctor molbuilder-pySCF`, then `envs repair`, before a
-vibration deck runs (it stops at its first write otherwise) — and the AuBDTAu
-workflow. What those runs show is the work; nothing is started here on their
-account.
+**What runs next** is § 0a's queue, *NOW*: 2.24.1 (the 2.24.0 review's
+errors, the documents brought to the code), the folder download (§ 1v), the
+transport review, the layers (§ 1t), what is computed vs how it runs (§ 1s),
+the memory suggestion (§ 1u) — then § 0a's steps 2–6.
+
+**Decisions that wait on the user** — § 1t's two rule conflicts and
+`Calculation`'s floor (needed before N4 starts); GKN, RL15, V1.9's
+remainder, F11's go, SCHED-R's advance signal (§ 0a). The question this
+handover carried — whether the run-setting keywords count in the same-input
+comparison — is answered by § 1s item 3 (they do not), built with § 1s.
+
+**Only Sol can show**, when the user is there: the junction on Sol (E13), the
+AuBDTAu workflow, a group's header under a real scheduler (Q13), why no
+instrument recorded SIGTERM on Sol job 65999920 (SCHED-R); before a vibration
+runs there, Sol's PySCF environment repaired for `netcdf4` (`envs doctor`,
+then `envs repair`).
 
 **Off the plan** (the user, 2026-10-18): every feature the three roads do not
-need; the 2026-10-18 scan's findings off those roads (migrate, bench-result);
-any check, warning or format the contracts do not state.
-
-**Then, in § 0a's order** — the table there is current as of this evening.
-Step 1 has nothing left but V1.9's ruling, the user's. Step 2 is the
-half-built framework pieces (W35 P2's remainder, W34 P5, § 5w's K13, K14,
-K16, K18, K9, Q11, Q8, W33 P4, W45, N10, X4 ② ③, W41, W57-M/K/O, A1.14,
-V1.11) — each row re-derived against the code when it is taken, its line
-numbers of 2026-10-18 in its state cell. Step 3 the tidy-up (EXCL, Q19's later
-phases, § 5r's remainder, § 8 rows 10 and 11, F9, A1.5's and A1.13's
-remainders, V1.14's vacuum advice, TST-R, the tests — PYF-T, L2, T-ENV, R11,
-W57-T, DOC-TOC, Q2f). Steps 4–6 as the table says.
-
-**The AuBDTAu workflow is the user's, on Sol**, once the framework is
-established *(the user, 2026-10-10: "no, you should not run it on this
-workstation"; "we focus on workflow and validation of design of framework,
-not yet on science. i'll test real system on sol")*. Found for it on
-2026-10-10: `AuBDTAu/spectrum/siesta-vib`'s own result says its reference
-geometry is not a stationary point (0.37 eV/Å on the free atoms against its
-0.01 eV/Å tolerance; MeshCutoff 300 Ry against the relaxation's 350 Ry); its
-`job-set.json` and `optimization/min_force_relax`'s predate the 2026-10-06
-job keys (`jobset migrate`); and the walk's AuBDTAu relaxation
-(`claude-transport-walk/optimization/au-dta-relax2/01_coarse/run-1`) ran with
-one k-point on a slab periodic in x and y — check a relaxation's mesh before
-citing it.
-
-**Decisions that wait on the user** (§ 0a lists them: GKN, RL15, V1.9's
-remainder, F11's go; SCHED-R's advance signal). **Only Sol can show**, when
-the user is there: the junction on Sol (E13), the Sol memory measurement, a
-group's header under a real scheduler, the AuBDTAu workflow, and why no
-instrument recorded SIGTERM on Sol job 65999920 (SCHED-R).
+need; any check, warning or format the contracts do not state. The AuBDTAu
+workflow is the user's, on Sol *(the user, 2026-10-10: "no, you should not
+run it on this workstation")*.
 
 ---
 
-## 1s. What is computed vs how it runs — the evaluation, and the separation *(2026-10-20; the user's yes: "build it as 2.24.0 after 2.23.2" — now 2.25.0, after the scratch release took 2.24.0)*
+## 1s. What is computed vs how it runs — the evaluation, and the separation *(2026-10-20; the user's yes: "build it as 2.24.0 after 2.23.2" — N5 in § 0a's queue)*
 
 *(the user, 2026-10-20: "it is completely stupid to have this involved in a
 job scheduling"; "carefully evaluate the jobset logic and see how much
@@ -232,16 +179,9 @@ runs. Nothing in one is read as the other.*
 | tests | 67 files name these keys; 37 calls in 22 files drive `jobset init` | re-pointed |
 | docs | 93 mentions of `jobset init` in 30 files; the boundary's statements | rewritten |
 
-**The order, agreed**: 2.23.2 — migrate's errors from the 2026-10-20
-review, pushed so Sol's calculation moves (done); 2.23.3 — the same review's
-launch errors, which this does not touch: a run here never told its wall,
-tracebacks at the launch's boundary, the status read after a send written as
-a refusal, the machine record read twice, a relaunch checked against its old
-run's files, the request sent from a second source -- shipped as 2.24.0 with
-the engine's scratch never saved and `jobset scratch`; then the layers
-(§ 1t) as 2.24.1; then this as 2.25.0, contract first.
+**When**: N5, contract first — § 0a's queue, *NOW*.
 
-## 1t. The layers, measured — every upward import *(2026-10-20; the two rule conflicts and `Calculation`'s floor await the user's yes)*
+## 1t. The layers, measured — every upward import *(2026-10-20; the two rule conflicts and `Calculation`'s floor await the user's yes — N4 in § 0a's queue)*
 
 *(the user, 2026-10-20: "my challenge to you is to make sure your design of
 this is correctly arranged through framework and well separated layers such
@@ -263,7 +203,7 @@ facts on the wrong floor:
 | a plan's job by stage (`ready.job_of`) | `ready` (4) | `commands.way_back` (3) | `JobSet.job` |
 | the way back / migrate sentence | `commands` (3) | `task`, `jobset.machine` (2, 1) | floor 1 (`identity`, as the checkpoint words) |
 | a description's default ladder (`fresh_stages`) | `task` | → `pyscf.stages` | the ladder producers |
-| a whole calculation (`Calculation`, holding the plan) | listed floor 2 | opened by `runs` (2), `jobset.machine` (1) | floor 3, opened from 3 up |
+| a whole calculation (`Calculation`, holding the plan) | listed floor 2; imports `jobset.model` (3) at its top | opened by `prep`, `submit`, `runstatus`, `migrate`, `_cli` and the web (3 and up) | floor 3 |
 | the template catalogue's item facts | `template` (L2) | `identity`, `electronic_state`, `task`, `parse.contract` | the catalogue as floor-1 data; the template file's door on 2 |
 | the queues and the fit, as a table (`queue_table`) | `ask` (5) | `placement` (3) | placement (3) |
 | a run converged (`converged_of`) | `runstatus` (6) | `continuation.done` (4) | the run's records (1) |
@@ -276,13 +216,114 @@ its record's floor, registered into the parse registry, which imports none**;
 `calcdirs.root_of` (1) asks `task.described` (2) — **"is this folder
 described" is a name fact, moved to floor 1, `task` asking it**.
 
-**Order agreed with the release plan**: 2.23.3 — the launch's errors and the
-2.23.2 review's (the last-run cutoff at the writer's shipping, a lead's files
-named on the Task setup card through `stage_home`, `_kept_as`'s tie, paths
-said relative, a corrupt record as the migration's refusal, `status` naming
-the prep for a stage another molbuilder prepared) -- shipped in 2.24.0;
-**2.24.1 — this table**, each fact moved to its floor, both layer documents
-corrected, done when the scan reports none; 2.25.0 — § 1s.
+**When**: N4 — each fact moved to its floor, both layer documents
+corrected, done when the scan reports none (§ 0a's queue, *NOW*). The two
+rule conflicts and `Calculation`'s floor are the user's before it starts; if
+they are still open then, the other eleven rows are built and those wait.
+
+## 1u. The memory a run needs — a suggestion beside the request *(2026-10-20; the user's yes: "yes, put it in the plan, but prioritize among all remaining issues" — N6 in § 0a's queue)*
+
+*(the user, 2026-10-20: "can we have some UI feature to give estimate based
+on the system/task? … estimate the memory need … as a suggested value, and
+task setup … would put it next to the request")* — after asking what memory
+the AuBDTAu transmission needs on Sol.
+
+**Decided** (the user's yes to both, 2026-10-20):
+
+1. **Computed when asked, never stored.** One door — the memory a stage needs
+   at a rank count, for a calculation — answers Task setup, which shows it
+   beside the memory request (*suggested: 49 GB — 0.77 GB a rank × 64,
+   measured on 05_transmission/run-0*), and prep, which prints it on its fit
+   line. It is a hint: never filled in, never a refusal. Not a key in
+   `task.json`: the description is the science, pinned by its fingerprint,
+   while the need is derived from it and from how it runs (ranks a node, the
+   stage) — a stored copy is a second source, stale when either changes; and
+   one key cannot hold it, since each rung of a ladder needs its own.
+2. **Where the number comes from, the most trusted first:**
+   - **(a) measured** — a finished run of the same stage, this calculation's
+     or its benchmark trials': the monitor's `util.csv` records the job's
+     memory, sampled every 10 s (a row kept when a value moves by 10 % or every
+     300 s, the peak always); its peak ÷ the run's ranks × the ranks asked. Every
+     kind of calculation has it today.
+   - **(b) the engine's own analysis** — TBtrans and TranSIESTA stop after
+     setting up their matrices when asked (`TBT.Analyze`, `TS.Analyze`, both
+     in 5.4.2's binaries); TBtrans prints its `[memory]` lines in a full run
+     (electrode, H and S, the inversions). To check on one run, in the
+     source at hand (`Util/TS/TBtrans/m_tbt_options.F90` and its callers),
+     before it is designed: that those lines come before the analysis stops.
+   - **(c) a formula** from the system — orbitals, k-points, grid, basis —
+     for a SIESTA SCF or a PySCF Hessian with nothing measured: each formula
+     brought with the developers' guidance and checked against measured
+     runs before any is shown (`scientific-review`).
+
+**Measured for the design** (2026-10-20, `lowbias_local`'s transmission, 16
+ranks): TBtrans's `[memory]` lines — electrode 94 MB, H and S 103 MB, LHS
+inversion 403 MB, RHS 97 MB — 0.70 GB a rank; each rank's resident memory
+0.75–0.80 GB; `util.csv`'s peak 12.31 GB, 0.77 GB a rank. Every rank holds
+its own copy (TBtrans divides k-points and energies among ranks), so the need
+grows with the ranks a node, not with the k-points or the energies.
+
+**Why after § 1s**: the suggestion sits beside the memory request, which
+§ 1s moves out of `task.json` into the job request and its card; built
+first, it would be built against a record about to move.
+
+**Order**: the contract first (where the door lives, the line Task setup and
+prep show, what a run with no measurement says), the user's yes, then (a);
+then (b); (c) only where (a) and (b) leave a gap the user meets.
+
+## 1v. The folder download — sized, asked, streamed *(2026-10-20; the user's yes: "yes, go with your recommendation, add it to the plan" — N2b in § 0a's queue)*
+
+*(the user, 2026-10-20: "i accidentally started a download of the huge
+calculation AuBDTAu folder. i don't know how to stop it. is there a way to add
+a UI warning for this operation"; "i worry about timeout … or other issues on
+stream zip")*
+
+**What happened, measured.** The Files page's folder download is two
+requests: `POST /api/files/zip_prepare` compresses the whole folder into a
+temporary file (`files._build_archive`, `tempfile` in `/tmp`, `ZIP_DEFLATED`),
+then `GET /api/files/download_zip` streams it. The prepare request sends
+nothing while it builds — no progress, and a cancel in the browser does not
+reach it. On `AuBDTAu` (200 GB, 98 GB of it the device's two Green's-function
+files) it had written 8.6 GB into `/tmp`, on a root disk with 42 GB free,
+when the server was restarted to end it and the file removed.
+
+**Decided** (the user's yes, 2026-10-20):
+
+1. **The size, said and asked before anything is built.** The prepare step
+   adds up the folder's sizes (names and sizes, no content read) and the
+   page asks: *"`AuBDTAu` holds 200 GB — download it as a zip?"*, with what
+   is left out (2) and, for a large folder, the line that copies it instead:
+   `rsync -a <user>@<host>:<path> .`, the real one. It refuses only a zip
+   that cannot fit where it would be written — none, once (3) holds.
+2. **What is not the calculation, left out, and said**: the checkpoint's two
+   stores (`.git/`, `.binsnapshots/` — the saved history, this machine's) and
+   the engines' scratch (`warmfiles.is_scratch`, the one answer the
+   checkpoint asks).
+3. **Streamed, stored, with its exact length.** The zip is written straight
+   into the response (`zipfile` into the stream, ZIP64 for files over 4 GB),
+   each file stored, not compressed — the folder's large files are binary
+   and barely compress, and deflate costs about an hour of one core for
+   200 GB — so the archive's size is exact from the sizes recorded at the
+   start, sent as `Content-Length`: the browser shows progress and an end
+   time, and a cut connection reads as a failed download, never a short zip
+   taken for whole. A file shorter than its recorded size ends the response.
+   No file on the server's disk; a cancel in the browser ends the server's
+   work at its next write.
+
+**Timeouts, measured** (the user's worry): the server is Werkzeug's own
+(`cli.py` `app.run`), which bounds the TLS handshake alone
+(`HANDSHAKE_TIMEOUT_S`) and sets no timeout on a request after it
+(`conn.settimeout(None)`); a reverse proxy in front (`deployment.md` § 1.1
+allows one) cuts a response silent for its read timeout (nginx's default 60
+s) — the case of today's prepare step, never of a stream that sends from its
+first second.
+
+**Order**: the contract first — `web/files.md` or the files section of
+`web-api.md`, whichever owns the route, and the Files page's doc — then the
+user's yes on the text, then the code: the route, the page's dialog, a test
+that streams a folder holding a scratch file and a store and reads the zip
+back through `zipfile` (the scratch and the stores absent, every other file
+whole, the length exact).
 
 ## 0. Rule R3, restated
 
@@ -327,6 +368,23 @@ the same day, with what it turned out to be.
 > milestone and reviewed with agent full code text review to validate
 > results"; the order itself: "yes, that order works. go ahead")*
 
+### NOW — the Sol road's releases, before step 2 *(2026-10-20)*
+
+*(the user, 2026-10-20: "prioritize among all remaining issues, don't switch
+if not justified")* — the order agreed on 2026-10-20 (§§ 1s, 1t), with three
+items given their place and the reason for it. Then steps 2–6, as the table
+below says.
+
+| # | release | what | why here |
+|---|---|---|---|
+| **N1** | with N2 — **shipped 2.24.1** | **The 2.24.0 documents sweep** — every contract, command line, printed line and diagram brought to what 2.24.0 does; five readers, one set of files each, every diff read; then five fresh verifiers against a frozen copy of 2.24.0's code (22 false claims, no rule deleted), corrected with N2's own changes, as one commit | the user, 2026-10-20: *"update document … updated systematically"*; *"go with your two choices, continue, complete the current review and fixes first"* — in progress |
+| **N2** | **shipped 2.24.1** | **The 2.24.0 review's errors** (two fresh reviewers, 2026-10-20, and N1's readers). *Checkpoint*: one answer to *is this the engine's scratch* — the shipped vocabularies' `scratch` rows, needing no engine recorded — asked by the checkpoint, `jobset scratch`, the walk's take-over, the walk's emptying (its `rm` rendered from it, not `*.TSGF*`) and `status`'s `tsgf/` line (a history begun with no engine archives the pair today); a restore removes the scratch as it removes every file the target does not hold, so `tsgf/` comes back empty and no stray `run-N/` is left (as `transport.md` § 2a.11 says); scratch an older save tracked leaves git before `git add` and `status` never names it; the pruning after the state is recorded, from each archive's MANIFEST, and never failing a save; the save before an act decides *already saved* by content (§ 7.2: a save checksums); a restore asks no configuration (I2a); `checkpoint config` names the scratch; the big files untracked a few hundred paths a call; the save's fingerprints and a restore's verify side by side. *Launch*: the *written as the job ended* warning against the run whose files lie there (flat layout); a calculation's broken `warm-files.toml` a refusal, not a traceback; a header with no wall refused in R-L16's words; every ledger line carrying what the verb was told; `--gather` refused on a rung that gathers nothing; the refusals with no R-L row given one; a stage matched by its one key; `jobset scratch`'s *is this run going* through the jobs door, a run it cannot read kept. *Text*: the docstrings and help lines N1's readers found stale. Two choices in it are Claude's, said so they can be overruled: the scratch list needs no engine (no other engine writes `*.TSGFL`); a restore removes scratch (no later run reads a pair — `transport.md` § 2a.11, *Launched again*) | errors in what just shipped, on the road Sol runs; the walk's part is checked by the real-junction e2e, which alone reaches it |
+| **N2b** | a middle number | **The folder download** (§ 1v): the size said and asked before anything is built, `rsync` named for a large folder; the saved history and the engines' scratch left out; the zip streamed, stored, with its exact length — no file in `/tmp` | the user's yes, 2026-10-20 (*"yes, go with your recommendation, add it to the plan"*), after a download of `AuBDTAu` (200 GB) built 8.6 GB of zip in `/tmp` on a root disk with 42 GB free before the server was restarted; placed before N3 because it can fill the system disk |
+| **N3** | a last number | **The transport review** — `transport.md` and the frame-set contract read whole against the code, two fresh rounds; each error fixed as a last-number move | the user's yes, 2026-10-19 (the first two reviewers were cut off); placed here because it looks for wrong results on the road the user runs on Sol, which § 0a puts first |
+| **N4** | a last number | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's |
+| **N5** | a middle number | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
+| **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
+
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*
 
 > *(user, 2026-10-13: "consolidate the plan for a logical priority for the
@@ -357,7 +415,7 @@ the code when it is taken (§ 2's rule), and a step closes as a milestone does
 | **5** | **The documents** | the contracts brought to what is true, and made findable | § 7's four indexes (steps 2–4); § 8 row 13; M4's document sweep (§ 5q.5's list); § 5t P5 (the Makov-Payne script); § 5w.2's text sweep (after K9); E14 (two references checked into `references.bib`); TPL, SMALL and CARRY, each re-derived when taken |
 | **6** | **New science** | new things a person can do — each brought to the user as a design, with its science (`scientific-review`: the literature, the numbers, the cost), before any code | M10, from a vibration mode to the current (W42; V1.24, V1.26 — its decision owed, V1.27, V1.34) with V1.25, the mode-displaced frame set (its amplitude the user's); the vibration's other open rows (V1.12, V1.15, V1.17, V1.38; ~~V1.33~~, ~~V1.37~~ done 2.15.3 and 2.15.0); § 5e, a person's own engine text (W47); S13, transport's convergence sweep; K22, per-atom starting spins (the user's design word); § 9.2, ATOM as an optional pseudopotential check |
 
-**Decisions that wait on the user** *(2026-10-14; 2026-10-17)*: **GKN** — an
+**Decisions that wait on the user** *(2026-10-14; 2026-10-17; 2026-10-20)*: **§ 1t** — its two rule conflicts and `Calculation`'s floor, before N4; **GKN** — an
 uneven ranks-over-GPUs cell in a benchmark (32 ranks on 3 GPUs): kept, by
 naming every trial by its total ranks (`G3N32C1`), or dropped as now; **RL15**
 — whether launch keeps its one check, at a first launch, that prep's files are
@@ -392,8 +450,7 @@ user's. This machine's was repaired on 2026-10-18.
 5. this section records the commits, the review and its outcome — and only
    then does the next step start.
 
-A full test batch (`tools/testrun.py`) runs at the end of each step, with
-nothing changing under it; the last non-e2e batch ran 2026-10-19 over the review's fixes and the two reviewers' corrections (6,675 passed, 7 failed — every failure judged: the citation-marker tests' synthetic items built as the catalogue builds them, one of them retired with the metadata home 2.15.4 paid, and a transport description that stated no bias — each brought to its contract and green again); the e2e files that launch ran 2026-10-17 (96 passed, the junction's again on its own); both engines' vibration e2e ran 2026-10-18 on 2.15.4 (the one stale read of a v8 key in each file fixed); the e2e batch last ran whole 2026-10-16 (396, all passing).
+A full test batch (`tools/testrun.py`) runs at the end of each step, with nothing changing under it; the last non-e2e batch ran 2026-10-20 on 2.24.1 (6,714 passed, none failed); the real-junction e2e ran 2026-10-20 on 2.24.0 (153 passed); both engines' vibration e2e ran 2026-10-18 on 2.15.4; the e2e batch last ran whole 2026-10-16 (396, all passing).
 
 **The Q19 row** — the three passes, its phase 1 done and its later phases
 listed — stays here as step 3's detail:
@@ -414,6 +471,11 @@ listed — stays here as step 3's detail:
 
 | # | area | item | from | state |
 |---|---|---|---|---|
+| **SCR-UI** | web / transport | **Two pages do not say the device's scratch as the contract does** (found by the 2.24.0 documents' verifiers, 2026-10-20): Task setup's stage row appends `r.tsgf` (`task-setup/viewer.js` ~2703) but the folder answer never sends it (`build._folder_ladder` sends stage, group, state, detail, why), so the `tsgf/` line `transport.md` § 2a.11 puts on the Task setup row never shows; the Results sidebar's place note has no `scratch` entry (`results/viewer.js` `PLACE_NOTE`), so *the engine's scratch of the run above* is not said | 2.24.0 review | open — the UI's, when the user takes it |
+| **TPL-L1** | engines / template | **`template.md` § 2.2's import rule** (stdlib and `persist` only) is broken by `template.py`, which imports `identity`, `paths`, `runfiles`, `pyscf.stages`, `kmesh` — part of § 1t's layering, or the rule restated | 2.24.0 docs sweep | open — with N4 (§ 1t) |
+| **BENCH-2** | engines / bench | **BENCH-MARKS' field list is a second, hand-kept source**: `script_emit.SIESTA_BENCH_FIELDS` (e.g. `BlockSize` `pow2` there, `int` in the catalogue); only the type is checked against the catalogue (`tests/test_template_declarations.py`) | 2.24.0 docs sweep | open |
+| **DOC-SMALL** | various | **Small text errors in code found by the docs sweep**: `molbuilder jupyter --help` says a restart "does not destroy notebook state" while `serve_daemon` stops it; `web/app.py` cites "deployment.md § 1.3" (no such section); `ui-contract` § 1's stylesheet order broken in the index, spectra, modify and results pages; the ruler notice written twice (`modify/viewer.js` ~669, `periodicity.js` ~268); `checkpoint.js` ~982 cites L4 where the rule is L3; the zip export carrying an engine's scratch is § 1v's; dangling codes (D3–D5, `M5:`, the unit-11 review) in launch's comments | 2.24.0 docs sweep and review | open — step 3 (tidy) |
+| **RL42** | execution / launch | **R-L42 (a run script missing) is checked by two builders only** (`_plan_stage` run here, `_bench_trials`): a group's walk, a run of points' walk and a queue send meet it at run time — make it one check where every submission is built, or drop it as a launch-time re-check (the user's rule: prep decides, launch runs) | 2.24.0 launch review | open — the user's word |
 | **E13** | engine / science | **The first real junction walk — BDT–Au on Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5 — archived 2026-09-10 — and E7) and the browser and deck walks (W12 — archived 2026-09-10 — and E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | **the Sol half only** — after § 5u step 4; the workstation half ran 2026-09-29 (the Au–BDT–Au ladder to T(E) on `claude-au-bdt-au`, TD8's acceptance ladder) and is archived *(2026-10-08)* · *Re-checked 2026-10-09:* open — the Sol half only; the workstation half closed by TD8 and Q15's run E. |
 | **E14** | science / references | **Reed 2006 and Stokbro 2003 into `science/references.bib`.** `engines/transport.md` § 8 cites both (and Solomon 2008 beside them); none is in the `.bib`, and the rule is that an entry is added when a passage cites it. The 2026-10-08 archive reason — *no live document cites them* — was untrue | roadmap § 7.3 | **reopened 2026-10-09** — each entry checked against the paper before it goes in (§ 7.3) |
 | **V1** | engine / science / web | **The vibration calculation — one path on two engines.** The contract is [`engines/vibration.md`](?doc=engines/vibration.md) (§ 10 says what stands); the science is [`science/normal-modes.md`](?doc=science/normal-modes.md); the design and the first audit are archived (`archive/2026-09-24-*`). Built 2026-09-21 → 24: one harmonic path with the rank rule and its gate against PySCF, one mass convention, stationarity on the free atoms, the runs write the pair, the Hessian over the free atoms with the two measured corrections, the SIESTA arm (deck on a sorted copy, `atom-permutation.json` with its key, the `.FC` reader, `summarize run`, the warm-file section, the kind's start state), the equilibrium block optional, the wrapper's banner. **Open, the sub-rows:** | `engines/vibration.md` § 10 | open · *Re-checked 2026-10-09:* a container: V1.11, V1.15 and V1.38 narrowed, V1.25 unblocked, V1.31 archived. |

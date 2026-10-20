@@ -26,8 +26,8 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 |---|---|---|---|
 | **Molbuilder** | `/molbuilder` | build / edit / assemble a structure | this doc § 2 |
 | **Structure optimization** | `/structure-optimization` | collect a SIESTA/PySCF relaxation's parameters and Send them to Task setup (the deck itself is written by `prep`, on the machine that runs it) | this doc § 3 |
-| **Spectrum** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; view any `.spectra.json` | [`spectra.md`](?doc=web/spectra.md) |
-| **Transport** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` directly (no hand-over) | this doc § 4 |
+| **Spectrum calculation** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; view any `.spectra.json` | [`spectra.md`](?doc=web/spectra.md) |
+| **Transport calculation** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` directly (no hand-over) | this doc § 4 |
 | **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **This machine** | `/this-machine` | the box you are signed in to, not a calculation: its notification channels and its run-report listener. **The only surface where a secret is typed** | [`this-machine.md`](?doc=web/this-machine.md) |
@@ -556,15 +556,15 @@ are largely there; the **tab controllers that consume them** are half-migrated:
 
 | Controller | ESM today |
 |---|---|
-| `modify/selection-bootstrap.js`, `modify/viewer.js`, `structure-optimization/viewer.js`, `transport/core.js` | **hybrid** — a top-level `import` of MolView, but a classic IIFE body that still publishes a global (e.g. `window.molbuilder.molbuilderTab`); loaded as `type="module"` |
-| `modify/structure/*.js` (the generators), `documents/page.js` | **no** — classic global scripts |
-| `modify/periodicity.js` | classic body, but served with a `type="module"` tag (a harmless mismatch) |
+| `modify/viewer.js`, `modify/periodicity.js`, `modify/slab-panel.js` | **yes** — each exports `init(viewer)` and has no tag of its own: `modify/selection-bootstrap.js` imports them and starts them with the viewer it mounts (`modify.html`) |
+| `modify/selection-bootstrap.js`, `structure-optimization/viewer.js`, `lib/transport/core.js` | **hybrid** — top-level `import`s (MolView's `mount`), loaded as `type="module"`, but a classic IIFE body that reads the other modules' `window.molbuilder.*` globals (the workspace, the status line, the structure page) |
+| `modify/structure/*.js` (the generators), `documents/page.js` | **no** — classic global scripts; `modify/structure/page.js` publishes `window.molbuilder.structurePage` |
 
-So **none of the tab controllers is a pure ES module yet**: the MolView-consuming
-ones (`selection-bootstrap` and the three viewers) have one foot in ESM — they
-`import` the viewer — while their own bodies are still legacy IIFEs that publish
-globals; the structure-generation set plus the Documents controller are fully
-classic. Finishing these off is part of the "remaining classic modules" ESM
+So the Molbuilder tab's op-tab controllers are ES modules; the page
+controllers that mount MolView (`selection-bootstrap` and the two tab
+viewers) have one foot in ESM — they `import` the viewer — while their own
+bodies are still IIFEs reading globals; the structure-generation set plus the
+Documents controller are fully classic. Finishing these off is part of the "remaining classic modules" ESM
 workstream (`plans/plan.md` **W15**).
 
 ## 9. Test map

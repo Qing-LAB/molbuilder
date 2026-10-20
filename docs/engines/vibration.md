@@ -186,9 +186,9 @@ modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
 flowchart LR
   M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine on the strip<br/>(a periodic structure defaults to SIESTA),<br/>set parameters (the catalogue's form per engine),<br/>read the live checks"]
   S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
-  T -->|"prep task"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
+  T -->|"prep task"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA, from a sorted copy: &lt;label&gt;_01_freq.fdf (box ticked),<br/>or &lt;label&gt;_01_relax.fdf, then &lt;label&gt;_02_freq.fdf<br/>prepared once relax has finished"]
   P -->|"launch task"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
-  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 9"]
+  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 9,<br/>its data file .spectra.nc beside it"]
   A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
 ```
 
@@ -197,13 +197,25 @@ The CLI walks the same road without the browser:
 ```bash
 molbuilder jobset init --structure P/structure/x.xyz --bundle P/frequency/F \
     --engine pyscf|siesta --calculation vibration --name X --shape hierarchical
-molbuilder jobset prep task --bundle P/frequency/F --target this
+# SIESTA: its ranks and the cores per rank
+molbuilder jobset prep task --bundle P/frequency/F --target this \
+    --np 2 --cpus-per-task 1
+# PySCF: its threads alone -- a rank count (--np) is refused
+molbuilder jobset prep task --bundle P/frequency/F --target this \
+    --cpus-per-task 2
 molbuilder jobset launch task --bundle P/frequency/F --mode direct --yes
 ```
 
-The run ends with `<label>.spectra.json` in the attempt on both engines
-(§ 5.5 for SIESTA) — the launch, started in the background, returns at once,
-and `jobset status` follows it; there is no step after it.
+`prep` states the launch shape — SIESTA's ranks and cores per rank, PySCF's
+threads — on its line or in the description's run card, or it refuses
+(`placement.launch_refusal`, which also refuses a rank count for PySCF, an
+engine that runs one process). On SIESTA with the box unticked the ladder is
+two groups, `relax` then `freq`, and `freq` is prepared once `relax` has
+finished (§ 5.2a): the prep and launch lines run once for `relax`, then again
+for `freq`.
+The measuring run — PySCF's one, SIESTA's `freq` — ends with
+`<label>.spectra.json` in its attempt (§ 5.5 for SIESTA) — the launch, started in the background,
+returns at once, and `jobset status` follows it; there is no step after it.
 
 `init` refuses `--stage-strategy` for this kind (a *ladder* is a
 description's list of stages, each a *rung* with its own parameter set; a
@@ -1234,7 +1246,14 @@ own and recorded nothing; by default it copied nothing, and a `--from` naming a
 newest attempt.)*
 
 **Every situation, and what prep does** — the force-constant stage of a SIESTA
-vibration:
+vibration. `--from` is prep's (`prep task --from NN_relax/run-N`); `--cold`
+is the launch's. Its prep records the `relax` run it took on the stage's job
+(`Job.written_at`), and its first launch copies that run's files — never
+another's: `--cold` there is refused as the rows say, and `--from` is refused
+naming the `prep task … --from` line that takes another `relax` run (a stage
+never launched is prepared again); launched again, `--from` is refused with
+the way back, since a launched stage is not prepared again
+(`ready.first_launch_takes`, `submit._launch_again`):
 
 | the ladder | asked | the geometry | the files | recorded |
 |---|---|---|---|---|
@@ -1403,9 +1422,10 @@ for a in FC.First .. FC.Last:
 | `<label>.DM`, the usual outputs | the reference (undisplaced) step's density (`save_density_matrix.F90` writes it at the first step only), the `.out` with the version line | |
 | `<label>.spectra.json` | **the result**, written by the finish (§ 5.5) after SIESTA exits cleanly | |
 
-The wrapper `launch` writes treats the run like any SIESTA run: it activates
-the env, sizes the ranks from the machine record or the description's
-`execution` block, and logs. **Then it finishes the calculation** — the job's
+The run script `prep` writes (the wrapper, `runwrap.py`) treats the run like
+any SIESTA run: it activates the env, runs SIESTA on the ranks and cores per
+rank `prep` stated — the launch starts it with them, `-np` / `-omp` from the
+job (`submit._run_sh_args`), and computes none — and logs. **Then it finishes the calculation** — the job's
 own python runs `mb_vibration.pyz` beside the deck (§ 5.5) — and marks the
 attempt concluded with the finish's exit status: 0 only when the spectrum is
 written.
@@ -2237,10 +2257,10 @@ SIESTA from the label (§ 5.4).
 | `<label>.spectra.nc` | beside the `.spectra.json`, written with it at every write | **the same result as structured data** (§ 6.10.5): NetCDF-4 groups `/structure`, `/equilibrium`, `/modes` (`/modes/electronic_structure`), `/thermo` (`/thermo/grid`), every variable stating its units, long name, definition and kind, the scalar blocks as attributes, the structure whole as JSON text beside its arrays, the JSON's sha256 | the run itself, through the one writer (`sidecars.spectra.write_spectra_payload`) |
 | `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied (with units), every mode's frequency per stage matched by shape, how far the force constants moved, the paths of every stage's own files, and the stages without a result with their state (§ 5.9) | `jobset summarize task` |
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
-| `<label>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
-| `<label>_<stage>-run<N>.pyscf.log` · `<label>_<stage>.log` · `<label>_<stage>_geom_optim.xyz` | the PySCF attempt — in the flat shape the last two carry the run's number too, `<label>_<stage>-run<N>.log` (`engines/pyscf.md` § 2) | the engine's own account; PySCF's own log; geomeTRIC's trajectory | PySCF |
-| `<label>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to yours — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
-| `<label>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
+| `<label>_<NN>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
+| `<label>_<NN>_<stage>-run<N>.pyscf.log` · `<label>_<NN>_<stage>.log` · `<label>_<NN>_<stage>_geom_optim.xyz` | the PySCF attempt — in the flat shape the last two carry the run's number too, `<label>_<NN>_<stage>-run<N>.log` (`engines/pyscf.md` § 2) | the engine's own account; PySCF's own log; geomeTRIC's trajectory | PySCF |
+| `<label>_<NN>_<stage>.fdf` | each SIESTA attempt | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to yours — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
+| `<label>_<NN>_<stage>.runwrap-<stamp>.log` | each attempt | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 
 ### 6.10 Schema 9 — the result states its structure, in a JSON and a NetCDF *(decided 2026-10-14, built 2026-10-18)*
 
@@ -2539,18 +2559,21 @@ flowchart TB
   end
   subgraph prep["prep task"]
     G["validate(struct, cfg, calculation)<br/>PySCF checks #124; SIESTA checks #124; refuse"]
+    RX["SIESTA force-constant stage, once relax has finished:<br/>relax's newest run (or prep --from) read —<br/>its last geometry, its cell, its relaxation record"]
     SORT["SIESTA: sort a copy held-first,<br/>its deck states the order record"]
     D["spec_for(…, calculation='vibration') → prepare_deck<br/>PySCF: the script · SIESTA: the .fdf"]
   end
   subgraph run["launch task"]
     PY["PySCF script: relax → SCF → Hessian(free) →<br/>modes → strengths → thermo → ES → .spectra.json"]
-    SI["SIESTA: SCF + 6·n_free displaced SCFs → .FC"]
+    SR["SIESTA relax (box unticked):<br/>an ordinary relaxation"]
+    SI["SIESTA force constants, relax's files copied in at its first launch:<br/>SCF + 6·n_free displaced SCFs → .FC"]
   end
   SUM["the finish, in the same job (SIESTA):<br/>mb_vibration.pyz — read .FC → H_AA → vibrational_modes →<br/>invert the permutation → .spectra.json"]
   LOAD["POST /api/spectra/load → SpectraResults.from_dict<br/>+ with_ir_route + motion_share_by_element"]
   VIEW["Results tab: chart · table · animation ·<br/>electronic structure · thermochemistry"]
   ST --> G; CAT --> G; TJ --> G; G --> SORT --> D; G --> D
-  D --> PY; D --> SI; SI --> SUM; PY --> LOAD; SUM --> LOAD; LOAD --> VIEW
+  D --> PY; D --> SR; SR --> RX; RX --> SORT; D --> SI
+  SI --> SUM; PY --> LOAD; SUM --> LOAD; LOAD --> VIEW
 ```
 
 *(The sort writes no file: the copy carries its order record, each deck states it, and the finish reads it from its deck — `model/overview.md` § 2.2a.)*
@@ -2563,7 +2586,7 @@ flowchart TB
 | `POST /api/build/preflight` | the live checks: `validate(struct, cfg, calculation="vibration")` |
 | `POST /api/structure/analyze` | the charge and spin each form's vibration will carry — the one electronic state, for exactly what the form says, about the structure the viewer holds; the chemistry card shows it and fills nothing in |
 | `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |
-| `POST /api/task-setup/save` · `/prep` | write `task.json`; run `prep` for one stage on a named machine |
+| `POST /api/task-setup/save` · `/prep` | write `task.json`; run `prep` for the groups picked, each one job, on a named machine — the function the terminal's `prep task` runs |
 | `POST /api/spectra/load` | parse an existing `.spectra.json` into display data; typed errors |
 | `molbuilder jobset init / prep / launch` | the same road from a terminal (§ 2.1); the run ends with the result |
 | `molbuilder jobset summarize task [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |

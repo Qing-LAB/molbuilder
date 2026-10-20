@@ -371,6 +371,19 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
                        else kind.directive_value("wall", lines)),
                  mem=kind.directive_value("memory", lines),
                  restated=time_s is not None)
+    if sent.time is None:
+        # A HEADER THAT STATES NO WALL is not one prep wrote: prep states
+        # every job's wall or refuses (R-P13).  Refused here, the header
+        # named, as a prepared stage that is not what prep writes is
+        # (R-L15, R-L16).
+        raise SubmitError(
+            f"{header} states no wall ({kind.name}'s `wall` directive), so "
+            f"the launch cannot say what it sends -- prep writes one into "
+            f"every header, so this one was edited since.  Prepare it again "
+            f"where nothing of it was launched, or restore the state saved "
+            f"before it was edited (`molbuilder checkpoint list`); --time "
+            f"states the wall for this launch alone (job-system.md § 6.0, "
+            f"R-L44).")
     restated = (kind.restated(row.says, sent.time) if sent.restated
                 else [])
     # The launch-door claim, EXPLICIT on the line: environment inheritance
@@ -553,7 +566,7 @@ class _Member:
         present = [w.name for w in self.job.warm
                    if (self.run_dir / w.name).is_file()]
         return written_as_ended(self.run_dir, self.names.label, present,
-                                run=c.run)
+                                run=c.written_by or c.run)
 
     @property
     def gathered(self) -> List[str]:
@@ -885,7 +898,8 @@ def _as_described(calc, job, *, described, written_at=None):
     from .materialize import run_names
     from .errors import as_prep_error, step_errors
     from .planned import Plan
-    from .prep import PrepError, plan_stage
+    from .errors import PrepError
+    from .prep import plan_stage
     base, task, jobset = Path(calc.base), calc.task, calc.jobset
     asked = job.asked or {}
     try:
@@ -1060,6 +1074,13 @@ def _plan_member(calc, job, *, writes: Plan,
             "--gather takes a transport rung's inputs anew from the "
             "rungs upstream; a stage of this calculation continues from "
             "a run, named with --from (job-system.md § 5.4).")
+    if gather:
+        from ..transport.stages import inputs_of
+        if not inputs_of(task, job.name):
+            raise SubmitError(
+                f"--gather takes a transport rung's inputs anew from the "
+                f"rungs upstream, and {job.name} takes none -- it is "
+                f"launched again without it (job-system.md § 5.4, R-L14).")
     if first and gather:
         raise SubmitError(GATHER_AT_FIRST)
     if not first and from_attempt and gather:
@@ -1407,7 +1428,8 @@ def plan_launch(calc, *, mode: str,
                 group: Optional[int] = None,
                 from_attempt: Optional[str] = None,
                 gather: bool = False,
-                background: bool = False) -> LaunchPlan:
+                background: bool = False,
+                held: Sequence[dict] = ()) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of ``calc``, the
     calculation as the verb opened it (A16): its plan, or a benchmark's
     (``bench``: its set and the bench container it was read from) -- planned
@@ -1427,7 +1449,10 @@ def plan_launch(calc, *, mode: str,
     The queue is the one the work's prep recorded; ``time_s`` is a submitted
     job's wall as the launch restates it, the one value a launch may
     (`commands.LAUNCH_FLAGS`); ``side`` (``"cpu"`` / ``"gpu"``) and
-    ``trial_timeout_s`` are a grouped bench's.
+    ``trial_timeout_s`` are a grouped bench's.  ``held`` are the questions
+    the verb asked before the plan (which group, which stage), each with its
+    answer: written before a refusal, and otherwise after the send's save
+    (``LaunchPlan.held``, § 6.0, step 4).
     ``told`` is what the verb was told -- the launch's ``kind``, ``stage``
     and ``trial``, and its ``flags`` as typed among it -- written on each of
     the launch's lines in the ledger, and said again by a refusal that
@@ -1473,6 +1498,8 @@ def plan_launch(calc, *, mode: str,
                         from_attempt=from_attempt, gather=gather)
     except SubmitError as exc:
         if record:
+            for facts in held:
+                _record(base, told, "question", **facts)
             _record(base, told, "refused", reason=str(exc))
         raise
     except _refusal_kinds() as exc:
@@ -1482,6 +1509,8 @@ def plan_launch(calc, *, mode: str,
         # like every refusal: one catch, not one per reader (A16: a
         # boundary translates the kind into its own).
         if record:
+            for facts in held:
+                _record(base, told, "question", **facts)
             _record(base, told, "refused", reason=str(exc))
         raise SubmitError(str(exc)) from None
 
@@ -1508,6 +1537,7 @@ def plan_launch(calc, *, mode: str,
         return plan_launch(fresh, bench=again_bench, record=False, **asked)
 
     plan.remake = again
+    plan.held = list(held)
     plan.told, plan.records = dict(told), record
     # the queue's source is the entry's decision, on every line
     plan.told.update(domain=plan.queue[0], domain_source=plan.queue[1])
@@ -1518,11 +1548,13 @@ def plan_launch(calc, *, mode: str,
 def _refusal_kinds() -> tuple:
     """What the readers a plan asks raise for the person to fix, each its
     own kind, said as the launch's refusal (:func:`plan_launch`): a record
-    of a run that does not read (R-L21), and a plan's job no file can be
-    named for (`materialize.NamingError`) -- never a plain error of code,
-    which stays one."""
+    of a run that does not read (R-L21), a plan's job no file can be named
+    for (`materialize.NamingError`), and a calculation's own
+    `warm-files.toml` that does not read (`warmfiles.WarmFilesError`) --
+    never a plain error of code, which stays one."""
+    from ..warmfiles import WarmFilesError
     from .materialize import NamingError
-    return (LaunchRecordError, NamingError)
+    return (LaunchRecordError, NamingError, WarmFilesError)
 
 
 def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
@@ -2101,6 +2133,37 @@ def _all_launched(jobset: JobSet, base: Path, *, shape, count: int,
            "`summarize bench` on the sweep's stage"))
 
 
+def _empty_scratch_fn(when: str) -> List[str]:
+    """THE RUN'S SCRATCH FOLDER, EMPTIED (`engines/transport.md` § 2a.11,
+    *What a run's points share*): the walk's ``empty_scratch`` -- the files
+    the one answer names an engine's scratch (`warmfiles.scratch_families`,
+    each family a glob of the shell's) and nothing else, and what went,
+    with its size in du's words, to the log."""
+    import shlex as _sh
+    from ..warmfiles import scratch_families
+    globs = " ".join("*" + _sh.quote(f[1:]) for f in scratch_families())
+    return [
+        "empty_scratch() {",
+        '    _d="$1"',
+        '    if [ ! -d "${_d}" ]; then',
+        f'        echo "[group] {when} $(basename "${{_d}}")/ not there -- '
+        f'nothing emptied" >> "$LOG"; return 0',
+        "    fi",
+        f'    _gone=$(cd "${{_d}}" && ls -d -- {globs} 2>/dev/null '
+        f'| tr "\\n" " ")',
+        '    if [ -n "${_gone}" ]; then',
+        f'        _size=$(cd "${{_d}}" && du -ch -- {globs} 2>/dev/null '
+        f'| tail -1 | cut -f1)',
+        f'        (cd "${{_d}}" && rm -f -- {globs})',
+        f'        echo "[group] {when} $(basename "${{_d}}")/ emptied -- '
+        f'${{_gone}}(${{_size}})" >> "$LOG"',
+        "    else",
+        f'        echo "[group] {when} $(basename "${{_d}}")/ empty" >> "$LOG"',
+        "    fi",
+        "}",
+    ]
+
+
 def _walk_script(name: str, steps, *, where: str, log: str,
                  member_word: str = "trial",
                  bound_s: Optional[int] = None,
@@ -2173,26 +2236,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
         f'{member_word}" >> "$LOG"; exit 130; }}',
         "trap _walk_stopped INT TERM HUP",
-        # THE RUN'S SCRATCH FOLDER, EMPTIED (`engines/transport.md` § 2a.11,
-        # *What a run's points share*): the file family alone, and what
-        # went, with its size in du's words, to the log.
-        "empty_scratch() {",
-        '    _d="$1"',
-        '    if [ ! -d "${_d}" ]; then',
-        f'        echo "[group] {when} $(basename "${{_d}}")/ not there -- '
-        f'nothing emptied" >> "$LOG"; return 0',
-        "    fi",
-        '    _gone=$(cd "${_d}" && ls *.TSGF* 2>/dev/null | tr "\\n" " ")',
-        '    if [ -n "${_gone}" ]; then',
-        '        _size=$(cd "${_d}" && du -ch *.TSGF* 2>/dev/null | tail -1 '
-        '| cut -f1)',
-        '        rm -f -- "${_d}"/*.TSGF*',
-        f'        echo "[group] {when} $(basename "${{_d}}")/ emptied -- '
-        f'${{_gone}}(${{_size}})" >> "$LOG"',
-        "    else",
-        f'        echo "[group] {when} $(basename "${{_d}}")/ empty" >> "$LOG"',
-        "    fi",
-        "}",
+        *(_empty_scratch_fn(when) if empties or empty_at_end else []),
         "run_member() {",
         '    _name="$1"; _dir="$2"; shift 2',
         "    _t0=$(date +%s)",
@@ -2440,19 +2484,15 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     here, each point is told its card's wall (`running-a-job.md` § 3.6)."""
     from ..runrecord import launch_record, next_run, read_continued_from
     from ..transport.stages import hands_on, products_of
-    from ..warmfiles import warm_list
+    from ..warmfiles import is_scratch
     from .continuation import done
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     job, names, stage = m.job, m.names, m.job.name
     stage_dir, run, prev = m.container, m.run_dir, m.ran
-    vocabulary = warm_list(jobset.engine, "transport", base)
-    # THE ENGINE'S SCRATCH (`warm-files.toml` [transport] scratch, by
-    # suffix): recomputed by every run, so never taken over -- it lies in
-    # the run's own folder for it (`Job.scratch_dir`), and a run made
-    # before held it in its points.
-
-    def scratch(name: str) -> bool:
-        return any(name.endswith(suf) for suf in vocabulary.scratch)
+    # AN ENGINE'S SCRATCH (the one answer, `warmfiles.is_scratch`):
+    # recomputed by every run, so never taken over -- it lies in the run's
+    # own folder for it (`Job.scratch_dir`), and a run made before held it
+    # in its points.
     # WHAT A POINT MUST HOLD TO BE DONE -- the one list (`products_of`):
     # what the rungs downstream take, and what a point hands to the next
     # (`hands_on`, the one answer of that).
@@ -2493,7 +2533,7 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
         hand_over(base, HandOver(
             pdir, names, FIRST_ATTEMPT, CONTINUED, source=origin,
             files=tuple((at, f.name) for f in sorted(src.iterdir())
-                        if f.is_file() and not scratch(f.name))),
+                        if f.is_file() and not is_scratch(f.name))),
             plan.writes)
     # THE WALK: round by round -- every frame's point at a voltage, then the
     # next voltage (`engines/transport.md` § 2a.11) -- a point's start the
@@ -2785,7 +2825,8 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
         # THE HEADER IS STILL WHAT PREP WOULD WRITE (R-L16): the members'
         # shared request, rendered now.
         from ..deck_record import without_stamps
-        from .prep import PrepError, group_header
+        from .errors import PrepError
+        from .prep import group_header
         try:
             now = group_header(base, task, number, jobs,
                                described().environment)

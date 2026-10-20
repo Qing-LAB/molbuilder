@@ -589,10 +589,10 @@ start` and `jupyter start` as a person types them, then a real browser on
 molbuilder's one port — the tab frames JupyterLab from its own origin and a
 cell run in it answers, and Jupyter's own port answers this machine only.
 
-**Known gap.** An env built before the analysis stack was added to the recipe
-has a kernel that cannot `import numpy`. The verb is
-`repair molbuilder-jupyternb`, **not `install`**: on an env that already
-exists `install` skips the create step and goes straight to verify, so it adds
-no missing conda package. `repair` is what closes what the package audit
-reports. *(Measured 2026-09-14, after `install` reported FAILED with
-`No module named 'numpy'` and had installed nothing.)*
+**An env built before the analysis stack was added to the recipe** has a
+kernel that cannot `import numpy`. Either verb adds what such an env lacks:
+`molbuilder envs install molbuilder-jupyternb` installs the recipe's conda
+packages into an env that exists whenever it is short of one
+([`ops/env-framework.md`](?doc=ops/env-framework.md) § 4.4), and
+`molbuilder envs repair molbuilder-jupyternb` installs what the package audit
+reports missing.

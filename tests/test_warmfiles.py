@@ -71,8 +71,8 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
     # surface Green's functions a device run holds once per voltage, written
     # by the first point there and read by the rest -- never carried, never
     # taken over into a new run; not restart rows, a section-level fact.
-    assert W.warm_list("siesta", "transport").scratch == (".TSGFL", ".TSGFR")
-    assert W.warm_list("siesta", "optimization").scratch == ()
+    assert W.is_scratch("AuBDT.v0.2.TSGFL") and W.is_scratch("AuBDT.v0.2.TSGFR")
+    assert not W.is_scratch("AuBDT.TSDE") and not W.is_scratch("AuBDT.TSHS")
     # ...AND THE FOLDER OF THE RUN'S OWN IT LIVES IN -- the fourth section
     # fact, stated together with `scratch` (job-contracts.md § 4.2a).
     assert W.warm_list("siesta", "transport").scratch_dir == "tsgf"

@@ -575,15 +575,18 @@ in it, and nothing is written.
 
 **The wall a job was sent with reaches its engine** *(the user, 2026-10-19:
 "this should be now mandatory for all engines … fed to the engine through
-their proper channel/parameter")*. The launch tells the job the wall it was
-sent with — `MB_WALL_S`, the seconds of the header's wall or the launch's
-`--time`, the value `run.json`'s `placed_on.time` records, on the send line
-beside the launch claim ([`scheduler.md`](?doc=execution/scheduler.md) § 6a)
-and in a direct run's environment when the run states a wall — each
-member of a walk run here told its own card's, its clock its own start —
-and the
-header says when the job started (`MB_JOB_STARTED`, § 2.1b of
-[`run-reports.md`](?doc=execution/run-reports.md)). From the two the run
+their proper channel/parameter")*. The launch tells each run its wall in
+seconds, `MB_WALL_S`, and the run script counts it from the start
+`MB_JOB_STARTED` holds:
+
+| launched | `MB_WALL_S` — told by `jobset launch` | `MB_JOB_STARTED` — counted from |
+|---|---|---|
+| one run, to a queue | on the send line, beside the launch claim ([`scheduler.md`](?doc=execution/scheduler.md) § 6a): the wall the header prep wrote carries, read off it by its kind's spelling (`Kind.directive_value`), or the launch's `--time` — the value `run.json`'s `placed_on.time` records (`submit._sbatch_request`) | the job's start, which its header says once ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) |
+| a walk, to a queue — a group, a run of points, a benchmark's shelf | the same line, the job's one wall for every member: its header's — a group's and a run of points' its members' walls summed (`group.envelope`), a shelf's the benchmark's own — or the launch's `--time` | the job's start: a later member counts what the members before it left |
+| one run, here | in its environment (`submit._go`), the wall its own job states (`Resources.time`: § 5.3.1's chain at prep) — none stated, nothing | its run script's own start |
+| a walk, here | on each member's line of the walk script (`submit._walk_script`, `walls`), the wall that member's own job states — none stated, nothing | each member's run script's own start |
+
+From the two the run
 script counts what is left when it starts the engine, and hands the engine
 that and the calculation's **wall slack** — the catalogue's `wall_slack`
 item on the run card, seconds, default 600 — through the engine's own
@@ -595,10 +598,10 @@ channel; the engine stops once less than the slack is left:
 | TBtrans | nothing: the item names no words for it, it checks no clock | runs to the wall |
 | PySCF | the deck reads `MB_WALL_S`, `MB_JOB_STARTED` and `MB_WALL_SLACK_S` from its environment and keeps a deadline ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3.9) | a relaxation stops at the first step past the deadline, keeps the geometry it reached (`_optimized.xyz`, as every step does) and ends normally with `# relaxed: no`; a vibration deck past the deadline before its spectrum is written stops with an error naming the wall, so the run reads `failed` with the reason and a launch starts it again |
 
-A run with no wall stated — a run here with none on its card — hands the
+A run with no wall stated — a run here whose job states none — hands the
 engine nothing and runs until it is done. The monitor's `[WALL]` warning
-(§ 2.1b there) stays: it is the cue for a job whose engine could not stop
-itself in time, a step longer than the slack.
+(`run-reports.md` § 2.1b) stays for a job sent to a queue: it is the cue for a job
+whose engine could not stop itself in time, a step longer than the slack.
 
 **Why this is mandatory.** A scheduler's kill lands at a second of its own
 choosing, and SIESTA writes its density in place after every iteration
@@ -619,6 +622,9 @@ ledger's: *copied H2.DM — WARNING: written as the job ended (13:58:12; the
 job ended 13:58:11), it may be incomplete; a start from it may need more
 iterations or fail; `--cold` starts without it.* A fact shown, never a veto:
 the launch goes as asked, and the person decides.
+
+---
+
 ## 4. Watching a run, and reading it back
 
 ### 4.0 Which question, which reader
@@ -905,7 +911,7 @@ stateDiagram-v2
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
 | a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
-| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); for a prepared stage not launched, the ready door's *ready to launch* / *waits for*; for one not prepared, `described` — a force-constant stage waiting for `relax` with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
+| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s for a prepared stage, plus `missing` (its folder is not on disk) and `unknown` (unreadable); for a prepared stage not launched, the ready door's *ready to launch* — *(prepared by molbuilder X.Y.Z: …)* when another molbuilder prepared it, whose launch refuses it if prep would write it differently now ([`job-system.md`](?doc=execution/job-system.md) § 6.0, R-L15) — / *waits for*; for one not prepared, `described` — a force-constant stage waiting for `relax` with what for (`job-system.md`, *The task*) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
 | the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, asked after it writes its closing record |
 
@@ -1110,9 +1116,13 @@ asks too: `--time` may restate a submitted job's wall after `prep`'s
 printout, so the line as sent is seen only here. **A run here starts in the background**, its question offering the
 foreground, `--foreground` the waited-on run
 ([`job-system.md`](?doc=execution/job-system.md) § 6.0). A flag the launch
-would not read is refused by name, with the launch as typed for each mode —
-`--time` under `--mode direct`,
-`--foreground` under `submit` or `ask`, a bench's flags on `launch task`.
+would not read is refused by name: one the mode does not read — `--time`
+under `--mode direct`, `--foreground` under `submit` or `ask` — with the
+launch as typed for each mode; one the launch's kind does not read — a
+benchmark's `--only` and `--trial-timeout` on `launch task`, a stage's
+`--cold`, `--from` and `--gather` on `launch bench` — with *`launch <kind>`
+does not read it*. One table, `commands.LAUNCH_FLAGS`
+([`job-system.md`](?doc=execution/job-system.md) § 6.0, R-L4).
 
 > **`--mode ask` submits nothing and tells you when it would start.** It walks
 > the identical path `--mode submit` walks and inserts its scheduler kind's
@@ -1220,13 +1230,22 @@ flowchart TD
     RD["the calculation folder"]
     G[".git/<br/>everything small:<br/>.fdf .out .XV .CG run.json"]
     B[".binsnapshots/&lt;digest&gt;/<br/>whole copies of everything large<br/>+ MANIFEST.do_not_edit"]
+    S["an engine's scratch<br/>(TranSIESTA's *.TSGFL, *.TSGFR)<br/>in neither store; a restore removes it"]
     RD --> G
     RD --> B
+    RD -.-> S
 ```
 
 Which store a file goes to is decided by **measuring it** against a size limit —
-10 MB by default, set in `molbuilder.json`. Nothing is left out: every file is
-in exactly one of the two stores.
+10 MB by default, set in `molbuilder.json`. Every file is in exactly one of
+the two stores, but an engine's scratch: the files the engines' own
+vocabularies name `scratch` — every engine's, whatever engine the folder
+records — recomputed by every run, are in neither, never reported unsaved,
+and removed by a restore like every file the target does not hold
+([`checkpointing.md`](?doc=execution/checkpointing.md) S1;
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). `jobset
+scratch` lists them and `--empty` removes them
+([`job-system.md`](?doc=execution/job-system.md) § 5.3).
 
 ### 6.2 The verbs
 
@@ -1241,9 +1260,15 @@ molbuilder checkpoint config                                 # which files count
 
 Every verb takes `-p/--path` (default: the current directory).
 
-- **`init`** — `--engine siesta|pyscf` names which config entry to use, so
-  families that are always large skip the measuring. Omit it and every file is
-  measured, which is always correct and merely slower. `--calculation` sets the
+- **`init`** — `--engine siesta|pyscf` names the engine whose config entry's
+  always-large families skip the measuring, recorded in the folder's own
+  `.git/config` — on a folder that is already a checkpoint folder too, when it
+  records none. Omit it and every file is measured, which is always correct
+  and merely slower; a history that a `prep`, Task setup's Save or a group's
+  first launch begins records the calculation's engine with its first state
+  (`checkpoint.save_before`, `Repo.name_engine`); an engine once recorded is
+  never replaced. An engine's
+  scratch is never stored, whatever the folder records. `--calculation` sets the
   name written into every state; it defaults to the folder's, and a name that
   would need repairing is **refused** rather than quietly fixed.
 - **`save -m`** — the note is required and never generated. It is the only thing
@@ -1273,8 +1298,11 @@ Every verb takes `-p/--path` (default: the current directory).
   git show -s --format=%B <state>      # the `Manifest-SHA256:` line is the archive
   cat .binsnapshots/<digest>/<path>
   ```
-- **`config`** — prints the size limit, which families skip the measuring, and
-  where to change them. Read-only: the classification has one home.
+- **`config`** — prints the size limit, which families skip the measuring,
+  and, on the line `in neither`, the engines' scratch — never saved, removed
+  by a restore, named by the engines' own `warm-files.toml` and not by
+  `molbuilder.json` — then where to change the first two. Read-only: the
+  classification has one home.
 
 **What a restore asks you.** It refuses first on things about the *target* — an
 unknown state, or an archive that does not verify — because nobody should accept
@@ -1282,7 +1310,11 @@ a loss for an operation that then fails for another reason. Only then does it
 name everything unsaved (changed, added and deleted alike) and ask. At a
 terminal you answer; a script passes `--force`. **Say yes and it is gone**:
 nothing is stashed, renamed or set aside. Files merely absent from the target are
-removed without a warning — they are still in the state that holds them.
+removed without a warning — they are still in the state that holds them. An
+engine's scratch is no file of any state, so a restore never names it as
+unsaved and removes it like any file the target does not hold: a device run's
+`tsgf/` comes back holding only its marker where the target holds that run,
+and a run folder the target never had is removed whole (S1).
 
 ### 6.3 The panel, and the routes
 
@@ -1292,8 +1324,9 @@ drawn from parentage, and buttons for init, save, tag and restore. **Refresh is
 explicit** — it reads on directory-enter and when you press Refresh, which asks
 the exact content question rather than the cheap one. There is no polling.
 
-Over HTTP: `GET /api/checkpoint/state`, `list`, `config`; `POST
-/api/checkpoint/init`, `save`, `tag`, `restore`. The panel and the CLI go
+Over HTTP: `GET /api/checkpoint/state`, `list`; `POST
+/api/checkpoint/init`, `save`, `tag`, `restore`
+([`web-api.md`](?doc=web/web-api.md) § 5). The panel and the CLI go
 through one class, so a rule proved on one holds on the other.
 
 ### 6.4 One rule for you: use the verbs, not bare git
@@ -1314,9 +1347,13 @@ decision either way, so they went on reading as *coming*. They are not:
 
 - **`checkpoint diff`** — no verb, on any surface, and none is planned. The
   commit-graph viewer in the sidebar is how two states get compared.
-- **`prune`** — nothing is ever reclaimed, and under *"every saved state stays
-  restorable"* almost nothing can be, so the verb would mostly refuse. Delete
-  the folder if you want the space.
+- **`prune`** — under *"every saved state stays restorable"* almost nothing
+  can be reclaimed, so the verb would mostly refuse. What no state holds — an
+  engine's scratch an older save archived — a save clears from every archive
+  by itself, at the end of the save, and records that it did, so the next
+  saves skip the walk (`checkpoint.prune_scratch`,
+  [`checkpointing.md`](?doc=execution/checkpointing.md) I1); nothing else is
+  reclaimed. Delete the folder if you want the space.
 - **The `snippets/` library** — reusable deck fragments. The template and its
   `overrides` are how a calculation varies; a second vocabulary for the same
   job is what this contract exists to prevent.

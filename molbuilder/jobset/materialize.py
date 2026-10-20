@@ -231,43 +231,50 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
 
 @dataclass(frozen=True)
 class ScratchFile:
-    """One file of the engine's scratch a calculation's runs hold -- its
+    """One file of an engine's scratch a calculation's runs hold -- its
     stage (``None`` on the flat layout, where the stages share one folder),
-    where it lies, and its size in bytes."""
+    where it lies, its size in bytes, and the run it lies in
+    (`paths.run_folder_of`; ``None`` on the flat layout, where the runs
+    share the folder)."""
     stage: Optional[str]
     path: Path
     size: int
+    run: Optional[Path] = None
 
 
 def scratch_in(calc) -> List[ScratchFile]:
-    """THE ENGINE'S SCRATCH a calculation's runs hold (`job-system.md`
-    § 5.3, *scratch*): every file of the families its engine's vocabulary
-    names scratch (`warmfiles.scratch_families`, the one answer the
-    checkpoint asks too) below each stage's folder -- on the flat layout the
-    calculation's own -- the stores and every dot-folder left out.  What
-    `jobset scratch` lists and empties; it reads names and sizes, never a
-    file."""
-    import fnmatch
-    from ..warmfiles import scratch_families
-    families = scratch_families(calc.task.engine)
+    """AN ENGINE'S SCRATCH a calculation's runs hold (`job-system.md`
+    § 5.3, *scratch*): every file the one answer names scratch
+    (`warmfiles.is_scratch`, which the checkpoint asks too) below each
+    stage's folder -- on the flat layout the calculation's own -- the
+    stores and every dot-folder left out.  What `jobset scratch` lists and
+    empties; it reads names and sizes, never a file, and a file gone while
+    it looks is passed over."""
+    from ..paths import run_folder_of
+    from ..warmfiles import is_scratch
     base = Path(calc.base)
-    if not families:
-        return []
 
     def under(folder: Path):
         for here, dirs, files in os.walk(folder):
             dirs[:] = sorted(d for d in dirs if not d.startswith("."))
             for name in sorted(files):
                 path = Path(here) / name
-                if (any(fnmatch.fnmatch(name, f) for f in families)
-                        and not path.is_symlink()):
-                    yield path
+                if is_scratch(name) and not path.is_symlink():
+                    try:
+                        yield path, path.stat().st_size
+                    except FileNotFoundError:
+                        continue
     if not calc.shape.keeps_attempts_as_directories:
-        return [ScratchFile(None, p, p.stat().st_size) for p in under(base)]
-    return [ScratchFile(home.name, p, p.stat().st_size)
-            for home in ladder_homes(base, calc.task)
-            if home.dir is not None and home.dir.is_dir()
-            for p in under(home.dir)]
+        return [ScratchFile(None, p, size) for p, size in under(base)]
+    found = []
+    for home in ladder_homes(base, calc.task):
+        if home.dir is None or not home.dir.is_dir():
+            continue
+        for p, size in under(home.dir):
+            run = run_folder_of(p.relative_to(base))
+            found.append(ScratchFile(home.name, p, size,
+                                     base / run if run is not None else None))
+    return found
 
 
 class NamingError(ValueError):

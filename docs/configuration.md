@@ -94,7 +94,7 @@ No file is merged with another.
 | `molbuilder.json` (machine) | 1. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file.** There is no search: the branches above choose a DIRECTORY, and the file is the one in it. A `./molbuilder.json` in the working directory is not read (§ 2.1a) |
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` — the config directory is § 2.1c's three branches, **`MOLBUILDER_CONFIG_DIR` included**; this row stated only the last two until 2026-09-12 — and when none answers, nothing: **no reader probes** (M-4; until 2026-10-01 a fourth row read *a fresh probe, only when the caller asked*) | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
-| `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` in the package | first found wins — a calculation's tuned copy replaces the shipped one |
+| `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` in the package | first found wins — a calculation's tuned copy replaces the shipped one, and is the list in effect for it (`warmfiles.warm_list`), its `scratch_dir` included. **Whether a file is an engine's scratch is always asked of the shipped files, every engine's** (`warmfiles.is_scratch`): what the checkpoint never stores and a restore removes, what `jobset scratch` empties — a calculation's copy is a file somebody can edit between a save and a restore ([`execution/checkpointing.md`](?doc=execution/checkpointing.md) S1, S1c) |
 | `<label>.template.toml`, `task.json` | the calculation folder, and nowhere else | there is nothing to combine — one calculation, one description |
 
 **`environment.json` has no working-directory step, and that is deliberate.** A
@@ -634,7 +634,7 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `task.json` | `describe` / the Task-setup tab | calculation | **what changes** — the ladder, what varies, the structure reference |
 | `task.1st.json` | the Task-setup tab | calculation | a partial description in flight; **removed** when the real one is saved |
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
-| `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries. A calculation may carry its own tuned copy, and that copy wins |
+| `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries, and which are the engine's scratch — recomputed by every run, never carried, never saved by a checkpoint. A calculation may carry its own tuned copy, which is the list in effect for it, its `scratch_dir` included (`Job.scratch_dir`); whether a file is an engine's scratch is asked of the shipped files alone, every engine's (`warmfiles.is_scratch`, § 2.1) |
 | `secrets/README` | `envs init-config` | machine | **how to treat the credentials this directory holds** — the `0700`/`0600` rule, the two kinds in it (fixed-home, which `molbuilder.json` cannot name, and operator-named), the **function each is reached through**, and mock `notify` channel examples for all three kinds |
 | `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), and that this machine's own record is `../environment.json` and not in that directory |
 
@@ -920,7 +920,7 @@ that column cannot disagree with the code.
 | `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. `providers` is written by `molbuilder auth-setup`, which leaves `trust_proxy` as it is | `web/auth.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |
 | `admin.emails` | who may use the operator-only web actions: restarting the server, the rate limiter's block list | `runtime_config.get_admin_emails` ← `web/admin.py` | no | [`ops/access-control.md`](?doc=ops/access-control.md) § 5–6 |
 | `rate_limit.enabled` · `.window_404_s` · `.threshold_404` · `.window_total_s` · `.threshold_total` · `.cooldown_s` · `.trust_proxy` · `.max_tracked_ips` · `.allowlist` | the web server's request limiter: on or off, its thresholds, who it never blocks | `web/rate_limit.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) |
-| `checkpoint.size_limit_bytes` · `checkpoint.engines.<engine>` | which run files are too large to save with a folder | `runtime_config.get_checkpoint` ← `checkpoint.py` | no | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 4 |
+| `checkpoint.size_limit_bytes` · `checkpoint.engines.<engine>` | which store each file of a saved calculation folder goes to: over `size_limit_bytes` the archive, under it git; `engines.<engine>` names the families of files that are always large, so they skip the measuring. Neither decides *whether* a file is saved, and an engine's scratch, which no save stores, is not here: it is the engines' shipped `warm-files.toml` (§ 2.1) | `runtime_config.get_checkpoint` ← `checkpoint.classification_for` — every save and status (a restore's question is one; what a restore removes and copies back reads none of it), and `molbuilder checkpoint config`, which prints it | no | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 4 |
 
 **Refused by name**, each with what to do instead. A file ported from an older
 install is answered, not merely rejected; dropping these from the registry would
@@ -1265,7 +1265,9 @@ queue and run it on a long one, without editing it. The rule is
 
 An engine's `warm-files.toml` ships in its package and a calculation may carry a
 tuned copy that wins — the same *most-specific-scope-wins* shape as § 2, applied
-to a file whose default is shipped rather than written.
+to a file whose default is shipped rather than written. Whether a file is an
+engine's scratch is always asked of the shipped files (`warmfiles.is_scratch`,
+§ 2.1).
 
 ---
 

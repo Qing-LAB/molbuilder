@@ -256,7 +256,10 @@ touch it. The parts:
   The archive is the folder **as it stands now — the pure execution directory**:
   the workspace store (`.molbuilder_workspace`) and a checkpoint folder's
   history (`.git`, `.binsnapshots`) are left out, while every run file, engine
-  restart files (`.DM`, `.TSDE`, `.XV`) included, rides along. *(Not via
+  restart files (`.DM`, `.TSDE`, `.XV`) included, rides along — the engine's
+  scratch a run still holds too (a device run's `tsgf/` pair, which no
+  checkpoint saves; `jobset scratch` lists it,
+  [`job-system.md`](?doc=execution/job-system.md) § 5.3). *(Not via
   `git archive`: a checkpoint deliberately keeps large files out of git — they
   live in `.binsnapshots` — so a git export would silently drop the heaviest
   outputs the far machine needs.)*
@@ -364,7 +367,7 @@ the panel's DOM.
 |---|---|
 | `checkpoint.status(dir)` | `{ok, initialized, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only. *(Served by `GET /api/checkpoint/state`; until 2026-08-19 this called a route that never existed and answered `ok:false` forever)* |
 | `checkpoint.init(dir, {engine})` | start a history here. Refuses with a reason a caller can show (a nested repository, a folder that declares nothing) |
-| `checkpoint.saveState(dir, note)` | save the folder's current state. **A note is required** — `checkpointing.md` **L4** retired automatic messages, so nothing writes one on your behalf. Returns `{ok, changed}`; **`changed: false` is honest, not a failure** — nothing differed from the state the folder already stands at |
+| `checkpoint.saveState(dir, note)` | save the folder's current state. **A note is required** — `checkpointing.md` **L3**: the note is yours, required and never generated, so nothing writes one on your behalf. Returns `{ok, changed}`; **`changed: false` is honest, not a failure** — nothing differed from the state the folder already stands at |
 
 **What it deliberately does not expose:** restore and tag. Restoring rewinds a
 folder and tagging writes in the namespace you are meant to be naming things in

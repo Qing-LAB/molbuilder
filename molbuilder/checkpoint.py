@@ -51,6 +51,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .jobset.model import FILENAME as _JOBSET_FILENAME
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import GITIGNORE_FILE, SNAPSHOT_DIR
+from .warmfiles import is_scratch
 
 
 # --------------------------------------------------------------------- #
@@ -62,9 +63,10 @@ from .runfiles import GITIGNORE_FILE, SNAPSHOT_DIR
 #: catalogue's name (`runfiles.SNAPSHOT_DIR`, and the ruling beside it).
 ARCHIVE_DIR = SNAPSHOT_DIR
 
-#: The only two paths that are never stored (S1).  Not a policy about worth --
-#: a store cannot contain itself, and that is the entire list.  Anything else
-#: excluded here would be a file in no snapshot, which is S1's losing branch.
+#: The two stores, never stored (S1): a store cannot contain itself.  Not a
+#: policy about worth -- the one other file no state holds is an engine's
+#: scratch, which its vocabulary names (`warmfiles.is_scratch`, S1); anything
+#: else excluded here would be a file in no snapshot, S1's losing branch.
 #:
 #: Derived from :data:`ARCHIVE_DIR` rather than spelling it again: two literals
 #: for one directory are two things that can disagree, and the one that would
@@ -96,10 +98,11 @@ def classification_for(engine: Optional[str] = None) -> Dict[str, object]:
     """
     from .runtime_config import get_checkpoint
     from .warmfiles import scratch_families
-    # THE ENGINE'S SCRATCH, NEVER STORED (S1): asked of the engine's own
-    # vocabulary, the one answer to whether a file is kept.
+    # THE ENGINES' SCRATCH, NEVER STORED (S1): the shipped vocabularies'
+    # families, for any folder -- shown here, beside the store a file goes
+    # to, and named in the generated `.gitignore`.
     return {**get_checkpoint(engine),
-            "scratch": list(scratch_families(engine))}
+            "scratch": list(scratch_families())}
 
 
 def is_big(path: Path, size_limit: int, always_large=()) -> bool:
@@ -126,9 +129,9 @@ def render_gitignore(always_large=(), scratch=()) -> str:
 
     S1a: what git skips must be exactly what the archive takes, or a file falls
     between them and is in no snapshot at all.  So this renders **nothing but
-    archive patterns** plus the archive directory itself; there is no fixed
-    tail, because every line in one would be a file excluded by code nobody
-    agreed to (S1).
+    archive patterns** plus the archive directory itself, and the engines'
+    scratch, which no store takes (S1); there is no fixed tail, because every
+    line in one would be a file excluded by code nobody agreed to.
 
     The size gate cannot be expressed as a gitignore pattern, so a file that is
     big *by measurement* is kept out of git by the save's pathspec instead of
@@ -442,67 +445,101 @@ def archive_key(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def is_scratch(path: Path, scratch=()) -> bool:
-    """Whether ``path`` is the engine's scratch -- a name of one of the
-    ``scratch`` families (:func:`classification_for`) -- never stored, never
-    swept by a restore (S1)."""
-    return any(fnmatch.fnmatch(path.name, pat) for pat in scratch)
-
-
-def state_entries(entries: Dict[str, Tuple[str, int]],
-                  scratch=()) -> Dict[str, Tuple[str, int]]:
-    """A STATE'S ENTRIES -- its MANIFEST's, the engine's scratch left out:
-    no entry of any state, one saved before the rule too (S1, I2).  Every
-    reader of a MANIFEST asks this -- the verify, the restore, the status,
-    the reuse index -- so a state never needs its scratch back."""
+def state_entries(entries: Dict[str, Tuple[str, int]]
+                  ) -> Dict[str, Tuple[str, int]]:
+    """A STATE'S ENTRIES -- its MANIFEST's, an engine's scratch left out
+    (`warmfiles.is_scratch`): no entry of any state, one saved before the
+    rule too (S1, I2).  Every reader of a MANIFEST asks this -- the verify,
+    the restore, the status, the reuse index -- so a state never needs its
+    scratch back."""
     return {k: v for k, v in entries.items()
-            if not is_scratch(Path(k), scratch)}
+            if not is_scratch(Path(k).name)}
 
 
-def prune_scratch(root: Path, scratch=()) -> int:
-    """The engine's scratch removed from every published archive -- bytes no
-    state holds (S1, I1): an archive saved before the rule kept them.  Its
-    MANIFEST and its name stay, so every state stays named by what it holds;
-    a staging directory, which is somebody mid-write, is never entered.
+#: Where a folder records the scratch families its archives were last
+#: cleared of (`git config`, inside `.git/`, never stored) -- so the clearing
+#: walks every archive once, and again only when the shipped vocabularies
+#: name another family.  Lost, it costs one more walk, and nothing else.
+_SCRATCH_CLEARED_KEY = "molbuilder.scratchCleared"
+
+
+def prune_scratch(root: Path) -> int:
+    """An engine's scratch removed from every published archive -- bytes no
+    state holds (S1, I1): an archive saved before the families were left out
+    kept them.  Read off each archive's MANIFEST, the keys `state_entries`
+    leaves out; the MANIFEST and the archive's name stay, so every state is
+    still named by what it holds and still verifies.  A staging directory,
+    somebody mid-write, is never entered: its name is no sha256, or it has
+    no MANIFEST yet.  **It never fails a save**: a file already gone is
+    cleared; an archive that does not read, or a file that cannot be
+    removed, is passed over, and the walk is done again at the next save.
     Returns the bytes freed."""
+    from .warmfiles import scratch_families
+    families = " ".join(scratch_families())
     base = root / ARCHIVE_DIR
-    if not scratch or not base.is_dir():
+    if not families or not base.is_dir():
         return 0
-    freed = 0
-    for adir in sorted(base.iterdir()):
-        if not (adir.is_dir() and _SHA256_RE.fullmatch(adir.name)
-                and (adir / MANIFEST_NAME).is_file()):
+    done = _run_git(["config", "--get", _SCRATCH_CLEARED_KEY], cwd=str(root),
+                    check=False).stdout.strip()
+    if done == families:
+        return 0
+    freed, whole = 0, True
+    try:
+        archives = sorted(base.iterdir())
+    except OSError:
+        return 0
+    for adir in archives:
+        man = adir / MANIFEST_NAME
+        if not (_SHA256_RE.fullmatch(adir.name) and man.is_file()):
             continue
-        for here, _dirs, files in os.walk(adir, topdown=False):
-            for name in files:
-                path = Path(here) / name
-                if is_scratch(path, scratch) and not path.is_symlink():
-                    st = path.stat()
-                    path.unlink()
-                    if st.st_nlink == 1:
-                        freed += st.st_size
-            if Path(here) != adir and not any(Path(here).iterdir()):
-                Path(here).rmdir()
+        try:
+            keys = parse_manifest(man.read_bytes(), str(adir))
+        except (CheckpointError, OSError):
+            whole = False                 # said by its own verify, not here
+            continue
+        for key in keys:
+            if not is_scratch(Path(key).name):
+                continue
+            path = adir / key
+            try:
+                st = path.lstat()
+                if not path.is_file() or path.is_symlink():
+                    continue
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                whole = False
+                continue
+            if st.st_nlink == 1:
+                freed += st.st_size
+            # ITS FOLDERS, EMPTIED, GO TOO -- up to the archive's own.
+            d = path.parent
+            while d != adir:
+                try:
+                    d.rmdir()
+                except OSError:
+                    break
+                d = d.parent
+    if whole:
+        _run_git(["config", _SCRATCH_CLEARED_KEY, families], cwd=str(root),
+                 check=False)
     return freed
 
 
-def walk_entries(root: Path, scratch=()):
+def walk_entries(root: Path):
     """Every entry outside the two stores — regular files **and symlinks**.
 
     The one traversal the two walks below share, and the one a **restore**
     sweeps with: deciding what is a leftover is a question about everything in
-    the folder, not only about the things a store holds.
+    the folder, not only about the things a store holds — an engine's
+    scratch among them, which no state holds, so a restore removes it.
 
     **Pruned, not filtered.**  ``rglob`` descends into every directory and lets
     the caller discard what it collected, which means walking the whole archive
     -- every big file, once per state that ever held it -- to answer a question
     about the working tree.  That cost grows with the length of the history and
     is paid on every directory-enter, so the stores are never entered at all.
-
-    **The engine's scratch is no entry of a state** (S1): a file of its
-    ``scratch`` families is never yielded, so the save, the status and the
-    restore's sweep -- the three walks of a folder -- all leave it where it
-    lies.
     """
     stack: List[Path] = [root]
     while stack:
@@ -518,8 +555,6 @@ def walk_entries(root: Path, scratch=()):
             # save dies on.
             if entry.name in NEVER_STORED:
                 continue
-            if is_scratch(entry, scratch) and not entry.is_dir():
-                continue
             if entry.is_symlink():
                 # Yielded, never descended through: a link to an ancestor would
                 # make the walk infinite, and what is inside the target is the
@@ -532,13 +567,13 @@ def walk_entries(root: Path, scratch=()):
                 yield entry
 
 
-def walk_files(root: Path, scratch=()):
+def walk_files(root: Path):
     """Every regular file that belongs in a store (S1).
 
-    Skips only :data:`NEVER_STORED` — the two stores themselves — and symlinks.
-    **No other exclusion**: "no category of file is exempt", and a walk with a
-    private skip list is a walk that agrees with itself about files nobody
-    stores.
+    Skips the two stores (:data:`NEVER_STORED`), an engine's scratch
+    (`warmfiles.is_scratch` — in neither store, S1) and symlinks, and
+    nothing else: a walk with a private skip list is a walk that agrees with
+    itself about files nobody stores.
 
     Symlinks are excluded because a link has no content of its own: the real
     file is stored once wherever it lives, and following the link would archive
@@ -546,13 +581,13 @@ def walk_files(root: Path, scratch=()):
     still saved -- to git, by :meth:`Repo.save`, which is what makes S1's
     carve-out a carve-out from the **archive** rather than from the snapshot.
     """
-    for entry in walk_entries(root, scratch):
-        if not entry.is_symlink():
+    for entry in walk_entries(root):
+        if not entry.is_symlink() and not is_scratch(entry.name):
             yield entry
 
 
-def walk_symlinks(root: Path, scratch=()):
-    """Every symlink outside the two stores.
+def walk_symlinks(root: Path):
+    """Every symlink outside the two stores, an engine's scratch aside.
 
     A save needs these by name: an always-large hint matches on a *name*, and a
     name says nothing about a link.  A carry link called ``job.DM`` is twenty
@@ -560,13 +595,12 @@ def walk_symlinks(root: Path, scratch=()):
     take links -- so it would land in neither, and a restore would neither
     bring it back nor remove it (S1).
     """
-    for entry in walk_entries(root, scratch):
-        if entry.is_symlink():
+    for entry in walk_entries(root):
+        if entry.is_symlink() and not is_scratch(entry.name):
             yield entry
 
 
-def big_files(root: Path, size_limit: int, always_large=(),
-              scratch=()) -> List[Path]:
+def big_files(root: Path, size_limit: int, always_large=()) -> List[Path]:
     """The files that go to the archive rather than to git (S1, S1b).
 
     Only one side is ever wanted: git is told about everything else by a
@@ -574,7 +608,7 @@ def big_files(root: Path, size_limit: int, always_large=(),
     was work nobody consumed -- on every save and every directory-enter, over
     every file in the folder.
     """
-    return [path for path in walk_files(root, scratch)
+    return [path for path in walk_files(root)
             if is_big(path, size_limit, always_large)]
 
 
@@ -752,8 +786,13 @@ def sha256_all(paths: Sequence[Path]) -> List[str]:
     from concurrent.futures import ThreadPoolExecutor
     if len(paths) < 2:
         return [sha256_of(p) for p in paths]
-    with ThreadPoolExecutor(min(_HASH_WORKERS, len(paths))) as pool:
+    pool = ThreadPoolExecutor(min(_HASH_WORKERS, len(paths)))
+    try:
         return list(pool.map(sha256_of, paths))
+    finally:
+        # A FILE THAT DOES NOT READ ends the read: the files not yet begun
+        # are never read.
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def sha256_of(path: Path) -> str:
@@ -801,8 +840,7 @@ def _refuse_unstorable(root: Path, path: Path) -> str:
 # --------------------------------------------------------------------- #
 
 
-def _existing_by_sha(root: Path, wanted: Sequence[str],
-                     scratch=()) -> Dict[str, Path]:
+def _existing_by_sha(root: Path, wanted: Sequence[str]) -> Dict[str, Path]:
     """Where each of *wanted* already sits in the archive, if it does.
 
     Serves the *Disk cost* property (§ 12): identical content is stored once, so
@@ -821,9 +859,9 @@ def _existing_by_sha(root: Path, wanted: Sequence[str],
     base = root / ARCHIVE_DIR
     if not base.is_dir():
         return index
-    # Newest first: a file being saved again is likeliest to sit in a recent
-    # archive, so the common case reads one MANIFEST rather than all of them.
-    for adir in sorted(base.iterdir(), reverse=True):
+    # In name order -- a digest, so no order of time: the walk stops as soon
+    # as every wanted content is found.
+    for adir in sorted(base.iterdir()):
         if not outstanding:
             break
         man = adir / MANIFEST_NAME
@@ -835,14 +873,14 @@ def _existing_by_sha(root: Path, wanted: Sequence[str],
             entries = parse_manifest(man.read_bytes(), str(adir))
         except CheckpointError:
             continue                     # a damaged archive indexes nothing
-        for key, (sha256, _size) in state_entries(entries, scratch).items():
+        for key, (sha256, _size) in state_entries(entries).items():
             if sha256 in outstanding:
                 index[sha256] = adir / key
                 outstanding.discard(sha256)
     return index
 
 
-def publish_archive(root: Path, big: Sequence[Path], scratch=()) -> str:
+def publish_archive(root: Path, big: Sequence[Path]) -> str:
     """Write the archive for *big* and return its digest (§ 6).
 
     Hash the source, copy into a private staging directory, **re-hash the
@@ -942,8 +980,7 @@ def publish_archive(root: Path, big: Sequence[Path], scratch=()) -> str:
     # atomic and already handles "somebody else got there first".
     final.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(dir=str(final.parent), prefix=digest + "."))
-    index = _existing_by_sha(root, [sha for sha, _size, _key in entries],
-                             scratch)
+    index = _existing_by_sha(root, [sha for sha, _size, _key in entries])
     try:
         for sha256, _size, key in entries:
             src = root / key
@@ -1002,8 +1039,8 @@ def publish_archive(root: Path, big: Sequence[Path], scratch=()) -> str:
     return digest
 
 
-def verify_archive(root: Path, digest: str, *, deep: bool = True,
-                   scratch=()) -> Dict[str, Tuple[str, int]]:
+def verify_archive(root: Path, digest: str, *, deep: bool = True
+                   ) -> Dict[str, Tuple[str, int]]:
     """Check an archive against its MANIFEST, touching nothing (I2).
 
     Returns the expected map, so a caller can act on what it just verified
@@ -1047,9 +1084,9 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True,
             f"name it is stored under.  The record was modified "
             f"(checkpointing.md I2b).")
     # A STATE'S ENTRIES ALONE (:func:`state_entries`): an archive saved
-    # before the engine's scratch was left out may hold it, or a save may
-    # have pruned it -- no state needs it back (S1).
-    expected = state_entries(parse_manifest(raw, str(adir)), scratch)
+    # before the engines' scratch was left out may hold it, or a save may
+    # have cleared it -- no state needs it back (S1).
+    expected = state_entries(parse_manifest(raw, str(adir)))
     for key, (sha256, size) in expected.items():
         src = adir / key
         if not src.is_file():
@@ -1060,10 +1097,19 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True,
             raise CheckpointError(
                 f"archive {digest[:12]}…: {key!r} is {src.stat().st_size} "
                 f"bytes, the record says {size}; refusing to restore (I2).")
-        if deep and sha256_of(src) != sha256:
+    if deep:
+        keys = sorted(expected)
+        try:
+            got = sha256_all([adir / key for key in keys])
+        except OSError as exc:
             raise CheckpointError(
-                f"archive {digest[:12]}…: {key!r} does not match its recorded "
-                f"sha256; refusing to restore (I2).")
+                f"archive {digest[:12]}…: {exc.filename or 'a file'} cannot "
+                f"be read: {exc}; refusing to restore (I2).") from exc
+        for key, sha in zip(keys, got):
+            if sha != expected[key][0]:
+                raise CheckpointError(
+                    f"archive {digest[:12]}…: {key!r} does not match its "
+                    f"recorded sha256; refusing to restore (I2).")
     return expected
 
 
@@ -1218,6 +1264,7 @@ class Repo:
                 _run_git(["config", "molbuilder.calculation",
                           check_calculation_name(calculation or self.root.name)],
                          cwd=self.path)
+            self.name_engine(engine)
             return self.standing_at()
         working, inner = _scan_subtree(self.root)
         if inner:
@@ -1250,8 +1297,10 @@ class Repo:
 
         Losing it is safe by design -- an unnamed engine resolves to
         ``generic``, which measures every file and is "always correct and
-        merely measures more".  It is persisted so that property costs a stat
-        sweep only when nobody said what the engine was, rather than always.
+        merely measures more"; an engine's scratch is asked of no engine
+        (`warmfiles.is_scratch`).  It is persisted so that property costs a
+        stat sweep only when nobody said what the engine was, rather than
+        always.
         """
         if not self.initialized:
             return None
@@ -1261,11 +1310,13 @@ class Repo:
 
     def name_engine(self, engine: Optional[str]) -> None:
         """Record which engine this folder's saves classify by (§ 4) when
-        none is recorded -- at init, and by the save every act makes first
-        (:func:`save_before`), whose caller names the calculation's engine: a
-        history started without one would otherwise never learn it, and its
-        saves would store the engine's scratch (S1).  An engine already
-        recorded is the folder's own, and is never replaced."""
+        none is recorded -- by :meth:`init`, an initialised folder's
+        included: the history's first save, whose caller names the
+        calculation's engine (:func:`save_before`), or ``checkpoint init
+        --engine``.  Recorded later, it would change the generated
+        `.gitignore` and make a state of nothing the person changed.  An
+        engine already recorded is the folder's own, and is never
+        replaced."""
         if engine and self._engine() is None:
             _run_git(["config", "molbuilder.engine", str(engine)],
                      cwd=self.path)
@@ -1295,9 +1346,8 @@ class Repo:
     def classification(self) -> Dict[str, object]:
         """Which files this folder's saves send to the archive (§ 4, S1c).
 
-        Public: two surfaces print it — ``checkpoint config`` and
-        ``GET /api/checkpoint/config`` — and a private name they both reach
-        past is not a seam, it is a seam being ignored.
+        Public: ``checkpoint config`` prints it, and a private name a
+        surface reaches past is not a seam, it is a seam being ignored.
 
         Resolves through :func:`classification_for`, whose name differs from
         this one on purpose: a module function and a method sharing one name
@@ -1469,20 +1519,19 @@ class Repo:
             return FolderStatus(path=self.path, initialized=False)
         here = self.standing_at()
         cls = self.classification()           # read once; it hits the filesystem
-        scratch = cls["scratch"]
         edited = not gitignore_is_current(self.root, cls["always_large"],
-                                          scratch)
+                                          cls["scratch"])
         changed, added, deleted = set(), set(), set()
 
         big = big_files(self.root, int(cls["size_limit_bytes"]),
-                        cls["always_large"], scratch)
+                        cls["always_large"])
         on_disk = {archive_key(self.root, p): p for p in big}
 
         expected: Dict[str, Tuple[str, int]] = {}
         if here is not None:
             # A STATE SAVED BEFORE THE SCRATCH WAS LEFT OUT may hold some: it
             # is no work of the folder's, saved or not (S1).
-            expected = state_entries(self._manifest_of(here), scratch)
+            expected = state_entries(self._manifest_of(here))
 
         def _archives(name: str) -> bool:
             """Is this git talking about a file the archive owns?
@@ -1512,6 +1561,13 @@ class Repo:
             if len(record) < 4:               # the trailing empty field
                 continue
             code, name = record[:2], record[3:]
+            # AN ENGINE'S SCRATCH IS NO WORK OF THE FOLDER'S (S1), whatever
+            # git says of it -- one an older save tracked reads "deleted"
+            # when a walk empties its folder.
+            if is_scratch(Path(name).name):
+                if code[0] in ("R", "C"):
+                    idx += 1
+                continue
             if code[0] in ("R", "C"):
                 # A rename or copy carries its SOURCE in the next field.  Read
                 # as one record it becomes the path `old -> new`, which names
@@ -1690,14 +1746,22 @@ class Repo:
                 f"    molbuilder checkpoint init --calculation <name>\n"
                 f"Nothing was saved.") from exc
         cls = self.classification()
-        always, scratch = cls["always_large"], cls["scratch"]
+        always = cls["always_large"]
         # I2b: `.gitignore` records a DERIVATION, so the derivation is the
         # check -- regenerating it every save is what makes a hand edit
         # harmless rather than a file silently dropped from every store.
-        write_gitignore(self.root, always, scratch)
-        big = big_files(self.root, int(cls["size_limit_bytes"]), always,
-                        scratch)
+        write_gitignore(self.root, always, cls["scratch"])
+        big = big_files(self.root, int(cls["size_limit_bytes"]), always)
         keys = [archive_key(self.root, path) for path in big]
+
+        # AN ENGINE'S SCRATCH AN OLDER SAVE TRACKED (a small one went to
+        # git) leaves the index FIRST -- the ignore rules do not reach a
+        # tracked file, so `add` below would write its new bytes into
+        # `.git/objects`.  In neither store (S1); the file itself stays.
+        tracked_scratch = [name for name in _run_git(
+            ["ls-files", "-z"], cwd=self.path).stdout.split("\0")
+            if name and is_scratch(Path(name).name)]
+        _untrack(self.path, tracked_scratch)
 
         # THE BIG FILES ARE NEVER SHOWN TO `git add`, and that is not an
         # optimisation.  `add` hashes, compresses and WRITES every file it is
@@ -1736,7 +1800,7 @@ class Repo:
         # a big *file* past the ignore rules is S1's losing branch, a blob in
         # `.git/objects` on every save.
         links = [archive_key(self.root, path)
-                 for path in walk_symlinks(self.root, scratch)]
+                 for path in walk_symlinks(self.root)]
         swallowed = sorted(self._ignored(links))
         if swallowed:
             _run_git(["add", "-f", "--", *swallowed], cwd=self.path)
@@ -1745,34 +1809,24 @@ class Repo:
         # untouched.  This is the half that makes a category change complete:
         # a file leaves the store it came from.  (The reverse direction needs
         # nothing: a file that shrank is no longer excluded, so `add` takes it.)
-        for key in keys:
-            _run_git(["rm", "--cached", "-q", "--ignore-unmatch", "--", key],
-                     cwd=self.path, check=False)
-        # AND THE ENGINE'S SCRATCH an older save tracked (a small one went to
-        # git): the ignore rules do not reach a tracked file, so it leaves the
-        # index here -- in neither store (S1).  The file itself stays.
-        tracked_scratch = [name for name in _run_git(
-            ["ls-files", "-z"], cwd=self.path).stdout.split("\0")
-            if name and is_scratch(Path(name), scratch)]
-        if tracked_scratch:
-            _run_git(["rm", "--cached", "-q", "--", *tracked_scratch],
-                     cwd=self.path)
+        _untrack(self.path, keys)
 
-        digest = publish_archive(self.root, big, scratch)
-        # THE OLD STATES' SCRATCH GOES TOO (S1, I1): bytes no state holds.
-        prune_scratch(self.root, scratch)
+        digest = publish_archive(self.root, big)
         here = self.standing_at()
         staged = _run_git(["diff", "--cached", "--name-only"],
                           cwd=self.path, check=False).stdout.strip()
-        if not staged and here is not None and here.archive == digest:
-            return None                   # nothing changed, in either store
-
-        _run_git(["commit", "-q", "--allow-empty", "-m",
-                  message_with_trailers(note, digest, self.calculation())],
-                 cwd=self.path)
-        sha = _run_git(["rev-parse", "HEAD"], cwd=self.path).stdout.strip()
-        _run_git(["update-ref", _STATE_REF + sha, sha], cwd=self.path)
-        return self._state_from(sha)
+        state = None                      # nothing changed, in either store
+        if staged or here is None or here.archive != digest:
+            _run_git(["commit", "-q", "--allow-empty", "-m",
+                      message_with_trailers(note, digest, self.calculation())],
+                     cwd=self.path)
+            sha = _run_git(["rev-parse", "HEAD"], cwd=self.path).stdout.strip()
+            _run_git(["update-ref", _STATE_REF + sha, sha], cwd=self.path)
+            state = self._state_from(sha)
+        # THE OLD STATES' SCRATCH GOES TOO (S1, I1): bytes no state holds,
+        # cleared once the state is recorded, and never at its cost.
+        prune_scratch(self.root)
+        return state
 
 
     # -- restore ---------------------------------------------------- #
@@ -1801,11 +1855,8 @@ class Repo:
                 f"state {target.short} carries no archive digest, so what it "
                 f"held cannot be checked.  Refusing to restore from a record "
                 f"that cannot be verified (I2b).")
-        # A STATE'S ENTRIES ALONE -- the engine's scratch is in no state, and
-        # stays where it lies (S1).
-        scratch = self.classification()["scratch"]
-        expected = verify_archive(self.root, target.archive,
-                                  scratch=scratch)                 # refusal 2
+        # A STATE'S ENTRIES ALONE -- an engine's scratch is in no state (S1).
+        expected = verify_archive(self.root, target.archive)       # refusal 2
 
         # THE QUESTION, LAST -- AND ONLY WHEN THERE IS A QUESTION TO ASK.
         #
@@ -1840,7 +1891,9 @@ class Repo:
         #
         # What belongs here is decided by TWO RECORDS AND NO CONFIGURATION
         # (I2a): git says which text the target held, the MANIFEST says which
-        # big files it held, and anything else is a leftover.  Deriving the set
+        # big files it held, and anything else is a leftover -- an engine's
+        # scratch always, which is no file of any state, a copy git restored
+        # from a state saved before the rule included (S1).  Deriving the set
         # from the classification instead would make a restore mean different
         # things before and after a config edit -- and `git clean` alone cannot
         # do it, because a file matching an ignore pattern is invisible to it.
@@ -1863,19 +1916,19 @@ class Repo:
         # leftover exactly like a file, and A5 removes leftovers without asking
         # because they are not a loss.  `unlink` on a link removes the LINK; the
         # file it pointed at is somebody else's entry in this same walk.
-        # THE ENGINE'S SCRATCH IS NO LEFTOVER (S1): it is in no state, and
-        # stays where it lies.
         emptied: set = set()
-        for path in walk_entries(self.root, scratch):
+        for path in walk_entries(self.root):
             key = archive_key(self.root, path)
-            if key not in tracked and key not in expected:
+            if is_scratch(path.name) or (key not in tracked
+                                         and key not in expected):
                 path.unlink()
                 emptied.add(path.parent)
         # A DIRECTORY THE SWEEP EMPTIED GOES TOO (A5).  `git clean` leaves a
         # directory holding only ignored files standing -- it reads the whole
         # directory as ignored -- and a point folder after a run holds
-        # exactly those (`*.DM`, `*.TSHS`; its run's tsgf/ the `*.TSGF*`,
-        # whose marker keeps that folder).
+        # exactly those (`*.DM`, `*.TSHS`), a device run's `tsgf/` its
+        # leads' files (whose marker keeps that folder where the target
+        # holds it).
         # An empty `run-N/` left behind would be counted as an attempt by every reader of the
         # tree, so each emptied directory is removed up to the first one
         # that still holds something.
@@ -1957,6 +2010,16 @@ class Repo:
         return sorted(found, key=lambda t: t.name)
 
 
+def _untrack(repo_path: str, keys: Sequence[str]) -> None:
+    """``keys`` out of git's index, the files left where they lie -- each
+    as itself (`:(literal)`, never a glob), a few hundred to a call, so a
+    save of a folder of many large files is a few git calls, not one each."""
+    for i in range(0, len(keys), 500):
+        _run_git(["rm", "--cached", "-q", "--ignore-unmatch", "--",
+                  *(f":(literal){k}" for k in keys[i:i + 500])],
+                 cwd=repo_path, check=False)
+
+
 def _epoch_of(iso: str) -> Optional[float]:
     """An ISO-8601 timestamp as epoch seconds, or None if unreadable.
 
@@ -2028,16 +2091,15 @@ def save_before(path, what: str, *, engine: Optional[str] = None,
         if state is None:
             raise CheckpointError(f"{path}: its first state was not saved")
         return Kept(state, True)
-    # THE ENGINE THE CALCULATION NAMES, recorded where the history names
-    # none -- before the status, which classifies by it (S1).
-    repo.name_engine(engine)
-    if repo.status().clean:
-        here = repo.standing_at()
-        if here is None:
-            raise CheckpointError(f"{path}: where the folder stands cannot "
-                                  f"be read")
-        return Kept(here, False)
+    # THE SAVE DECIDES, BY CONTENT (§ 7.2: a save checksums every large
+    # file) -- never the cheap read, whose blind spot is a same-size file
+    # that arrived with an older timestamp: that state is the one a redo
+    # restores.
     state = repo.save(note)
-    if state is None:                       # changed back in the meantime
-        return Kept(repo.standing_at(), False)
-    return Kept(state, True)
+    if state is not None:
+        return Kept(state, True)
+    here = repo.standing_at()
+    if here is None:
+        raise CheckpointError(f"{path}: where the folder stands cannot be "
+                              f"read")
+    return Kept(here, False)

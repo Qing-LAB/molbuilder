@@ -435,11 +435,16 @@ state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), whether its run
 converged (`SCF yes` / `NO`, `geometry yes` / `NO` for a relaxation, `—` before
 its output says or for a run that converges nothing, TBtrans's) beside it, then
-the detail; the title says how many rungs, and *every rung finished* once they
+the detail — and after it, ` · ` between them, a queued rung's standing (above)
+and a device rung's line about the leads' surface Green's function files
+(`tsgf`, the status door's, [`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.11); the title says how many rungs, and *every rung finished* once they
 have; the rung to resume from is the highlighted row. **Under the rows, the
 next step** — the ladder answer's `steps`, [`execution/job-system.md`](?doc=execution/job-system.md),
-*The task*, *The next step*: the next group's words and the line that moves it,
-as the terminal prints it, and each later group's words. It is a hint, read
+*The task*, *The next step*: the next group's words and the lines that move it,
+as the terminal prints them — a group another molbuilder prepared says so in
+its words, and its prep line follows the launch line, *`# if the launch
+refuses it, first`* — and each later group's words. It is a hint, read
 only — the page launches nothing — and it **says when it was read**, *read at
 14:05; returning to this tab, or Reload from current project dir, reads it
 again*: the panel reads the ladder again when the tab is shown again or the

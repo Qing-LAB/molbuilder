@@ -748,7 +748,8 @@ def init_cmd(structure, bundle: str, shape: str,
                            base=out_dir)[0], err=True)
 
 
-@jobset_group.command("status", short_help="show per-stage status + resume point")
+@jobset_group.command("status", short_help="every stage's state, and each "
+                                           "group's next step")
 @click.argument("stage", required=False, default=None)
 @_bundle_option()
 def status_cmd(stage, bundle: str) -> None:
@@ -756,8 +757,8 @@ def status_cmd(stage, bundle: str) -> None:
     (finished / running / failed / queued / pending), or the ready door's
     (described; prepared, ready to launch or waiting for what it names),
     which warm-restart
-    files are present -- and the FIRST incomplete stage (the one to resume
-    from).  The stages are listed from the moment `init` writes them, the
+    files are present -- and each group's next step, the line that moves
+    it, the first group not finished marked.  The stages are listed from the moment `init` writes them, the
     ones not prepared yet among them (job-system.md § 5.3).  Read-only --
     molbuilder informs; you decide whether to continue or switch.  Reuses
     the same directory decoder as the Results tab.
@@ -1160,7 +1161,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
                           last=(i == len(answers) - 1))
 
 
-def _launch_unit(calc, *, dry_run: bool = False):
+def _launch_unit(calc, *, told: dict, dry_run: bool = False):
     """``(what, asked)`` -- what `launch task` sends with nothing named
     (`job-system.md`, *The task*): the groups prepared and never launched
     whose upstream has finished, by the ready door (`ready.launch_offer`)
@@ -1210,7 +1211,7 @@ def _launch_unit(calc, *, dry_run: bool = False):
     if not picked.asked or len(picked.picks) != 1:
         if asked is not None:
             from .ledger import record
-            record(base, "launch", "question", **asked)
+            record(base, "launch", "question", **{**told, **asked})
         raise click.ClickException(
             text + "\nname one -- one job per launch:\n" + block(lines_for))
     one = picked.picks[0]
@@ -1220,7 +1221,7 @@ def _launch_unit(calc, *, dry_run: bool = False):
         except ValueError:
             from .ledger import record
             if asked is not None:
-                record(base, "launch", "question", **asked)
+                record(base, "launch", "question", **{**told, **asked})
             raise click.ClickException(
                 f"{one!r}: a group is named by its number -- "
                 f"{', '.join(offered)}.") from None
@@ -1873,12 +1874,13 @@ def _how_runs_ended(results, plan, calc, sweep):
     if not any(r.status == "ran" for r in results):
         return results
     from dataclasses import replace
+    from ..identity import stage_key
     from .runstatus import jobset_status
     try:
         # THE ROWS ARE THE DESCRIPTION'S LADDER (A16: the calculation as
         # the verb opened it); a sweep's are its own trials.
-        rows = {s.ref.name: s for s in jobset_status(calc, sweep=sweep)
-                .stages}
+        rows = {stage_key(s.ref.name): s for s in jobset_status(
+            calc, sweep=sweep).stages}
     except (OSError, ValueError, KeyError) as exc:
         return [replace(r, status="unread",
                         detail=f"the run ended, and how it ended could not "
@@ -1893,7 +1895,7 @@ def _how_runs_ended(results, plan, calc, sweep):
             continue
         said = []
         for name in members.get(r.name, []):
-            row = rows.get(name)
+            row = rows.get(stage_key(name))
             if row is None:
                 said.append(f"{name}: not in the status")
             elif row.state != "finished":
@@ -1989,7 +1991,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
             # NOTHING NAMED: the prepared groups whose upstream has
             # finished, one sent and several asked; none, the stages
             # launched before (`job-system.md`, *The task*, D3).
-            picked, held_q = _launch_unit(calc, dry_run=dry_run)
+            picked, held_q = _launch_unit(calc, told=told, dry_run=dry_run)
             if isinstance(picked, int):
                 group = told["group"] = picked
             else:
@@ -2031,20 +2033,15 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
                 **({"time": time_text} if time_text else {}),
                 **({"trial_timeout_s": _bound_s, "side": only_side}
                    if grouped else {}))
-    try:
-        plan = plan_launch(calc, bench=bench, mode=mode, only=only,
-                           side=only_side,
-                           time_s=time_s, trial_timeout_s=_bound_s,
-                           told=told, record=not dry_run, cold=cold,
-                           group=group, from_attempt=from_attempt,
-                           gather=gather, background=not foreground)
-    except SubmitError:
-        # A REFUSED PLAN saves nothing: what was asked is written now.
-        if held_q is not None:
-            from .ledger import record
-            record(base, "launch", "question", **held_q)
-        raise
-    plan.held = [held_q] if held_q is not None else []
+    # WHAT WAS ASKED BEFORE THE PLAN goes with it: written before its
+    # refusal, or after the send's save (`plan_launch`'s ``held``).
+    plan = plan_launch(calc, bench=bench, mode=mode, only=only,
+                       side=only_side,
+                       time_s=time_s, trial_timeout_s=_bound_s,
+                       told=told, record=not dry_run, cold=cold,
+                       group=group, from_attempt=from_attempt,
+                       gather=gather, background=not foreground,
+                       held=[held_q] if held_q is not None else [])
     from .commands import command
     if mode == "ask":
         # NOTHING IS SAVED OR SENT: what was asked is written now.
@@ -2422,57 +2419,48 @@ def migrate_cmd(bundle: str) -> None:
               help="answer that question yes in advance.")
 @_bundle_option()
 def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
-    """The engine's scratch a calculation's runs hold -- the files its
-    engine's vocabulary names scratch (TranSIESTA's leads' Green's functions,
-    `*.TSGFL` / `*.TSGFR`): recomputed by every run, never carried, never
-    saved by a checkpoint.  A run's walk empties them as it ends; a run that
-    stopped first, or one prepared before 2.22.0, leaves them behind.
-    Listed with each file's stage and size; ``--empty`` removes them from
-    every run not queued or running, after one question (job-system.md
-    § 5.3)."""
+    """The engine's scratch a calculation's runs hold -- the files the
+    engines' vocabularies name scratch (TranSIESTA's leads' Green's
+    functions, `*.TSGFL` / `*.TSGFR`): recomputed by every run, never
+    carried, never saved by a checkpoint.  A run's walk empties them as it
+    ends; a run that stopped first, or one prepared before 2.22.0, leaves
+    them behind.  Listed with each file's stage and size; ``--empty``
+    removes them from every run not queued or running, after one question
+    (job-system.md § 5.3)."""
     from ..units import gib_words
     from .ask import confirm
     from .commands import command
-    from .materialize import scratch_in
-    from .runstatus import jobset_status
+    from .runstatus import scratch_answer
     calc = _calc_of(bundle)
     base = Path(calc.base)
-    found = scratch_in(calc)
-    if not found:
+    answer = scratch_answer(calc)
+    if not answer.found:
         click.echo(f"no engine scratch in {base}.")
         return
     click.echo("the engine's scratch its runs hold (never saved, "
                "checkpointing.md S1):")
-    for f in found:
+    for f in answer.found:
         click.echo(f"  {f.stage or '-':<14} {gib_words(f.size):>10}  "
                    f"{f.path.relative_to(base)}")
-    click.echo(f"  {len(found)} file(s), "
-               f"{gib_words(sum(f.size for f in found))}")
+    click.echo(f"  {len(answer.found)} file(s), "
+               f"{gib_words(sum(f.size for f in answer.found))}")
+    # A RUN GOING KEEPS ITS SCRATCH, each said with why (`scratch_answer`).
+    for f, why in answer.kept:
+        click.echo(f"  kept: {f.path.relative_to(base)} -- {why}")
     if not empty:
-        click.echo("to remove it from every run not queued or running:\n    "
-                   + command("scratch", base=base, flags=("--empty",)))
+        if answer.free:
+            click.echo("to remove it from every run not queued or running:"
+                       "\n    " + command("scratch", base=base,
+                                         flags=("--empty",)))
         return
-    # A RUN GOING KEEPS ITS SCRATCH: queued or running, as the run door says
-    # (`jobset status`'s rows); on the flat layout, any stage going keeps
-    # the folder's.
-    try:
-        live = {s.ref.name for s in jobset_status(calc).stages
-                if s.state in ("queued", "running")}
-    except (OSError, ValueError, KeyError) as exc:
-        raise click.ClickException(
-            f"which runs are going could not be read, so nothing is "
-            f"removed: {exc}")
-    keep = [f for f in found
-            if (f.stage in live) or (f.stage is None and live)]
-    go = [f for f in found if f not in keep]
-    for stage in sorted({f.stage or "the folder" for f in keep}):
-        click.echo(f"  {stage}: queued or running -- its scratch is kept")
-    if not go:
+    if not answer.free:
         click.echo("nothing to remove.")
         return
+    go = answer.free
     size = sum(f.size for f in go)
     said = confirm(f"about to remove {len(go)} file(s), {gib_words(size)}:",
-                   auto_yes=auto_yes, question="remove them?", default=False)
+                   auto_yes=auto_yes, question="remove them?", default=False,
+                   unanswered="nothing removed")
     _ledger(base, "scratch", "question",
             about="remove the engine's scratch", answer=said.words)
     if not said.asked:
@@ -2481,11 +2469,18 @@ def scratch_cmd(bundle: str, empty: bool, auto_yes: bool) -> None:
     if not said.yes:
         click.echo("nothing was removed.")
         return
+    # A FILE GONE SINCE IT WAS LISTED is passed over, and what was removed
+    # is what is said.
+    gone, freed = [], 0
     for f in go:
-        f.path.unlink()
-    _ledger(base, "scratch", "emptied", bytes=size,
-            files=[str(f.path.relative_to(base)) for f in go])
-    click.echo(f"removed {len(go)} file(s), {gib_words(size)}.")
+        try:
+            f.path.unlink()
+        except FileNotFoundError:
+            continue
+        gone.append(str(f.path.relative_to(base)))
+        freed += f.size
+    _ledger(base, "scratch", "emptied", bytes=freed, files=gone)
+    click.echo(f"removed {len(gone)} file(s), {gib_words(freed)}.")
 
 
 @jobset_group.command("machines",

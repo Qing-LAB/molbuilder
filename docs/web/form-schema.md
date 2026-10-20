@@ -353,7 +353,7 @@ flowchart LR
 Because both directions start from the one catalogue, the form a user fills in
 and the config the server rebuilds can't drift apart.
 
-## 3. The six calls
+## 3. The seven calls
 
 Everything is on `window.molbuilder.formSchema` (a plain global — it does not
 register with the runtime):

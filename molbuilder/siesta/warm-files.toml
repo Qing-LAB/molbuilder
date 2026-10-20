@@ -104,9 +104,10 @@ scratch = [".TSGFL", ".TSGFR"]  # THE ENGINE'S SCRATCH AT A RUN: the leads'
                                 # points share*)
 scratch_dir = "tsgf"            # WHERE A DEVICE RUN KEEPS THEM: the folder
                                 # of the run's own that the deck names, the
-                                # run script creates, the walk empties and
-                                # `status` reads -- the one spelling of its
-                                # name (job-contracts.md, Directories)
+                                # run's opener makes (materialize.open_scratch),
+                                # the walk empties and `status` reads -- the
+                                # one spelling of its name (job-contracts.md,
+                                # Directories)
 
 [[transport.file]]
 suffix = ".TSHS"                # TranSIESTA Hamiltonian + overlap.

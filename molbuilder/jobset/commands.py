@@ -140,9 +140,8 @@ class LaunchFlag:
     what: str
     #: A benchmark's grouped walk only -- a named trial is sent alone.
     grouped: bool = False
-    #: The request field it restates, and the value of the scheduler's line
-    #: it is -- the kind's words for it (`scheduler/kinds.toml`, `restate`).
-    restates: Optional[str] = None
+    #: The value of the scheduler's line it restates -- the kind's words
+    #: for it (`scheduler/kinds.toml`, `restate`).
     says: Optional[str] = None
 
 
@@ -156,7 +155,7 @@ LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
     LaunchFlag("--time", modes=("submit", "ask"), kinds=(TASK, BENCH),
                what="a submitted job's wall, restated on the line that "
                     "sends it",
-               restates="time", says="wall"),
+               says="wall"),
     LaunchFlag("--only", modes=("submit", "ask"), kinds=(BENCH,),
                what="one side of a benchmark, sent to its queue",
                grouped=True),
@@ -278,7 +277,7 @@ def reason_of(refusal: str) -> str:
     """A refusal's reason in one line, for a row beside others: its first
     line, less the sentence that ends ``--`` introducing the commands of
     its :func:`block` below -- the commands are the next step's to print
-    (`runstatus.next_step`)."""
+    (`runstatus.render_steps`)."""
     first = refusal.splitlines()[0] if refusal else ""
     if not first.rstrip().endswith("--"):
         return first

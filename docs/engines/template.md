@@ -103,12 +103,12 @@ the engine seam, and for the same reason.)*
 
 | the claim | today | where it is stated |
 |---|---|---|
-| **one file, every reader** — `select` / `one` are the read API | ✅ wired. `select` has four callers and they all go through it | § 8.0 |
+| **one file, every reader** — `select` / `one` are the read API | ✅ wired. The prep, resolve, placement, validation and template readers call `select` / `one`; none parses the file a second way | § 8.0 |
 | **`prep` rebuilds a config and renders; it never splices** | ✅ wired | § 8.1 |
 | **the template is the master; nothing derives it from a config class** | ✅ wired — `render_template` was deleted 2026-08-14 | § 2.1 |
 | **a machine fact's value is refused on read** | ✅ wired — `template_fields` + `config_from_template` | § 7 |
 | **`kind` lets a layer find its own items** | ⚠ **not a dispatch axis.** No caller filters `select` by `kind`. What `kind` does today is force `anchor` on an engine item and `expands` on a deck one — a completeness check on the catalogue — and tell a *reader* who owns the item | § 6, § 8 |
-| **`read_by` tells the wrapper which items it depends on** | ✅ **consumed since 2026-08-23.** The answer rides `Resources.use_gpu` — the allocation that already travels to the wrapper whole (A8) — and every reader asks the job's GPU request (`jobset.model.gpu_request`, `execution/architecture.md` § 3.2). The wrapper reads no deck keyword for it: the scan, kept as a fallback until 2026-10-03, is gone, which is what lets a PySCF GPU run route at all | § 6.1, § 11.3, `execution/gpu.md` G7 |
+| **`read_by` tells the wrapper which items it depends on** | ⚠ **declared, and read by nothing.** The one value it names reaches the wrapper another way: it rides `Resources.use_gpu` — the allocation that already travels to the wrapper whole (A8) — and every reader asks the job's GPU request (`jobset.model.gpu_request`, `execution/architecture.md` § 3.2). The wrapper reads no deck keyword for it, which is what lets a PySCF GPU run route at all; no code reads the `read_by` declaration itself (§ 12.1 row 4) | § 6.1, § 11.3, `execution/gpu.md` G7 |
 | **`kind = "monitor"`** | ⚠ **zero items carry it.** `monitor.py` reads a log; it is not a configured layer. The two molwatch switches are `kind="produce"`, which is correct — the *producer* decides what the script writes | § 6 |
 
 **Why the declarations were kept while unconsumed.** The wrapper's deck scan
@@ -597,16 +597,16 @@ flowchart TD
     UI["a surface<br/><i>cards from group, legends from category,<br/>contents filtered by engine</i>"]
     TPL["<b>&lt;label&gt;.template.toml</b><br/>this calculation — same items, with values"]
     RD["read + narrow to one engine<br/><code>config_from_template</code>"]
-    CFG["the engine's config object<br/><i>a name, a type, its validators</i>"]
+    CFG["the engine's config object<br/><i>a name, a type, a default, its validators</i>"]
     DECK["the deck<br/><code>.fdf</code> · <code>.py</code>"]
-    ALLOC["<b>prep</b>, on the machine that granted it<br/><i>ranks · threads · memory</i>"]
+    ALLOC["<b>prep</b>, on the machine that runs it<br/><i>the run's own ask — its run card or prep's flags:<br/>ranks · threads · GPUs · memory</i>"]
 
     CAT -->|"every item, both engines"| UI
     UI -->|"the answers"| TPL
     TPL --> RD
     RD -->|"this engine's items only"| CFG
     CFG --> DECK
-    ALLOC -.->|"the three valueless items"| DECK
+    ALLOC -.->|"the allocation items, valueless in the file"| DECK
 
     CAT -.->|"⛔ never derived FROM a config class"| CFG
 ```
@@ -619,7 +619,7 @@ flowchart TD
 | surface → template | **only the answers.** The items themselves are not re-invented; the surface is filling in a form whose questions the catalogue already asked |
 | template → config | narrowed to one engine first, **then** read as that schema's fields. Skip the narrowing and a two-engine file is refused for both engines, each seeing the other's items as names it does not know |
 | config → deck | the engine's own writer, which never sees the template. It receives an ordinary config object, which is why a config class is a **translator** and not a source (§ 2.1) |
-| prep ⇢ deck | the allocation items (`allocation = true` in the catalogue: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) are answered here, on the machine that granted them — never in the file (§ 6.4, § 7) |
+| prep ⇢ deck | the allocation items (`allocation = true` in the catalogue: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) are answered here, by the run's own ask — its run card (`task.json`'s `execution`) or prep's flags — on the machine that runs it, never in the file (§ 6.4, § 7) |
 
 > **⛔ There is no config → template writer, and there must not be one.**
 > `render_template(config)` reflected a Python class into a file, which made the
@@ -670,7 +670,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `run_card` | **a row on every run card from the start**, blank until stated — `run_card = true` on the launch: `mpi_np`, `omp_threads`, `threads`, `use_gpu`, `gpu_count` (2026-10-11; [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2b). One boolean, read by the run card through `/api/task-setup/sweepable`; it states no value and decides nothing prep does |
-| `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
+| `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `h_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
@@ -737,15 +737,21 @@ flowchart LR
 > *"Every key comes from the field's own metadata … the template and the form
 > are generated from one source and cannot drift apart."* That made the config
 > classes the master and the template their printout — § 2.1. **Every key is
-> authored in the catalogue** (§ 4.3); a config class carries a name, a type and
-> its validators, and nothing else. *(Struck 2026-08-14.)*
+> authored in the catalogue** (§ 4.3); a config class carries a name, a type, a
+> default and its validators, and nothing else. *(Struck 2026-08-14.)*
 
-> **The same source feeds BENCH-MARKS, and that is a rule.** A generated deck's
+> **BENCH-MARKS states a deck's own values, over a field list kept by hand.**
+> A generated deck's
 > BENCH-MARKS block ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3)
 > declares `type`, `range`, `unit` and `default` for the subset a tool may
-> override; a template declares them for every parameter. **Both are emitted from
-> the field metadata**, because two hand-maintained copies of `default` would
-> drift silently. Their `type` vocabularies differ in size on purpose: § 3.3's
+> override; a template declares them for every parameter. **BENCH-MARKS' values
+> are the deck's own** — the config the deck was rendered from
+> (`siesta/input.py` `_bench_marks_for`), so no second copy of a `default`
+> exists to drift (§ 9). **Its fields, their types and units are a hand-kept
+> list**, `script_emit.SIESTA_BENCH_FIELDS`, and only each field's type is
+> checked against the catalogue item that writes its keyword, matched by
+> anchor: the same type, or a narrower one
+> (`tests/test_template_declarations.py`). Their `type` vocabularies differ in size on purpose: § 3.3's
 > `{int, float, str, pow2, enum}` is enough for the numeric knobs a benchmark
 > turns, and the template adds `bool`, `int3`, `float3`, `strlist`, `intlist`
 > and `text`
@@ -1002,30 +1008,31 @@ not try to emit a `wrapper` item as a keyword** — SIESTA would not understand
 it. An item a layer cannot place is not a fault in the template; it belongs to a
 different layer, and the item says so on its own face.
 
-### 6.0 How `kind` and `anchor` are DECIDED — the rule, and the two homes
+### 6.0 How `kind` and `anchor` are DECIDED — the rule, and its one home
 
-§ 6's table says what each `kind` *means*. This says how a reader arrives at
-one, because the item is authored in **two places** and they must agree.
+§ 6's table says what each `kind` *means*. This says how an author arrives at
+one. **Both are authored in one place, the catalogue**
+(`data/catalogue.template.toml`), verbatim: you write `kind`, and `anchor` when
+the kind is `engine`. A config class declares neither — it carries a field's
+name, type, default and validators, and nothing else (§ 2.1a).
 
-**`anchor` is derived, never authored — from `engine_key`.** That is the rule
-nobody can guess from the table above, and getting it wrong is the commonest
-way to be refused:
+**The shape of `engine_key` says which `kind` to declare.** An `engine` item's
+`anchor` is authored, never derived — the keyword the deck writes; the
+template reader requires only that it is not empty (`template.py`). For a
+SIESTA item it is the leading keyword of its `engine_key` — `%block Foo` or a
+bare word — the keyword `template._bare_anchor` also reads off `engine_key` to
+name an item in a range warning (§ 10a.4). A PySCF item's `engine_key` is a
+line of Python or a geomeTRIC parameter, and its anchor the keyword in it
+(`geom_gmax`: `geomeTRIC convergence_gmax`, anchor `convergence_gmax`;
+`auxbasis`: `mf = mf.density_fit(auxbasis=...)`, anchor `density_fit`). The
+shapes, and the `kind` each calls for:
 
-```python
-kind   = metadata["item_kind"] or "engine"          # engine is the DEFAULT
-anchor = _bare_anchor(metadata["engine_key"] or field_name)
-```
-
-`_bare_anchor` takes the **leading keyword** of `engine_key` — `%block Foo` or
-a bare word — and returns `""` when it leads with none. So the *shape* of
-`engine_key` decides which `kind` is legal:
-
-| `engine_key` shape | example (real, from this catalogue) | derived `anchor` | the `kind` you must declare |
+| `engine_key` shape | example (real, from this catalogue) | its leading keyword | the `kind` you declare |
 |---|---|---|---|
-| **a bare keyword** | `MeshCutoff` | `MeshCutoff` | `engine` — the default, declare nothing |
-| **a conjunction** `A + B` | `Spin.Fix + Spin.Total` (SIESTA's half of `unpaired_electrons`) | `Spin.Fix` | `deck`, **explicitly** — and list every keyword in `expands` |
-| **an alternation** `A \| B` | `MD.Steps (CG / Broyden / FIRE) \| MD.FinalTimeStep (Verlet / Nosé)` | `MD.Steps` | `deck`, **explicitly** — `expands` lists every keyword it *may* write |
-| **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only)` | `""` | anything but `engine` — `deck`, `wrapper`, `produce` or `monitor` |
+| **a bare keyword** | `MeshCutoff` | `MeshCutoff` | `engine`, with `anchor = "MeshCutoff"` |
+| **a conjunction** `A + B` | `Spin.Fix + Spin.Total (SIESTA) \| gto.M(spin=...) (PySCF)` (`unpaired_electrons`) | `Spin.Fix` | `deck` — and list every keyword in `expands` |
+| **an alternation** `A \| B` | `MD.Steps (CG / Broyden / FIRE) \| MD.FinalTimeStep (Verlet / Nose)` (`relax_steps`) | `MD.Steps` | `deck` — `expands` lists every keyword it *may* write |
+| **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only; not in .fdf)` (`mpi_np`) | none | anything but `engine` — `deck`, `wrapper`, `produce` or `monitor` |
 
 > **Why a conjunction and an alternation are both `deck`.** The difference is
 > whether the item writes *all* of them or *one* of them, and neither is a
@@ -1033,42 +1040,17 @@ a bare word — and returns `""` when it leads with none. So the *shape* of
 > means. A pinned `unpaired_electrons` writes both of SIESTA's keywords, always; `relax_steps` writes
 > whichever the run mode calls for, never both.
 
-**The refusal, and what it is telling you.** Leave the kind at its default with
-an `engine_key` that leads with no keyword and the reader says:
+**The refusals, and what each is telling you.** The reader refuses an item whose
+declaration cannot reach a deck, naming it:
 
 ```
-field 'net_charge': kind defaults to 'engine' but its engine_key names no
-keyword ('(molbuilder: …)'). Give it an explicit metadata['item_kind'] …
+template: net_charge: kind='engine' needs an 'anchor' -- an engine item that names no keyword cannot reach the deck
+template: net_charge: kind='deck' needs 'expands' -- it is how a reader learns which keywords this item produces
 ```
 
-It is not asking for an anchor. It is saying *this item is not an engine
-keyword, so tell me what it is.*
-
-#### The two homes, and why both must be edited
-
-| | authored where | how `kind` / `anchor` arrive |
-|---|---|---|
-| **the catalogue** (`data/catalogue.template.toml`) | by hand, as TOML | **verbatim** — you write `kind`, and `anchor` when the kind is `engine` |
-| **the config class** (`SiestaConfig` / `PySCFConfig`) | field `metadata` | **derived** — from `engine_key`, plus `item_kind` when the shape needs it |
-
-The catalogue is the master (§ 2.1), and the live form reads it through
-`items_of` (§ 2.1a, paid 2026-10-18; `web/form-schema.md` § 1a).
-
-**What is caught, and what is not — and the difference matters most for the two
-keys this section is about.** `tests/test_catalogue_agreement.py` compares the
-one fact both homes still state, the `default`, and goes red naming the item;
-the six facts that were mirrored (`label`, `range`, `unit`, `choices`,
-`engine_key`, `workflow_group`) have one home since 2.15.4. **`kind` and
-`anchor` are not compared**, because `restart` declares `kind = deck` in the
-shared catalogue row and `produce` on the PySCF dataclass, correctly, and no
-document states that exception. `tests/test_template_roundtrip.py` checks that
-every field *declares* a kind, not that the two homes agree on it.
-
-So for the keys in the table above, **editing one home and not the other is
-caught by nothing**, and that is not hypothetical: § 2.1a records 2026-09-14,
-when a fix to the dataclass half of `engine`'s `item_kind` passed three tests
-while the catalogue half stayed wrong, and only a mutation test noticed. Edit
-both, and read the diff — the guard you have is the six facts, not these two.
+The first is not asking for an anchor to be invented. It is saying *this item
+is not one engine keyword, so declare what it is* — `deck` with its `expands`,
+or the layer that owns it.
 
 #### Recipes — the four cases, end to end
 
@@ -1077,7 +1059,7 @@ both, and read the diff — the guard you have is the six facts, not these two.
 ```toml
 [item.mesh_cutoff]
 kind = "engine"          # catalogue: explicit
-anchor = "MeshCutoff"    # catalogue: explicit; DERIVED from engine_key in the class
+anchor = "MeshCutoff"    # catalogue: explicit -- the leading keyword of engine_key
 engine_key = "MeshCutoff"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -1172,18 +1154,10 @@ a new engine declares its own without anyone editing the wrapper writer.
 > PySCF GPU run could not route to a GPU environment however correctly its
 > item declared `read_by`. Told, the wrapper needs no engine's vocabulary.
 >
-> **It is still worth carrying, for a reason that is checkable rather than
-> hopeful.** `tests/test_template_declarations.py::test_every_deck_keyword_the_wrapper_reads_is_declared_read_by`
-> asserts the direction that catches drift: **for every place the wrapper reads
-> the deck, some item declares that read.** Add a scanner without the
-> declaration and it fails by name. That is what makes the eventual rewiring a
-> single change instead of two — the declarations are already complete and
-> correct when the wrapper stops grepping.
->
-> The test earned this on 2026-08-13: the wrapper scanned two keywords and only
-> one was declared, so an implementation that had trusted the declarations
-> would have silently dropped every GPU runtime fact — the `gres` ask, MPS, the
-> NUMA pin.
+> **The declaration is kept, and nothing reads it.** The wrapper reads no deck
+> keyword, so no test pairs a scan with a declaration: `read_by = ["wrapper"]`
+> states which item the wrapper depends on, for a person and for the day a
+> wrapper asks the catalogue (§ 12.1 row 4).
 
 > **⚠ This section argued from `diag_algorithm` until 2026-08-14, and the
 > premise was measured false.** The claim was that any ELPA solver needs a
@@ -1420,34 +1394,29 @@ permits the rest.
 
 The test above is a judgement a person makes. **What a person then does about it
 is spell the field the same in both engines**, because the item's name *is* the
-field's name and always has been. Two configs contributing a field of one name
-contribute one item.
+field's name and always has been. Two configs holding a field of one name hold
+one item: the catalogue row `[item.<name>]`, which TOML declares once.
 
 > **There is no `item =` key and there will not be one.** A key would let a
 > merge be *forgotten* — the two halves ship as two items and nothing says so,
-> which is the silent direction. Naming does the opposite: the moment two
-> engines spell a field alike the writer compares them, and a pair that is not
-> in fact one item **is refused, naming both fields**. The loud failure is the
-> one worth having *(settled 2026-08-14, user)*.
+> which is the silent direction. Naming does the opposite: two engines that
+> spell a field alike share one row, whose `kind`, `type`, `default`,
+> `category`, `allocation`, `optional` and `unit` are the row's alone, and a
+> class whose field's annotation or default disagrees with that row fails the
+> catalogue's agreement check by name (`tests/test_catalogue_agreement.py`)
+> *(settled 2026-08-14, user)*.
 
-**So the writer's rule, in full:**
+**So the rule, in full:** one item is one catalogue row; its `engines` names
+every engine whose config holds the field, and absence means all of them; each
+engine's class gives the field its Python type, its default and its
+validators, and `items_of` joins the field to the row (§ 2.1a). Two engines
+answering one question differently is either an error in one of them or
+evidence they were never one question, and both need a person.
 
-1. Collect the declarations of every config class it was given.
-2. Group by item name.
-3. A name from **one** class → an item carrying `engines = [that engine]`.
-4. A name from **several** → **one** item carrying every contributing engine —
-   *only if the declarations agree*. `kind`, `type`, `default`, `category`,
-   `allocation`, `optional` and `unit` must match.
-5. **Any disagreement is an error naming both fields and the attribute.** Not a
-   warning and not a first-wins: two engines answering one question differently
-   is either a defect in one of them or evidence they were never one question,
-   and both need a person.
-
-**`anchor` is exempt from 4, and it is the only exemption.** It is the engine's
-own spelling — `NetCharge` against `gto.M(charge=)` — and § 6.3's whole point is
-that the template never learns either. A merged item keeps no anchor; each
-engine's deck writer renders the answer its own way, which is what `kind =
-"deck"` means.
+**A merged item keeps no `anchor`.** It is the engine's own spelling —
+`NetCharge` against `gto.M(charge=)` — and § 6.3's whole point is that the
+template never learns either; each engine's deck writer renders the answer its
+own way, which is what `kind = "deck"` means.
 
 *(Rewritten 2026-08-14. This paragraph read **"items are never merged across
 engines"** — a rule whose own justification was the risk of fusing things that
@@ -1791,17 +1760,26 @@ items are `fixed_by_role(engine, kind)`, and one rung's answers
 1. **`probe` detects and saves the capability** — cores, GPUs, scheduler, the
    queues you can reach. How it detects is its own business and no caller
    needs to know.
-2. **`environment.json` holds it.** One record, one writer, one reader:
-   `environment.machine_for()`. **Nothing else asks the machine anything.**
-3. **A run or a benchmark states what it wants** — ranks, threads, memory. One
-   number for a run, a set of them for a sweep.
-4. **`prep` reconciles the two and hands the engine the answer.** What is
-   asked must fit inside what exists; a sweep point that exceeds the
-   allocation is **refused, never clamped** — clamping would silently measure
-   something other than what was asked.
+2. **`environment.json` holds it**, and two doors read it:
+   `scheduler.record.machine_for(bundle_dir, target=)` — the record a prep
+   targets, the calculation's own copy first — and
+   `scheduler.record.calculation_environment(bundle_dir)` — the copy a
+   calculation carries from its first prep, which launch, the run door,
+   `molbuilder jobs` and `summarize` read. **Nothing else asks the machine
+   anything.**
+3. **A run or a benchmark states what it wants** — ranks, threads, GPUs,
+   memory, on its run card or as prep's flags. One number for a run, a set
+   of them for a sweep.
+4. **`prep` reconciles the two and hands the engine the answer.** How the
+   ask fits on what exists is said, never enforced (`scheduler.md` R6); a
+   sweep is bounded by what was asked — a cell past the allocation is left
+   out by name when the grid is enumerated (`prep_inputs.bench_inputs`), and
+   `resolve` refuses a point past it (`resolve._check_fits`), **never
+   clamped** — clamping would silently measure something other than what was
+   asked.
 
-**That is the entire API.** A consumer that wants a machine fact calls
-`machine_for()`. It never runs `sinfo`, never reads the file, never carries a
+**That is the entire API.** A consumer that wants a machine fact asks one of
+those two doors. It never runs `sinfo`, never reads the file, never carries a
 default for "how many cores are there".
 
 **What the template contributes is step 3's QUESTION and never its answer** —
@@ -1866,8 +1844,10 @@ may legitimately carry a value. It says that by being
 broken.** The template may say *"rank count is a parameter of this calculation"*;
 it may not say *"this job has 8 ranks"*. The rule's failure case was a
 hand-edited `mpi_np` **with a value** rendering a deck for ranks the allocation
-never granted — which stays impossible, because the value still arrives at `prep`
-from `environment.json`. The template carries the **ask**; `prep` resolves it.
+never granted — which stays impossible, because a reader refuses a value on the
+item and the value arrives at `prep` from the run's own ask — its run card
+(`task.json`'s `execution`) or prep's flags. The template carries the
+**question**, the run states the **ask**, and `prep` resolves it.
 Same distinction `bench/result.py` draws between `asked` and `effective`, and for
 the same reason.
 
@@ -2061,8 +2041,9 @@ is, and the wrapper does not read someone else's artifact to learn what it needs
 
 ### 8.0 The one read API
 
-**`select(t, *, category=None, engine=None, kind=None, read_by=None)` → items,
-in category order.** One function, one file, every reader. Each argument is a
+**`select(t, *, category=None, engine=None, kind=None, read_by=None,
+allocation=None, citation=None, role=None, stages=None, shared=None,
+calculation=None)` → items, in category order.** One function, one file, every reader. Each argument is a
 filter on an axis the item already declares; omitting one means *do not filter on
 it*. The § 8 table above is then a table of **calls**, not of bespoke code:
 
@@ -2141,8 +2122,8 @@ Nothing splices at it.
 
 ## 9. The reserved blocks — what reaches the final script, and from where
 
-A generated deck carries up to five reserved comment blocks
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) — and **§§ 3.4-3.6
+A generated deck carries reserved comment blocks
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1, the list and its order) — and **§§ 3.4-3.6
 are the format authority for what they carry and how it is read back.**
 
 > **The deck is not write-only, and that is why this section exists.** The
@@ -2161,36 +2142,44 @@ are the format authority for what they carry and how it is read back.**
 rendered at `prep`, on a machine that may be seeing this calculation for the
 first time — so for each block there is one question: **where does its content
 come from, and does that source travel in the portable folder?** This is G6, and
-two of the five failed it before this section was written.
+two of the blocks failed it before this section was written.
 
 ```mermaid
 flowchart LR
     subgraph SRC["what travels in the folder"]
-      TPL["the template"]
+      TPL["the template + task.json"]
       STR["the structure<br/>+ .molstruct.json sidecar"]
+      RLX["a SIESTA vibration's relax run"]
     end
     subgraph GEN["known only at prep"]
-      VER["molbuilder version<br/>+ the moment"]
-      META["the field metadata"]
+      VER["molbuilder version<br/>+ the moment<br/>+ who set each value (resolve)"]
+      META["the deck's own config<br/>+ the engine's bench fields"]
+      PLC["the placement rule<br/>(cell.to_engine)"]
     end
     DECK["<b>the rendered deck</b>"]
     VER -->|PROVENANCE| DECK
     META -->|BENCH-MARKS| DECK
     STR -->|ATOM-METADATA| DECK
-    TPL -->|"USER-CUSTOM<br/>+ the engine body"| DECK
+    STR -->|ENGINE-OFFSET| DECK
+    PLC -->|ENGINE-OFFSET| DECK
+    TPL -->|VIBRATION| DECK
+    RLX -->|VIBRATION| DECK
+    TPL -->|"the engine body"| DECK
 ```
 
 | block | its content comes from | what carries it | emitted by |
 |---|---|---|---|
-| **PROVENANCE** | molbuilder's version and the moment of rendering | nothing — generated at `prep`, which is the honest answer for a *generation* snapshot | the deck writer |
-| **BENCH-MARKS** | the same field metadata the template is built from | nothing — derived, which is why [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3 requires both to come from one source | the deck writer — **SIESTA only.** A PySCF deck declares no override surface, so a benchmark has nothing to read from one ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) |
+| **PROVENANCE** | molbuilder's version, the moment of rendering, and who set each value (`parameters:`, `resolve`'s rows — § 6.6) | nothing — generated at `prep`, which is the honest answer for a *generation* snapshot | the deck writer |
+| **BENCH-MARKS** | the deck's own values, beside each field's type and unit | nothing — the values derived from the deck's config; the field list, types and units kept by hand (`script_emit.SIESTA_BENCH_FIELDS`, § 5), only the type checked against the catalogue — [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3's one source is the plan's BENCH-2 | the deck writer — **SIESTA only.** A PySCF deck declares no override surface, so a benchmark has nothing to read from one ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) |
 | **ATOM-METADATA** | the structure's regions, frozen atoms and annotations | **the structure and its `.molstruct.json` sidecar** — data files in the folder (§ 9.1) | the deck writer |
-| **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 9.2) — ⚠ **not built.** No `user_custom` item exists, so in the staged path this block is emitted empty and a person's text does not survive (§ 12) | the deck writer, verbatim |
+| **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 9.2) — ⚠ **not built.** No `user_custom` item exists, so a first prep emits the block empty; text a person wrote into a prepared deck survives a prep again of that deck (`write_script`, § 9.2) and travels in no other file (§ 12) | the deck writer, verbatim |
+| **ENGINE-OFFSET** | where the atoms were placed — the cell, the offset applied, the axis kinds, whether the offset was the structure's own | **the structure and its sidecar** (cell, axis kinds, a stated offset), placed by the rule (`cell.to_engine`) | the deck writer, on every deck |
+| **VIBRATION** | what a SIESTA force-constant run's finish reads that no keyword states — the force criterion, the temperature, the relaxation statement and record, every atom's mass | **the template and `task.json`**, and the `relax` run in the folder ([`vibration.md`](?doc=engines/vibration.md) § 5.3) | the deck writer, SIESTA force-constant decks only |
 | **HEADER** | reserved, emitted by nobody today | — | — |
 
-**Nothing here is new machinery.** The deck writer already emits all five; what
-this section fixes is that two of them had an input which stopped travelling once
-the deck moved from *produce* to `prep`.
+**Nothing here is new machinery.** The deck writer emits every block but
+HEADER; what this section fixes is that two of them had an input which stopped
+travelling once the deck moved from *produce* to `prep`.
 
 ### 9.1 Labels ride with the atoms, not with the parameters
 
@@ -2352,7 +2341,6 @@ takes it from there.
 >
 > | § | the question it answers | what it leaves out |
 > |---|---|---|
-> | **2.1a** | *which floor is each thing on, and which way may data move?* | how anything gets made |
 > | **4.3** | *where does a template come from?* — the authored catalogue narrowing to one calculation | everything downstream of the file |
 > | **6.5** | *who reads it, and what does each take?* — six consumers, each filtering on the axes it owns. **The design, not the call graph** (§ 1.1a) | the order they run in |
 > | **10a** (here) | *what actually happens, call by call, and on which floor?* | what any single parameter looks like |
@@ -2379,24 +2367,26 @@ flowchart TD
     subgraph F2["floor 2 · description — names no machine"]
       LOAD["template.load_catalogue()"]
       READ["template.read_template(text)<br/><i>→ Template(items)</i>"]
-      SEL["template.select(t, engine=, category=, kind=, read_by=)<br/>template.one(t, name, engine=)<br/><b>§ 8.0 — THE ONE READ API</b>"]
-      TWV["template.template_with_values(config, engine=)<br/><i>the catalogue, narrowed, with the answers</i>"]
+      SEL["template.select(t, engine=, category=, kind=, …)<br/>template.one(t, name, engine=)<br/><b>§ 8.0 — THE ONE READ API</b>"]
+      TWV["template.template_with_values(config, engine=, calculation=, sources=)<br/><i>the catalogue, narrowed, with the answers</i>"]
       TPL["<b>&lt;label&gt;.template.toml</b> + task.json"]
     end
 
     subgraph F1["floor 1 · the machine"]
-      ENV["<code>jobset probe --write</code> → environment.json<br/><i>ranks · threads · memory</i><br/>read by prep, never probed by it"]
+      ENV["<code>jobset probe --write</code> → environment.json<br/><i>cores · GPUs · scheduler · queues</i><br/>read by prep (machine_for), never probed by it"]
     end
+
+    ASK["the run's ask — its run card (task.json's execution)<br/>or prep's flags<br/><i>ranks · threads · GPUs · memory</i>"]
 
     subgraph F3["floor 3 · plan — engine-agnostic"]
       CFT["template.config_from_template(text, cls)<br/><i>narrow to the engine, rebuild the config</i>"]
       EFF["resolve.effective_config(cfg, overrides, where=)<br/><b>the ⊕ operator — stages.md § 4's one place</b>"]
-      RES["resolve.resolve(text, task, cls, allocation, pins)<br/><i>→ ParameterSet</i>"]
+      RES["resolve.resolve(text, task, cls, allocation=, stage=, sweep=, pins=, environment=)<br/><i>→ ParameterSet</i>"]
       RC["element.render_config()<br/><i>values ⊕ the allocation</i>"]
     end
 
     subgraph FE["the engine seam — the only engine-aware step"]
-      SPEC["seam.spec_for<br/><i>the engine's FORM: which settings, in what<br/>order, and how each is spelled</i>"]
+      SPEC["engine_seam(engine).spec_for<br/><i>the engine's FORM: which settings, in what<br/>order, and how each is spelled</i>"]
       DECK["script_emit.prepare_deck<br/><i>validate → render → write → check</i>"]
       WRAP["runwrap.render_wrappers → write_run_wrapper"]
     end
@@ -2404,9 +2394,10 @@ flowchart TD
     CAT --> LOAD --> READ --> SEL
     SEL --> UI["a surface<br/><i>CARDS from group · legends from category<br/>badge from engine_key · bounds from range/choices</i>"]
     UI --> TWV --> TPL
-    TWV -.->|"describe.describe()"| TPL
+    TWV -.->|"describe.build_description → write_description"| TPL
     TPL --> CFT --> RES
     ENV --> RES
+    ASK -->|"allocation · pins"| RES
     RES -->|"⊕ stage ⊕ sweep ⊕ pin ⊕ the rung's answers"| EFF
     EFF --> RES
     RES --> RC --> SPEC --> DECK --> WRAP --> RUN["the run directory"]
@@ -2422,9 +2413,9 @@ flowchart TD
 | 4 | `template_with_values` | 2 | the catalogue → **this calculation's** template | § 4.3: the surface fills in answers to questions the catalogue already asked |
 | 5 | `config_from_template` | 3 | narrows to one engine, rebuilds the config | the deck writer takes an ordinary config, not a template (D4: `prep` **rebuilds and renders**, it never splices) |
 | 6 | `effective_config` | 3 | **⊕** — the template's values plus a mapping of overrides | R1: what comes back is an ordinary config, so the shipped validator and emitter both take it unchanged and nothing downstream learns the word *stage* |
-| 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **allocation ⊇ sweep** holds — a sweep point past the allocation left out by name, never clamped; the allocation's fit on the capability is said, never enforced ([`scheduler.md`](?doc=execution/scheduler.md) R6) |
+| 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **allocation ⊇ sweep** holds — a point past the allocation refused (`_check_fits`), never clamped; the bench grid has already left such a cell out by name (`prep_inputs.bench_inputs`); the allocation's fit on the capability is said, never enforced ([`scheduler.md`](?doc=execution/scheduler.md) R6) |
 | 8 | `element.render_config()` | 3 | values **⊕ the allocation** | a deck records what it assumed in BENCH-MARKS; one rendered without a rank count says `mpi_np auto` and is then launched at 32 |
-| 9 | `seam.spec_for` | 3 (engine) | the deck's **form** — its layout, and how this engine spells one setting | the only step that knows an engine's spelling, and the only thing about the deck that is the engine's to say |
+| 9 | `engine_seam(engine).spec_for` | 3 (engine) | the deck's **form** — its layout, and how this engine spells one setting | the only step that knows an engine's spelling, and the only thing about the deck that is the engine's to say |
 | 10 | `script_emit.prepare_deck` | 3 | the `.fdf` / `.py`, **written and checked** | the order — validate, render, write, read back — has one owner; stated per caller it drifted |
 | 11 | `runwrap.render_wrappers` → `write_run_wrapper` | 3 | the `.run.sh` (and `.sbatch`) | rendering returns text and the writer writes it, so *"what would a run of this deck look like?"* can be asked without producing files (§ 5, W7) |
 
@@ -2439,7 +2430,7 @@ times:
 | base | `config_from_template` | — | **yes**, unless the value is the answer every rung gives |
 | ⊕ stage | `task.json`'s stage `overrides` | **yes** — § 7 | **yes** |
 | ⊕ sweep | the sweep point | **yes** | **yes** |
-| ⊕ pin | `--pin`, this prep only | **yes** | **yes** |
+| ⊕ pin | the run card's values that are not the launch shape — `task.json`'s `execution`, the rung's over the calculation's (`prep_inputs.run_inputs`); a benchmark's one-point declarations alike | **yes** | **yes** |
 | ⊕ the rung's answers | `template.role_answers`, provenance `role` — last, so it replaces nothing a person said | — | — |
 
 And then one question of the result, whatever layer set each value: **is it
@@ -2462,9 +2453,10 @@ hope. Any import from `siesta/` or `pyscf/` above step 9 is a leak; that is how
 validation layer both reached into one engine to do something neither engine
 owns *(moved 2026-08-14, audit § 6.1)*.
 
-**The machine enters at exactly one point** — step 7, and only as the
-`allocation` argument. Floor 2 never sees it, which is what makes a template
-portable (G1).
+**The machine enters at exactly one point** — step 7: the `allocation`
+argument, the run's ask, and the target's record (`environment`), which a
+benchmark's translation reads. Floor 2 never sees either, which is what makes a
+template portable (G1).
 
 **And the shapes that are the SAME shape** are now visible as such: a stage's
 `overrides`, a sweep point, and a pin are three names for *a mapping of cells
@@ -2548,29 +2540,29 @@ deck, and once past it.
 
 ```mermaid
 flowchart TB
-    IT["<b>[item.use_gpu]</b><br/>kind=engine · anchor=Diag.ELPA.GPU · read_by=[wrapper]"]
+    IT["<b>[item.use_gpu]</b><br/>kind=deck · expands=[Diag.ELPA.GPU, gpu4pyscf] · read_by=[wrapper]"]
 
-    FORM["<b>the form</b><br/>a checkbox on the <i>staging</i> card,<br/>legend <i>execution</i>, badge <code>Diag.ELPA.GPU</code>"]
+    FORM["<b>the form</b><br/>a checkbox on the <i>staging</i> card,<br/>legend <i>execution</i>, badge the whole engine_key,<br/>the same on both engines:<br/><code>Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)</code>"]
     TPL["<b>the template</b><br/><code>value = true</code>"]
 
     subgraph PREP["prep, on the target machine"]
       direction TB
-      S2["<b>step 2</b> · resolve<br/><i>the value survives into the config</i>"]
+      S2["<b>step 2</b> · resolve<br/><i>the value survives into the config,<br/>and rides the job's Resources (use_gpu)</i>"]
       S3["<b>step 3</b> · the deck<br/><code>Diag.ELPA.GPU .true.</code>"]
-      S4["<b>step 4</b> · the wrapper"]
+      S4["<b>step 4</b> · the wrapper<br/><i>asks the job's GPU request (gpu_request)</i>"]
       S2 --> S3 --> S4
     end
 
     subgraph LAUNCH["what step 4 decides FROM that value"]
       E1["the conda env<br/><code>molbuilder-siesta-gpu</code><br/><i>only the source build has GPU ELPA</i>"]
       E2["the GPU runtime<br/><i>MPS · the NUMA pin</i>"]
-      E3["the memory audit<br/><i>a GPU job is budgeted differently</i>"]
+      E3["the header's GPU ask<br/><i>the job's GPU count, its binding</i>"]
     end
 
     IT --> FORM --> TPL --> S2
     S4 --> E1 & E2 & E3
     E1 & E2 & E3 --> SH["<code>&lt;label&gt;.run.sh</code> + <code>.sbatch</code>"]
-    SH --> SUB["<b>submit</b><br/><i>checks the deck and the launch still agree,<br/>then starts ONE job</i>"]
+    SH --> SUB["<b>launch</b><br/><i>checks the deck and its launch still agree,<br/>then sends the header prep wrote: ONE job</i>"]
 ```
 
 **Three things this picture is for.**
@@ -2725,12 +2717,12 @@ sequenceDiagram
     B->>B: write the template + task.json + data files
     Note over B: names NO machine (G1)
     U->>P: scp the folder, then `jobset prep task --group 1`
-    P->>P: step 1 — resolve THIS machine
+    P->>P: step 1 — read the target's record (machine_for)
     P->>P: step 2 — template values ⊕ coarse's overrides
     P->>D: one config object
-    D-->>P: the deck, with all five reserved blocks
-    P->>W: kind="wrapper" items + everything read_by names
-    W-->>P: .run.sh
+    D-->>P: the deck, with its reserved blocks
+    P->>W: the job — its resources (ranks, threads, the GPU request, retries), env and queue
+    W-->>P: .run.sh, and the header (.sbatch) on a queue
 ```
 
 **What each floor decided is what makes this safe**: the browser never chose a
@@ -2759,12 +2751,12 @@ A **GPU** deck must run in `molbuilder-siesta-gpu` — the source build is the
 only one whose ELPA was compiled with GPU support. The wrapper writer needs
 `use_gpu`'s value to pick both the environment and the GPU runtime.
 
-**How it gets it.** The value is handed to the wrapper renderer (§ 1.1a; the
-grep of the rendered deck for `Diag.ELPA.GPU` went on 2026-08-23). The design
-is that it asks for every item whose
-`read_by` names it and is handed `use_gpu` — and the item already carries
-that declaration, kept correct by the guard test in § 6.1. The difference is
-one import away and is § 1.1a's second row.
+**How it gets it.** The value is handed to the wrapper renderer on the job's
+`Resources`, and the renderer asks the job's GPU request
+(`jobset.model.gpu_request`; § 1.1a). The design is that it asks for every
+item whose `read_by` names it and is handed `use_gpu` — the item already
+carries that declaration, and nothing reads it yet (§ 1.1a's second row,
+§ 12.1 row 4).
 
 **A CPU-ELPA deck needs neither**, which is the correction that made this
 example honest: the packaged SIESTA runs both ELPA stages on CPU
@@ -2775,11 +2767,9 @@ refused a runnable calculation for a solver the baseline already had.
 
 **A new engine will need no change to the wrapper writer** — it declares
 `read_by = ["wrapper"]` on its own item and is served by the same code. That is
-the payoff, and it is the part still owed: while the wrapper greps a `.fdf`, an
-engine whose deck is a `.py` declares its dependency correctly and is not
-looked at. `tests/test_template_declarations.py` asserts the direction that is
-enforceable now — that every place the wrapper reads the deck is claimed by
-some item's `read_by` — so a scanner added without a declaration fails by name.
+the payoff, and it is the part still owed: the wrapper reads no deck keyword,
+so a PySCF GPU run routes through the same `Resources` ride, but a new item's
+`read_by` reaches no wrapper until the wrapper asks the catalogue for it.
 
 ### 11.4 A benchmark measures this calculation
 
@@ -2805,7 +2795,7 @@ about which items are safe to sweep; it is not yet what selects them.)*
 You read `mesh_cutoff`'s prose and its tier ladder, see `value = 300.0` beside
 `default = 300.0` and know nobody touched it, decide 400 is right, and change one
 number in one place (**G5**, **D3**). Then `prep`, then look at the rendered
-deck, then submit — the deck being the artifact you inspect, and the template
+deck, then `launch` — the deck being the artifact you inspect, and the template
 being the description you edit.
 
 ### 11.6 A new engine adopts the format
@@ -2867,11 +2857,11 @@ closing one is a visible act. Measured 2026-08-17.
 | **1** | **`user_custom` has no schema field and no catalogue item** | § 9, § 9.2 | in the staged path a person's own engine text is silently dropped |
 | ~~**2**~~ | ~~`frozen_indices` has no item for SIESTA~~ — **closed 2026-09-24**: the held set is a structure fact for every engine (the `frozen_atoms` region, [`engines/overview.md`](?doc=engines/overview.md) § 3, [`engines/vibration.md`](?doc=engines/vibration.md) § 2.3); no engine has a form item for it and none should — the form copy was the silent absorption, and it retired on 2026-08-21 | § 9.1 | — |
 | **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
-| **4** | **`read_by` is declared and unconsumed** (the wrapper's grep of the deck is gone since 2026-08-23; the value is handed to it) | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency — plan TPL |
+| **4** | **`read_by` is declared and unconsumed** (the wrapper reads no deck keyword; the value is handed to it) | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency — plan TPL |
 | **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |
 | ~~**6**~~ | ~~PySCF's `threads` is not flagged `allocation`~~ — **closed**: the PySCF `threads` item carries `allocation = true` (`data/catalogue.template.toml`, `[item.threads]`) | § 6.4 | — |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
-| **8** | **`required` is not an item, by design** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | what a rung needs from the runs before it is the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at its first launch — never a field a description sets; a relaxation's warm files are the restart list's (§ 4.2a) |
+| **8** | **`required` is not an item, by design** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | what a rung needs from the runs before it is the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at its first launch, or at a launch with `--gather` — never a field a description sets; a relaxation's warm files are the restart list's (§ 4.2a) |
 | ~~**9**~~ | ~~**`enable_gpu` → `use_gpu` is ruled and un-renamed**~~ **CLOSED 2026-08-23** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does — for the template read AND for 2β's declared grid-family axis (`generator.md` § 4.3a), so the un-landed rename now has two spellings to collect there — and is correct only while the BENCH LANE refuses non-SIESTA descriptions by name (`jobset/_cli.py::_bench_inputs` — the engine seam itself serves PySCF since 2026-08-18) |
 
 **Rows 1, 2 and 8 are the same shape and it is worth naming.** Each is a

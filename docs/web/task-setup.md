@@ -556,8 +556,11 @@ Three things are true of it at once, and no parameter tab can know any of them:
   CPU on a machine that has a GPU is ordinary and deliberate.
 - **It can be measured first and decided after — by you.** Add a second point
   and it becomes a bench axis; `summarize` PRINTS a report whose `choice`
-  carries `use_gpu` (and writes `bench-result.json` for the Bench card). `prep
-  run` does **not** read either one: finding is not permission, and there is no
+  carries `use_gpu`, and writes `bench-result.json`, the sweep's archival
+  record, which nothing reads back — the Results tab's bench summary composes
+  the sweep afresh (`/api/bench/summary` → `summarize.sweep_view`,
+  [`bench-summary.md`](?doc=web/bench-summary.md)). `jobset prep task` does
+  **not** read either one: finding is not permission, and there is no
   rung between the measurement and the run
   ([`project-layout.md § 2.3.3`](?doc=execution/project-layout.md)). You read
   the report and write the value into `execution` yourself.
@@ -881,8 +884,12 @@ because molbuilder writes it — the catalogue is `runfiles.WRITTEN`
 (`job-contracts.md` § 2.2), and the card is a reading of it.
 
 **Every name is composed, not spelled.** `/api/task-setup/prep-plan` calls
-`runfiles.manifest(label, token, engine, when, calculation, shape)` and the
-browser only lays the answer out; the route keeps no list of its own *(a
+`runfiles.manifest(label, stage, *, shape, engine, when, calculation)` — a
+rung's card on the label its files carry, the rung's own stem
+(`materialize.StageHome.label`: a transport lead's `<label>_L-electrode` /
+`<label>_R-electrode`, [`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 2.1 rule 2), the calculation's group on the calculation's label with no
+stage — and the browser only lays the answer out; the route keeps no list of its own *(a
 hand-kept list of the calculation's records stood beside the call until plan
 B13, 2026-10-04 — and the per-rung names came in the flat shape's spelling for
 a hierarchical calculation)*. That matters here more than anywhere: the card's whole use
@@ -1294,9 +1301,12 @@ force-constant stage's Continue from names a `relax` run. Under them the
 command for the pick (`prep task --group … --group …`) and the Preview / Prep
 pair that does what it does. Each ticked group is one
 job (`project-layout.md` § 1.6.6). After a Prep the folder is read again, and
-the boxes start again from the new offer. Beside each prepared group, what its
-launch will take and whether it can go now — *ready to launch*, or *waits for
-electrode_R to finish* — the ready door's answer.
+the boxes start again from the new offer. Beside each prepared stage, what its
+launch will take and whether it can go now — `ready to launch -- <what it
+takes>`, or `waits for: <why>` — the ready door's answer (`ready.Readiness.detail`,
+the folder answer's `ladder`); a stage another molbuilder prepared says so
+there: `ready to launch (prepared by molbuilder 2.23.2: its launch compares it
+with what prep writes now) -- …`.
 
 **One tab per group** — the card *What each group runs*. Inside a tab,
 everything else you do with that job and its stages:

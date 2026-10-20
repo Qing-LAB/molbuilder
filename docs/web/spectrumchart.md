@@ -31,8 +31,9 @@ It is not a tour of the current code; the code it replaces is 345 lines inside a
 >   own frame's (§ 5.4, § 11).
 > - **The sealed layer** — the one file in this module allowed to name Plotly.
 >   Nothing above it knows that library exists.
-> - **A mode** — one row of the spectrum: a wavenumber, optionally a Raman
->   activity, and whether it is imaginary. The chart holds a list of them.
+> - **A mode** — one row of the spectrum: a wavenumber, optionally a strength
+>   in each channel the chart draws (§ 6.1), and whether it is imaginary. The
+>   chart holds a list of them.
 > - **A stick** — one mode drawn: a vertical line at its wavenumber, as tall as
 >   its activity.
 > - **The envelope** — the smooth curve laid over the sticks, a sum of
@@ -165,10 +166,10 @@ asked what is drawn, what the axes are, or where a point landed on screen (§ 8.
 sealed at every edge.** It is imported by name, it reaches nothing else in the app
 by name, and nothing in the app can reach inside it.
 
-**Why this module in particular has to say so.** The code it replaces lives inside
+**Why this module in particular has to say so.** The code it replaced lived inside
 a 3,671-line tab controller where the drawing, the selection, the mode table and
-the watch poller all reach into one another's variables — which is why selecting a
-mode currently redraws the whole spectrum (§ 5.1). Cutting 345 lines out of that
+the watch poller all reached into one another's variables — which is why selecting
+a mode redrew the whole spectrum there (§ 5.1). Cutting 345 lines out of that
 is only worth doing if the cut holds, and a cut holds because the boundary is
 written down and tested, not because the files were moved to a new folder.
 
@@ -236,11 +237,11 @@ of work, so they are not the same call:
                    → no curve, no axis change, no refit
 ```
 
-**This is the rule the current code breaks, and the measurement is why the rule is
-here.** Today one function draws everything, and selecting a mode calls it: on the
-benzene-dithiol result, at the default broadening, a single click recomputes an
-806-point envelope from 36 Lorentzians — **29,016 terms** — to change the colour of
-one stick. The waste is not the point; the *coupling* is. A chart that cannot
+**The measurement is why the rule is here.** When one function draws
+everything and selecting a mode calls it, a single click on the benzene-dithiol
+result, at the default broadening, recomputes an 806-point envelope from 36
+Lorentzians — **29,016 terms** — to change the colour of one stick (the tab's
+code before this module, § 13). The waste is not the point; the *coupling* is. A chart that cannot
 recolour without rebuilding has no way to be told a cheap thing, so every caller
 pays for the expensive one and nobody can tell which they asked for.
 
@@ -586,11 +587,11 @@ const chart = await mount(document.getElementById("chart"), {
 });
 
 if (chart.ok) {                   // the one branch every caller makes (§ 7)
-    chart.setModes([
-        { index: 1, freq:  323.5, activity:  2.9, imaginary: false },
-        { index: 2, freq:  826.6, activity:  5.4, imaginary: false },
-        { index: 3, freq: 1131.8, activity: 12.9, imaginary: false },
-        { index: 4, freq: 3175.4, activity:  0.0, imaginary: false },
+    chart.setModes([            // no channels declared: one lane keyed `activity`
+        { index: 1, freq:  323.5, values: { activity:  2.9 }, imaginary: false },
+        { index: 2, freq:  826.6, values: { activity:  5.4 }, imaginary: false },
+        { index: 3, freq: 1131.8, values: { activity: 12.9 }, imaginary: false },
+        { index: 4, freq: 3175.4, values: { activity:  0.0 }, imaginary: false },
     ]);
     chart.setBroadening(20);      // draw the curve 20 cm⁻¹ wide
     chart.setSelected(3);         // colour mode 3 as the chosen one
@@ -598,7 +599,7 @@ if (chart.ok) {                   // the one branch every caller makes (§ 7)
 </script>
 ```
 
-That is the whole surface: **five doors and one callback.** The page above styles
+That is the whole surface: **six doors and one callback.** The page above styles
 a box, hands over four numbers per mode, and gets a spectrum it can click. There
 is no stylesheet `<link>` and no library `<script>` — the module brings both
 (§ 4) — so this really is the whole page.
@@ -637,17 +638,17 @@ the host's, and is expressed in CSS rather than passed here.
 setModes(list)               a different result: redraw, refit the axes (§ 5.1)
 setSelected(index | null)    recolour one mark — nothing else moves
 setBroadening(width)         how wide to draw each line, in cm⁻¹ — and therefore
-setDisplayFloor(pct)            hide bands below this percentage of the
-                                strongest peak IN EACH CHANNEL — relative,
-                                because one control serves two incommensurate
-                                units.  Changes what is DRAWN and nothing
-                                else; the rug is never filtered
                              how wide it is to click (§ 6.3)
+setDisplayFloor(pct)         hide bands below this percentage of the
+                             strongest peak IN EACH CHANNEL — relative,
+                             because one control serves two incommensurate
+                             units.  Changes what is DRAWN and nothing
+                             else; the rug is never filtered
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
 ```
 
-Five doors, and **every fact the chart holds arrives through exactly one of
+Six doors, and **every fact the chart holds arrives through exactly one of
 them.** There is no property to assign, no options object to mutate after the
 fact, no global to publish into, and no second path that "also" sets something.
 Data goes in one way; nothing comes back out but a click.
@@ -659,6 +660,7 @@ Data goes in one way; nothing comes back out but a click.
 | `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq`; the same `index` twice — the whole call, and **the chart empties** rather than leaving the last spectrum standing (§ 6.1) | nothing |
 | `setSelected` | one `index`, or `null` for *nothing chosen*. It is **remembered whether or not the current list holds it**, and drawn as soon as a list does | nothing — an index no list holds is not an error (below) | nothing |
 | `setBroadening` | a width in cm⁻¹, `≥ 0`. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.3) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
+| `setDisplayFloor` | a percentage, `0`–`100`, of each channel's strongest peak; `0` hides nothing | a value outside `0`–`100` or not a number — the floor already set stands, for the same reason | nothing |
 | `refit` | — | — | nothing |
 | `dispose` | — | — | nothing; safe to call twice |
 
@@ -1040,7 +1042,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
 | § 6.1 — a refused list empties the chart | after a refused `setModes`, the previous spectrum is gone from the screen rather than left standing as though the call had worked |
-| § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
+| § 6.1 — absent is not zero | a mode with no value for a channel, and one whose `values[<key>]` is `null`, are treated the same and neither is drawn as a strength of zero |
 | § 6.1 — the caller's numbering is carried, not interpreted | an unsorted, sparse, 1-based list draws in the order given, and the index a click reports is the index that was handed in |
 | § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
 | § 6.2 — the picture is derived | a result with no activities anywhere draws one lane of equal lines at the modes' frequencies, an imaginary one among them marked apart, no curve and no height scale — and the same chart draws its lanes with heights and a curve once activities land; one with some activities draws the rest as pending — and neither picture is reachable by a setting |

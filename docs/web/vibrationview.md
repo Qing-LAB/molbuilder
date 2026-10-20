@@ -350,10 +350,11 @@ a mode computed against a different molecule. Filling the gap with zeros produce
 a molecule that animates — partially, plausibly, and wrongly. So the door says no,
 and nothing is drawn.
 
-This is a boundary the caller currently has to defend for itself: the Spectrum tab
-compares atom counts before it hands a mode over, precisely because the viewer
-will presently accept anything. Refusing here retires that guard, and an atom
-count was never much of one — any two molecules of the same size pass it.
+The refusal is this module's (`index.js` `showMode`: the scatter refuses, the
+viewer warns and draws nothing). The Spectrum tab still compares atom counts
+before it hands a mode over (`lib/spectra/core.js`), a guard this refusal makes
+redundant — and an atom count was never much of one: any two molecules of the
+same size pass it.
 
 ### 6.4 What a viewer does not hold
 
@@ -1169,6 +1170,6 @@ neither does this document (§ 4).
 > form.
 >
 > The work was task #19 (#104), and it is done: `lib/viewer/` is gone and this
-> module carries its own seal, `_seal.js` (re-read 2026-09-29). The tab-side wiring it depended on —
+> module carries its own seal (re-read 2026-09-29). The tab-side wiring it depended on —
 > handing `mount` to the code that owns the mode-viewer element on `/results` — in
 > [`archive/2026-09-21-audit-2026-08-05-tab-ui.md`](?doc=archive/2026-09-21-audit-2026-08-05-tab-ui.md) § A1.

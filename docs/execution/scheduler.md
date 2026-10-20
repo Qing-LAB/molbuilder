@@ -375,7 +375,13 @@ for a machine whose record has changed since goes back to the state saved
 before its first prep. The one value a launch may restate is a submitted
 job's wall (`--time`), passed on the line in a job's own spelling
 (`D-HH:MM:SS`, § 6a) and checked by nothing of ours; the scheduler answers
-it.
+it. **What the launch records and shows of the request is read off the
+header it sends** — its wall and memory, each by its directive's own
+spelling in the kind's language (`kinds.Kind.directive_value`,
+`submit._sbatch_request`), the wall the launch's `--time` where it restates
+one — never worked out again from the plan: `run.json`'s `placed_on` and
+the `MB_WALL_S` the job is told are that header's
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6).
 
 **R10 — The fit names what holds the request.** Not only *"fits no node"* but
 which machines would hold what: *"64 cores · 1 GPU fits no node of public --
@@ -542,7 +548,7 @@ rather than any preference:
 
 | fact | known when | written by | into |
 |---|---|---|---|
-| **sent to** — domain, partition, qos | `sbatch` is accepted | `submit` | the attempt's `run.json` |
+| **sent to** — domain, partition, qos, and the wall and memory it was sent with: the header's, the wall the launch's `--time` where it restates one (R9) | `sbatch` is accepted | `submit` | the attempt's `run.json`, `placed_on` |
 | **landed on** — node name, cores, memory, device model | the job starts running | the **monitor**, on the compute node | the monitor log's **`[MACHINE]` line**, first thing |
 
 A queued job has no node yet, so `run.json` cannot carry one; the monitor is
@@ -693,9 +699,13 @@ group, a run of points, a benchmark's shelf — with its one request
 
 ```
 scheduler/
-  record.py   Machine · Domain · Topology · Site · Scheduler; read/write;
-              scopes; named targets; discovery (_DISCOVERY) -> a record
+  record.py   Environment (the machine) · Domain · Topology · Site ·
+              Scheduler; read/write; scopes; named targets; a calculation's
+              own copy (calculation_environment); discovery (_DISCOVERY)
+              -> a record
   probe.py    parsers of the scheduler's answers (sinfo / scontrol / sacctmgr)
+  quantities.py  a wall and a memory, in each way they are written:
+              parse_walltime · slurm_time · parse_mem_gb · canonical_*
   fit.py      fit(domain, request) -> Fit                 # R2-R4, R7, R10
   place.py    place(routing, request, *, named) -> Placement  # R6
   emit.py     Directives(...).header_lines(kind)                # R1, R5
@@ -742,14 +752,15 @@ kind: the header's own `<name>.sbatch`, and the scheduler's output
 | **how a sent job is asked after, and stopped** | `{query} --noheader --jobs={id} --format=%T|%r` — its state, and the scheduler's reason for it: asked by `molbuilder jobs status`, and by the run door for a sent run that still reads live on the machine the job was sent to, which writes a job no longer listed into the run's launch record (`runs.concluded`, `running-a-job.md` § 4.2) · `{cancel} {id}` · its **standing**, `{query} --noheader --jobs={id} --format=%T|%r|%S|%Q` — its state, the scheduler's reason, the start it expects (`N/A` until it has one) and its priority, asked only where the scheduler answers for the job: the server on the machine the job was sent to (`runs.standing_of`; a record copy on another machine names commands that do not run there, and the row says *ask on <machine>*) | `scheduler.queue` (`molbuilder jobs status`, `jobs stop`); each answer read by the kind's reader (`queue._READERS`) |
 | **which cluster answers** | `{cluster} show config` | `scheduler.queue` (a job's address); read by the kind's reader |
 | **how it says it ended a job** | in the job's error file (`stderr`, its placeholder filled with the job's id): `*** JOB <id> ON <node> <its words> ***` (R16) | the run door (`running-a-job.md` § 4.2), through the kind's reader (`queue._READERS`), the file named by the run's launch record |
-| **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={memory}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}{file}` `-e {where}{file}` | `scheduler.emit`, `runwrap.render_sbatch` (prep's header); `Directives.lines_of` (what prep and launch print of it) |
+| **the header's language** — its prefix, and one directive per value | `#SBATCH` · name `-J {name}` · nodes `-N 1` · ranks `-n {ranks}` · cores per rank `-c {cores}` · wall `-t {wall}` · queue `-p {partition}` `-q {qos}` · GPUs `--gres=gpu:{gpus}`, bound `--gres-flags=enforce-binding` · memory `--mem={memory}` · the whole node `--exclusive` `--mem=0` · its output `-o {where}{file}` `-e {where}{file}` | `scheduler.emit`, `runwrap.render_sbatch` (prep's header); `Directives.lines_of` (what prep and launch print of it); `Kind.directive_value` (one value read back by its directive's spelling — the wall and memory launch records, R9) |
 | **the placeholder its output files are named with** | `%j`, the job's id: the file catalogue names them `{scheduler}.{jobid}.out` and `.err` (`runfiles.SCHEDULER_STDOUT`), one name for every kind — SLURM's `slurm.%j.out` | the header's `stdout`, `stderr` |
 | **the value a launch may restate** | the wall, `-t {wall}` | `commands.LAUNCH_FLAGS` |
 | **what it tells a running job** | molbuilder's name = its variable: `MB_JOB_ID` = `SLURM_JOB_ID`, `MB_NTASKS` = `SLURM_NTASKS`, `MB_CPUS_PER_TASK` = `SLURM_CPUS_PER_TASK`, `MB_CPUS_ON_NODE` = `SLURM_CPUS_ON_NODE`, `MB_JOB_GPUS` = `SLURM_JOB_GPUS`, `MB_JOB_NODELIST` = `SLURM_JOB_NODELIST` | the header, which says each once in molbuilder's name for everything it starts — the run script, a walk, the monitor, the engine; they read only molbuilder's names, so the run script is one file with or without a scheduler (`architecture.md` § 9). Beside them the header says, in every kind's job, when the job started (`MB_JOB_STARTED`), which each run's monitor counts the wall down from ([`run-reports.md`](?doc=execution/run-reports.md) § 2.1b) |
-| **the wall it was sent with, told to it** | `MB_WALL_S=<seconds>` on the send line's `--export`, beside the launch claim — the header's wall or the launch's `--time`, the value `run.json`'s `placed_on.time` records; a run here gets it in its environment when its card states a wall | `submit` (`kinds.Kind.line`, `_go`); the run script hands it to the engine less the calculation's slack ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
+| **the wall it was sent with, told to it** | `MB_WALL_S=<seconds>` on the send line's `--export`, beside the launch claim — the header's wall or the launch's `--time`, the value `run.json`'s `placed_on.time` records, the job's one wall for every member of a walk; a run here is told its own job's wall in its environment, and each member of a walk here its own on its line of the walk — which run is told which wall is [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6 | `submit` (`kinds.Kind.line`, `_go`, `_walk_script`); the run script hands it to the engine less the calculation's slack (§ 3.6 there) |
 
-`workstation` is a kind too: no queue, nothing sent, no header, nothing told
-to a run — a run here has no `MB_JOB_ID`. A reader asks the kind what it
+`workstation` is a kind too: no queue, nothing sent, no header, nothing the
+scheduler tells a run — a run here has no `MB_JOB_ID`, and is told only its
+wall, by the launch (§ 6a above). A reader asks the kind what it
 does, never compares the word.
 
 A value is filled in a job's own spelling of it (`task.py`: a wall

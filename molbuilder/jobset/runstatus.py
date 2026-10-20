@@ -6,15 +6,14 @@ and the user decides** (never auto-recovers — redoing a long run unknowingly
 is a heavy penalty).  This module is the *inform* half: for a calculation --
 its description's every stage, prepared or not -- it answers, per stage, *did
 it finish? is it running? did it fail? are the warm-restart files there?* and
-*which is the first incomplete stage* (the one to resume from), with the
-command each state calls for -- so the manual continue is a one-glance
-decision.
+*what is each group's next step*, with the command each state calls for
+-- so the manual continue is a one-glance decision.
 
 REUSE, not reinvention: per-stage run state comes from
 ``parse.dirs.job.run_status`` (the directory-level status verb behind the Results
 tab + JobMonitor; its schema is pinned by ``execution/running-a-job.md``
 § 4, the composer pattern by ``model/parse.md`` § 5); this module only adds the cross-stage
-view (warm-file inventory + first-incomplete pointer).  It is **read-only**:
+view (warm-file inventory + each group's next step).  It is **read-only**:
 it inspects the tree, changes nothing.
 """
 
@@ -26,12 +25,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..identity import StageRef
+from ..identity import StageRef, stage_key
 from ..paths import attempts_in
 from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, stage_refs)
 from ..runrecord import LaunchRecordError, launch_record
 from .commands import (block, command, launch_lines, launch_pending,
-                       prep_group_lines, redo_launched)
+                       prep_group_lines)
 from .model import JobSet
 from .plan import resources_text
 
@@ -794,8 +793,8 @@ def render_steps(status: JobSetStatus) -> str:
 
 
 def render_status(status: JobSetStatus) -> str:
-    """Human-readable status table + the next step, worded by the state of
-    the first incomplete stage (`job-system.md` § 5.3)."""
+    """Human-readable status table + each group's next step, the line that
+    moves it (`job-system.md` § 5.3, *The next step*)."""
     lines: List[str] = [
         f"JOB-SET STATUS -- {status.name} ({status.engine})",
         "",
@@ -826,15 +825,9 @@ def render_status(status: JobSetStatus) -> str:
     if status.bench_of is not None:
         lines.append(_sweep_next(status))
         return "\n".join(lines)
-    if status.steps:
-        lines.append(render_steps(status))
-    elif status.complete:
-        lines.append("All stages finished. Nothing to resume.")
-    else:
-        first = next((s for s in status.stages
-                      if s.name == status.first_incomplete), None)
-        lines.append(next_step(first, status.first_incomplete,
-                               calc=status.calc))
+    # THE NEXT STEP, every group's (`_steps`): a described calculation has
+    # one for each group, a finished one the summary that gathers it.
+    lines.append(render_steps(status))
     return "\n".join(lines)
 
 
@@ -873,47 +866,6 @@ def _sweep_next(status: JobSetStatus) -> str:
         return ("Trials queued or running -- let them finish, then read "
                 "what they measured:\n" + read)
     return "Every trial has ended -- read what they measured:\n" + read
-
-
-def next_step(s: Optional[StageStatus], name: str, *, calc) -> str:
-    """What to do about a PREPARED stage that has not finished, by its state
-    -- each a command that works.  molbuilder does NOT auto-resume; the
-    person decides (`engines/stages.md`).  A stage never launched goes with
-    its group (`job-system.md`, *The task*), or waits for what it names; one
-    launched goes again alone (D4).  ``calc`` is the calculation the rows
-    were read from (A16)."""
-    base = calc.base
-    state = s.state if s is not None else "stopped"
-    number = s.group if s is not None else None
-    if state == "pending" and s is not None and s.why:
-        return (f"First incomplete stage: {name}, prepared, and its launch "
-                f"waits:\n" + textwrap.indent(s.why, "    "))
-    if state == "pending":
-        # PREP'S RUN goes with its group; one a refused send opened, with the
-        # stage alone again (D4).
-        return (f"First incomplete stage: {name}, {s.detail}:\n"
-                + block(launch_pending(name, number, s.attempt, base=base)))
-    if state == "unreadable":
-        # A RECORD THAT DOES NOT READ is said in its reader's words, which
-        # name the way on: no launch takes the stage until it reads.
-        return (f"First incomplete stage: {name}, its launch record does "
-                f"not read:\n" + textwrap.indent(s.detail, "    "))
-    if state in ("queued", "running"):
-        return (f"First incomplete stage: {name}, {state} -- let it "
-                f"finish; `{command('status', name, base=base)}` shows its "
-                f"run.")
-    # A LAUNCHED STAGE IS NOT PREPARED AGAIN (user, 2026-10-02); it is
-    # launched again, however it ended, warm or cold -- the person's choice
-    # (`job-system.md` § 5.4, *A stage launched again*).
-    warm = ("it continues from its own latest run"
-            if s is None or s.relaunch_continues
-            else "it starts over, nothing handed on from a run of its own")
-    how = (f"launch it again -- {warm}:\n"
-           + block(launch_lines("task", name, base=base))
-           + "\n  or start it over with `--cold`; or, to change it first, "
-           + redo_launched(name, calc=calc))
-    return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
-            f"auto-resume -- you decide: {how}")
 
 
 def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
@@ -1062,11 +1014,11 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
             rows = {}
             try:
                 from ..calculation import open as open_calculation
-                rows = {s.name.lower(): s for s in jobset_status(
+                rows = {stage_key(s.name): s for s in jobset_status(
                     open_calculation(base)).stages}
             except (OSError, ValueError, KeyError) as exc:
                 unread = f"its calculation does not read: {exc}"
-        row = rows.get(stage.lower())
+        row = rows.get(stage_key(stage))
         if row is None:
             out.append((stage, run,
                         unread or "its description no longer holds it"))
@@ -1078,5 +1030,83 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
     return out
 
 
+@dataclass(frozen=True)
+class ScratchAnswer:
+    """`jobset scratch`'s answer (`job-system.md` § 5.3): every file of an
+    engine's scratch the calculation's runs hold (``found``), those a run
+    still going keeps, each with why (``kept``), and those free to remove
+    (``free``)."""
+    found: list
+    kept: list
+    free: list
+
+
+def scratch_answer(calc) -> ScratchAnswer:
+    """WHICH OF A CALCULATION'S SCRATCH A RUN STILL GOING KEEPS -- asked of
+    each RUN, never of its stage's newest: a run is going when a job
+    launched from this machine that holds it is going, or this machine
+    cannot tell (the jobs door, `joblist.is_going`), or when the run door
+    reads it queued or running (`continuation.read_run`, the door `status`
+    reads); a run whose state does not read keeps its scratch too, said.
+    On the flat layout the runs share one folder: while any stage is going,
+    every file is kept.  Reads names, states and the jobs' files, and
+    removes nothing."""
+    from ..joblist import Asked, Job, every, is_going
+    from ..parse.dirs.job import LIVE_STATES
+    from ..paths import run_folder_of
+    from .continuation import read_run
+    from .materialize import scratch_in
+    base = Path(calc.base)
+    found = scratch_in(calc)
+    if not found:
+        return ScratchAnswer([], [], [])
+    # THE RUNS A JOB STILL GOING HOLDS -- each by its run folder.
+    held: Dict[str, str] = {}
+    asked = Asked()
+    for job in every():
+        if (not isinstance(job, Job)
+                or Path(job.calculation) != base.resolve()):
+            continue
+        going, said = is_going(job, asked)
+        if going is False:
+            continue
+        for member in job.members.values():
+            run = run_folder_of(member["run"])
+            held[str(run if run is not None else member["run"])] = (
+                f"job {job.id} -- {said}")
+    kept, free = [], []
+    if not calc.shape.keeps_attempts_as_directories:
+        going = held and next(iter(held.values()))
+        if not going:
+            try:
+                going = next((f"{s.ref.name} is {s.state}"
+                              for s in jobset_status(calc).stages
+                              if s.state in LIVE_STATES), None)
+            except (OSError, ValueError, KeyError) as exc:
+                going = f"which stage is going does not read: {exc}"
+        return ScratchAnswer(found, [(f, going) for f in found] if going
+                             else [], [] if going else list(found))
+    for f in found:
+        why = None
+        # A FILE IN NO RUN is no run's to keep.
+        if f.run is not None:
+            ref = f.run.relative_to(base).as_posix()
+            why = held.get(ref)
+            if why is None:
+                try:
+                    _ended, state, _conv, detail = read_run(
+                        base, calc.task, f.stage, f.run, verdict=False)
+                except (OSError, ValueError, KeyError) as exc:
+                    why = f"its state does not read: {exc}"
+                else:
+                    if state in LIVE_STATES:
+                        why = state
+                    elif state == "unreadable":
+                        why = f"its state does not read: {detail}"
+        (kept if why else free).append((f, why) if why else f)
+    return ScratchAnswer(found, kept, free)
+
+
 __all__ = ["StageStatus", "JobSetStatus", "jobset_status", "job_members",
-           "render_status", "render_stage_status"]
+           "render_status", "render_stage_status", "ScratchAnswer",
+           "scratch_answer"]

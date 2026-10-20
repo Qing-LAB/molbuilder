@@ -101,7 +101,7 @@ Under the stick style, atoms the drawing library assigns zero bonds draw as
 small **amber marker spheres** instead: visible, and visibly not an element
 colour, so the screen says "these atoms are here but nothing bonds them"
 rather than saying nothing. The marker is the sealed layer's own drawing
-constant (`3dmol-embed.js` `BONDLESS_MARKER`); `line` already marks lone atoms
+constant (`BONDLESS_MARKER`); `line` already marks lone atoms
 with the library's native crosses, and sphere / ball & stick draw every atom
 by construction.
 
@@ -563,6 +563,7 @@ classDiagram
       +string[] elements
       +Label[] labels
       +int[] selection
+      +int[] measured
       +Arrow[] arrows
     }
     class Scene {
@@ -3165,7 +3166,7 @@ flowchart LR
     IDLE(["IDLE<br/>the drawing matches the data"])
     REB(["REBUILDING<br/>the cover is up"])
     IDLE -->|"a change that needs a rebuild (§ 10.5)"| REB
-    REB -->|"a seek, new forces, new frames or a camera action arrive:<br/>held, not applied"| REB
+    REB -->|"a seek, new forces, a cell edit, new frames or a camera action arrive:<br/>held, not applied"| REB
     REB -->|"a switch changes:<br/>nothing is held"| REB
     REB -->|"a full load arrives:<br/>drop everything held, rebuild from it"| REB
     REB -->|"finished: replay what was held,<br/>in arrival order"| IDLE
@@ -3176,6 +3177,7 @@ flowchart LR
 | a **switch** change | nothing is held. The rebuild reads the switches *when it runs*, not when it was scheduled | the latest value is the one it should use, so there is nothing to replay |
 | a **seek** — a new displayed frame | held; only the last one survives | only the frame you end on matters |
 | **new forces** | held; only the last set survives | the same: only the last is the current answer |
+| a **cell edit** | held, and replayed as an overlay refresh (§ 10.5) | the scene is worked out again from the cell when the command arrives; the box and the axes are re-applied on the drawn structure (`render-engine.js` `cellChanged`) |
 | a **camera action** — Reset, *look along this axis*, *point the camera here* | held; only the last survives, and it lands **after** the rebuild's own fit | a load's rebuild runs in a later turn than the load, so a camera action issued right after a load would land on the drawing being replaced and be undone by the load's fit (§ 9.6); replayed afterwards it lands on the drawn structure. Only the pose you end on matters |
 | **appended frames** | held, and they **accumulate** | each poll tick's frames are a distinct piece of the run, and losing one would leave a hole in the middle of it |
 | a **full load** | everything held is dropped, and the load supersedes the rebuild under way | it replaces the atom set, so anything held refers to atoms or frames that no longer exist. A full load is never itself refused: it is the more authoritative statement about what the structure is |
@@ -3508,7 +3510,8 @@ before it: you ask to be put where you are and are given where you were.
 > lands on the current point, and after the save it steps back one from a
 > position one higher. Both routes arrive at the same point, so a test built on
 > that case passes whether the rule is honoured or not. One was, until it was
-> replaced by `test_a_read_during_a_save_answers_from_after_it`.
+> replaced by `test_a_read_cannot_answer_from_before_a_write_that_is_under_way`
+> (`tests/test_molview_stores_history.py`).
 
 **When a write does not land**, the position does not move and the badge is not
 cleared — so "there is work here that is not on the sequence yet" stays true and
@@ -4272,9 +4275,11 @@ order problem. Unifying it would have cost a working gesture and bought
 nothing.
 
 The Transform tab turns the ruler on when reached and says so, exactly as the
-Cell page does — the same act, from `modify/ruler-lock.js`, because two panels
-doing one thing from two copies is how they come to say different things about
-one mode.
+Cell page does — the same act, through the one door MolView offers for it
+(`measurement.requestPicking()`, which decides whether the ruler needed turning
+on), each page then saying so in the app's notice (`modify/viewer.js`,
+`modify/periodicity.js`), because two panels doing one thing from two copies
+is how they come to say different things about one mode.
 
 The fit is closer than borrowing. At two atoms this track **already shows the
 signed `Δ = (Δx, Δy, Δz)`, second minus first** — which *is* the axis vector, so
@@ -4331,9 +4336,9 @@ The anchor element is half the key: Pt–N is 2.05 Å and Pt–S is 2.30, so a t
 keyed by the metal alone answers the wrong bond. (The retired
 `default_contact_distance` was keyed that way, which is why the table's own
 `anchor` and `note` fields were unreachable through it.) `molview/ui.js` carries
-the six numbers rather than fetching them per measurement, and
-`tests/test_contact_distance_reference.py` fails if that copy and the JSON
-disagree.
+the six numbers rather than fetching them per measurement (`CONTACT_REFERENCE`),
+and that copy is kept in line with the JSON by review
+([`process/code-audit.md`](?doc=process/code-audit.md) § 1c).
 
 **And the marks carry the ORDER** *(user, 2026-08-30: "the measurement
 selection need some indicator at the atom?"; 2026-08-31: "using arrows to show
@@ -4984,6 +4989,7 @@ below lives under `lib/molview/`.
 | `model-jobs.js` | the model's helpers (§ 7.3) — load in, write out, the geometry edits, the cell edit — and the one place the server's names become this module's (§ 11.1) |
 | `stores.js` | `selection` and `view` (§ 9.5, § 9.6) |
 | `history.js` | the saved-state sequence and the write machine (§ 11.2) |
+| `ui-context.js` | the view context — one workspace slot per viewer, `<owner>:ui`: how you were looking, kept beside the truth (§ 11.2b) |
 | `render-engine.js` | the renderEngine and the drawing commands beneath it — what to redraw, the per-frame maths (§ 9.7–9.8) |
 | `ui.js` | every control MolView draws: the rail, the frame bar, the View and Export menus, the selection panel, the measurement readout, the badge (§ 8.5) |
 | `_atom.js` | the one atom-numbering translation (§ 11.5), the channels an atom can be filtered by (§ 9.5), and the Hill formula |

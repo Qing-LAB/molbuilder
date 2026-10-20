@@ -43,8 +43,17 @@ def test_documents_tab_registered_in_tab_order():
     assert doc_tab["path"] == "/documents"
 
 
-def test_toc_returns_each_document_once(client):
-    """A live-edited toc.json must not make duplicate sidebar entries."""
+def test_toc_returns_each_document_once(client, tmp_path, monkeypatch):
+    """A live-edited toc.json must not make duplicate sidebar entries.
+
+    Read from a copy of the tree: the route writes a document it finds
+    unlisted into `toc.json`, and the checkout is not the suite's to write
+    (conftest, *the suite leaves your checkout alone*)."""
+    import shutil
+    from molbuilder.web.blueprints import docs as docs_bp
+    copy = tmp_path / "docs"
+    shutil.copytree(docs_bp._docs_root(), copy)
+    monkeypatch.setattr(docs_bp, "_docs_root", lambda: copy)
     tree = client.get("/api/docs/toc").get_json()["tree"]
     paths = []
 

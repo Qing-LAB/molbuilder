@@ -346,22 +346,23 @@ swallows the body, then loses the very list the user needed to read.
 
 **A failure states its status; a success does not have to.** Flask answers
 **200 when a view returns a bare body**, which is the right answer for
-`ok:true` — so those returns are written plainly, and 52 of them are. An
+`ok:true` — so those returns are written plainly. An
 `ok:false` return never relies on that default: forgetting `, 500` would ship
 an HTTP 200 carrying a server fault, silently, and read as correct. Nothing
 in the value distinguishes a deliberate advisory 200 from a forgotten one;
 the only difference is whether the author wrote it, so the author always
 writes it.
 
-**What the blueprints hold today**, counted from the source: envelope returns
-carrying a literal status are `400`×153, `500`×44, `404`×25, `409`×16,
-`403`×8, `200`×4, and one each of `413`, `422`, `501`; another 32 pass the
-status as a value — `err(msg, code)`'s default of 400, or a path error's own
-`status`. The advisory bucket is **four sites**: the notify channel probe,
+**What the blueprints hold.** A return that states its status gives it as a
+literal, or passes it as a value — `err(msg, code)`'s default of 400, or a
+path error's own `status`. The advisory bucket is **four sites**: the notify channel probe,
 twice — *"could not reach it"* is news about somewhere else, and a 5xx there
-would claim this server broke — transport's preflight, whose issue list
-IS the answer, and the Build route's missing tool (`POST /api/build/molecule`),
-which is the person's install, not this server's fault.
+would claim this server broke — the Build route's missing tool
+(`POST /api/build/molecule`), which is the person's install, not this server's
+fault, and the checkpoint routes' one helper, `_advisory`, for the refusals a
+person resolves (§ 5). The one other literal `200` is no advisory: a transport
+citation that cannot be cited answers `ok: true` with the refusal as its
+`summary` (`GET /api/transport/describe_attempt`).
 
 > *(The four buckets were settled by an audit on 2026-06-17 that found five
 > misclassifications, including a catch-all `except Exception` returning 400
@@ -375,11 +376,11 @@ which is the person's install, not this server's fault.
 | 400 | bad body / validation / parse failure (the default of `err()`) — **including a path escaping the allowed roots**: the picker roots are an addressable-space boundary, not a permission model, so a path outside them is a malformed request rather than a forbidden one *(corrected 2026-09-09; this row said 403 while `files._resolve_within_roots` had always raised 400 across eight routes, and one test hedged `in (400, 403)`, which is how the disagreement stayed invisible)* |
 | 403 | forbidden — an admin-gate reject. **Authorization only**: the caller is known and may not do this |
 | 404 | no such file / directory / route |
-| 409 | conflict — a rename/move/copy/mkdir/write whose destination exists |
+| 409 | conflict — among them a rename/move/copy/mkdir/write whose destination exists, and a checkpoint route that needs a history, asked of a folder without one (§ 5) |
 | 413 | payload too large — over the 50 MB global upload cap |
 | 422 | unprocessable (spectra) |
 | 500 | internal / I/O / parse fault |
-| 501 | a stubbed endpoint |
+| 502 | the notebook passed through to Jupyter, when no notebook answers on this machine (§ 5) |
 
 ### The non-JSON routes
 
@@ -675,20 +676,34 @@ behind the same 404 and 403, **502** when no notebook answers
 | POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `box_corner` (the origin the person assigns, on a typed cell; `null` is *Automatic*) — plus `block`, the whole cell at once, through the frame-contract gate. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the resolved views (`resolved_cell`, `box_corner`, `resolved_vacuum`) beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{severity, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
 | ~~POST `/api/run/install-wrapper`~~ · ~~POST `/api/siesta/install-pseudos`~~ | **retired 2026-08-21** — zero browser callers; the described route owns both (`prep` writes the wrapper beside every deck and installs the pseudopotentials itself) |
 
-**Checkpoint** — the run-history panel (its behavior is
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6`, its
-invariants [`execution/checkpointing.md`](?doc=execution/checkpointing.md);
-the routes are `GET /api/checkpoint/{state,list}` and
-`POST /api/checkpoint/{init,save,tag,restore}`.
+**Checkpoint** — the run-history panel's six routes
+(`blueprints/checkpoint.py`). What the panel does with them is
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6.3; the
+rules they keep are [`execution/checkpointing.md`](?doc=execution/checkpointing.md).
+Each goes through `checkpoint.Repo`, the class the CLI goes through.
 
-~~`GET /api/checkpoint/config`~~ — **retired 2026-09-07**, zero browser
-callers and zero tests. It answered what a folder's classification is (the
-size limit, the always-large list). Read-only was deliberate — the
-classification has one home, `molbuilder.json`, and a per-folder editor *"let
-two folders behave differently for no recorded reason, and let somebody change
-the rules between a save and a restore"* — but nothing ever displayed the
-answer. If the panel should one day say why a file was left out of a
-checkpoint, that is a feature to design, not a route to keep warm).
+Every route takes the folder as `path` and fences it at the route (§ 2.1,
+`checkpoint._resolve_path`): missing, outside every allowed root, or not a
+directory → **400**. The four that need a history answer **409** *not a
+checkpoint folder; run init first* for a folder without one. A refusal lands
+in its bucket by class (§ 1): what a person resolves is an **advisory** — 200,
+`ok: false`, the message as `error` and as one error-severity issue in `issues`
+and `errors_only`, its `where` naming what to answer; a name or tag that names
+no state is **404**; every other refusal — git missing, an archive or a record
+that does not verify — and any crash is **500**.
+
+A **state** crosses as `{id, short, note, parent, at, archive, calculation,
+tags}` — the contract's vocabulary (checkpointing.md § 5), `archive` the
+state's `Manifest-SHA256`.
+
+| Method · Path | Request → answer |
+|---|---|
+| GET `/api/checkpoint/state` | `?path=`, and `deep=1` (also `true`, `yes`) to compare content rather than size and timestamp → `{ok, path, is_calculation, initialized, standing_at, clean, changed, added, deleted, unsaved, ignore_edited, checked}`: whether the folder is a calculation's root (`calcdirs.root_of`), whether it has a history, the state it stands at (or `null`), A5's three lists and their union, whether `.gitignore`'s generated block differs from what this molbuilder generates, and `checked` — `"content"` or `"size+timestamp"`. A folder with no history is an answer (`initialized: false`), not a refusal. The panel's read on directory-enter and on Refresh; never polled |
+| GET `/api/checkpoint/list` | `?path=`, `limit=` (a whole number, not negative; else 400) → `{ok, path, standing_at, states, tags}` — the states newest first, the tags as `{name, state, note}` |
+| POST `/api/checkpoint/init` | `{path, engine?, note?, calculation?}` — `note` defaults to `set up`; `engine` is recorded as the folder's engine when the folder records none, on a folder this makes a checkpoint folder or one that already is (checkpointing.md § 4) → `{ok, path, already: false, calculation, state}`, the first state; on a folder that already has a history, `{ok, path, already: true, calculation, standing_at}`, after naming it with `calculation` if it had no name (checkpointing.md L3). Advisories: several independent calculations in the folder (`where: "path"`), a name needing repair (`where: "calculation"`) |
+| POST `/api/checkpoint/save` | `{path, note}` — no note → 400, never a default (L3) → `{ok, path, changed, state}`; `changed: false` and `state: null` when nothing changed. Advisory: a name needing repair (`where: "calculation"`) |
+| POST `/api/checkpoint/tag` | `{path, name, note, at?}` — no name or no note → 400; `at` defaults to where the folder stands → `{ok, tag: {name, state, note}}`. `at` naming no state → 404; git missing → 500; any other refusal, a name already in use among them, is an advisory (`where: "tag"`) |
+| POST `/api/checkpoint/restore` | `{path, state, force?}` — no `state` → 400; a body carrying `include_binaries` → 400, since a restore is whole or does not happen (A4) → `{ok, path, state}`, the state restored. Unsaved work without `force` is an advisory naming every file (`where: "unsaved"`); a state or tag that does not resolve → 404; a target whose archive does not verify → 500 |
 
 **System** — `GET /api/system/load` → `{ ok, data: { cpu, ram, gpu, … } }`, the
 1 Hz load strip's source. An empty `gpus` list has two causes, so the snapshot
@@ -781,3 +796,4 @@ So a reader of older code or bookmarked URLs isn't lost, these routes are
 | `/api/files/result-list` | retired 2026-06-01 with its single consumer |
 | `POST /api/transport/render` | deleted 2026-09-17 — a browser renders no deck |
 | `POST /api/modify/calibrate` | retired 2026-09-25 with the calibrate step (`model/structure-periodicity.md` § 6.0) |
+| `GET /api/checkpoint/config` | retired 2026-09-07 — no caller; the classification a folder is saved under is what `molbuilder checkpoint config` prints (`execution/checkpointing.md` § 4) |

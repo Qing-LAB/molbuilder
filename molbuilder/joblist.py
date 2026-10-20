@@ -6,7 +6,10 @@ moment it goes (`jobset.submit._go`), read by `molbuilder jobs`.
 **An address, never a state.**  What a job is doing is read fresh each time
 -- its process, the scheduler, its runs' own files -- so nothing here can go
 stale against them.  Floor 1 (`execution/architecture.md` § 2.1): plain
-facts of this machine, which know no calculation.
+facts of this machine -- and whether a job is going, its process or its
+scheduler's list, the scheduler named by its calculation's copy of its
+machine's record (:func:`is_going`), the one answer `molbuilder jobs` and
+`jobset scratch` ask.
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 #: Every job's file, at one major (`persist.check_schema`).
 JOB_SCHEMA = "molbuilder/job@1"
@@ -136,6 +139,75 @@ def _dir() -> Path:
 
 def _file_of(job_id: str) -> Path:
     return _dir() / f"{job_id}.json"
+
+
+class Asked:
+    """The cluster a scheduler here answers for, as it names it -- asked
+    once a command for each scheduler, and only when a queue job is asked
+    of."""
+    def __init__(self):
+        self._asked = {}
+
+    def cluster(self, scheduler):
+        if scheduler not in self._asked:
+            from .scheduler.queue import cluster
+            self._asked[scheduler] = cluster(scheduler)
+        return self._asked[scheduler]
+
+
+def scheduler_of(job):
+    """The scheduler a queue job was sent to: the one its calculation's copy
+    of its machine's record names (`configuration.md` M-3) -- ``None`` when
+    that copy does not read here (`record.calculation_environment`)."""
+    from .scheduler.record import UnknownTarget, calculation_environment
+    try:
+        rec = calculation_environment(job.calculation)
+    except UnknownTarget:
+        return None
+    return rec.scheduler if rec is not None else None
+
+
+def is_going(job: "Job", here: "Asked") -> "Tuple[Optional[bool], str]":
+    """``(going, said)`` -- whether the job is still going, its process or
+    the scheduler's list, ``None`` where this machine cannot ask -- and
+    that in words: THE ONE ANSWER, `molbuilder jobs` asks it of each job,
+    `jobset scratch` of the jobs that hold its runs."""
+    if job.how == "here":
+        going = going_here(job)
+        return going, {True: "its process is going",
+                       False: "its process has ended",
+                       None: (f"on {job.host}: ask there"
+                              if job.host != this_host() else
+                              "this machine cannot tell")}[going]
+    from .scheduler.queue import listed
+    scheduler = scheduler_of(job)
+    if scheduler is None:
+        from .scheduler.record import UnknownTarget, calculation_record
+        if calculation_record(job.calculation).is_file():
+            # THERE AND NOT READ, said as the record's own refusal says it
+            # -- an older molbuilder's copy naming `jobset migrate`.
+            return None, " ".join(
+                str(UnknownTarget.unreadable_copy(job.calculation)).split())
+        return None, ("its calculation's record of its machine is not here, "
+                      "so its scheduler cannot be asked")
+    answers = here.cluster(scheduler)
+    if job.cluster is not None and answers != job.cluster:
+        return None, (f"sent to cluster {job.cluster}: ask there"
+                      if answers is not None else
+                      "the scheduler cannot be asked here")
+    # THE SCHEDULER'S OWN WORDS for a job it holds -- its state and reason,
+    # so a job it took and will never start says why (`job-system.md`
+    # § 6.0a; `scheduler.md` R6).
+    answer = listed(scheduler, job.job_id)
+    if answer is None:
+        return None, "the scheduler cannot be asked here"
+    going, said = answer
+    if going:
+        return True, "the scheduler lists it" + (f": {said}" if said else "")
+    # ENDED, in its words while it still lists the job -- ``FAILED
+    # (NonZeroExitCode)`` -- and only then forgotten.
+    return False, (f"the scheduler lists it ended: {said}" if said
+                   else "the scheduler no longer lists it")
 
 
 def run_here(*, pid: int, background: bool, calculation,
