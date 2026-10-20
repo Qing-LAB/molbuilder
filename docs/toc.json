@@ -306,8 +306,8 @@
           "path": "process/code-audit.md"
         },
         {
-          "path": "process/code-audit-2026-10-18.md",
-          "label": "Audit 2026-10-18 (main 2.11.0)"
+          "path": "process/code-audit-2026-10-20.md",
+          "label": "Audit 2026-10-20 (main 2.24.0)"
         },
         {
           "path": "process/screenshots.md"
