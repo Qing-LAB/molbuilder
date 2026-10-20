@@ -197,7 +197,7 @@ def api_results_dir():
         from molbuilder.calculation import open as open_calculation
         from molbuilder.jobset.runstatus import every_run, jobset_status
         try:
-            got_status = jobset_status(open_calculation(directory), directory)
+            got_status = jobset_status(open_calculation(directory))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             attempts.append(str(exc))
         else:
@@ -206,7 +206,7 @@ def api_results_dir():
             # with its state and the file it opens (`runstatus.every_run`,
             # `web/results.md` § 2.4), so a run is picked here in place.
             ladder = got_status.to_dict()
-            task = got_status.task
+            task = got_status.calc.task
             for row, st in zip(ladder["stages"], got_status.stages):
                 try:
                     row["runs"] = every_run(directory, task, st)

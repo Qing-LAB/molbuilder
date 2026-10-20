@@ -787,24 +787,25 @@ def status_cmd(stage, bundle: str) -> None:
         # THE DESCRIPTION'S LADDER (job-system.md § 5.3, 2026-10-01): every
         # stage it names, before the first prep and as prep reaches each --
         # the calculation through its one door (A16).
-        subject = _calc_of(base)
-        js, sweep = subject.jobset, None
-        name = _described_stage(stage, subject.task, base)
+        calc = _calc_of(base)
+        js, sweep = calc.jobset, None
+        name = _described_stage(stage, calc)
     else:
         js, base = _load(bundle)
-        subject, sweep = js, None
-        if js.kind == KIND_SWEEP:
-            # A BENCH FOLDER is read against its calculation: its sweep names
-            # its trials from there, and what it prints names that.
-            from .materialize import bench_owner
-            owner = bench_owner(base)
-            if owner is not None:
-                base = owner[0]
-                subject, sweep = _calc_of(base), js
+        # A BENCH FOLDER is read against its calculation: its sweep names
+        # its trials from there, and what it prints names that.  A plan with
+        # no description beside it is no calculation of molbuilder's (A16).
+        from .materialize import bench_owner
+        owner = bench_owner(base) if js.kind == KIND_SWEEP else None
+        if owner is None:
+            from ..calculation import refusal
+            raise click.ClickException(refusal(base))
+        base = owner[0]
+        calc, sweep = _calc_of(base), js
         name = (_resolve_stage_name(js, stage) if stage is not None
                 else None)
     try:
-        status = jobset_status(subject, base, jobset=sweep)
+        status = jobset_status(calc, sweep=sweep)
     except (OSError, ValueError, KeyError) as exc:
         # A refusal, in the verb's voice -- never a traceback.
         raise click.ClickException(str(exc))
@@ -874,7 +875,7 @@ def _check_kind(kind: str, js=None) -> None:
             f"(job-system.md § 5.3).")
 
 
-def _described_stage(stage, task, base=None):
+def _described_stage(stage, calc):
     """The stage a verb was given, as the description spells it, through
     the ONE resolver -- its name in any case, or ``#N``
     (`identity.resolve_stage_ref`, `job-system.md` § 5.3) -- and what the
@@ -883,13 +884,13 @@ def _described_stage(stage, task, base=None):
     whether or not it is prepared: the bench verbs and `status`.  ``None`` stays ``None``, and a folder with no description has
     no ladder to resolve against: its name stands."""
     from ..identity import StageRef, resolve_stage_ref
-    if stage is None or task is None:
+    if stage is None:
         return stage
     try:
         from .materialize import ladder_homes
         return resolve_stage_ref(
             [StageRef(h.seq, h.name)
-             for h in ladder_homes(base, task)], stage).name
+             for h in ladder_homes(calc.base, calc.task)], stage).name
     except ValueError as e:
         raise click.ClickException(str(e))
 
@@ -905,8 +906,7 @@ def _refuse_unprepared(calc, stage) -> None:
     if job_of(calc.jobset, stage) is None:
         raise click.ClickException(
             f"stage {stage!r} is not prepared yet -- prep it, then launch "
-            f"it:\n" + block(run_first(stage, base=calc.base,
-                                        task=calc.task)))
+            f"it:\n" + block(run_first(stage, calc=calc)))
 
 
 def _stage_bench_dir(calc, stage, verb: str = "launch"):
@@ -1622,7 +1622,7 @@ def summarize_cmd(kind: str, words, bundle: str,
             "(engines/vibration.md 5.9)")
     calc = _calc_of(bundle)
     base = calc.base
-    stage = _described_stage(stage, calc.task, base)
+    stage = _described_stage(stage, calc)
     js, container = _load_bench_set(calc, stage, "summarize")
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,
@@ -1873,7 +1873,7 @@ def _how_runs_ended(results, plan, js, base, calc):
         # THE ROWS ARE THE DESCRIPTION'S LADDER (A16: the calculation as
         # the verb opened it); a sweep's are its own trials.
         rows = {s.ref.name: s for s in jobset_status(
-            calc, at, jobset=js if js.kind == KIND_SWEEP else None).stages}
+            calc, sweep=js if js.kind == KIND_SWEEP else None).stages}
     except (OSError, ValueError, KeyError) as exc:
         raise click.ClickException(
             f"the run ended, and how it ended could not be read: {exc}\n"
@@ -1929,8 +1929,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         calc = _calc_of(bundle)
-        stage = said["stage"] = _described_stage(stage, calc.task,
-                                                   calc.base)
+        stage = said["stage"] = _described_stage(stage, calc)
         js, _container = _load_bench_set(calc, stage, "launch")
     else:
         calc = _calc_of(bundle)
@@ -2007,8 +2006,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             else:
                 stage = picked
         if group is None:
-            stage = said["stage"] = _described_stage(stage, calc.task,
-                                                       base)
+            stage = said["stage"] = _described_stage(stage, calc)
             _refuse_unprepared(calc, stage)
             only = stage = said["stage"] = _resolve_stage_name(js, stage)
         else:
@@ -2229,7 +2227,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # task*, *The next step*): every group, and the line that moves it.
         from .runstatus import jobset_status, render_steps
         click.echo(render_steps(jobset_status(
-            calc, base, jobset=js if js.kind == KIND_SWEEP else None)))
+            calc, sweep=js if js.kind == KIND_SWEEP else None)))
     # A RUN HERE THAT DID NOT FINISH ENDS THE LAUNCH WITH 1 (`job-system.md`,
     # *A run here, waited on*): how it ended is on its line above, in the
     # status door's words, so a script trusting the exit status is told.

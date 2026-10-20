@@ -49,7 +49,9 @@ def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
                 slots={"junction": "J/x"}, bias=(0.0,), varies=(),
                 execution={}, stages=tuple(
                     Stage(name=n, overrides={}) for n in rungs))
+    from molbuilder.calculation import Calculation
+    calc = Calculation(base=tmp_path, task=task, template=None, jobset=None)
     for asked in ({"from_attempt": "01_seed/run-0"}, {"cold": True}):
-        got, refused = continuation_answer(tmp_path, task, "device", **asked)
+        got, refused = continuation_answer(calc, "device", **asked)
         assert got is None and refused and (
             "takes its inputs from the rungs upstream" in refused), refused

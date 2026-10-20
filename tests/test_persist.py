@@ -181,27 +181,6 @@ def test_write_json_fails_clean_on_an_unserialisable_object(tmp_path):
     assert list(tmp_path.iterdir()) == [p]
 
 
-def test_write_json_tmp_dir_stages_outside_the_target_dir(tmp_path,
-                                                          monkeypatch):
-    """For a target inside a checkpointed folder, tmp_dir points the
-    staging somewhere never stored -- the litter of a crash cannot be
-    committed into history."""
-    import molbuilder.persist as persist
-    stage = tmp_path / "never-stored"
-    stage.mkdir()
-    seen = {}
-    real = os.replace
-
-    def spy(src, dst):
-        seen["src"] = str(src)
-        return real(src, dst)
-    monkeypatch.setattr(persist.os, "replace", spy)
-    p = tmp_path / "calc" / "job-set.json"
-    p.parent.mkdir()
-    persist.write_json(p, {"a": 1}, tmp_dir=stage)
-    assert seen["src"].startswith(str(stage))
-
-
 def test_check_schema_rejects_the_wrong_artifact_at_the_same_major():
     """THE U9 pin: the check compared MAJORS ONLY until 2026-08-12, so any
     @1 artifact parsed as any other -- a task.json handed to the

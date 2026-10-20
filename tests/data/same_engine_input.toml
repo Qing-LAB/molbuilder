@@ -14,3 +14,37 @@ names = "block AtomicCoordinatesAndAtomicSpecies, row"
 [[case]]
 name = "an atom moved within it is the same engine input"
 moved_ang = 5.0e-7
+
+# WHAT A DECK LEAVES TO THE ENGINE (`engines/transport.md` § 6.1): the
+# device's deck rendered now at `volts`, against the same deck with
+# `left_out` taken out -- a keyword by its name, a block by `%block <name>`,
+# a block's row by `row <first word>` -- and each `changed` pair made to the
+# deck now.  A row with `names` is another calculation, each name among the
+# differences and no other said; a row without is the same engine input.
+# Run by `test_transport_on_a_real_junction_e2e.py::
+# test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it`.
+
+[[left_to_the_engine]]
+name = "at zero bias, the scratch rows, the file switch and the bias window left to the engine are the same input"
+volts = 0.0
+left_out = ["TS.Elecs.Out-of-core", "%block TS.Contours.nEq",
+            "%block TS.Contour.nEq.line", "row GF", "row GF.ReUse"]
+
+[[left_to_the_engine]]
+name = "under bias, the bias window left to the engine is the contour it builds itself"
+volts = 0.2
+left_out = ["%block TS.Contours.nEq", "%block TS.Contour.nEq.line"]
+
+[[left_to_the_engine]]
+name = "under bias, a spacing other than the engine's is another calculation"
+volts = 0.2
+left_out = ["%block TS.Contours.nEq", "%block TS.Contour.nEq.line"]
+changed = [["delta 0.01 eV", "delta 0.02 eV"]]
+names = ["block TS.Contour.nEq.line, row 3"]
+
+[[left_to_the_engine]]
+name = "every difference is said, not the first"
+volts = 0.2
+changed = [["delta 0.01 eV", "delta 0.02 eV"],
+           ["method mid-rule", "method simpson-mix"]]
+names = ["block TS.Contour.nEq.line, row 3", "block TS.Contour.nEq.line, row 4"]

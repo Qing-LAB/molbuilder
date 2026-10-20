@@ -15,6 +15,7 @@ manual = "SIESTA 5.4.2 §6.1 'General system descriptors'"
 type = "str"
 value = "siesta"
 default = "siesta"
+engine_default = { value = "siesta", source = "SIESTA 5.4.2 reinit_m.F90:230: slabel = fdf_string('SystemLabel', 'siesta')" }
 group = "setup"
 label = "System label (output prefix)"
 pattern = "^[A-Za-z0-9_\\-]+$"
@@ -35,6 +36,7 @@ type = "enum"
 choices = ["SZ", "SZP", "DZ", "DZP", "DZDP", "TZ", "TZP", "TZDP", "TZTP"]
 value = "DZP"
 default = "DZP"
+engine_default = { value = "DZP", source = "SIESTA 5.4.2 basis_specs.f:206,260: basis_size = fdf_string('PAO.BasisSize', basis_size_default), basis_size_default = 'standard'; :1508 size_name: STANDARD is dzp" }
 group = "stage"
 label = "Basis size"
 help = """
@@ -59,6 +61,7 @@ citation = ["transport"]
 type = "float"
 value = 0.01
 default = 0.01
+engine_default = { value = 0.01, source = "SIESTA 5.4.2 atom.F:57,3374: eshift = fdf_physical('PAO.EnergyShift', eshift_default, 'Ry'), eshift_default = 0.01_dp" }
 unit = "Ry"
 range = [0.001, 0.05]
 group = "stage"
@@ -85,6 +88,7 @@ citation = ["transport"]
 type = "float"
 value = 300.0
 default = 300.0
+engine_default = { value = 300.0, source = "SIESTA 5.4.2 read_options.F90:449: g2cut = fdf_get('MeshCutoff', 300._dp, 'Ry')" }
 unit = "Ry"
 range = [100.0, 1000.0]
 tightens = "up"
@@ -118,6 +122,7 @@ type = "enum"
 choices = ["LDA", "GGA", "VDW"]
 value = "GGA"
 default = "GGA"
+engine_default = { value = "LDA", source = "SIESTA 5.4.2 read_xc_info.F:104: XCfunc(1) = fdf_string('xc.functional', 'LDA') -- no XC.mix block" }
 group = "profile"
 label = "XC functional family"
 help = """
@@ -145,6 +150,7 @@ type = "enum"
 choices = ["PBE", "PBEsol", "revPBE", "RPBE", "BLYP", "CA", "PZ", "PW", "DRSLL", "LMKLL"]
 value = "PBE"
 default = "PBE"
+engine_default = { value = "PZ", source = "SIESTA 5.4.2 read_xc_info.F:105: XCauth(1) = fdf_string('xc.authors', 'PZ') -- no XC.mix block" }
 group = "profile"
 label = "XC parameterisation"
 help = """
@@ -176,6 +182,7 @@ type = "enum"
 choices = ["diagon", "OMM", "transiesta"]
 value = "diagon"
 default = "diagon"
+engine_default = { value = "diagon", source = "SIESTA 5.4.2 read_options.F90:851: method = fdf_get('SolutionMethod', 'diagon')" }
 group = "profile"
 label = "Solution method"
 help = """
@@ -199,6 +206,7 @@ manual = "SIESTA 5.4.2 §6.9.2 'Mixing options'"
 type = "float"
 value = 0.02
 default = 0.02
+engine_default = { none = "the older DM.MixingWeight, else 0.25", source = "SIESTA 5.4.2 m_mixing_scf.F90:135,152: w = fdf_get('DM.MixingWeight', 0.25_dp); w = fdf_get('SCF.Mixer.Weight', w)" }
 range = [0.001, 0.5]
 group = "profile"
 label = "SCF mixing weight"
@@ -222,6 +230,7 @@ manual = "SIESTA 5.4.2 §6.9.2 'Mixing options'"
 type = "int"
 value = 8
 default = 8
+engine_default = { none = "the older DM.NumberPulay, else 2", source = "SIESTA 5.4.2 m_mixing_scf.F90:126,149: n_hist = fdf_get('DM.NumberPulay', 2); n_hist = fdf_get('SCF.Mixer.History', n_hist)" }
 range = [0, 20]
 group = "profile"
 label = "Pulay history depth"
@@ -244,6 +253,7 @@ manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "float"
 value = 1e-05
 default = 1e-05
+engine_default = { value = 0.0001, source = "SIESTA 5.4.2 read_options.F90:685: dDtol = fdf_get('DM.Tolerance', 1.e-4_dp)" }
 range = [1e-08, 0.001]
 tightens = "down"
 group = "stage"
@@ -298,6 +308,7 @@ manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "float"
 value = 0.0001
 default = 0.0001
+engine_default = { value = 0.0001, source = "SIESTA 5.4.2 read_options.F90:744: tolerance_FreeE = fdf_get('DM.EnergyTolerance', 1.e-4_dp*eV, 'Ry')" }
 unit = "eV"
 range = [1e-08, 0.1]
 group = "stage"
@@ -321,6 +332,7 @@ manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "bool"
 value = false
 default = false
+engine_default = { none = "the older DM.RequireEnergyConvergence, else false", source = "SIESTA 5.4.2 read_options.F90:742,743: converge_FreeE = fdf_get('DM.RequireEnergyConvergence', .false.); converge_FreeE = fdf_get('SCF.FreeE.Converge', converge_FreeE)" }
 group = "stage"
 label = "Also require the free energy to settle"
 tier = "advanced"
@@ -344,6 +356,7 @@ manual = "SIESTA 5.4.2 §6.9 'The self-consistent-field loop'"
 type = "int"
 value = 1000
 default = 1000
+engine_default = { value = 1000, source = "SIESTA 5.4.2 read_options.F90:473: nscf = fdf_get('MaxSCFIterations', 1000)" }
 range = [10, 5000]
 group = "budget"
 label = "Max SCF cycles per geometry step"
@@ -363,6 +376,7 @@ anchor = "SCF.MustConverge"
 engine_key = "SCF.MustConverge"
 manual = "SIESTA 5.4.2 \u00a76.9 'The self-consistent-field loop'"
 type = "bool"
+engine_default = { value = true, source = "SIESTA 5.4.2 read_options.F90:474: SCFMustConverge = fdf_get('SCF.MustConverge', .true.)" }
 group = "budget"
 label = "Abort if the SCF hits its cycle cap"
 null_label = "(SIESTA default: abort)"
@@ -389,6 +403,7 @@ citation = ["transport"]
 type = "float"
 value = 300.0
 default = 300.0
+engine_default = { value = 300.0, source = "SIESTA 5.4.2 read_options.F90:1020: temp = fdf_get('ElectronicTemperature', 300.0_dp*Kelvin, 'Ry')" }
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
@@ -474,6 +489,7 @@ type = "enum"
 choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
 value = "CG"
 default = "CG"
+engine_default = { value = "CG", source = "SIESTA 5.4.2 read_options.F90:1281: dyntyp = fdf_get('MD.TypeOfRun', 'cg') -- compat-pre-v4-dynamics unset" }
 recommended = { vibration = "Broyden" }
 # a vibration's `relax` stage relaxes: dynamics or no relaxation is not one (SS-C4)
 offered = { vibration = ["CG", "Broyden", "FIRE"] }
@@ -527,6 +543,7 @@ stages = ["relaxation"]
 type = "float"
 value = 0.02
 default = 0.02
+engine_default = { value = 0.03999968362780962, source = "SIESTA 5.4.2 read_options.F90:1342: ftol = fdf_get('MD.MaxForceTol', 0.00155574_dp, 'Ry/Bohr') -- 0.00155574 Ry/Bohr in eV/Ang" }
 recommended = { vibration = 0.01 }
 unit = "eV/Å"
 range = [0.001, 0.5]
@@ -553,6 +570,7 @@ stages = ["relaxation"]
 type = "float"
 value = 0.05
 default = 0.05
+engine_default = { none = "the older MD.MaxCGDispl, else 0.2 Bohr", source = "SIESTA 5.4.2 read_options.F90:1338,1339: dxmax = fdf_get('MD.MaxCGDispl', 0.2_dp, 'Bohr'); dxmax = fdf_get('MD.MaxDispl', dxmax, 'Bohr')" }
 recommended = { vibration = 0.02 }
 unit = "Å"
 range = [0.001, 0.5]
@@ -579,6 +597,7 @@ stages = ["force_constants"]
 type = "float"
 value = 0.04
 default = 0.04
+engine_default = { none = "the older MD.FCDispl, else 0.04 Bohr", source = "SIESTA 5.4.2 read_options.F90:1730,1731: dx = fdf_get('MD.FCDispl', 0.04_dp, 'Bohr'); dx = fdf_get('FC.Displacement ', dx, 'Bohr')" }
 unit = "Bohr"
 range = [0.005, 0.2]
 above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }
@@ -644,6 +663,7 @@ calculations = ["optimization"]
 type = "float"
 value = 300.0
 default = 300.0
+engine_default = { value = 0.0, source = "SIESTA 5.4.2 read_options.F90:1535: tempinit = fdf_get('MD.InitialTemperature', 0.0_dp, 'K')" }
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
@@ -664,6 +684,7 @@ engine_key = "MD.TargetTemperature"
 manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
 calculations = ["optimization"]
 type = "float"
+engine_default = { value = 0.0, source = "SIESTA 5.4.2 read_options.F90:1588: tt = fdf_get('MD.TargetTemperature', 0.0_dp, 'K')" }
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
@@ -691,6 +712,7 @@ calculations = ["optimization"]
 type = "float"
 value = 1.0
 default = 1.0
+engine_default = { value = 1.0, source = "SIESTA 5.4.2 read_options.F90:1511: dt = fdf_get('MD.LengthTimeStep', 1._dp, 'fs')" }
 unit = "fs"
 range = [0.1, 5.0]
 group = "profile"
@@ -759,6 +781,7 @@ manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
 type = "bool"
 value = true
 default = true
+engine_default = { none = "nothing: SIESTA 5.4.2 reads no WriteForces", source = "SIESTA 5.4.2 Src/: no fdf read of WriteForces" }
 group = "output"
 label = "Write forces each step"
 help = """
@@ -780,6 +803,7 @@ manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
 type = "bool"
 value = true
 default = true
+engine_default = { none = "LongOutput, else false", source = "SIESTA 5.4.2 read_options.F90:220,1906: outlng = fdf_get('LongOutput', .false.); writec = fdf_get('WriteCoorStep', outlng)" }
 group = "output"
 label = "Write coordinates each step"
 help = """
@@ -799,6 +823,7 @@ manual = "SIESTA 5.4.2 §6.4.3 'Output of structural information'"
 type = "bool"
 value = true
 default = true
+engine_default = { value = false, source = "SIESTA 5.4.2 siesta_init.F:414: fdf_boolean('WriteCoorXmol', .false.)" }
 group = "output"
 label = "Write XMOL .xyz"
 help = """
@@ -818,6 +843,7 @@ calculations = ["optimization"]
 type = "bool"
 value = true
 default = true
+engine_default = { value = false, source = "SIESTA 5.4.2 read_options.F90:1907: writmd = fdf_get('WriteMDhistory', .false.)" }
 group = "output"
 label = "Write MD history (.MD/.MDE)"
 help = """
@@ -839,6 +865,7 @@ calculations = ["optimization"]
 type = "bool"
 value = true
 default = true
+engine_default = { none = "WriteCoorStep: its opposite", source = "SIESTA 5.4.2 read_options.F90:1908: writpx = fdf_get('WriteMDXmol', .not. writec)" }
 group = "output"
 label = "Write XMOL animation (.ANI)"
 help = """
@@ -858,6 +885,7 @@ manual = "SIESTA 5.4.2 §6.11 'Matrix elements of the Hamiltonian and overlap'"
 type = "bool"
 value = true
 default = true
+engine_default = { value = true, source = "SIESTA 5.4.2 read_options.F90:1874: savehs = fdf_get('SaveHS', .true.)" }
 group = "output"
 label = "Write H+S matrices"
 help = """
@@ -930,6 +958,7 @@ anchor = "BlockSize"
 engine_key = "BlockSize"
 manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
 type = "int"
+engine_default = { none = "the ranks and the orbitals", source = "SIESTA 5.4.2 initparallel.F:229,230: call set_blocksizedefault(Nodes, no_u, blocksizedefault); BlockSize = fdf_integer('blocksize', blocksizedefault)" }
 above = { value = 0, why = "it is a count of orbitals per rank; leave it unset for SIESTA's own automatic (tuning.md 2.11)" }
 group = "budget"
 label = "ScaLAPACK block size"
@@ -953,6 +982,7 @@ anchor = "Diag.ParallelOverK"
 engine_key = "Diag.ParallelOverK"
 manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "bool"
+engine_default = { value = false, source = "SIESTA 5.4.2 diag_option.F90:119: ParallelOverK = fdf_get('Diag.ParallelOverK', .false.)" }
 group = "budget"
 label = "ParallelOverK"
 optional = true
@@ -1044,6 +1074,7 @@ type = "enum"
 choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
 value = "ELPA-1STAGE"
 default = "ELPA-1STAGE"
+engine_default = { none = "what the build carries: ELPA, else Expert, QR with Diag.NoExpert", source = "SIESTA 5.4.2 diag_option.F90:225-242: algo = fdf_get('Diag.Algorithm', trim(algo))" }
 group = "budget"
 label = "Diagonalizer"
 tier = "advanced"
@@ -2306,6 +2337,7 @@ anchor = "TBT.k"
 engine_key = "TBT.k"
 manual = "SIESTA 5.4.2 TBtrans §'Brillouin zone'"
 type = "int3"
+engine_default = { none = "the k-points of the run TBtrans reads", source = "SIESTA 5.4.2 m_tbt_kpoint.F90:800: if (fdf_block('TBT.k', bfdf) .or. fdf_islist('TBT.k'))" }
 range = [1, 64]
 above = { value = 0, why = "each number is the k-point count along its axis -- how many k-points the grid takes there -- and 0 would sample nothing" }
 group = "stage"
@@ -2339,6 +2371,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "int"
 value = 0
 default = 0
+engine_default = { value = 0, source = "SIESTA 5.4.2 m_tbt_hs.F90:247: spin_idx = fdf_get('TBT.Spin', 0)" }
 range = [0, 2]
 group = "profile"
 label = "Spin channel for T(E)"
@@ -2359,6 +2392,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Electrode configuration'"
 type = "float"
 value = 0.001
 default = 0.001
+engine_default = { none = "TS.Elecs.Eta, else 0.001 eV", source = "SIESTA 5.4.2 m_tbt_options.F90:288,289: rtmp = fdf_get('TS.Elecs.Eta', 0.001_dp*eV, 'Ry'); rtmp = fdf_get('TBT.Elecs.Eta', rtmp, 'Ry')" }
 unit = "eV"
 range = [0.0, 1.0]
 group = "stage"
@@ -2379,6 +2413,7 @@ anchor = "TBT.Contours.Eta"
 engine_key = "TBT.Contours.Eta"
 manual = "SIESTA 5.4.2 TBtrans §'Energy grid'"
 type = "float"
+engine_default = { none = "the electrodes' smallest eta over 10", source = "SIESTA 5.4.2 m_tbt_contour.F90:79,80: tbt_Eta = minval(Elecs(:)%eta) / 10._dp; tbt_Eta = fdf_get('TBT.Contours.Eta', tbt_Eta, 'Ry')" }
 optional = true
 unit = "eV"
 range = [0.0, 1.0]
@@ -2407,6 +2442,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
+engine_default = { none = "the electrode count: true for one", source = "SIESTA 5.4.2 m_tbt_options.F90:556: ltmp = fdf_get('TBT.DOS.Gf', N_Elec == 1)" }
 group = "output"
 label = "Write the Green-function DOS"
 tier = "advanced"
@@ -2427,6 +2463,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
+engine_default = { none = "the electrode count: true for one", source = "SIESTA 5.4.2 m_tbt_options.F90:563: ltmp = fdf_get('TBT.DOS.A', N_Elec == 1)" }
 group = "output"
 label = "Write the spectral DOS per electrode"
 tier = "advanced"
@@ -2447,6 +2484,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
+engine_default = { value = false, source = "SIESTA 5.4.2 m_tbt_options.F90:542: ltmp = fdf_get('TBT.DOS.Elecs', .false.)" }
 group = "output"
 label = "Write the bulk electrode DOS"
 tier = "advanced"
@@ -2467,6 +2505,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "int"
 value = 4
 default = 4
+engine_default = { value = 0, source = "SIESTA 5.4.2 m_tbt_options.F90:535: N_eigen = fdf_get('TBT.T.Eig', 0)" }
 range = [0, 20]
 group = "output"
 label = "Transmission eigenchannels"
@@ -2488,6 +2527,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = true
 default = true
+engine_default = { none = "the electrode count: true for one", source = "SIESTA 5.4.2 m_tbt_options.F90:547: ltmp = fdf_get('TBT.T.Bulk', N_Elec == 1)" }
 group = "output"
 label = "Write the bulk transmission"
 tier = "advanced"
@@ -2508,6 +2548,7 @@ manual = "SIESTA 5.4.2 TBtrans §'Determine calculated physical quantities'"
 type = "bool"
 value = false
 default = false
+engine_default = { none = "the electrode count: true for one", source = "SIESTA 5.4.2 m_tbt_options.F90:530: ltmp = fdf_get('TBT.T.All', N_Elec == 1)" }
 group = "output"
 label = "Write all electrode pairs"
 tier = "advanced"
@@ -2528,6 +2569,7 @@ manual = "SIESTA 5.4.2 TBtrans §'fdf-flags'"
 type = "int"
 value = 5
 default = 5
+engine_default = { value = 5, source = "SIESTA 5.4.2 tbt_reinit_m.F90:206: call init_verbosity('TBT.Verbosity', 5)" }
 range = [0, 10]
 group = "output"
 label = "How much tbtrans reports"
@@ -2548,6 +2590,7 @@ manual = "SIESTA 5.4.2 TBtrans §'fdf-flags'"
 type = "float"
 value = 5.0
 default = 5.0
+engine_default = { value = 5.0, source = "SIESTA 5.4.2 m_tbt_options.F90:486: percent_tracker = fdf_get('TBT.Progress', 5.)" }
 range = [0.0, 100.0]
 group = "output"
 label = "How often tbtrans states its progress, in per cent"
@@ -2569,6 +2612,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
 type = "float"
 value = 10.0
 default = 10.0
+engine_default = { value = 1.5, source = "SIESTA 5.4.2 m_ts_chem_pot.F90:114: E_pole = fdf_get('TS.Contours.Eq.Pole', 1.5_dp*eV, 'Ry')" }
 unit = "eV"
 range = [1.0, 40.0]
 group = "stage"
@@ -2594,6 +2638,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Bias'"
 type = "float"
 value = 0.0
 default = 0.0
+engine_default = { value = 0.0, source = "SIESTA 5.4.2 m_ts_options.F90:265: Volt = fdf_get('TS.Voltage', 0._dp, 'Ry')" }
 unit = "V"
 range = [-5.0, 5.0]
 group = "stage"
@@ -2625,6 +2670,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
 type = "bool"
 value = true
 default = true
+engine_default = { value = false, source = "SIESTA 5.4.2 m_ts_options.F90:142: TS_HS_save = fdf_get('TS.HS.Save', .false.) -- the build without the deprecated TRANSIESTA macro" }
 group = "output"
 label = "Write the TranSIESTA Hamiltonian"
 tier = "advanced"
@@ -2648,6 +2694,7 @@ anchor = "TS.Contours.nEq.Eta"
 engine_key = "TS.Contours.nEq.Eta"
 manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
 type = "float"
+engine_default = { none = "the electrodes' smallest eta over 10", source = "SIESTA 5.4.2 m_ts_contour_neq.f90:124-128: nEq_Eta = fdf_get('TS.Contours.nEq.Eta', nEq_Eta, 'Ry')" }
 optional = true
 unit = "eV"
 range = [0.0, 1.0]
@@ -2677,6 +2724,7 @@ type = "enum"
 choices = ["BTD", "full"]
 value = "BTD"
 default = "BTD"
+engine_default = { value = "BTD", source = "SIESTA 5.4.2 m_ts_options.F90:180: chars = fdf_get('TS.SolutionMethod', 'BTD')" }
 group = "budget"
 label = "How TranSIESTA inverts the device matrix"
 tier = "advanced"
@@ -2701,6 +2749,7 @@ type = "enum"
 choices = ["BTD"]
 value = "BTD"
 default = "BTD"
+engine_default = { value = "BTD", source = "SIESTA 5.4.2 m_tbt_options.F90:490: chars = fdf_get('TBT.SolutionMethod', 'BTD')" }
 group = "profile"
 label = "How tbtrans inverts the device matrix"
 tier = "advanced"
@@ -2722,6 +2771,7 @@ type = "enum"
 choices = ["C"]
 value = "C"
 default = "C"
+engine_default = { none = "the transport direction: A, B or C", source = "SIESTA 5.4.2 m_ts_hartree.F90:50-62: c = fdf_get('TS.Hartree.Fix', def), def by ts_tidx" }
 group = "profile"
 label = "Where the electrostatic potential is held"
 tier = "advanced"
@@ -2742,6 +2792,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour' (TS.Contours.nEq.Fermi.Cut
 type = "float"
 value = 5.0
 default = 5.0
+engine_default = { value = 5.0, source = "SIESTA 5.4.2 m_ts_contour_neq.f90:141: cutoff_kT = fdf_get('TS.Contours.nEq.Fermi.Cutoff', 5._dp)" }
 range = [2.5, 20.0]
 at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5: the Fermi function still has weight at E_F + 2.5 kT (m_ts_contour_neq.f90)" }
 group = "stage"
@@ -2787,6 +2838,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
 type = "bool"
 value = true
 default = true
+engine_default = { value = true, source = "SIESTA 5.4.2 m_ts_options.F90:476: Elecs(:)%out_of_core = fdf_get('TS.Elecs.Out-of-core', .true.)" }
 group = "stage"
 label = "Keep the leads' Green's functions as files"
 tier = "advanced"
@@ -2807,6 +2859,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Convergence' (TS.SCF.dQ.Converge)"
 type = "bool"
 value = true
 default = true
+engine_default = { value = true, source = "SIESTA 5.4.2 m_ts_options.F90:826: ts_converge_dQ = fdf_get('TS.SCF.dQ.Converge', .true.)" }
 group = "stage"
 label = "Require the device's charge to settle"
 tier = "advanced"
@@ -2825,6 +2878,7 @@ anchor = "TS.SCF.dQ.Tolerance"
 engine_key = "TS.SCF.dQ.Tolerance"
 manual = "SIESTA 5.4.2 TranSIESTA §'Convergence' (TS.SCF.dQ.Tolerance)"
 type = "float"
+engine_default = { none = "the device's charge over 1000", source = "SIESTA 5.4.2 m_ts_options.F90:825: ts_dQtol = fdf_get('TS.SCF.dQ.Tolerance', dev_q / 1000._dp)" }
 optional = true
 range = [0.0001, 10.0]
 group = "stage"
@@ -2850,6 +2904,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
 type = "float"
 value = 0.001
 default = 0.001
+engine_default = { value = 0.001, source = "SIESTA 5.4.2 m_ts_options.F90:421: Elecs(:)%Eta = fdf_get('TS.Elecs.Eta', 0.001_dp*eV, 'Ry')" }
 unit = "eV"
 range = [0.0, 1.0]
 group = "stage"
@@ -2873,6 +2928,7 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
 type = "bool"
 value = true
 default = true
+engine_default = { value = true, source = "SIESTA 5.4.2 m_ts_options.F90:422: Elecs(:)%Bulk = fdf_get('TS.Elecs.Bulk', .true.)" }
 group = "stage"
 label = "Use the electrodes' own bulk Hamiltonian"
 tier = "advanced"

@@ -109,11 +109,20 @@ the device's row before the launch (`transport.md` § 2a.11, *What a run's
 points share*). **Then 2.23.0, contract first**: the chat card's layout as
 data per receiver — one layout file, read beside the job and by the server,
 a copy in the config dir replacing it whole (`run-reports.md` § 4.1c).
-**Proposed, awaiting the user's yes** (the user asked on 2026-10-19 whether
-the transport road and the multi-frame support were reviewed whole; today's
-reviews were each release's own scope): a full-text, full-code review of
-`transport.md` and the frame-set contract against the code as it stands at
-2.22.0, two fresh rounds.
+**Then 2.23.1, from Sol's `jobset migrate` and `launch`**: a calculation's
+records through their owner's door, the calculation passed whole to every
+function that asks about it (rule A16, `architecture.md` § 3.2), one writer
+staging every temp beside its target, and two decks compared as SIESTA reads
+them — every SIESTA keyword's default stated (K9's declaration), the
+engine's scratch, the bias-only contours, the contour it builds itself,
+every difference said (`transport.md` § 6.1). **Open, awaiting the user's
+yes**: whether keywords that steer only how the engine runs —
+`Diag.ParallelOverK`, `BlockSize`, `Diag.Algorithm`, the catalogue's
+`execution` category — count in the same-input comparison; an older device
+run here differs from today's render in `Diag.ParallelOverK` alone.
+**Open, the user's yes given (2026-10-19)**: a full-text, full-code review
+of `transport.md` and the frame-set contract against the code, two fresh
+rounds — the first two reviewers were cut off by the session limit.
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs
@@ -1110,7 +1119,7 @@ values written to two significant figures by one formatter, `as_written`
 | **K17** | **physics needing a build or a refusal** — **done 2026-10-17**, each re-derived against the code first: **fixed** — the k-point split, off with ELPA (SIESTA's default solver here, which runs over orbitals only and turned it off itself on every multi-k run while the deck said `.true.`), warned when set on with ELPA, the manual's words, and written as set (`siesta.input`, `config.siesta._validate_parallel_over_k`); a pseudopotential copied by the exact name every check asks (`pseudos.psml_sources`; `find_psml`'s case and prefix fallback deleted); geomeTRIC's prefix derived from the trajectory it writes, the `_geom.log` it never writes (PySCF hands it a screen-only log setup) gone from the run-file list, the deck and the documents; a vibration's structure compared with its relaxation's k-point grid, as the run's deck will write it (`kmesh.mesh_for` through `parse.contract.contract_fields_of`). **Already handled** — mode numbers out of range (dropped by the run, which says so); a transport ladder's rungs (fixed in Task setup); the grid counted before time reversal (only a hand-set half shift on a two-point grid). **Moved** — the ECP read back and a `-V` functional with D3 to K18; PS-C2's and PS-C3's builds, refused today, are new science if wanted | as listed | done |
 | **K22** | **per-atom starting spins** — **designed in step 6, brought with its science**: where the starting moments live (the structure's per-atom data, or a template item) and how SIESTA is told them (`DM.InitSpin`). Measured 2026-10-08: an unrestricted hydrogen junction cannot run — every rung's moment floats, the aligned start leaves no minority density, the empty channel's GGA potential puts its states near 3000 eV; the suite's transport run is restricted until this is built (`tests/test_transport_on_a_real_junction_e2e.py:26-32`) | no `DM.InitSpin` writer | designed, ruled, built, and a polarized junction run end to end |
 | **K21** | ~~**a polarized junction's panels**~~ — **done 2026-10-11**: the polarized run `claude-transport-walk/transport/h-spin` made through the browser and run on the road; both `.nc` files read (`tbtnc.tbt_files`, `spin_dos`), the report drawing ↑, ↓ and their total by colour and legend in T(E), DOS, eigenchannels and the I–V *(user: "use color/legend to correctly present up and down spin and total current")* — `web/results.md` § 2.5 | `transport/tbtnc.py` · `transport/record.py` · `lib/inspectors/transport.js` | ✅ |
-| **K9** | **engine facts restated in prose** — each item's engine default declared once with its source, the help's deviation sentence, the template comment and the deck's *not set* line written from it, checked against SIESTA's fdf log of a minimal run; the field exists since UPG — `engine_default = { value, source }`, on `h_tolerance` alone, its help still saying it in prose — the rest not started | `engines/template.md` § 6.5–6.6 | the declaration, then the check with the e2e step (ruled 2026-09-29) |
+| **K9** | **engine facts restated in prose** — the declaration is done (2.23.1): every SIESTA keyword item states `engine_default`, the engine's value with its source line or what it follows, the catalogue refusing one that states neither, each checked against SIESTA 5.4.2's source and, where a run used it, its fdf log. Open: the help's deviation sentence, the template comment and the deck's *not set* line written from it, and the e2e step that checks the table against a minimal run's fdf log | `engines/template.md` § 5, 6.5–6.6 | the e2e check, then the prose written from the declaration (ruled 2026-09-29) |
 | **K11** | its road test — the leads and the seed concluded, `mesh_cutoff` changed, the device's prep refused — ~~is not in `tests/`~~ — **judged 2026-10-18: kept**, it is an assertion on the real junction's run (`tests/test_transport_on_a_real_junction_e2e.py:309-319`, `_ANOTHER_INPUT`: `mesh_cutoff` and the k-grid displacement changed, the launch asked dry refused naming the keyword) | — | ✅ |
 | **K3, parked** | `transport/sort.py:73` keeps its own `TRANSPORT_AXIS` (`kmesh.py:28-35` says owed) and `transport/compose.py:639` a third, `_TRANSPORT_AXIS` (2026-10-18) | — | one constant |
 | **K10, parked** | SS-C14's deck half: the relax rung's start-state comment says one field decides, `restart` (`siesta/input.py:1274-1282`), but `restart` is optimization's only (`[item.restart]`, `calculations = ["optimization"]`); on the flat shape a vibration's relaxation re-run after its force constants starts from the FC run's last `.XV` — unmeasured | — | the comment true; the flat case measured |

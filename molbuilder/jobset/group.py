@@ -330,21 +330,19 @@ def group_members(task, number: int) -> List[str]:
     return [st.name for st in task.stages if st.group == number]
 
 
-def launched_without(task, jobset, number: int, *, base
-                     ) -> Optional[Tuple[str, List[str]]]:
+def launched_without(calc, number: int) -> Optional[Tuple[str, List[str]]]:
     """``(launched, joined)`` -- a stage of group ``number`` that was
     launched, and the stages the group holds now that it was launched
     without -- or ``None``.  A launched group's members are fixed
     (`job-system.md`, *The task*).  A launch record that does not read
     raises, as the one door does (`materialize.ever_launched`)."""
     from ..identity import stage_key
-    from ..paths import Shape
     from .materialize import ever_launched
+    task, jobset = calc.task, calc.jobset
     held = group_members(task, number)
-    shape = Shape.named(task.shape)
     for m in held:
         job = jobset.job(m) if jobset else None
-        if job is None or not ever_launched(jobset, base, job, shape):
+        if job is None or not ever_launched(calc, job):
             continue
         joined = [h for h in held if not any(
             stage_key(h) == stage_key(x) for x in members_of(job))]
@@ -353,8 +351,8 @@ def launched_without(task, jobset, number: int, *, base
     return None
 
 
-def joined_launched(number: int, launched: str, joined: List[str], *, base,
-                    task, jobset) -> str:
+def joined_launched(calc, number: int, launched: str,
+                    joined: List[str]) -> str:
     """The way on for stages put into a launched group: a group of their own,
     or the group formed anew from the state saved before its first launch."""
     from .commands import redo_launched
@@ -365,11 +363,10 @@ def joined_launched(number: int, launched: str, joined: List[str], *, base,
             f"group's members are fixed: give {said} a group of "
             f"{'its' if one else 'their'} own (Task setup, or task.json), or, "
             f"to form the group anew, "
-            + redo_launched(launched, base=base, task=task,
-                            jobset=jobset))
+            + redo_launched(launched, calc=calc))
 
 
-def regrouped(task, jobset, stage: str, *, base) -> Optional[str]:
+def regrouped(calc, stage: str) -> Optional[str]:
     """Why ``stage``'s prepared job (in ``jobset``) is no longer the
     description's group -- the members it was prepared with, the group's
     now, and the prep that forms the job again, every group it needs named
@@ -380,6 +377,7 @@ def regrouped(task, jobset, stage: str, *, base) -> Optional[str]:
     from ..identity import stage_key
     from ..runrecord import LaunchRecordError
     from .commands import block, prep_group_lines
+    task, jobset, base = calc.task, calc.jobset, calc.base
     g = number_of(task, stage)
     job = jobset.job(stage)
     if g is None or job is None:
@@ -397,26 +395,26 @@ def regrouped(task, jobset, stage: str, *, base) -> Optional[str]:
     numbers = formed_again(task, jobset.jobs, [g])
     for n in numbers:
         try:
-            hit = launched_without(task, jobset, n, base=base)
+            hit = launched_without(calc, n)
         except LaunchRecordError as exc:
             return str(exc)
         if hit:
-            return said + "; " + joined_launched(n, *hit, base=base,
-                                                 task=task, jobset=jobset)
+            return said + "; " + joined_launched(calc, n, *hit)
     return (said + ", so its prep forms the job again "
             "(engines/stages.md § 2):\n"
             + block(prep_group_lines(numbers, base=base)))
 
 
-def header_of(base, jobset, job, shape):
+def header_of(calc, job):
     """The header of the job ``job`` is prepared in -- a group of several's,
     in the calculation's `launch/`, named by its members' own files, their
-    rows in ``jobset`` (`materialize.run_names`) -- or ``None`` for a job of
-    one.  What a prep removes when that job is formed again, or when a
-    member's row leaves the plan."""
+    rows in ``calc``'s plan (`materialize.run_names`) -- or ``None`` for a
+    job of one.  What a prep removes when that job is formed again, or when
+    a member's row leaves the plan."""
     from pathlib import Path
     from ..runfiles import LAUNCH_DIR
     from .materialize import run_names
+    base, jobset, shape = calc.base, calc.jobset, calc.shape
     members = members_of(job)
     if len(members) < 2:
         return None

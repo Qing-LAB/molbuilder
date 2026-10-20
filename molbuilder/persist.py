@@ -67,8 +67,7 @@ def read_json(path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
-                mode: Optional[int] = None,
+def write_bytes(target, data: bytes, *, mode: Optional[int] = None,
                 exclusive: bool = False) -> Path:
     """Write via a **unique** temp + ``os.replace`` — the one writer
     (`checkpoint._atomic_write_bytes` delegates here).
@@ -81,11 +80,13 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
     A unique name reduces the shared moment to the rename itself, which is
     atomic and where last-writer-wins is the right answer.
 
-    A crash between write and rename leaves the unique temp behind as inert
-    litter (a derived name would also poison the NEXT writer).  For a
-    target inside a folder a checkpoint save will store, pass ``tmp_dir``
-    pointing somewhere never stored (the checkpoint passes ``.git``), so the
-    litter cannot be committed into history.
+    **The temp is staged beside its target, always**, so the one rename
+    stays inside one directory: a rename across directories is refused by
+    some filesystems molbuilder runs on (Sol's `/scratch` refused the one
+    molbuilder made, 2026-10-20).  A crash between write and rename leaves
+    the unique temp behind as inert litter beside its target (a derived name
+    would also poison the NEXT writer), and a checkpoint saves it as any
+    file in the folder (`checkpointing.md` S1).
 
     ``mkstemp`` creates 0600, which is not what a shared artifact should end
     up as, so BY DEFAULT the mode is the target's own if it already exists and
@@ -105,18 +106,12 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
     out everyone signed in.  A parameter rather than a second writer, because a
     second writer is what § 2.3 was written to stop.  The rename becomes
     ``os.link``, which is equally atomic, does not follow a symlink planted at
-    the target, and fails rather than clobbers.  It is a LINK, so it cannot
-    cross a filesystem:
-    combining ``exclusive`` with a ``tmp_dir`` on another mount raises
-    ``OSError(EXDEV)``.  The default staging is the target's own directory, so
-    no present caller can reach that, and the two options are for opposite
-    situations anyway -- ``tmp_dir`` keeps litter out of a checkpointed folder,
-    and a credential is not in one.
+    the target, and fails rather than clobbers.  It is a LINK, which cannot
+    cross a filesystem -- and never has to, the temp being beside its
+    target.
     """
     target = Path(target)
-    parent = Path(tmp_dir) if tmp_dir is not None else target.parent
-    if not parent.is_dir():
-        parent = target.parent
+    parent = target.parent
     if mode is None:
         try:
             mode = target.stat().st_mode & 0o777
@@ -200,8 +195,7 @@ def json_text(obj: Any) -> str:
         return json.dumps(json_safe(obj), indent=2, allow_nan=False) + "\n"
 
 
-def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None,
-               mode: Optional[int] = None) -> Path:
+def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:
     """Write ``obj`` as pretty JSON (:func:`json_text`), atomically and
     collision-safely via :func:`write_bytes`.  Serialisation happens
     BEFORE the temp file exists, so an unserialisable object fails
@@ -213,7 +207,7 @@ def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None,
     rule names has to exist on every door.
     """
     data = json_text(obj).encode("utf-8")
-    return write_bytes(path, data, tmp_dir=tmp_dir, mode=mode)
+    return write_bytes(path, data, mode=mode)
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "read_json",

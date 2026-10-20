@@ -4415,7 +4415,7 @@ the run computed what the deck this rung renders now would compute — the
 question is what the engine reads, never what molbuilder wrote around it.
 Both decks are read as SIESTA reads them, by the one fdf reader
 (`parse.fdf.read_fdf`, `parse.fdf.parse_fdf_params`), and compared by the
-SIESTA engine's own door (`siesta.engine_input.engine_input_difference`):
+SIESTA engine's own door (`siesta.engine_input.engine_input_differences`):
 
 - **comments are not input** — molbuilder's blocks among them, which record
   what molbuilder knows (the labels, the order record, the provenance, the
@@ -4438,11 +4438,34 @@ SIESTA engine's own door (`siesta.engine_input.engine_input_difference`):
   when the stated value is the engine's own default, which the catalogue states
   on the item (`engine_default`, [`engines/template.md`](?doc=engines/template.md)
   § 5) — a deck that writes SIESTA's default `SCF.H.Tolerance 1.0e-03 eV`
-  computes what one that leaves it to SIESTA does.
+  computes what one that leaves it to SIESTA does; an item whose engine value
+  follows something else — another keyword, the build, the run — states what
+  it follows, and such a keyword stated by one deck alone is a difference;
+- **the engine's scratch is not input**: where TranSIESTA keeps an electrode's
+  surface Green's function file and whether it reads an existing one back —
+  the electrode block's `GF`, `GF-file`, `GF.ReUse` and `out-of-core` rows
+  (`ts_electrode.F90`:606-644), the keywords `TS.Elecs.GF.ReUse` and
+  `TS.Elecs.Out-of-core` (`m_ts_options.F90`:472, 476). A file read back is
+  checked against the electrode it is for — cell, k-points, weights, energy
+  points, atoms — and the run stopped on a mismatch (`m_ts_gf.F90`:139-162,
+  `check_Green`), so neither where it lies nor whether it is reused changes a
+  number the run computes;
+- **what the engine reads only under bias counts only under bias**: the
+  non-equilibrium contours — every `TS.Contours.nEq…` keyword and block, every
+  `TS.Contour.nEq.…` block — are read when |`TS.Voltage`| exceeds 10⁻⁵ eV and
+  never otherwise (`m_ts_options.F90`:267, `m_ts_contour.f90`:74-76);
+- **a block the engine builds itself** is what a deck that leaves it out gives
+  it: under bias, with no `TS.Contours.nEq` block, TranSIESTA builds one line
+  from `- c kT - |V|/2` to `|V|/2 + c kT` at `delta 0.01 eV`, `method
+  mid-rule`, `c` the deck's `TS.Contours.nEq.Fermi.Cutoff` or its default 5
+  (`m_ts_contour_neq.f90`:150-187) — the block molbuilder writes at its
+  defaults.
 
-Anything else that differs is another calculation, refused by name, naming
-the first difference — the keyword, the block row or the atom, as the run had
-it and as it renders now — never which molbuilder wrote the deck. So a calculation carries across an upgrade of
+Each of these is a fact of SIESTA's source, held with its line in the SIESTA
+engine's own door (`siesta.engine_input`). Anything else that differs is
+another calculation, refused by name, naming every difference — the keyword,
+the block row or the atom, as the run had it and as it renders now — never
+which molbuilder wrote the deck. So a calculation carries across an upgrade of
 molbuilder that changed only how molbuilder writes its decks. **What is compared is the run's deck against the
 deck its stage renders now — nothing else**: launch's check that a stage
 prepared and never launched is still what prep writes (`job-system.md` § 6.0,

@@ -212,10 +212,9 @@ class JobSetStatus:
     #: THE NEXT STEP, every group's (:func:`_steps`) -- ``[]`` for a job set
     #: with no description beside it.
     steps: List[GroupStep] = field(default_factory=list)
-    #: The description and the plan the rows were read from (A16), for the
-    #: renderers' way-back lines.  Not part of the wire form.
-    task: Any = None
-    jobset: Any = None
+    #: The calculation the rows were read from (A16), for the renderers'
+    #: way-back lines.  Not part of the wire form.
+    calc: Any = None
 
     def to_dict(self) -> Dict[str, Any]:
         """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
@@ -606,14 +605,12 @@ def _not_prepared(ref: StageRef, r) -> StageStatus:
         takes=list(r.takes), why=r.why, group=r.group)
 
 
-def jobset_status(subject, base_dir, *, jobset=None) -> JobSetStatus:
-    """Read the on-disk status of every stage under ``base_dir`` (read-only).
-    ``subject`` is the calculation as the verb opened it
-    (`calculation.open`, A16): its description, template and plan, read
-    once; ``jobset`` names another set of the calculation's to list -- a
-    sweep's, from its bench container -- its shape the description's.
-    A plan alone (a hand-built set) is refused: no description, no layout
-    to read it by.
+def jobset_status(calc, *, sweep=None) -> JobSetStatus:
+    """Read the on-disk status of every stage of ``calc`` (read-only) --
+    the calculation as the verb opened it (`calculation.open`, A16): its
+    description, template and plan, read once.  ``sweep`` lists a
+    benchmark's set of the calculation's instead of its ladder -- its
+    trials, from its bench container, laid out by the description's shape.
 
     **The rows are the description's ladder** when a description stands
     beside the set (`job-system.md` § 5.3, 2026-10-01): every stage
@@ -627,24 +624,12 @@ def jobset_status(subject, base_dir, *, jobset=None) -> JobSetStatus:
     ``first_incomplete`` is the first stage that is not ``finished`` -- the
     stage to resume from; ``None`` (and ``complete=True``) when every stage
     finished."""
-    from ..calculation import Calculation
-    from ..paths import Shape
-    base = Path(base_dir)
-    calc = subject if isinstance(subject, Calculation) else None
-    if jobset is None:
-        jobset = calc.jobset if calc is not None else subject
-    sweep = jobset is not None and jobset.kind == KIND_SWEEP
-    task = calc.task if calc is not None and not sweep else None
-    if jobset is None and task is None:
-        raise ValueError(f"nothing to report in {base}: no job set and no "
-                         f"description")
-    if jobset is not None and calc is None:
-        raise ValueError(f"{base} holds a plan and no description -- not a "
-                         f"calculation molbuilder described, so it has no "
-                         f"layout to read it by (`molbuilder jobset init`)")
+    base = Path(calc.base)
+    jobset = sweep if sweep is not None else calc.jobset
+    task = calc.task if sweep is None else None
     kw = {}
     if jobset is not None:
-        sh = Shape.named(calc.task.shape)
+        sh = calc.shape
         kw = {"dirs": job_dir_names(jobset, sh),
               "refs": stage_refs(jobset), "shape": sh}
     stages: List[StageStatus] = []
@@ -688,7 +673,7 @@ def jobset_status(subject, base_dir, *, jobset=None) -> JobSetStatus:
     # reader standing in the container); its stage is read off where its
     # trials live, so its next step is its own verbs.
     bench_of = None
-    if sweep and jobset.jobs:
+    if sweep is not None and jobset.jobs:
         from .materialize import bench_stage_of
         bench_of = bench_stage_of(base, base / kw["dirs"][jobset.jobs[0].name])
     return JobSetStatus(
@@ -701,7 +686,7 @@ def jobset_status(subject, base_dir, *, jobset=None) -> JobSetStatus:
         bench_of=bench_of,
         offer=(offer if task is not None else []),
         steps=(steps if task is not None else []),
-        task=task, jobset=jobset,
+        calc=calc,
     )
 
 
@@ -841,8 +826,7 @@ def render_status(status: JobSetStatus) -> str:
         first = next((s for s in status.stages
                       if s.name == status.first_incomplete), None)
         lines.append(next_step(first, status.first_incomplete,
-                               base=status.base, task=status.task,
-                               jobset=status.jobset))
+                               calc=status.calc))
     return "\n".join(lines)
 
 
@@ -883,13 +867,14 @@ def _sweep_next(status: JobSetStatus) -> str:
     return "Every trial has ended -- read what they measured:\n" + read
 
 
-def next_step(s: Optional[StageStatus], name: str, *, base, task,
-              jobset) -> str:
+def next_step(s: Optional[StageStatus], name: str, *, calc) -> str:
     """What to do about a PREPARED stage that has not finished, by its state
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`).  A stage never launched goes with
     its group (`job-system.md`, *The task*), or waits for what it names; one
-    launched goes again alone (D4)."""
+    launched goes again alone (D4).  ``calc`` is the calculation the rows
+    were read from (A16)."""
+    base = calc.base
     state = s.state if s is not None else "stopped"
     number = s.group if s is not None else None
     if state == "pending" and s is not None and s.why:
@@ -918,7 +903,7 @@ def next_step(s: Optional[StageStatus], name: str, *, base, task,
     how = (f"launch it again -- {warm}:\n"
            + block(launch_lines("task", name, base=base))
            + "\n  or start it over with `--cold`; or, to change it first, "
-           + redo_launched(name, base=base, task=task, jobset=jobset))
+           + redo_launched(name, calc=calc))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
             f"auto-resume -- you decide: {how}")
 
@@ -1070,7 +1055,7 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
             try:
                 from ..calculation import open as open_calculation
                 rows = {s.name.lower(): s for s in jobset_status(
-                    open_calculation(base), base).stages}
+                    open_calculation(base)).stages}
             except (OSError, ValueError, KeyError) as exc:
                 unread = f"its calculation does not read: {exc}"
         row = rows.get(stage.lower())

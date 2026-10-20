@@ -308,8 +308,14 @@ class Item:
     #: a keyword one deck states at this value and the other leaves out is
     #: the same engine input (`siesta.engine_input`).  Not ``default``, which
     #: is molbuilder's own.  A catalogue fact, never written into a
-    #: calculation's template.  Empty: none stated.
+    #: calculation's template.  Empty: none stated -- then
+    #: :attr:`engine_unfixed` says why.
     engine_default: Tuple[Any, ...] = ()
+    #: WHAT THE ENGINE'S VALUE FOLLOWS when it has no one value -- another
+    #: keyword, the build, the run -- and the line of its source:
+    #: ``(what, source)``.  A keyword one deck states and the other leaves
+    #: out is then a difference (`siesta.engine_input`).
+    engine_unfixed: Tuple[str, ...] = ()
 
     # --- bounds and presentation ---
     #: Required when type == "enum".  A member is a string or a WHOLE NUMBER
@@ -1017,6 +1023,19 @@ def catalogue() -> "Template":
             _refuse("an optional item the deck may leave out declares no "
                     "not_set -- what the engine does when it writes nothing "
                     "(engines/template.md § 5)", where=it.name)
+        # THE ENGINE'S OWN VALUE IS STATED, OR WHAT IT FOLLOWS (§ 5): every
+        # SIESTA item whose anchor is a keyword.  Two decks are compared as
+        # SIESTA reads them (`siesta.engine_input`), and a keyword one deck
+        # states at the engine's own value is the same input as one that
+        # leaves it out -- so an item that states neither makes every older
+        # run another calculation the day a deck starts writing it.
+        if (it.anchor and not it.anchor.startswith("%block")
+                and (not it.engines or "siesta" in it.engines)
+                and not it.engine_default and not it.engine_unfixed):
+            _refuse("a SIESTA item with a keyword states its engine_default "
+                    "-- the engine's value and the line of its source, or "
+                    "what that value follows (engines/template.md § 5)",
+                    where=it.name)
     return parsed
 
 
@@ -1500,24 +1519,34 @@ def _above_from(name: str, body: Mapping, type_: str,
 
 
 def _engine_default_from(name: str, body: Mapping, type_: str,
-                         choices) -> Tuple[Any, ...]:
-    """An item's ``engine_default`` (§ 5), ``(value, source)``: the engine's
-    own value for its keyword -- passing the item's own type, as ``value``
-    and ``default`` do (:func:`_check_raw_value`) -- and the line of the
-    engine's source that sets it."""
+                         choices) -> Tuple[Tuple[Any, ...], Tuple[str, ...]]:
+    """An item's ``engine_default`` (§ 5): ``((value, source), ())`` -- the
+    engine's own value for its keyword, passing the item's own type as
+    ``value`` and ``default`` do (:func:`_check_raw_value`), and the line of
+    the engine's source that sets it -- or ``((), (what, source))`` when the
+    engine's value follows something else; ``((), ())`` when none is
+    stated."""
     raw = body.get("engine_default")
     if raw is None:
-        return ()
+        return (), ()
     source = raw.get("source") if isinstance(raw, Mapping) else None
-    if (not isinstance(raw, Mapping) or set(raw) != {"value", "source"}
-            or not isinstance(source, str) or not source.strip()):
-        _refuse("`engine_default` is the engine's own value and the line of "
-                "its source that sets it, e.g. engine_default = { value = "
-                "0.001, source = \"read_options.F90: fdf_get('SCF.H."
-                "Tolerance', 1.e-3_dp*eV, 'Ry')\" }", where=name)
-    _check_raw_value(name, "engine_default", raw["value"], type_,
-                     tuple(choices) if choices else None)
-    return (_shape(raw["value"], type_), source.strip())
+    keys = set(raw) if isinstance(raw, Mapping) else set()
+    good_source = isinstance(source, str) and bool(source.strip())
+    if keys == {"value", "source"} and good_source:
+        _check_raw_value(name, "engine_default", raw["value"], type_,
+                         tuple(choices) if choices else None)
+        return (_shape(raw["value"], type_), source.strip()), ()
+    what = raw.get("none") if isinstance(raw, Mapping) else None
+    if (keys == {"none", "source"} and good_source
+            and isinstance(what, str) and what.strip()):
+        return (), (what.strip(), source.strip())
+    _refuse("`engine_default` is the engine's own value and the line of "
+            "its source that sets it, e.g. engine_default = { value = "
+            "0.001, source = \"read_options.F90: fdf_get('SCF.H."
+            "Tolerance', 1.e-3_dp*eV, 'Ry')\" } -- or, when the engine's "
+            "value follows something else (another keyword, the build, the "
+            "run), what it follows and that line: engine_default = { none = "
+            "\"the ranks and the orbitals\", source = \"...\" }", where=name)
 
 
 def recommended_for(item: "Item", calculation: str) -> Any:
@@ -1695,7 +1724,8 @@ def _item_from(name: str, body: Any) -> Item:
         anchor=str(body.get("anchor", "") or ""),
         engine_key=str(body.get("engine_key", "") or ""),
         manual=str(body.get("manual", "") or ""),
-        engine_default=_engine_default_from(name, body, type_, choices),
+        **dict(zip(("engine_default", "engine_unfixed"),
+                   _engine_default_from(name, body, type_, choices))),
         expands=tuple(body.get("expands", ()) or ()),
         launch=_launch_from(name, body.get("launch")),
         optional=bool(body.get("optional", False)),

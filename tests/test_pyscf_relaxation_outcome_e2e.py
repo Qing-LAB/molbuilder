@@ -102,8 +102,7 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     assert r.exit_code == 0, r.output
     _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,
             "--mode", "direct", "--foreground", "--yes")
-    row = next(iter(jobset_status(open_calculation(bundle),
-                                  bundle).stages))
+    row = next(iter(jobset_status(open_calculation(bundle)).stages))
     said = "\n".join(p.read_text(errors="replace")
                      for p in sorted(bundle.glob("*-run0.pyscf.log")))
     assert said, sorted(p.name for p in bundle.iterdir())

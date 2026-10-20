@@ -199,15 +199,16 @@ def test_the_force_constants_build_on_the_relaxation(relaxed):
                                                 continue_from_choices)
     from molbuilder.task import of as task_of
     task = task_of(relaxed.bundle)
-    got, refused = continuation_answer(relaxed.bundle, task, "freq")
+    calc = open_calculation(relaxed.bundle)
+    got, refused = continuation_answer(calc, "freq")
     assert refused is None, refused
     assert (got.stage, got.source, got.by_default, got.linked) == (
         "relax", "01_relax/run-0", True, True), got
     assert "(the relaxation it builds on; concluded rc=0" in got.line()
-    named, refused = continuation_answer(relaxed.bundle, task, "freq",
+    named, refused = continuation_answer(calc, "freq",
                                          from_attempt="01_relax/run-0")
     assert refused is None and not named.by_default and named.linked, named
-    offered = continue_from_choices(open_calculation(relaxed.bundle), "freq")
+    offered = continue_from_choices(calc, "freq")
     assert offered["from_stage"] == "relax" and offered["cold"] is False
     assert [r["source"] for r in offered["runs"]] == ["01_relax/run-0"]
 

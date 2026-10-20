@@ -160,7 +160,7 @@ def write_gitignore(root: Path, always_large=()) -> None:
     gi = root / GITIGNORE_FILE
     body = render_gitignore(always_large)
     if not gi.exists():
-        _atomic_write_bytes(gi, body.encode("utf-8"), tmp_dir=root / ".git")
+        _atomic_write_bytes(gi, body.encode("utf-8"))
         return
     text = gi.read_text(encoding="utf-8")
     b, e = text.find(_GITIGNORE_BEGIN), text.find(_GITIGNORE_END)
@@ -170,7 +170,7 @@ def write_gitignore(root: Path, always_large=()) -> None:
         text = text.rstrip("\n") + "\n\n" + body
     else:
         text = body
-    _atomic_write_bytes(gi, text.encode("utf-8"), tmp_dir=root / ".git")
+    _atomic_write_bytes(gi, text.encode("utf-8"))
 
 
 def gitignore_is_current(root: Path, always_large=()) -> bool:
@@ -657,18 +657,17 @@ def archive_dir(root: Path, digest: str) -> Path:
     return root / ARCHIVE_DIR / digest
 
 
-def _atomic_write_bytes(target: Path, data: bytes,
-                        tmp_dir: Optional[Path] = None) -> None:
+def _atomic_write_bytes(target: Path, data: bytes) -> None:
     """Write via a **unique** temp + ``os.replace``.
 
     Through :func:`molbuilder.persist.write_bytes`, so every persisted
-    artifact writes the same way: a reader never sees a partial file, and two
-    writers never collide (the derived-name trap § 6 names); ``tmp_dir`` keeps
-    the temp out of a folder being saved.  This name is this module's seam —
-    the states tests inject failure through it.
+    artifact writes the same way: a reader never sees a partial file, two
+    writers never collide (the derived-name trap § 6 names), and the temp is
+    staged beside its target, the rename inside one directory.  This name is
+    this module's seam — the states tests inject failure through it.
     """
     from .persist import write_bytes
-    write_bytes(target, data, tmp_dir=tmp_dir)
+    write_bytes(target, data)
 
 
 #: Big enough that the syscall overhead disappears, small enough that a 2 GB

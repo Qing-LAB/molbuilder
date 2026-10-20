@@ -57,6 +57,7 @@ from .transport_rung import (at_frame, at_point, composed_for_prep,
                              transport_sources)
 
 if TYPE_CHECKING:                      # annotations only
+    from ..calculation import Calculation
     from ..resolve import ParameterSet
     from ..scheduler.record import Environment
     from ..task import Task
@@ -327,8 +328,8 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
         identity={k: getattr(struct, k) for k in IDENTITY_FIELDS})
 
 
-def _vibration_stage_geometry(base, task, pset, struct, *, jobset,
-                              builds_on=None, log=None, template_text=None):
+def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
+                              log=None):
     """``(structure, cell, relaxation)`` a force-constant stage of a SIESTA
     vibration is written with -- `freq`, or any stage after `relax` in a
     displacement sweep, asked of `vibration_render_kind` and never of a name
@@ -364,6 +365,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, jobset,
     """
     from ..pyscf.stages import vibration_render_kind
     from .continuation import relax_stage_of, unrelaxed_refusal
+    base, task = calc.base, calc.task
     if vibration_render_kind(pset.stage) != "vibration":
         return struct, None, None
     # THE LADDER'S RELAXATION, by the one role rule -- the name in any case
@@ -384,9 +386,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, jobset,
         # 4a asks -- the default, `relax`'s newest attempt that is one to
         # build on, or the refusal naming what to do first.
         from .continuation import continuation_answer
-        builds_on, refused = continuation_answer(
-            base, task, pset.stage, template_text=template_text,
-            jobset=jobset)
+        builds_on, refused = continuation_answer(calc, pset.stage)
         if refused:
             raise PrepError(refused)
     token = stage_home(base, task, relax).token
@@ -400,7 +400,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, jobset,
              "attempt --\n"
              + block(launch_lines("task", relax, base=base))
              + "\n  or, to redo it, "
-             + redo_launched(relax, base=base, task=task, jobset=jobset))
+             + redo_launched(relax, calc=calc))
     # THE RUN IT BUILDS ON -- its attempt, or on the flat layout the folder
     # its files lie in, read at the run named: the one its prep took, never
     # merely the newest.
@@ -430,8 +430,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, jobset,
         raise PrepError(f"{e}.  {again}") from e
     except OrderUnstated as e:
         raise PrepError(f"{e}.  To redo it, "
-                        + redo_launched(relax, base=base, task=task,
-                                        jobset=jobset)) from e
+                        + redo_launched(relax, calc=calc)) from e
     relaxed, cell = steps.last, steps.lattice
     if list(relaxed.elements) != list(struct.elements):
         raise PrepError(
@@ -439,7 +438,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, jobset,
             f"as {' '.join(relaxed.elements)}, and this calculation is "
             f"{' '.join(struct.elements)}: the `{relax}` stage ran a "
             f"different structure.  To redo it, "
-            + redo_launched(relax, base=base, task=task, jobset=jobset))
+            + redo_launched(relax, calc=calc))
     if log is not None:
         log.step(f"the geometry the `{pset.stage}` stage measures at")
         log.received(str(out.relative_to(base)),
@@ -597,16 +596,16 @@ class Rung:
     sources: Callable = lambda element: element.deck_sources
 
 
-def _described_rung(base, task, pset, *, seam, template_text, sweep,
-                    log, plan, continuation, jobset) -> Rung:
+def _described_rung(calc, pset, *, seam, sweep, log, plan,
+                    continuation) -> Rung:
     """A calculation of its described structure, one deck per element --
     every kind with no steps of its own."""
-    return Rung(struct=_structure_for(task, base, pset),
-                render_kind=task.calculation)
+    return Rung(struct=_structure_for(calc.task, calc.base, pset),
+                render_kind=calc.task.calculation)
 
 
-def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
-                           log, plan, continuation, jobset) -> Rung:
+def _siesta_vibration_rung(calc, pset, *, seam, sweep, log, plan,
+                           continuation) -> Rung:
     """A SIESTA vibration's rung (`engines/vibration.md` § 5.2a, § 5.9).
 
     The atoms in the order the force-constant run needs -- the held ones
@@ -623,6 +622,7 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     # two force-constant stages sharing the flat layout's one directory
     # would overwrite the first one's result.
     from ..spectra.displacement_sweep import stages_share_a_directory
+    base, task, template_text = calc.base, calc.task, calc.template_text
     if stages_share_a_directory(task):
         from ..pyscf.stages import force_constant_stages
         _fc = force_constant_stages(task)
@@ -642,8 +642,8 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     # the calculation's structure -- and then this prep sorts, as every prep
     # does, never one deck's order copied into another's.
     struct, cell, relaxed_by = _vibration_stage_geometry(
-        base, task, pset, _structure_for(task, base, pset), jobset=jobset,
-        builds_on=continuation, log=log, template_text=template_text)
+        calc, pset, _structure_for(task, base, pset),
+        builds_on=continuation, log=log)
     key = deck_sort_key(task.engine, task.calculation, pset.stage)
     struct = sort_by(struct, key).structure
     # THE ORDER RECORD RIDES THE COPY into its deck's ATOM-METADATA block
@@ -681,8 +681,8 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     return Rung(struct=struct, render_kind=render_kind, spec_extra=spec_extra)
 
 
-def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
-                       log, plan, continuation, jobset) -> Rung:
+def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
+                       continuation) -> Rung:
     """A transport rung (`engines/transport.md`): its four steps of its own.
 
     **compose** -- the junction and its leads, composed from the cited
@@ -696,7 +696,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     for the transmission, TBtrans's program.  The fifth, **gather** -- each
     rung's inputs from the runs upstream -- is its first launch's
     (:func:`gather_sources`, `job-system.md` § 6.0)."""
-    stage = pset.stage
+    base, task, stage = calc.base, calc.task, pset.stage
     if sweep is not None:
         raise PrepError(
             "a transport calculation takes no parameter sweep or "
@@ -705,7 +705,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
             "in task.json, rendered as one deck per point "
             "(engines/transport.md 2a.10: single bias is the degenerate "
             "case of that axis, one point at zero).")
-    composed = composed_for_prep(base, task, plan, jobset=jobset)
+    composed = composed_for_prep(calc, plan)
     struct, configure, state = transport_parts(task, stage, composed,
                                                 pset[0].render_config())
     from ..transport.stages import point_folders, warm_declaration
@@ -877,8 +877,8 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
                     sources=sources)
 
 
-def prep_calculation(base_dir, stage: Optional[str], *,
-                     resolved: "Resolved", plan, jobset,
+def prep_calculation(calc, stage: Optional[str], *,
+                     resolved: "Resolved", plan,
                      env: str = None,
                      emit_sbatch: bool = True,
                      opened: Optional[list] = None,
@@ -940,20 +940,19 @@ def prep_calculation(base_dir, stage: Optional[str], *,
     Returns the per-job directories. Raises :class:`PrepError`.
     """
     from ..pseudos import PLANNED
-    base = Path(base_dir).resolve()
     scope = PLANNED.set(plan)
     try:
         return _plan_calculation(
-            base, stage, resolved, env=env, emit_sbatch=emit_sbatch,
+            calc, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
             continuation=continuation, plan=plan, quiet=quiet, walks=walks,
-            notes=notes, jobset=jobset)
+            notes=notes)
     finally:
         PLANNED.reset(scope)
 
 
-def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
-                      *, jobset, env: str = None,
+def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
+                      *, env: str = None,
                       emit_sbatch: bool = True,
                       opened: Optional[list] = None,
                       findings: Optional[list] = None,
@@ -964,9 +963,12 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     """The steps of :func:`prep_calculation`, planned into ``plan``: nothing
     is written here.  Steps 1 and 2 arrive answered (``resolved``): this
     snapshots the machine's record it was handed and plans the rest -- it
-    reads none of the description, the template or the record again."""
+    reads none of the description, the template or the record again.
+    ``calc`` is the calculation as this prep holds it, its plan as the
+    prep's overlay leaves it (`Calculation.as_planned`)."""
     from ..pipeline_log import PipelineLog, config_rows
     from ..task import FILENAME as TASK_FILENAME
+    base = Path(calc.base).resolve()
 
     task, environment = resolved.task, resolved.environment
     template_path, pset = resolved.template, resolved.pset
@@ -1032,11 +1034,9 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # transport junction and its leads; a SIESTA vibration's held-first copy
     # and the geometry its relax rung reached.
     rung = RUNGS.get((str(task.engine), str(task.calculation)),
-                     _described_rung)(base, task, pset, seam=seam,
-                                      template_text=resolved.template_text,
+                     _described_rung)(calc, pset, seam=seam,
                                       sweep=sweep, log=log, plan=plan,
-                                      continuation=continuation,
-                                      jobset=jobset)
+                                      continuation=continuation)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1280,7 +1280,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
         # (`group.header_of`).  A LAUNCHED one stays, with its job's header:
         # its runs' facts are read from its job (§ 5.0, 2a), and a stage
         # described again finds it launched.
-        _old = jobset
+        _old = calc.jobset
         _keep = {s.name for s in task.stages}
         if _old is not None:
             from ..identity import stage_key
@@ -1292,13 +1292,13 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 if stage_key(_j.name) in _held:
                     continue
                 try:
-                    _ran = ever_launched(_old, base, _j, resolved.shape)
+                    _ran = ever_launched(calc, _j)
                 except LaunchRecordError as exc:
                     raise PrepError(str(exc)) from None
                 if _ran:
                     _keep.add(_j.name)
                     continue
-                _h = header_of(base, _old, _j, resolved.shape)
+                _h = header_of(calc, _j)
                 if _h is not None and plan.is_file(_h):
                     plan.remove(_h)
         js = _merge_run_jobset(
@@ -1311,9 +1311,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     this_prep = None
     if kind == KIND_LADDER and stage:
         this_prep = this_prep_lines(stage, _takes_at_launch(
-            task, stage, js.job(stage),
-            continuation, base=base, jobset=js,
-            template_text=resolved.template_text))
+            calc.with_plan(js), stage, js.job(stage), continuation))
     log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
     log.received("kind", kind)
     for _j in js.jobs:
@@ -1367,8 +1365,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
         empty_old_points(home.dir, [pt.rel for _d, pt in rung.points], plan,
                          keep=(LAUNCH_DIR, Path(bench_container(
                              resolved.shape, home.token)).name))
-        sweep = open_sweep_run(js, base, stage, task, plan=plan,
-                               shape=resolved.shape,
+        sweep = open_sweep_run(calc.with_plan(js), stage, plan=plan,
                                frames=rung.points[0][1].of or 1)
         # EACH POINT'S LOG, from the point's folder below the stage, where
         # it was seeded beside the point's deck, into the run's point.
@@ -1404,7 +1401,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             if _left.is_file():
                 plan.remove(_left)
     elif kind == KIND_LADDER and stage:
-        reports = _open_attempts(js, base, stage, plan=plan,
+        reports = _open_attempts(calc.with_plan(js), stage, plan=plan,
                                  shape=resolved.shape)
         if opened is not None:
             opened.extend(reports)
@@ -1443,8 +1440,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     return dirs
 
 
-def _open_attempts(js: JobSet, base: Path, stage: str, *,
-                   plan, shape) -> List:
+def _open_attempts(calc, stage: str, *, plan, shape) -> List:
     """Open this stage's first run -- **step 6** -- with its own files, and
     return its :class:`~molbuilder.jobset.materialize.Attempt` report in a
     list, or ``[]`` when the shape keeps no run folders (flat: its container
@@ -1457,28 +1453,25 @@ def _open_attempts(js: JobSet, base: Path, stage: str, *,
 
     if shape is None or not shape.keeps_attempts_as_directories:
         return []
-    rep = prepare_attempt(js, base, stage, plan=plan, shape=shape)
+    rep = prepare_attempt(calc, stage, plan=plan)
     _move_progress_channel_into(rep.dir, plan)
     return [rep]
 
 
-def _takes_at_launch(task, stage: str, job, continuation, *, base, jobset,
-                     template_text) -> List[dict]:
+def _takes_at_launch(calc, stage: str, job, continuation) -> List[dict]:
     """What ``stage``'s first launch will take, said before any run is read
     -- ``[{"from", "files", "line"}]`` (`job-system.md` § 5.0, *a preview*):
     a force-constant stage, the files of the `relax` run its deck is written
     at; any other, :func:`ready.at_launch`'s lines; ``[]`` for a stage that
-    builds on nothing.  ``jobset`` is the plan as this prep holds it, every
-    member planned before this one in it: the files are the pair's, as the
-    launch copies them (`ready.carried_from`)."""
+    builds on nothing.  ``calc`` holds the plan as this prep holds it,
+    every member planned before this one in it: the files are the pair's,
+    as the launch copies them (`ready.carried_from`)."""
     from .ready import at_launch, carried_from, written_at_takes
     if continuation is not None:
         return [written_at_takes(continuation,
-                                 carried_from(job, continuation.stage,
-                                              jobset=jobset)
+                                 carried_from(calc, job, continuation.stage)
                                  if job is not None else None)]
-    return at_launch(task, stage, job=job, jobset=jobset,
-                     template_text=template_text)
+    return at_launch(calc, stage, job=job)
 
 
 def _launch_as_written(plan, header, script, kind) -> dict:
@@ -2309,10 +2302,10 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     #      is written, so a refusal leaves nothing behind (`engines/
     #      vibration.md` § 5.2a).  Every other stage's hand-over is files,
     #      taken at its first launch: prep reads no other stage's run.
-    # THE PLAN AS THIS PREP FINDS IT, read once (`JobSet.of(base, plan=)`,
-    # the one overlay read; A16): what the stage continues from, the rung
-    # builders and the plan's merge read this.
-    js0 = JobSet.of(base, plan=plan)
+    # THE CALCULATION AS THIS PREP FINDS IT, its plan read through the
+    # overlay once (`Calculation.as_planned`, A16): what the stage continues
+    # from, the rung builders and the plan's merge read this.
+    pcalc = described.calc.as_planned(plan)
     if continuation is DECIDE:
         from .continuation import continuation_answer, force_constant_stage
         continuation = None
@@ -2321,9 +2314,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
             # geometry `relax` reached, as its run is (§ 5.2a's table):
             # nothing carried -- a trial measures from its deck.
             continuation, refused = continuation_answer(
-                base, task, stage, from_attempt=from_attempt,
-                template_text=template_text, bench=(kind == "bench"),
-                jobset=js0)
+                pcalc, stage, from_attempt=from_attempt,
+                bench=(kind == "bench"))
             if refused:
                 raise PrepError(refused)
     if on_inputs is not None:
@@ -2335,9 +2327,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     had = set(plan.writes())
     opened: list = []
     walks: dict = {}
-    dirs = prep_calculation(base, stage, env=env, emit_sbatch=emit_sbatch,
+    dirs = prep_calculation(pcalc, stage, env=env, emit_sbatch=emit_sbatch,
                             opened=opened, findings=deck_findings,
-                            continuation=continuation, plan=plan, jobset=js0,
+                            continuation=continuation, plan=plan,
                             resolved=resolved, quiet=quiet, walks=walks,
                             notes=notes)
     flat = not resolved.shape.keeps_attempts_as_directories
@@ -2392,7 +2384,9 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         out.continuation = dataclasses.replace(continuation, carries=())
     if kind != "task":
         return out
-    js = JobSet.of(base, plan=plan)
+    # THE PLAN AS THIS PREP LEFT IT -- its own row now in it.
+    pcalc = described.calc.as_planned(plan)
+    js = pcalc.jobset
     # THE STAGE'S FIRST RUN -- opened with its own files (`_open_attempts`);
     # what it takes from another run is its first launch's.  Flat keeps no
     # attempt directories: the run is the calculation's folder.
@@ -2423,8 +2417,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     out.job = job
     # WHAT ITS FIRST LAUNCH WILL TAKE, said before any run is read
     # (`job-system.md` § 5.0, *a preview*).
-    out.takes = _takes_at_launch(task, stage, job, continuation, base=base,
-                                 jobset=js, template_text=template_text)
+    out.takes = _takes_at_launch(pcalc, stage, job, continuation)
     if job is not None and run_dir is not None:
         r = job.resources
         out.resources = {"mpi_np": r.mpi_np,
@@ -2615,8 +2608,8 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
                         preview=preview, plan_id=plan_id, asked=asked)
 
 
-def _record_the_order(base, task, *, refuse, asked, preview,
-                      plan_id, jobset) -> PrepAnswer:
+def _record_the_order(calc, *, refuse, asked, preview,
+                      plan_id) -> PrepAnswer:
     """`prep task` with no group named, on a junction whose sidecar states no
     order record (`engines/transport.md` § 1.1, *No group left to prepare*):
     its order found by composing the citation again and comparing it atom
@@ -2627,9 +2620,10 @@ def _record_the_order(base, task, *, refuse, asked, preview,
     from ..checkpoint import CheckpointError, save_before
     from .ledger import record as ledger
     from .planned import Plan
+    base, task = calc.base, calc.task
     plan = Plan()
     try:
-        composed_for_prep(base, task, plan, afresh=False, jobset=jobset)
+        composed_for_prep(calc, plan, afresh=False)
     except PrepError as exc:
         raise refuse(str(exc)) from None
     written = [str(w.relative_to(base)) for w in plan.writes()]
@@ -2789,8 +2783,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         except ComposeError as exc:
             raise _refuse(str(exc)) from None
         if recorded is not None and recorded.order_unstated:
-            return [_record_the_order(base, task, refuse=_refuse,
-                                      jobset=description.calc.jobset,
+            return [_record_the_order(description.calc, refuse=_refuse,
                                       asked=_asked, preview=preview,
                                       plan_id=plan_id)]
         from .commands import block, prep_group_lines
@@ -2825,14 +2818,13 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         # A STAGE PUT INTO A LAUNCHED GROUP: that stage is the change, and
         # a group of its own the way on beside the restore.
         try:
-            hit = launched_without(task, old_js, n, base=base)
+            hit = launched_without(description.calc, n)
         except LaunchRecordError as exc:
             raise _refuse(str(exc)) from None
         if hit:
-            raise _refuse(joined_launched(n, *hit, base=base, task=task,
-                                          jobset=old_js))
+            raise _refuse(joined_launched(description.calc, n, *hit))
         for st in group_members(task, n):
-            why = launched_already(base, task, st, jobset=old_js)
+            why = launched_already(description.calc, st)
             if why:
                 raise _refuse(why)
     missing = [n for n in whole if n not in numbers]
@@ -2921,7 +2913,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         for j in prepared:
             if any(group_of.get(stage_key(m)) in numbers
                    for m in members_of(j)):
-                old = header_of(base, old_js, j, Shape.named(task.shape))
+                old = header_of(description.calc, j)
                 if (old is not None and old not in headers.values()
                         and old.is_file()):
                     the_plan.remove(old)

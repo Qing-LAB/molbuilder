@@ -405,7 +405,7 @@ def _stage_facts(calc, label: str) -> List[Dict]:
     from .stages import STAGE_FACT, TRANSPORT_STAGES, frames_of, rung_points
 
     base, task = Path(calc.base), calc.task
-    status = jobset_status(calc, base)
+    status = jobset_status(calc)
     by_name = {s.name: s for s in status.stages}
     tokens = {h.name: h.token for h in ladder_homes(base, task)}
     # THE DEVICE RUN THE TRANSMISSION READ, when it has one -- the device
@@ -889,8 +889,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                + block(launch_lines("task", "transmission", base=base_dir))
                if opened else
                "run the transmission stage first:\n"
-               + block(run_first("transmission", base=base_dir,
-                                 task=task)))
+               + block(run_first("transmission", calc=calc)))
             + "\n"
             + "".join(f"  ({what}: "
                       + "; ".join(f"{p['point']}, "

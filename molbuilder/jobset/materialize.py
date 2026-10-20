@@ -504,17 +504,15 @@ def resolve_attempt(stage_dir: Path, names: "RunNames") -> Tuple[Path, bool]:
     return attempt_dir(stage_dir, FIRST_ATTEMPT), True
 
 
-def ever_launched(jobset: JobSet, base_dir, job, shape) -> bool:
+def ever_launched(calc, job) -> bool:
     """Whether ``job``'s stage has been launched -- any run of it
     (`project-layout.md` § 1.6.1): where its runs are folders, every
     ``run-<n>`` but the newest was, and the newest when its launch record
     says so (:func:`resolve_attempt`'s rule); where its runs share a
-    folder, its newest launched run's record.  ``shape`` is the
-    description's (`Shape.named(task.shape)`, the one door; A16).  A record
-    that does not read raises, as the one door does
-    (`runrecord.launch_record`)."""
-    base = Path(base_dir)
-    sh = shape
+    folder, its newest launched run's record.  ``calc`` is the calculation
+    as the verb read it (A16): its plan and its shape.  A record that does
+    not read raises, as the one door does (`runrecord.launch_record`)."""
+    jobset, base, sh = calc.jobset, Path(calc.base), calc.shape
     names = run_names(jobset, job, sh)
     container = base / job_dir_names(jobset, sh)[job.name]
     if not sh.keeps_attempts_as_directories:
@@ -662,9 +660,8 @@ class SweepRun:
     fresh:  bool
 
 
-def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
-                   plan, shape, frames: Optional[int] = None
-                   ) -> SweepRun:
+def open_sweep_run(calc, stage_name: str, *, plan,
+                   frames: Optional[int] = None) -> SweepRun:
     """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
     folder, holding copies of that point's prepared files (its deck, run
     script and the shared package; :func:`bring_files`), and the run's
@@ -680,8 +677,8 @@ def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
     points take from upstream is the caller's (launch's gather), and what
     each starts from the walk's."""
     from ..transport.stages import point_folders
-    base = Path(base_dir)
-    sh = shape
+    jobset, base, task, sh = (calc.jobset, Path(calc.base), calc.task,
+                              calc.shape)
     job = jobset.job(stage_name)
     stage_dir = base / job_dir_names(jobset, sh)[job.name]
     rn = run_names(jobset, job, sh)
@@ -907,20 +904,20 @@ def hand_over(base, h: HandOver, plan=None) -> List[str]:
     return copied
 
 
-def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
+def prepare_attempt(calc, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
                     carry: Optional[List[str]] = None,
-                    named: bool = True, plan=None,
-                    shape=None) -> "Attempt":
+                    named: bool = True, plan=None) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
 
     ``plan`` receives the attempt's folder and everything put in it, and is
     read for the stage's files it already holds -- `prep` opens the attempt
     as part of its plan, written after the save (`job-system.md` § 5.0),
     and `launch` fills it as part of its own, written at the send; a caller
-    with none has it written now.  ``shape`` is the layout as the caller read
-    it (`Shape.named(task.shape)`, the one door; A16).
+    with none has it written now.  ``calc`` is the calculation as the verb
+    read it (A16): its plan -- the stage's row and the one it continues
+    from -- and its shape.
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
     the launch, by default (`job-system.md` § 5.4) -- so a refusal quotes
@@ -956,8 +953,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     or a token — the same three spellings every other surface takes, and the
     same refusal when it matches none of them.
     """
-    base = Path(base_dir)
-    sh = shape
+    jobset, base, sh = calc.jobset, Path(calc.base), calc.shape
     if not sh.keeps_attempts_as_directories:
         raise ValueError(FLAT_HAS_NO_ATTEMPTS)
     dir_of = job_dir_names(jobset, sh)
@@ -969,8 +965,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # WHAT IT CONTINUES FROM, CHECKED BEFORE ANYTHING IS WRITTEN (W52), so a
     # refusal leaves no attempt opened or stripped.
     names: List[str] = (
-        continuation_files(jobset, base, stage_name, continue_from,
-                           named=named, carry=carry, shape=sh)
+        continuation_files(calc, stage_name, continue_from,
+                           named=named, carry=carry)
         if continue_from and not cold else [])
 
     from .planned import Plan
@@ -1024,10 +1020,9 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     )
 
 
-def continuation_files(jobset: JobSet, base_dir, stage_name: str,
-                       continue_from: str, *, named: bool,
-                       carry: Optional[List[str]] = None,
-                       shape=None) -> List[str]:
+def continuation_files(calc, stage_name: str, continue_from: str, *,
+                       named: bool,
+                       carry: Optional[List[str]] = None) -> List[str]:
     """The files ``stage_name`` would carry from ``continue_from`` --
     CHECKED, never copied: that attempt exists, the stage declares warm
     files for this pair (:func:`warm_carry`), and the attempt holds at least
@@ -1039,10 +1034,10 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
     ONE CHECK, asked by :func:`prepare_attempt` before it writes anything
     and by `launch` before it shows what it will send -- so a run that
     cannot be continued is refused before the question, not after the yes.
-    ``shape`` is the layout as the caller read it (`Shape.named(task.shape)`,
-    A16).
+    ``calc`` is the calculation as the verb read it (A16): the stage's row
+    and the one the run came from are both its plan's.
     """
-    base = Path(base_dir)
+    jobset, base, shape = calc.jobset, Path(calc.base), calc.shape
     said = (f"--from {continue_from!r}" if named else
             f"the run it continues from ({continue_from})")
     src = base / continue_from

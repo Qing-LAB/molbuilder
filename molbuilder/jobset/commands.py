@@ -236,11 +236,12 @@ def lines(verb: str, kind: str, *words, base) -> List[str]:
     return [command(verb, *words_for(kind, *words), base=base)]
 
 
-def run_first(stage: str, *, base, task) -> List[str]:
+def run_first(stage: str, *, calc) -> List[str]:
     """Run ``stage`` first -- its group's prep, then its group's launch: the
-    remedy every refusal that waits on a stage not prepared gives; ``task``
-    the description as the verb read it."""
-    g = stage_group(task, stage)
+    remedy every refusal that waits on a stage not prepared gives; ``calc``
+    the calculation as the verb read it (A16)."""
+    base = calc.base
+    g = stage_group(calc.task, stage)
     if g is None:
         return launch_lines(TASK, stage, base=base)
     return prep_group_lines([g], base=base) + launch_lines(
@@ -301,7 +302,7 @@ def _saved_states(base) -> str:
             + f"\n  then `{restore}` with the id of the one you pick.")
 
 
-def redo_launched(stage: Optional[str], *, base, task, jobset) -> str:
+def redo_launched(stage: Optional[str], *, calc) -> str:
     """How a LAUNCHED stage is changed (`job-system.md` § 5.0): the state
     saved before its group's first launch restored -- every run it builds on
     is in it, and there it is prepared, never launched -- and a prep anew.
@@ -309,11 +310,12 @@ def redo_launched(stage: Optional[str], *, base, task, jobset) -> str:
     note named them (`group.named`, at the launch): the description may
     hold other members now, and a number shifts when a stage above it is
     removed.  A stage launched before 2.7.0, whose launch saved no state,
-    goes back to the state saved before its prep.  ``task`` and ``jobset``
-    are the description and the plan as the verb read them (A16)."""
+    goes back to the state saved before its prep.  ``calc`` is the
+    calculation as the verb read it (A16): its description and its plan."""
     from .group import (group_members, members_of, named, number_of,
                         same_members)
     from .ready import job_of
+    base, task, jobset = calc.base, calc.task, calc.jobset
     g = (number_of(task, stage)
          if task is not None and stage is not None else None)
     job = job_of(jobset, stage) if stage is not None else None
@@ -328,18 +330,19 @@ def redo_launched(stage: Optional[str], *, base, task, jobset) -> str:
             f"prep anew -- " + _saved_states(base))
 
 
-def way_back(stage: str, *, base, task, launched: bool, jobset) -> str:
+def way_back(stage: str, *, calc, launched: bool) -> str:
     """How a prepared stage is made as the description gives it now
     (`job-system.md`, *The task*) -- the one composer of a stage's way back:
     never launched, its group prepared again; launched,
     :func:`redo_launched`.  ``launched`` is the caller's answer from the one
     rule (`materialize.ever_launched`)."""
     from .group import number_of
+    base, task = calc.base, calc.task
     g = number_of(task, stage) if task is not None else None
     if not launched and g is not None:
         return ("prepare its group again -- it was never launched:\n"
                 + block(prep_group_lines([g], base=base)))
-    return redo_launched(stage, base=base, task=task, jobset=jobset)
+    return redo_launched(stage, calc=calc)
 
 
 def order_recorded(*, base) -> str:

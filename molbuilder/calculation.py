@@ -18,6 +18,7 @@ read is refused in its reader's own words.
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -39,7 +40,10 @@ class Calculation:
     """The calculation as its verb read it, once."""
     base: Path
     task: Task
-    template: TemplateFile
+    #: Always there for a calculation :func:`open` read; ``None`` only in
+    #: `jobset migrate`'s own composition from raw records, of a folder
+    #: whose template an older molbuilder never wrote.
+    template: Optional[TemplateFile]
     #: The plan, when a prep has written one -- as the given ``plan``
     #: leaves it (`jobset.planned`).
     jobset: Optional[JobSet]
@@ -49,8 +53,26 @@ class Calculation:
         return self.task.label
 
     @property
-    def template_text(self) -> str:
-        return self.template.text
+    def template_text(self) -> Optional[str]:
+        return self.template.text if self.template is not None else None
+
+    @property
+    def shape(self):
+        """The layout, the description's (`Shape.named(task.shape)`):
+        asked, never inferred from what is on disk."""
+        from .paths import Shape
+        return Shape.named(self.task.shape)
+
+    def with_plan(self, jobset: Optional[JobSet]) -> "Calculation":
+        """The same calculation with ``jobset`` as its plan -- what a prep
+        holds while it plans: the plan with its own rows merged in."""
+        return dataclasses.replace(self, jobset=jobset)
+
+    def as_planned(self, plan) -> "Calculation":
+        """The calculation as a prep's ``plan`` (`jobset.planned.Plan`)
+        leaves it: its plan read through the overlay (`JobSet.of(base,
+        plan=)`, the one read prep makes of the set it is writing)."""
+        return self.with_plan(JobSet.of(self.base, plan=plan))
 
 
 def open(base) -> Calculation:

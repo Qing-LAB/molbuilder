@@ -310,10 +310,9 @@ def read_run(base: Path, task, stage: str, attempt: Path,
             None if rec is None else bool(rec["converged"]), detail)
 
 
-def continuation_answer(base, task, stage: str, *, from_attempt=None,
+def continuation_answer(calc, stage: str, *, from_attempt=None,
                         cold: bool = False, verdict: bool = True,
-                        template_text: Optional[str] = None,
-                        bench: bool = False, jobset=None
+                        bench: bool = False
                         ) -> Tuple[Optional[Continuation], Optional[str]]:
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
@@ -337,12 +336,13 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     structure as given, when it is stated relaxed -- else refused, whatever
     was asked (`engines/vibration.md` § 5.2a's table).
 
-    ``template_text`` is the template as the verb read it -- prep's, read
-    once (`script-preparation.md` § 3.0); ``jobset`` the plan as read.
+    ``calc`` is the calculation as the verb read it (A16) -- prep's, with
+    its plan as prep's overlay leaves it (`Calculation.as_planned`).
     ``bench`` asks for a benchmark of the stage, which takes no ``--from``
     and is offered none."""
     from ..identity import command_stage
-    base = Path(base)
+    base, task = Path(calc.base), calc.task
+    template_text = calc.template_text
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         try:
             cfg = _stage_config(task, stage, template_text)
@@ -373,8 +373,7 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
         prev, linked = source_stage(task, stage, template_text)
         if prev is None:
             return None, None
-        return _by_default(base, task, stage, prev, verdict=verdict,
-                           jobset=jobset,
+        return _by_default(calc, stage, prev, verdict=verdict,
                            linked=linked, bench=bench)
     except unreadable() as exc:
         # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
@@ -510,8 +509,8 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
     return None
 
 
-def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
-                jobset, linked: bool = False, bench: bool = False
+def _by_default(calc, stage: str, prev: str, *, verdict: bool,
+                linked: bool = False, bench: bool = False
                 ) -> Tuple[Optional[Continuation], Optional[str]]:
     """The default for ``stage``, which builds on ``prev`` -- the stage
     before it, or (``linked``) the `relax` a force-constant stage builds on:
@@ -522,6 +521,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
     from .materialize import latest_attempt, stage_home
+    base, task, jobset = Path(calc.base), calc.task, calc.jobset
     sh = Shape.named(task.shape)
     # THE STAGE BEFORE'S HOME, from the one door: its names and its folder.
     home = stage_home(base, task, prev)
@@ -536,7 +536,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     from .commands import (block, command, launch_lines, launch_pending,
                            run_first, words_for)
     from .group import number_of
-    run_prev = block(run_first(prev, base=base, task=task))
+    run_prev = block(run_first(prev, calc=calc))
     g_prev, g_stage = number_of(task, prev), number_of(task, stage)
     # A CHOICE OF RUN A LAUNCH SAYS FOR ONE STAGE (`job-system.md` § 5.4):
     # a member of a group of several, whose first launch takes the group
@@ -803,17 +803,15 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
         # NO `relax` TO BUILD ON: the structure as given when it is stated
         # relaxed -- nothing to choose -- else the refusal prep gives, here
         # before anything is written (`engines/vibration.md` § 5.2a).
-        _got, why = continuation_answer(base, task, stage, verdict=False,
-                                        template_text=calc.template_text,
-                                        jobset=calc.jobset)
+        _got, why = continuation_answer(calc, stage, verdict=False)
         return ({"from_stage": None, "linked": True, "default": None,
                  "refused": why, "runs": [], "cold": False}
                 if why else None)
     prev, linked = source_stage(task, stage, calc.template_text)
     if prev is None:
         return None
-    got, refused = _by_default(base, task, stage, prev, verdict=False,
-                               jobset=calc.jobset, linked=linked)
+    got, refused = _by_default(calc, stage, prev, verdict=False,
+                               linked=linked)
     sh = Shape.named(task.shape)
     runs = []
     if sh.keeps_attempts_as_directories:

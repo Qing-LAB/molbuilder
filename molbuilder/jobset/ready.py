@@ -147,25 +147,23 @@ def job_of(jobset, stage: str):
     return jobset.job(stage) if jobset is not None else None
 
 
-def launched_already(base, task, stage: str, jobset) -> Optional[str]:
+def launched_already(calc, stage: str) -> Optional[str]:
     """Why ``stage`` is not prepared again -- it was launched -- or ``None``
     (`job-system.md` § 5.0, checkpoint 2a): earlier runs' facts are read
     from the stage's job and its description (the optimizer a ``.CG``
     follows, a swept rung's points), so its runs must keep the deck and job
     they ran with.  The way back is the state saved before its group's first
     launch, every run it builds on in it (`job-system.md`, *How the
-    checkpoint supports you*).  ``jobset`` is the plan as the verb read
-    it (A16)."""
-    from ..paths import Shape
+    checkpoint supports you*).  ``calc`` is the calculation as the verb
+    read it (A16)."""
     from .commands import redo_launched
     from .materialize import ever_launched
-    js = jobset
-    job = job_of(js, stage)
+    job = job_of(calc.jobset, stage)
     if job is None:
         return None
     from ..runrecord import LaunchRecordError
     try:
-        launched = ever_launched(js, base, job, Shape.named(task.shape))
+        launched = ever_launched(calc, job)
     except LaunchRecordError as exc:
         return str(exc)
     if not launched:
@@ -174,31 +172,27 @@ def launched_already(base, task, stage: str, jobset) -> Optional[str]:
             f"prepared again: its runs' facts are read from its job and its "
             f"description, so they must stay what its runs ran with "
             f"(job-system.md § 5.0).  To change it, "
-            + redo_launched(stage, base=base, task=task, jobset=js))
+            + redo_launched(stage, calc=calc))
 
 
-def launched_stage(base, task, jobset) -> Optional[str]:
-    """The first of ``task``'s stages, in the description's order, that has
-    been launched (`materialize.ever_launched`, the one rule) -- or
-    ``None``; ``jobset`` the plan as the verb read it (A16).  A launch
-    record that does not read raises
+def launched_stage(calc) -> Optional[str]:
+    """The first of the description's stages, in its order, that has been
+    launched (`materialize.ever_launched`, the one rule) -- or ``None``;
+    ``calc`` the calculation as the verb read it (A16).  A launch record
+    that does not read raises
     :class:`~molbuilder.runrecord.LaunchRecordError`, in its reader's
     words."""
-    from ..paths import Shape
     from .materialize import ever_launched
-    js = jobset
-    if js is None:
+    if calc.jobset is None:
         return None
-    shape = Shape.named(task.shape)
-    for st in task.stages:
-        job = job_of(js, st.name)
-        if job is not None and ever_launched(js, base, job, shape):
+    for st in calc.task.stages:
+        job = job_of(calc.jobset, st.name)
+        if job is not None and ever_launched(calc, job):
             return st.name
     return None
 
 
-def first_launch_takes(base, task, stage: str, job, jobset, *,
-                       template_text: Optional[str] = None,
+def first_launch_takes(calc, stage: str, job, *,
                        from_attempt: Optional[str] = None,
                        cold: bool = False, verdict: bool = True):
     """``(continuation, gather, refusal)`` -- what ``stage``'s first launch
@@ -212,17 +206,18 @@ def first_launch_takes(base, task, stage: str, job, jobset, *,
     newest run, which must have finished, ``from_attempt`` a run named,
     ``cold`` none.  The continuation carries the files it would copy (the
     pair's rule, `materialize.continuation_files`), so a run holding none is
-    refused here, before anything is sent."""
+    refused here, before anything is sent.  ``calc`` is the calculation as
+    the verb read it (A16): every question about another stage -- prepared,
+    its newest run, its job -- is its plan's, the whole plan, never a set
+    narrowed to what one launch sends."""
     import dataclasses
     from .continuation import (Continuation, continuation_answer,
                                force_constant_stage, read_run,
                                relax_stage_of)
-    from ..paths import Shape
     from .materialize import continuation_files
     from .errors import PrepError, user_error_as_prep
     from .gather import gather_sources
-    base = Path(base)
-    shape = Shape.named(task.shape)
+    base, task, shape = Path(calc.base), calc.task, calc.shape
     if force_constant_stage(task, stage):
         relax = relax_stage_of(task)
         if cold or (from_attempt and relax is None):
@@ -260,8 +255,7 @@ def first_launch_takes(base, task, stage: str, job, jobset, *,
                 f"`{stage}` was prepared before its prep recorded the "
                 f"`{relax}` run its deck is written at (2.7.0), so its "
                 f"launch cannot say whose files it takes.  To launch it, "
-                + way_back(stage, base=base, task=task, launched=False,
-                           jobset=jobset))
+                + way_back(stage, calc=calc, launched=False))
         flat = not shape.keeps_attempts_as_directories
         where = base if flat else base / job.written_at
         # THE RUN ITS PREP TOOK, the one its record names -- on the flat
@@ -274,8 +268,7 @@ def first_launch_takes(base, task, stage: str, job, jobset, *,
                 f"`{stage}`'s record names the `{relax}` run its deck is "
                 f"written at as {job.written_at!r}, which is no run of "
                 f"`{task.label}` in this folder.  To launch it, "
-                + way_back(stage, base=base, task=task, launched=False,
-                           jobset=jobset))
+                + way_back(stage, calc=calc, launched=False))
         concluded, state, converged, _ = read_run(
             base, task, relax, where, verdict=verdict,
             run=named.run if named is not None else None)
@@ -296,8 +289,8 @@ def first_launch_takes(base, task, stage: str, job, jobset, *,
             except LaunchRecordError as exc:
                 return None, None, str(exc)
         try:
-            names = continuation_files(jobset, base, stage, job.written_at,
-                                       named=False, shape=shape)
+            names = continuation_files(calc, stage, job.written_at,
+                                       named=False)
         except ValueError as exc:
             return None, None, str(exc)
         return (dataclasses.replace(cont, carries=tuple(
@@ -312,15 +305,13 @@ def first_launch_takes(base, task, stage: str, job, jobset, *,
         try:
             # THE REFUSALS THE GATHER SAYS, translated as prep translates.
             with user_error_as_prep():
-                got = gather_sources(base, task, stage, jobset=jobset,
-                                     template_text=template_text)
+                got = gather_sources(calc, stage)
         except PrepError as exc:
             return None, None, str(exc)
         return None, got, None
-    cont, refused = continuation_answer(base, task, stage, jobset=jobset,
+    cont, refused = continuation_answer(calc, stage,
                                         from_attempt=from_attempt, cold=cold,
-                                        verdict=verdict,
-                                        template_text=template_text)
+                                        verdict=verdict)
     if refused:
         return None, None, refused
     if cont is None or cont.source is None:
@@ -328,16 +319,15 @@ def first_launch_takes(base, task, stage: str, job, jobset, *,
         return (dataclasses.replace(cont, carries=()) if cont is not None
                 else None), None, None
     try:
-        names = continuation_files(jobset, base, stage, cont.source,
-                                   named=not cont.by_default, shape=shape)
+        names = continuation_files(calc, stage, cont.source,
+                                   named=not cont.by_default)
     except ValueError as exc:
         return None, None, str(exc)
     return (dataclasses.replace(cont, carries=tuple(
         n for n in names if (base / cont.source / n).is_file())), None, None)
 
 
-def at_launch(task, stage: str, *, job=None, jobset=None,
-              template_text: Optional[str] = None) -> List[dict]:
+def at_launch(calc, stage: str, *, job=None) -> List[dict]:
     """What ``stage``'s first launch will take, said before any run is read
     (`job-system.md` § 5.0, *a preview*) -- ``[{"from", "files", "line"}]``,
     the line *at launch: takes <files> from <stage>'s newest run, which must
@@ -345,10 +335,11 @@ def at_launch(task, stage: str, *, job=None, jobset=None,
     the ladder's DAG; an independent stage its restart files (``job``'s,
     when prepared; ``files`` ``None`` before) from the stage before it, by
     the pair's rule the launch copies by (`model.warm_carry`) against that
-    stage's job in ``jobset``, the plan as the verb read it; ``[]`` for a
-    stage that builds on nothing.  A
+    stage's job in the calculation's plan, ``calc`` as the verb read it
+    (A16); ``[]`` for a stage that builds on nothing.  A
     force-constant stage's is the `relax` run its deck is written at
     (:func:`readiness`)."""
+    task = calc.task
     if task.calculation == "transport":
         from ..transport.stages import inputs_of
         by: Dict[str, List[str]] = {}
@@ -359,10 +350,10 @@ def at_launch(task, stage: str, *, job=None, jobset=None,
                          f"newest run, which must have finished"}
                 for up, fns in by.items()]
     from .continuation import stage_before
-    prev = stage_before(task, stage, template_text)
+    prev = stage_before(task, stage, calc.template_text)
     if prev is None:
         return []
-    files = (carried_from(job, prev, jobset=jobset)
+    files = (carried_from(calc, job, prev)
              if job is not None and job.warm else None)
     return [{"from": prev, "files": files,
              "line": f"at launch: takes "
@@ -370,14 +361,14 @@ def at_launch(task, stage: str, *, job=None, jobset=None,
                      f"from `{prev}`'s newest run, which must have finished"}]
 
 
-def carried_from(job, source: str, *, jobset=None) -> List[str]:
+def carried_from(calc, job, source: str) -> List[str]:
     """The restart files ``job`` takes from a run of ``source`` -- the
     pair's rule (`model.warm_carry`), the one the launch copies by, against
-    ``source``'s job in ``jobset``, the plan as the verb read it: a file
-    conditioned on the pair is said only when both jobs are there to agree
-    on it."""
+    ``source``'s job in the calculation's plan, ``calc`` as the verb read it
+    (A16): a file conditioned on the pair is said only when both jobs are
+    there to agree on it."""
     from .model import warm_carry
-    return warm_carry(job, job_of(jobset, source))
+    return warm_carry(job, job_of(calc.jobset, source))
 
 
 def written_at_takes(cont, files=None) -> dict:
@@ -423,11 +414,9 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
     if job is not None:
         from .group import members_of
         members = members_of(job)
-        from ..paths import Shape
         from ..runrecord import LaunchRecordError
         try:
-            launched = ever_launched(jobset, base, job,
-                                     Shape.named(task.shape))
+            launched = ever_launched(calc, job)
         except LaunchRecordError as exc:
             # A RECORD THAT DOES NOT READ is this stage's answer, in its
             # reader's words, which name the way out -- the ladder's other
@@ -438,13 +427,12 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
             return Readiness(stage, group, prepared=True, launched=True,
                              job_members=members)
         from .group import regrouped
-        why = regrouped(task, jobset, stage, base=base)
+        why = regrouped(calc, stage)
         if why:
             return Readiness(stage, group, prepared=True, why=why,
                              blocked="regrouped", job_members=members)
-        cont, gather, why = first_launch_takes(
-            base, task, stage, job, jobset, template_text=template_text,
-            verdict=verdict)
+        cont, gather, why = first_launch_takes(calc, stage, job,
+                                               verdict=verdict)
         if why:
             # A FORCE-CONSTANT STAGE PREPARED BEFORE ITS PREP RECORDED THE
             # RUN its deck is written at is prepared again; every other
@@ -463,18 +451,16 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         from ..runrecord import LaunchRecordError
         from .group import joined_launched, launched_without
         try:
-            hit = launched_without(task, jobset, group, base=base)
+            hit = launched_without(calc, group)
         except LaunchRecordError as exc:
             return Readiness(stage, group, why=str(exc))
         if hit and stage in hit[1]:
             return Readiness(stage, group, why=joined_launched(
-                group, *hit, base=base, task=task, jobset=jobset))
+                calc, group, *hit))
     if force_constant_stage(task, stage):
         # THE ONE VALUE HAND-OVER: its deck is written at a `relax` run,
         # which must have finished before it can be prepared.
-        cont, why = continuation_answer(base, task, stage, verdict=verdict,
-                                        template_text=template_text,
-                                        jobset=jobset)
+        cont, why = continuation_answer(calc, stage, verdict=verdict)
         if why:
             return Readiness(stage, group, why=why)
         return Readiness(stage, group, ready=True,
@@ -482,7 +468,7 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
                                 if cont is not None else []))
     from .continuation import unreadable
     try:
-        items = at_launch(task, stage, template_text=template_text)
+        items = at_launch(calc, stage)
     except unreadable() as exc:
         # A TEMPLATE PREP WOULD REFUSE is said, never raised: it waits for
         # the fix before it can be prepared.

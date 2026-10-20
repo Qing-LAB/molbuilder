@@ -16,7 +16,7 @@ from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
 from ..runfiles import RunNames
-from ..siesta.engine_input import engine_input_difference
+from ..siesta.engine_input import engine_input_differences
 from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
 from .materialize import GATHERED, HandOver, hand_over, stage_home
@@ -24,7 +24,7 @@ from .transport_rung import (at_frame, transport_rung, transport_sources,
                              transport_spec)
 
 
-def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
+def transport_inputs(calc, stage: str, *,
                      point=None) -> List[Tuple[RunRef, str]]:
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs: ``[(the run it comes from, filename)]``, decided at the
@@ -55,7 +55,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
                                      products_of, rung_points)
     from .continuation import done, usable
 
-    base = Path(base_dir)
+    base, task = Path(calc.base), calc.task
+    template_text, jobset = calc.template_text, calc.jobset
     inputs = inputs_of(task, stage)
     gathered: List[tuple] = []
     composed = None              # the junction, read once, when first needed
@@ -78,7 +79,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
         from .group import number_of
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
-        redo = redo_launched(upstream, base=base, task=task, jobset=jobset)
+        redo = redo_launched(upstream, calc=calc)
         # PREPARED, by the one door (`ready.job_of`), in the plan as the
         # verb read it.
         from .ready import job_of
@@ -86,7 +87,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has not been prepared -- run it first --\n"
-                + block(_run_first(upstream, base=base, task=task)) + q2)
+                + block(_run_first(upstream, calc=calc)) + q2)
         # THE NEWEST RUN, and only it (D5), by the layout's one answer
         # (`materialize.latest_attempt`): the one status door says it
         # finished (`continuation.usable`) -- exit code 0 and nothing in its
@@ -172,7 +173,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
         # records aside, an explicit engine default the same as none; never
         # which molbuilder wrote it (`siesta.engine_input`).
         if composed is None:
-            composed = composed_junction(base, task, jobset=jobset)
+            composed = composed_junction(calc)
         now = rung_deck_now(base, task, upstream, composed,
                              template_text=template_text,
                              # THE UPSTREAM'S OWN POINTS (`rung_points`): a
@@ -184,12 +185,13 @@ def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
         _run = run_of(where, stage=token)
         ran = _run.deck if _run is not None else None
         ran_text = ran.read_text() if ran is not None else None
-        differs = (engine_input_difference(ran_text, now)
-                   if ran_text is not None else "it holds no deck")
+        differs = (engine_input_differences(ran_text, now)
+                   if ran_text is not None else ["it holds no deck"])
         if differs:
             raise PrepError(
                 f"{upstream}'s newest run, {where.relative_to(base)}, did "
-                f"not run what {upstream} renders now -- {differs} -- so its "
+                f"not run what {upstream} renders now -- "
+                f"{'; '.join(differs)} -- so its "
                 f"{filename} answers a different calculation.  To run it as "
                 f"it is described now, {redo}")
         # ...AND HOLDS THE FILE (`engines/transport.md` § 6.1).
@@ -202,8 +204,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text, jobset,
     return gathered
 
 
-def gather_sources(base_dir, task, stage: str, *, template_text: str,
-                   jobset) -> List[Tuple[Optional[object], List[tuple]]]:
+def gather_sources(calc, stage: str
+                   ) -> List[Tuple[Optional[object], List[tuple]]]:
     """What this rung takes from the runs upstream -- ``[(point, [(source,
     filename), ...]), ...]``: one entry, ``point`` ``None``, for a rung that
     runs once; one per point for a rung that runs per point
@@ -220,10 +222,9 @@ def gather_sources(base_dir, task, stage: str, *, template_text: str,
     deck is the reviewable artifact, whether or not the rungs before it have
     run."""
     from ..transport.stages import frames_of, rung_points
-    base = Path(base_dir)
-    return [(pt, transport_inputs(base, task, stage, point=pt,
-                                  template_text=template_text, jobset=jobset))
-            for pt in (rung_points(task, stage, frames=frames_of(base))
+    base = Path(calc.base)
+    return [(pt, transport_inputs(calc, stage, point=pt))
+            for pt in (rung_points(calc.task, stage, frames=frames_of(base))
                        or (None,))]
 
 
@@ -241,7 +242,7 @@ def gather_into(base: Path, attempt_dir, inputs, plan, *, names: RunNames,
     return h
 
 
-def composed_junction(base, task, *, jobset):
+def composed_junction(calc):
     """The junction this calculation is composed from -- its record beside
     ``task.json``, for the cited junction (`composed_for_prep` writes
     it before any rung's deck); read, never written: a record whose order a
@@ -254,6 +255,7 @@ def composed_junction(base, task, *, jobset):
     from ..transport.compose import ComposeError, load_compose_record
     from ..transport.sort import SortError
     from .transport_rung import no_usable_record
+    base, task = calc.base, calc.task
     root = find_projects_root(base)
     why: list = []
     try:
@@ -263,8 +265,8 @@ def composed_junction(base, task, *, jobset):
     except (ComposeError, SortError) as exc:
         raise PrepError(str(exc)) from exc
     if composed is None:
-        raise PrepError(no_usable_record(base, task, why, root=root,
-                                         afresh=False, jobset=jobset))
+        raise PrepError(no_usable_record(calc, why, root=root,
+                                         afresh=False))
     return composed
 
 

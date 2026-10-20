@@ -1106,9 +1106,14 @@ def _the_decks_a_person_sets(tree, cite: str, client):
     offers set alone in the template (the rows below)."""
     from support.real_runs import RealRun, _taken
     from support.road import group_words, jobset
+    # AT A VOLTAGE AS WELL AS AT ZERO, each its own device run: TranSIESTA
+    # reads its bias window only under bias (`engines/transport.md` § 6.1),
+    # so an item it offers is read in the device's deck under bias.
     r = jobset("init", "--calculation", "transport", "--engine", "siesta",
                "--shape", "hierarchical", "--bundle", "P/transport/D",
-               "--slot", f"junction={cite}", "--bias", "0.0")
+               "--slot", f"junction={cite}",
+               "--bias", ",".join(f"{v:g}" for v in _BIAS),
+               "--no-low-bias-approximation")
     assert r.exit_code == 0, r.output
     probe = RealRun(tree=tree, bundle=tree / "P" / "transport" / "D")
     _run_card(probe.bundle)
@@ -1208,10 +1213,12 @@ def test_every_value_a_rungs_tab_offers_reaches_its_deck(junction, rung,
     and the items any rung may set; § 3.8.9: the deck writes each rung its
     own).  Each row is one value set alone on one rung, as the tab writes it,
     one step from what the rung runs with nothing set, and that rung's group
-    prepared again (`_set_on_its_tab`); its deck, where
-    prep wrote it, is asked whether the engine now reads another input than
-    with nothing set, by the gather's own question
-    (`siesta.engine_input.engine_input_difference`, § 6.1).
+    prepared again (`_set_on_its_tab`); its decks, where
+    prep wrote them, are asked whether the engine now reads another input
+    than with nothing set in at least one of them, by the gather's own
+    question (`siesta.engine_input.engine_input_differences`, § 6.1) -- the
+    probe is described at a voltage as well as at zero, so an item the engine
+    reads under bias alone is read in one.
     THE SILENT FAILURE: a rung's layout is a hand list of items in
     `transport/deck.py` beside the catalogue's `stages`, so an item the tab
     offers and the layout leaves out is set, stored, and never written --
@@ -1219,17 +1226,17 @@ def test_every_value_a_rungs_tab_offers_reaches_its_deck(junction, rung,
     absent from a stage's layout is not written).  Found 2026-10-16:
     `TBT.Progress` taken out of the transmission's section turned no test
     red."""
-    from molbuilder.siesta.engine_input import engine_input_difference
+    from molbuilder.siesta.engine_input import engine_input_differences
     row = junction.probe.set[(rung, name)]
     assert row["value"] is not None and row["value"] != row["was"], row
     assert row["saved"][0] == 200, row["saved"]
     assert row["said"].exit_code == 0, row["said"].output
     unset = junction.probe.unset[rung]
     assert len(row["decks"]) == len(unset), row["decks"]
-    for before, deck in zip(unset, row["decks"]):
-        assert engine_input_difference(before, deck) is not None, (
-            f"{rung}: {name} set to {row['value']!r} (it ran "
-            f"{row['was']!r}) -- the deck gives the engine the same input")
+    assert any(engine_input_differences(before, deck)
+               for before, deck in zip(unset, row["decks"])), (
+        f"{rung}: {name} set to {row['value']!r} (it ran {row['was']!r}) -- "
+        f"no deck of the rung gives the engine another input")
 
 
 #: Shared values this junction admits no other value for, each with why.
@@ -1298,7 +1305,7 @@ def test_every_shared_value_reaches_every_deck_that_reads_it(junction,
     out of the transmission's section, `electrodes_bulk` out of the TBtrans
     or TranSIESTA section -- and that rung runs on the engine's own value
     while every other rung runs on yours."""
-    from molbuilder.siesta.engine_input import engine_input_difference
+    from molbuilder.siesta.engine_input import engine_input_differences
     row = junction.probe.shared[name]
     assert row["value"] is not None and row["value"] != row["was"], row
     assert row["said"].exit_code == 0, row["said"].output
@@ -1306,7 +1313,7 @@ def test_every_shared_value_reaches_every_deck_that_reads_it(junction,
         unset = junction.probe.unset[rung]
         assert len(decks) == len(unset), (rung, decks)
         for before, deck in zip(unset, decks):
-            assert engine_input_difference(before, deck) is not None, (
+            assert engine_input_differences(before, deck), (
                 f"{rung}: {name} set to {row['value']!r} (it ran "
                 f"{row['was']!r}) -- the deck gives the engine the same "
                 f"input")
@@ -1317,11 +1324,11 @@ def test_preparing_again_with_nothing_set_changes_no_deck(junction):
     engine the same input -- the premise each row above stands on: a
     difference a row finds is its value's, not one a second prep makes on
     its own (`engines/transport.md` § 6.1, *the same engine input*)."""
-    from molbuilder.siesta.engine_input import engine_input_difference
+    from molbuilder.siesta.engine_input import engine_input_differences
     probe = junction.probe
     for rung in _RUNGS:
         for before, again in zip(probe.unset[rung], probe.again[rung]):
-            assert engine_input_difference(before, again) is None, rung
+            assert engine_input_differences(before, again) == [], rung
 
 
 def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
@@ -1400,26 +1407,90 @@ def test_the_geometry_is_compared_where_siesta_places_it(junction, case):
     import dataclasses
 
     from molbuilder.jobset.gather import composed_junction, rung_deck_now
-    from molbuilder.siesta.engine_input import engine_input_difference
+    from molbuilder.siesta.engine_input import engine_input_differences
     from molbuilder.task import of as task_of
     from molbuilder.template import of as template_of
     from molbuilder.transport.sort import REGION_BRIDGE
     base = junction.single.bundle
     task = task_of(base)
     text = template_of(base, task.label).text
-    composed = composed_junction(base, task)
+    from molbuilder.calculation import open as open_calculation
+    composed = composed_junction(open_calculation(base))
     atom = composed.junction.regions[REGION_BRIDGE][0]
     positions = np.array(composed.junction.positions, dtype=float)
     positions[atom, 0] += case["moved_ang"]
     moved = dataclasses.replace(
         composed, junction=composed.junction.replace(positions=positions))
-    differs = engine_input_difference(
+    differs = engine_input_differences(
         rung_deck_now(base, task, "device", composed, template_text=text),
         rung_deck_now(base, task, "device", moved, template_text=text))
     if case.get("names"):
-        assert differs is not None and case["names"] in differs, differs
+        assert any(case["names"] in d for d in differs), differs
     else:
-        assert differs is None, differs
+        assert differs == [], differs
+
+
+def _left_to_the_engine_cases():
+    import tomllib
+    data = Path(__file__).parent / "data" / "same_engine_input.toml"
+    return tomllib.loads(data.read_text())["left_to_the_engine"]
+
+
+def _left_to_the_engine(text: str, left_out) -> str:
+    """``text`` with ``left_out`` taken out of it, as a deck that leaves
+    them to the engine reads -- a keyword's line by its name, a block whole
+    by ``%block <name>``, a block's row by ``row <first word>``."""
+    out, skip = [], None
+    for line in text.splitlines():
+        words = line.split()
+        if skip is not None:
+            if words[:2] == ["%endblock", skip]:
+                skip = None
+            continue
+        if words[:1] == ["%block"] and f"%block {words[1]}" in left_out:
+            skip = words[1]
+            continue
+        if words and (words[0] in left_out or f"row {words[0]}" in left_out):
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+@pytest.mark.parametrize("case", _left_to_the_engine_cases(),
+                         ids=lambda c: c["name"])
+def test_what_a_deck_leaves_to_the_engine_is_read_as_siesta_reads_it(
+        junction, case):
+    """`engines/transport.md` § 6.1, *the same engine input*: the device's
+    deck rendered now at the row's voltage, through the one builder
+    (`gather.rung_deck_now`), against the same deck with the row's
+    statements left to the engine -- the engine's scratch rows, the file
+    switch, the bias window -- and the row's changes made to the deck now.
+    The silent failures: a device run prepared by an older molbuilder, its
+    deck leaving to the engine what this one states, refused as another
+    calculation and its hours of compute thrown away; or a real difference
+    -- a spacing other than the engine's -- taken as none."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.gather import composed_junction, rung_deck_now
+    from molbuilder.siesta.engine_input import engine_input_differences
+    from molbuilder.transport.stages import frames_of, rung_points
+    base = junction.bundle
+    calc = open_calculation(base)
+    point = next(p for p in rung_points(calc.task, "device",
+                                        frames=frames_of(base))
+                 if p.volts == case["volts"])
+    now = rung_deck_now(base, calc.task, "device", composed_junction(calc),
+                        template_text=calc.template_text, point=point)
+    ran = _left_to_the_engine(now, case.get("left_out", []))
+    for old, new in case.get("changed", []):
+        assert old in now, (old, now)
+        now = now.replace(old, new)
+    differs = engine_input_differences(ran, now)
+    if case.get("names"):
+        for name in case["names"]:
+            assert any(name in d for d in differs), (name, differs)
+        assert len(differs) == len(case["names"]), differs
+    else:
+        assert differs == [], differs
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):
@@ -1719,8 +1790,11 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     lead_out = run_of(stage_home(run.bundle, task, "electrode_L").dir
                       / "run-0").stdout
     n_orb = detect(str(lead_out)).parse(str(lead_out)).runtime_info["n_orbitals"]
+    from molbuilder.calculation import open as open_calculation
+    device_job = open_calculation(run.bundle).jobset.job("device")
     line = status_line(run.bundle, task, stage_home(run.bundle, task,
-                                                    "device").dir, None)
+                                                    "device").dir, None,
+                       device_job.scratch_dir)
     assert line.startswith("tsgf/: one pair at a time, about ") and \
         f"({n_orb} orbitals × " in line and " GiB a lead at 0 V" in line, line
 

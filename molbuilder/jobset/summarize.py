@@ -665,7 +665,7 @@ def sweep_view(calc, jobset) -> Dict:
     # forbids.
     res = bench_record(calc, jobset, now_iso=utc_now_iso())
     points = res.points
-    status = jobset_status(calc, bundle, jobset=jobset)
+    status = jobset_status(calc, sweep=jobset)
 
     # POSITION is the join, and it has to be: a BenchPoint's label is the
     # JOB's name while a StageStatus's name comes from its StageRef -- the

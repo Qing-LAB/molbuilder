@@ -138,7 +138,7 @@ def same_calculation(a: str, b: str) -> bool:
     Asked where a run's deck is compared with its stage's own -- the run
     record's ``current`` and the run's report (`runs.Run.report`).  The
     transport gather asks a different question, what the ENGINE reads
-    (`siesta.engine_input.engine_input_difference`).
+    (`siesta.engine_input.engine_input_differences`).
 
     The stamps are masked by the one rule a plan's identity is asked by too
     (`deck_record.without_stamps`): fields, never whole fences -- the

@@ -1357,7 +1357,7 @@ def test_a_save_killed_as_the_record_is_written_publishes_nothing(calc,
     before = {d.name for d in _published(calc)}
     real = cp._atomic_write_bytes
 
-    def die(target, data, tmp_dir=None):
+    def die(target, data):
         """Fail on the MANIFEST only — the seam this test is named for.
 
         A stub that failed on *every* atomic write would kill the save at
@@ -1367,7 +1367,7 @@ def test_a_save_killed_as_the_record_is_written_publishes_nothing(calc,
         """
         if target.name == MANIFEST_NAME:
             raise OSError("disk full")
-        return real(target, data, tmp_dir)
+        return real(target, data)
 
     monkeypatch.setattr(cp, "_atomic_write_bytes", die)
     with pytest.raises(OSError):

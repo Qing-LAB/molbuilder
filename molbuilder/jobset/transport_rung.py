@@ -14,6 +14,7 @@ one builder, so the two cannot render a rung two ways.
 from __future__ import annotations
 
 import dataclasses
+from typing import Optional
 from pathlib import Path
 
 from ..pseudos import PSEUDO_DIRNAME
@@ -228,7 +229,7 @@ def transport_sources(element):
                    SET_AFTER["rung_label"])
 
 
-def composed_for_prep(base, task, plan, *, afresh: bool = True, jobset):
+def composed_for_prep(calc, plan, *, afresh: bool = True):
     """The junction a transport calculation's rungs describe: the record
     beside ``task.json`` when it is usable for THIS citation (the folder
     travels, `project-layout.md` § 2.1) -- written again when its order was
@@ -248,6 +249,7 @@ def composed_for_prep(base, task, plan, *, afresh: bool = True, jobset):
     from ..transport.compose import (ComposeError, compose_junction,
                                      load_compose_record)
     from ..transport.sort import SortError
+    base, task = calc.base, calc.task
     citation = task.slots["junction"]
     try:
         # The tree root is resolved BEFORE the record is loaded: the
@@ -268,8 +270,7 @@ def composed_for_prep(base, task, plan, *, afresh: bool = True, jobset):
             return (_written_and_read_back(base, composed, plan, root=root,
                                            task=task)
                     if composed.order_found else composed)
-        refusal = no_usable_record(base, task, why, root=root, afresh=afresh,
-                                   jobset=jobset)
+        refusal = no_usable_record(calc, why, root=root, afresh=afresh)
         if refusal is not None:
             raise PrepError(refusal)
         return _written_and_read_back(
@@ -281,8 +282,7 @@ def composed_for_prep(base, task, plan, *, afresh: bool = True, jobset):
         raise PrepError(str(exc)) from exc
 
 
-def no_usable_record(base, task, why, *, root, afresh: bool, jobset
-                     ) -> "str | None":
+def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
     """Why this calculation's junction is not composed afresh, by its state
     -- in words, with the way on -- or ``None`` when it may be: no stage
     launched, the projects tree here, and ``afresh``.  ``why`` is the
@@ -293,9 +293,10 @@ def no_usable_record(base, task, why, *, root, afresh: bool, jobset
     from ..runrecord import LaunchRecordError
     from .commands import block, prep_group_lines, redo_launched
     from .ready import launched_stage
+    base, task = calc.base, calc.task
     reason = why[-1] if why else "there is no usable record"
     try:
-        launched = launched_stage(base, task, jobset)
+        launched = launched_stage(calc)
     except LaunchRecordError as exc:
         return (f"this calculation's junction is not composed again: "
                 f"{reason}.  And {exc}")
@@ -306,8 +307,7 @@ def no_usable_record(base, task, why, *, root, afresh: bool, jobset
                 f"{reason}.  `{launched}` ran on the junction recorded, and a "
                 f"launched stage's junction is never replaced "
                 f"(engines/transport.md § 1.1); to compose it again, "
-                + redo_launched(launched, base=base, task=task,
-                                jobset=jobset))
+                + redo_launched(launched, calc=calc))
     if root is None:
         return (f"this transport calculation cannot be composed here: "
                 f"{reason}.  And {base} is not inside a projects tree, so the "

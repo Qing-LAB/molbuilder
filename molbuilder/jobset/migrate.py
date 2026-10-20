@@ -99,7 +99,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:                      # annotations only
+    from ..calculation import Calculation
+    from ..template import TemplateFile
 
 
 class MigrateError(ValueError):
@@ -285,6 +289,26 @@ class _Records:
             if path.is_file():
                 jobsets[folder] = read_json(path)
         return cls(base=base, task=obj, jobsets=jobsets)
+
+    def calculation(self, task) -> "Calculation":
+        """The calculation as this migration decided it -- its description,
+        its template and its root plan, the decided bodies -- for the steps
+        that compose a way back (`commands.way_back`).  The one place a
+        `Calculation` is composed outside its door: migrate alone reads its
+        records raw (A16)."""
+        from ..calculation import Calculation
+        from .model import JobSet
+        body = self.jobsets.get(self.base)
+        try:
+            js = JobSet.from_dict(body) if body is not None else None
+        except ValueError as exc:
+            raise MigrateError(
+                f"{JobSet.path_of(self.base)} does not read as this "
+                f"molbuilder writes it, and no rule here rewrites it; "
+                f"nothing was written: {exc}") from None
+        return Calculation(base=self.base, task=task,
+                           template=self.template_for(task.label),
+                           jobset=js)
 
     def template_for(self, label: str) -> Optional["TemplateFile"]:
         """The calculation's template, read once (`template.of`); a folder
@@ -541,8 +565,7 @@ def _migrate_machine_record(base: Path
             [(path, json_text(env.to_dict()), ".pre-2.10.1")])
 
 
-def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
-                                                     List[Tuple[Path, Path]]]:
+def _migrate_run_numbers(calc) -> Tuple[List[str], List[Tuple[Path, Path]]]:
     """A flat calculation's run files written before each carried its run's
     number (plan W57 decisions 2 and 6): every file of a stage whose role
     the catalogue numbers where a stage's runs share a folder
@@ -555,6 +578,7 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
     launch gave each run its number, so its run script takes no ``--run`` --
     to launch it, its group is prepared again; launched, from the state
     saved before its group's first launch (`project-layout.md` § 1.6.1)."""
+    base, task = calc.base, calc.task
     if task.shape != "flat":
         return [], []
     from ..runfiles import (FIRST_ATTEMPT, RunNames, latest_run,
@@ -588,14 +612,12 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
                     f"gave each run its number (--run N) -- "
                     + ("to launch it again, " if launched
                        else "to launch it, ")
-                    + way_back(home.name, base=base, task=task,
-                               launched=launched))
+                    + way_back(home.name, calc=calc, launched=launched))
     return said, moves
 
 
-def _migrate_lead_names(base: Path, task, jobset: Optional[dict]
-                        ) -> Tuple[List[str], List[Tuple[Path, Path]],
-                                   List[tuple]]:
+def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
+                                       List[tuple]]:
     """A transport calculation prepared before 2.18.0 named a lead's files
     on the calculation's label; a lead's are on the lead's own stem since
     (`job-contracts.md` § 2.1 rule 2; `transport.stages.rung_label`), the
@@ -603,11 +625,11 @@ def _migrate_lead_names(base: Path, task, jobset: Optional[dict]
     stage folder, each of its attempts and the calculation root (the
     pipeline log) -- is renamed by the stem door (`runfiles.stem`: the old
     stem swapped for the new, the name's tail as it was), and the root's
-    `job-set.json` naming the old deck is rewritten -- ``jobset``, the set
-    as the records step decided it (:func:`_migrate_records`), ``None``
-    for a calculation with none.  Decided, never done here: ``(said, moves,
-    writes)``; nothing for a calculation whose leads are already on their
-    stems, or that has none."""
+    `job-set.json` naming the old deck is rewritten -- ``calc``'s plan, the
+    set as the records step decided it (:meth:`_Records.calculation`),
+    ``None`` for a calculation with none.  Decided, never done here:
+    ``(said, moves, writes)``; nothing for a calculation whose leads are
+    already on their stems, or that has none."""
     from ..paths import attempt_index
     from ..persist import json_text
     from ..runfiles import find, stem
@@ -620,15 +642,9 @@ def _migrate_lead_names(base: Path, task, jobset: Optional[dict]
     moves: List[Tuple[Path, Path]] = []
     writes: List[tuple] = []
     renamed_decks: Dict[str, str] = {}
+    base, task = calc.base, calc.task
     js_path = JobSet.path_of(base)
-    js = None
-    if jobset is not None:
-        try:
-            js = JobSet.from_dict(jobset)
-        except ValueError as exc:
-            raise MigrateError(f"{js_path} does not read as this molbuilder "
-                               f"writes it, and no rule here rewrites it; "
-                               f"nothing was written: {exc}") from None
+    js = calc.jobset
     for home in ladder_homes(base, task):
         if home.label == task.label:
             continue
@@ -660,8 +676,7 @@ def _migrate_lead_names(base: Path, task, jobset: Optional[dict]
                        for f in folders if f != base)
         said.append(f"{home.name}: its run script and header were written "
                     f"for the old names; to launch it again, "
-                    + way_back(home.name, base=base, task=task,
-                               launched=launched))
+                    + way_back(home.name, calc=calc, launched=launched))
     if renamed_decks and js is not None:
         changed = False
         for j in js.jobs:
@@ -740,9 +755,9 @@ def migrate_state(base) -> List[str]:
     said, writes, task = _migrate_records(rec)
     m_said, m_writes = _migrate_machine_record(base)
     said, writes = said + m_said, writes + m_writes
-    n_said, moves = _migrate_run_numbers(base, task)
-    lead_said, lead_moves, lead_writes = _migrate_lead_names(
-        base, task, rec.jobsets.get(base))
+    calc = rec.calculation(task)
+    n_said, moves = _migrate_run_numbers(calc)
+    lead_said, lead_moves, lead_writes = _migrate_lead_names(calc)
     moves += lead_moves
     # ONE WRITE OF job-set.json: the leads' decks renamed on top of what the
     # records step gave it; the old file kept once, as the earliest rule it
