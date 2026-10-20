@@ -281,8 +281,8 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
             f"job {j.name!r} ({j.script}): its deck names no stage -- not a "
             f"job prep wrote, so it has no folder to name.  A calculation "
             f"prepared before 2.17.0 names a lead's deck on its own label: "
-            f"`molbuilder jobset migrate --bundle <the calculation>` renames "
-            f"its files to the lead's stem (job-system.md R-P2).")
+            f"`molbuilder jobset migrate` in the calculation's folder renames "
+            f"its files to the lead's stem.")
     return out
 
 

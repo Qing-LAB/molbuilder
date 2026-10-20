@@ -639,8 +639,7 @@ class JobSet:
                    if calc is not None else
                    "it lies in no described calculation")
             raise WrittenBefore(
-                f"{path}: {exc} -- written before every job key was "
-                f"(the last, `written_at` and `asked`, 2026-10-11); "
+                f"{path}: {exc} -- written before every job key was; "
                 f"{way}.") from None
 
     def job(self, stage: str) -> "Optional[Job]":

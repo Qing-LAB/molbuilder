@@ -2385,59 +2385,31 @@ def _probe_consent_merge(before, probed, *, yes: bool):
 
 
 @jobset_group.command("migrate",
-                      short_help="rewrite a calculation an older molbuilder "
-                                 "wrote: its records whole, its stages' "
-                                 "groups, a flat one's run files numbered, "
-                                 "its charge and spin items, its zeros that "
-                                 "meant not set, its retired and renamed "
-                                 "items")
+                      short_help="rewrite what an older molbuilder wrote in "
+                                 "a calculation, each change said")
 @_bundle_option()
 def migrate_cmd(bundle: str) -> None:
-    """Rewrite a calculation an older molbuilder wrote.
+    """Rewrite what an older molbuilder wrote in a calculation -- the road
+    every reader names when it refuses such a file: the description and the
+    plans, the copy of the machine's record, a flat calculation's run files
+    and last run, a transport lead's files on its own stem, and the
+    template's older, renamed and retired items.
 
-    Its RECORDS (2026-10-06): task.json's `calculation` and a notify block's
-    four values, and every job's `point`, `finish`, `resumes`, `placement`,
-    `members`, `written_at` and `asked` in each job-set.json -- each key the
-    old file left out written with what its absence meant.  A flat calculation's RUN FILES
-    (2026-10-06): each run's files carry the run's number -- every one the
-    catalogue numbers where a stage's runs share a folder -- and those
-    written before are renamed for their stage's newest run -- and its last
-    run, which its folder records since 2.7.0 (`<label>.last-run`), written
-    for the newest launch record.  Its TEMPLATE (2026-09-28): the
-    electronic state's items (science/chemistry-correctness.md § 2a) --
-    PySCF's `spin` and the R/U inside its `method`, SIESTA's
-    `spin_treatment` spellings and `spin_total`.  Its ZEROS THAT MEANT NOT
-    SET (2.1.0): before 2.1.0 a 0 for `negf_neq_eta_ev` or
-    `tbt_contours_eta_ev` -- in the template, or a rung's override in
-    task.json -- wrote no line, and the program's own rule applied; since,
-    0 is no broadening.  Each is written blank, which is what it meant.
-    Its RETIRED KEY (2.6.0): a transport task.json's `centre_junction`,
-    removed -- the junction enters its calculation centred.  Its STAGES'
-    GROUPS (2026-10-11): each stage states the job it runs in -- a prepared
-    stage its job's, the rest the number above where the ladder allows it
-    and the run cards share one allocation, else one more.  Its template's
-    RETIRED ITEMS (SIESTA's `copy_psml`, 2.10.0; PySCF's `optimizer`,
-    `es_top_n` and `es_threshold`, 2026-09-28/29) -- taken out of the
-    template, a stage's own values and `varies` when their value runs as
-    before without them (any `copy_psml`, `optimizer = "geometric"`, a
-    blank one), refused by name otherwise -- and an item RENAMED, kept under
-    its new name in the same three places.  Refused, writing nothing: one
-    item at two values under its old name and its new, and a name no
-    release held.
-
-    What the calculation was is KEPT -- every old value becomes a stated
-    one, every blank stays blank, every item's source stays the file's --
-    and each change is printed, with what the new file does not carry.
-    Each old file rewritten stays beside the new one (`<name>.pre-w57`,
-    `<name>.pre-m6`, `<name>.pre-2.1.0`, `<name>.pre-2.6.0`,
-    `<name>.pre-2.7.0`, `<name>.pre-<the release or day that retired or
-    renamed an item>`); a renamed one keeps every byte.  The readers refuse
-    such a file, naming this command."""
+    What the calculation was is KEPT: every value carried, every blank left
+    blank, each change printed with the rule it follows; a change that would
+    alter the calculation is refused by name, writing nothing.  Each old file
+    rewritten stays beside its new one as ``<name>.pre-<rule>``, the earliest
+    rule it was written before; a file renamed keeps every byte."""
     from .migrate import MigrateError, migrate_state
     try:
         said = migrate_state(bundle)
     except MigrateError as exc:
-        raise click.ClickException(str(exc)) from exc
+        # A REFUSAL IS WRITTEN DOWN, in a described calculation's own ledger
+        # (`architecture.md` § 2.1, floor 7).
+        from ..task import described as _described
+        if _described(bundle):
+            _ledger(bundle, "migrate", "refused", reason=str(exc))
+        raise click.ClickException(str(exc)) from None
     click.echo(f"migrated {bundle}:")
     for line in said:
         click.echo(f"  {line}")

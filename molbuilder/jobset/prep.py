@@ -782,6 +782,9 @@ class Resolved:
     pset: "ParameterSet"
     #: the stage's token, by the one stage-number door (`stage_home`)
     token: str = ""
+    #: the label the rung's files are named on, by the same door
+    #: (`StageHome.label`: the calculation's, or a transport lead's own stem)
+    label: str = ""
     #: the machine named at this prep (``--target``), or ``None``
     target: Optional[str] = None
     #: a benchmark's grid, or ``None``: a run
@@ -821,16 +824,17 @@ class Resolved:
 
     def log_path(self, base) -> Path:
         """The pipeline log this prep writes (`script-preparation.md`
-        § 4.5)."""
+        § 4.5): on the rung's own stem -- the deck's -- the one place its
+        path is composed."""
         from ..pipeline_log import log_name
         t = self.task
-        return self.record_dir(base) / log_name(t.label, self.token,
+        return self.record_dir(base) / log_name(self.label, self.token,
                                                 t.engine, t.shape)
 
 
 def _resolve_stage(stage, *, task, template, template_text, environment,
                    allocation=None, chosen=None, sweep=None, pins=None,
-                   translation=None, token: str = "", target=None,
+                   translation=None, home=None, target=None,
                    provenance=None) -> Resolved:
     """Step 2, once (`script-preparation.md` § 3.0): the allocation folded --
     the caller's ask over the description's, and its reporting policy -- and
@@ -839,7 +843,9 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
 
     Asked by the prep entry at its checkpoint 4, where the job it makes is
     placed (`job-system.md` § 5.0).  ``template`` ``None`` is refused: the
-    folder is a template PLUS a description."""
+    folder is a template PLUS a description.  ``home`` is the stage's
+    (`materialize.stage_home`): its token and the label its files are
+    named on."""
     from ..resolve import ResolveError, resolve
     from .prep_inputs import fold_allocation
     # THE DESCRIPTION'S OWN ALLOCATION, under the caller's (2026-08-24).
@@ -872,8 +878,9 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
         raise PrepError(str(exc)) from exc
     return Resolved(task=task, template=Path(template),
                     template_text=template_text, environment=environment,
-                    allocation=allocation, pset=pset, token=token,
-                    target=target, sweep=sweep, provenance=provenance,
+                    allocation=allocation, pset=pset, token=home.token,
+                    label=home.label, target=target, sweep=sweep,
+                    provenance=provenance,
                     sources=sources)
 
 
@@ -990,7 +997,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     # so nothing is lost by writing that phase a moment later than it ran.
     # It is HELD, and written with the rest of the plan once every step has
     # passed (`script-preparation.md` § 4.5): a refused prep writes no log.
-    log = PipelineLog.open(record_dir, label=task.label,
+    log = PipelineLog.open(resolved.log_path(base), label=resolved.label,
                            token=resolved.token, engine=task.engine,
                            shape=task.shape)
     log.phase("STEP 1 · MACHINE — where this job will run")
@@ -2253,7 +2260,7 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         stage, task=task, template=described.template,
         template_text=template_text, environment=environment,
         allocation=allocation, chosen=chosen, sweep=sweep, pins=pins,
-        translation=translation, token=stage_home(base, task, stage).token,
+        translation=translation, home=stage_home(base, task, stage),
         target=target, provenance=described.provenance)
     if kind == "task":
         #  ...AND ITS GPU REQUEST AGREES WITH ITSELF (`execution/gpu.md`
@@ -2595,7 +2602,6 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
     force-constant stage it prepares is written at (`engines/vibration.md`
     § 5.2a).  ``asked`` is the question that picked the groups, with its
     answer, written down after the save (§ 5.0, checkpoint 7)."""
-    base = Path(calc.base)
     if kind == "bench":
         return [prep_bench(calc, stage, target=target,
                            allocation=allocation, from_attempt=from_attempt,

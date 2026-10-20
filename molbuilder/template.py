@@ -2376,21 +2376,33 @@ def written_before_zero_changed(tmpl: "Template") -> bool:
     return version_key(tmpl.written_by) < version_key(ZERO_MEANING_CHANGED_AT)
 
 
+def stage_zeros_written_before(tmpl: "Template", stages=()
+                               ) -> List[Tuple[str, str]]:
+    """``(stage, item)`` for each stage in ``stages`` whose override holds
+    0 for an item of :data:`ZERO_WAS_NOT_SET` in a calculation written
+    before :data:`ZERO_MEANING_CHANGED_AT` -- what it meant was *not set*.
+    The template's ``written_by`` dates the whole calculation, its stages'
+    overrides in `task.json` with it (a rung's tab writes a 0 typed there
+    into its bag)."""
+    if not written_before_zero_changed(tmpl):
+        return []
+    return [(st.name, k) for st in stages
+            for k, v in (st.overrides or {}).items()
+            if k in ZERO_WAS_NOT_SET and v == 0]
+
+
 def zeros_written_before(tmpl: "Template", stages=()) -> List[str]:
     """Where a calculation written before :data:`ZERO_MEANING_CHANGED_AT`
     holds 0 for an item of :data:`ZERO_WAS_NOT_SET` -- what it meant was
     *not set*: the template's own items by name, and each stage's override
-    in ``stages`` as ``stage '<name>' <item>``.  The template's
-    ``written_by`` dates the whole calculation, its stages' overrides in
-    `task.json` with it (a rung's tab writes a 0 typed there into its bag).
-    """
+    in ``stages`` as ``stage '<name>' <item>``
+    (:func:`stage_zeros_written_before`)."""
     if not written_before_zero_changed(tmpl):
         return []
     return ([it.name for it in tmpl.items
              if it.name in ZERO_WAS_NOT_SET and it.is_set and it.value == 0]
-            + [f"stage {st.name!r} {k}" for st in stages
-               for k, v in (st.overrides or {}).items()
-               if k in ZERO_WAS_NOT_SET and v == 0])
+            + [f"stage {name!r} {k}"
+               for name, k in stage_zeros_written_before(tmpl, stages)])
 
 
 def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
@@ -2402,9 +2414,9 @@ def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
             + f": {', '.join(where)} holds 0, which before "
             f"{ZERO_MEANING_CHANGED_AT} meant 'not set' (the program's own "
             f"rule, a tenth of the leads' broadening) and since means no "
-            f"broadening on the device.  Run `molbuilder jobset migrate "
-            f"--bundle <calculation>` to rewrite it as not set, which is "
-            f"what it meant (docs/process/changelog.md 2.1.0).")
+            f"broadening on the device.  `molbuilder jobset migrate` in the "
+            f"calculation's folder rewrites it as not set, which is what it "
+            f"meant (docs/process/changelog.md 2.1.0).")
 
 
 def config_from_template(text: str, config_cls):

@@ -905,8 +905,9 @@ was a flag, and the Task setup tab never wrote one)*.
 run, the stage's `bench/` container for a sweep. Inside the bundle, because the
 bundle is what is still there when a job misbehaves on a cluster hours later.
 
-**What it is called.** `<label>_<token>.<engine>.<flat|hierarchical>.pipeline.log`.
-The stem is the deck's own, and the **token is load-bearing in a flat
+**What it is called.** `<stem>.<engine>.<flat|hierarchical>.pipeline.log`.
+The stem is the deck's own (`<label>_<token>`; a transport lead's on its own
+label, `job-contracts.md` § 2.1 rule 2, composed once by `prep.Resolved.log_path`), and the **token is load-bearing in a flat
 calculation**: flat is depth 1, every rung preps into one directory, and a name
 per calculation would have `tight` overwrite `coarse` — destroying exactly the
 run whose provenance was wanted. Engine and shape follow so the file still says

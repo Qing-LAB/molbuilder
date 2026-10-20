@@ -265,6 +265,14 @@ def newest_run(where, names: "_rf.RunNames") -> Optional[int]:
     return _rf.latest_run(Path(where), names.label, stage=names.stage)
 
 
+def last_run_path(where, label: str) -> Path:
+    """Where a folder its stages share records its last run --
+    ``<label>.last-run`` (`project-layout.md` § 5): the one place the path
+    is formed, for its reader (:func:`last_run`) and `jobset migrate`, which
+    writes it for runs launched before the record was."""
+    return Path(where) / _rf.compose(label, ".last-run")
+
+
 def last_run(where, label: str) -> Optional["RunRef"]:
     """THE LAST RUN IN A FOLDER A CALCULATION'S STAGES SHARE -- the run whose
     restart files and results lie there, since every run of every stage
@@ -275,7 +283,7 @@ def last_run(where, label: str) -> Optional["RunRef"]:
     records were written.  ``None`` while no run has started there.  A
     record that does not read, or names no run of ``label``, is a
     :class:`LaunchRecordError`, never passed over."""
-    p = Path(where) / _rf.compose(label, ".last-run")
+    p = last_run_path(where, label)
     try:
         text = p.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
@@ -442,26 +450,34 @@ def retried_to(where, names: "_rf.RunNames", run: int) -> int:
         run += 1
 
 
+def unnumbered_files(where, names: "_rf.RunNames") -> List[Path]:
+    """A stage's run files in a folder its runs share that carry no run's
+    number -- the names every row the catalogue numbers there
+    (``attempt="shared"``) had before each run carried its own (plan W57
+    decision 2): what an older molbuilder wrote, for its refusal
+    (:func:`_refuse_unnumbered`) and for `jobset migrate`, which numbers
+    them."""
+    return [f for f in (Path(where) / names.unnumbered(role)
+                        for role in _rf.shared_numbered_roles())
+            if f.is_file()]
+
+
 def _refuse_unnumbered(where: Path, names: "_rf.RunNames") -> None:
-    """A shared folder holding a stage's run files with no run's number --
-    the names every row the catalogue numbers there (``attempt="shared"``)
-    had before each run carried its own (plan W57 decision 2) -- was written
-    by an older molbuilder: refused, naming the verb that numbers them,
-    never read as another run's, or as none."""
-    old = [f.name for f in (Path(where) / names.unnumbered(role)
-                            for role in _rf.shared_numbered_roles())
-           if f.is_file()]
+    """A shared folder holding a stage's run files with no run's number
+    (:func:`unnumbered_files`) was written by an older molbuilder: refused,
+    naming the verb that numbers them, never read as another run's, or as
+    none."""
+    old = [f.name for f in unnumbered_files(where, names)]
     if old:
-        # A LAYER BELOW `jobset` prints its line by the composer's rules
-        # (`job-system.md` § 5.3): the folder quoted as a shell needs it.
-        import shlex
+        # A LAYER BELOW `jobset` says the command by its one spelling
+        # there (`identity.migrate_as_typed`).
+        from .identity import migrate_as_typed
         raise LaunchRecordError(
             f"{', '.join(old)}: a flat stage's run files carry their run's "
             f"number (`<stem>-run<N>`), and these carry none -- which run "
             f"each is cannot be told from the name.  Number them for the "
             f"stage's newest run with:\n"
-            f"    molbuilder jobset migrate --bundle "
-            f"{shlex.quote(str(Path(where)))}")
+            f"    {migrate_as_typed(Path(where))}")
 
 
 def launch_record(where, names: "_rf.RunNames",

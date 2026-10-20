@@ -102,18 +102,17 @@ class PipelineLog:
     # -- opening ------------------------------------------------------- #
 
     @classmethod
-    def open(cls, record_dir, *, label: str, token: str, engine: str,
+    def open(cls, path, *, label: str, token: str, engine: str,
              shape: str) -> "PipelineLog":
-        """A log for one prep, in ``record_dir``.
-
-        ``record_dir`` is the bundle root for a run and the stage's ``bench/``
-        container for a sweep -- the same home ``STAGE-PLAN.md`` uses, so a
-        benchmark's log can never overwrite the run's (`prep.prep_jobset`'s
-        ``plan_dir``).  **Inside the bundle**, because the bundle is what is
-        still there when a job misbehaves on a cluster hours later
-        (``jobset/ledger``'s stated reason for the same choice).
-        """
-        self = cls(Path(record_dir) / log_name(label, token, engine, shape))
+        """A log for one prep, at ``path`` -- composed by its prep's one
+        door (`prep.Resolved.log_path`: :func:`log_name` in the prep's
+        record folder, the bundle root for a run and the stage's ``bench/``
+        container for a sweep, so a benchmark's log can never overwrite the
+        run's).  **Inside the bundle**, because the bundle is what is still
+        there when a job misbehaves on a cluster hours later
+        (``jobset/ledger``'s stated reason for the same choice).  ``label``
+        and the rest are the banner's."""
+        self = cls(Path(path))
         self._banner(label, token, engine, shape)
         return self
 

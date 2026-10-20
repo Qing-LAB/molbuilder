@@ -166,6 +166,80 @@ instrument recorded SIGTERM on Sol job 65999920 (SCHED-R).
 
 ---
 
+## 1s. What is computed vs how it runs — the evaluation, and the separation *(2026-10-20; the user's yes: "build it as 2.24.0 after 2.23.2")*
+
+*(the user, 2026-10-20: "it is completely stupid to have this involved in a
+job scheduling"; "carefully evaluate the jobset logic and see how much
+mixing you already have between science request vs job request")*
+
+**The finding, verified at the code** (one fresh audit plus a read of the
+description, the plan, `resolve` and the catalogue): the two are mixed in
+five places, and the first two cost a person a run.
+
+| # | where | what is mixed | what it costs |
+|---|---|---|---|
+| 1 | the transport gather's *same engine input* check (`siesta/engine_input.py`, `gather.py`; `transport.md` § 6.1) | the deck compared as science while it carries `BlockSize` (prep derives it from the rank count), `Diag.ParallelOverK`, `Diag.Algorithm`, `Diag.ELPA.GPU`, `TS.SolutionMethod` (its own help: *"never the answer"*) | more ranks, another solver or the GPU switch makes a finished seed or device run "another calculation"; the rung after it refuses to gather — met here: an older device run differs in `Diag.ParallelOverK` alone |
+| 2 | a launched stage is frozen whole (`job-system.md` § 5.0 rule 5, `submit._as_described`) | the deck (science) and its header and run script (queue, wall, memory, ranks) prepared, frozen and compared as one | a run out of memory or wall cannot continue on a bigger request; the only road is the state saved before its group's first launch, its runs left behind; `--time` is the one value a launch may restate |
+| 3 | the description `task.json` | beside the science (structure or citation, kind, stages and what they vary, voltages): the queue, wall and memory (`allocation`), the run card (`execution`, each stage's own), the benchmark grid (`bench`), the notification policy (`notify`), which stages share a job (`stages[].group`) | a queue change is a description edit, saved and checkpointed as one; it then trips 1 and 2 |
+| 4 | the template, the science file | 13 run settings (`execution`) carry template values beside the run card — `block_size`, `parallel_over_k`, `diag_algorithm`, `use_gpu`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack`, `continue_retries`, … (`template.py` writes them, `resolve` lays the card over) | two homes: a template solver or `use_gpu = true` is silently in force while the card is blank; the Build tab and the run card both show them |
+| 5 | catalogue categories | `density_fit` is `method` + `execution` though it changes the energy (its help: up to 0.1 kcal/mol); `restart` — what a stage builds on — is `convergence` + `execution`, set on the run card; SIESTA's `continue_retries` is `execution`, PySCF's `geom_continue_retries` `procedure`, one step budget | a science choice sits on the resources card, a run setting decides a ladder link |
+
+And the command line: `init`, which describes the science (`--bias`,
+`--slot`, `--structure`, …), sits in the `jobset` group beside `prep` and
+`launch`; it needs nothing of the job code but the next-step line it prints.
+The docs state the boundary two opposite ways (`task.py`'s header and
+`project-layout.md`: *"names no machine"*; `stages.md` § 6.8: the person's
+asks belong in the description).
+
+**The rule proposed**: *a calculation is two records with two editors — the
+description says what is computed; the job request says how and where it
+runs. Nothing in one is read as the other.*
+
+1. **The job request leaves `task.json`** — `allocation`, `execution` (and
+   each stage's), `bench`, `notify` and the stages' groups — into one file
+   beside it (proposed: `job-request.json`), written by the run card and
+   prep's flags, saved on its own; `task.json` holds the science alone.
+2. **The run settings leave the template**: every `execution` item is
+   valueless there, as the machine-answered ones already are, and lives on
+   the run card alone. `density_fit` becomes `method`; `restart` a stage's
+   own science (what it builds on), never on the card; both retry budgets
+   `procedure`.
+3. **"The same calculation" compares science only**: the same-input check
+   leaves out every `execution` keyword, as it leaves out the engine's
+   scratch (this closes the open question in the handover).
+4. **A launched stage's job request may change**: prep writes its header and
+   run script again; its deck — the science — stays frozen; the next launch
+   sends the new request, and its `run.json` records it.
+5. **The command line**: `init` leaves `jobset` (proposed:
+   `molbuilder describe`); `jobset` prepares, launches and observes.
+   `launch --from/--cold/--gather` and `prep --from` stay: each picks one
+   run's input among runs that exist only after the earlier run, and is
+   recorded with that run (`continued_from`, `written_at`).
+6. **One statement of the boundary** in the contract, every opposite one
+   removed; `Resources` the job request alone (`program` moves to the job's
+   traits, the notify policy to the job request).
+
+`shape` stays in the description: it is how the folder is laid out, fixed at
+`init` for the folder's life — neither science nor a request that can change.
+
+**The scope, measured** (2026-10-20):
+
+| what | affected | how |
+|---|---|---|
+| calculations on disk | every one | the readers refuse an older `task.json`, naming `jobset migrate`, which moves the keys and the template's run-setting values onto the run card — decks render the same, so no prepared stage is refused (to check on a copy of a prepared calculation) |
+| code reading the moved keys | `allocation` 31 lines in 7 files; the run card 16 in 8; `bench` 18 in 7; `notify` 6 in 4; stage groups 33 | through one reader of the new file |
+| the Task setup page | 182 of `task-setup/viewer.js`'s 4892 lines name these keys; its Save | two records saved |
+| tests | 67 files name these keys; 37 calls in 22 files drive `jobset init` | re-pointed |
+| docs | 93 mentions of `jobset init` in 30 files; the boundary's statements | rewritten |
+
+**The order, agreed**: 2.23.2 — migrate's errors from the 2026-10-20
+review, pushed so Sol's calculation moves (done); 2.23.3 — the same review's
+launch errors, which this does not touch: a run here never told its wall,
+tracebacks at the launch's boundary, the status read after a send written as
+a refusal, the machine record read twice, a relaunch checked against its old
+run's files, the request sent from a second source; then this as 2.24.0,
+contract first.
+
 ## 0. Rule R3, restated
 
 `docs/README.md` used to say **R3: `roadmap.md` is THE one plan.** That is now

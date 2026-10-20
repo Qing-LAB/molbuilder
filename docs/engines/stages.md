@@ -597,7 +597,8 @@ them untouched and keeps its number taken
 ladder keeps every rung, its seed among them — the leads and the device start
 from its density (user, 2026-10-12; `task.fixed_by_kind`). A description written before carries
 `"enabled"` on every stage — refused by name, naming `jobset migrate`, which
-removes it (one policy for a state against the design: an explicit error,
+removes a `true`; a stage switched off it refuses by name, since whether that
+stage now runs or leaves the description is the person's (one policy for a state against the design: an explicit error,
 never a silent rewrite; until 2026-10-19 a `true` was read and dropped on
 Save). A shipped ladder's
 strategy writes the stages it runs; a tier it leaves out is added later from

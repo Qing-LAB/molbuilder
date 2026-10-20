@@ -894,9 +894,9 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # calculation centred (`model/structure-periodicity.md` § 6.0).
     if "centre_junction" in obj:
         _refuse("centre_junction is retired (2.6.0): a transport junction "
-                "enters its calculation centred in its cell.  Run "
-                "`molbuilder jobset migrate --bundle <calc>`, which removes "
-                "the key", where="centre_junction")
+                "enters its calculation centred in its cell.  "
+                "`molbuilder jobset migrate` in the calculation's folder "
+                "removes the key", where="centre_junction")
     _check_keys(obj, _TOP_KEYS, where="")
 
     engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")
@@ -1415,26 +1415,45 @@ def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
     return Task.from_dict(obj)
 
 
+def never_as_zero(hours) -> bool:
+    """Whether a notify period is the spelling of *never* a description
+    used before 2026-10-06, ``0`` -- ``null`` since: refused by the reader
+    (:func:`_written_before`), rewritten by `jobset migrate`."""
+    return (isinstance(hours, (int, float)) and not isinstance(hours, bool)
+            and hours == 0)
+
+
 def _written_before(obj: Mapping[str, Any]) -> List[str]:
-    """What a description written before a rule leaves out, said as
-    :func:`of` says it -- no `calculation`, a notify block short of
-    its four or a period of ``0`` for never (``null`` since; 2026-10-06), a
-    stage without its `group` (2026-10-11) -- or ``[]``."""
+    """What a description written before a rule says otherwise, said as
+    :func:`of` says it, with the command for its folder -- no `calculation`,
+    a notify block short of its four or a period of ``0`` for never
+    (``null`` since; 2026-10-06), a stage's `enabled` (2026-10-03), a stage
+    without its `group` (2026-10-11), `centre_junction` (retired 2.6.0), a
+    transport description stating no voltages (2.16.3) -- or ``[]``."""
     out: List[str] = []
     raw = obj.get("notify")
     # an empty block was refused before as now -- the reader's to refuse
     if "calculation" not in obj or (
             isinstance(raw, Mapping) and raw
             and (any(k not in raw for k in _NOTIFY_KEYS)
-                 or (isinstance(raw.get("every_hours"), (int, float))
-                     and not isinstance(raw.get("every_hours"), bool)
-                     and raw.get("every_hours") == 0))):
+                 or never_as_zero(raw.get("every_hours")))):
         out.append("its `calculation`, and its notify block whole with null "
                    "for never (2026-10-06)")
     stages = obj.get("stages")
     if isinstance(stages, (list, tuple)) and any(
             isinstance(st, Mapping) and "group" not in st for st in stages):
         out.append("every stage's `group`, the job it runs in (2026-10-11)")
+    if isinstance(stages, (list, tuple)) and any(
+            isinstance(st, Mapping) and "enabled" in st for st in stages):
+        out.append("its stages with no on/off switch (2026-10-03)")
+    if "centre_junction" in obj:
+        out.append("its junction centred, with no `centre_junction` (2.6.0)")
+    bias = obj.get("bias")
+    if obj.get("calculation") == "transport" and (
+            bias is None
+            or (isinstance(bias, Mapping) and not bias.get("voltages_v"))):
+        out.append("a transport calculation's voltages, [0.0] for a single "
+                   "bias (2.16.3)")
     return out
 
 
