@@ -68,7 +68,9 @@ def test_the_report_selection_decides_which_fields_a_card_shows():
 
     **And the name is in all three.**  It is not on the list because it is
     not optional: a report you cannot attribute to a job is a notification
-    you have to go and look up."""
+    you have to go and look up.  The record names no event, so the layout
+    has no row for it and the declaration's order lays it out, whole
+    (`run-reports.md` § 4.1c)."""
     rec = {"run": "BDT_Au_relax", "job": "62238108", "state": "running",
            "text": "state=running elapsed=1234s", "elapsed_s": 1234.5,
            "n_iters": 7, "energy": "-1740.21", "geom_step": 3,
@@ -117,6 +119,133 @@ def test_the_two_chat_destinations_show_the_SAME_fields():
     assert d["title"] == a["title"]
     assert [f["name"] for f in d["fields"]] == [f["title"] for f in a["fields"]]
     assert "#%06X" % d["color"] == a["color"]
+
+
+_EVERY = {"run": "J", "job": "7", "state": "running", "text": "x",
+          "elapsed_s": 12.0, "n_iters": 3, "energy": "-1.0", "per_iter_s": 2.0,
+          "max_force": 0.01, "geom_step": 4}
+
+
+def _wire_fields(kind, rec):
+    """The field labels a chat wire is sent, read from the generated body."""
+    body, _ = M.webhook_request(
+        {"url": "https://example/hook", "kind": kind}, rec)
+    doc = json.loads(body)
+    if kind == "slack":
+        att = doc["attachments"][0]
+        return [f["title"] for f in att.get("fields", [])], \
+            [f["short"] for f in att.get("fields", [])], att["text"]
+    emb = doc["embeds"][0]
+    return [f["name"] for f in emb.get("fields", [])], \
+        [f["inline"] for f in emb.get("fields", [])], emb["description"]
+
+
+@pytest.mark.parametrize("event, kind, labels", [
+    # `run-reports.md` § 4.1c, *What the shipped layout chooses*
+    ("finish", "discord",
+     ["energy", "max force", "step", "elapsed", "SCF iters", "per iter"]),
+    ("finish", "slack",
+     ["energy", "max force", "step", "elapsed", "SCF iters", "per iter"]),
+    ("scf_converged", "discord",
+     ["elapsed", "SCF iters", "per iter", "energy", "max force", "step"]),
+    ("scf_converged", "slack",
+     ["elapsed", "per iter", "SCF iters", "step", "energy", "max force"]),
+    ("wall_near", "discord",
+     ["elapsed", "SCF iters", "energy", "max force", "step"]),
+    ("start", "discord", []),
+    ("start", "slack", []),
+    ("test", "discord", []),
+])
+def test_the_layout_lays_a_card_out_by_event_and_receiver(event, kind, labels):
+    """`run-reports.md` § 4.1c: the card's fields are the receiver's order
+    for the report's event, read from the layout file -- a finish card the
+    result first, an SCF card the time and rate first, a start or test card
+    the title and summary alone; Slack's order pairs its two columns.  The
+    order flows from JSON through the reader into one producer, so a card
+    drifting from the file is silent: the wires still render it."""
+    rec = {**_EVERY, "event": event}
+    got, inline, text = _wire_fields(kind, rec)
+    assert got == labels, got
+    assert all(inline), "the shipped layout sets every receiver inline"
+    assert text == "x", "the shipped layout shows the summary"
+    web = M.card(rec, receiver="web")
+    assert [f[0] for f in web["fields"]] == _wire_fields("discord", rec)[0]
+    assert web["inline"] is True
+
+
+def test_the_layouts_limit_cuts_the_grid_and_the_web_has_none(tmp_path, monkeypatch):
+    """§ 4.1c `limit`: a copy that lets Slack show two fields cuts the grid
+    there; the web receiver, `0`, shows every field the run stated."""
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+    from molbuilder import report_cards as C
+    doc = json.loads(C.shipped_text())
+    doc["receivers"]["slack"]["limit"] = 2
+    C.layout_path().write_text(json.dumps(doc))
+    rec = {**_EVERY, "event": "finish"}
+    assert _wire_fields("slack", rec)[0] == ["energy", "max force"]
+    assert len(M.card(rec, receiver="web")["fields"]) == 6
+
+
+@pytest.mark.parametrize("change, words", [
+    # (what the copy says, the words of its refusal)
+    (lambda d: d["receivers"]["slack"]["order"].update(
+        finish=["energy", "enrgy"]), "'enrgy', which is not a report field"),
+    (lambda d: d["receivers"]["slack"].update(limit=11),
+     "slack takes 10 fields at most"),
+    (lambda d: d["receivers"]["discord"].update(limit=0),
+     "discord takes 25 fields at most"),
+    (lambda d: d["receivers"].pop("web"), "no layout for the receiver 'web'"),
+    (lambda d: d["receivers"]["web"]["order"].update(
+        scf_converged=["elapsed_s"], periodic=["elapsed_s"],
+        finish=["elapsed_s"], wall_near=["elapsed_s"]),
+     "shows n_iters, energy"),
+    (lambda d: d["receivers"]["web"]["order"].update(stop=["energy"]),
+     "stop: not an event"),
+    (lambda d: d.update(schema="molbuilder/report-cards@2"),
+     "schema 'molbuilder/report-cards@2'"),
+    (lambda d: d["colors"].pop("other"), "naming 'other'"),
+])
+def test_a_copy_that_does_not_read_is_refused_by_its_reason(
+        tmp_path, monkeypatch, change, words):
+    """§ 4.1c: the copy at `<config dir>/report-cards.json` replaces the
+    shipped file whole, and one that does not read is refused with its
+    path and the reason -- an unknown field, a limit past the wire's own,
+    a receiver missing, a field no event shows, an event that is not one,
+    another schema, no colour for `other`.  Nothing is guessed at: the
+    monitor stops at its start and the Test button answers the refusal."""
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+    from molbuilder import report_cards as C
+    doc = json.loads(C.shipped_text())
+    change(doc)
+    C.layout_path().write_text(json.dumps(doc))
+    with pytest.raises(C.LayoutError) as err:
+        M.webhook_request({"url": "https://example/hook", "kind": "slack"},
+                          {**_EVERY, "event": "finish"})
+    assert words in str(err.value), str(err.value)
+    assert str(C.layout_path()) in str(err.value)
+
+
+def test_a_copy_in_the_config_dir_lays_the_card_out(tmp_path, monkeypatch):
+    """§ 4.1c: this machine's copy replaces the shipped layout whole -- its
+    order, its colours, its summary switch -- and is read through the one
+    resolver (`report_cards.layout_path`)."""
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+    from molbuilder import report_cards as C
+    doc = json.loads(C.shipped_text())
+    disc = doc["receivers"]["discord"]
+    disc["order"]["finish"] = list(reversed(disc["order"]["finish"]))
+    disc["inline"] = False
+    disc["summary"] = False
+    doc["colors"]["running"] = "#123456"
+    C.layout_path().write_text(json.dumps(doc))
+    rec = {**_EVERY, "event": "finish"}
+    got, inline, text = _wire_fields("discord", rec)
+    assert got == ["per iter", "SCF iters", "elapsed", "step", "max force",
+                   "energy"]
+    assert not any(inline) and text == ""
+    body, _ = M.webhook_request({"url": "https://example/hook",
+                                 "kind": "discord"}, rec)
+    assert json.loads(body)["embeds"][0]["color"] == 0x123456
 
 
 def test_a_declared_kind_survives_the_loader(tmp_path, monkeypatch):
@@ -480,11 +609,20 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
         [sys.executable, "-c",
          "import sys; sys.modules['numpy'] = None; "
          f"sys.path.insert(0, {runwrap.MONITOR_BUNDLE!r}); "
-         "import mb_monitor, _run_ending, siesta_reader; print('loaded')"],
+         "import mb_monitor, _run_ending, siesta_reader, report_cards; "
+         "lay = report_cards.load(); "
+         "print('loaded', lay.source, mb_monitor.card("
+         "{'event': 'finish', 'energy': 1.5}, receiver='discord', "
+         "layout=lay)['fields'])"],
         cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
         f"the shipped monitor needs something a bare python lacks:\n"
         f"{proc.stderr[-2000:]}")
+    # THE LAYOUT IS THE BUNDLE'S OWN MEMBER (`run-reports.md` § 4.1c), read
+    # through the zip's loader -- not a file beside the job, not the
+    # package's.
+    assert f"{runwrap.MONITOR_BUNDLE}/report-cards.json" in proc.stdout
+    assert "[('energy', '1.5 eV')]" in proc.stdout, proc.stdout
 
 
 def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(

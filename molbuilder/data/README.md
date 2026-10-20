@@ -57,6 +57,7 @@ calculation.
 | `contact_distance.json` | — | `molbuilder.modify` | live |
 | `catalogue.template.toml` | `molbuilder/template@2` | `molbuilder.template.read_template` | **new 2026-08-14 — the parameter catalogue** |
 | `jupyter.toml` | `molbuilder/jupyter@1` | `molbuilder.jupyter.load_rules` | **new 2026-09-15 — the framed notebook's settings** |
+| `report-cards.json` | `molbuilder/report-cards@1` | `molbuilder.report_cards.load` — and the monitor beside a job, from its bundle | **2026-10-19 — the chat card's layout per receiver**. Its override is `<config dir>/report-cards.json`, NOT `$MOLBUILDER_DATA_DIR`: the config dir travels with the monitor, the data dir does not (`run-reports.md` § 4.1c) |
 | `jupyter_server_config.py` | — (executed Python) | **nothing imports it** — `molbuilder.jupyter.prepare_lab_home` COPIES it into the Lab home at every notebook start | **new 2026-09-15** |
 
 > **Two of these are not "fundamental physical data", and that is deliberate.**

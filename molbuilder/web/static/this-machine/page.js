@@ -410,13 +410,19 @@
         meta.textContent = [r.event, r.host, _when(r.sent_at)].filter(Boolean).join(" \u00b7 ");
         head.appendChild(meta);
         box.appendChild(head);
-        var text = document.createElement("p");
-        text.className = "tm-report-text";
-        text.textContent = c.text || r.text || "";
-        box.appendChild(text);
+        // The summary and the grid are the card's as laid out for the web
+        // receiver (`run-reports.md` § 4.1c): no summary when the layout
+        // hides it; the fields three abreast when it says `inline`.
+        if (c.text) {
+            var text = document.createElement("p");
+            text.className = "tm-report-text";
+            text.textContent = c.text;
+            box.appendChild(text);
+        }
         if (Array.isArray(c.fields) && c.fields.length) {
             var grid = document.createElement("dl");
             grid.className = "tm-report-grid";
+            if (c.inline) grid.dataset.inline = "";
             c.fields.forEach(function (f) {
                 var dt = document.createElement("dt"); dt.textContent = f[0];
                 var dd = document.createElement("dd"); dd.textContent = f[1];

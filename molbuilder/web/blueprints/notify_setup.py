@@ -430,6 +430,7 @@ def test_channel(name: str):
     producing.
     """
     from ...monitor import load_channels, webhook_request
+    from ...report_cards import LayoutError
     dest = load_channels().get(name)
     if not dest:
         return jsonify({"ok": False,
@@ -437,13 +438,17 @@ def test_channel(name: str):
                                  f"here"}), 404
     # THE MONITOR'S OWN PRODUCER, not a second one: the button that exists
     # to prove the path must not be a DIFFERENT path (`run-reports.md`
-    # § 4.1b).
-    body, headers = webhook_request(dest, {
-        "event": "test",
-        "text": f"a test report from molbuilder, for the channel {name!r}",
-        "state": "test",
-        "run": "notify-setup-test",
-    })
+    # § 4.1b).  The card is laid out by this server's layout file; one
+    # that does not read is this answer (§ 4.1c).
+    try:
+        body, headers = webhook_request(dest, {
+            "event": "test",
+            "text": f"a test report from molbuilder, for the channel {name!r}",
+            "state": "test",
+            "run": "notify-setup-test",
+        })
+    except LayoutError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
     req = urllib.request.Request(dest["url"], data=body, method="POST",
                                  headers=headers)
     try:
@@ -543,6 +548,7 @@ def reports():
     from ...config_dir import reports_dir
     from ...monitor import card, read_notify_keys
     from ...parse.instruments.reports import read_reports
+    from ...report_cards import LayoutError, load as load_layout
     _route, keys = read_notify_keys()
     user = (request.args.get("user") or getattr(g, "user", None) or "").strip()
     # NO USER TO READ FOR, OR NONE THE LISTENER KNOWS, is a state the tab
@@ -565,8 +571,14 @@ def reports():
                         "an epoch second"}), 400
     path = reports_dir() / f"{user}.jsonl"
     got = read_reports(path, since=since_f, limit=limit)
+    # THE LAYOUT ONCE for the page, the server's own (`run-reports.md`
+    # § 4.1c); one that does not read is this answer.
+    try:
+        layout = load_layout()
+    except LayoutError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
     for r in got["reports"]:
-        r["card"] = card(r)
+        r["card"] = card(r, receiver="web", layout=layout)
     return jsonify({"ok": True, "user": user, "file": str(path),
                     "total": got["total"], "skipped": got["skipped"],
                     "reports": got["reports"]})

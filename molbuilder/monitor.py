@@ -110,6 +110,7 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence,
 # always has been.
 try:                                        # inside molbuilder
     from .parse.engines import _run_ending as _ending
+    from . import report_cards as _cards
     from . import report_fields as _fields
     from . import runfiles as _rf
     from . import runrecord as _rr
@@ -121,6 +122,7 @@ try:                                        # inside molbuilder
     from .trajectory_log import keys as _K
 except ImportError:                         # beside the job
     import _run_ending as _ending
+    import report_cards as _cards
     import report_fields as _fields
     import runfiles as _rf
     import runrecord as _rr
@@ -1339,30 +1341,24 @@ def is_notify_user(user) -> bool:
 #: (`run-reports.md` § 4.1b).
 USER_AGENT = "molbuilder (https://github.com/qqing/molbuilder, 1.0)"
 
-#: Report colours, keyed to `JobStatus.state`.  A channel is read at a glance
-#: or it is not read at all.  ONE table for both chat destinations, because
-#: the two are meant to look alike (user, 2026-09-02): Discord takes the int,
-#: Slack takes the same value as ``#rrggbb``.
-_STATE_COLOR = {
-    "finished": 0x2ECC71,   # green
-    "failed":   0xE74C3C,   # red
-    "running":  0x3498DB,   # blue
-    "test":     0x95A5A6,   # grey
-}
-_COLOR_FALLBACK = 0x95A5A6
-
-
-
 def _card(report: Dict[str, Any],
-          items: "Optional[Tuple[str, ...]]" = None) -> Dict[str, Any]:
+          items: "Optional[Tuple[str, ...]]",
+          receiver: str,
+          layout: "Optional[_cards.Layout]") -> Dict[str, Any]:
     """The report as a CHAT CARD, before either vocabulary is chosen.
 
-    Discord embeds and Slack attachments are the same picture -- a coloured
-    bar, a title, a summary, a grid of short fields -- so the picture is
-    built once here and each sender only spells it
-    (`run-reports.md` § 4.1b).  Building it twice is how two channels of
-    the same event stop looking alike.
+    Discord embeds, Slack attachments and the This machine tab's card are
+    the same picture -- a coloured bar, a title, a summary, a grid of
+    fields -- so the picture is built once here and each sender only
+    spells it (`run-reports.md` § 4.1b).  Building it twice is how two
+    channels of the same event stop looking alike.  HOW it is laid out for
+    ``receiver`` -- the fields' order for the report's event, side by side
+    or not, how many at most, whether the summary shows, the bar's colour
+    -- is the layout file's (`run-reports.md` § 4.1c), read here when the
+    caller did not read it once already.
     """
+    lay = layout if layout is not None else _cards.load()
+    rc = lay.receiver(receiver)
     state = str(report.get("state") or "")
     # THE NAME IS ALWAYS IN THE TITLE.  A report you cannot attribute to a
     # job is a notification you have to go and look up, which is the thing
@@ -1370,32 +1366,26 @@ def _card(report: Dict[str, Any],
     run = str(report.get("run") or "molbuilder")
     job = str(report.get("job") or "")
     title = run + (f" · {job}" if job else "") + (f" — {state}" if state else "")
-    # `items` IS A CEILING, NEVER A FLOOR (`stages.md` § 6.9).  `None` is
-    # every field the monitor could determine; `()` is the summary line with
-    # no grid; and a field the monitor never determined stays absent whether
-    # or not it was asked for.
-    # ONE list of fields for both chat destinations, so Discord and Slack
-    # cannot drift apart in what they display: the declaration's.
-    fields = []
-    for f in _fields.FIELDS:
-        if items is not None and f.name not in items:
-            continue
-        val = report.get(f.name)
-        if val is None or val == "":
-            continue                 # absent stays absent -- unknown is not 0
-        fields.append((f.card, f.said(val)))
+    # `items` IS A CEILING, NEVER A FLOOR (`stages.md` § 6.9): the layout's
+    # order, narrowed by it, then by what the run stated, then cut at the
+    # receiver's limit (`report_cards.Layout.fields`).
+    text = str(report.get("text") or "") or "(no summary)"
     return {"title": title[:256],
-            "text": str(report.get("text") or "") or "(no summary)",
-            "color": _STATE_COLOR.get(state, _COLOR_FALLBACK),
-            "fields": fields}
+            "text": text if rc.summary else "",
+            "color": lay.color(state),
+            "fields": lay.fields(receiver, report, items),
+            "inline": rc.inline}
 
 
 def card(report: Dict[str, Any],
-         items: "Optional[Tuple[str, ...]]" = None) -> Dict[str, Any]:
+         items: "Optional[Tuple[str, ...]]" = None,
+         receiver: str = "web",
+         layout: "Optional[_cards.Layout]" = None) -> Dict[str, Any]:
     """The chat card's picture for ``report`` -- what Slack and Discord are
-    sent (:func:`_card`) -- for a page that draws the same one
-    (`this-machine.md` § 4.1)."""
-    return _card(report, items)
+    sent (:func:`_card`) -- laid out for ``receiver``, the This machine
+    tab's by default (`this-machine.md` § 4.1).  A page drawing many reads
+    the layout once and passes it."""
+    return _card(report, items, receiver, layout)
 
 
 #: The three wire formats.  `run-reports.md` § 4.1b.
@@ -1425,7 +1415,8 @@ def channel_kind(dest: Dict[str, Any]) -> str:
 
 def webhook_request(dest: Dict[str, Any],
                     report: Dict[str, Any],
-                    items: "Optional[Tuple[str, ...]]" = None
+                    items: "Optional[Tuple[str, ...]]" = None,
+                    layout: "Optional[_cards.Layout]" = None
                     ) -> "tuple[bytes, Dict[str, str]]":
     """THE ONE PRODUCER of a webhook's ``(body, headers)`` pair.
 
@@ -1434,36 +1425,43 @@ def webhook_request(dest: Dict[str, Any],
     (`run-reports.md` § 4.1b).  Every sender calls this -- the monitor's
     notifier and the setup page's *Test* button both: built separately, the
     button that exists to prove the path could pass while the path failed.
+    ``layout`` is the card's layout read once (`report_cards.load`); absent,
+    it is read here.
     """
     kind = channel_kind(dest)
     head = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
 
     if kind in ("slack", "discord"):
-        card = _card(report, items)
+        card = _card(report, items, kind, layout)
 
         if kind == "slack":
             # `attachments` rather than a bare `text`: same picture as the
             # Discord embed, in Slack's words.  `text` at the top level is
             # the notification/fallback line, which is what a phone shows.
+            # The field count is the layout's, capped at Slack's own ten
+            # when it is read (`report_cards.WIRE_LIMIT`).
             att = {"color": "#%06X" % card["color"],
                    "title": card["title"],
                    "text": card["text"],
                    "fallback": card["title"]}
             if card["fields"]:
-                att["fields"] = [{"title": n, "value": v, "short": True}
-                                 for n, v in card["fields"][:10]]
+                att["fields"] = [{"title": n, "value": v,
+                                  "short": card["inline"]}
+                                 for n, v in card["fields"]]
             return json.dumps({"text": card["title"],
                                "attachments": [att]}).encode(), head
 
         # DISCORD IGNORES `text` ENTIRELY.  Execute Webhook wants at least one
         # of content / embeds / components / file / poll, and a body with none
-        # of them is refused 400.
+        # of them is refused 400.  The field count is the layout's, capped at
+        # Discord's own twenty-five when it is read.
         embed = {"title": card["title"],
                  "description": card["text"][:4096],
                  "color": card["color"]}
         if card["fields"]:
-            embed["fields"] = [{"name": n, "value": v, "inline": True}
-                               for n, v in card["fields"][:25]]
+            embed["fields"] = [{"name": n, "value": v,
+                                "inline": card["inline"]}
+                               for n, v in card["fields"]]
         return json.dumps({"embeds": [embed]}).encode(), head
 
     # A molbuilder listener: the `run-reports.md` § 4.1a record, whole,
@@ -1697,10 +1695,13 @@ def make_webhook_notifier(url: str, *,
                           headers: Optional[Dict[str, str]] = None,
                           ident: Optional[Dict[str, str]] = None,
                           kind: Optional[str] = None,
-                          report: Optional[Sequence[str]] = None
+                          report: Optional[Sequence[str]] = None,
+                          layout: "Optional[_cards.Layout]" = None
                           ) -> Notifier:
     """A stdlib webhook notifier: POSTs ``event`` + the status summary to
     ``url`` as JSON.  Best-effort, short timeout, never raises out.
+    ``layout`` is the card's layout the monitor read at its start
+    (`run-reports.md` § 4.1c).
 
     JSON rather than form encoding because both destinations want it: Slack
     and Discord read a JSON body, and a private endpoint that appends to a
@@ -1739,7 +1740,7 @@ def make_webhook_notifier(url: str, *,
         # before the request arrives (`run-reports.md` § 4.1b).
         body, head = webhook_request(
             {"url": url, "key": key, "headers": headers, "kind": kind},
-            record, tuple(report) if report is not None else None)
+            record, tuple(report) if report is not None else None, layout)
         req = urllib.request.Request(
             url, data=body, method="POST", headers=head)
         try:
@@ -1791,8 +1792,11 @@ def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
 def _install_env_notifiers(log: Optional[Path] = None,
                            ident: Optional[Dict[str, str]] = None,
                            channels: Optional[Sequence[str]] = None,
-                           report: Optional[Sequence[str]] = None) -> None:
-    """Register the user's notifiers, if they configured any.
+                           report: Optional[Sequence[str]] = None,
+                           layout: "Optional[_cards.Layout]" = None) -> None:
+    """Register the user's notifiers, if they configured any.  ``layout``
+    is the card's layout, read once at the monitor's start
+    (`run-reports.md` § 4.1c), handed to every notifier.
 
     ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
     how you test a destination once without editing a file.  It names no
@@ -1826,7 +1830,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
         # once would fail in total silence.
         register_notifier(make_webhook_notifier(
             url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident,
-            report=report))
+            report=report, layout=layout))
         return
     if channels is not None and len(channels) == 0:
         # NONE ASKED FOR (`notify.channels = []`, `run-reports.md` § 3.0):
@@ -1846,7 +1850,8 @@ def _install_env_notifiers(log: Optional[Path] = None,
         dest = chosen[name]
         register_notifier(make_webhook_notifier(
             dest["url"], key=dest.get("key"), headers=dest["headers"],
-            ident=ident, kind=dest.get("kind"), report=report))
+            ident=ident, kind=dest.get("kind"), report=report,
+            layout=layout))
 
 
 # --------------------------------------------------------------------- #
@@ -1963,10 +1968,19 @@ def run_monitor(watched: "WatchedRun", *,
     _append(log, f"[{t0}] [MONITOR] start "
                  f"(interval={interval:.0f}s watch_pid={watch_pid}) "
                  f"{st0.as_text()}")
+    # THE CARD'S LAYOUT, READ ONCE, HERE (`run-reports.md` § 4.1c): this
+    # machine's copy or the shipped file.  One that does not read is
+    # refused with its reason in this log, and the monitor stops here --
+    # it is the person's own file, and nothing is guessed at.
+    try:
+        layout = _cards.load()
+    except _cards.LayoutError as exc:
+        _append(log, f"[{t0}] [MONITOR] the card's layout is refused -- {exc}")
+        raise
     # The channels AFTER the first two lines: what they say about themselves
     # (a channel not set up here, a malformed file) follows the machine.
     _install_env_notifiers(log, run_identity(watched), notify.channels,
-                           notify.report)
+                           notify.report, layout)
     _fire(st0, "start")
     # Policy state (`run-reports.md` § 2).  ``last_notify`` starts at the
     # job's start, so

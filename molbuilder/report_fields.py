@@ -14,7 +14,7 @@ the monitor reads it there, as `config_dir` travels.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -116,6 +116,9 @@ def pct_words(value: float) -> str:
 
 #: Every field's name, in order -- the vocabulary a name is checked against.
 NAMES: Tuple[str, ...] = tuple(f.name for f in FIELDS)
+#: Each field by its name -- what a layout's order is resolved through
+#: (`report_cards`).
+BY_NAME: Dict[str, ReportField] = {f.name: f for f in FIELDS}
 
 
 def for_run(engine: Optional[str] = None,
@@ -128,7 +131,7 @@ def refusal(name: str, engine: Optional[str] = None,
             calculation: Optional[str] = None) -> Optional[str]:
     """Why ``name`` cannot be asked of such a run, in words -- or ``None``
     when it can.  The one sentence a description, a flag and a route give."""
-    field = next((f for f in FIELDS if f.name == name), None)
+    field = BY_NAME.get(name)
     if field is None:
         return (f"{name!r} is not a report field. The fields are "
                 f"{', '.join(NAMES)} -- the report's own names "

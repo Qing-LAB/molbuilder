@@ -1679,7 +1679,7 @@ does ([`run-reports.md`](?doc=execution/run-reports.md) § 1).
 | `on_scf_converged` | boolean | — | `false` | anything but a JSON boolean |
 | `every_hours` | number of hours | `null` is **never** | — | a string (`"6h"`), `0`, a negative or a non-finite number |
 | `channels` | list of channel names | `["*"]` — **every channel the running machine has** | `[]` — **none**: reports off for this calculation | a name that is not letters, digits, `-` and `_`; `"*"` beside a name |
-| `report` | list of report field names | `["*"]` — **every field the run states** | `[]` — the name, the state and the summary line, with no field grid | a name that is not a report field, or one this calculation's runs can never state; `"*"` beside a name |
+| `report` | list of report field names | `["*"]` — **every field the run states**, of those the receiver's layout shows for the event (`run-reports.md` § 4.1c) | `[]` — the name, the state and the summary line, with no field grid | a name that is not a report field, or one this calculation's runs can never state; `"*"` beside a name |
 
 **A block states all four keys, every time** *(W57 R10 and D6, 2026-10-06)*:
 a key left out is refused by name. Until then a key was left out for its
@@ -1718,8 +1718,9 @@ and what a listener parses are the same word.
 
 **A list is a ceiling, never a floor.** Asking for `energy` on a run that has
 not printed one yields no `energy` field, not an empty one. And `report` shapes
-a chat card — the fields in its grid; our own listener receives the whole
-record ([`run-reports.md`](?doc=execution/run-reports.md) § 4.1b).
+a chat card — the fields in its grid, in the order and up to the count the
+receiver's layout gives the event ([`run-reports.md`](?doc=execution/run-reports.md)
+§ 4.1c); our own listener receives the whole record (§ 4.1b).
 
 **It is fixed at `prep`, not read at run time.** The wrapper bakes the whole
 block into the monitor's command line

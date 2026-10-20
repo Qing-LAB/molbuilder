@@ -263,6 +263,7 @@ directory of shipped modules reads as a directory of decks.
 | SCF iterations so far, and seconds per iteration, in the current SCF phase | the timing rule, `scf_timing_rows.timing_of`, over the run's stamped SCF rows: a SIESTA run's `.scf-timing.log`, a PySCF run's progress log, whose deck stamps each `scf_history` row ([`model/parse.md`](?doc=model/parse.md) § 5c) — the rule the Results tab states them by | `scf_timing_rows.py` · `molwatch_grammar.py` |
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, with its own order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), built on the one door that says whether the run ended on its own (`runrecord.ending`); a SIESTA run's stderr from the session log whose first section is the run (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` · `runrecord.py` |
 | which fields a report may carry, and how a card says each | the one declaration, `report_fields` (§ 4.1a): `ReportField.said`, the span rule's `span_words` and a share's `pct_words` | `report_fields.py` |
+| which fields a card shows for an event, in what order, for each receiver | the layout file, through its reader `report_cards` (§ 4.1c) | `report_cards.py` · `report-cards.json`, the bundle's one data member |
 | *not a report — what the run script records through it*: a flat run's warm retry, its own launch record (`mb_monitor.pyz retried`) | the one writer, `runrecord.record_retry` → `write_launch`, through `persist` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
 | the wall it was sent with (§ 2.1b) | the run's launch record, `runrecord.launch_record` — `placed_on.time`, read by `runrecord.sent_wall_s` | `runrecord.py` |
@@ -738,7 +739,7 @@ when — because somebody parses it later with no session to ask:
 | `job` | the monitor | `MB_JOB_ID`, the scheduler's id for the job; absent outside a scheduler |
 | `host` | the monitor | the node's own name |
 | `sent_at` | the monitor | the sender's clock, epoch seconds |
-| `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near` or `finish` (§ 2) |
+| `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
 | `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
 | `elapsed_s` … `eta_s` | the monitor | the report fields, below |
@@ -777,14 +778,15 @@ path.
 | `kind` | body | headers |
 |---|---|---|
 | `molbuilder` | the § 4.1a record, whole | `Content-Type`, `User-Agent`, the channel's own `headers`, and with a `key` the two signature headers (§ 4.1) |
-| `slack` | `{"text": <title>, "attachments": [{"color", "title", "text": <summary>, "fallback", "fields"}]}` — up to 10 fields | `Content-Type`, `User-Agent` |
-| `discord` | `{"embeds": [{"title", "description": <summary>, "color", "fields"}]}` — up to 25 fields | `Content-Type`, `User-Agent` |
+| `slack` | `{"text": <title>, "attachments": [{"color", "title", "text": <summary>, "fallback", "fields"}]}` — up to 10 fields, Slack's own ceiling (§ 4.1c `limit`) | `Content-Type`, `User-Agent` |
+| `discord` | `{"embeds": [{"title", "description": <summary>, "color", "fields"}]}` — up to 25 fields, Discord's own ceiling (§ 4.1c `limit`) | `Content-Type`, `User-Agent` |
 
 **A chat card is one picture in two vocabularies** (user, 2026-09-02): the
 title is the run, its job id and its state — `bdt_au_01_coarse · 62238108 —
 running`; the summary line is its text; its colour is the state's — running
-blue, finished green, failed red; and its fields are the report fields
-`notify.report` selected ([`stages.md`](?doc=engines/stages.md) § 6.9), each
+blue, finished green, failed red (the layout file's colours, § 4.1c); and its fields are the report fields
+`notify.report` selected ([`stages.md`](?doc=engines/stages.md) § 6.9), in the
+order and up to the count the receiver's layout gives the event (§ 4.1c), each
 as its declaration says it (`ReportField.said`) — with its unit; a length of
 time in words (`6h`, `span_words`); a share as the engine printed it, its
 trailing zeros dropped (`10.01 %`, `pct_words`) — an unstated one left out. **Discord ignores a bare `text`**:
@@ -796,6 +798,91 @@ Execute Webhook refuses (`400`) a body carrying none of `content`, `embeds`,
 | **every request carries a `User-Agent`**, `molbuilder (https://github.com/qqing/molbuilder, 1.0)` | Discord's edge answers the default `Python-urllib/3.x` with `403` (Cloudflare 1010) before the request reaches Discord, so a live webhook and a deleted one look the same. With a real one, a wrong URL answers `{"message": "Unknown Webhook", "code": 10015}` — a sentence a person can act on |
 | **a `key` is never sent to Slack or Discord** | their URL is the credential (§ 3); a signature header means nothing to the receiver and everything to us |
 | **which kind is declared**, and the host only supplies a default: `hooks.slack.com` → `slack`; `discord.com` (and `www.`, `ptb.`, `canary.discord.com`) or `discordapp.com` → `discord`; anything else → `molbuilder` | a webhook reached through a proxy or a relay is still expressible — a rule read from a string stops holding when the string changes |
+
+### 4.1c The card's layout is data, per receiver *(user, 2026-10-19)*
+
+> *"a target receiver aware config file (maybe in toml or json) driven
+> model"* — *"a nice and visually clean way to present the intermediate
+> status"*
+
+**One layout file says how the one picture is laid out for each receiver.**
+A receiver is a `kind` of § 4.1b (`slack`, `discord`) or `web`, the This
+machine tab. The file is `molbuilder/data/report-cards.json`, schema
+`molbuilder/report-cards@1`. JSON, not TOML: the monitor reads it beside the
+job on whatever python the job's machine has (§ 2.3), and `tomllib` is 3.11's.
+Its reader is `report_cards.py`, standard library alone, and the file travels
+in the monitor's bundle as its one data member, beside the reader. The reader
+finds the file by the import's two ways (§ 2.3): inside the package, in
+`molbuilder/data/`; beside the job, beside itself in the bundle — read through
+`__loader__.get_data`, which serves a zip member and a file alike. The server
+reads the same shipped file for the tab.
+
+**A copy replaces it whole**: `<config dir>/report-cards.json`
+([`configuration.md`](?doc=configuration.md) § 3.1, `report_cards.layout_path()`).
+The config dir, not `$MOLBUILDER_DATA_DIR` (`data/README.md`), because the
+config dir travels with the monitor (`config_dir.py`) and the data dir does
+not. The monitor reads the copy on the machine that runs the job; the tab and
+the Test button read the server's. Each is the person's own file, never written
+by molbuilder, not a secret, any mode. A file that does not read is refused by
+its reason: the monitor at its start, in its log's line (§ 2.6), and the monitor
+stops there; the reports route and the Test button in their answer.
+
+```json
+{"schema": "molbuilder/report-cards@1",
+ "colors": {"running": "#3498DB", "finished": "#2ECC71", "failed": "#E74C3C",
+            "test": "#95A5A6", "other": "#95A5A6"},
+ "receivers": {
+   "slack":   {"inline": true, "limit": 10, "summary": true,
+               "order": {"start": [], "scf_converged": [...], "periodic": [...],
+                         "wall_near": [...], "finish": [...], "test": []}},
+   "discord": {"inline": true, "limit": 25, "summary": true, "order": {...}},
+   "web":     {"inline": true, "limit": 0,  "summary": true, "order": {...}}}}
+```
+
+| key | what it decides |
+|---|---|
+| `colors` | the card's bar, by the report's `state`, as `#RRGGBB`; `other` for a state the table does not name. The reader gives the number; each wire spells it (Slack `#RRGGBB`, Discord the number, the tab from the number) |
+| `receivers.<kind>` | one entry per receiver; a receiver with no entry is refused at load, by name |
+| `inline` | `true` sets the fields side by side — Slack's `short`, two to a line; Discord's `inline`, up to three; the tab's grid, three (the two webhooks' own documents) — `false` puts each on its own line |
+| `limit` | how many fields at most; `0` is no limit. A wire's own ceiling (§ 4.1b: Slack 10, Discord 25) is the most a receiver may say, and a larger one is refused at load |
+| `summary` | whether the summary line (`text`) is shown under the title |
+| `order.<event>` | **the fields, in the order the card shows them, for that event** — the five of § 2 and `test`, the setup page's button (§ 4.1a); each a report field's name (§ 4.1a); `[]` is the title and the summary line alone |
+
+**What stays the code's.** The title: the run, its job and its state, always
+(§ 4.1b). A card's fields are the receiver's order for the report's event,
+narrowed by the calculation's `notify.report` — the person's ceiling, never a
+floor ([`stages.md`](?doc=engines/stages.md) § 6.9) — then by what the run
+stated (an absent field stays absent), then cut at the receiver's limit. The
+order is the layout's, so two people who ticked the same boxes get the same
+card. A report whose event the receiver's order has no row for — one that
+names none — is laid out in the declaration's order, whole.
+
+**A ticked field the layout leaves off one event is shown at the others.**
+The layout says what a *start* card is for and what a *finish* card is for.
+The refusal at save (§ 6.9) is for a field no run of the calculation can ever
+state; a field left off every event's order is refused at load, by name, for
+the same reason — a tick nobody can ever see. A field named by the layout that
+no declaration knows (`report_fields.py`) is refused at load, by name — the
+file cannot invent one. Each field is said as its declaration says it
+(`ReportField.said`).
+
+**The one producer stays one** (§ 4.1b): the Test button's card and a run's
+card are laid out by the same shipped file, unless a copy on one machine
+replaces it — the person's choice, on that machine.
+
+**What the shipped layout chooses** — the intermediate status read at a
+glance. A *start* card and a *test* card are the title and the summary line,
+with no field grid: the summary says where the run is and its wall, and a
+test report states no field. A *scf_converged* or *periodic* card shows the
+time and rate first (`elapsed_s`, `n_iters`, `per_iter_s`), then the result
+(`energy`, `max_force`, `max_force_held`, `geom_step`), then a loop's progress
+(`done_pct`, `eta_s`). A *wall_near* card shows the time (`elapsed_s`,
+`eta_s`, `done_pct`) before the result. A *finish* card shows the result
+first. That is Discord's and the web's order. Slack's swaps `n_iters` and
+`per_iter_s` and puts `geom_step` before `energy`, so that its two columns
+pair time with rate, iterations with the step, and energy with force when
+every field is stated. The web receiver shows every field the run stated,
+with no limit.
 
 ### 4.2 What someone probing this actually gets
 

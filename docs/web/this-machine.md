@@ -193,7 +193,9 @@ lists **the reports this server received for you**, newest first — the time
 it was sent, the calculation and its job, the machine it ran on, the event,
 and the summary line — each opening to the **same card Slack and Discord
 got** (the one picture, `monitor.card`, in the page's own spelling: title,
-headline, the field grid, the state's colour). A filter narrows by
+headline, the field grid, the state's colour). The card is laid out for the
+`web` receiver — the field order, whether the grid is three abreast — by the
+layout file (`run-reports.md` § 4.1c). A filter narrows by
 calculation, machine or event; while the tab is open the list follows the
 file (a poll every 30 s, the same as a results viewer follows a live run);
 and the header shows how many arrived since you last looked (a per-browser

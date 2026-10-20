@@ -1,0 +1,159 @@
+{
+ "schema": "molbuilder/report-cards@1",
+ "colors": {
+  "running": "#3498DB",
+  "finished": "#2ECC71",
+  "failed": "#E74C3C",
+  "test": "#95A5A6",
+  "other": "#95A5A6"
+ },
+ "receivers": {
+  "slack": {
+   "inline": true,
+   "limit": 10,
+   "summary": true,
+   "order": {
+    "start": [],
+    "scf_converged": [
+     "elapsed_s",
+     "per_iter_s",
+     "n_iters",
+     "geom_step",
+     "energy",
+     "max_force",
+     "max_force_held",
+     "done_pct",
+     "eta_s"
+    ],
+    "periodic": [
+     "elapsed_s",
+     "per_iter_s",
+     "n_iters",
+     "geom_step",
+     "energy",
+     "max_force",
+     "max_force_held",
+     "done_pct",
+     "eta_s"
+    ],
+    "wall_near": [
+     "elapsed_s",
+     "eta_s",
+     "done_pct",
+     "n_iters",
+     "energy",
+     "max_force",
+     "geom_step"
+    ],
+    "finish": [
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s"
+    ],
+    "test": []
+   }
+  },
+  "discord": {
+   "inline": true,
+   "limit": 25,
+   "summary": true,
+   "order": {
+    "start": [],
+    "scf_converged": [
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s",
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "done_pct",
+     "eta_s"
+    ],
+    "periodic": [
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s",
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "done_pct",
+     "eta_s"
+    ],
+    "wall_near": [
+     "elapsed_s",
+     "eta_s",
+     "done_pct",
+     "n_iters",
+     "energy",
+     "max_force",
+     "geom_step"
+    ],
+    "finish": [
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s"
+    ],
+    "test": []
+   }
+  },
+  "web": {
+   "inline": true,
+   "limit": 0,
+   "summary": true,
+   "order": {
+    "start": [],
+    "scf_converged": [
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s",
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "done_pct",
+     "eta_s"
+    ],
+    "periodic": [
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s",
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "done_pct",
+     "eta_s"
+    ],
+    "wall_near": [
+     "elapsed_s",
+     "eta_s",
+     "done_pct",
+     "n_iters",
+     "energy",
+     "max_force",
+     "geom_step"
+    ],
+    "finish": [
+     "energy",
+     "max_force",
+     "max_force_held",
+     "geom_step",
+     "elapsed_s",
+     "n_iters",
+     "per_iter_s"
+    ],
+    "test": []
+   }
+  }
+ }
+}

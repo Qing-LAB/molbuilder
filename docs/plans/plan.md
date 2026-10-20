@@ -106,8 +106,14 @@ or a device's set-up until its first SCF row (`model/parse.md` § 2b,
 functions in a device run's own `tsgf/`, one pair at a time, the walk
 round by round; what the files cost and the four levers; the size said on
 the device's row before the launch (`transport.md` § 2a.11, *What a run's
-points share*). Open, with the user's yes: the chat card's layout as data
-per receiver (a layout file; the one card built once).
+points share*). **Then 2.23.0, contract first**: the chat card's layout as
+data per receiver — one layout file, read beside the job and by the server,
+a copy in the config dir replacing it whole (`run-reports.md` § 4.1c).
+**Proposed, awaiting the user's yes** (the user asked on 2026-10-19 whether
+the transport road and the multi-frame support were reviewed whole; today's
+reviews were each release's own scope): a full-text, full-code review of
+`transport.md` and the frame-set contract against the code as it stands at
+2.22.0, two fresh rounds.
 
 **What decides next is the user's, on Sol**: the junction (E13), the
 multi-frame run, a vibration on 2.15.x — the PySCF environment there needs

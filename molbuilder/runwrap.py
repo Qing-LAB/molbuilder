@@ -3751,6 +3751,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "keys.py":             "molbuilder.trajectory_log.keys",
     "_run_ending.py":      "molbuilder.parse.engines._run_ending",
     "report_fields.py":    "molbuilder.report_fields",
+    "report_cards.py":     "molbuilder.report_cards",
     "job.py":              "molbuilder.parse.dirs.job",
     "runrecord.py":        "molbuilder.runrecord",
     "persist.py":          "molbuilder.persist",
@@ -3767,6 +3768,13 @@ MONITOR_COMPANIONS: Dict[str, str] = {
 #: put it in one single Python file?"*): still the package's own files, so still no second copy of any
 #: reader.
 from .runfiles import MONITOR_BUNDLE  # noqa: E402 -- the catalogue's name
+from .report_cards import FILENAME as _CARDS_FILE, SHIPPED as _CARDS_SHIPPED  # noqa: E402
+
+#: The bundle's ONE DATA MEMBER (`run-reports.md` § 4.1c): the chat card's
+#: layout, the package's own file under its shipped name, beside its reader
+#: `report_cards.py`, which finds it there through ``__loader__.get_data``.
+#: ``{name beside the job: the package file}`` -- the path is the owner's.
+MONITOR_DATA: Dict[str, Path] = {_CARDS_FILE: _CARDS_SHIPPED}
 
 #: What the wrapper's log says when the ending cannot be asked: no python
 #: beside the job, no bundle, or a bundle that does not load on it -- whose
@@ -3821,19 +3829,29 @@ def monitor_bundle() -> bytes:
     (:func:`companion_source`), zipped beside the entry.  The same sources
     give the same bytes (fixed member times), so a re-prep writes the file it
     found."""
-    return _zip_bundle(_BUNDLE_MAIN, MONITOR_COMPANIONS)
+    return _zip_bundle(_BUNDLE_MAIN, MONITOR_COMPANIONS, MONITOR_DATA)
 
 
-def _zip_bundle(main: str, companions: Dict[str, str]) -> bytes:
+def _zip_bundle(main: str, companions: Dict[str, str],
+                data: Optional[Dict[str, Path]] = None) -> bytes:
     """ONE builder for every bundle that travels beside a job: ``main`` as
     the zip application's ``__main__.py``, then each of ``companions`` as its
-    module's own file, read (:func:`companion_source`)."""
+    module's own file, read (:func:`companion_source`), then each of
+    ``data`` -- a file that is not a module, read as text -- under its
+    member name."""
     import io
     import zipfile
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         members = [("__main__.py", main)] + [
             (name, companion_source(name, companions)) for name in companions]
+        for name, path in (data or {}).items():
+            try:
+                members.append((name, path.read_text(encoding="utf-8")))
+            except OSError as exc:
+                raise WrapperError(
+                    f"could not read {name!r} to ship beside the job: "
+                    f"{exc}") from None
         for name, text in members:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED

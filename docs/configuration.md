@@ -651,6 +651,7 @@ A11 for the name).
 $MOLBUILDER_CONFIG_DIR, else $XDG_CONFIG_HOME/molbuilder, else ~/.config/molbuilder
 │                                      0700   config_dir.config_dir()
 ├── molbuilder.json        what you want              0600   runtime_config.machine_config_path()
+├── report-cards.json      the chat card's layout (optional)      report_cards.layout_path()
 ├── environment.json       what THIS machine is              scheduler/record.machine_scope_path()
 ├── environments/          one record per OTHER machine  0700   scheduler/record.environments_dir()
 │   ├── README                  written by `envs init-config`
