@@ -1,0 +1,46 @@
+{
+  "schema": "molbuilder/job-request@1",
+  "allocation": {
+    "domain": "htc",
+    "time": "0-04:00:00",
+    "mem": "128G"
+  },
+  "execution": {
+    "mpi_np": 8,
+    "omp_threads": 2,
+    "diag_algorithm": "ELPA-2STAGE"
+  },
+  "stages": {
+    "coarse": {
+      "group": 1
+    },
+    "tight": {
+      "group": 2,
+      "execution": {
+        "mpi_np": 16,
+        "time": "1-00:00:00"
+      }
+    }
+  },
+  "bench": {
+    "mpi_np": [
+      4,
+      8,
+      16
+    ],
+    "omp_threads": [
+      1,
+      2
+    ]
+  },
+  "notify": {
+    "on_scf_converged": true,
+    "every_hours": 6,
+    "channels": [
+      "slack"
+    ],
+    "report": [
+      "*"
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 the one before has finished (`execution/job-system.md` § 6.0, *A sequence of
 groups*) -- down the road with the real SIESTA.
 
-``jobset init`` (hierarchical, the shipped `publishable` ladder: three
+``molbuilder describe`` (hierarchical, the shipped `publishable` ladder: three
 stages, each building on the one before, groups 1 2 3) -> ``prep task
 --group 1 --group 2 --group 3 --one-job`` -> ``launch task --group 1
 --group 2 --group 3 --mode direct``: ONE walk, run here, launching each
@@ -25,7 +25,8 @@ from pathlib import Path
 import pytest
 
 from _road import conda_hook, env_available, live_siesta
-from support.road import H2, jobset, molbuilder, road_structure
+from support.road import (H2, jobset, molbuilder, read_request,
+                          road_structure, write_request)
 
 pytestmark = [
     pytest.mark.e2e,
@@ -38,33 +39,31 @@ pytestmark = [
 
 def _calculation(tree: Path, name: str) -> Path:
     """A three-stage H2 relaxation ladder, one rank a run -- an H2 needs no
-    more -- described as `jobset init` describes it."""
+    more -- described as `molbuilder describe` describes it."""
     from molbuilder.workingcopy_structure import StructureCodec
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
     pair = tree / "P" / "structure" / "h2.xyz"
     if not pair.is_file():
         StructureCodec().write(road_structure(H2), pair)
-    r = jobset("init", "--structure", "P/structure/h2.xyz",
+    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                "--bundle", f"P/opt/{name}", "--engine", "siesta",
                "--calculation", "optimization", "--shape", "hierarchical",
                "--name", "H2", "--psml-lib", "pseudopotential",
                "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "opt" / name
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
-                         "omp_threads": 1}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    request = read_request(bundle)
+    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
+                            "omp_threads": 1}
+    write_request(bundle, request)
     return bundle
 
 
 def _groups(bundle: Path):
-    """The description's groups, each with its stages, in order."""
-    from molbuilder.task import of as task_of
-    task = task_of(bundle)
-    numbers = sorted({st.group for st in task.stages})
-    return [(n, [st.name for st in task.stages if st.group == n])
-            for n in numbers]
+    """The job request's groups, each with its stages, in order."""
+    from molbuilder.calculation import open as open_calculation
+    request = open_calculation(bundle).request
+    return [(n, request.members(n)) for n in request.numbers]
 
 
 def _ledger(bundle: Path):
@@ -166,7 +165,8 @@ def test_each_run_records_the_sequence_it_rode(road):
     from molbuilder.runrecord import launch_record
     calc = open_calculation(road["whole"])
     numbers = [n for n, _ in road["groups"]]
-    name = sequence_names(road["whole"], calc.task, numbers).stem
+    name = sequence_names(road["whole"], calc.task, calc.request,
+                          numbers).stem
     for _n, stages in road["groups"]:
         for st in stages:
             home = stage_home(road["whole"], calc.task, st)
@@ -186,7 +186,7 @@ def test_the_sequence_record_and_the_ledger_say_it(road):
     from molbuilder.jobset.sequence import read_record, record_path
     calc = open_calculation(road["whole"])
     numbers = [n for n, _ in road["groups"]]
-    names = sequence_names(road["whole"], calc.task, numbers)
+    names = sequence_names(road["whole"], calc.task, calc.request, numbers)
     rec = read_record(record_path(road["whole"], names))
     assert [g["number"] for g in rec.groups] == numbers, rec
     assert rec.mode == "direct" and rec.scheduler is None, rec

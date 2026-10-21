@@ -24,6 +24,7 @@ from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from support.machines import SLURM
+from support.road import read_request, write_request
 
 
 #: A small Sol-SHAPED menu, written by hand so each fit is a fact about this
@@ -55,12 +56,11 @@ def _queues(cell):
 
 
 def _with_queue(bundle, name):
-    """The description names the benchmark's one queue
+    """The job request names the benchmark's one queue
     (`allocation.domain`, `generator.md` § 4.3a)."""
-    tj = bundle / "task.json"
-    doc = json.loads(tj.read_text())
-    doc["allocation"] = {**doc.get("allocation", {}), "domain": name}
-    tj.write_text(json.dumps(doc, indent=2))
+    req = read_request(bundle)
+    req["allocation"] = {**req.get("allocation", {}), "domain": name}
+    write_request(bundle, req)
 
 
 @pytest.fixture()
@@ -79,8 +79,7 @@ def bundle(tmp_path):
     dest = tmp_path / "bundle"
     D.write_description(
         D.build_description(struct,
-                            SiestaConfig(system_label="JOB", use_gpu=True,
-                                         diag_algorithm="ELPA-1STAGE"),
+                            SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization",
@@ -98,12 +97,13 @@ def bundle(tmp_path):
                       env_init={"activation": "conda activate",
                                          "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
-    # A GPU RUN STATES HOW MANY (`execution/gpu.md` G5), on the calculation's
-    # run card; the bench never reads it.
-    tj = dest / "task.json"
-    d = json.loads(tj.read_text())
-    d["execution"] = {"gpu_count": 1}
-    tj.write_text(json.dumps(d, indent=2))
+    # THE RUN ON THE GPU, and how many (`execution/gpu.md` G5), on the
+    # calculation's run card; the bench takes its GPU from it, never its
+    # count.
+    req = read_request(dest)
+    req["execution"] = {"use_gpu": True, "diag_algorithm": "ELPA-1STAGE",
+                        "gpu_count": 1}
+    write_request(dest, req)
     return dest
 
 
@@ -155,17 +155,16 @@ class TestTheDoorServesTheOneEnumerator:
 
     def test_the_axes_SENT_win_over_the_axes_on_disk(self, client, bundle):
         """The card's edits live in the browser's model until the person
-        saves, so a list read from `task.json` would describe the previous
+        saves, so a list read from `job-request.json` would describe the previous
         state.  The point of the door is that it does not.
 
         Both halves are asserted: what is SAVED must not appear, and what is
         SENT must.  Checking only the second would pass on a door that
         merged the two."""
         saved = {"mpi_np": [16], "omp_threads": [1], "use_gpu": [False]}
-        tj = bundle / "task.json"
-        doc = json.loads(tj.read_text())
-        doc["bench"] = saved
-        tj.write_text(json.dumps(doc, indent=2))
+        req = read_request(bundle)
+        req["bench"] = saved
+        write_request(bundle, req)
 
         d = _post(client, bundle, {"mpi_np": [64], "omp_threads": [1],
                                    "use_gpu": [False]})
@@ -366,13 +365,17 @@ class TestPickingThisMachineIsAnAnswer:
 # --------------------------------------------------------------------- #
 
 _PLAN_TASK = {
-    "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+    "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
                                               "calculation": "optimization",
     "shape": "hierarchical", "run": {"name": "r", "id": "r_H2"},
     "structure": {"source": "a.xyz", "formula": "H2", "atoms": 2},
     "varies": [],
-    "stages": [{"name": "coarse", "group": 1, "overrides": {}},
-               {"name": "tight", "group": 2, "overrides": {}}],
+    "stages": [{"name": "coarse", "overrides": {}},
+               {"name": "tight", "overrides": {}}],
+}
+_PLAN_REQUEST = {
+    "schema": "molbuilder/job-request@1",
+    "stages": {"coarse": {"group": 1}, "tight": {"group": 2}},
     "allocation": {"domain": "htc", "time": "1-00:00:00"},
     # THREE points on one axis and ONE on the other: an axis to measure
     # beside a decision already made (`generator.md` § 4.3a).
@@ -380,26 +383,27 @@ _PLAN_TASK = {
 }
 
 
-def _plan(client, task):
+def _plan(client, task, request=None):
     return client.post("/api/task-setup/prep-plan",
-                       json={"task": task}).get_json()
+                       json={"task": task,
+                             "request": request or _PLAN_REQUEST}).get_json()
 
 
 def _runnable(bundle):
     """The launch values a run states, or prep refuses it (`architecture.md`
-    § 5.2): its ranks and cores per rank, its GPU count -- the template runs
-    on the GPU -- and, on this machine with a scheduler, its queue, wall
-    and memory."""
-    import json
-    tj = bundle / "task.json"
-    d = json.loads(tj.read_text())
-    d["execution"] = {"mpi_np": 4, "omp_threads": 1, "gpu_count": 1}
-    d["allocation"] = {"domain": "short", "time": "01:00:00", "mem": "8G"}
-    tj.write_text(json.dumps(d, indent=2))
+    § 5.2): its ranks and cores per rank, its GPU count -- the run card
+    runs it on the GPU -- and, on this machine with a scheduler, its queue,
+    wall and memory."""
+    req = read_request(bundle)
+    req["execution"] = {**req.get("execution", {}), "mpi_np": 4,
+                        "omp_threads": 1, "gpu_count": 1}
+    req["allocation"] = {"domain": "short", "time": "01:00:00", "mem": "8G"}
+    write_request(bundle, req)
 
 
 def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
-    """The prep door takes a FOLDER: the one entry reads its `task.json`.
+    """The prep door takes a FOLDER: the one entry reads its `task.json`
+    and its `job-request.json`.
 
     One assembly serves the CLI and the browser (A12), and the CLI has only
     the file -- so the document is not a channel here, and a browser holding
@@ -409,16 +413,16 @@ def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
 
     Asserted by CONTRADICTION: post a document that disagrees with the file
     and check the answer follows the file."""
-    import json
     _runnable(bundle)
-    d = json.loads((bundle / "task.json").read_text())
-    d["stages"][0]["execution"] = {"mpi_np": 7}
-    (bundle / "task.json").write_text(json.dumps(d, indent=2))
+    req = read_request(bundle)
+    req["stages"]["coarse"]["execution"] = {"mpi_np": 7}
+    write_request(bundle, req)
 
     r = client.post("/api/task-setup/prep", json={
         "dest": str(bundle), "kind": "task", "groups": [1], "plan": True,
         # a document saying something ELSE -- it must be ignored
-        "task": {"stages": [{"name": "coarse", "execution": {"mpi_np": 999}}]},
+        "request": {"stages": {"coarse": {"group": 1,
+                                          "execution": {"mpi_np": 999}}}},
     })
     assert r.status_code == 200, r.get_data(as_text=True)
     header = (r.get_json()["answers"][0].get("launch") or {}).get("header") or []
@@ -487,7 +491,8 @@ class TestThePlanComesFromTheProducer:
         `if` for "no directory"."""
         t = dict(_PLAN_TASK, shape="flat",
                  stages=[_PLAN_TASK["stages"][0]])
-        d = _plan(client, t)
+        d = _plan(client, t, dict(_PLAN_REQUEST,
+                                  stages={"coarse": {"group": 1}}))
         assert [r["dir"] for r in d["stages"]] == ["."]
 
     def test_every_stage_shows_the_ONE_allocation(self, client):
@@ -511,8 +516,8 @@ class TestThePlanComesFromTheProducer:
         for row in d["stages"]:
             assert row["chosen"] == {}, (
                 "a bench row reached the run's shape: " + repr(row["chosen"]))
-        withcond = dict(_PLAN_TASK, execution={"mpi_np": 8})
-        for row in _plan(client, withcond)["stages"]:
+        withcond = dict(_PLAN_REQUEST, execution={"mpi_np": 8})
+        for row in _plan(client, _PLAN_TASK, withcond)["stages"]:
             assert row["chosen"] == {"mpi_np": 8}
 
     def test_the_bench_row_carries_every_axis(self, client):
@@ -544,7 +549,7 @@ class TestThePlanComesFromTheProducer:
         """Unreadable is ordinary while someone types, and the card hides the
         list rather than showing a plan for a document that no longer says
         what it did."""
-        d = _plan(client, {"schema": "molbuilder/task@1"})
+        d = _plan(client, {"schema": "molbuilder/task@2"})
         assert d["ok"] is False and d["error"]
 
 

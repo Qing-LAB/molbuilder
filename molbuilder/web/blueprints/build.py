@@ -979,6 +979,8 @@ TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
 #: writing a premature one would make the folder claim to be a calculation root
 #: before it is one (`checkpointing.md` L1).
 from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa: E402 -- the catalogue's name
+from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E402
+from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA_NOW  # noqa: E402
 
 
 @bp.route("/api/task-setup/handover", methods=["POST"])
@@ -1062,7 +1064,7 @@ def api_task_setup_handover():
     # topic -- project / topic / its folder, three levels inside the picker's
     # root (`job-contracts.md` § 2.5; the file layer's one depth door,
     # `files._depth_inside_root`) -- and one calculation per folder
-    # (`describe.refuse_described`, the rule `jobset init` asks).  A sender
+    # (`describe.refuse_described`, the rule `molbuilder describe` asks).  A sender
     # that names no folder is answered about the library alone.
     dest_dir = None
     if body.get("dest"):
@@ -1182,7 +1184,7 @@ def api_task_setup_handover():
         # identity, can ever take this name -- else a flat SIESTA run
         # whose label matched the structure's stem would overwrite its own
         # input via WriteCoorXmol.  The one call both
-        # writers make -- `jobset init` too (`StructureCodec.source_files`).
+        # writers make -- `molbuilder describe` too (`StructureCodec.source_files`).
         made = StructureCodec().source_files(struct, label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -1195,20 +1197,23 @@ def api_task_setup_handover():
     geometry_name = next((f["name"] for f in structure_files
                           if not f["name"].endswith(".json")), "")
 
-    from molbuilder.jobset.group import numbered_fresh
+    from molbuilder.jobset.group import fresh_groups
     from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import derive_run, fresh_varies
-    proposed = numbered_fresh(
-        fresh_stages(calculation, engine,
-                     already_relaxed=bool(getattr(cfg, "already_relaxed",
-                                                  False))),
-        engine=engine, calculation=calculation, template_text=template_text)
+    proposed = fresh_stages(calculation, engine,
+                            already_relaxed=bool(getattr(cfg, "already_relaxed",
+                                                         False)))
+    groups = fresh_groups(proposed, engine=engine, calculation=calculation,
+                          template_text=template_text)
+    from molbuilder.job_request import SCHEMA as _JOB_REQUEST_SCHEMA
     from molbuilder.task import SCHEMA as _TASK_SCHEMA
     handover = {
         "schema":    TASK_HANDOVER_SCHEMA,
         # THE DESCRIPTION'S OWN SCHEMA STRING, for the page to write -- the
-        # page spells none (`task.SCHEMA`, one home; 2026-10-19).
+        # page spells none (`task.SCHEMA`, one home; 2026-10-19) -- and its
+        # job request's (`job_request.SCHEMA`).
         "task_schema": _TASK_SCHEMA,
+        "job_request_schema": _JOB_REQUEST_SCHEMA,
         # JSON has no comments, so the file carries a line that says what it
         # is.  It IS read by a person -- Task setup shows it in the editor --
         # and a file whose whole job is to be handed between two surfaces
@@ -1251,15 +1256,17 @@ def api_task_setup_handover():
     # THE KIND RIDES THE HAND-OVER, every kind -- the receiving tab writes
     # it into task.json.
     handover["calculation"] = calculation
-    # THE PROPOSED LADDER RIDES IT TOO, numbered: the fresh ladder's one
-    # owner (`ladder.fresh_stages` -- a vibration's own, read from the box;
-    # the ordinary one-stage start otherwise) through the one numbering
-    # rule (`jobset.group.numbered_fresh`), as `jobset init` makes it.
-    # Task setup shows it as what will be written; it re-derives nothing.
+    # THE PROPOSED LADDER RIDES IT TOO: the fresh ladder's one owner
+    # (`ladder.fresh_stages` -- a vibration's own, read from the box; the
+    # ordinary one-stage start otherwise) -- and each stage's group, the job
+    # request's, beside it, by the one numbering rule
+    # (`jobset.group.fresh_groups`), as `molbuilder describe` makes them.
+    # Task setup shows both as what will be written; it re-derives nothing.
     handover["proposed_stages"] = [
-        {"name": st.name, "group": st.group, "overrides": dict(st.overrides)}
-        for st in proposed]
-    # ...AND WHAT THOSE STAGES VARY, by the one rule `jobset init` writes
+        {"name": st.name, "overrides": dict(st.overrides)} for st in proposed]
+    handover["proposed_groups"] = {st.name: g
+                                   for st, g in zip(proposed, groups)}
+    # ...AND WHAT THOSE STAGES VARY, by the one rule `molbuilder describe` writes
     # with (`task.varies_for` over their overrides -- nothing, for a fresh
     # one-stage ladder): the page copies it and seeds no columns of its own
     # (2026-10-18; the page had seeded every stage-group item, so the same
@@ -1446,16 +1453,19 @@ def api_task_setup_prep():
 
 @bp.route("/api/task-setup/save", methods=["POST"])
 def api_task_setup_save():
-    """Write the description a person has been reading, and resolve a hand-over.
+    """Write the description and its job request a person has been reading,
+    and resolve a hand-over (`execution/job-request.md` § 7).
 
-    **The BUFFER is the source.**  The editor is where a description is checked
-    and corrected before it is written (`web/task-setup.md` § 9a), so this takes
-    the text as edited -- never a re-serialisation of a parsed model, which
-    would silently discard whatever was typed in the editor.
+    **The BUFFERS are the source.**  The editor is where a description and
+    its job request are checked and corrected before they are written
+    (`web/task-setup.md` § 9a), so this takes each text as edited -- never a
+    re-serialisation of a parsed model, which would silently discard
+    whatever was typed in the editor.
 
-    **Refused rather than repaired.**  The text goes through the shipped reader
-    (`task.from_text`), so a description that does not parse, names a field the
-    schema does not know, or carries no stage is refused with the reason -- the
+    **Refused rather than repaired.**  Each text goes through its shipped
+    reader (`task.from_text`, `job_request.from_text` against the
+    description), so a record that does not parse, names a field the schema
+    does not know, or carries no stage is refused with the reason -- the
     same answer the CLI gives, from the same code.  A browser that "fixed" a
     description would be the second, drifting writer this design exists to
     avoid.
@@ -1469,10 +1479,16 @@ def api_task_setup_save():
     body = request.get_json(silent=True) or {}
     dest_raw = str(body.get("dest") or "")
     text     = body.get("text")
+    request_text = body.get("request_text")
     if not dest_raw:
         return jsonify({"ok": False, "error": "no destination folder given"}), 400
     if not isinstance(text, str) or not text.strip():
         return jsonify({"ok": False, "error": "nothing to save"}), 400
+    if not isinstance(request_text, str) or not request_text.strip():
+        return jsonify({"ok": False, "error":
+                        "no job request to save beside the description -- "
+                        "the two are written together "
+                        "(execution/job-request.md § 7)"}), 400
 
     try:
         dest = _resolve_within_roots(dest_raw)
@@ -1484,15 +1500,18 @@ def api_task_setup_save():
     # The description's NAME is `task.py`'s to spell, like its bytes
     # (`task-description.md` § 6.4 -- one reader, so the two surfaces cannot
     # produce different files).
+    from molbuilder import job_request as _job_request
     from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import from_text, write_task
     from molbuilder.task import of as task_of
 
-    # Validate by READING it before anything lands in the calculation
-    # folder: the description's one reader (`task.from_text`, A16), the
-    # same gate `prep` reads through.
+    # Validate by READING both before anything lands in the calculation
+    # folder: each record's one reader (`task.from_text`,
+    # `job_request.from_text` against the description, A16), the same gates
+    # `prep` reads through.
     try:
         task = from_text(text)
+        job_req = _job_request.from_text(request_text, task)
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -1511,7 +1530,8 @@ def api_task_setup_save():
     _pf = _task_preflight(
         task,
         template_text=(_tpl_file.text
-                       if _tpl_file is not None else None))
+                       if _tpl_file is not None else None),
+        request=job_req)
     # THE CONFIG CLASS RIDES WITH THE FINDINGS.  Without it `_issues_to_json`
     # omits `workflow_group` and the page has no card to put a finding on
     # (`web/ui-contract.md` Rule 2).
@@ -1520,8 +1540,9 @@ def api_task_setup_save():
     if _pf_errs:
         return jsonify({
             "ok": False,
-            "error": "the description fails its own preflight "
-                     "(engines/stages.md § 6.6):\n  - "
+            "error": "the description or its job request fails its own "
+                     "preflight (engines/stages.md § 6.6; "
+                     "execution/job-request.md § 7):\n  - "
                      + "\n  - ".join(i.message for i in _pf_errs),
             "findings": _issues_to_json(_pf, cfg=_pf_cfg),
         }), 400
@@ -1589,6 +1610,7 @@ def api_task_setup_save():
 
     try:
         write_task(dest, task)                   # atomic (persist.write_json)
+        _job_request.write(dest, job_req)        # each file whole
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
 
@@ -1599,7 +1621,7 @@ def api_task_setup_save():
     return jsonify({
         "ok":            True,
         "saved":         kept.said(),
-        "wrote":         TASK_FILENAME,
+        "wrote":         [TASK_FILENAME, _job_request.FILENAME],
         "handover_name": TASK_HANDOVER_NAME,
         "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
         "stages":        [st.name for st in task.stages],
@@ -1675,9 +1697,9 @@ def api_task_setup_sweepable():
             # so this payload is their only source).
             "unit":            it.unit or None,
         })
-    # THE RUN'S OWN TWO ASKS, with their words (`task.LANE_ASK_ROWS`): the
+    # THE RUN'S OWN TWO ASKS, with their words (`job_request.LANE_ASK_ROWS`): the
     # page offers them from here and keeps no table (`task-setup.md` § 6.2b).
-    from molbuilder.task import LANE_ASK_ROWS
+    from molbuilder.job_request import LANE_ASK_ROWS
     return jsonify({"ok": True, "engine": engine, "items": out,
                     "lane_asks": [dict(r) for r in LANE_ASK_ROWS]})
 
@@ -1885,12 +1907,12 @@ def _folder_provenance(dest) -> dict:
     }
 
 
-def _row_kinds(task, bench) -> dict:
+def _row_kinds(job_req, bench) -> dict:
     """``{name: "chosen" | "machine" | "measured"}`` for the bench as it is
     being edited, from prep's own split of the lane."""
     from molbuilder.jobset.prep_inputs import _declared_execution_pins
     try:
-        pins, axes, value_axes = _declared_execution_pins(task, bench)
+        pins, axes, value_axes = _declared_execution_pins(job_req, bench)
     except Exception:                                  # noqa: BLE001
         # A description mid-edit may not read; the cells above still say.
         return {}
@@ -1982,7 +2004,7 @@ def api_task_setup_bench_grid():
     # page paints what this says and decides nothing (2026-10-19).
     return jsonify({"ok": True, "cells": rows,
                     "kept": sum(1 for r in rows if not r["why"]),
-                    "rows": _row_kinds(calc.task, bench)})
+                    "rows": _row_kinds(calc.request, bench)})
 
 
 @bp.route("/api/task-setup/prep-plan", methods=["POST"])
@@ -1995,49 +2017,55 @@ def api_task_setup_prep_plan():
     describes.  `naming.stage_home` is the one namer (decision 27) and
     `Shape.stage_dir` the one layout, and this asks both.
 
-    The allocation each stage would carry is `task.allocation`,
-    which is the same function the prep itself resolves through -- so the
-    row cannot promise a wall the run will not ask for.
+    The allocation each stage would carry is the job request's, folded by
+    the same function the prep itself resolves through -- so the row cannot
+    promise a wall the run will not ask for.
 
-    POST ``{task, dest?}`` -- the description AS IT IS BEING EDITED, not
-    what is saved, for the reason the grid door gives: the card's edits live
-    in the browser's model until the person saves -- and the folder, whose
-    files hold the stages' numbers (a stage that has files keeps its own,
-    W38 F4).  Nothing here writes.
+    POST ``{task, request, dest?}`` -- the description and its job request
+    AS THEY ARE BEING EDITED, not what is saved, for the reason the grid
+    door gives: the cards' edits live in the browser's model until the
+    person saves -- and the folder, whose files hold the stages' numbers (a
+    stage that has files keeps its own, W38 F4).  Nothing here writes.
     """
     body = request.get_json(silent=True) or {}
     raw = body.get("task")
+    raw_request = body.get("request")
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
+    if not isinstance(raw_request, dict):
+        return jsonify({"ok": False,
+                        "error": "request: must be the job request object"
+                        }), 400
+    from molbuilder import job_request as _job_request
     from molbuilder.jobset.naming import stage_home
     from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
     try:
         task = Task.from_dict(raw)
+        job_req = _job_request.from_dict(raw_request, task)
         shape = Shape.named(task.shape)
     except Exception as exc:                      # noqa: BLE001
         # A description mid-edit is often unreadable, and that is ordinary.
         # Its own words, so the card can say why rather than going blank.
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # ONE allocation for the calculation (`stages.md` § 6.8a), and the launch
-    # shape the description CHOSE -- every machine-answered `bench` entry that
-    # carries one point (`generator.md` § 4.3a).  Two reads because they are
-    # two questions; neither is recomputed here.
+    # ONE allocation for the calculation (`job-request.md` § 3.1), and the
+    # run card each rung runs at (§ 3.2).  Two reads because they are two
+    # questions; neither is recomputed here.
+    from molbuilder.job_request import LANE_ASKS
     from molbuilder.jobset.prep_inputs import fold_allocation
-    from molbuilder.task import LANE_ASKS
     def _ask_of(stage: str) -> dict:
         # THE EFFECTIVE ASK, by the one fold prep uses (`fold_allocation`):
         # the run card's own asks over the calculation's -- one line per
         # stage, said by the server (2026-10-18; the page had printed both
         # and composed which the wrapper carries).
-        chosen = {k: v for k, v in task.run_condition(stage).items()
+        chosen = {k: v for k, v in job_req.run_condition(stage).items()
                   if k in LANE_ASKS}
-        res, _src = fold_allocation(None, task.allocation, chosen)
+        res, _src = fold_allocation(None, job_req.allocation, chosen)
         return {"domain": res.domain, "time": res.time, "mem": res.mem}
-    # The plan card reads the DESCRIPTION as posted, mid-edit, with no
+    # The plan card reads the RECORDS as posted, mid-edit, with no
     # machine resolved -- so it reports the condition as WRITTEN, without
     # asking the enumerator, which needs a target.  THE FOLDER, when the page
     # names it (`dest`), is where the stages' numbers are read: a stage that
@@ -2057,10 +2085,10 @@ def api_task_setup_prep_plan():
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
                      "ask": _ask_of(st.name),
-                     # PER STAGE, because the condition is (§ 6.8d): the
-                     # calculation's block with this rung's laid over it.
+                     # PER STAGE, because the condition is (§ 3.2): the
+                     # calculation's card with this rung's laid over it.
                      "chosen": {k: v for k, v in
-                                task.run_condition(st.name).items()
+                                job_req.run_condition(st.name).items()
                                 if k not in LANE_ASKS},
                      # AND WHAT THIS RUNG WILL BE NAMED (user, 2026-09-07).
                      # Every name comes out of the grammar (`runfiles`
@@ -2078,7 +2106,7 @@ def api_task_setup_prep_plan():
                                        shape=shape.name, engine=task.engine,
                                        calculation=task.calculation)})
     bench = None
-    if task.bench:
+    if job_req.bench:
         # Every axis, with its points.  A row of length one is a DECISION and
         # measures one cell; the card says which is which (§ 6.2b).
         #
@@ -2100,10 +2128,10 @@ def api_task_setup_prep_plan():
         # calculation with no stages, so there is no empty case to invent a
         # location for.
         from molbuilder.paths import bench_container
-        bench = {"axes": {k: list(v) for k, v in task.bench.items()},
-                 "allocation": {"domain": task.allocation.domain,
-                           "time": task.allocation.time,
-                           "mem": task.allocation.mem},
+        bench = {"axes": {k: list(v) for k, v in job_req.bench.items()},
+                 "allocation": {"domain": job_req.allocation.domain,
+                                "time": job_req.allocation.time,
+                                "mem": job_req.allocation.mem},
                  "rungs": [{"stage": r["stage"],
                             "dir": bench_container(shape, r["token"])}
                            for r in rows]}
@@ -2286,6 +2314,23 @@ def api_task_setup_folder():
     _task = _calc.task if _calc is not None else _described()
     described = (_task.to_dict() if hasattr(_task, "to_dict") else _task)
     handover = None if described is not None else _read_handover()
+
+    def _requested():
+        """The job request beside a description that reads, through its
+        door (`job_request.of`, against that description, A16) -- its
+        object, ``None`` with none, or the words its reader refused it
+        with (`execution/job-request.md` § 7)."""
+        if _calc is not None:
+            return _calc.request.to_dict()
+        if not hasattr(_task, "stages"):
+            return None
+        from molbuilder import job_request as _job_request
+        try:
+            found = _job_request.of(folder, _task)
+        except Exception as exc:                  # noqa: BLE001
+            return {"error": str(exc)}
+        return None if found is None else found.to_dict()
+    requested = _requested()
     # THE LABEL THE TEMPLATE IS NAMED ON: the description's, else the
     # hand-over's name through the normaliser the hand-over named it with.
     if hasattr(_task, "label"):
@@ -2316,9 +2361,19 @@ def api_task_setup_folder():
         "mode": ("description" if described is not None
                  else "handover" if handover is not None else "empty"),
         "description": described,
+        # ITS JOB REQUEST, as its reader read it -- an object, `{error}`, or
+        # null with none (a description written by hand): then the groups
+        # a new one takes, by the one rule (`group.default_groups`), for
+        # the page to write with Save (`execution/job-request.md` § 7).
+        "request": requested,
+        "proposed_groups": (_default_groups_of(folder, _task)
+                            if requested is None and hasattr(_task, "stages")
+                            else None),
         "handover": handover,
-        # THE TWO FILES' NAMES, said here so the page spells neither.
+        # THE FILES' NAMES, said here so the page spells none.
         "task_name": TASK_FILENAME,
+        "request_name": _JOB_REQUEST_FILENAME,
+        "request_schema": _JOB_REQUEST_SCHEMA_NOW,
         "handover_name": TASK_HANDOVER_NAME,
         # WHICH FILES ARE HERE -- names only.  The "what gets written" card
         # asks *is the file this description names actually present*, which
@@ -2390,6 +2445,21 @@ def api_task_setup_folder():
     })
 
 
+def _default_groups_of(folder, task) -> dict:
+    """``{stage: group}`` -- the groups a description with no job request
+    takes, by the one rule a new calculation is numbered with
+    (`group.default_groups`), against the template beside it when it
+    reads."""
+    from molbuilder.jobset.group import default_groups
+    from molbuilder.template_file import of as _template_of
+    try:
+        tf = _template_of(folder, task.label)
+    except ValueError:
+        tf = None
+    groups = default_groups(task, None, tf.text if tf is not None else None)
+    return {st.name: g for st, g in zip(task.stages, groups)}
+
+
 def _folder_fixed(task) -> Optional[dict]:
     """The stages ``task.fixed_by_kind`` fixes, ``{"stages"}``, as the stage
     table reads them; ``None`` for a kind that fixes nothing, or no
@@ -2421,20 +2491,22 @@ def _folder_ladder(calc) -> dict:
         # the groups as edited (`task-setup.md` § 5), and the reader's
         # check (`group.check_groups`) refuses at Save.
         rows = []
+        job_req = calc.request
+        number = [job_req.group_of(s.name) for s in task.stages]
         for i, (st, a) in enumerate(zip(task.stages, answers)):
-            # WHY THIS ROW MAY NOT JOIN THE GROUP ABOVE, as the description
-            # stands: the rule's own sentence (`group.why_not_join`), or
+            # WHY THIS ROW MAY NOT JOIN THE GROUP ABOVE, as the records
+            # stand: the rule's own sentence (`group.why_not_join`), or
             # the launched group's -- the page shows it and composes none.
-            above = [s.name for s in task.stages[:i]
-                     if i and s.group == task.stages[i - 1].group]
-            why_same = (why_not_join(task, st.name, above, text)
+            above = [s.name for j, s in enumerate(task.stages[:i])
+                     if i and number[j] == number[i - 1]]
+            why_same = (why_not_join(task, job_req, st.name, above, text)
                         if above else None)
             if why_same is None and above and any(
                     b.launched for s, b in zip(task.stages, answers)
                     if s.name in above):
-                why_same = (f"group {task.stages[i - 1].group} was launched "
+                why_same = (f"group {number[i - 1]} was launched "
                             f"-- its members are fixed")
-            rows.append({"stage": st.name, "group": st.group,
+            rows.append({"stage": st.name, "group": number[i],
                          "builds_on": sorted(upstream_of(task, st.name,
                                                          text)),
                          "linked": linked(task, st.name, text),

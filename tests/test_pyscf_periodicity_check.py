@@ -30,6 +30,7 @@ import pytest
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
+from molbuilder.jobset._cli import describe_cmd
 
 
 WHERE = "cell.periodic_in_gas_phase"
@@ -110,7 +111,7 @@ def test_it_reaches_the_tab_before_generate():
 
 def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
                                                             monkeypatch):
-    """Through `jobset init` and `prep`: a PySCF vibration of a structure
+    """Through `molbuilder describe` and `prep`: a PySCF vibration of a structure
     that repeats is computed as an isolated cluster, and the check says so --
     a note, not a refusal (user, 2026-09-29: "just note that periodicity will
     not be respected in pySCF"; `engines/vibration.md` § 3).  The atoms the
@@ -127,7 +128,6 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
     MUTATIONS THIS MUST FAIL AGAINST: the door answering the structure's
     kinds for PySCF (the deck counts periodic axes); the Methods count or the
     note reading the structure's kinds (six modes; no note)."""
-    import json
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
@@ -145,8 +145,8 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tmp_path)
     run = CliRunner()
-    r = run.invoke(jobset_group, [
-        "init", "--structure", "P/structure/w.xyz", "--bundle",
+    r = run.invoke(describe_cmd, [
+        "--structure", "P/structure/w.xyz", "--bundle",
         "P/spectrum/V", "--engine", "pyscf", "--shape", "flat",
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
@@ -154,9 +154,10 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
     # THE RUN CARD STATES THE THREADS, as a described calculation does
     # (`architecture.md` § 5.2); how a shell enters an environment is the
     # machine record's (`configuration.md` § 5 M-1).
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {"threads": 1}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    from support.road import read_request, write_request
+    request = read_request(bundle)
+    request["execution"] = {"threads": 1}
+    write_request(bundle, request)
     r = run.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",
                                   str(bundle)])
     assert r.exit_code == 0, r.output

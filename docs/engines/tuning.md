@@ -444,7 +444,7 @@ is a flag on the catalogue item read through one door, and it holds exactly
 | where | what happens to `BlockSize` |
 |---|---|
 | **the parameter form** | auto by default; an explicit value taken at face value. The rule is not enforced here because the hardware is not chosen here |
-| **`bench`** | sweeps the points the description's `bench` block declares. `script_emit.py`'s BENCH-MARKS declares `BlockSize` as `pow2`, with a window derived from the deck's rank count (`_block_size_bounds`) |
+| **`bench`** | sweeps the points the job request's `bench` block declares. `script_emit.py`'s BENCH-MARKS declares `BlockSize` as `pow2`, with a window derived from the deck's rank count (`_block_size_bounds`) |
 | **`prep`** | writes the value verbatim, or no `BlockSize` line when it is unset |
 
 The plain guidance in the table above (16 · 32 · 64 · 128) remains *guidance* for
@@ -457,7 +457,7 @@ and no formula reaches it: the right block depends on the matrix, the rank count
 the interconnect and the node's memory layout at once. So `BlockSize` joins the
 benchmark's swept axes — `bench-result.json`'s `choice` carries the measured
 value alongside the rank and GPU counts, and, like them, it reaches a run when
-the person writes it into `task.json`'s `execution` block, where `prep` reads
+the person writes it into `job-request.json`'s `execution` block, where `prep` reads
 it ([`job-system.md § 7`](?doc=execution/job-system.md)).
 
 > **This is the same trade as the rest of this document, one level down.** A tier
@@ -502,7 +502,7 @@ described by three numbers: **G** devices, **K** ranks *per device*, and
 **C** cores per rank. The scheduler is asked for `-n G·K` ranks (the
 total), `-c C` cores each, and — through `--gres`, the scheduler's
 request line for special resources such as GPUs — G devices. Ranks and
-devices are independent requests. In `task.json` you declare the portable
+devices are independent requests. In the job request (`job-request.json`'s `bench`) you declare the portable
 half, and since 2026-08-21 that includes the device count itself
 (*"explicit is what we need"* — until then G was derived from divisors):
 
@@ -541,7 +541,7 @@ scheduler and stores on the domain row.
 
 ```mermaid
 flowchart TD
-    subgraph YOU["task.json — what YOU declare (portable, no machine facts)"]
+    subgraph YOU["job-request.json — what YOU declare (portable, no machine facts)"]
         MP["bench.mpi_np = [32, 64]<br/>TOTAL ranks per trial"]
         EG["bench.use_gpu = [true, false]<br/>run the bench on CPU, GPU, or both"]
         GC["bench.gpu_count = [1, 2, 4]<br/>devices per trial — EXPLICIT<br/>(absent → machine proposes divisors)"]

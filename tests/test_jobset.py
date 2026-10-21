@@ -211,7 +211,7 @@ def test_cli_prep_is_described_only(tree):
                             "--no-sbatch"])
     assert r.exit_code != 0
     assert "not a described calculation" in r.output
-    assert "jobset init" in r.output
+    assert "molbuilder describe" in r.output
     # nothing lays out a hand-built set: prep is the described route's
     # alone, and nothing was laid out here
     assert not (tree / "bench-G1K1C4").exists()
@@ -259,10 +259,12 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
     (tree / "P" / "structure" / "h2.xyz").write_text(
         "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     runner, grp = _runner()
-    init = runner.invoke(grp, ["init", "--structure", "P/structure/h2.xyz",
-                               "--bundle", "P/optimization/h",
-                               "--shape", "hierarchical", "--engine", "pyscf",
-                               "--calculation", "optimization"])
+    from molbuilder.jobset._cli import describe_cmd
+    init = runner.invoke(describe_cmd, ["--structure", "P/structure/h2.xyz",
+                                        "--bundle", "P/optimization/h",
+                                        "--shape", "hierarchical",
+                                        "--engine", "pyscf",
+                                        "--calculation", "optimization"])
     assert init.exit_code == 0, init.output
     prep = ["prep", "task", "--group", "1", "--bundle", "P/optimization/h",
             "--no-sbatch", "--cpus-per-task", "1"]
@@ -468,10 +470,10 @@ def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
 
 def _describe(base, shape, names=("coarse", "tight")):
     """Write a real `task.json` beside a bundle, through the one codec."""
-    from molbuilder.task import (FILENAME, Stage, StructureRef, Task,
-                                 derive_run, write_task)
-    stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200}, group=i + 1)
-                   for i, n in enumerate(names))
+    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
+                                 write_task)
+    stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200})
+                   for n in names)
     write_task(Path(base), Task(
         engine="siesta", shape=shape, calculation="optimization",
         run=derive_run("JOB", "H2", stage_names=names),
@@ -546,12 +548,11 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     true, the laptop stops being a rehearsal and this test is how you find out.
 
     ON THE ROAD, two calculations -- so a function, not a row, which is one:
-    one description by `jobset init`, copied before anything was prepared, and
+    one description by `molbuilder describe`, copied before anything was prepared, and
     each prepared by `jobset prep` -- for this machine, a workstation, and for
     `sol`, a cluster whose record names a queue, with the same way into an
     environment.
     """
-    import json
     import shutil
     from conftest import write_machine_record
     from molbuilder.config_dir import ensure_private_dir
@@ -559,7 +560,8 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
                                       environments_dir,
                                       named_environment_path,
                                       write_environment)
-    from support.road import describe_calculation, jobset
+    from support.road import (describe_calculation, jobset, read_request,
+                              write_request)
     enters = {"activation": "conda activate",
               "preamble": "source /x/conda.sh"}
     write_machine_record(scheduler=WORKSTATION, env_init=enters)
@@ -575,10 +577,10 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     hpc = ws.parent / "H2-on-sol"
     shutil.copytree(ws, hpc)
     # A RUN ON A CLUSTER STATES ITS QUEUE, WALL AND MEMORY
-    # (`architecture.md` § 5.2) -- in the description, as a person states it.
-    task = json.loads((hpc / "task.json").read_text())
-    task["allocation"] = {"domain": "cpu", "time": "04:00:00", "mem": "8G"}
-    (hpc / "task.json").write_text(json.dumps(task, indent=2))
+    # (`architecture.md` § 5.2) -- in the job request, as a person states it.
+    request = read_request(hpc)
+    request["allocation"] = {"domain": "cpu", "time": "04:00:00", "mem": "8G"}
+    write_request(hpc, request)
     for bundle, target in ((ws, "this"), (hpc, "sol")):
         r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
                    "--target", target)
@@ -626,7 +628,7 @@ def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
     going, so the stage directory reported a FINISHED calculation as
     *Running*, permanently, and offered the stub to open.
 
-    Driven through `jobset init` -> `prep task` (`support.road`).
+    Driven through `molbuilder describe` -> `prep task` (`support.road`).
 
     MUTATION THIS MUST FAIL AGAINST: copy instead of move, or leave the seed
     where it was rendered.

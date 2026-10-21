@@ -27,7 +27,7 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           voltage -- by orbital type
     POST /api/transport/describe          writes the FINISHED description
                                           into the chosen folder -- the
-                                          web spelling of `jobset init
+                                          web spelling of `molbuilder describe
                                           --calculation transport`
 
 Mirrors Build's ``/api/build/schema/<engine>``: the form is drawn from the
@@ -378,7 +378,7 @@ def api_transport_describe() -> Any:
     none open: the ladder and the hierarchical shape are fixed by the
     kind (`task.fixed_by_kind`), the identity derives from the citation,
     the knobs ride the stages' override bags.  So this door writes the
-    finished description in one act, through the writer `jobset init`
+    finished description in one act, through the writer `molbuilder describe`
     takes (`describe.write_description`), into a folder that holds none
     -- a description is written by the server's door that validated it
     (`web/handover-procedure.md` § 4).  Once written it is Task setup's
@@ -386,7 +386,7 @@ def api_transport_describe() -> Any:
 
     Validation is the codec's and the description's own check: the
     ``Task`` construction below is the gate `task.of` runs, and the
-    task preflight (gate ③) is the one `jobset init`
+    task preflight (gate ③) is the one `molbuilder describe`
     and the Task-setup save run -- its errors refuse, its warnings ride
     ``notices``.  The citation resolves through the same door prep
     composes through.
@@ -602,11 +602,15 @@ def api_transport_describe() -> Any:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     # THE DESCRIPTION'S OWN CHECK (gate ③, plan § 5w K3).  The same
-    # function the Task-setup save and `jobset init` run: its errors
+    # function the Task-setup save and `molbuilder describe` run: its errors
     # refuse in the save's own words, its warnings ride `notices`.
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
-    _pf = _task_preflight(task, template_text=_tmpl_text)
+    # THE CALCULATION'S START, described with its job request: each rung's
+    # group by the one numbering rule (`describe.Description`).
+    _desc = Description(task=task, template=_tmpl_text)
+    _pf = _task_preflight(task, template_text=_tmpl_text,
+                          request=_desc.request)
     # ...AND THE K-POINT MESHES EACH RUNG WILL WRITE, judged by the one
     # check prep's gate runs (`kmesh.check`; `engines/transport.md` § 0.3b)
     # on the junction's own axis kinds -- so one point along a direction
@@ -630,17 +634,17 @@ def api_transport_describe() -> Any:
             "findings": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
         }), 400
 
-    # WRITTEN HERE, every file or none, through the writer `jobset init`
+    # WRITTEN HERE, every file or none, through the writer `molbuilder describe`
     # takes (`describe.write_description`; `web/handover-procedure.md` § 4:
     # a description is written by the server's door that validated it).
-    # TWO FILES: a transport description is `task.json` AND a template,
-    # like every other kind's (TR1).  Its values are DEFAULTED FROM THE
+    # THREE FILES: a transport calculation is `task.json`, its template and
+    # its job request, like every other kind's (TR1).  Its values are
+    # DEFAULTED FROM THE
     # CITED RUN (§ 2a.7, ruling 1) and are the person's to change
     # afterwards; a `citation` row nobody answered stays VALUELESS
     # (§ 3.8.3).
     try:
-        written = write_description(Description(task=task,
-                                                template=_tmpl_text), dest)
+        written = write_description(_desc, dest)
     except (DescribeError, OSError) as exc:
         return jsonify({"ok": False,
                         "error": f"nothing was written: {exc}"}), 500

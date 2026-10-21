@@ -351,9 +351,9 @@ def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
             "n_atoms":        struct.n_atoms,
             "n_orbitals_est": 10 * struct.n_atoms,
             "gpu_mode":       str(bool(cfg.use_gpu)).lower(),
-            # The rank count this deck was rendered for: prep warns and
-            # launch refuses a launch with another (`jobset/agreement.py`),
-            # and ``_auto_block_size`` takes it as an input.
+            # The rank count this deck was rendered for -- a record of the
+            # request prep wrote it and its launch with, together
+            # (`architecture.md` A3) -- and ``_auto_block_size``'s input.
             "mpi_np":         ("auto" if cfg.mpi_np is None
                                else str(int(cfg.mpi_np))),
         },

@@ -104,19 +104,19 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     for field, key in missing:
         words, flag = _LAUNCH_WORDS[field]
         # WHERE A PERSON STATES IT, on either road: the Task setup card that
-        # writes it, the task.json key that card writes, and the flag --
+        # writes it, the job-request.json key that card writes, and the flag --
         # the refusal reaches the page and the terminal alike.
         if field in ("domain", "time"):
             card = (f'Task setup\'s "Where it runs" card ("allocation": '
-                    f'{{"{key}": ...}} in task.json)'
+                    f'{{"{key}": ...}} in job-request.json)'
                     + (f' or this run\'s run card ("execution": '
                        f'{{"{key}": ...}})' if shape else ""))
         elif field == "mem":
             card = ('Task setup\'s "Where it runs" card ("allocation": '
-                    '{"mem": ...} in task.json)')
+                    '{"mem": ...} in job-request.json)')
         else:
             card = (f'the run card on Task setup ("execution": '
-                    f'{{"{key}": N}} in task.json)')
+                    f'{{"{key}": N}} in job-request.json)')
         line = f"  {words:<15} {card}, or {flag}"
         if field == "domain":
             line += "\n" + _the_queues(asked, queues, engine)

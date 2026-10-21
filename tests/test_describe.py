@@ -1,4 +1,4 @@
-"""``jobset init`` — the portable description, and what it must never write.
+"""``molbuilder describe`` — the portable description, and what it must never write.
 
 Contract: ``docs/execution/architecture.md`` § 4 (the route: *ask → check →
 write*, **floor 2 only**) · ``docs/execution/job-system.md`` § 5.1 (the command)
@@ -24,6 +24,8 @@ from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage, of as task_of
 from molbuilder.template import read_template
+from support.road import molbuilder
+from molbuilder.jobset._cli import describe_cmd
 
 
 @pytest.fixture
@@ -68,9 +70,13 @@ def test_describing_writes_no_deck(struct, cfg, tmp_path):
     assert not list((tmp_path / "calc").glob("*.fdf"))
 
 
-def test_it_writes_exactly_the_template_and_the_description(struct, cfg, tmp_path):
+def test_it_writes_exactly_the_template_the_description_and_its_request(
+        struct, cfg, tmp_path):
+    """`execution/job-request.md` § 9: describing writes the description and
+    its job request -- a calculation's folder holds both (§ 7)."""
     written = D.write_description(_describe(struct, cfg), tmp_path / "calc")
-    assert sorted(p.name for p in written) == ["relax.template.toml",
+    assert sorted(p.name for p in written) == ["job-request.json",
+                                               "relax.template.toml",
                                                "task.json"]
 
 
@@ -124,7 +130,7 @@ def test_the_structure_is_a_reference_and_a_witness_never_a_copy(struct, cfg,
 
 def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
                                                             monkeypatch):
-    """`jobset init` writes the structure it describes as the calculation's
+    """`molbuilder describe` writes the structure it describes as the calculation's
     own pair, named for the LABEL -- ``<label>.source.xyz`` and its sidecar,
     the catalogue's name and the hand-over's (`job-contracts.md` § 6.3,
     `StructureCodec.source_files`) -- ``task.json`` records that name, and
@@ -134,7 +140,6 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     The structure FILE is ``h2.xyz`` and the label ``JOB``: init named the
     pair ``h2.source.*`` until 2026-10-04 (plan D20)."""
     from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
     # `init` cites both the structure and the calculation FROM THE PROJECTS
     # ROOT (job-contracts.md 2.5b), so the test says where its tree is --
@@ -144,8 +149,8 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     xyz = tree / "P" / "structure" / "h2.xyz"
     xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    res = CliRunner().invoke(jobset_group, [
-        "init", "--structure", "P/structure/h2.xyz",
+    res = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/calc", "--engine", "siesta",
         "--calculation", "optimization",
         "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
@@ -239,7 +244,7 @@ def test_a_value_past_its_hard_limit_is_refused(struct, cfg):
     """A stage's value past its item's hard limit (`above`,
     `engines/template.md` § 5.3) is refused where the description is
     written, with the reason; a value merely outside the recommended range
-    describes.  API-LEVEL, because the road cannot reach it: `jobset init`
+    describes.  API-LEVEL, because the road cannot reach it: `molbuilder describe`
     describes a non-transport calculation from its ladder presets alone, so
     no person's value reaches this door but through the library."""
     from molbuilder.task import Stage
@@ -303,7 +308,6 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     click demanded.  One fact, one door: the click check is gone and the
     resolver decides, so the bare spelling works from any directory."""
     from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
 
     tree = tmp_path / "projects"
@@ -315,8 +319,8 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     # CliRunner's cwd is the test runner's -- ./pseudopotential does NOT
     # exist here, which is exactly the papercut's shape.
-    res = CliRunner().invoke(jobset_group, [
-        "init", "--structure", "P/structure/h2.xyz",
+    res = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/calc", "--engine", "siesta",
         "--calculation", "optimization",
         "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB",
@@ -338,14 +342,13 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
                                             ("pyscf", ["freq"])])
 def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box(
         tmp_path, monkeypatch, engine, ladder):
-    """`template.md` § 6.3a: `jobset init` writes a kind's recommended value
+    """`template.md` § 6.3a: `molbuilder describe` writes a kind's recommended value
     as the item's `value` AND `default`, for every item the catalogue
     recommends for that kind -- so the vibration template starts tight.
     `vibration.md` § 2.2 / § 5.2a: the ladder is read from the box a fresh
     description carries (unticked): `relax` then `freq` on SIESTA, `freq`
     alone on PySCF.  No engine runs: `init` describes."""
     from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.template import catalogue, recommended_for, select
     from molbuilder.template_file import of as template_of
@@ -354,8 +357,8 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "P" / "structure" / "h2.xyz").write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-    res = CliRunner().invoke(jobset_group, [
-        "init", "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
+    res = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
         "--engine", engine, "--shape", "hierarchical",
         "--calculation", "vibration", "--name", "V"])
     assert res.exit_code == 0, res.output
@@ -389,10 +392,10 @@ def test_init_refuses_a_folder_that_already_holds_a_calculation(
 
     MUTATION THIS MUST FAIL AGAINST: the refusal removed (the second `init`
     rewrites task.json)."""
-    from support.road import STRUCTURE, describe_calculation, jobset
+    from support.road import STRUCTURE, describe_calculation
     bundle = describe_calculation(tmp_path, monkeypatch)
     before = (bundle / "task.json").read_bytes()
-    r = jobset("init", "--structure", STRUCTURE,
+    r = molbuilder("describe", "--structure", STRUCTURE,
                "--bundle", "P/optimization/H2", "--engine", "siesta",
                "--calculation", "optimization",
                "--shape", "flat", "--name", "H2",

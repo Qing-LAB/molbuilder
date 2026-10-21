@@ -2,7 +2,7 @@
 siesta.md`, `docs/engines/pyscf.md`), case by case.
 
 THE CASES ARE DATA -- ``tests/data/the_deck.toml`` -- and each runs down
-the road a person runs (`support.road.run_road_case`): `jobset init` of a
+the road a person runs (`support.road.run_road_case`): `molbuilder describe` of a
 held H2 or the row's structure, `prep`, and the deck read where prep wrote
 it.  A deck has one writer, `prep`, so a deck rendered any other way is not
 the one a run reads (`process/testing.md` § 3a).

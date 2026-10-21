@@ -417,17 +417,6 @@ def spectra_render_checks(struct: Structure,
                         f"[Cances1997]."),
                     where="config.solvent",
                 ))
-        if bool(getattr(cfg, "use_gpu", False)):
-            issues.append(Issue(
-                severity="error",
-                message=(
-                    "solvent + use_gpu: the solvated derivative chain has "
-                    "been validated on the CPU path only (2026-08-21); "
-                    "gpu4pyscf's PCM has not been probed with this deck's "
-                    "to_gpu promotion.  Run this calculation on CPU, or "
-                    "ask for the GPU+PCM validation to be scheduled."),
-                where="config.use_gpu",
-            ))
 
     elif _smethod and _smethod not in ("IEF-PCM",):
         # A method with no solvent methods nothing -- say so rather

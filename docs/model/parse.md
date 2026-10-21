@@ -1575,7 +1575,7 @@ is rows, not a code path.
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` — a flat stage's run's own `<basename>-run<N>.run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — retry_of, the run a warm retry retries, `execution/running-a-job.md` § 3.5 — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
 | `concluded` | `<base>-runN.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
-| `deck` | the deck · `.gathered-from` | `script_emit.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
+| `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
 **The table is configuration, not reconciliation.** Each row names the file
@@ -1700,8 +1700,9 @@ with the default alone — SIESTA has not started, so `asked` is the deck's and
 
 ### 5d.4 The deck as run
 
-Its name and sha256 · `current`, whether it is still the stage's deck
-(`script_emit.same_calculation` against the deck prep wrote, in the folder
+Its name and sha256 · `current`, whether the stage's deck is still the
+calculation it ran — the run settings aside, a re-prep for its job request
+keeping it so (`deck_record.same_calculation`, [`job-request.md`](?doc=execution/job-request.md) § 6) — against the deck prep wrote, in the folder
 the run's was copied from — the stage's, or a bias point's within it
 (`runs.Run.prepared`, since 2026-10-11; the stage's folder alone until then,
 which a bias point's run never matched), where the run door places it —

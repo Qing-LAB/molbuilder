@@ -1,4 +1,4 @@
-"""`prep`, entire — what only a described calculation that `jobset init` did
+"""`prep`, entire — what only a described calculation that `molbuilder describe` did
 not make can show.
 
 Contract: ``docs/execution/project-layout.md`` § 2.3.1 (the five steps) ·
@@ -61,7 +61,7 @@ def _prep(calc, stage="coarse"):
 @pytest.fixture
 def calc(tmp_path):
     """A described calculation whose pseudopotentials are in its own folder
-    and whose description names no library -- which `jobset init` does not
+    and whose description names no library -- which `molbuilder describe` does not
     make: it names one.
 
     How a shell enters an environment is read off the MACHINE RECORD --
@@ -98,7 +98,7 @@ def test_pseudopotentials_beside_the_calculation_need_no_library(calc):
     folder first, then the library -- one rule for prep and the gate).
 
     API-LEVEL: a description naming no library, its files put beside it --
-    `jobset init` names one, so the road does not make this calculation.
+    `molbuilder describe` names one, so the road does not make this calculation.
     """
     _prep(calc)
     report = (calc / "01_coarse" / "calc_01_coarse.validation.txt").read_text()

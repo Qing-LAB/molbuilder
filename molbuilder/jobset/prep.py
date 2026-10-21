@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple,
+from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple, Set,
                     Optional, Sequence, Tuple)
 
 from .. import calcdirs
@@ -174,6 +174,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 # is TOLD every name it writes, and composes none.
                 names=_names,
                 resources=job.resources,
+                program=job.program,
                 env=env,
                 emit_sbatch=emit_sbatch and not _pts,
                 # The BUNDLE'S scope, explicitly: the script is born in its
@@ -736,14 +737,13 @@ def _transport_rung_of(calc, pset, *, seam, sweep, log, plan,
         # the seed's and the device's; the leads and the transmission carry
         # none) -- and TBtrans post-processes the device run from its own
         # deck, its binary riding the allocation road into the wrapper
-        # (`model.Resources.program`, `engines/transport.md` § 6.1b).
+        # (`model.Job.program`, `engines/transport.md` § 6.1b).
         return dataclasses.replace(
             job, warm=warm_declaration(stage, task.label, base),
             # THE RUN'S SCRATCH FOLDER (`engines/transport.md` § 2a.11): the
             # device's, the vocabulary's name.
             scratch_dir=scratch_dir_of(base) if stage == "device" else None,
-            resources=(dataclasses.replace(job.resources, program="tbtrans")
-                       if stage == "transmission" else job.resources))
+            program=("tbtrans" if stage == "transmission" else None))
     return Rung(struct=struct, render_kind="transport", configure=configure,
                 sources=transport_sources,
                 # THE DECK'S POINT reaches the spec: the device names its
@@ -834,12 +834,12 @@ class Resolved:
                                                 t.engine, t.shape)
 
 
-def _resolve_stage(stage, *, task, template, template_text, environment,
-                   allocation=None, chosen=None, sweep=None, pins=None,
-                   translation=None, home, target=None,
-                   provenance=None) -> Resolved:
+def _resolve_stage(stage, *, task, request, template, template_text,
+                   environment, allocation=None, chosen=None, sweep=None,
+                   pins=None, run_settings=None, translation=None, home,
+                   target=None, provenance=None) -> Resolved:
     """Step 2, once (`script-preparation.md` § 3.0): the allocation folded --
-    the caller's ask over the description's, and its reporting policy -- and
+    the caller's ask over the job request's, and its reporting policy -- and
     the stage's elements resolved from the template, the stage, the sweep,
     the pins and the machine's record.
 
@@ -850,9 +850,10 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     named on."""
     from ..resolve import ResolveError, resolve
     from .prep_inputs import fold_allocation
-    # THE DESCRIPTION'S OWN ALLOCATION, under the caller's (2026-08-24).
-    # `task.json` carries the queue, the wall and the memory a person chose
-    # for this calculation (`task.Allocation`), so a prepared bundle needs
+    # THE JOB REQUEST'S OWN ALLOCATION, under the caller's (2026-08-24).
+    # `job-request.json` carries the queue, the wall and the memory a person
+    # chose for this calculation (`job_request.Allocation`), so a prepared
+    # bundle needs
     # no flag to know them -- and an explicit flag still WINS, because a
     # person typing `--mem` now is answering about now.  Field by field,
     # not object by object: `--np 8` alone must not erase the file's
@@ -863,18 +864,19 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     # enumerator -- runs with the rest of the inputs before the five steps
     # (A12), so `prep` folds what it is handed and owns no second
     # translation (`generator.md` § 2).
-    allocation, sources = fold_allocation(allocation, task.allocation,
+    allocation, sources = fold_allocation(allocation, request.allocation,
                                           chosen)
-    # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
+    # AND THE JOB REQUEST'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
     # prepared bundle needs no flag to know it.  A separate line rather than a
     # third field on the helper above -- that one is about the ALLOCATION's
     # precedence against a CLI flag, and notify has no flag to lose to.
-    allocation = _with_notify(allocation, task.notify)
+    allocation = _with_notify(allocation, request.notify)
     try:
         pset = resolve(template_text, task, engine_seam(task.engine).config_cls,
                        allocation=(allocation or Resources()), stage=stage,
-                       sweep=sweep, pins=pins, translation=translation,
+                       sweep=sweep, pins=pins, run_settings=run_settings,
+                       translation=translation,
                        environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
@@ -1024,16 +1026,21 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     log.received(template_path.name, f"{len(pset[0].provenance)} fields")
     log.received("stage", pset.stage)
     log.received("allocation", _flat_resources(allocation or Resources()))
+    # EACH VALUE'S SOURCE IN THE DECK'S OWN WORDS (`resolve.LAYER_WORDS`;
+    # `execution/job-request.md` § 4) -- a run setting's card, or the
+    # catalogue's default, not chosen.
+    from ..resolve import LAYER_WORDS
     for _el in pset:
         _rows = config_rows(_el.values, _el.provenance,
                             _el.render_config())
-        _decided = [r for r in _rows if r[2] != "template"]
+        _decided = [r for r in _rows if r[2] not in ("template", "default")]
         log.step(f"{_el.label} — what this rung decided")
         for _n, _v, _s in _decided:
-            log.chose(_n, _v, _s)
-        log.step(f"{_el.label} — the rest, as the template declares")
+            log.chose(_n, _v, LAYER_WORDS.get(_s, _s))
+        log.step(f"{_el.label} — the rest, as the template and the "
+                 f"catalogue declare")
         for _n, _v, _s in _rows[len(_decided):]:
-            log.chose(_n, _v, _s)
+            log.chose(_n, _v, LAYER_WORDS.get(_s, _s))
     log.produced("ParameterSet", f"{len(pset)} element(s) -> spec_for")
 
     # ---- 3. the structure: the kind's rung ----------------------------- #
@@ -1374,22 +1381,51 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # plan, whose record may not be on disk yet.
         from ..paths import bench_container
         from ..runfiles import LAUNCH_DIR
-        from .materialize import empty_old_points, open_sweep_run
+        from .materialize import (empty_old_points, ever_launched,
+                                  open_sweep_run)
         # A POINT THE DESCRIPTION NO LONGER HOLDS leaves no folder below the
         # stage (§ 5.0, 2a: its files rendered again).
         home = stage_home(base, task, stage)
-        empty_old_points(home.dir, [pt.rel for _d, pt in rung.points], plan,
-                         keep=(LAUNCH_DIR, Path(bench_container(
-                             resolved.shape, home.token)).name))
-        sweep = open_sweep_run(calc.with_plan(js), stage, plan=plan,
-                               frames=rung.points[0][1].of or 1)
-        # EACH POINT'S LOG, from the point's folder below the stage, where
-        # it was seeded beside the point's deck, into the run's point.
-        seeded = {pt.rel: d for d, pt in rung.points}
-        for pdir, point in sweep.points:
-            _move_progress_channel_into(pdir, plan, seeded=seeded[point.rel])
-        if opened is not None:
-            opened.append(sweep)
+        gone = empty_old_points(
+            home.dir, [pt.rel for _d, pt in rung.points], plan,
+            keep=(LAUNCH_DIR, Path(bench_container(
+                resolved.shape, home.token)).name))
+        planned = calc.with_plan(js)
+        if ever_launched(planned, planned.job(stage)):
+            # A LAUNCHED RUNG OF POINTS, prepared again for its job request
+            # (`execution/job-request.md` § 5): no run opened -- its next
+            # launch opens its next one -- and its points the ones its runs
+            # ran, as its last prep left them below the stage: a point added
+            # or taken away is another calculation.
+            added = [str(pt.rel) for d, pt in rung.points
+                     if not Path(d).is_dir()]
+            if gone or added:
+                from .commands import redo_launched
+                raise PrepError(
+                    f"stage {stage!r} was launched, and its points now are "
+                    f"not the ones its runs ran -- "
+                    + "; ".join(([f"added: {', '.join(added)}"] if added
+                                 else [])
+                                + ([f"taken away: {', '.join(gone)}"]
+                                   if gone else []))
+                    + ".  A launched stage is prepared again for its job "
+                      "request alone (execution/job-request.md § 5); to "
+                      "change what it computes, "
+                    + redo_launched(stage, calc=calc))
+            for d, _point in rung.points:
+                _drop_progress_channel(Path(d), plan)
+        else:
+            sweep = open_sweep_run(planned, stage, plan=plan,
+                                   frames=rung.points[0][1].of or 1)
+            # EACH POINT'S LOG, from the point's folder below the stage,
+            # where it was seeded beside the point's deck, into the run's
+            # point.
+            seeded = {pt.rel: d for d, pt in rung.points}
+            for pdir, point in sweep.points:
+                _move_progress_channel_into(pdir, plan,
+                                            seeded=seeded[point.rel])
+            if opened is not None:
+                opened.append(sweep)
         # THE WALK'S ONE HEADER, written and placed here as a group's is
         # (`job-system.md` § 6.0): one allocation walking every point, their
         # walls summed (`group.envelope`) -- launch sends it as it is.
@@ -1454,6 +1490,29 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     return dirs
 
 
+def _computes_else(base, engine: str, plan, answer) -> Optional[str]:
+    """Every difference between what a launched stage's decks -- ``answer``'s,
+    as ``plan`` writes them, the stage's and each point's -- compute and what
+    the decks they replace computed, through the one door
+    (`deck_record.same_calculation`), each named by its folder; ``None``
+    when every one is the same calculation."""
+    from ..deck_record import same_calculation
+    if not answer.deck:
+        return None
+    said: List[str] = []
+    for path in plan.writes():
+        if path.name != answer.deck or not path.is_file():
+            continue
+        diffs = same_calculation(engine,
+                                 path.read_text(encoding="utf-8",
+                                                errors="replace"),
+                                 plan.read_text(path))
+        if diffs:
+            said.append(f"{Path(path).parent.relative_to(base)}: "
+                        + "; ".join(diffs))
+    return " -- ".join(said) or None
+
+
 def _open_attempts(calc, stage: str, *, plan, shape) -> List:
     """Open this stage's first run -- **step 6** -- with its own files, and
     return its :class:`~molbuilder.jobset.materialize.Attempt` report in a
@@ -1463,9 +1522,17 @@ def _open_attempts(calc, stage: str, *, plan, shape) -> List:
     launched, reuses its ``run-0``, emptied of anything put there before
     (`materialize.empty_run`, `job-system.md` § 5.0, 2a); what it takes
     from another run is its first launch's (§ 6.0)."""
-    from .materialize import prepare_attempt
+    from .materialize import ever_launched, prepare_attempt
 
     if shape is None or not shape.keeps_attempts_as_directories:
+        return []
+    # A LAUNCHED STAGE, prepared again for its job request, opens no run:
+    # its next launch opens the next one (`execution/job-request.md` § 5),
+    # and the progress log seeded beside its deck has no run to go to.
+    job = calc.job(stage)
+    if job is not None and ever_launched(calc, job):
+        _drop_progress_channel(stage_home(calc.base, calc.task, stage).dir,
+                               plan)
         return []
     rep = prepare_attempt(calc, stage, plan=plan)
     _move_progress_channel_into(rep.dir, plan)
@@ -1545,17 +1612,31 @@ def _move_progress_channel_into(attempt: Path, plan, *,
     says which artifacts are the progress channel, and asking it is what keeps
     this true if a second engine ever seeds one.
     """
-    from ..runfiles import WRITTEN, role_of
-
     stage_dir = attempt.parent if seeded is None else Path(seeded)
     if stage_dir == attempt:
         return
-    for role in [a.role for a in WRITTEN if a.output == "progress"]:
-        # THE FOLDER AS THE PLAN LEAVES IT, read as `runfiles.find_by_role`
-        # reads one on disk: each name's own role.
-        for seeded in plan.glob(stage_dir, "*"):
-            if role_of(seeded.name) == role:
-                plan.move(seeded, attempt / seeded.name)
+    for log in _seeded_progress_channel(stage_dir, plan):
+        plan.move(log, attempt / log.name)
+
+
+def _seeded_progress_channel(folder: Path, plan) -> List[Path]:
+    """The progress logs in ``folder`` as the plan leaves it -- read as
+    `runfiles.find_by_role` reads a folder on disk, each name's own role,
+    the catalogue's ``output`` column saying which roles are the progress
+    channel (R-RO1)."""
+    from ..runfiles import WRITTEN, role_of
+    roles = {a.role for a in WRITTEN if a.output == "progress"}
+    return [f for f in plan.glob(folder, "*") if role_of(f.name) in roles]
+
+
+def _drop_progress_channel(folder: Path, plan) -> None:
+    """A LAUNCHED STAGE PREPARED AGAIN opens no run, so the progress log
+    seeded beside its deck in ``folder`` -- the stage's, or a point's below
+    it -- has no run to go to: taken out, as :func:`_move_progress_channel_into`
+    takes it out by moving it, so no stub with no ``# concluded:`` footer is
+    left to read as a run still going."""
+    for log in _seeded_progress_channel(folder, plan):
+        plan.remove(log)
 
 
 def _merge_run_jobset(old: Optional[JobSet], new: JobSet,
@@ -1751,7 +1832,7 @@ def _rung_kind(task, stage_name: Optional[str]) -> str:
 
 
 def _with_notify(flags, declared) -> "Resources":
-    """The description's `notify` block, onto the allocation that reaches
+    """The job request's `notify` block, onto the allocation that reaches
     the wrapper.
 
     Not an allocation and not a scheduler flag -- it rides ``Resources``
@@ -1771,7 +1852,7 @@ def _with_notify(flags, declared) -> "Resources":
     included: reports stay off for everyone who has not asked for them.
     """
     out = flags or Resources()
-    # NO BLOCK IS ``None`` (`task.Notify`): a block whose values are all off
+    # NO BLOCK IS ``None`` (`job_request.Notify`): a block whose values are all off
     # still reports the start and the end.
     if declared is None:
         return out
@@ -1779,7 +1860,7 @@ def _with_notify(flags, declared) -> "Resources":
     patch = {}
     if declared.on_scf_converged and out.notify_on_scf is None:
         patch["notify_on_scf"] = True
-    # A period, or ``None`` for never (`stages.md` § 6.9).
+    # A period, or ``None`` for never (`job-request.md` § 3.5).
     if declared.every_hours is not None and out.notify_every_hours is None:
         patch["notify_every_hours"] = declared.every_hours
     # `is not None`, NOT truthiness: an empty tuple says "send this
@@ -1858,6 +1939,10 @@ class PrepAnswer:
     machine: Optional[str] = None
     #: A flat run: its wrappers are rendered and there is no attempt to open.
     flat: bool = False
+    #: A launched stage prepared again for its job request: no attempt is
+    #: opened, its next launch opens its next run
+    #: (`execution/job-request.md` § 5).
+    launched: bool = False
     #: The attempt opened or reused (`materialize.Attempt`), with the
     #: stage's own files.
     attempt: Optional[object] = None
@@ -1872,10 +1957,8 @@ class PrepAnswer:
     #: -- the terminal read them on stderr as the decks rendered.
     deck_findings: list = dataclasses.field(default_factory=list)
     resources: Optional[dict] = None
-    #: The stage's deck, by file name -- what the agreement is about.
+    #: The stage's deck, by file name.
     deck: Optional[str] = None
-    #: `agreement.LaunchAgreement`, unless the deck makes no claim.
-    agreement: Optional[object] = None
     pipeline_log: Optional[Path] = None
     #: The `relax` run a force-constant stage's deck -- or a benchmark's
     #: trials -- is written at, and what it was
@@ -1939,7 +2022,6 @@ class PrepAnswer:
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
         what the Task setup tab's prep route returns (`web/web-api.md`)."""
-        from .agreement import disagreement_note
         from .placement import placement_line, stated_line
         base = Path(base)
 
@@ -1949,7 +2031,7 @@ class PrepAnswer:
             except ValueError:
                 return str(p)
 
-        a, g = self.attempt, self.agreement
+        a = self.attempt
         return {
             "kind": self.kind, "stage": self.stage,
             # THE ONE WIRE FORM of a finding (`Issue.to_json`).
@@ -1961,6 +2043,7 @@ class PrepAnswer:
             "provenance": self.provenance,
             "machine": self.machine,
             "flat": self.flat,
+            "launched": self.launched,
             "attempt": ({"dir": rel(a.dir), "fresh": a.fresh,
                          "brought": list(a.brought)}
                         if a is not None else None),
@@ -1969,13 +2052,6 @@ class PrepAnswer:
             "takes": [dict(t) for t in self.takes],
             "resources": self.resources,
             "deck": self.deck,
-            "agreement": ({"verdict": g.verdict,
-                           "rendered_for": g.rendered_text,
-                           "launching_at": g.launch_text,
-                           "note": (disagreement_note(
-                                        g, base, bench=self.kind == "bench")
-                                    if g.verdict == "differs" else None)}
-                          if g is not None else None),
             "pipeline_log": rel(self.pipeline_log) if self.pipeline_log else None,
             "continuation": (dict(self.continuation.as_dict(),
                                   line=self.continuation.line())
@@ -2013,8 +2089,8 @@ def _record_preflight(base, findings, **said) -> None:
 def _record_prepared(base, answer: "PrepAnswer") -> "PrepAnswer":
     """What a prep writes down once its plan is written (`job-system.md`
     § 5.0, checkpoint 7) -- for a stage the `relax`
-    run a force-constant stage's deck is written at, the deck's agreement
-    with its launch, and *prepared* with which config files answered, the
+    run a force-constant stage's deck is written at, and *prepared* with
+    which config files answered, the
     last line of its record.  What a stage takes from another run is
     recorded by the launch that takes it (`continues`, `gathers`).  The one
     writer of it: a benchmark's prep and every member of a task's."""
@@ -2026,11 +2102,6 @@ def _record_prepared(base, answer: "PrepAnswer") -> "PrepAnswer":
         # trials, written at it; nothing copied at prep.
         ledger(base, "prep", "continues", stage=answer.stage,
                **answer.continuation.ledger_facts(), copied=[])
-    if answer.kind == "task" and answer.agreement is not None:
-        ledger(base, "prep", "launch-agreement", stage=answer.stage,
-               verdict=answer.agreement.verdict,
-               rendered_for=answer.agreement.rendered_text,
-               launching_at=answer.agreement.launch_text)
     answer.provenance = ledger_prepared(base, kind=answer.kind,
                                         stage=answer.stage, dirs=answer.dirs,
                                         provenance=answer.provenance)
@@ -2168,13 +2239,14 @@ def checked(base, described: Described, *, target,
     from ..runtime_config import config_provenance
     from ..validation.task import preflight
     base = Path(base).resolve()
-    issues = preflight(described.task, template_text=described.template_text)
+    issues = preflight(described.task, template_text=described.template_text,
+                       request=described.calc.request)
     described.findings[:] = [i for i in issues if i.severity != "error"]
     errors = [i for i in issues if i.severity == "error"]
     if errors:
         raise PrepError(
-            "the description fails its own preflight "
-            "(engines/stages.md § 6.6):\n  - "
+            "the description or its job request fails its own preflight "
+            "(engines/stages.md § 6.6; execution/job-request.md § 7):\n  - "
             + "\n  - ".join(i.message for i in errors))
     described.environment = (environment if environment is not None
                              else machine_record(base, target))
@@ -2260,23 +2332,28 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     sweep = pins = translation = None
     chosen: dict = {}
     if kind == "bench":
-        from .prep_inputs import fold_allocation
-        ask = fold_allocation(allocation, task.allocation)[0]
+        from .prep_inputs import card_settings, fold_allocation
+        ask = fold_allocation(allocation, described.calc.request.allocation)[0]
         stated_or_refused(ask, bench_asks(ask), shape=False)
         sweep, pins, translation = bench_inputs(
             described.calc, target, notes=notes, environment=environment,
             flags=allocation, on_a_queue=header)
+        # A TRIAL'S RUN SETTINGS: the calculation's card, never a rung's
+        # (`job-request.md` § 3.4) -- under its own pins.
+        run_settings = card_settings(described.calc.request, None)
     else:
-        allocation, pins, chosen = prep_run_inputs(base, task, stage,
-                                                   allocation)
+        allocation, run_settings, chosen = prep_run_inputs(
+            described.calc.request, stage, allocation)
 
     #     STEP 2, ONCE (`script-preparation.md` § 3.0): the allocation folded
     #     and the stage resolved -- what the checks below ask of the job,
     #     and what every step after reads.
     resolved = _resolve_stage(
-        stage, task=task, template=described.template,
+        stage, task=task, request=described.calc.request,
+        template=described.template,
         template_text=template_text, environment=environment,
         allocation=allocation, chosen=chosen, sweep=sweep, pins=pins,
+        run_settings=run_settings,
         translation=translation, home=stage_home(base, task, stage),
         target=target, provenance=described.provenance)
     if kind == "task":
@@ -2427,22 +2504,34 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         # says what it is (A13).
         out.points = list(opened[0].points)
         run_dir = opened[0].points[0][0] if opened[0].points else None
-    else:
+    elif opened:
         out.attempt = opened[0]
         run_dir = opened[0].dir
+    else:
+        # A LAUNCHED STAGE, prepared again for its job request, opens no
+        # run: its files are the stage's own, which its next launch's run
+        # takes (`execution/job-request.md` § 5).
+        out.launched = True
+        run_dir = stage_home(base, task, stage).dir
     # A FORCE-CONSTANT STAGE'S `relax` RUN, its deck written at it; its
     # files reach it at its first launch.
     if continuation is not None:
         out.continuation = dataclasses.replace(continuation, carries=())
-    # WHAT IT WILL LAUNCH WITH, and whether the deck agrees: `launch` refuses
-    # a deck rendered for another width, and prep is the step that exists so
-    # there are no surprises there (`agreement.py`).  A13: the end point, as
-    # the header and the run script carry it.
+    # WHAT IT WILL LAUNCH WITH -- prep writes a deck and its launch
+    # together, once (`architecture.md` A3), and launch sends what it wrote.
+    # A13: the end point, as the header and the run script carry it.
     job = js.job(stage)
     out.job = job
     # WHAT ITS FIRST LAUNCH WILL TAKE, said before any run is read
-    # (`job-system.md` § 5.0, *a preview*).
-    out.takes = _takes_at_launch(pcalc, stage, job, continuation)
+    # (`job-system.md` § 5.0, *a preview*) -- a launched stage's next
+    # launch is a launch again, from its own runs (§ 5.4).
+    out.takes = ([{"from": stage, "files": [],
+                   "line": "at its next launch: launched again, it continues "
+                           "from its own latest run or starts over as its "
+                           "job says -- --cold starts it over "
+                           "(job-system.md § 5.4)"}]
+                 if out.launched
+                 else _takes_at_launch(pcalc, stage, job, continuation))
     if job is not None and run_dir is not None:
         r = job.resources
         out.resources = {"mpi_np": r.mpi_np,
@@ -2454,21 +2543,19 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
         names = run_names(js, job, Shape.named(task.shape))
         # THE HEADER ITS LAUNCH SENDS: a run of points', the walk's one
         # (:func:`prep_calculation`); every other run's, its own.
+        # A RUNG OF POINTS -- its points opened, or, launched and prepared
+        # again, its walk's header written (`walks`) -- sends its walk.
+        walked = bool(out.points or (out.launched and walks))
         sends = (stage_home(base, task, stage).dir / LAUNCH_DIR
                  / GroupNames.of_points(names.stem).name(".sbatch")
-                 if out.points else Path(run_dir) / names.name(".sbatch"))
+                 if walked else Path(run_dir) / names.name(".sbatch"))
         out.launch = _launch_as_written(
             plan, sends, Path(run_dir) / names.name(".run.sh"),
             environment.kind)
         # ...AND ITS FIT IS THE WALK'S, its points' walls summed: the walk
         # is what is sent, and no point is sent alone.
-        if out.points:
+        if walked:
             out.fit = walks.get(sends, "")
-        from .agreement import launch_agreement
-        agreement = launch_agreement(
-            run_dir, job, text=plan.read_text(Path(run_dir) / out.deck))
-        if agreement.verdict != "silent":
-            out.agreement = agreement
     return out
 
 
@@ -2749,8 +2836,8 @@ def group_header(base, task, number: int, jobs, environment, *,
               f"summed and the largest memory)"))
 
 
-def sequence_header(base, task, numbers: Sequence[int], jobs_of, points_of,
-                    environment, *, emit_sbatch: bool = True
+def sequence_header(base, task, request, numbers: Sequence[int], jobs_of,
+                    points_of, environment, *, emit_sbatch: bool = True
                     ) -> "Tuple[Optional[Walk], List[str]]":
     """A SEQUENCE OF GROUPS' ONE HEADER (`job-system.md` § 6.0, *A sequence
     of groups*) -- ``(its Walk, or None where no header is written; each
@@ -2792,7 +2879,7 @@ def sequence_header(base, task, numbers: Sequence[int], jobs_of, points_of,
                                     for w in short)
                         + "; the rest of the allocation idle meanwhile")
     walk = walk_header_of(
-        base, sequence_names(base, task, numbers), shared, environment,
+        base, sequence_names(base, task, request, numbers), shared, environment,
         engine=task.engine, emit_sbatch=emit_sbatch,
         jobs=[j for n in numbers for j in jobs_of[n]],
         what=(f"groups {words} as one job, each launched when the one "
@@ -2852,8 +2939,8 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     # 1 · THE DESCRIPTION, as the verb opened it (A16) -- and THE GROUPS
     #     PICKED, its own.
     description = Described(calc)
-    task = description.task
-    described = sorted({st.group for st in task.stages})
+    task, request = description.task, calc.request
+    described = request.numbers
     if not numbers:
         # NO GROUP NAMED: the calculation's own record -- a junction whose
         # sidecar states no order record -- has it recorded, and nothing else
@@ -2871,16 +2958,15 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         raise _refuse(
             "`prep task` names the groups it prepares -- a group prepared "
             "and never launched is prepared again by naming it -- and the "
-            f"description's groups are {', '.join(map(str, described))}:\n"
+            f"job request's groups are {', '.join(map(str, described))}:\n"
             + block(prep_group_lines(described, base=base)))
     unknown = [n for n in numbers if n not in described]
     if unknown:
         raise _refuse(
-            f"group {', '.join(map(str, unknown))}: the description holds "
-            f"groups {', '.join(map(str, described))} (engines/stages.md "
-            f"§ 2).")
+            f"group {', '.join(map(str, unknown))}: the job request holds "
+            f"groups {', '.join(map(str, described))} "
+            f"(execution/job-request.md § 3.3).")
     numbers = sorted(set(numbers))
-    from .group import group_members
     # A SEQUENCE OF GROUPS (`--one-job`, `job-system.md` § 6.0): the groups
     # named, and of them the ones launched -- read as prepared, never
     # prepared again -- the rest prepared here as any group is.
@@ -2898,7 +2984,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         launched_groups = []
         for n in sequence:
             jobs_n = [old_rows.job(st) if old_rows is not None else None
-                      for st in group_members(task, n)]
+                      for st in request.members(n)]
             try:
                 ran = any(j is not None
                           and ever_launched(description.calc, j)
@@ -2907,7 +2993,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 raise _refuse(str(exc)) from None
             from .group import members_of, same_members
             if ran and (any(j is None for j in jobs_n) or not all(
-                    same_members(members_of(j), group_members(task, n))
+                    same_members(members_of(j), request.members(n))
                     for j in jobs_n)):
                 raise _refuse(
                     f"group {n} was launched, and its members are not the "
@@ -2923,15 +3009,15 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 f"--one-job: every group named ({named_}) is launched "
                 f"already, so nothing is prepared -- send them one by one, "
                 f"each launched again (job-system.md R-P22).")
-    members = {n: group_members(task, n) for n in numbers}
-    group_of = {stage_key(st.name): st.group for st in task.stages}
+    members = {n: request.members(n) for n in numbers}
+    group_of = {stage_key(n): e.group for n, e in request.stages.items()}
     # 1a · THE JOBS PREPARED, matched by membership: a job whose members
     #      are no longer one group is formed again -- every group its
     #      members are in now, in this prep (`group.formed_again`).
     from .group import formed_again, header_of, members_of
     old_js = description.calc.jobset
     prepared = old_js.jobs if old_js is not None else []
-    whole = formed_again(task, prepared, numbers)
+    whole = formed_again(request, prepared, numbers)
     # A LAUNCHED MEMBER among them is the refusal that names the way out --
     # a launched group's members are fixed (§ 5.0, 2a) -- before any other.
     from ..runrecord import LaunchRecordError
@@ -2946,7 +3032,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             raise _refuse(str(exc)) from None
         if hit:
             raise _refuse(joined_launched(description.calc, n, *hit))
-        for st in group_members(task, n):
+        for st in request.members(n):
             why = launched_already(description.calc, st)
             if why:
                 raise _refuse(why)
@@ -2974,6 +3060,27 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             + ("it" if len(missing) == 1 else "them") + " too:\n"
             + block(prep_group_lines(whole, base=base)))
     from .ladder import force_constant_stage
+    # A LAUNCHED MEMBER, prepared again for its job request on the
+    # hierarchical layout (`execution/job-request.md` § 5): its deck must
+    # stay the calculation its runs ran -- asked of the decks this prep
+    # renders, below -- and a force-constant one keeps the `relax` run its
+    # deck was written from, never another.
+    from .materialize import ever_launched as _ever_launched
+    launched_members: Set[str] = set()
+    for n in numbers:
+        for st in members[n]:
+            job_st = description.calc.job(st)
+            if job_st is not None and _ever_launched(description.calc,
+                                                     job_st):
+                launched_members.add(st)
+                if (from_attempt and force_constant_stage(task, st)
+                        and from_attempt != job_st.written_at):
+                    from .commands import redo_launched
+                    raise _refuse(
+                        f"--from {from_attempt!r}: `{st}` was launched, its "
+                        f"deck written at the `relax` run {job_st.written_at} "
+                        f"-- another is another calculation.  To change "
+                        f"it, " + redo_launched(st, calc=description.calc))
     if from_attempt and not any(force_constant_stage(task, st)
                                 for n in numbers for st in members[n]):
         raise _refuse(
@@ -2999,9 +3106,12 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 previews[n] = [plan_stage(
                     base, description, "task", at, target=target,
                     allocation=allocation,
-                    from_attempt=(from_attempt
-                                  if force_constant_stage(task, at)
-                                  else None),
+                    from_attempt=(
+                        description.calc.job(at).written_at
+                        if at in launched_members
+                        and force_constant_stage(task, at)
+                        else from_attempt if force_constant_stage(task, at)
+                        else None),
                     env=env, emit_sbatch=emit_sbatch, plan=the_plan)
                     for at in members[n]]
         except step_errors() as exc:
@@ -3012,6 +3122,24 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         exc.findings = tuple(description.findings)
         _refuse(str(exc))
         raise
+    # 2a · A LAUNCHED MEMBER'S DECKS, THE SAME CALCULATION as the decks its
+    #      runs ran (`execution/job-request.md` § 5, § 6): each deck this
+    #      prep renders for it, against the one it replaces, through the one
+    #      door -- the job request may change, what it computes may not.
+    for n in numbers:
+        for a in previews[n]:
+            if a.stage not in launched_members:
+                continue
+            differs = _computes_else(base, task.engine, the_plan, a)
+            if differs:
+                from .commands import redo_launched
+                raise _refuse(
+                    f"stage {a.stage!r} was launched, and its deck rendered "
+                    f"now is not the calculation its runs ran -- {differs}.  "
+                    f"A launched stage is prepared again for its job request "
+                    f"alone (execution/job-request.md § 5); to change what it "
+                    f"computes, " + redo_launched(a.stage,
+                                                   calc=description.calc))
     # 2b · EACH GROUP'S OWN FILE AND REQUEST, in the same plan -- its one
     #      header, where the machine has a scheduler, rendered for the
     #      members' shared allocation, which is placed as a run's is; the
@@ -3055,12 +3183,12 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                     if len(previews[n]) == 1 else 0)
                 else:
                     jobs_of[n] = [old_js.job(st)
-                                  for st in group_members(task, n)]
+                                  for st in request.members(n)]
                     points_of[n] = (len(rung_points(
                         task, jobs_of[n][0].name, frames=frames_of(base)))
                         if len(jobs_of[n]) == 1 else 0)
-            got, less = sequence_header(base, task, sequence, jobs_of,
-                                        points_of, environment,
+            got, less = sequence_header(base, task, request, sequence,
+                                        jobs_of, points_of, environment,
                                         emit_sbatch=emit_sbatch)
             if got is not None:
                 open_container(base, base / LAUNCH_DIR, the_plan)
@@ -3071,7 +3199,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 # sent as this one's (`job-system.md` § 5.0, checkpoint 6).
                 from .group import sequence_names
                 _left = base / LAUNCH_DIR / sequence_names(
-                    base, task, sequence).name(".sbatch")
+                    base, task, request, sequence).name(".sbatch")
                 if _left.is_file():
                     the_plan.remove(_left)
             sequence_said = {
@@ -3129,7 +3257,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         with user_error_as_prep():
             from .group import named
             kept = save_before(
-                base, "prep task " + ", ".join(named(task, n)
+                base, "prep task " + ", ".join(named(request, n)
                                                for n in numbers),
                 engine=str(task.engine))
     except (CheckpointError, PrepError) as exc:

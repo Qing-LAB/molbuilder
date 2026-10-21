@@ -1793,6 +1793,7 @@ _THREAD_SOURCE_WORDS = {
 def render_run_wrapper(script_path: Path, *,
                        names,
                         resources: "Resources",
+                        program: Optional[str] = None,
                         env: Optional[str] = None,
                         n_atoms: Optional[int] = None,
                         project_dir: Optional[Path] = None,
@@ -2536,12 +2537,10 @@ def render_run_wrapper(script_path: Path, *,
         # capability + the launcher choice in the log.  This adapts
         # automatically if you rebuild SIESTA with different flags --
         # no need to regenerate the wrapper.
-        # WHICH binary this wrapper launches.  The engine default is
-        # ``siesta``; ``resources.program`` overrides it -- the transport
-        # composite's transmission stage runs ``tbtrans`` over the SAME
-        # deck text, so the deck cannot carry the answer and the
-        # allocation road does (jobset/model.Resources.program).
-        _prog = getattr(r, "program", None) or "siesta"
+        # WHICH binary this wrapper launches -- the job's (`jobset/model.
+        # Job.program`): the engine's own, ``siesta``, else the transport
+        # composite's transmission's ``tbtrans``.
+        _prog = program or "siesta"
         # WHAT THE LOG CALLS IT: a transmission run is TBtrans.
         _prog_label = "TBtrans" if _prog == "tbtrans" else "SIESTA"
         # A RETRY ANSWERS AN SCF STOP OR A RELAXATION OUT OF MOVES
@@ -3645,7 +3644,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# `molbuilder jobset launch` sets {LAUNCH_CLAIM_VAR} when it launches\n"
         f"# this script (direct: child env; sent to a scheduler: on the\n"
         f"# line it is sent with).  A bare invocation is usually an accident: it skips the\n"
-        f"# launch bookkeeping, the deck/launch agreement check and the\n"
+        f"# launch bookkeeping, the check of what prep wrote and the\n"
         f"# mode/config resolution.  {LAUNCH_CLAIM_VAR}={MANUAL_CLAIM} is the\n"
         f"# deliberate override, and the value is logged either way\n"
         f"# (job-contracts.md 2.6).  A help request skips the gate: it\n"
@@ -3653,7 +3652,7 @@ def render_run_wrapper(script_path: Path, *,
         f"if [ -z \"${{{LAUNCH_CLAIM_VAR}:-}}\" ] && [ \"$_mb_help\" = \"0\" ]; then\n"
         f"  echo \"WARNING: {run_sh} was called directly, not via\" >&2\n"
         f"  echo \"  'molbuilder jobset launch'.  Direct calls skip launch\" >&2\n"
-        f"  echo \"  bookkeeping and the deck/launch agreement check.\" >&2\n"
+        f"  echo \"  bookkeeping and the check of what prep wrote.\" >&2\n"
         f"  if [ -t 0 ]; then\n"
         f"    printf \"  Proceed anyway? [y/N] \" >&2\n"
         f"    # `|| true`: EOF (Ctrl-D, a closed pty) must fall through to\n"
@@ -4102,6 +4101,7 @@ def render_wrappers(script_path: Path, *,
                     names,
                     n_atoms: Optional[int] = None,
                     resources: "Resources",
+                    program: Optional[str] = None,
                     env: Optional[str] = None,
                     emit_sbatch: bool = True,
                     project_dir: Optional[Path] = None,
@@ -4165,7 +4165,8 @@ def render_wrappers(script_path: Path, *,
         n_atoms = _fdf_n_atoms(deck_text)
     _notes: list = []
     text = render_run_wrapper(
-        script_path, names=names, resources=r, env=env, n_atoms=n_atoms,
+        script_path, names=names, resources=r, program=program, env=env,
+        n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
         finish=finish, resumes=resumes, warm=warm, deck_text=deck_text,
         notes=_notes)
@@ -4219,6 +4220,7 @@ def write_run_wrapper(script_path: Path, *,
                       names,
                       n_atoms: Optional[int] = None,
                       resources: "Resources",
+                      program: Optional[str] = None,
                       env: Optional[str] = None,
                       emit_sbatch: bool = True,
                       project_dir: Optional[Path] = None,
@@ -4251,7 +4253,7 @@ def write_run_wrapper(script_path: Path, *,
     """
     from . import script_emit as _sc_write
     rendered = render_wrappers(script_path, names=names, n_atoms=n_atoms,
-                               resources=resources,
+                               resources=resources, program=program,
                                machine_record=machine_record,
                                domain_pq=domain_pq,
                                env=env, emit_sbatch=emit_sbatch,

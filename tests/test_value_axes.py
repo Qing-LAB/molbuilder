@@ -29,7 +29,7 @@ from molbuilder.jobset.prep import prep_bench
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
-from support.road import shelf_headers
+from support.road import read_request, shelf_headers, write_request
 from support.machines import SLURM
 
 
@@ -67,9 +67,7 @@ def sol_calc(tree):
     dest = tree / "calc"
     D.write_description(
         D.build_description(struct,
-                            SiestaConfig(system_label="JOB",
-                                         use_gpu=False,
-                                         diag_algorithm="ELPA-1STAGE"),
+                            SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization", shape="hierarchical",
@@ -80,11 +78,12 @@ def sol_calc(tree):
     # The queue, wall and memory every job sent to this scheduler states --
     # the trials share the calculation's (`architecture.md` § 5.2); a
     # benchmark measures on the one queue it names (`generator.md` § 4.3a).
-    tj = dest / "task.json"
-    d = json.loads(tj.read_text())
-    d["allocation"] = {"domain": "general", "time": "0-01:00:00",
-                       "mem": "8G"}
-    tj.write_text(json.dumps(d, indent=2))
+    # ...and the solver its run card states, on the CPU.
+    req = read_request(dest)
+    req["allocation"] = {"domain": "general", "time": "0-01:00:00",
+                         "mem": "8G"}
+    req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
+    write_request(dest, req)
     env = Environment(
         scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64,
@@ -102,10 +101,9 @@ def sol_calc(tree):
 
 
 def _declare(calc, axes):
-    p = calc / "task.json"
-    obj = json.loads(p.read_text())
-    obj["bench"] = axes
-    p.write_text(json.dumps(obj, indent=2) + "\n")
+    req = read_request(calc)
+    req["bench"] = axes
+    write_request(calc, req)
 
 
 # --------------------------------------------------------------------- #
@@ -482,11 +480,11 @@ def test_preflight_flags_a_typod_choice_per_point(sol_calc):
     UI) failed only at `prep bench` on Sol.  The preflight now says it at
     describe time, per point, with the choices — and a repeated point is
     refused too."""
-    from molbuilder.task import of as task_of
     from molbuilder.validation.task import preflight
     _declare(sol_calc, {"diag_algorithm": ["ELPA-1Stage", "ELPA-2STAGE"],
                         "use_gpu": [True, True]})
-    issues = preflight(task_of(sol_calc))
+    calc = open_calculation(sol_calc)
+    issues = preflight(calc.task, request=calc.request)
     msgs = [i.message for i in issues]
     assert any("'ELPA-1Stage'" in m and "ELPA-1STAGE" in m for m in msgs), \
         "the typo'd point must be named WITH the choices"
@@ -521,9 +519,7 @@ def flat_sol_calc(tree):
     dest = tree / "flatcalc"
     D.write_description(
         D.build_description(struct,
-                            SiestaConfig(system_label="JOB",
-                                         use_gpu=False,
-                                         diag_algorithm="ELPA-1STAGE"),
+                            SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization", shape="flat",
@@ -534,11 +530,12 @@ def flat_sol_calc(tree):
     # The queue, wall and memory every job sent to this scheduler states --
     # the trials share the calculation's (`architecture.md` § 5.2); a
     # benchmark measures on the one queue it names (`generator.md` § 4.3a).
-    tj = dest / "task.json"
-    d = json.loads(tj.read_text())
-    d["allocation"] = {"domain": "general", "time": "0-01:00:00",
-                       "mem": "8G"}
-    tj.write_text(json.dumps(d, indent=2))
+    # ...and the solver its run card states, on the CPU.
+    req = read_request(dest)
+    req["allocation"] = {"domain": "general", "time": "0-01:00:00",
+                         "mem": "8G"}
+    req["execution"] = {"use_gpu": False, "diag_algorithm": "ELPA-1STAGE"}
+    write_request(dest, req)
     env = Environment(
         scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64,

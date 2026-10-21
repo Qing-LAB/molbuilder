@@ -181,6 +181,15 @@ FIELDS: "dict[str, Field]" = {
         what="the calculation's shape",
         shape=r"flat|hierarchical",
         example="hierarchical"),
+    "kept": Field(
+        what="the name of a record `jobset migrate` rewrote",
+        shape=r"[A-Za-z0-9_.-]+",
+        example="task.json"),
+    "rule": Field(
+        what="the earliest rule the kept record was written before -- a "
+             "plan's code, a day or a release",
+        shape=r"[A-Za-z0-9_.-]+",
+        example="2.27.0"),
 }
 
 _FIELD_RE = re.compile(r"\{([a-z_]+)\}")
@@ -196,6 +205,9 @@ SCHEDULER_STDERR = "{scheduler}.{jobid}.err"
 RANK_LAUNCHER = ".mb-rank-launch-{pid}.sh"
 #: A SIESTA pseudopotential, named for its element (`fixed_name`).
 PSEUDO_FILE = "{element}.psml"
+#: A record `jobset migrate` rewrote, kept beside its rewrite under the
+#: earliest rule it was written before (`migrate._kept_as`).
+KEPT_FILE = "{kept}.pre-{rule}"
 #: The saved states' big files, by content (`checkpoint`), and the ignore
 #: list that sends them there.
 #:
@@ -923,6 +935,7 @@ class Artifact:
 #: spelled ONCE, here; each owner imports its own (`job-contracts.md` § 2.2,
 #: B13, 2026-10-04).  Plain data, so this module stays stdlib and travels.
 TASK_FILE = "task.json"
+JOB_REQUEST_FILE = "job-request.json"
 TASK_HANDOVER_FILE = "task.1st.json"
 WARM_FILES_FILE = "warm-files.toml"
 MACHINE_RECORD_FILE = "environment.json"
@@ -972,7 +985,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".template.toml", "every parameter, with the value it was given",
              staged=False,
              when="setup", level="calculation", kind="source",
-             writer="`jobset init` and the Transport tab's describe "
+             writer="`molbuilder describe` and the Transport tab's describe "
                     "door (`describe.write_description`); the hand-over, "
                     "which the browser writes; `jobset migrate` -- each "
                     "naming it with `template_file.template_path`",
@@ -990,21 +1003,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".source.xyz", "the structure the calculation is of",
              staged=False,
              when="setup", level="calculation", kind="input",
-             writer="the hand-over and `jobset init` "
+             writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
              door="jobset.prep._structure_for"),
     Artifact(".source.molstruct.json", "its cell and its region labels",
              staged=False,
              when="setup", level="calculation", kind="input",
-             writer="the hand-over and `jobset init` "
+             writer="the hand-over and `molbuilder describe` "
                     "(`StructureCodec.source_files`)",
              door="jobset.prep._structure_for"),
-    Artifact(".template.toml.pre-m6", "the template as it was before "
-                                      "`jobset migrate` rewrote it",
-             staged=False,
-             when="setup", level="calculation", kind="record",
-             writer="`jobset migrate`",
-             only="a template migrated"),
     # THE DECK'S COMPANION REPORT (`script_emit.VALIDATION_SUFFIX`): a file
     # molbuilder writes and does not declare reads as ENGINE OUTPUT.
     Artifact(".validation.txt", "what the generator checked before it wrote "
@@ -1317,9 +1324,24 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=TASK_FILE, what="the description: what varies, the stages, "
                                   "the shape, the structure",
              when="setup", level="calculation", kind="source",
-             writer="`jobset init` and the Transport tab's describe door "
-                    "(`describe.write_description`); Task setup's Save",
+             writer="`molbuilder describe` and the Transport tab's describe "
+                    "door (`describe.write_description`); Task setup's Save; "
+                    "`jobset migrate`",
              door="task.of"),
+    Artifact(name=JOB_REQUEST_FILE,
+             what="the job request: the queue, wall and memory asked, the "
+                  "run cards, each stage's group, a benchmark's plan, the "
+                  "reports",
+             when="setup", level="calculation", kind="source",
+             writer="`molbuilder describe` and the Transport tab's describe "
+                    "door (`describe.write_description`); Task setup's Save; "
+                    "`jobset migrate`",
+             door="job_request.of"),
+    Artifact(name=KEPT_FILE,
+             what="a record as it was before `jobset migrate` rewrote it",
+             when="setup", level="calculation", kind="record",
+             writer="`jobset migrate`, beside the record it rewrote",
+             only="a calculation migrated"),
     Artifact(name=TASK_HANDOVER_FILE,
              what="a hand-over waiting for its shape and stages; Save "
                   "removes it",
@@ -1355,7 +1377,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "opens only its working directory",
              engine="siesta", when="prep", level="calculation", kind="input",
              writer="prep (`jobset.engines.pseudo_dir`, `materialize`); "
-                    "`jobset init --psml-lib`",
+                    "`molbuilder describe --psml-lib`",
              door="pseudos.psml_sources"),
     Artifact(name=JUNCTION_FILE, what="the composed junction",
              calculation="transport", when="prep", level="calculation",

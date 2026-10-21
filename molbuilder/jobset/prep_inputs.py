@@ -5,8 +5,8 @@ Two tuples, one per kind:
     prep_run_inputs  ->  (allocation, pins, chosen)       a run
     bench_inputs     ->  (points, pins, translation)      a benchmark sweep
 
-and the pieces they are made of: the run's condition (`Task.run_condition`,
-read by `declared_run_shape`, `run_inputs`), the bench's
+and the pieces they are made of: the run's condition (`JobRequest.
+run_condition`, read by `declared_run_shape`, `run_inputs`), the bench's
 declared pins and axes (`_declared_execution_pins`), and the bench grid --
 enumerated, fit cell by cell on the benchmark's queue, and reported
 (`_cells_on_the_queue`, `_local_over`, `_past_the_ask`, `_cell_*`).
@@ -24,12 +24,12 @@ from pathlib import Path
 from .errors import PrepError
 
 
-def _declared_execution_pins(task, bench_override=None):
-    """The description's ``bench``, read as the OVERRIDE LANE it is (user rule,
-    2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
-    the template -- several points = an axis to try, ONE point = the value
-    the bench's trials run with, applied at prep as a pin for them alone
-    (the run's values are its own card's, `stages.md` § 6.8d).  Nothing migrates between files: the description
+def _declared_execution_pins(request, bench_override=None):
+    """The job request's ``bench``, read as the OVERRIDE LANE it is (user
+    rule, 2026-08-20; `generator.md` § 4.3a): several points = an axis to
+    try, ONE point = the value the bench's trials run with, applied at prep
+    as a pin for them alone (the run's values are its own card's,
+    `job-request.md` § 3.2).  Nothing migrates between files: the request
     stays exactly as edited, and prep is where a declaration is resolved.
     The run's condition is handed through here too (:func:`run_inputs`), so
     the two lanes split a name by one rule.
@@ -54,12 +54,12 @@ def _declared_execution_pins(task, bench_override=None):
     must be an ``execution`` item, and `validation/task.py`'s
     ``_bench_names_a_speed_knob`` owns that rule -- a non-execution name
     was refused upstream and an unknown name here is simply skipped.
-    Point SHAPES are `task.of`'s (task.py `bench_from_obj`): every
-    value arrives as a non-empty tuple of scalars, so no scalar/empty
+    Point SHAPES are the request's reader's (`job_request.bench_from_obj`):
+    every value arrives as a non-empty tuple of scalars, so no scalar/empty
     arms exist here.
 
-    ``task`` is the description its caller holds -- read once by the prep
-    that asks (W55 B1).
+    ``request`` is the job request its caller holds -- read once by the
+    prep that asks (W55 B1).
     """
     from ..validation.task import bench_points_fit_their_items
     from .. import template as _T
@@ -74,22 +74,22 @@ def _declared_execution_pins(task, bench_override=None):
         # that came off disk.
         import dataclasses as _dc
 
-        from ..task import bench_from_obj
-        task = _dc.replace(task,
-                           bench=bench_from_obj({"bench": bench_override}))
-    declared = {k: list(v) for k, v in (task.bench or {}).items()}
+        from ..job_request import bench_from_obj
+        request = _dc.replace(request,
+                              bench=bench_from_obj({"bench": bench_override}))
+    declared = {k: list(v) for k, v in (request.bench or {}).items()}
     if not declared:
         return {}, {}, {}
 
-    shape_errors = [i for i in bench_points_fit_their_items(task)
+    shape_errors = [i for i in bench_points_fit_their_items(request)
                     if i.severity == "error"]
     if shape_errors:
         raise PrepError(shape_errors[0].message)
 
-    # THE ENGINE IS THE DESCRIPTION'S OWN (task.engine), so this door and
-    # the shape checker it calls are keyed on one source.
+    # THE ENGINE IS THE DESCRIPTION'S, held by the request read against it,
+    # so this door and the shape checker it calls are keyed on one source.
     items = {i.name: i
-             for i in _T.select(_T.catalogue(), engine=str(task.engine))
+             for i in _T.select(_T.catalogue(), engine=str(request.engine))
              if "execution" in (i.category or ())}
     pins, axes, value_axes = {}, {}, {}
     for name, pts in declared.items():
@@ -104,6 +104,18 @@ def _declared_execution_pins(task, bench_override=None):
             continue                         # grid multiplies per point
         pins[name] = pts[0]
     return pins, axes, value_axes
+
+
+def _catalogue_default(name: str, engine: str):
+    """The catalogue's default for run setting ``name`` on ``engine`` --
+    what a run takes where no card states it (`job-request.md` § 4);
+    ``None`` for an item with none."""
+    from ..template import catalogue, one
+    try:
+        item = one(catalogue(), name, engine=engine)
+    except KeyError:
+        return None
+    return None if item is None else item.value
 
 
 #: What makes a trial a MEASUREMENT rather than a run -- schema values
@@ -253,13 +265,13 @@ def _cell_shape(g, k, c) -> str:
 # THE CATALOGUE'S WORDS FOR A LAUNCH FIELD are mapped to `Resources`' own by
 # the one name map, `model.AS_RESOURCE`; an item whose name maps to no field
 # is DROPPED by `declared_run_shape`.  The run's own wall and queue
-# (`stages.md` § 6.8e) are `Resources` fields under their own names.
-from ..task import LANE_ASKS as _LANE_ASKS
+# (`job-request.md` § 3.2a) are `Resources` fields under their own names.
+from ..job_request import LANE_ASKS as _LANE_ASKS
 
 from .model import AS_RESOURCE
 
 
-def declared_run_shape(base, task, stage=None):
+def declared_run_shape(request, stage=None):
     """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
     fields.  ``{}`` when the condition states none.
 
@@ -277,16 +289,16 @@ def declared_run_shape(base, task, stage=None):
     by the prep entry, of the job it resolves (`prep.plan_stage`,
     `execution/gpu.md` G5).
     """
-    cond = task.run_condition(stage)
+    cond = request.run_condition(stage)
     from ..template import catalogue, select
     from .model import Resources
     items = {i.name: i for i in select(catalogue(),
-                                       engine=getattr(task, "engine", ""))}
+                                       engine=str(request.engine))}
     known = {f.name for f in __import__("dataclasses").fields(Resources)}
     out = {}
     for name, val in sorted(cond.items()):
         if name in _LANE_ASKS:
-            # THE RUN'S OWN SCHEDULER ASK (`stages.md` § 6.8e).  Not a
+            # THE RUN'S OWN SCHEDULER ASK (`job-request.md` § 3.2a).  Not a
             # catalogue item, so `items` does not have it -- and falling
             # through the skip below would DROP a value a person typed,
             # which is the defect class this lane keeps producing.
@@ -307,30 +319,42 @@ def declared_run_shape(base, task, stage=None):
     return out
 
 
-def run_inputs(base, task, stage=None):
-    """The run's two halves from its condition — ``(chosen, pins)``.
+def card_settings(request, stage=None):
+    """The run settings a run takes from the job request's cards --
+    ``{name: (value, "stage_card" | "calc_card")}``: the condition's
+    NON-machine items (`declared_run_shape` takes the machine's), each with
+    the card it came from (`job-request.md` § 4).  With no ``stage``, the
+    calculation's card alone -- what a benchmark's trials take (§ 3.4)."""
+    cond = request.run_condition(stage)
+    if not cond:
+        return {}
+    settings, _axes, _value_axes = _declared_execution_pins(
+        request, {k: [v] for k, v in cond.items()})
+    entry = request.entry(stage) if stage is not None else None
+    own = dict(entry.execution or {}) if entry is not None else {}
+    return {k: (v, "stage_card" if k in own else "calc_card")
+            for k, v in (settings or {}).items()}
+
+
+def run_inputs(request, stage=None):
+    """The run's two halves from its condition — ``(chosen, settings)``.
 
     One block, two destinations, split by the catalogue's own answer: a
     machine-answered item is the launch SHAPE (`declared_run_shape`), anything
-    else is a PIN over the template — through `_declared_execution_pins`, the
-    same door the bench's one-point declarations go through, so the two lanes
-    cannot disagree about what a name means.
+    else is a run setting over the catalogue's default — through
+    `_declared_execution_pins`, the same door the bench's one-point
+    declarations go through, so the two lanes cannot disagree about what a
+    name means.
     """
-    cond = task.run_condition(stage)
-    pins = {}
-    if cond:
-        pins, _axes, _value_axes = _declared_execution_pins(
-            task, {k: [v] for k, v in cond.items()})
-    # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
-    # is a device run with nothing on its card, and its count is asked for
-    # like any other's (`gpu.md` G5 -- refused, unstated, by the prep entry
-    # of the job it resolves).
-    return declared_run_shape(base, task, stage), dict(pins or {})
+    # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a card whose `use_gpu` is on
+    # with no count is a device run asking for none, refused, unstated, by
+    # the prep entry of the job it resolves (`gpu.md` G5).
+    return declared_run_shape(request, stage), card_settings(request, stage)
 
 
-def prep_run_inputs(base, task, stage, allocation=None):
-    """Everything ``prep task`` needs, assembled ONCE -- ``(allocation, pins,
-    chosen)``.
+def prep_run_inputs(request, stage, allocation=None):
+    """Everything ``prep task`` needs, assembled ONCE -- ``(allocation,
+    run_settings, chosen)``.
 
     **`architecture.md` A12**, and the contract stated there: the ask handed
     in is what the person is saying RIGHT NOW -- flags, or an EMPTY
@@ -345,16 +369,17 @@ def prep_run_inputs(base, task, stage, allocation=None):
 
     So the browser's prep button and ``molbuilder jobset prep task`` call
     THIS, and neither assembles anything of its own.  ONE source states the
-    run (`stages.md` § 6.8d, plan § 5w K5): ``execution``, the calculation's
-    block with the rung's over it -- what the person ASKED for.  Its machine
-    items are the launch shape, the rest are pins over the template.  The
-    bench's one-point non-machine declarations pin the trials alone.
+    run (`job-request.md` § 3.2, plan § 5w K5): ``execution``, the
+    calculation's card with the rung's over it -- what the person ASKED for.
+    Its machine items are the launch shape, the rest are run settings over
+    the catalogue's defaults.  The bench's one-point non-machine
+    declarations pin the trials alone.
 
     A flag beats it and is already in ``allocation`` when it arrives.
     """
     from .model import Resources
 
-    # NEVER NONE (§ 6.0a's contract): the run card and the description are
+    # NEVER NONE (§ 6.0a's contract): the run card and the allocation are
     # folded UNDER this field by field (step 2), and there is no
     # field-by-field merge onto nothing.  A surface with no flags passes an
     # empty ask, not an absent one.
@@ -363,8 +388,8 @@ def prep_run_inputs(base, task, stage, allocation=None):
     # 1 · THE CONDITION -- the run card, the launch-shape ladder's first rung,
     #     under a flag (`architecture.md` § 5.2) -- folded where the rest of
     #     the allocation is, once, at step 2 (:func:`fold_allocation`: a
-    #     flag, then the run card, then the description).
-    chosen, cond_pins = run_inputs(base, task, stage)
+    #     flag, then the run card, then the allocation).
+    chosen, settings = run_inputs(request, stage)
     # WHETHER A GPU RUN STATES HOW MANY, AND A CPU RUN NONE (`execution/
     # gpu.md` G5) is the prep entry's to ask, of the job it resolves from
     # this assembly, beside the launch values' refusal -- and the Task
@@ -372,7 +397,7 @@ def prep_run_inputs(base, task, stage, allocation=None):
 
     # 1b · THE CALCULATION'S SCHEDULER ASK is folded where the stage is
     #      resolved, once (`prep._resolve_stage`, :func:`fold_allocation`:
-    #      a flag, then the run card, then the description).
+    #      a flag, then the run card, then the allocation).
 
     # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict is a REPORT a
     #     person reads (printed by `summarize`), and what the
@@ -382,10 +407,10 @@ def prep_run_inputs(base, task, stage, allocation=None):
     #     launch on its own is a second arrival route, and every silent-value
     #     defect this lane has had was a second arrival route.
 
-    # 3 · THE PINS -- the condition's alone (5.2's deck/speed ladder).  The
-    #     bench's one-point declarations pin its trials, never the run
-    #     (`stages.md` § 6.8d's "and nowhere else").
-    pins = dict(cond_pins) or None
+    # 3 · THE RUN SETTINGS -- the condition's alone (5.2's deck/speed
+    #     ladder), each with its card.  The bench's one-point declarations
+    #     pin its trials, never the run (`job-request.md` § 3.2's "and
+    #     nowhere else").
 
     # 4 · NOTHING IS WORKED OUT FOR WHAT NOBODY STATED.  An unstated rank or
     #     thread count is refused by `launch_refusal`, which the entry asks
@@ -393,7 +418,7 @@ def prep_run_inputs(base, task, stage, allocation=None):
     #     2026-10-02: "explicit job config is the only way allowed").
 
     # `chosen` is returned for the PREVIEW to name; it is already folded in.
-    return allocation, pins, chosen
+    return allocation, settings, chosen
 
 
 def bench_refusal(task):
@@ -418,16 +443,16 @@ def bench_refusal(task):
                 f"pins (a capped-SCF probe run) name SIESTA settings, so a "
                 f"{task.engine} bench would measure nothing meaningful.  "
                 f"Benchmark support for other engines is a recorded design "
-                f"(engines/stages.md § 6.8); for now, size the run from "
+                f"(execution/job-request.md § 3.4); for now, size the run from "
                 f"the engine's own scaling guidance in docs/engines/tuning.md.")
     return None
 
 
 def fold_allocation(flags, declared, chosen=None):
     """``(Resources, where each value came from)`` -- the caller's
-    allocation over the description's, with each field it holds named by
+    allocation over the job request's, with each field it holds named by
     its source:
-    ``flag``, ``run card`` or ``description`` -- what a run's placement
+    ``flag``, ``run card`` or ``allocation`` -- what a run's placement
     records beside the queue it was placed on (`job-system.md` § 6.0).
     ONE fold: the sources are read off the same precedence that fills the
     values, never worked out a second way.
@@ -435,9 +460,9 @@ def fold_allocation(flags, declared, chosen=None):
     FIELD BY FIELD: a flag is what the person asks for now, so a stated
     one wins and an unstated one leaves the file's answer standing --
     whole-object precedence would make ``--np 8`` erase a memory ask
-    nobody mentioned.  ``declared`` is the description's ``allocation``
-    (`stages.md` § 6.8a); ``chosen``, the run card's launch shape
-    (§ 6.8d, :func:`declared_run_shape`)."""
+    nobody mentioned.  ``declared`` is the job request's ``allocation``
+    (`job-request.md` § 3.1); ``chosen``, the run card's launch shape
+    (§ 3.2, :func:`declared_run_shape`)."""
     from .model import Resources
     out = flags or Resources()
     import dataclasses as _dc
@@ -452,12 +477,12 @@ def fold_allocation(flags, declared, chosen=None):
                           ("mem", declared.mem)):
             if val and getattr(out, name, None) in (None, ""):
                 patch[name] = val
-                said[name] = "description"
+                said[name] = "allocation"
         # THE BINDING SWITCH, when said: `False` is the value that matters,
         # so it is not tested for truth (`execution/gpu.md` G9).
         if declared.gpu_binding is not None and out.gpu_binding is None:
             patch["gpu_binding"] = declared.gpu_binding
-            said["gpu_binding"] = "description"
+            said["gpu_binding"] = "allocation"
     # ALREADY IN `Resources`' OWN WORDS -- `to_resources` speaks them, so
     # there is no name map here and no second place for one to drift.
     for name, val in sorted((chosen or {}).items()):
@@ -469,7 +494,7 @@ def fold_allocation(flags, declared, chosen=None):
 
 
 #: The queue a caller names no queue of its own for: the fold's
-#: (:func:`fold_allocation`) -- prep's, its flags over the description.
+#: (:func:`fold_allocation`) -- prep's, its flags over the job request.
 _FOLDED = object()
 
 
@@ -488,21 +513,21 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     `prep`'s five steps — receives a longer list and never asks why
     (`generator.md` § 2).
 
-    **The grid is RESOLVED here, at prep — and the description may DECLARE
+    **The grid is RESOLVED here, at prep — and the job request may DECLARE
     it** (`generator.md` § 4.3a, user-settled 2026-08-17).
-    ``task.json``'s ``bench`` names the points to try — *"try 4, 8 and 16
+    ``job-request.json``'s ``bench`` names the points to try — *"try 4, 8 and 16
     ranks"* is true on every cluster, so it is portable and belongs with the
     calculation; what those points MEAN on this machine is resolved here.
     With no declaration the machine proposes: the grid is enumerated from
     the probed topology.
 
-    **Whether this is a GPU grid is the DESCRIPTION's answer, not this
+    **Whether this is a GPU grid is the JOB REQUEST's answer, not this
     function's assumption** (2026-08-17).  `web/task-setup.md` § 6.2 —
     *"use GPU or not is set up only at the Job Prep UI"* — makes ``use_gpu``
-    a value the person chose, carried in the template like any other; and
-    § 6.2 is equally explicit that the eigensolver is NOT the same question
-    (``diag_algorithm`` is a `budget` item on the parameter tab).  The
-    description answers, and the grid follows its answer.
+    a value the person chose: the bench's points for it, else the
+    calculation's run card, else the catalogue's default
+    (`job-request.md` § 3.4); and the eigensolver is NOT the same question.
+    The request answers, and the grid follows its answer.
 
     **A multi-point non-machine entry is a VALUE AXIS** (§ 4.3a): its points multiply the machine grid, each point carries
     its coordinates (the resolver's parameter lane applies them per
@@ -516,7 +541,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     caller has read it (the prep entry reads it once and hands it over, W55
     B1), else read here.
 
-    ``flags`` are the prep's own, folded over the description's
+    ``flags`` are the prep's own, folded over the job request's
     ``allocation`` by the one fold (:func:`fold_allocation`) into the ASK:
     the benchmark's one queue, and what the person allows this prep -- its
     ranks, cores per rank and GPUs (`generator.md` § 4.1, the allocation
@@ -527,7 +552,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     prep is refused only when no cell is left (§ 4.3a: a cell that fits is
     never denied by a sibling that does not).  The bench card names no
     flags; it passes the queue picked on the page as ``queue`` (``None`` for
-    none picked), in place of the description's, as it passes the axes
+    none picked), in place of the request's, as it passes the axes
     being edited (``bench_override``).
 
     ``on_a_queue`` is whether the benchmark goes to a queue -- false where
@@ -541,19 +566,17 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     note = notes.append if notes is not None else (lambda _text: None)
     from ..bench.grid import sweep_K, sweep_grid
     from ..resolve import MachineTranslation
-    from ..template import read_template, select as template_select
     from .machine import machine_record
-    base, task, template_text = (Path(calc.base), calc.task,
-                                 calc.template_text)
+    base, task, request = Path(calc.base), calc.task, calc.request
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
     # refusal about the target would otherwise answer a question the
     # description never asks.
     why = bench_refusal(task)
     if why:
         raise PrepError(why)
-    # THE ASK: the prep's flags over the description's allocation, by the
+    # THE ASK: the prep's flags over the job request's allocation, by the
     # one fold every caller's ask is (`fold_allocation`).
-    ask = fold_allocation(flags, task.allocation)[0]
+    ask = fold_allocation(flags, request.allocation)[0]
     # The grid is enumerated from the TARGET's topology, not from whatever
     # box you happen to be typing on (P2, 2026-08-17).
     # READ, NOT SNAPSHOTTED: the bench card asks this on every edit, and
@@ -606,25 +629,20 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
            if every else node_gpus) or 0
     cps = getattr(topo, "cores_per_socket", None)
 
-    tmpl = read_template(template_text)
-    # Through `select` -- `template.md` § 8.0 owns the rule.
-    #
-    # ``select`` rather than ``one`` because the question is *is it on?*: a
-    # template that never carried the item answers "no", while ``one`` RAISES
-    # on a name the file never had -- right for a caller that NEEDS the item,
-    # wrong for one asking whether it exists.  One name for both engines
-    # (`execution/gpu.md` G1).
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the
-    # grid's axes.  A declared use_gpu pin OVERRIDES the template's
-    # answer below, which is what makes the machine card's choice reach
-    # the sweep without touching the template file.
+    # grid's axes.
     declared_pins, declared_axes, value_axes = _declared_execution_pins(
-        task, bench_override)
+        request, bench_override)
 
-    on_gpu = any(i.name == "use_gpu" and bool(i.value)
-                 for i in template_select(tmpl, engine=task.engine))
+    # WHETHER THE TRIALS ARE A GPU FAMILY (`job-request.md` § 3.4): the
+    # bench's points for `use_gpu`, else the calculation's card, else the
+    # catalogue's default -- what the calculation runs at, never a rung's
+    # own card.  One name for both engines (`execution/gpu.md` G1).
+    card = request.run_condition(None)
+    on_gpu = (bool(card["use_gpu"]) if "use_gpu" in card
+              else bool(_catalogue_default("use_gpu", str(task.engine))))
     if "use_gpu" in declared_pins:
         on_gpu = bool(declared_pins["use_gpu"])
 
@@ -646,7 +664,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     _measured = sorted(set(value_axes) & set(_MEASUREMENT_PINS))
     if _measured:
         raise PrepError(
-            f"task.json declares {', '.join(_measured)} as a value axis, "
+            f"job-request.json declares {', '.join(_measured)} as a value axis, "
             f"and the benchmark pins "
             f"{'it' if len(_measured) == 1 else 'them'} on every trial (a "
             f"trial is a measurement -- generator.md § 4.3a).  Its points "
@@ -694,7 +712,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         # through as an axis, and the grid resolves exactly these; without
         # this refusal a declared memory axis would be silently ignored.
         raise PrepError(
-            f"task.json declares bench axes this machine translation does "
+            f"job-request.json declares bench axes this machine translation does "
             f"not know: {', '.join(_unresolvable)}.  The axes a sweep can "
             f"resolve today are {', '.join(_KNOWN_AXES)} "
             f"(generator.md § 4.3a).")
@@ -715,7 +733,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
         said, left = (("mpi_np", "omp_threads")
                       if declared.get("mpi_np") else ("omp_threads", "mpi_np"))
         raise PrepError(
-            f"task.json's bench declares {said} and not {left} -- a "
+            f"job-request.json's bench declares {said} and not {left} -- a "
             f"declared grid states both, the ranks and the cores per rank "
             f"(generator.md § 4.3a).  Declare {left}'s points too, or "
             f"neither, for the machine's proposal.")
@@ -747,7 +765,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                   if declared.get("gpu_count") else None)
     if gpu_counts and not any(families):
         raise PrepError(
-            "task.json declares gpu_count, but this bench resolves to the "
+            "job-request.json declares gpu_count, but this bench resolves to the "
             "CPU family (use_gpu is false and not an axis) -- the "
             "device counts would be silently ignored.  Declare use_gpu "
             "= [true] (or the [true, false] axis), or drop gpu_count.")
@@ -786,7 +804,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
             raise PrepError(
                 "this machine's record does not say its cores per socket, "
                 "so it proposes no grid -- declare the bench's mpi_np and "
-                "omp_threads in task.json, or re-probe the machine "
+                "omp_threads in job-request.json, or re-probe the machine "
                 "(`molbuilder jobset probe --write`).")
         # ONE enumeration, both grids (`bench/grid.py`: the single source
         # of truth for the sweep grid, so no two consumers can define it
@@ -920,7 +938,7 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
                 raise PrepError(
                     "no GPU cell is left"
                     + (f" -- see {' and '.join(seen)} above" if seen else "")
-                    + ".  Adjust mpi_np / gpu_count in task.json, name a "
+                    + ".  Adjust mpi_np / gpu_count in job-request.json, name a "
                       "queue whose GPU nodes hold them, or declare the cells "
                       "whole -- mpi_np, omp_threads and gpu_count: a "
                       "declared cell is kept, its fit said.")

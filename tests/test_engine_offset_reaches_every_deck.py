@@ -1,7 +1,7 @@
 """Every engine is handed the design coordinates plus the engine offset, and
 every deck says so -- `model/structure-periodicity.md` § 6.0.
 
-Through the road: a description (the door `jobset init` and the hand-over use),
+Through the road: a description (the door `molbuilder describe` and the hand-over use),
 then `jobset prep task`, then the deck on disk.  Per engine:
 
 * the invariant is coordinates + offset: the deck writes the design
@@ -13,7 +13,7 @@ then `jobset prep task`, then the deck on disk.  Per engine:
 """
 from __future__ import annotations
 
-from support.road import group_words
+from support.road import group_words, read_request, write_request
 
 import ast
 import json
@@ -87,17 +87,17 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
                             shape="hierarchical", name=name,
                             calculation=calculation,
                             source=str(root / "in.xyz")),
-        dest, struct=struct)       # as `jobset init` does: the pair travels
+        dest, struct=struct)       # as `molbuilder describe` does: the pair travels
     if engine == "siesta":
         from conftest import write_pseudos
         write_pseudos(dest, sorted(set(struct.elements)))
     # THE RUN CARD STATES THE LAUNCH SHAPE, as a described calculation does
     # (`architecture.md` § 5.2): four ranks of one thread for SIESTA -- this
     # record's four cores -- and one thread for PySCF.
-    task = json.loads((dest / "task.json").read_text())
-    task["execution"] = ({"mpi_np": 4, "omp_threads": 1}
-                         if engine == "siesta" else {"threads": 1})
-    (dest / "task.json").write_text(json.dumps(task, indent=2))
+    request = read_request(dest)
+    request["execution"] = ({"mpi_np": 4, "omp_threads": 1}
+                            if engine == "siesta" else {"threads": 1})
+    write_request(dest, request)
     # The machine the calculation is prepared for, with how a shell enters an
     # environment there -- the record carries it for the generator
     # (`configuration.md` § 4).

@@ -2,13 +2,16 @@
  *
  * WHAT THIS TAB DOES:
  *   1. Follow the projects sidebar's selected DIRECTORY.
- *   2. Read that folder's `task.json`, or the `task.1st.json` hand-over a
- *      parameter tab left when there is no description yet.
+ *   2. Read that folder's `task.json` and its `job-request.json`, or the
+ *      `task.1st.json` hand-over a parameter tab left when there is no
+ *      description yet.
  *   3. Show what the description says — its stages, and the machine settings
  *      you either chose or asked to have measured.
- *   4. Let you read and edit the file itself in the vendored CodeMirror.
- *   5. WRITE IT — POST /api/task-setup/save, which saves the folder's state
- *      first, always (`checkpointing.md` § 9), and puts `task.json` into it.
+ *   4. Let you read and edit the files themselves in the vendored
+ *      CodeMirror, a tab each.
+ *   5. WRITE THEM — POST /api/task-setup/save, which saves the folder's
+ *      state first, always (`checkpointing.md` § 9), and puts `task.json`
+ *      and `job-request.json` into it.
  *   6. Read what the page cannot derive: the folder's own answer
  *      (`/api/task-setup/folder` -- its template values, provenance and
  *      attempts among it), the sweepable set (`…/sweepable`), the picker
@@ -101,10 +104,14 @@ function rowNote(name) {
 }
 
 let _cm = null;
-/* WHAT IS ACTUALLY IN THE FOLDER -- "" when nothing is.  The question "is
- * there something unsaved" is about the FILE, never the last text put into
- * the editor, which the cards change all the time. */
-let _diskText = "";
+/* THE TWO RECORDS' BUFFERS, one editor document each -- `task.json` and
+ * `job-request.json` (`task-setup.md` § 9a), shown a tab at a time; null
+ * until the editor boots. */
+let _docs = null;
+/* WHAT IS ACTUALLY IN THE FOLDER, each record's -- "" when nothing is.  The
+ * question "is there something unsaved" is about the FILES, never the last
+ * text put into the editor, which the cards change all the time. */
+let _disk = { task: "", request: "" };
 let _dir        = "";     // the folder currently open
 let _shape      = "";     // "" until chosen — never defaulted (§ 4)
 let _mode       = "";     // "description" | "handover" | "empty"
@@ -117,8 +124,15 @@ let _handover   = null;   // the parsed task.1st.json, in handover mode
  * this when it is valid.  The BUFFER stays what `save` sends (`task-setup.md`
  * § 9a) -- the model is a convenience for the table, never the source. */
 let _task       = null;
+/* The parsed JOB REQUEST the cards that say how it runs are a view of --
+ * the groups, the run cards, the benchmark, the queue, the reports
+ * (`execution/job-request.md` § 1) -- one direction at a time, as the
+ * description's: a card edit mutates this and re-serialises it into its
+ * buffer; a hand edit of the buffer re-parses into this when it is valid. */
+let _request    = null;
 let _reparse    = null;   // debounce for the table's repaint after a hand edit
-let _bufferParses = true; // does the editor's text parse -- may a card write over it?
+/* Does each buffer's text parse -- may a card write over it? */
+let _parses = { task: true, request: true };
 
 const $ = (id) => document.getElementById(id);
 
@@ -233,7 +247,10 @@ function renderStages(task) {
                 nameInput.value = name;
                 return;
             }
+            // ITS ENTRY IN THE JOB REQUEST GOES WITH IT: the request's
+            // stages are the description's, by name (`job-request.md` \u00a7 3).
             _task.stages[i].name = v;
+            renameEntry(name, v);
             commitEdit("Renaming the stage\u2026");
         });
 
@@ -374,9 +391,9 @@ function ranMark(name) {
  *  fixed. */
 function groupCell(stages, i) {
     const st = stages[i] || {};
-    const g = st.group;
+    const g = groupOf(st.name);
     if (i === 0) return el("td", { class: "ts-group" }, String(g || 1));
-    const above = (stages[i - 1] || {}).group || 1;
+    const above = groupOf((stages[i - 1] || {}).name) || 1;
     const rowOf = (name) => (_fs.groups.stages || []).find(
         (r) => r.stage === name) || null;
     const said = rowOf(st.name);
@@ -412,24 +429,64 @@ function groupCell(stages, i) {
 /** Row ``i`` repeats the number above (``"same"``) or adds one (``"new"``);
  *  every row below keeps its own choice, renumbered from it. */
 function setGroup(i, rel) {
-    const stages = (_task && _task.stages) || [];
-    const rels = stages.map((st, j) => j === 0 ? "new"
-        : (st.group === stages[j - 1].group ? "same" : "new"));
+    const names = ((_task && _task.stages) || []).map((st) => st.name);
+    const rels = names.map((n, j) => j === 0 ? "new"
+        : (groupOf(n) === groupOf(names[j - 1]) ? "same" : "new"));
     rels[i] = rel;
     let n = 0;
-    stages.forEach((st, j) => { n += rels[j] === "same" ? 0 : 1;
-                                st.group = n; });
+    names.forEach((name, j) => { n += rels[j] === "same" ? 0 : 1;
+                                 requestEntry(name, true).group = n; });
     return commitEdit("Regrouping the stages\u2026");
 }
 
 /** The numbers again from 1, each stage keeping who it shares a job with
  *  -- after a stage is removed (a number is a position, `stages.md` § 2). */
-function compressGroups(stages) {
+function compressGroups() {
+    const names = ((_task && _task.stages) || []).map((st) => st.name);
     const seen = [];
-    for (const st of stages) {
-        if (seen.indexOf(st.group) === -1) seen.push(st.group);
+    for (const n of names) {
+        if (seen.indexOf(groupOf(n)) === -1) seen.push(groupOf(n));
     }
-    for (const st of stages) st.group = seen.indexOf(st.group) + 1;
+    for (const n of names) {
+        requestEntry(n, true).group = seen.indexOf(groupOf(n)) + 1;
+    }
+}
+
+/* ---------- the job request's stages: each one's group and card ---------- */
+
+/** Stage ``name``'s entry in the job request -- its group and its own run
+ *  card (`job-request.md` § 3) -- made empty when ``make`` and absent;
+ *  ``null`` with no job request open. */
+function requestEntry(name, make) {
+    if (!_request || typeof _request !== "object") return null;
+    if (!_request.stages || typeof _request.stages !== "object") {
+        if (!make) return null;
+        _request.stages = {};
+    }
+    if (!_request.stages[name] && make) _request.stages[name] = {};
+    return _request.stages[name] || null;
+}
+
+/** The job stage ``name`` runs in, as the job request states it. */
+function groupOf(name) {
+    const e = requestEntry(name, false);
+    return e ? e.group : undefined;
+}
+
+/** A stage renamed in the description renames its entry, in its place --
+ *  never onto another stage's entry: two stages of one name are the
+ *  description's reader's to refuse at Save, and meanwhile each entry stays
+ *  its own stage's. */
+function renameEntry(was, now) {
+    if (!_request || !_request.stages || !(was in _request.stages)) return;
+    const key = String(now).toLowerCase();
+    if (Object.keys(_request.stages).some(
+            (k) => k !== was && k.toLowerCase() === key)) return;
+    const out = {};
+    for (const [k, e] of Object.entries(_request.stages)) {
+        out[k === was ? now : k] = e;
+    }
+    _request.stages = out;
 }
 
 /** The card's words and its add button, as the kind has them (§ 5.3): on a
@@ -545,7 +602,7 @@ async function refreshFit() {
             // on the queue the page shows chosen.
             body: JSON.stringify({ dest: _dir, target: _machine || "",
                                    bench: bench,
-                                   domain: ((_task && _task.allocation)
+                                   domain: ((_request && _request.allocation)
                                             || {}).domain || "" }),
         });
         body = await r.json();
@@ -639,12 +696,15 @@ function paintFit(host, body) {
  *
  * The rows OFFER the bench's parameters because the thing you measured is
  * the thing you are deciding about; they do not READ them.  What is written
- * is `task.execution`, and nothing here touches `task.bench`.
+ * is the job request's `execution` -- a stage's own card, or the
+ * calculation's in the *every stage* view -- and nothing here touches its
+ * `bench`.
  */
 
-//: Rows a person asked to see on a rung but has not filled in.  PAGE
-//: state, never the file's: an unstated row is not a fact, and writing
-//: `"mpi_np": ""` would make the reader invent a meaning for it.
+//: Rows a person asked to see on a rung -- or, keyed ``null``, on the
+//: calculation's card -- but has not filled in.  PAGE state, never the
+//: file's: an unstated row is not a fact, and writing `"mpi_np": ""` would
+//: make the reader invent a meaning for it.
 
 function extraRunRows(stage) {
     let set = _fs.extraRunRows.get(stage);
@@ -662,7 +722,7 @@ function extraRunRows(stage) {
  * `mem` is deliberately not here.  A trial and a run hold about the same
  * amount, so a second home for it would be a second place to look. */
 /* THE RUN'S OWN TWO ASKS -- `time` and `domain` -- with their words, as the
- * sweepable door serves them (`lane_asks`, from `task.LANE_ASK_ROWS`; the
+ * sweepable door serves them (`lane_asks`, from `job_request.LANE_ASK_ROWS`; the
  * page kept its own table until 2026-10-18).  Empty until the door answers. */
 let _laneAsks = [];
 
@@ -676,16 +736,17 @@ let _laneAsks = [];
  *  reach this card's values -- what the run uses is `execution`, and the
  *  grid is only what is worth deciding about.
  */
-function standingRows(task) {
+function standingRows() {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
     for (const it of (_sweep || [])) {
         if (it && it.run_card) add(it.name);
     }
-    for (const n of Object.keys((task && task.bench) || {})) add(n);
-    for (const n of Object.keys((task && task.execution) || {})) add(n);
-    for (const st of ((task && task.stages) || [])) {
-        for (const n of Object.keys((st && st.execution) || {})) add(n);
+    const req = _request || {};
+    for (const n of Object.keys(req.bench || {})) add(n);
+    for (const n of Object.keys(req.execution || {})) add(n);
+    for (const e of Object.values(req.stages || {})) {
+        for (const n of Object.keys((e && e.execution) || {})) add(n);
     }
     return out;
 }
@@ -693,38 +754,50 @@ function standingRows(task) {
 /** The rows a run card holds: the standing ones, and any the person added
  *  on this card (``members``) and has not filled yet -- the one kind of row
  *  the card's × removes. */
-function runRowNames(task, members) {
-    const out = standingRows(task);
+function runRowNames(members) {
+    const out = standingRows();
     for (const m of members) {
         for (const n of extraRunRows(m)) if (out.indexOf(n) === -1) out.push(n);
     }
     return out;
 }
 
-/** Where this rung's answer is written: `stages[i].execution`. */
-function stageExecutionOf(stage, make) {
-    if (!_task || !Array.isArray(_task.stages)) return null;
-    const st = _task.stages.find((x) => x && x.name === stage);
-    if (!st) return null;
-    if (!st.execution && !make) return null;
-    return st.execution || (st.execution = {});
+/** Where a run card's answer is written, in the job request: stage
+ *  ``stage``'s own card (`stages.<name>.execution`), or with ``null`` the
+ *  calculation's (`execution`, the *every stage* view) -- made when
+ *  ``make``. */
+function executionOf(stage, make) {
+    if (!_request || typeof _request !== "object") return null;
+    const holder = stage === null ? _request : requestEntry(stage, make);
+    if (!holder) return null;
+    if (!holder.execution && !make) return null;
+    return holder.execution || (holder.execution = {});
+}
+
+/** A card left stating nothing is no card: its block goes (absent is a
+ *  state, `job-request.md` § 3). */
+function dropEmptyCard(stage) {
+    const holder = stage === null ? _request : requestEntry(stage, false);
+    if (holder && holder.execution
+            && !Object.keys(holder.execution).length) {
+        delete holder.execution;
+    }
 }
 
 /** ``name`` set to ``raw`` on each of ``members`` -- a stage's own card,
- *  or every stage of a group for a shared row (`task-setup.md` § 6.2b). */
+ *  every stage of a group for a shared row, or ``[null]``, the
+ *  calculation's card (`task-setup.md` § 6.2b). */
 function setRunValue(name, raw, members) {
     const v = readTyped(name, raw);
     const blank = (v === null);
     for (const stage of members) {
-        const box = stageExecutionOf(stage, !blank);
+        const box = executionOf(stage, !blank);
         if (!box) continue;
-        // BLANK IS A STATE: the calculation's own value, or unstated --
-        // which prep refuses for a launch value (architecture.md § 5.2).
+        // BLANK IS A STATE: the calculation's own value, or the default,
+        // or unstated -- which prep refuses for a launch value
+        // (architecture.md § 5.2).
         if (blank) delete box[name]; else box[name] = v;
-        if (!Object.keys(box).length) {
-            const st = _task.stages.find((x) => x && x.name === stage);
-            if (st) delete st.execution;
-        }
+        dropEmptyCard(stage);
     }
     return commitEdit("Writing " + name + "\u2026");
 }
@@ -732,13 +805,10 @@ function setRunValue(name, raw, members) {
 function dropRunRow(name, members) {
     for (const stage of members) {
         extraRunRows(stage).delete(name);
-        const box = stageExecutionOf(stage, false);
+        const box = executionOf(stage, false);
         if (!box) continue;
         delete box[name];
-        if (!Object.keys(box).length) {
-            const st = _task.stages.find((x) => x && x.name === stage);
-            if (st) delete st.execution;
-        }
+        dropEmptyCard(stage);
     }
     return commitEdit("Removing " + name + "\u2026");
 }
@@ -760,7 +830,11 @@ function runRowOrder(names) {
 /** THE RUN CARD -- a rung's, or a group's, built in its tab beside its
  *  `prep task` (user, 2026-09-02: "that selection panel card should be next
  *  to the prep for run button such that it's obvious that this is designed
- *  for the run").
+ *  for the run") -- or, with ``every``, the calculation's own card, the
+ *  *every stage* view: the job request's `execution`, which every rung
+ *  that reads an item runs at unless its own card says otherwise, and a
+ *  benchmark's trials take (`task-setup.md` § 6.2b; `job-request.md`
+ *  § 3.2).
  *
  *  THE JOB'S CONTAINER OF SETTINGS (`task-setup.md` § 6.2b; user,
  *  2026-10-12: "the list here is a container that have all parameters
@@ -770,15 +844,22 @@ function runRowOrder(names) {
  *  on a member that does not read it is shown with a way to remove it.  A
  *  blank row shows what the run uses.  The wall is each
  *  member's own, a row each, the job asking their sum.  ONE VALUE EACH,
- *  never a combination; what it writes is the members' `execution`, never
- *  `bench`. */
-function runCard(task, members) {
-    const group = members.length > 1;
+ *  never a combination; what it writes is the job request's `execution`
+ *  -- the members' own, or the calculation's -- never `bench`. */
+function runCard(task, members, every) {
+    const group = !every && members.length > 1;
     const box = el("div", { class: "ts-runcard" });
     box.appendChild(el("h3", { class: "ts-reports-head" },
-                       group ? "What this job will use"
-                             : "What this run will use"));
-    box.appendChild(el("p", { class: "hint" }, group
+                       every ? "What every stage will use"
+                       : group ? "What this job will use"
+                       : "What this run will use"));
+    box.appendChild(el("p", { class: "hint" }, every
+        ? "The calculation's own run card: every stage that reads a row "
+          + "runs at its value, unless that stage's own card says "
+          + "otherwise; a benchmark's trials take it too. A blank row uses "
+          + "the default shown in it; a launch value stated nowhere is "
+          + "refused at prep."
+        : group
         ? "One job runs " + members.join(", ") + " one after another. One "
           + "value each, written into every stage that reads it; the wall is "
           + "each stage's own, the job asking their sum. A blank row uses "
@@ -787,19 +868,32 @@ function runCard(task, members) {
         : "One value each \u2014 not a grid. A blank row uses the value "
           + "shown in it; a launch value stated nowhere is refused at prep. "
           + "A benchmark reports here but never fills this in."));
-    const ownOf = (m) => (((task && task.stages) || [])
-        .find((x) => x && x.name === m) || {}).execution || {};
-    const names = runRowOrder(runRowNames(task, members));
+    // WHERE THE CARD WRITES: the members' own cards, or the calculation's.
+    const card = every ? [null] : members;
+    const ownOf = (m) => (executionOf(m, false) || {});
+    const names = runRowOrder(runRowNames(card));
     // A ROW ADDED HERE AND NOT FILLED is the only one a × removes.
-    const standing = standingRows(task);
+    const standing = standingRows();
     const removal = (n) => (standing.indexOf(n) === -1
-        ? () => dropRunRow(n, members) : null);
+        ? () => dropRunRow(n, card) : null);
     const rows = el("div", { class: "ts-rows" });
     box.appendChild(rows);
     const walls = group && names.indexOf("time") !== -1;
     for (const n of names) {
         if (walls && n === "time") continue;
         const readers = members.filter((m) => readsHere(n, m));
+        if (every) {
+            // THE CALCULATION'S CARD reaches the stages that read a row; a
+            // row no stage reads is shown, not editable -- but a value
+            // stated there anyway stays editable, its blank removing what
+            // Save and prep refuse.
+            const stated = ownOf(null)[n] !== undefined;
+            rows.appendChild(runRow(task, n,
+                                    readers.length || stated ? [null] : [], {
+                unread: members.filter((m) => readers.indexOf(m) === -1),
+                remove: removal(n) }));
+            continue;
+        }
         const stray = members.filter((m) => readers.indexOf(m) === -1
                                           && ownOf(m)[n] !== undefined);
         rows.appendChild(runRow(task, n, readers, {
@@ -827,48 +921,48 @@ function runCard(task, members) {
             "Nothing stated \u2014 prep refuses a run whose launch values "
             + "are stated nowhere. Add a setting to decide it here."));
     }
-    box.appendChild(addSetting(task, members, names));
+    box.appendChild(addSetting(task, members, names, card));
     // WHETHER IT FITS THE MACHINE is the preview's to say, from the job the
     // prep would write (`job-system.md` § 5.0's checkpoint 4).
     return box;
 }
 
 /** One row of a run card: the value ``name`` holds on ``members`` -- the
- *  stages of the card that read it -- what they state, what a blank uses
- *  the placeholder behind it, writing into each one's
- *  `stages[i].execution`; a member that states another value is shown
- *  beside it.  ``opts.unread`` names the card's stages that do not read it,
- *  ``opts.stray`` those of them that state it anyway (each with a way to
- *  remove it), ``opts.remove`` removes a row added on the card and not
- *  filled (its ×), ``opts.label`` the row's own name where it is not the
- *  setting's alone (a member's wall). */
+ *  stages of the card that read it, or ``[null]``, the calculation's card
+ *  -- what they state, what a blank uses the placeholder behind it,
+ *  writing into each one's card in the job request; a member that states
+ *  another value is shown beside it.  ``opts.unread`` names the card's
+ *  stages that do not read it, ``opts.stray`` those of them that state it
+ *  anyway (each with a way to remove it), ``opts.remove`` removes a row
+ *  added on the card and not filled (its ×), ``opts.label`` the row's own
+ *  name where it is not the setting's alone (a member's wall). */
 function runRow(task, name, members, opts) {
     const o = opts || {};
     const unread = o.unread || [];
     const stray = o.stray || [];
-    const bench = (task && task.bench) || {};
-    const ownOf = (m) => (((task && task.stages) || [])
-        .find((x) => x && x.name === m) || {}).execution || {};
+    const every = members.length === 1 && members[0] === null;
+    const bench = (_request && _request.bench) || {};
+    const ownOf = (m) => (executionOf(m, false) || {});
     const said = members.map((m) => ownOf(m)[name]);
     const value = said.every((v) => v !== undefined
                              && String(v) === String(said[0]))
         ? said[0] : undefined;
     const differ = members.length > 1 && value === undefined
         ? members.filter((m, k) => said[k] !== undefined)
-                 .map((m, k) => m + ": " + String(ownOf(m)[name]))
+                 .map((m) => m + ": " + String(ownOf(m)[name]))
         : [];
-    // BLANK SAYS WHAT THE RUN USES (§ 6.2b): the calculation's own block,
-    // else the template's value -- the empty stage cell's rule and helper
-    // (§ 5.1, `defaultText`); a launch value neither holds is not stated,
+    // BLANK SAYS WHAT THE RUN USES (§ 6.2b): on a stage's card the
+    // calculation's own value, marked *(every stage)*, else the item's
+    // default, marked *(default)* (`job-request.md` § 4) -- a run setting
+    // has no template value; a launch value neither holds is not stated,
     // which prep refuses; and a row no stage of the card reads, nothing.
-    const from = ((task && task.execution) || {})[name];
+    const from = every ? undefined
+        : ((_request && _request.execution) || {})[name];
     const fallback = defaultText(name);
     const behind = !members.length ? "\u2014 not read here"
         : from !== undefined
         ? "\u2014 " + String(from) + " (every stage)"
-        : (fallback ? "\u2014 " + fallback + " ("
-                      + (name in _tmpl.values ? "template" : "default") + ")"
-                    : "");
+        : (fallback ? "\u2014 " + fallback + " (default)" : "");
     const legal = legalValues(name);
     let input;
     if (legal) {
@@ -877,11 +971,11 @@ function runRow(task, name, members, opts) {
         input.appendChild(el("option", { value: "" },
                              behind || "\u2014 not stated"));
         for (const v of legal) {
-            const o = el("option", { value: String(v) }, String(v));
+            const opt = el("option", { value: String(v) }, String(v));
             if (value !== undefined && String(value) === String(v)) {
-                o.selected = true;
+                opt.selected = true;
             }
-            input.appendChild(o);
+            input.appendChild(opt);
         }
     } else {
         // A LANE ASK SHOWS AN EXAMPLE when nothing is stated: "not stated"
@@ -947,17 +1041,20 @@ function runRow(task, name, members, opts) {
         drop);
 }
 
-/** The card's "+ Add setting": a row for ``members`` -- every setting the
- *  bench lane speaks that at least one of them reads, and the run's own two
- *  asks (`stages.md` § 6.8e) -- not one already listed in ``names``. */
-function addSetting(task, members, names) {
+/** The card's "+ Add setting": a row for ``card`` -- the members' own
+ *  cards, or ``[null]``, the calculation's -- every setting the bench lane
+ *  speaks that at least one of ``members`` reads, and the run's own two
+ *  asks (`job-request.md` § 3.2a) -- not one already listed in ``names``. */
+function addSetting(task, members, names, card) {
     const sel = el("select", { class: "ts-pick",
                                "aria-label": "add a setting for "
-                                             + members.join(", ") });
+                                             + (card[0] === null
+                                                ? "every stage"
+                                                : members.join(", ")) });
     const go = el("button", { type: "button", class: "btn" }, "+ Add setting");
     go.addEventListener("click", () => {
         if (!sel.value) return;
-        for (const m of members) extraRunRows(m).add(sel.value);
+        for (const m of card) extraRunRows(m).add(sel.value);
         sel.value = "";
         renderNext(_task || task);
     });
@@ -965,7 +1062,7 @@ function addSetting(task, members, names) {
     // execution item, resources and solver alike -- and `time`/`domain`,
     // which are not sweepable and never will be (a benchmark that swept its
     // own wall clock would be measuring the queue), but which a RUN owns
-    // separately from the bench (`stages.md` § 6.8e).
+    // separately from the bench (`job-request.md` § 3.2a).
     fillPicker(sel, (_sweep || []).filter((it) => it && members.some(
                    (m) => readsHere(it.name, m))).concat(_laneAsks), names,
                "every setting is already listed");
@@ -994,7 +1091,8 @@ function renderMachine(task) {
     }
     if (invite) invite.hidden = false;
 
-    const bench = (task && task.bench) || {};
+    // THE PLAN TO MEASURE IS THE JOB REQUEST'S (`job-request.md` § 3.4).
+    const bench = (_request && _request.bench) || {};
     const names = Object.keys(bench);
 
     for (const name of names) {
@@ -1125,7 +1223,7 @@ async function _bootEditor() {
     const CM = await loadCodeMirror();
     // Highlighting comes from the SUFFIX, and the mode file is fetched only
     // when a file of that kind is first opened (`lib/codemirror-load.js`).
-    // `task.json` resolves to the javascript mode with `json: true` — the
+    // Both records resolve to the javascript mode with `json: true` — the
     // JSON dialect, since CodeMirror ships no separate json mode.
     const mode = await modeFor(".json");
     _cm = CM($("ts-editor"), {
@@ -1135,47 +1233,94 @@ async function _bootEditor() {
         lineWrapping: true,
         readOnly:    false,
     });
+    /* ONE EDITOR, A DOCUMENT PER RECORD (`task-setup.md` § 9a): each keeps
+     * its own text and its own undo, and the tab above shows one. */
+    _docs = {};
+    for (const which of RECORDS) {
+        _docs[which] = CM.Doc("", mode);
+        _docs[which].on("change",
+                        (doc, change) => _bufferChanged(which, change));
+    }
+    _cm.swapDoc(_docs.task);
+    const tabs = $("ts-editor-tabs");
+    if (tabs) {
+        window.molbuilder.tabStrip.mount(tabs, { onChange: (which) => {
+            if (_docs[which]) { _cm.swapDoc(_docs[which]); _cm.refresh(); }
+        } });
+    }
     /* THE FOLD REFRESHES THE EDITOR.  CodeMirror measures itself when it
      * mounts, and inside a closed `<details>` every measurement is zero. */
     const card = $("ts-editor-card");
     if (card) card.addEventListener("toggle", () => {
         if (card.open && _cm) _cm.refresh();
     });
-    _cm.on("change", () => {
-        _setDirty(_cm.getValue() !== _diskText);
-        // THE BUFFER IS THE SOURCE (§ 9a): a hand edit that parses is the
-        // model AT ONCE, so a card edit made the next instant starts from it
-        // and never writes an older model over it.  Only the table's repaint
-        // waits for a pause, and a text that does not parse -- mid-typing --
-        // is remembered, so a card does not write over it (`syncFromModel`).
-        let next = null;
-        try { next = JSON.parse(_cm.getValue()); } catch (_) { next = null; }
-        _bufferParses = !!(next && typeof next === "object");
-        if (!_bufferParses) return;
-        _task = next;
-        clearTimeout(_reparse);
-        _reparse = setTimeout(() => {
-            renderStages(_task);
-            /* THE CARDS THAT WRITE A BLOCK READ IT BACK from the hand edit,
-             * so their next change starts from it, never writes an older
-             * value over it (§ 9a). */
-            if (_mode === "description") {
-                readAsksFromTask(_task);
-                readNotifyFromTask(_task);
-                renderQueues();
-            }
-            refreshSave();
-        }, 400);
-    });
     return _cm;
 }
 
-/** Say whether the buffer differs from disk -- in the save bar, which is
+/** The records the editor holds, in the order of its tabs. */
+const RECORDS = ["task", "request"];
+
+/** The text of record ``which``'s buffer -- "" before the editor boots. */
+function bufferText(which) {
+    return _docs ? _docs[which].getValue() : "";
+}
+
+/** Whether either buffer differs from its file on disk. */
+function edited() {
+    return RECORDS.some((which) => bufferText(which) !== _disk[which]);
+}
+
+/** A change of record ``which``'s buffer -- ``change`` CodeMirror's.
+ *
+ * THE BUFFER IS THE SOURCE (§ 9a): a hand edit that parses is the model AT
+ * ONCE, so a card edit made the next instant starts from it and never
+ * writes an older model over it.  Only the repaint waits for a pause, and
+ * a text that does not parse -- mid-typing -- is remembered, so a card
+ * does not write over it (`syncFromModel`).  A text the page itself put
+ * there (``setValue``: a load, a card's write) has had its cards drawn by
+ * its writer, so the cards a Preview's answer lives in are not redrawn
+ * under it. */
+function _bufferChanged(which, change) {
+    const byHand = !(change && change.origin === "setValue");
+    // A TEXT THE PAGE PUT THERE is said dirty or not by its writer, once
+    // every record it writes is written (`setBuffers`, `patchDoc`): between
+    // two records' writes a load is half done, and saying it then would
+    // wipe what the last save did (§ 7a, step 3).
+    if (byHand) _setDirty(edited());
+    let next = null;
+    try { next = JSON.parse(bufferText(which)); } catch (_) { next = null; }
+    _parses[which] = !!(next && typeof next === "object");
+    if (!_parses[which]) return;
+    if (which === "task") _task = next; else _request = next;
+    clearTimeout(_reparse);
+    _reparse = setTimeout(() => {
+        renderStages(_task);
+        /* A HAND EDIT IS READ BACK by the cards drawn from the records, so
+         * their next change starts from it, never writes an older value
+         * over it (§ 9a) -- the cards that write a block, the measure card
+         * and each group's run card.  A card's own write is not read back
+         * under the control being typed in. */
+        if (byHand && _task && _mode !== "empty") {
+            if (_mode === "description") {
+                readAsksFromRequest(_request);
+                readNotifyFromRequest(_request, _task);
+                renderQueues();
+            }
+            renderMachine(_task);
+            renderNext(_task);
+        }
+        // WHAT A PREP WILL WRITE follows the records as they stand.
+        if (_mode === "description") schedulePlan(_task);
+        refreshSave();
+    }, 400);
+}
+
+/** Say whether the buffers differ from disk -- in the save bar, which is
  *  on screen whatever is folded (`task-setup.md` § 7a, § 9a.1).
  *
- * The cards already say what the description says; an unsaved edit is the
- * one thing they do not, and a page that did not say it would be one that
- * lost your work quietly.  The heads move with the buffer: every edit
+ * The cards already say what the records say; an unsaved edit is the one
+ * thing they do not, and a page that did not say it would be one that
+ * lost your work quietly.  The heads move with the buffers: every edit
  * passes through here. */
 function _setDirty(dirty) {
     // WHAT THE LAST SAVE DID is about text an edit has since changed.
@@ -1187,14 +1332,21 @@ function _setDirty(dirty) {
     refreshSave();
 }
 
-/** Put `text` in the editor.  `fromDisk` says it is what the folder holds --
- *  the loader and nothing else, since only a read tells you that. */
-async function setEditorText(text, opts) {
+/** Put ``texts`` -- ``{task, request}``, either or both -- in their
+ *  buffers.  ``fromDisk`` says they are what the folder holds -- the
+ *  loader and nothing else, since only a read tells you that. */
+async function setBuffers(texts, opts) {
     const cm = await ensureEditor();
-    if (opts && opts.fromDisk) _diskText = text;
-    cm.setValue(text);
-    cm.clearHistory();          // a fresh file is not an undo step of the last
-    _setDirty(text !== _diskText);
+    for (const which of RECORDS) {
+        if (!(which in texts)) continue;
+        if (opts && opts.fromDisk) _disk[which] = texts[which];
+        if (_docs[which].getValue() !== texts[which]) {
+            _docs[which].setValue(texts[which]);
+        }
+        _docs[which].clearHistory();   // a fresh file is not an undo step
+        _parses[which] = true;
+    }
+    _setDirty(edited());
     cm.refresh();               // it mounted inside a card that may have been
                                 // hidden or resized since
 }
@@ -1212,6 +1364,8 @@ async function setEditorText(text, opts) {
 function _resetPerFolderState(keep) {
     const was = _fs;
     _fs = freshFolderState();
+    // THE GRID DOOR'S ROW CLASSES are this folder's answer, asked anew.
+    _rowKinds = {};
     /* THE SAME FOLDER, READ AGAIN keeps what the person was looking at:
      * the open tab, the Continue-from choices and the prep answers.  It is
      * read again often -- this page's own Prep announces its write, and the
@@ -1315,11 +1469,12 @@ async function readFolder(projects, dir, opts) {
     /* EVERY per-folder fact resets before the branch, so no branch can
      * act on the previous folder's. */
     _task = null;
-    /* ...THE BUFFER'S TOO: every branch below writes the editor from what
+    _request = null;
+    /* ...THE BUFFERS' TOO: every branch below writes the editor from what
      * is on disk, so no hand edit survives a load -- and the text it
      * replaces (the empty one a folder with no description leaves) must
      * not make a card the load itself moves (`setShape`) refused over it. */
-    _bufferParses = true;
+    _parses = { task: true, request: true };
     _shape = "";
     _handover = null;
     _resetPerFolderState(keep);
@@ -1331,6 +1486,7 @@ async function readFolder(projects, dir, opts) {
         // once one is open (`task_name`, `structure_pair`); the page spells
         // none of them.
         for (const [id, name] of [["ts-f-task", "\u2014"],
+                                  ["ts-f-req", "\u2014"],
                                   ["ts-f-tmpl", "\u2014"],
                                   ["ts-f-struct", "\u2014"],
                                   ["ts-f-side", "\u2014"]]) {
@@ -1342,7 +1498,7 @@ async function readFolder(projects, dir, opts) {
         }
         setState("empty", "Nothing selected",
                  "Pick a calculation folder in the sidebar to read its description.");
-        await setEditorText("", { fromDisk: true });
+        await setBuffers({ task: "", request: "" }, { fromDisk: true });
         return;
     }
 
@@ -1371,12 +1527,19 @@ async function readFolder(projects, dir, opts) {
 
     const taskText = said.description === null
         ? "" : JSON.stringify(said.description, null, 2);
+    /* ITS JOB REQUEST, as its reader read it -- an object, `{error}`, or
+     * null when the folder holds none: then the request a Save writes
+     * beside it, each stage in the group the folder answer proposes
+     * (`proposed_groups`, the one numbering rule), shown as an edit not
+     * yet saved (`execution/job-request.md` § 7). */
+    const requestText = (said.request && typeof said.request === "object")
+        ? JSON.stringify(said.request, null, 2) : "";
     /* THE BASELINE IS SET THE MOMENT IT IS KNOWN, not when the editor is
      * finally filled at the end of this function.  Loading paints cards, and
      * a card that paints can push the model into the buffer (`setShape` ->
      * `syncFromModel`) -- against the PREVIOUS folder's baseline, which reads
      * as "unsaved" in the save bar. */
-    _diskText = taskText;
+    _disk = { task: taskText, request: requestText };
     const overText = said.handover === null
         ? null : JSON.stringify(said.handover, null, 2);
 
@@ -1386,8 +1549,16 @@ async function readFolder(projects, dir, opts) {
     // THE DESCRIPTION'S FILE NAME is the folder answer's (`task_name`).
     if (said.task_name) $("ts-f-task-name").textContent = said.task_name;
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
-    /* THE TEMPLATE IS NOT SAVE'S.  `/api/task-setup/save` calls `write_task`
-     * and writes `task.json` alone; the template arrives with the hand-over
+    // ...AND THE JOB REQUEST'S (`request_name`), beside it.
+    if (said.request_name) $("ts-f-req-name").textContent = said.request_name;
+    markFile("ts-f-req", !!requestText, "already here — saving would update it");
+    for (const [which, name] of [["task", said.task_name],
+                                 ["request", said.request_name]]) {
+        const tab = $("ts-editor-tab-" + which);
+        if (tab && name) tab.textContent = name;
+    }
+    /* THE TEMPLATE IS NOT SAVE'S.  `/api/task-setup/save` writes `task.json`
+     * and `job-request.json` alone; the template arrives with the hand-over
      * from the tab the structure came from, and Save leaves it as it is. */
     markFile("ts-f-tmpl", !!templateName, "already here — Save leaves it alone");
     /* WRITTEN EITHER WAY: an absent name is a value to render, not a reason
@@ -1471,7 +1642,10 @@ async function readFolder(projects, dir, opts) {
         await loadSweepChoices(_handoverEngine(over));
         if (said.dir !== _dir) return;          // moved on while it loaded
         renderMachine(over || {});
-        if (!_shape) await setEditorText(overText, { fromDisk: true });
+        if (!_shape) {
+            await setBuffers({ task: overText, request: "" },
+                             { fromDisk: true });
+        }
         refreshSave();
         return;
     }
@@ -1487,8 +1661,8 @@ async function readFolder(projects, dir, opts) {
                  + "parameters here from Structure optimization or Spectrum "
                  + "calculation, or press Describe on Transport calculation "
                  + "(which writes straight into the folder selected there), "
-                 + "or run `molbuilder jobset init`.");
-        await setEditorText("", { fromDisk: true });
+                 + "or run `molbuilder describe`.");
+        await setBuffers({ task: "", request: "" }, { fromDisk: true });
         return;
     }
 
@@ -1506,10 +1680,23 @@ async function readFolder(projects, dir, opts) {
                            task.error);
         return;
     }
+    // ...AND ITS JOB REQUEST, the same way (`job_request.of`).
+    const request = said.request
+        || { schema: said.request_schema,
+             stages: Object.fromEntries(
+                 Object.entries(said.proposed_groups || {})
+                       .map(([n, g]) => [n, { group: g }])) };
+    if (typeof request.error === "string"
+            && Object.keys(request).length === 1) {
+        await refuseFolder("job-request.json is here and its reader "
+                           + "refuses it", request.error);
+        return;
+    }
 
     sayLoaded(task);
 
     _mode = "description"; _handover = null; _task = task;
+    _request = request;
     renderCameOver(task, said.treatment, said.frame_set,
                    said.template && said.template.shared);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
@@ -1574,13 +1761,19 @@ async function readFolder(projects, dir, opts) {
     schedulePlan(task);
     // The card reflects the DESCRIPTION on open, so reopening a folder
     // shows what it already asks for instead of an empty card.
-    readAsksFromTask(task);
-    readNotifyFromTask(task);
+    readAsksFromRequest(request);
+    readNotifyFromRequest(request, task);
     // Shown once there IS a description: the card writes into it, so with
     // nothing open there is nothing for a tick to land in.
     { const c = $("ts-notify-card"); if (c) c.hidden = false; }
     renderQueues();
-    await setEditorText(taskText, { fromDisk: true });
+    await setBuffers({ task: taskText, request: requestText },
+                     { fromDisk: true });
+    // NO JOB REQUEST ON DISK: the one the page proposes is an edit, said
+    // as one, which Save writes beside the description.
+    if (!requestText) {
+        await setBuffers({ request: JSON.stringify(request, null, 2) + "\n" });
+    }
 }
 
 /* ---------- the table edits the description ---------- */
@@ -1591,19 +1784,68 @@ async function readFolder(projects, dir, opts) {
  *  refused, said, and the editor left as typed -- every card's write alike
  *  (`syncFromModel`, `patchDoc`). */
 function refuseUnparsed() {
+    const which = RECORDS.filter((w) => !_parses[w])
+        .map((w) => $("ts-editor-tab-" + w))
+        .map((tab) => (tab && tab.textContent) || "a file").join(" and ");
     setState("refuse", "The editor's text does not parse",
-             "A card cannot change the description while the text below "
+             "A card cannot change the records while " + which + " below "
              + "is not valid JSON -- it would write over your edit. Fix "
              + "the text (or revert it), then make the change again.");
 }
 
+/** Whether record ``which``'s buffer already says what ``model`` says --
+ *  so a card's edit of one record leaves the other's text as it is. */
+function _bufferSays(which, model) {
+    try {
+        return JSON.stringify(JSON.parse(bufferText(which)))
+            === JSON.stringify(model);
+    } catch (_) {
+        return false;
+    }
+}
+
+/** The job request's stages in the ladder's order -- the description's
+ *  (`job-request.md` § 3), each entry kept. */
+function _inLadderOrder(request) {
+    if (!request || !request.stages || !_task) return request;
+    const out = {};
+    for (const st of (_task.stages || [])) {
+        if (st && request.stages[st.name]) out[st.name] = request.stages[st.name];
+    }
+    for (const [k, e] of Object.entries(request.stages)) {
+        if (!(k in out)) out[k] = e;
+    }
+    request.stages = out;
+    return request;
+}
+
 async function syncFromModel() {
     if (!_task) return;
-    if (_cm && !_bufferParses) {
+    if (_cm && RECORDS.some((w) => !_parses[w])) {
+        // THE CARD'S CHANGE IS REFUSED WHOLE: each model whose text parses
+        // goes back to that text, so the change does not wait in a model to
+        // be written by the next edit, unseen; the cards are drawn again
+        // from what the texts say.
+        for (const w of RECORDS) {
+            if (!_parses[w]) continue;
+            const back = JSON.parse(bufferText(w));
+            if (w === "task") _task = back; else _request = back;
+        }
         refuseUnparsed();
+        renderStages(_task);
+        renderMachine(_task);
+        renderNext(_task);
         return;
     }
-    await setEditorText(JSON.stringify(_task, null, 2) + "\n");
+    // EACH RECORD'S TEXT FROM ITS MODEL, where the edit changed it.
+    const texts = {};
+    for (const [which, model] of [["task", _task],
+                                  ["request", _inLadderOrder(_request)]]) {
+        if (model && !_bufferSays(which, model)) {
+            texts[which] = JSON.stringify(model, null, 2) + "\n";
+        }
+    }
+    await setBuffers(texts);
     renderStages(_task);
     // THE MACHINE ROWS TOO: every bench verb -- addPoint, removePoint,
     // removeSetting -- ends here.
@@ -1626,8 +1868,10 @@ function removeStage(i) {
                  + "instead.");
         return;
     }
-    _task.stages.splice(i, 1);
-    compressGroups(_task.stages);
+    const [gone] = _task.stages.splice(i, 1);
+    // ITS ENTRY IN THE JOB REQUEST GOES WITH IT (`job-request.md` § 3).
+    if (gone && _request && _request.stages) delete _request.stages[gone.name];
+    compressGroups();
     return commitEdit("Removing the stage\u2026");
 }
 
@@ -1647,9 +1891,10 @@ function addStage() {
      * *same as above* where the rule allows it. */
     stages.push({
         name,
-        group: ((prev && prev.group) || 0) + 1,
         overrides: Object.assign({}, (prev && prev.overrides) || {}),
     });
+    const entry = requestEntry(name, true);
+    if (entry) entry.group = ((prev && groupOf(prev.name)) || 0) + 1;
     return commitEdit("Adding a stage\u2026");
 }
 
@@ -2012,7 +2257,7 @@ async function refreshPickers() {
                    Array.isArray(_task && _task.varies) ? _task.varies : [],
                    "every parameter is already a column");
         fillPicker($("ts-add-setting"), sweep,
-                   Object.keys((_task && _task.bench) || {}),
+                   Object.keys((_request && _request.bench) || {}),
                    "every sweepable setting is already listed");
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
 }
@@ -2048,11 +2293,10 @@ function sayLoaded(task) {
  *  hidden, the editor emptied and Save held, so nothing of another folder
  *  stays on the page to be written here (`task-setup.md` § 2.1, § 6.2b). */
 async function refuseFolder(title, why) {
-    _mode = "refused"; _handover = null; _task = null;
+    _mode = "refused"; _handover = null; _task = null; _request = null;
     hideDescriptionCards();
     setState("refuse", title, why);
-    _diskText = "";
-    await setEditorText("", { fromDisk: true });
+    await setBuffers({ task: "", request: "" }, { fromDisk: true });
     refreshSave();
 }
 
@@ -2290,7 +2534,10 @@ async function refreshPlan(task) {
             headers: { "Content-Type": "application/json" },
             // THE FOLDER TOO: a stage that has files keeps its number, so
             // the names the plan shows are read where prep reads them.
-            body: JSON.stringify({ task: task, dest: _dir || null }),
+            // ...AND THE JOB REQUEST AS EDITED: the allocation each stage
+            // would carry is its (`execution/job-request.md` § 7).
+            body: JSON.stringify({ task: task, request: _request,
+                                   dest: _dir || null }),
         });
         body = await r.json();
     } catch (e) {
@@ -2501,11 +2748,12 @@ function renderNext(task) {
      * are declared once for the calculation, so ANY stage can be measured;
      * which is worth measuring is a judgement, and the page hints rather
      * than choosing. */
-    const benchKeys = Object.keys((task && task.bench) || {});
+    const bench = (_request && _request.bench) || {};
+    const benchKeys = Object.keys(bench);
     // VARYING AND DECLARED ARE DIFFERENT THINGS: a one-point axis fixes
     // its value (`generator.md` § 4.3a), and only a longer one varies.
     const benchVarying = benchKeys.filter(
-        (k) => ((task.bench[k] || []).length || 0) > 1);
+        (k) => ((bench[k] || []).length || 0) > 1);
 
     /* THE TASK'S PREP, ONE FOR THE LADDER (`job-system.md`, *The task*):
      * the groups, where each stands, the ones to pick -- the same question
@@ -2519,7 +2767,7 @@ function renderNext(task) {
      * as edited, its numbers the Stages card's. */
     const groups = [];
     for (const e of rungs) {
-        const g = e.st.group;
+        const g = groupOf(e.st.name);
         if (!groups.length || groups[groups.length - 1].number !== g) {
             groups.push({ number: g, members: [] });
         }
@@ -2533,7 +2781,8 @@ function renderNext(task) {
     // THE CHOICE SURVIVES A REPAINT.  Every edit re-renders this card, and
     // snapping back to the first group would lose the tab a person was
     // reading each time they typed.
-    if (!groups.some((g) => g.number === _fs.stepTab)) {
+    if (!(_fs.stepTab === "every" && _request)
+            && !groups.some((g) => g.number === _fs.stepTab)) {
         _fs.stepTab = groups[0].number;
     }
     const launched = {};
@@ -2593,7 +2842,7 @@ function renderNext(task) {
          * IT (user, 2026-09-02: "that selection panel card should be next to
          * the prep for run button such that it's obvious that this is
          * designed for the run").  One value each, written into the
-         * members' `execution` -- never `bench`. */
+         * members' cards in the job request -- never its `bench`. */
         block.appendChild(runCard(task, g.members));
 
         block.appendChild(el("p", { class: "hint" },
@@ -2622,11 +2871,32 @@ function renderNext(task) {
         }
         panels.appendChild(block);
     });
+    /* EVERY STAGE -- the calculation's own run card, the last tab, beside
+     * the task's Prep (`task-setup.md` § 6.2b): what every rung that reads
+     * an item runs at unless its own card says otherwise, and what a
+     * benchmark's trials take. */
+    if (_request) {
+        const every = groups.length;
+        const tab = el("button", {
+            type: "button", class: "ts-steptab", role: "tab",
+            id: "ts-steptab-" + every,
+            "aria-controls": "ts-steppanel-" + every,
+            "data-tab": "every",
+            "aria-selected": _fs.stepTab === "every" ? "true" : "false" },
+            "every stage");
+        nav.appendChild(tab);
+        const block = el("div", { class: "ts-next-step",
+                                  id: "ts-steppanel-" + every });
+        block.hidden = _fs.stepTab !== "every";
+        block.appendChild(runCard(task, rungs.map((e) => e.st.name || ""),
+                                  true));
+        panels.appendChild(block);
+    }
     // THE ONE TAB STRIP (`lib/tab-strip.js`, ui-contract.md § 4.1): it shows
     // the group's panel; the page keeps which group is chosen, so a repaint
     // stays on it.
     window.molbuilder.tabStrip.mount(nav, { onChange: (name) => {
-        _fs.stepTab = Number(name);
+        _fs.stepTab = name === "every" ? name : Number(name);
     } });
 
     card.hidden = false;
@@ -2664,11 +2934,14 @@ function taskPrepCard(task) {
     const groups = gs.groups || [];
     const said = {};
     for (const r of (lad.stages || [])) said[r.stage] = r;
-    /* PICKABLE: a group never launched that can be prepared -- or whose
+    /* PICKABLE: a group that can be prepared, as the folder's answer says
+     * -- a launched one on the hierarchical layout, for a change of its job
+     * request (`job-request.md` § 5) -- or one never launched whose
      * force-constant stage's Continue from names the `relax` run its deck
      * is written at, which prep takes as said (`job-system.md` § 5.4). */
-    const pickable = (g) => g.state !== "launched" && (g.preparable
-        || g.members.some((st) => !!_fs.continueChoice[st]));
+    const pickable = (g) => g.preparable
+        || (g.state !== "launched"
+            && g.members.some((st) => !!_fs.continueChoice[st]));
     /* TICKED WHEN THE FOLDER OPENS: the groups `prep task` offers -- every
      * one not prepared as described, a prepared one whose members changed
      * among them (`ready.prep_offer`). */
@@ -2678,8 +2951,9 @@ function taskPrepCard(task) {
     wrap.appendChild(el("p", { class: "hint" },
         "Prepare the task \u2014 pick the groups. Each group is one job; a "
         + "group prepared and never launched is prepared again whole, and a "
-        + "launched one is fixed. What a stage takes from another stage's run "
-        + "is taken when it is launched."));
+        + "launched one, on the hierarchical layout, is prepared again for a "
+        + "change of its job request, its runs kept. What a stage takes from "
+        + "another stage's run is taken when it is launched."));
     // THE PLAN LIST'S OWN ROWS (`ts-planlist`), a box column added.
     const list = el("ul", { class: "ts-planlist" });
     for (const g of groups) {
@@ -2911,14 +3185,15 @@ function prepButton(kind, picks) {
 
     /* WHAT BOTH MUST ANSWER BEFORE EITHER RUNS.  Returns a reason, or null. */
     function blocked() {
-        /* PREP READS `task.json` FROM DISK -- the door takes a FOLDER, not a
-         * document (the one prep entry, `prep.prep_task`), because one
+        /* PREP READS THE RECORDS FROM DISK -- the door takes a FOLDER, not
+         * a document (the one prep entry, `prep.prep_task`), because one
          * assembly serves the CLI and the browser alike (A12) and the CLI has
-         * only the file.  An unsaved card is not in the document prep reads,
+         * only the files.  An unsaved card is not in the files prep reads,
          * so its preview would show a plan the card does not say. */
-        if (_cm && _cm.getValue() !== _diskText) {
-            return "Save first — prep reads task.json from disk, and "
-                 + "these edits are not in it yet: the bar at the bottom.";
+        if (_cm && edited()) {
+            return "Save first — prep reads the description and its job "
+                 + "request from disk, and these edits are not in them yet: "
+                 + "the bar at the bottom.";
         }
         if (!_machine) {
             const card = $("ts-target-card");
@@ -2990,11 +3265,11 @@ function prepButton(kind, picks) {
                     const box = el("div", { class: "ts-emitted" });
                     box.appendChild(el("div", { class: "ts-emitted-head" },
                         "What " + who + " will actually be launched with"));
-                    // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
-                    // and saying so is the difference between a contradiction
-                    // and a fact.
+                    // NAME THE DOCUMENT.  These come from the records ON
+                    // DISK, and saying so is the difference between a
+                    // contradiction and a fact.
                     box.appendChild(el("div", { class: "hint" },
-                        "from the saved task.json — save the card above to "
+                        "from the saved files — save the cards above to "
                         + "change these"));
                     for (const line of lines) {
                         box.appendChild(el("div", { class: "ts-emitted-line" },
@@ -3280,6 +3555,14 @@ function _showPrepAnswer(wrap, say, r, head) {
           + ": " + dirs.slice(0, 3).join(", ")
           + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
+    if (r.launched) {
+        /* A LAUNCHED STAGE PREPARED AGAIN for its job request: no run
+         * opened, its runs kept (`execution/job-request.md` § 5) -- the
+         * terminal's line. */
+        line((would ? "would prepare " : "prepared ") + r.stage
+             + " again: launched \u2014 its runs are kept, and its next "
+             + "launch opens its next run with these files");
+    }
     const a = r.attempt;
     if (a) {
         line((would ? "would open attempt " : "Attempt ") + a.dir
@@ -3344,16 +3627,6 @@ function _showPrepAnswer(wrap, say, r, head) {
             .filter(([, v]) => v).map(([k, v]) => k + " " + v);
         if (asks.length) line("resources: " + asks.join(" | "));
     }
-    const g = r.agreement;
-    if (g && g.verdict === "agrees") {
-        line(r.deck + ": rendered for mpi_np " + g.rendered_for
-             + " — agrees with this launch");
-    } else if (g) {
-        line(r.deck + ": rendered for mpi_np " + g.rendered_for
-             + ", but this launch asks " + g.launching_at
-             + " — launch WILL REFUSE this: " + g.note, "warn");
-        say.setAttribute("data-state", "warn");
-    }
     /* WHICH FILES ANSWERED, as the prep read them with the machine's record
      * (`configuration.md` § 2.2): the first found is the record that won.
      * The terminal prints the table. */
@@ -3372,7 +3645,7 @@ function _showPrepAnswer(wrap, say, r, head) {
 
 /* ---------- the machine rows ---------- */
 
-/** Coerce a typed point to what `task.json` should carry.
+/** Coerce a typed point to what `job-request.json` should carry.
  *  `bench` takes scalars only — the reader refuses a nested value. */
 /** ``raw`` as the DECLARED TYPE reads it (`task-setup.md` § 5.2: never by
  *  its look): the catalogue's type through `CELL_READERS`, as a stage cell
@@ -3386,9 +3659,11 @@ function readTyped(name, raw) {
     return v === undefined ? t : v;
 }
 
+/** The job request's plan to measure (`job-request.md` § 3.4), made when
+ *  absent; ``null`` with no job request open. */
 function benchOf() {
-    if (!_task) return null;
-    return _task.bench || (_task.bench = {});
+    if (!_request) return null;
+    return _request.bench || (_request.bench = {});
 }
 
 function addPoint(name, raw) {
@@ -3410,43 +3685,48 @@ function removePoint(name, idx) {
     // `bench` takes a NON-EMPTY list, so a setting with no points is not a
     // setting with zero points -- it is a setting that is not being measured.
     if (!b[name].length) delete b[name];
-    if (!Object.keys(b).length) delete _task.bench;
+    if (!Object.keys(b).length) delete _request.bench;
     return commitEdit("Removing a point of " + name + "\u2026");
 }
 
 function removeSetting(name) {
     const b = benchOf(); if (!b) return;
     delete b[name];
-    if (!Object.keys(b).length) delete _task.bench;
+    if (!Object.keys(b).length) delete _request.bench;
     return commitEdit("Removing " + name + " from the benchmark\u2026");
 }
 
 /* ---------- the shape, and what a hand-over becomes ---------- */
 
-/** A description built from a hand-over plus the chosen shape.
+/** A description and its job request built from a hand-over plus the
+ *  chosen shape -- ``{task, request}``, each the text Save writes.
  *
  * The editor shows WHAT WILL BE WRITTEN, not the hand-over file — a person
  * checking a description before a week of compute should be reading the thing
  * that lands, not its input.  `varies: []` and one stage named `coarse` are the
  * ordinary starting ladder (`stages.md` § 6.5): one stage is not a special
- * shape, and empty `varies` is a real state.
+ * shape, and empty `varies` is a real state.  Each stage's group is the
+ * hand-over's proposal (`proposed_groups`), the job request's.
  */
 function proposedFromHandover(over, shape) {
     const run = (over && over.run) || {};
     // THE KIND rides the hand-over, every kind, as task.json states it --
-    // and so does THE PROPOSED LADDER, numbered, made by the server's one
-    // rule (`jobset.ladder.fresh_stages`, `jobset.group.numbered_fresh`; `engines/
-    // vibration.md` § 2.2, § 5.2a; `engines/stages.md` § 6.5).  The page
-    // shows it and derives nothing.
+    // and so does THE PROPOSED LADDER, its groups beside it, made by the
+    // server's one rule (`jobset.ladder.fresh_stages`,
+    // `jobset.group.fresh_groups`; `engines/vibration.md` § 2.2, § 5.2a;
+    // `engines/stages.md` § 6.5).  The page shows it and derives nothing.
     const kind = over.calculation;
     if (!Array.isArray(over.proposed_stages)
-            || !Array.isArray(over.proposed_varies)) {
-        throw new Error("this hand-over carries no proposed ladder, or no "
-                        + "proposed columns -- it was written before "
-                        + "2.16.3: send it again from its tab.");
+            || !Array.isArray(over.proposed_varies)
+            || !over.proposed_groups
+            || typeof over.job_request_schema !== "string") {
+        throw new Error("this hand-over carries no proposed ladder, no "
+                        + "proposed columns or no proposed groups -- it was "
+                        + "written before 2.27.0: send it again from its "
+                        + "tab.");
     }
     const stages = over.proposed_stages.map((s) => ({
-        name: s.name, group: s.group, overrides: s.overrides || {} }));
+        name: s.name, overrides: s.overrides || {} }));
     if (typeof over.task_schema !== "string" || !over.engine
             || !over.engine.name) {
         throw new Error("this hand-over names no task schema or no engine "
@@ -3461,13 +3741,19 @@ function proposedFromHandover(over, shape) {
                      created: run.created || "" },
         structure: (over && over.structure) || {},
         // WHAT VARIES is the hand-over's too (`proposed_varies`, the same
-        // rule `jobset init` writes with): the page seeds nothing.
+        // rule `molbuilder describe` writes with): the page seeds nothing.
         varies:    over.proposed_varies.slice(),
         stages:    stages,
     };
     // EVERY KIND IS WRITTEN.
     out.calculation = kind;
-    return JSON.stringify(out, null, 2) + "\n";
+    const request = {
+        schema: over.job_request_schema,
+        stages: Object.fromEntries(stages.map(
+            (s) => [s.name, { group: over.proposed_groups[s.name] }])),
+    };
+    return { task: JSON.stringify(out, null, 2) + "\n",
+             request: JSON.stringify(request, null, 2) + "\n" };
 }
 
 /* ---------- which machine this is prepared for ---------- */
@@ -3589,8 +3875,8 @@ function renderQueues() {
     if (!card || !host) return;
     const qs = _queuesOf(_machine);
     /* SHOWN ONCE THERE IS A DESCRIPTION, as the notify card is: the card
-     * writes `task.json`'s `allocation` (`task-setup.md`), and a hand-over
-     * has none for a choice to land in. */
+     * writes the job request's `allocation` (`task-setup.md`), which a
+     * hand-over's proposal states nothing of until Save writes it. */
     card.hidden = _mode !== "description";
     if (card.hidden) return;
     host.innerHTML = "";
@@ -3711,7 +3997,7 @@ function paintAskNotes() {
     }
 }
 
-/** The asks as `task.json`'s `allocation` carries them -- the whole block,
+/** The asks as the job request's `allocation` carries them -- the whole block,
  *  since `applyBlockToDoc` writes it whole. */
 function askValues() {
     const t = ($("ts-ask-time") || {}).value || "";
@@ -3758,35 +4044,39 @@ function keepingPagePut(fn) {
 
 /* THE DOCUMENT CHANGES IN ONE PLACE, AND BOTH COPIES MOVE TOGETHER.
  *
- * `_task` is the model the cards are a view of; the buffer is what `save`
- * sends, and `syncFromModel` serialises `_task` OVER the buffer -- so a card
- * that patched the buffer alone would be overwritten by a stale `_task`.
+ * `_request` is the model the cards are a view of; its buffer is what
+ * `save` sends, and `syncFromModel` serialises `_request` OVER the buffer
+ * -- so a card that patched the buffer alone would be overwritten by a
+ * stale `_request`.
  *
  * `patchDoc` is how a card whose own controls hold its values -- the queue
- * card, the notify card, written as each control changes -- changes the open
- * document: it reads the buffer (the newer of the two, since a hand edit
- * lands there first), applies the change, and writes BOTH, repainting
- * nothing, so the control being used keeps its place.  It runs under the
- * edit's fence (`applyBlockToDoc`); every other card edit leaves by
- * `commitEdit`.  A caller that returns false changed nothing and nothing is
- * written. */
+ * card, the notify card, written as each control changes -- changes the job
+ * request (`job-request.md` § 3.1, § 3.5): it reads the buffer (the newer
+ * of the two, since a hand edit lands there first), applies the change, and
+ * writes BOTH, repainting nothing, so the control being used keeps its
+ * place.  It runs under the edit's fence (`applyBlockToDoc`); every other
+ * card edit leaves by `commitEdit`.  A caller that returns false changed
+ * nothing and nothing is written. */
 function patchDoc(change) {
-    if (!_cm) return false;
-    let task;
+    if (!_docs) return false;
+    let request;
     try {
-        task = JSON.parse(_cm.getValue());
+        request = JSON.parse(bufferText("request"));
     } catch (e) {
+        _parses.request = false;
         refuseUnparsed();    // mid-edit: said, and the text left as typed
         return false;
     }
-    if (!task || typeof task !== "object") return false;
-    if (change(task) === false) return false;
-    _task = task;            // the model moves with the buffer, never after it
-    const cur = _cm.getCursor && _cm.getCursor();
+    if (!request || typeof request !== "object") return false;
+    if (change(request) === false) return false;
+    _request = request;      // the model moves with the buffer, never after it
+    const doc = _docs.request;
+    const cur = doc.getCursor && doc.getCursor();
     keepingPagePut(() => {
-        _cm.setValue(JSON.stringify(task, null, 2) + "\n");
-        if (cur && _cm.setCursor) _cm.setCursor(cur);
+        doc.setValue(JSON.stringify(request, null, 2) + "\n");
+        if (cur && doc.setCursor) doc.setCursor(cur);
     });
+    _setDirty(edited());
     return true;
 }
 
@@ -3807,46 +4097,47 @@ function patchDoc(change) {
  * care about half a second")*.  An edit made inside an operation that holds
  * the fence already is a step of it, and `pageBusy.run` runs it there. */
 function commitEdit(reason) {
-    return pageBusy.run(reason || "Writing task.json\u2026", [],
+    return pageBusy.run(reason || "Writing the records\u2026", [],
                         syncFromModel);
 }
 
 
-/** Write one card's block INTO the open `task.json`, which is what Save sends.
+/** Write one card's block INTO the open `job-request.json`, which is what
+ *  Save sends.
  *
  * ONE FUNCTION FOR BOTH CARDS, the queue card and the notify card: it is
- * `task.json`'s own rule for an optional block.  What differs is the KEY and
- * where the values come from, which is what the two parameters are.
+ * the job request's own rule for an optional block.  What differs is the
+ * KEY and where the values come from, which is what the two parameters are.
  *
  * `read` returns the block as the controls now state it.  An EMPTY object
  * means the card says nothing, and a block that says nothing is DELETED
- * rather than written empty -- a description that asks for nothing
- * round-trips byte-identical (`task.Notify`, `task.Allocation`).
+ * rather than written empty -- a request that asks for nothing round-trips
+ * byte-identical (`job_request.Notify`, `job_request.Allocation`).
  *
  * Returns whether anything actually changed, so `patchDoc` does not move
  * the page's cursor for a keystroke that wrote the same text back.
  */
 function applyBlockToDoc(key, read) {
-    return pageBusy.run("Writing " + key + "\u2026", [], async () => patchDoc((task) => {
+    return pageBusy.run("Writing " + key + "\u2026", [], async () => patchDoc((request) => {
         const want = read();
-        const had = JSON.stringify(task[key] || null);
-        if (Object.keys(want).length) task[key] = want;
-        else delete task[key];
-        return JSON.stringify(task[key] || null) !== had;
+        const had = JSON.stringify(request[key] || null);
+        if (Object.keys(want).length) request[key] = want;
+        else delete request[key];
+        return JSON.stringify(request[key] || null) !== had;
     }));
 }
 
 function applyAsksToDoc() { applyBlockToDoc("allocation", askValues); }
 
-/** Fill the card FROM the open description, so reopening a folder shows
+/** Fill the card FROM the open job request, so reopening a folder shows
  *  what it already asks for rather than an empty card. */
-function readAsksFromTask(task) {
-    const a = (task && task.allocation) || {};
+function readAsksFromRequest(request) {
+    const a = (request && request.allocation) || {};
     _fs.queue = a.domain || "";
     const t = $("ts-ask-time");
     const m = $("ts-ask-mem");
     const b = $("ts-ask-gpu-binding");
-    // Loaded from the DESCRIPTION: a person put these there.
+    // Loaded from the JOB REQUEST: a person put these there.
     if (t) t.value = a.time || "";
     if (m) m.value = a.mem || "";
     if (b) b.checked = a.gpu_binding !== false;
@@ -3862,7 +4153,7 @@ function _kindOf() {
         || (_handover && _handover.calculation) || "";
 }
 
-/** The policy as `task.json`'s `notify` block carries it.
+/** The policy as the job request's `notify` block carries it.
  *
  * WHEN only.  Where to send it is the user's own file on the machine that
  * runs the job, because a description travels and a token must not travel
@@ -3910,21 +4201,23 @@ function _everyOrThese(list) {
     return (list.length === 1 && list[0] === "*") ? null : list;
 }
 
-/** Write the policy INTO the open `task.json`, which is what save sends.
+/** Write the policy INTO the open `job-request.json`, which is what save
+ *  sends.
  *
  * Same rule as the queue card: the editor's text is the page's one source
  * of truth, so a control holding its value beside it would be a second
  * answer -- and the one that never reached disk.
  *
- * NO BLOCK IS NO NOTIFICATION, matching `task.py` (`run-reports.md` § 2):
+ * NO BLOCK IS NO NOTIFICATION, matching `job_request.py` (`run-reports.md` § 2):
  * nothing set up writes NO `notify` key, and a block is written whole.
  */
 function applyNotifyToDoc() { applyBlockToDoc("notify", notifyValues); }
 
-/** Fill the card FROM the open description, so reopening a folder shows
- *  what it already asks for rather than an empty card. */
-function readNotifyFromTask(task) {
-    const n = (task && task.notify) || {};
+/** Fill the card FROM the open job request, so reopening a folder shows
+ *  what it already asks for rather than an empty card -- the fields it
+ *  offers asked for the description's engine and kind. */
+function readNotifyFromRequest(request, task) {
+    const n = (request && request.notify) || {};
     const scf = $("ts-notify-scf");
     const per = $("ts-notify-periodic");
     const hrs = $("ts-notify-hours");
@@ -4128,10 +4421,16 @@ function setShape(shape) {
     /* WRITING IT THROUGH IS NOT THE HAND-OVER'S PRIVILEGE: `task-setup.md`
      * § 4 says the shape is free to change before the first produce.
      *
-     * The condition that matters is whether there is a DESCRIPTION to edit,
-     * which is what `_task.schema` asks; the hand-over branch below is about
-     * BUILDING one, and only that has to happen once. */
-    if (shape && _task && _task.schema === "molbuilder/task@1") {
+     * The condition that matters is whether there is a DESCRIPTION to edit
+     * -- a described folder's, or a hand-over's once proposed, told from
+     * the hand-over's own text (which the editor shows, and `_task` holds,
+     * until then) by the description's schema the hand-over names
+     * (`task_schema`); the hand-over branch below is about BUILDING one, and
+     * only that has to happen once. */
+    const described = !!_task && (_mode === "description"
+        || (_mode === "handover" && !!_handover
+            && _task.schema === _handover.task_schema));
+    if (shape && described) {
         // ...AND ONLY A CHANGE IS WRITTEN: the load repaints the shape the
         // description already carries, and writing that through would mark
         // a file nobody edited as edited.
@@ -4161,21 +4460,33 @@ function setShape(shape) {
         // written over that folder's description.
         pageBusy.run("Proposing the stages\u2026", [], () =>
             Promise.all([loadColumnChoices(engine),
-                         loadSweepChoices(engine)]).then(() => {
-                const text = proposedFromHandover(_handover, shape);
-                try { _task = JSON.parse(text); } catch (_) { _task = null; }
-                return setEditorText(text).then(() => {
-                    if (_task) { renderStages(_task); renderNext(_task);
-                                 renderMachine(_task);
-                                 refreshPickers(); }
-                });
-            }).catch(() => {
-                const text = proposedFromHandover(_handover, shape);
-                try { _task = JSON.parse(text); } catch (_) { _task = null; }
-                return setEditorText(text).then(() => {
-                    if (_task) renderStages(_task);
-                });
-            }));
+                         loadSweepChoices(engine)])
+                .then(() => true, () => false).then((vocabulary) => {
+                    let texts;
+                    try {
+                        texts = proposedFromHandover(_handover, shape);
+                    } catch (e) {
+                        // A HAND-OVER THIS PAGE CANNOT FINISH -- one written
+                        // before a rule its proposal carries -- says so, in
+                        // the reader's words, and holds Save: nothing is
+                        // written from half of it.
+                        _mode = "refused";
+                        setState("refuse", "This hand-over cannot be "
+                                 + "finished here",
+                                 String((e && e.message) || e));
+                        refreshSave();
+                        return null;
+                    }
+                    _task = JSON.parse(texts.task);
+                    _request = JSON.parse(texts.request);
+                    return setBuffers(texts).then(() => {
+                        renderStages(_task);
+                        if (!vocabulary) return;
+                        renderNext(_task);
+                        renderMachine(_task);
+                        refreshPickers();
+                    });
+                }));
     }
     refreshSave();
 }
@@ -4231,18 +4542,18 @@ function refreshSave() {
     /* EDITED, the bar's own words say so (`_setDirty`); SAVED, what the
      * save did (`saidSave`).  This line says why Save is held, and else,
      * with neither said, that there is nothing to save. */
-    const edited = !!_cm && _cm.getValue() !== _diskText;
+    const changed = !!_cm && edited();
     const said = $("ts-save-said");
     const confirmed = !!said && !said.hidden
         && said.getAttribute("data-state") === "ok";
     if (why) {
         why.textContent = blocked
-            || (edited || confirmed ? ""
+            || (changed || confirmed ? ""
                 : _mode === "handover"
-                ? "Not a description yet \u2014 Save writes task.json from "
-                  + "what was handed over."
-                : "Nothing unsaved \u2014 task.json in this folder is what "
-                  + "this page shows.");
+                ? "Not a description yet \u2014 Save writes task.json and "
+                  + "job-request.json from what was handed over."
+                : "Nothing unsaved \u2014 task.json and job-request.json in "
+                  + "this folder are what this page shows.");
     }
     paintHeads();
 }
@@ -4261,6 +4572,7 @@ function _sum(id, text) {
  *  machine chosen.  Repainted with the save bar, which every edit reaches. */
 function paintHeads() {
     const doc = _task || _handover || {};
+    const req = _request || {};
     const proj = window.molbuilder && window.molbuilder.projects;
     _sum("ts-dest-card", !_dir ? "no folder selected"
         : (proj && typeof proj.relativeToProjects === "function")
@@ -4275,18 +4587,18 @@ function paintHeads() {
     _sum("ts-target-card", !_machine ? "not chosen \u2014 needed before Prep"
         : chosen && !chosen.readable ? "cannot prepare for " + _machine
         : (_fs.setTo ? "set to " : "") + _machine);
-    const a = doc.allocation || {};
+    const a = req.allocation || {};
     _sum("ts-queue-card", [a.domain, a.time, a.mem].filter(Boolean)
         .join(" \u00b7 ") || "nothing stated");
     const stages = Array.isArray(doc.stages) ? doc.stages : [];
-    const groups = new Set(stages.map((st) => st && st.group));
+    const groups = new Set(stages.map((st) => st && groupOf(st.name)));
     _sum("ts-stages-card", stages.length
         ? [_count(stages.length, "stage"), _count(groups.size, "group"),
            _count(Array.isArray(doc.varies) ? doc.varies.length : 0,
                   "column")].join(" \u00b7 ")
         : "");
     const axes = Object.values(
-        doc.bench && typeof doc.bench === "object" ? doc.bench : {});
+        req.bench && typeof req.bench === "object" ? req.bench : {});
     _sum("ts-machine-card", axes.length
         ? _count(axes.length, "setting") + " \u00b7 "
           + _count(axes.reduce((n, pts) =>
@@ -4305,7 +4617,7 @@ function paintHeads() {
         li.querySelector('[data-exists="yes"]')).length;
     _sum("ts-files-card", !_dir ? "no folder selected"
         : here + " of " + rows.length + " in the folder");
-    const n = doc.notify && typeof doc.notify === "object" ? doc.notify : null;
+    const n = req.notify && typeof req.notify === "object" ? req.notify : null;
     _sum("ts-notify-card", !n ? "no reports"
         : [n.on_scf_converged ? "each SCF converged" : "",
            n.every_hours ? "every " + n.every_hours + " h" : "",
@@ -4345,7 +4657,8 @@ function saidSave(text, state) {
  */
 async function save() {
     if (!_cm || !_dir) return;
-    return pageBusy.run("Saving task.json\u2026", [], _save);
+    return pageBusy.run("Saving task.json and job-request.json\u2026", [],
+                        _save);
 }
 
 async function _save() {
@@ -4362,7 +4675,10 @@ async function _save() {
         const r = await fetch("/api/task-setup/save", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ dest: _dir, text: _cm.getValue() }),
+            // BOTH BUFFERS, as edited: each is read by its own reader at
+            // the door, and written whole (`job-request.md` § 7).
+            body:    JSON.stringify({ dest: _dir, text: bufferText("task"),
+                                      request_text: bufferText("request") }),
         });
         body = await r.json();
         if (!r.ok || !body || body.ok === false) {
@@ -4387,8 +4703,8 @@ async function _save() {
         return;
     }
     // The hand-over's REMOVAL is the browser's, through the content-blind
-    // file layer (`web/projects.md` § 1) -- the server writes task.json
-    // because it owns that schema, the way /api/structure/save owns the
+    // file layer (`web/projects.md` § 1) -- the server writes task.json and
+    // job-request.json because it owns their schemas, the way /api/structure/save owns the
     // sidecar, but moving bytes is this layer's job.  AFTER the write
     // succeeded: the reverse order loses the parameters if the write fails.
     const projects = window.molbuilder && window.molbuilder.projects;
@@ -4411,10 +4727,13 @@ async function _save() {
      * after is skipped -- the file is on disk and the page never says so.
      * The confirmation belongs to the write, so it is said before the
      * reload, and a reload failure is reported as its own thing. */
-    /* THE FILE THE DOOR SAYS IT WROTE (`wrote`), never a name spelled here. */
-    saidSave("Saved " + (body.wrote || "the description") + " into this folder"
+    /* THE FILES THE DOOR SAYS IT WROTE (`wrote`), never a name spelled
+     * here. */
+    const wrote = Array.isArray(body.wrote) && body.wrote.length
+        ? body.wrote.join(" and ") : "the description";
+    saidSave("Saved " + wrote + " into this folder"
              + (body.saved ? " · " + body.saved : "")
-             + ". Prep reads this file.", "ok");
+             + ". Prep reads these files.", "ok");
     /* THE FOLDER CHANGED, said as a prep says it, so the history panel
      * shows the state just saved; this page re-reads below on its own. */
     if (projects && typeof projects.publishFolderChanged === "function") {
@@ -4428,7 +4747,7 @@ async function _save() {
         if (projects) await loadFolder(projects, _dir,
                                        { retire: true, saved: true });
     } catch (e) {
-        saidSave("Saved " + (body.wrote || "the description") + " \u2014 but the page could "
+        saidSave("Saved " + wrote + " \u2014 but the page could "
                  + "not re-read the folder: " + ((e && e.message) || e)
                  + ".  What you see may be the previous state; reload.",
                  "warn");
@@ -4586,7 +4905,8 @@ function boot() {
 /*
  * NAMES ONLY.  The address and the key live on the This-machine tab, where
  * they are a fact about the box rather than about a calculation
- * (`this-machine.md` 1); this card writes `task.json` and nothing else.
+ * (`this-machine.md` 1); this card writes the job request's `notify` and
+ * nothing else.
  *
  * The three states of `notify.channels` are three states of this control,
  * and they are not collapsible (`run-reports.md` 3.0):
@@ -4654,10 +4974,10 @@ function reportSelection() {
     const host = $("ts-report-items");
     if (!host) return null;
     if (_reportFields === null) {
-        // NOT KNOWN which fields apply: the description's own list stands.
+        // NOT KNOWN which fields apply: the job request's own list stands.
         // A card that could not ask must not rewrite what it was told.
-        const t = currentTask();
-        const n = t && t.notify;
+        const r = currentRecord("request");
+        const n = r && r.notify;
         return n ? _everyOrThese(n.report) : null;
     }
     // ORDER IS THE VOCABULARY'S, not the DOM's -- two people who ticked the
@@ -4840,14 +5160,15 @@ async function loadChannelNames() {
             note.setAttribute("data-state", "bad");
         }
     }
-    readNotifyFromTask(currentTask());
+    readNotifyFromRequest(currentRecord("request"), currentRecord("task"));
 }
 
-/** The open description, or `null` when the editor holds no valid JSON. */
-function currentTask() {
-    if (!_cm) return null;
+/** Record ``which`` as its buffer holds it, or `null` when the buffer holds
+ *  no valid JSON. */
+function currentRecord(which) {
+    if (!_docs) return null;
     try {
-        const t = JSON.parse(_cm.getValue());
+        const t = JSON.parse(bufferText(which));
         return (t && typeof t === "object") ? t : null;
     } catch (e) {
         return null;

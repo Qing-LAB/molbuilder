@@ -29,6 +29,7 @@ import pytest
 
 from molbuilder.scheduler.record import LOCAL_TARGET
 from support.machines import SLURM
+from support.road import read_request, write_request
 
 
 @pytest.fixture
@@ -40,16 +41,23 @@ def described(isolated_projects_root, web_client):
     is the developer's real `projects/`.
     """
     from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.job_request import FILENAME as REQUEST_FILENAME
+    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
+    from molbuilder.task import SCHEMA as TASK_SCHEMA
     calc = isolated_projects_root / "calc"
     calc.mkdir(parents=True, exist_ok=True)
     (calc / TASK_FILENAME).write_text(json.dumps({
-        "schema": "molbuilder/task@1",
+        "schema": TASK_SCHEMA,
         "engine": {"name": "siesta"},
                    "calculation": "optimization", "shape": "hierarchical",
         "run": {"name": "JOB", "id": "JOB_H2"},
         "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
         "varies": [],
-        "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
+        "stages": [{"name": "coarse", "overrides": {}}],
+    }))
+    (calc / REQUEST_FILENAME).write_text(json.dumps({
+        "schema": REQUEST_SCHEMA,
+        "stages": {"coarse": {"group": 1}},
         # THE RUN CARD STATES THE LAUNCH SHAPE (`architecture.md` § 5.2) --
         # a run whose shape is stated nowhere is refused at prep.
         "execution": {"mpi_np": 2, "omp_threads": 1},
@@ -78,7 +86,7 @@ def _make_preppable(calc):
     (`project-layout.md` § 2.1), and the structure the description names has
     to be there, so `prep` has something to render from.  Written through
     the product's own doors rather than spelled, so the fixture cannot drift
-    away from what `jobset init` leaves.
+    away from what `molbuilder describe` leaves.
     """
     from molbuilder import template as _T
     from molbuilder.config.siesta import SiestaConfig
@@ -313,11 +321,13 @@ def _a_ladder_the_preflight_warns_about(calc):
     from molbuilder.task import FILENAME as TASK_FILENAME
     desc = Path(calc) / TASK_FILENAME
     d = json.loads(desc.read_text())
-    d["varies"] = []
-    d["stages"] = [{"name": "coarse", "group": 1, "overrides": {}},
-                   {"name": "tight", "group": 2, "overrides": {},
-                    "execution": {"restart": "clean"}}]
+    d["varies"] = ["restart"]
+    d["stages"] = [{"name": "coarse", "overrides": {}},
+                   {"name": "tight", "overrides": {"restart": "clean"}}]
     desc.write_text(json.dumps(d))
+    req = read_request(Path(calc))
+    req["stages"] = {"coarse": {"group": 1}, "tight": {"group": 2}}
+    write_request(Path(calc), req)
 
 
 def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
@@ -348,16 +358,16 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
     # -- the run card's thread count, which the run script states -- and put
     # back: the plan it makes then differs, and is refused; the same again,
     # and it is taken.
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    was = (calc / TASK_FILENAME).read_text()
+    from molbuilder.job_request import FILENAME as REQUEST_FILENAME
+    was = (calc / REQUEST_FILENAME).read_text()
     d = json.loads(was)
     d["execution"]["omp_threads"] = 2
-    (calc / TASK_FILENAME).write_text(json.dumps(d))
+    (calc / REQUEST_FILENAME).write_text(json.dumps(d))
     st, j = _post(web_client, dest=described, kind="task", group=1,
                   target=LOCAL_TARGET, plan_id=pv["plan_id"])
     assert st == 400 and "differs from the plan you previewed" in j["error"], j
     assert not (calc / "01_coarse").exists(), "a refused prep wrote"
-    (calc / TASK_FILENAME).write_text(was)
+    (calc / REQUEST_FILENAME).write_text(was)
     # ...and a Prep that names no plan at all is not taken: nothing is
     # prepared unseen.
     st, j = _post(web_client, dest=described, kind="task", group=1,
@@ -373,7 +383,7 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
 def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
         web_client, described):
     """The tab's answer carries what the command line prints -- the
-    preflight's note, the attempt, the deck's agreement -- and the two
+    preflight's note, the attempt -- and the two
     calculations' ledgers hold the same decisions."""
     calc = Path(described)
     _make_preppable(calc)
@@ -394,12 +404,8 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
         assert f"note: {n}" in r.output, n
     assert j["attempt"]["dir"] == "01_coarse/run-0"
     assert "prepared coarse: 01_coarse/run-0" in r.output
-    assert j["agreement"]["verdict"] == "agrees", j["agreement"]
-    assert (f"{j['deck']}: rendered for mpi_np "
-            f"{j['agreement']['rendered_for']} -- agrees") in r.output
     assert _ledger_decisions(calc) == _ledger_decisions(twin)
     assert ("prep", "preflight-report") in _ledger_decisions(calc)
-    assert ("prep", "launch-agreement") in _ledger_decisions(calc)
     # What each deck's checks said reaches the tab too -- the terminal read
     # it on stderr as the deck rendered.
     assert j["deck_findings"], "the tab was not told what the deck's checks said"
@@ -448,7 +454,8 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
                 in (d / "jobset-decisions.log").read_text()), d
 
     r = web_client.post("/api/task-setup/save", json={
-        "dest": str(kept), "text": (kept / "task.json").read_text()})
+        "dest": str(kept), "text": (kept / "task.json").read_text(),
+        "request_text": (kept / "job-request.json").read_text()})
     body = r.get_json()
     assert r.status_code == 200, body
     assert body["saved"].startswith("the folder's state was saved first:")
@@ -483,14 +490,12 @@ def test_a_refusal_shows_what_it_points_at_on_both_doors(
     list before refusing; a refusal that dropped it would be pointing at
     nothing.  Here 3 ranks do not split evenly over 2 GPUs (`generator.md`
     § 4.3a)."""
-    from molbuilder.task import FILENAME as TASK_FILENAME
     calc = Path(described)
     _make_preppable(calc)
-    desc = calc / TASK_FILENAME
-    d = json.loads(desc.read_text())
-    d["bench"] = {"mpi_np": [3], "omp_threads": [1], "use_gpu": [True],
-                  "gpu_count": [2]}
-    desc.write_text(json.dumps(d))
+    req = read_request(calc)
+    req["bench"] = {"mpi_np": [3], "omp_threads": [1], "use_gpu": [True],
+                    "gpu_count": [2]}
+    write_request(calc, req)
     twin = _twin(calc, "calc-cli")
 
     dropped = "mpi_np=3 x gpu_count=2"
@@ -505,70 +510,20 @@ def test_a_refusal_shows_what_it_points_at_on_both_doors(
         "dropped by the even-split rule"), r.output
 
 
-def _pyscf_calc(root, name):
-    """A described PySCF optimization -- its deck makes no claim about the
-    launch it was rendered for (no BENCH-MARKS block)."""
-    from molbuilder import template as _T
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    calc = Path(root) / name
-    calc.mkdir(parents=True)
-    (calc / TASK_FILENAME).write_text(json.dumps({
-        "schema": "molbuilder/task@1",
-        "engine": {"name": "pyscf"},
-                   "calculation": "optimization", "shape": "hierarchical",
-        "run": {"name": "JOB", "id": "JOB_H2"},
-        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
-        "varies": [],
-        "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
-        "execution": {"threads": 1},
-    }))
-    (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
-    (calc / "JOB.template.toml").write_text(
-        _T.template_with_values(PySCFConfig(), engine="pyscf"))
-    return calc
-
-
-def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
-        web_client, described, isolated_projects_root):
-    """`launch_agreement` answers *silent* for a deck with no launch claim,
-    and saying *agrees* would be a claim nobody made: no agreement in the
-    answer, no line printed, no `launch-agreement` in the ledger -- on
-    both doors.  A PySCF deck is such a deck."""
-    web = _pyscf_calc(isolated_projects_root, "py-web")
-    cli = _pyscf_calc(isolated_projects_root, "py-cli")
-    st, j = _prep(web_client, dest=str(web), kind="task", group=1,
-                  target=LOCAL_TARGET)
-    assert st == 200, j
-    assert j["agreement"] is None and j["attempt"], j
-    # ...AND ITS END POINT, A13, on a machine with no scheduler: the run
-    # script's stated count, read back by its writer's reader.
-    assert j["launch"]["header"] == [], j["launch"]
-    assert "_omp_threads_default=1" in j["launch"]["run_script"], j["launch"]
-    r = _cli("prep", "task", "--group", "1", "--bundle", str(cli),
-             "--target", LOCAL_TARGET)
-    assert r.exit_code == 0, r.output
-    assert "rendered for mpi_np" not in r.output
-    for calc in (web, cli):
-        assert ("prep", "launch-agreement") not in _ledger_decisions(calc)
-
-
 def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
         web_client, described):
     """A description that fails its own preflight -- a physics value in the
-    run's `execution` block -- while its ladder also earns a note: each door
+    job request's `execution` block -- while its ladder also earns a note: each door
     refuses with the note beside the sentence.  The terminal's refusal is a
     decision, and the ledger holds it, as for every other refusal; the page's comes at its
     Preview, which records nothing (`job-system.md` § 5.0), and Prep is not
     offered."""
-    from molbuilder.task import FILENAME as TASK_FILENAME
     calc = Path(described)
     _make_preppable(calc)
     _a_ladder_the_preflight_warns_about(calc)
-    desc = calc / TASK_FILENAME
-    d = json.loads(desc.read_text())
-    d["execution"] = {"basis_size": "SZ"}
-    desc.write_text(json.dumps(d))
+    req = read_request(calc)
+    req["execution"] = {"basis_size": "SZ"}
+    write_request(calc, req)
     twin = _twin(calc, "calc-cli")
 
     st, j = _prep(web_client, dest=str(calc), kind="task", group=1,
@@ -603,6 +558,34 @@ def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
              "--target", LOCAL_TARGET)
     assert isinstance(r.exception, SystemExit), r.exception
     assert r.exit_code == 1 and "holds 2 templates" in r.output, r.output
+
+
+def _pyscf_calc(root, name):
+    """A described PySCF optimization, its run card stating its threads."""
+    from molbuilder import template as _T
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.job_request import FILENAME as REQUEST_FILENAME
+    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.task import SCHEMA as TASK_SCHEMA
+    calc = Path(root) / name
+    calc.mkdir(parents=True)
+    (calc / TASK_FILENAME).write_text(json.dumps({
+        "schema": TASK_SCHEMA,
+        "engine": {"name": "pyscf"},
+                   "calculation": "optimization", "shape": "hierarchical",
+        "run": {"name": "JOB", "id": "JOB_H2"},
+        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
+        "varies": [],
+        "stages": [{"name": "coarse", "overrides": {}}],
+    }))
+    (calc / REQUEST_FILENAME).write_text(json.dumps({
+        "schema": REQUEST_SCHEMA, "stages": {"coarse": {"group": 1}},
+        "execution": {"threads": 1}}))
+    (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
+    (calc / "JOB.template.toml").write_text(
+        _T.template_with_values(PySCFConfig(), engine="pyscf"))
+    return calc
 
 
 def test_the_page_is_offered_a_bench_only_where_prep_takes_one(

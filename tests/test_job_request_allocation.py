@@ -1,4 +1,4 @@
-"""`task.json` carries what this calculation asks the scheduler for.
+"""`job-request.json` carries what this calculation asks the scheduler for.
 
 **Why the key exists.** Five Sol jobs (62039301-05, 2026-08-23) died against
 limits nobody chose: a per-GPU memory default, and a wall the framework
@@ -7,7 +7,7 @@ so the Task-setup tab could not set them and `prep` could not learn them --
 every launch had to be told again, and a launch that forgot was a launch
 that guessed.
 
-`allocation` is that home (`task.Allocation`): the queue, the wall, the
+`allocation` is that home (`job_request.Allocation`): the queue, the wall, the
 memory, spelled as a person types them.
 """
 from __future__ import annotations
@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.task import SCHEMA, Allocation, Task
+from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
+from molbuilder.job_request import Allocation, from_dict
+from molbuilder.task import SCHEMA, Task
 
 _BASE = {
     "schema": SCHEMA,
@@ -25,12 +27,18 @@ _BASE = {
     "run": {"name": "JOB", "id": "JOB_H2"},
     "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
     "varies": [],
-    "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
+    "stages": [{"name": "coarse", "overrides": {}}],
 }
+#: The description the job request is read beside (`job-request.md` § 3).
+_DESCRIPTION = Task.from_dict(_BASE)
 
 
-def _task(**extra) -> Task:
-    return Task.from_dict({**_BASE, **extra})
+def _task(**extra):
+    """A job request for the one-stage description above, ``extra`` its
+    blocks."""
+    return from_dict({"schema": REQUEST_SCHEMA,
+                      "stages": {"coarse": {"group": 1}}, **extra},
+                     _DESCRIPTION)
 
 
 # --------------------------------------------------------------------- #
@@ -40,10 +48,10 @@ def _task(**extra) -> Task:
 def test_the_three_asks_round_trip():
     t = _task(allocation={"domain": "htc", "time": "4h", "mem": "128G"})
     # "4h" is what a person types; the record holds SLURM's spelling,
-    # normalised on the way in (task.py::Allocation, 2026-08-24).
+    # normalised on the way in (job_request.Allocation, 2026-08-24).
     assert t.allocation == Allocation(
         domain="htc", time="0-04:00:00", mem="128G")
-    assert Task.from_dict(t.to_dict()).allocation == t.allocation
+    assert from_dict(t.to_dict(), _DESCRIPTION).allocation == t.allocation
 
 
 def test_absent_is_a_state_and_writes_no_key():
@@ -132,8 +140,9 @@ class TestTheRunsConditionIsOneValueEach:
         something nobody can read back."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation.task import preflight
-        found = [i for i in preflight(_task(execution={"mesh_cutoff": 400}),
-                                      SiestaConfig)
+        found = [i for i in preflight(
+                     _DESCRIPTION, SiestaConfig,
+                     request=_task(execution={"mesh_cutoff": 400}))
                  if "execution" in (i.where or "")]
         assert found, "a physics value passed as a run condition"
         assert "not an execution setting" in found[0].message
@@ -157,7 +166,8 @@ class TestTheRunsConditionIsOneValueEach:
         from molbuilder.validation.task import preflight
 
         def _bad(block):
-            return [i for i in preflight(_task(execution=block), SiestaConfig)
+            return [i for i in preflight(_DESCRIPTION, SiestaConfig,
+                                         request=_task(execution=block))
                     if "execution" in (i.where or "")]
 
         assert not _bad({"time": "2-00:00:00"}), "a run may state its wall"
@@ -179,6 +189,14 @@ def test_a_number_is_refused_with_the_spelling_it_wants():
     with pytest.raises(Exception) as e:
         _task(allocation={"mem": 128})
     assert "mem" in str(e.value)
+
+
+def test_an_unreadable_ask_names_its_field():
+    """A wall no spelling reads is refused at the door, naming the field --
+    never baked into a job for launch to refuse later (Sol, 2026-08-24)."""
+    with pytest.raises(Exception) as e:
+        _task(allocation={"time": "banana"})
+    assert "allocation.time" in str(e.value)
 
 
 def test_an_empty_object_is_refused_as_a_second_spelling_of_absent():

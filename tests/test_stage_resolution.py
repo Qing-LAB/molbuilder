@@ -54,10 +54,8 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
             run=derive_run("j", stage_names=("tight", "medium")),
             structure=StructureRef(source="h2.xyz"),
             varies=("mesh_cutoff",),
-            stages=(Stage(name="tight", overrides={"mesh_cutoff": 200.0},
-                          group=1),
-                    Stage(name="medium", overrides={"mesh_cutoff": 300.0},
-                          group=2))))
+            stages=(Stage(name="tight", overrides={"mesh_cutoff": 200.0}),
+                    Stage(name="medium", overrides={"mesh_cutoff": 300.0}))))
         # the codec wrote a valid file; a hand edit introduces the clash
         raw = _json.loads(p.read_text())
         raw["stages"][1]["name"] = "Tight"

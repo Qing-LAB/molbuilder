@@ -144,14 +144,6 @@ class Resources:
     #: cadence and the channel names -- so a running job's format cannot
     #: change under it because `task.json` was edited while it queued.
     notify_report: Optional[Tuple[str, ...]] = None
-    #: WHICH binary the wrapper launches; ``None`` = the engine's own
-    #: (``siesta`` for a ``.fdf``).  Also not a SLURM flag -- the same
-    #: job-to-wrapper road as ``continue_retries``.  Set by the transport
-    #: composite's transmission stage (``tbtrans`` post-processes the
-    #: device run, `engines/transport.md` § 2a.11): the deck cannot say it,
-    #: because the transmission deck IS the device deck -- the same text,
-    #: read by a different program.
-    program:          Optional[str] = None
     max_memory_mb:    Optional[int] = None   # NOT a SLURM flag either -- `ulimit -v`
     #  ^ a MACHINE fact (how much memory one rank may take on this node), so
     #  it belongs to the allocation: carried on it, no call site building a
@@ -232,13 +224,15 @@ class GpuRequestError(ValueError):
 
 #: `gpu.md` G5, both halves -- each says where the two facts are stated.
 _GPU_NO_COUNT = (
-    "this run uses a GPU (`use_gpu` -- its run card, else the template) and "
-    "states no GPU count.  Write it on the run card -- \"execution\": "
-    "{\"gpu_count\": N} in task.json, the calculation's or this stage's -- "
+    "this run uses a GPU (`use_gpu` -- its run card, else the catalogue's "
+    "default) and states no GPU count.  Write it on the run card -- "
+    "\"execution\": {\"gpu_count\": N} in job-request.json, the "
+    "calculation's or this stage's -- "
     "or say it on the prep: --gpus N (docs/execution/gpu.md G5).")
 _GPU_NOT_USED = (
     "this run asks for {count} GPU(s) and does not use the GPU (`use_gpu` is "
-    "off -- its run card, else the template): its deck runs on the CPU, so "
+    "off -- its run card, else the catalogue's default): its deck runs on "
+    "the CPU, so "
     "the GPUs would be held and never used.  Set `use_gpu` on the run card "
     "to run it on the GPU, or remove the count -- `gpu_count` on the run "
     "card, or --gpus on the prep (docs/execution/gpu.md G5).")
@@ -406,6 +400,11 @@ class Job:
     #: with it to check the prepared stage is still what the description
     #: gives (`job-system.md` § 6.0).
     asked:      Dict[str, Any] = field(default_factory=dict)
+    #: WHICH PROGRAM THE JOB RUNS -- what it computes, so the job's and
+    #: never a resource: ``None`` is the engine's own (``siesta`` for a
+    #: ``.fdf``); a transport ladder's transmission is ``tbtrans``
+    #: (`engines/transport.md` § 6.1b).  The wrapper is told it.
+    program:    Optional[str] = None
 
     @property
     def relaunch_continues(self) -> bool:
@@ -439,6 +438,7 @@ class Job:
                         else None),
             "written_at": self.written_at,
             "asked": dict(self.asked),
+            "program": self.program,
         }
 
     @classmethod
@@ -472,6 +472,8 @@ class Job:
             written_at=(str(d["written_at"]) if d["written_at"] is not None
                         else None),
             asked=dict(d["asked"]),
+            program=(str(d["program"]) if d["program"] is not None
+                     else None),
         )
 
 
@@ -550,7 +552,7 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 #: § 6.1) -- the one list the writer's dict and the reader's check share.
 JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
             "finish", "resumes", "scratch_dir", "placement", "members",
-            "written_at", "asked")
+            "written_at", "asked", "program")
 
 
 class WrittenBefore(ValueError):

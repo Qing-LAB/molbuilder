@@ -137,16 +137,14 @@ def _task(tmp_path, calculation):
         else {},
         bias=(0.0, 0.2) if transport else (),
         low_bias_approximation=False if transport else None,
-        varies=(), execution={"mpi_np": 4, "omp_threads": 1},
-        stages=tuple(Stage(name=n, overrides={}, group=g) for n, g in
-                     zip(stages, (1, 1, 1, 2, 3) if transport else (1,)))))
+        varies=(), stages=tuple(Stage(name=n, overrides={}) for n in stages)))
     return dest / "task.json"
 
 
 def test_a_transport_description_is_read_by_a_parser_so_the_root_opens_its_report(tmp_path):
     """`web/results.md` § 0.1, § 2.5: a transport calculation's report is
     composed on read, so the root opens it before any `summarize task` --
-    through its description, the one file there from `jobset init` on.
+    through its description, the one file there from `molbuilder describe` on.
     The picker drops a file no parser claims, so `task.json` needs the
     registry's word; and only a TRANSPORT calculation's, read off the
     description's own `calculation`, never the name -- a relaxation's root

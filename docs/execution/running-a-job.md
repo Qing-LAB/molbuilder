@@ -1099,7 +1099,7 @@ unconfigured and silent, and a model that answers a question the user was
 never asked is the wrong shape regardless of its coefficients.
 
 **And no default exists either** *(user, 2026-10-02)*. A job's memory is, from
-strongest: `--mem` at prep, the description's `allocation.mem`. Its wall is,
+strongest: `--mem` at prep, the job request's `allocation.mem`. Its wall is,
 for a submitted job, `--time` at launch, then `--time` at prep, the run card's
 `time`, `allocation.time`. **Stated nowhere, prep refuses** on a target
 with a scheduler. The scheduler's own default would stand in if prep let it
@@ -1143,8 +1143,8 @@ two machines is explained by the bundle itself. Secret sections (`auth`,
 
 **There is ONE launch door.** `molbuilder jobset launch` resolves the mode
 (flag, else `launch.mode`, else a refusal — never the detected scheduler),
-decides everything before it writes anything — what the run follows, the
-deck/launch agreement check, and the queue `prep` recorded for the work (a run
+decides everything before it writes anything — what the run follows, and
+the queue `prep` recorded for the work (a run
 on a scheduler is refused at prep when it names none; launch places nothing
 again) — then **shows the exact `sbatch` line and every value of the
 header it sends, and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips

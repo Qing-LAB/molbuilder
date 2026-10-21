@@ -9,7 +9,7 @@ must arrive in the input the engine runs.
 a person was most likely to reach for -- `molbuilder.load()`, the obvious name,
 in `__all__`, docstring accurate for what it did -- read the geometry and not
 the sidecar. It predated the sidecar by two months and nothing swept it. Its
-one production caller was `jobset init`, the verb that turns a structure into a
+one production caller was `molbuilder describe`, the verb that turns a structure into a
 calculation (`job-system.md` § 5.1), so a description was born with the
 author's regions, frozen atoms and cell missing, and everything downstream was
 then faithfully correct about the wrong thing. It is the same failure
@@ -17,7 +17,7 @@ then faithfully correct about the wrong thing. It is the same failure
 every atom of a structure whose author had frozen two."*
 
 So the road is driven: the pair is saved through `StructureCodec` (the one
-door, `structure.md` § 2.4), `jobset init` describes it, `jobset prep` renders
+door, `structure.md` § 2.4), `molbuilder describe` describes it, `jobset prep` renders
 the deck -- no engine runs -- and the deck is read back.  A second reader
 anywhere on that road that takes the geometry and drops the sidecar shows up
 here as a deck that relaxes every atom in a box nobody chose.
@@ -27,6 +27,7 @@ from __future__ import annotations
 import numpy as np
 
 from conftest import write_pseudos
+from support.road import molbuilder
 
 
 #: Two H2 molecules: the first carries a region, the second is held.  An
@@ -70,7 +71,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     § 7 (SIESTA `frozen_atoms` -> `Geometry.Constraints`); `structure.md`
     § 2.4 (`StructureCodec` is the paired-file door); `job-system.md` § 5.1.
 
-    MUTATION THIS MUST FAIL AGAINST: `jobset init` -- or `prep`'s
+    MUTATION THIS MUST FAIL AGAINST: `molbuilder describe` -- or `prep`'s
     `_structure_for` -- reading the structure with
     ``Structure.from_xyz(path.read_text())`` instead of
     ``StructureCodec().load(path)``.
@@ -94,7 +95,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
 
-    r = _jobset("init", "--structure", "P/structure/h4.xyz",
+    r = molbuilder("describe", "--structure", "P/structure/h4.xyz",
                 "--bundle", "P/optimization/H4", "--engine", "siesta",
                 "--calculation", "optimization",
                 "--shape", "hierarchical", "--name", "H4",

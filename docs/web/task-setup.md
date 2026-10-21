@@ -1,4 +1,4 @@
-# Task Setup — the tab that writes a description
+# Task Setup — the tab that writes a description and its job request
 
 **Role:** contract
 **Domain:** web
@@ -6,7 +6,8 @@
 **Companions — the contracts this surface is built against, and where the two
 disagree those win:**
 [`engines/stages.md`](?doc=engines/stages.md) — what a stage is, `varies`,
-`shape`, `bench`, and the rule that a job always has at least one stage;
+`shape`, and the rule that a job always has at least one stage;
+[`execution/job-request.md`](?doc=execution/job-request.md) — the job request: the run cards, the groups, `bench`, the queue, the reports;
 [`engines/template.md`](?doc=engines/template.md) — the catalogue every control
 on this page is drawn from, and the rule that a description names no machine;
 [`execution/project-layout.md`](?doc=execution/project-layout.md) — what `prep`
@@ -20,7 +21,9 @@ control.
 
 **What this page is for, in one sentence.** A parameter tab has collected the
 physics; this page turns that into a **description on disk** — `task.json` plus
-the template — and hands you the command to run it somewhere else.
+the template — and its **job request**, `job-request.json`: what it computes, and
+how and where it runs ([`job-request.md`](?doc=execution/job-request.md) § 1). It hands you the command to run it
+somewhere else.
 
 ---
 
@@ -51,7 +54,9 @@ among them ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6;
 projects/BDT-Au/optimization/au111-series/bdt_au/
 
     BDT_Au_relax.template.toml   the parameters, with their values
-    task.json                    what varies, the stages, what to measure
+    task.json                    what varies, the stages
+    job-request.json             the run cards, the groups, the queue,
+                                 what to measure, the reports
     Au.psml  S.psml  …           the data files
 ```
 
@@ -202,7 +207,7 @@ name and what it is of, a structure or a transport calculation's junction —
 is its identity: the run id is derived from it, so a different one is a new
 calculation, described in a new folder (Save refuses another calculation's
 id, § 2). The rest is corrected in `task.json` itself, in the editor below
-(§ 9a), as `jobset init`'s refusal says of a described folder — a transport
+(§ 9a), as `molbuilder describe`'s refusal says of a described folder — a transport
 calculation's electrode rename and its bias list; a shared value
 is the template's, changed in that file, which a person reads and edits
 ([`engines/template.md`](?doc=engines/template.md)). A transport
@@ -273,7 +278,7 @@ catalogue's markers for the folder's kind, and by nothing the page keeps
 ([`template.md § 6.4`](?doc=engines/template.md); `/api/task-setup/columns?engine=&calculation=`):
 the kind narrows them (`calculations`); **a run setting is not a column** —
 the catalogue's `execution` items, the machine's answers among them, are each
-rung's run card (§ 6.2b; `stages.md` § 6.8d, plan § 5w K5); a rung's role is
+rung's run card (§ 6.2b; `job-request.md` § 3.2, plan § 5w K5); a rung's role is
 not a column (`role`); and **a value shared by
 every rung is not a column (`shared`)** — it is edited in the template, on the
 tab that owns it, and a column here would be a per-rung override `prep`
@@ -294,7 +299,7 @@ kind since 2026-09-30, plan § 5w K4; for transport's rungs, by name, since
 **Every row states its group** *(user, 2026-10-11:
 "the stages should have a group number assigned to it, either repeat the last
 group number or add one")*. Beside each stage's name, its **group** — the job
-it runs in ([`stages.md`](?doc=engines/stages.md) § 2) — with two choices on
+it runs in ([`job-request.md`](?doc=execution/job-request.md) § 3.3) — with two choices on
 every row but the first: *same as above* (repeat the number) or *new group*
 (add one). A row that may not repeat — it builds on a stage in the group
 above, or states other values than that group on what a job shares, or that
@@ -304,10 +309,10 @@ sentence is the server's (`groups.stages[i].why_same`, from
 page composes none, 2026-10-18), beside the facts the folder answer gives
 (each stage's number, `builds_on`, `linked`, `launched`), and Save's check
 (`group.check_groups`) refuses what the rule forbids after edits. Both name
-the ways out: a new group — or, for an independent ladder's stage, its run
-card's `restart` set to `clean`, so it builds on nothing.
+the ways out: a new group — or, for an independent ladder's stage, its
+`restart` set to `clean` in the stage table, so it builds on nothing.
 A new description arrives with the defaults (repeat wherever allowed); Save
-writes the numbers into `task.json`. **Changing a group of stages that are
+writes the numbers into `job-request.json`. **Changing a group of stages that are
 prepared and never launched** marks those groups for preparing again (§ 11);
 a launched stage's group is fixed and its row's choices are disabled, naming
 the restore that changes it — and no row joins it: the row below a launched
@@ -396,7 +401,7 @@ second stage needs nothing renamed or renumbered
 optimization is one stage, `coarse`, with no overrides (`jobset.ladder.fresh_stages`);
 the three tiers `coarse` / `medium` / `tight` (`config/stages.py::STAGE_NAMES`, the engine-neutral home),
 each with its preset ([`tuning.md § 4`](?doc=engines/tuning.md)), come with
-`jobset init --stage-strategy`.
+`molbuilder describe --stage-strategy`.
 Position is carried by the artifact token — `01_coarse`,
 `identity.stage_token` — so the name never repeats it, and a stage's `seq` is
 assigned once and never reassigned
@@ -459,9 +464,9 @@ other's block.
 | run | *(blank)* | refused at prep, naming this card and the prep flag ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 
 **A one-point row in the MEASURE card is the trials' value, never the
-run's.** On a non-machine item it pins the template for the trials
-(`use_gpu: [true]`, the 2026-08-20 override rule) and for them alone since
-2026-09-30; the run reads its own card (`generator.md` § 4.3a).
+run's.** On a non-machine item it is a pin for the trials, over the
+calculation's card (`use_gpu: [true]`, the 2026-08-20 override rule), and
+for them alone; the run reads its own card (`generator.md` § 4.3a).
 
 ### 6.1 Two kinds of setting live here, and the difference is not cosmetic
 
@@ -469,27 +474,25 @@ The `staging` group is what a parameter form deliberately does not ask
 ([`form-schema.md § 1.3`](?doc=web/form-schema.md): `catalogue_to_form_schema`
 filters it). Inside it, the catalogue draws a line:
 
-| | which ones | may carry a value? |
+| | which ones | blank on every card |
 |---|---|---|
-| **you answer it** | everything in the group the machine does not answer | **yes.** It has a real default — `false`, `clean`, `1` |
-| **the machine answers it** | the ones marked as the machine's | **no.** Reading a template with a value on one is **refused** ([`template.md § 6.4`](?doc=engines/template.md)) |
+| **you answer it** | the run settings the machine does not answer | the item's default, shown in its place and recorded *not chosen* ([`job-request.md`](?doc=execution/job-request.md) § 4) |
+| **the machine answers it** | the ones marked as the machine's | refused at prep, naming this card and the flag — but the memory cap, which blank is no cap ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
+
+**Neither is in the template**: a run setting lives on the run card alone,
+in the job request, and a template with a value on one is **refused**
+([`template.md § 6.4`](?doc=engines/template.md)).
 
 **Neither row is a list, and neither should be written as one.** Each setting in
 the catalogue already says whether the machine answers it, so asking that
 question sorts the group in two with nothing to keep in step. For SIESTA today
-that comes out as `restart` · `continue_retries` · `use_gpu` on the first row
-and `mpi_np` · `omp_threads` · `max_memory_mb` on the second — but those are what
+that comes out as `use_gpu` · `diag_algorithm` · `block_size` · … on the
+first row and `mpi_np` · `omp_threads` · `max_memory_mb` on the second — but those are what
 the answer *is* right now, not what it is defined as.
 
-> **Corrected 2026-08-18.** Both rows used to be typed out here, and the second
-> described the mechanism that sorted them — *"each names an allocation
-> resolver"* — which had already been replaced by a single mark on each setting.
-> So this table was a hand-kept copy of an answer the data gives, written in the
-> vocabulary of a mechanism that no longer existed. The first row was the copy
-> that mattered: `restart` sat in it, correctly, while the table on this same
-> page could not offer `restart` as a column
-> ([`stages.md § 6.2`](?doc=engines/stages.md)) — the page's two halves
-> disagreeing about one setting, in one document, three sections apart.
+**`restart` is in the group and on neither row**: it says what a stage builds
+on, which is the description's, and it is the stage table's column
+([`stages.md § 6.2`](?doc=engines/stages.md); [`job-request.md`](?doc=execution/job-request.md) § 2).
 
 **The vocabularies are the engine's.** The columns, the sweepable set and the
 tier presets are fetched for the description's engine — on a hand-over, the
@@ -505,7 +508,7 @@ try* — one of them is one trial, never an answer. What a run uses is the
 **run** card, `execution`'s own block (§ 6.2b), and the two cards never read
 each other.
 
-> **The line is decision vs finding, not portable vs not.** A description may
+> **The line is decision vs finding, not portable vs not.** A job request may
 > hold *"run it at eight"* — that is a person asking — and may never hold what
 > a **machine found**, which is why `summarize` PRINTS its verdict as a report
 > no code reads. The argument is
@@ -515,15 +518,15 @@ each other.
 
 > **This is about CATALOGUE ITEMS, and the tab also holds something else**
 > *(2026-08-24)*. The queue card ("Where it runs, and what it may use") sets
-> `task.json`'s `allocation` — `domain` / `time` / `mem`, and the GPU binding —
+> `job-request.json`'s `allocation` — `domain` / `time` / `mem`, and the GPU binding —
 > choosing a queue names it and fills neither the wall nor the memory: each
 > queue is shown with the range of its machines — cores, memory, devices —
 > and under each field that queue's range for it, never marking what is typed
 > invalid; the fit of the whole request is the Preview's, the prep entry's own
 > (`scheduler.md` R6). A field stays empty until it is stated
 > (`submission.md` S5) — and those are **not**
-> points to try. The distinction is the one § 6.8a of
-> [`stages.md`](?doc=engines/stages.md) draws: `max_memory_mb` above is a
+> points to try. The distinction is the one § 3.1 of
+> [`job-request.md`](?doc=execution/job-request.md) draws: `max_memory_mb` above is a
 > per-rank `ulimit` the *deck* carries, a machine-answered template parameter;
 > `allocation.mem` is what the *job asks the scheduler for*. A queue name and a
 > wall are decisions about this calculation in exactly the way *"use 16
@@ -571,12 +574,19 @@ Three things are true of it at once, and no parameter tab can know any of them:
   > which is the exact silent-value failure the 2026-09-02 ruling exists to
   > prevent.*
 
-**What it is not is the eigensolver.** `diag_algorithm` is a `budget` item on the
-parameter tab, and it decides no environment and no resource — the packaged
+**What it is not is the eigensolver.** `diag_algorithm` is a speed setting on
+this card, and it decides no environment and no resource — the packaged
 SIESTA carries ELPA through ELSI and runs it on CPU
 ([`siesta.md § 7.2`](?doc=engines/siesta.md)). Only `Diag.ELPA.GPU true`
-re-routes the wrapper. The two are easy to confuse and belong on different
-surfaces.
+re-routes the wrapper. The two are easy to confuse, so they are two rows of
+this card, each its own question.
+
+**The GPU switch says what the engine's library does not**, for a PySCF
+calculation: gpu4pyscf has no stability check, so an unrestricted reference
+keeps its first SCF solution on the GPU, and its solvent model has not been
+compared with PySCF's. A hint beside the switch, from the catalogue's
+`use_gpu` item — never a refusal: the choice is the person's
+([`job-request.md`](?doc=execution/job-request.md) § 2).
 
 ### 6.2a What the machine would actually run, live in the card
 
@@ -640,23 +650,25 @@ other:
 
 | card | writes | shape |
 |---|---|---|
-| **What to measure** | `task.json`'s `bench` | several values per row — one trial per combination, in `<stage>/bench/` |
-| **What the run will use** | `task.json`'s `execution` (`stages.md` § 6.8d) | **one value each** — the run, in `<stage>/run-N/` |
+| **What to measure** | `job-request.json`'s `bench` | several values per row — one trial per combination, in `<stage>/bench/` |
+| **What the run will use** | `job-request.json`'s `execution` (`job-request.md` § 3.2) | **one value each** — the run, in `<stage>/run-N/` |
 
 **The run card offers the bench's parameters and does not read them.**
 Whatever the grid varies appears here as a row, because the thing you measured
 is the thing you are deciding about — and the grid's points sit beside each
 field in grey (*measuring: 4, 8, 16*) as **information that fills nothing**.
 It carries its own *+ Add setting* for a knob no benchmark touched, since a
-run may want one a measurement did not. **The first point is typed before the row exists**: picking a setting offers its value in force in the box beside it (the template's value, else the catalogue's default) and a setting with neither leaves the box blank for the person to type; *+ Add setting* with an empty box is refused, saying so, and no number is invented (until 2026-10-19 a valueless setting's row was born at `1`). **Each row's class** — *chosen* (one point, the trials' value), *machine* (the grid's axis), *measured* (several points) — is the grid door's word (`/api/task-setup/bench-grid` `rows`, from prep's own split of the lane, `prep_inputs._declared_execution_pins`); the page paints it and decides none.
+run may want one a measurement did not. **The first point is typed before the row exists**: picking a setting offers its value in force in the box beside it (the calculation's card, else the catalogue's default) and a setting with neither leaves the box blank for the person to type; *+ Add setting* with an empty box is refused, saying so, and no number is invented (until 2026-10-19 a valueless setting's row was born at `1`). **Each row's class** — *chosen* (one point, the trials' value), *machine* (the grid's axis), *measured* (several points) — is the grid door's word (`/api/task-setup/bench-grid` `rows`, from prep's own split of the lane, `prep_inputs._declared_execution_pins`); the page paints it and decides none.
 
 **The launch rows stand on every rung's card from the start** *(user,
 2026-10-11: "show them and leave blank - explicit setting is better than
 implicit, in addition, expose gpu enable and gpu number too")*: the items the
-catalogue marks `run_card` — for SIESTA the ranks, the threads per rank, the
-GPU switch and the GPU count; for PySCF its threads, the GPU switch and the
-GPU count — each a row whether or not a benchmark names it, **blank until
-stated** and nothing proposed, written on the rungs that read it (the item's
+catalogue marks `run_card` — every run setting: for SIESTA the ranks, the
+threads per rank, the GPU switch and count, the memory cap, the solver and
+the other speed settings; for PySCF its threads, the GPU switch and count,
+the memory cap and the wall slack — each a row whether or not a benchmark
+names it, **blank until stated**, a speed setting's default shown as its
+placeholder and nothing proposed, written on the rungs that read it (the item's
 `stages`, by role, as the stage table's cells follow them). Before
 2026-10-11 the rows were the bench's, the condition's and those added by hand
 only, so a calculation with no benchmark — every transport calculation —
@@ -667,11 +679,11 @@ no list.
 
 **Two rows are the run's alone and are never the bench's**: `time` and
 `domain`, offered by *+ Add setting* beside the sweepable items, served with
-them by the sweepable door (`lane_asks`, their words from `task.LANE_ASK_ROWS`;
+them by the sweepable door (`lane_asks`, their words from `job_request.LANE_ASK_ROWS`;
 the page keeps no table, 2026-10-18) and not from the catalogue — no engine has
 an opinion about a wall clock
 or a queue, and a benchmark that swept its own wall would be measuring the
-queue (`stages.md` § 6.8e). They are what makes *"the bench keeps the
+queue (`job-request.md` § 3.2a). They are what makes *"the bench keeps the
 calculation's short wall, this run asks for two days"* sayable in one file.
 **`mem` is not among them**, and its absence is a decision, not a gap.
 
@@ -739,8 +751,8 @@ styling: the row carries the state and the CSS reads it.
 
 | the row is | the field holds | it looks | because |
 |---|---|---|---|
-| **chosen** | this rung's own value, from `stages[i].execution` | ordinary | you decided it here |
-| **inherited** | *empty*, with what a blank uses as the placeholder: the calculation-wide value, marked *(every stage)*, else the template's, marked *(template)* — the empty stage cell's rule and helper (§ 5.1) | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank unreachable |
+| **chosen** | this rung's own value, from the job request's `stages.<name>.execution` | ordinary | you decided it here |
+| **inherited** | *empty*, with what a blank uses as the placeholder: the calculation-wide value, marked *(every stage)*, else the item's default, marked *(default)* ([`job-request.md`](?doc=execution/job-request.md) § 4) | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank unreachable |
 | **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a launch value, which no template holds: stated nowhere, it is refused at prep, and the card says so |
 
 That the field is left EMPTY for an inherited row is the load-bearing half: an
@@ -776,12 +788,13 @@ measure, and a decision, side by side.
 > to measure** — you could have a bench or a run decision, never both.
 
 **A rung that differs says so on itself.** `execution` is both
-calculation-wide and per stage (`stages.md` § 6.8d), and the two compose field
+calculation-wide and per stage (`job-request.md` § 3.2), and the two compose field
 by field. **This card writes the rung's own block** — it is built per rung,
 inside that rung's tab (§ 11); the calculation-wide block is shown behind
-each field as its placeholder and is a
-`task.json` edit today, and § 7.1's per-stage list shows the **effective**
-values for each rung either way.
+each field as its placeholder and is written by the same card in its **every
+stage** view, beside the task's Prep (§ 11) — the calculation's card, which a
+benchmark's trials take too ([`job-request.md`](?doc=execution/job-request.md) § 3.4) — and § 7.1's per-stage
+list shows the **effective** values for each rung either way.
 
 ### 6.3 Only speed knobs may be measured
 
@@ -795,28 +808,29 @@ meaningless. The page refuses rather than warns.
 
 ## 7. What gets written
 
-**Four files land in the folder, and two of them are the calculation's
-description.** The structure the calculation is *of* —
+**Five files land in the folder: two are the calculation's description, one
+its job request.** The structure the calculation is *of* —
 `<label>.source.xyz` + `<label>.source.molstruct.json` — the `.source`
 segment is reserved: no engine output can take a dotted name
 ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)) — arrives with
 the hand-over
 ([`handover-procedure.md § 2`](?doc=web/handover-procedure.md)) and this page
-never rewrites it. Of the other two, which one a setting lands in follows from
-its point count:
+never rewrites it. Of the other three, which one a setting lands in follows
+from what it says — what is computed, or how it runs:
 
 | | goes to | why |
 |---|---|---|
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
-| a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, a pin over the template for them alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
-| a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (§ 6.8e, and the row below); every other catalogue item is a pin over the template |
-| the notify card | `task.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`stages.md`](?doc=engines/stages.md) § 6.9; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
-| a queue, a wall, a memory ask, the GPU binding | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — four fields, each optional here; a queue, wall or memory stated nowhere else is refused at prep on a target with a scheduler ([`architecture.md`](?doc=execution/architecture.md) § 5.2). The GPU binding is a tick-box, ticked by default: every GPU ask then carries `--gres-flags=enforce-binding`, and unticking writes `"gpu_binding": false` ([`gpu.md`](?doc=execution/gpu.md) G9). The card writes the block whole, which is why the switch is on it. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
+| a stage's group | `job-request.json`'s `stages` | the job it runs in ([`job-request.md`](?doc=execution/job-request.md) § 3.3) |
+| a **measure**-card setting | `job-request.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, laid over theirs alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
+| a **run**-card setting | `job-request.json`'s `execution` | **one value each** — what the run uses (`job-request.md` § 3.2). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (`job-request.md` § 3.2a, and the row below); every other catalogue item is a run setting over the item's default |
+| the notify card | `job-request.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`job-request.md`](?doc=execution/job-request.md) § 3.5; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
+| a queue, a wall, a memory ask, the GPU binding | `job-request.json`'s `allocation` | **what this calculation asks the scheduler for** (`job-request.md` § 3.1) — four fields, each optional here; a queue, wall or memory stated nowhere else is refused at prep on a target with a scheduler ([`architecture.md`](?doc=execution/architecture.md) § 5.2). The GPU binding is a tick-box, ticked by default: every GPU ask then carries `--gres-flags=enforce-binding`, and unticking writes `"gpu_binding": false` ([`gpu.md`](?doc=execution/gpu.md) G9). The card writes the block whole, which is why the switch is on it. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (`job-request.md` § 3.2a). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
 
 ```jsonc
-// task.json — molbuilder/task@1
-{ "schema": "molbuilder/task@1",
+// task.json — molbuilder/task@2
+{ "schema": "molbuilder/task@2",
   "engine": { "name": "siesta" },
   "shape":  "hierarchical",
   "run":    { "name": "BDT/Au relax", "id": "BDT_Au_relax_Au38C6H4S2" },
@@ -824,8 +838,11 @@ its point count:
   // anywhere else.  Its sidecar is found by the pairing rule, never named here.
   "structure": { "source": "bdt_au.xyz", "formula": "Au38C6H4S2", "atoms": 50 },
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
-  "stages": [ { "name": "coarse", "overrides": { … },
-                "execution": { "restart": "clean" } }, … ],
+  "stages": [ { "name": "coarse", "overrides": { … } }, … ] }
+
+// job-request.json — molbuilder/job-request@1
+{ "schema": "molbuilder/job-request@1",
+  "stages": { "coarse": { "group": 1, "execution": { "mpi_np": 8 } }, … },
   "bench":  { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] } }
 ```
 
@@ -837,7 +854,7 @@ its point count:
 *(user, 2026-09-01: "we should have an explicit list of the run tasks for each
 stage in that tab so that this information is confirmed and clear".)*
 
-Beside the four files above, this card lists — **one line per stage** —
+Beside the five files above, this card lists — **one line per stage** —
 what `prep` will produce for it: the directory, and the allocation that
 directory's wrapper will carry.
 
@@ -931,18 +948,18 @@ sequenceDiagram
     participant Card as the run card
     participant Model as _task + editor buffer
     participant Save as save()
-    participant Disk as task.json
+    participant Disk as task.json · job-request.json
     participant Prep as /api/task-setup/prep
 
     You->>Card: type 48 into mpi_np
-    Card->>Model: stages[i].execution.mpi_np = 48
+    Card->>Model: the job request's stages.coarse.execution.mpi_np = 48
     Note over Model: the save bar says edited — not saved.<br/>PREP CANNOT SEE THIS YET.
 
     You->>Save: Save to this folder
     Save->>Disk: 1 · the folder's state saved, always (§ 8)
     Save->>Disk: 2 · POST the BUFFER
     Disk-->>Save: written
-    Save->>You: 3 · "Saved task.json into this folder"
+    Save->>You: 3 · "Saved task.json and job-request.json into this folder"
     Save->>Model: 4 · re-open the folder
 
     You->>Prep: Preview
@@ -954,7 +971,7 @@ sequenceDiagram
       Prep-->>You: refused: preview again (nothing written)
     end
     Prep->>Disk: the state saved, then decks + wrappers + run-N/
-    Prep-->>You: the answer: notes, checks, attempt, agreement
+    Prep-->>You: the answer: notes, checks, attempt
 ```
 
 **And the window is covered while any of it runs.** A card edit, the save, a
@@ -985,8 +1002,8 @@ The save was the case § 10 already names as its own example — a multi-step
 operation — and only its own button was disabled, so the sidebar stayed live
 and switching directories mid-save retargeted the steps after the switch.
 
-**The rule the whole tab hangs on:** `prep` reads `task.json` **from disk**,
-never the browser's buffer. The door takes a FOLDER and does
+**The rule the whole tab hangs on:** `prep` reads `task.json` and
+`job-request.json` **from disk**, never the browser's buffer. The door takes a FOLDER and does
 `calc = calculation.open(folder)`, because one assembly serves the CLI and the browser
 ([`architecture.md` A12](?doc=execution/architecture.md)) and the CLI has only
 the file. **So `Save` is not a convenience, it is the only bridge** — and a
@@ -999,7 +1016,7 @@ folder'? … should I press this button before i set up the prep parameters
 … this is a bit confusing")*, on screen while you work through the main
 column; on a window too narrow for two columns the rail's cards come after
 it. The bar says one of three things: *edited — not saved* (the page's text
-differs from `task.json` on disk), *nothing unsaved* (they agree), or why
+differs from the files on disk), *nothing unsaved* (they agree), or why
 there is nothing to save yet; what the last save did stands in it until the
 next edit or the next read of the folder, and a save refused says so there,
 in the server's words. Every edit — a card, the stage table, a group's run card,
@@ -1020,8 +1037,8 @@ prepared.
 | **2 write** | the **buffer**, not the model | *"NOT written — ⟨the server's words⟩"* |
 | **3 confirm** | — | **always**, in the bar beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
 | **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |
-| **preview** | `task.json` **on disk** | the server's refusal, verbatim |
-| **prep** | `task.json` **on disk** | the server's refusal, verbatim |
+| **preview** | the two files **on disk** | the server's refusal, verbatim |
+| **prep** | the two files **on disk** | the server's refusal, verbatim |
 
 **Four things this ordering forbids, each of which happened:**
 
@@ -1048,7 +1065,7 @@ prepared.
 | | |
 |---|---|
 | **1 · save the folder's current state** | a first state if the folder has none, otherwise a state of what is there right now — so whatever you are about to change can be brought back |
-| **2 · write the description** | `task.json` — the template is the hand-over's, which arrives with it, and Save leaves it as it is (`/api/task-setup/save`, `task.write_task`) |
+| **2 · write the description and its job request** | `task.json` and `job-request.json`, each whole — the template is the hand-over's, which arrives with it, and Save leaves it as it is (`/api/task-setup/save`: `task.write_task`, `job_request.write`) |
 
 **The checkpoint is always taken, by the server, and said**
 ([`checkpointing.md § 9`](?doc=execution/checkpointing.md); user, 2026-10-03,
@@ -1067,7 +1084,7 @@ any folder opened, with the reason in a hint beside the greyed button. Nothing
 the page wrote ever reached disk, which is exactly how it was reported. The
 doc was wrong about the backend; the markup was wrong about the default.)*
 
-**Two tabs write one file**, so a stale-file handshake applies rather than
+**Two tabs write these files**, so a stale-file handshake applies rather than
 last-write-wins: the folder may have changed between loads because a `prep` ran
 or somebody edited by hand ([`tabs.md § 6`](?doc=web/tabs.md)).
 
@@ -1097,8 +1114,9 @@ do on every kind.
 
 ## 9a. The file itself, in an editor
 
-**`task.json` is shown in a real editor, not a read-only pane**, because the
-last thing between a description and a week of compute is a person reading it.
+**`task.json` and `job-request.json` are shown in a real editor, a tab each,
+not a read-only pane**, because the last thing between a description and a
+week of compute is a person reading it.
 The editor is the **vendored CodeMirror 5.65.16**
 (`static/vendor/README.md` — served locally, for offline use and a strict CSP;
 there is no CDN path).
@@ -1149,8 +1167,8 @@ on the last save — so a fold never hides one.
 
 **The main column is the order you work in**: where it saves, what came over,
 the shape, the machine, the queue, the stages, what to measure, what each
-group runs, the task's Prep (§ 11) — and last the file itself, `task.json`,
-folded: a place to check or correct the description, not a step. The save
+group runs, the task's Prep (§ 11) — and last the files themselves,
+`task.json` and `job-request.json`, folded: a place to check or correct the description, not a step. The save
 bar (§ 7a) is under all of it, on screen while you work through the column.
 
 *(user, 2026-09-01: "we should allow the task.json view to be foldable, and
@@ -1187,12 +1205,12 @@ while it runs*, one answer for every stage, and the rail keeps it out of the
 way and one click from wherever you are (user: *"logically that's a global
 setup too"*).
 
-**This card writes `task.json` and nothing else.** The addresses and keys are
+**This card writes `job-request.json`'s `notify` and nothing else.** The addresses and keys are
 on the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)),
 because they are a fact about the box, not about this calculation.
 
 **What the card asks, and what travels** — the `notify` block,
-[`stages.md`](?doc=engines/stages.md) § 6.9. Nothing set up — no tick, and
+[`job-request.md`](?doc=execution/job-request.md) § 3.5. Nothing set up — no tick, and
 both lists at *every* — writes no block, and no block is no report at all; a
 calculation that reports anything also reports its start and its end, so they
 are not offered ([`run-reports.md`](?doc=execution/run-reports.md) § 2). A
@@ -1211,7 +1229,7 @@ server answers: the fields a run of that engine and kind can state, from the
 one declaration ([`run-reports.md`](?doc=execution/run-reports.md) § 4.1a) — so
 a PySCF calculation is not offered seconds per iteration, and a transport
 calculation is not offered a step. The page keeps no list of its own; when it
-cannot ask, the description's own list stands rather than being rewritten.
+cannot ask, the job request's own list stands rather than being rewritten.
 
 **The names come from the server; the secrets never do.** The list is painted
 from `GET /api/notify/channels`, which reports a name, whether it is configured
@@ -1222,11 +1240,11 @@ so nothing on this page *can* see one.
 an oversight ([`run-reports.md`](?doc=execution/run-reports.md) § 3.0): reports
 off for this calculation on a machine where they are otherwise set up, written
 `[]` — and *every channel on this machine* is `["*"]`, never this machine's
-names, so a description that travels keeps meaning every channel where it
+names, so a job request that travels keeps meaning every channel where it
 lands.
 
 **A ticked name this machine does not have is shown as such**, not hidden. That
-is the travelling case — a description written at a desk and opened on a
+is the travelling case — a job request written at a desk and opened on a
 cluster — and it is the one worth seeing *before* submitting, because a channel
 that resolves to nothing is silent by design.
 
@@ -1255,7 +1273,7 @@ that resolves to nothing is silent by design.
   question and no flag; `launch` never carries it — it runs on the machine).
   *(Until 2026-09-24 the flag was omitted for this machine even when the CLI
   refused without it, measured on the UI walk of 2026-09-23.)* That choice shapes a printed command; it never reaches
-  `task.json` or the template, so the written description still names no
+  `task.json`, the job request or the template, so the written description still names no
   machine. See [`preparing-for-another-machine.md
   § 5`](?doc=execution/preparing-for-another-machine.md).)*
   **Once a stage is prepared, the calculation is set to that machine**, and
@@ -1295,8 +1313,11 @@ preparable (`ready.prep_offer`;
 [`job-system.md`](?doc=execution/job-system.md), *The task*, `prep task`, 2)
 — is **ticked when the folder opens**. A group **prepared and never launched**
 has a box you can tick: Prep prepares it again, whole — the way a change made
-after looking reaches a group not yet launched. A **launched** group's box is
-disabled, and so is the box of a group not preparable yet, until its
+after looking reaches a group not yet launched. A **launched** group on the
+hierarchical layout has a box too, for a change of its job request: Prep
+renders it again, each deck the same calculation as its runs ran, and refuses
+otherwise, naming the way back; on the flat layout its box is disabled
+([`job-request.md`](?doc=execution/job-request.md) § 5). The box of a group not preparable yet is disabled, until its
 force-constant stage's Continue from names a `relax` run. Under them the
 command for the pick (`prep task --group … --group …`) and the Preview / Prep
 pair that does what it does. Each ticked group is one
@@ -1328,8 +1349,9 @@ above the `prep task` line that consumes it — the Prep that prepares it is the
 next card, *Prep the task*, once saved *(user, 2026-09-02: "that selection
 panel card should be next to the prep for run button such that it's obvious
 that this is designed for the run. This is not mixed up with the existing
-functional bench setup")*. It writes that rung's `stages[i].execution`
-(`stages.md` § 6.8d) — for a group, every member's; a field left blank takes
+functional bench setup")*. It writes that rung's card in the job request,
+`stages.<name>.execution`
+(`job-request.md` § 3.2) — for a group, every member's; a field left blank takes
 the calculation's own block, which the field shows as its placeholder.
 
 There is exactly one such card per group and none anywhere else — it stood in
@@ -1404,9 +1426,10 @@ the grid. What § 7.1's list shows is what `prep` reports it would write.
 
 **Bench and run may ask for different queues and different walls**, and the
 file holds one of each because **measuring and running are two preps**
-(`generator.md` § 4.1). The calculation's ask is `allocation`; a measurement
-that wants a shorter wall states it at its own `prep bench --time`, where it
-applies to that prep and no other. A thirty-second measurement queued behind a
+(`generator.md` § 4.1). The calculation's ask is `allocation`, and it is the
+benchmark's; a run that wants another wall or queue states its own on its run
+card, `time` and `domain` ([`job-request.md`](?doc=execution/job-request.md) § 3.2a); a flag at either prep
+(`--time`) applies to that prep and no other. A thirty-second measurement queued behind a
 two-day reservation is the cost of forgetting that, not a missing field.
 
 **It works the same on a workstation and against a cluster.** The fit is
@@ -1426,15 +1449,15 @@ group: its first launch sends that, not a member's own), else the run script's s
 answer a Prep gives, through the same renderer, said as what it would do: what
 the description's checks and each deck's own found, the attempt it would open
 and what it would bring in, what each stage's first launch will take and from
-which stage, whether the
-deck agrees with its launch, and which config files answered (the first found
+which stage, and which config files answered (the first found
 is the record that won, [`configuration.md`](?doc=configuration.md) § 2.2) —
 or the refusal prep would give, in its words, with what it had found (below),
 and Prep is not offered. Nothing is saved, written or
 recorded. A new Preview retires the last one's answer, and Prep with it until
 it answers. A stage already prepared says so before any click: the task's Prep
 lists its group as prepared, never launched — its box there to tick, to
-prepare it again whole — or launched, its box disabled; and a benchmark's tab carries the prep entry's own sentence, the way back in it, with neither button enabled. Preview and Prep each hold the page's fence while they run
+prepare it again whole — or launched, its box there too, for a change of its
+job request (§ 11); and a benchmark's tab carries the prep entry's own sentence, the way back in it, with neither button enabled. Preview and Prep each hold the page's fence while they run
 (§ 7a): a Save, a stage tab or another folder cannot be taken under them. A
 calculation already set to its machine is prepared with no machine named — its
 own copy of the record answers, as the terminal's prep with no `--target`.
@@ -1451,11 +1474,12 @@ from the same answer:
 * **the state saved first** — prep saves the folder's state once its checks
   have passed and before it writes, always
   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
-  its note, led by the time it was taken. Unsaved edits are not in the
-  `task.json` prep reads, so the page refuses a Preview or a Prep while the
-  save bar says *edited* — "Save first" (§ 7a). A launched stage is refused
-  instead, naming the way back
-  ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
+  its note, led by the time it was taken. Unsaved edits are not in the files
+  prep reads, so the page refuses a Preview or a Prep while the save bar says
+  *edited* — "Save first" (§ 7a). A launched stage is prepared again for its
+  job request, or refused, naming the way back, when its decks would compute
+  something else ([`job-request.md`](?doc=execution/job-request.md) § 5;
+  [`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
   attempt** — opened, and what was brought in: the stage's own files — or, on
   a transport rung that runs per point, one folder per point, each named by its
@@ -1470,9 +1494,7 @@ from the same answer:
   walk, each benchmark shelf, a group's one job once after its last member
   ([`scheduler.md`](?doc=execution/scheduler.md) R4, R6) — the lines the
   terminal prints;
-* **the resources** the stage will launch with, and **whether the deck
-  agrees**: a deck rendered for another width is said here, before `launch`
-  refuses it — and redone by preparing its group again, never launched;
+* **the resources** the stage will launch with;
 * **what comes next** — after a Prep, the line that launches what it
   prepared, as the terminal's prep ends with it: the launch with nothing
   named (`launch task`), which sends the group that can go, typed at the

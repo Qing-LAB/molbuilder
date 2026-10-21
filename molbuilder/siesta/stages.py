@@ -1,7 +1,7 @@
 """SIESTA's stage knowledge — the shipped ladder, and what a stage's
 warm restart means (docs/execution/job-system.md).
 
-Three things live here, read by `jobset init` and the engine seam
+Three things live here, read by `molbuilder describe` and the engine seam
 (`jobset/engines.py::engine_seam`):
 
   * :func:`default_siesta_stages` — the shipped ladder as ``Stage`` objects,

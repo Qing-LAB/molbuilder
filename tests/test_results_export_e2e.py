@@ -11,7 +11,7 @@ its deck recorded -- and the STRUCTURE preview, which opens an engine's own
 geometry file (SIESTA's ``<label>.xyz``, written with no sidecar) through the
 codec.  One case per route.
 
-The runs are made on the road -- ``jobset init`` -> ``prep task`` -> ``launch
+The runs are made on the road -- ``molbuilder describe`` -> ``prep task`` -> ``launch
 run --mode direct`` -- and saved as a person saves them
 (`support/results_export.py`).  Each saved pair is read back through the
 codec every load goes through and compared with the engine's own statement of
@@ -31,6 +31,7 @@ import pytest
 from _road import conda_hook, env_available, env_bin
 from support.road import group_words
 from support.results_export import save_to_project, wait_for_viewer
+from support.road import molbuilder, read_request, write_request
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CONDA_SH = conda_hook()
@@ -46,9 +47,9 @@ def _jobset(*args):
 
 
 def _described(tree, name, engine, shape):
-    """``jobset init`` of an H2 optimisation, activated through the conda
+    """``molbuilder describe`` of an H2 optimisation, activated through the conda
     hook; the bundle it made."""
-    r = _jobset("init", "--structure", f"P/structure/{name}.xyz",
+    r = molbuilder("describe", "--structure", f"P/structure/{name}.xyz",
                 "--bundle", f"P/opt/{name}", "--engine", engine,
                 "--shape", shape, "--calculation", "optimization",
                 "--name", "H2", *(("--psml-lib", "pseudopotential")
@@ -60,11 +61,11 @@ def _described(tree, name, engine, shape):
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {**task.get("execution", {}),
-                         **({"mpi_np": 1, "omp_threads": 1}
-                            if engine == "siesta" else {"threads": 1})}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    request = read_request(bundle)
+    request["execution"] = {**request.get("execution", {}),
+                            **({"mpi_np": 1, "omp_threads": 1}
+                               if engine == "siesta" else {"threads": 1})}
+    write_request(bundle, request)
     return bundle
 
 

@@ -1,8 +1,8 @@
 """``molbuilder jobset ...`` — the calculation's one grammar
 (docs/execution/job-system.md § 5.3).
 
-``init`` writes the portable folder (floor 2); on the machine that runs
-it, ``prep`` derives floor 3 and everything below (the five steps of
+`molbuilder describe` writes the portable folder (floor 2); on the machine
+that runs it, ``prep`` derives floor 3 and everything below (the five steps of
 project-layout.md § 2.3.1), ``launch`` sends ONE job -- a group, a stage
 launched again, or a benchmark's trials, one job per resource shelf to the
 queue, each in turn here -- and ``summarize`` reads a sweep's results back.  Nothing is produced on a host
@@ -69,7 +69,8 @@ def _nothing_prepared(calc) -> str:
     from .commands import command, words_for
     base, task = Path(calc.base), calc.task
     sweeps = _sweeps_in(base)
-    first = (task.stages[0].group,) if task.stages else ()
+    first = ((calc.request.group_of(task.stages[0].name),)
+             if task.stages else ())
     what = (f"no {_JOBSET_FILE} in {base}" if calc.jobset is None else
             f"{_JOBSET_FILE} in {base} holds none of the description's "
             f"stages")
@@ -116,7 +117,7 @@ def _load(bundle: str) -> tuple:
     raise click.ClickException(
         f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
         "describes it and `prep` derives it (job-system.md § 4); run "
-        "`molbuilder jobset init` first.")
+        "`molbuilder describe` first.")
 
 
 def _calc_of(folder):
@@ -132,8 +133,9 @@ def _calc_of(folder):
 
 @click.group("jobset", short_help="run a job-set bundle (stage ladder / sweep)")
 def jobset_group() -> None:
-    """The calculation's verbs, one grammar (job-system.md § 5.3):
-    ``init`` writes the portable folder; on the machine that runs it,
+    """The calculation's verbs, one grammar (job-system.md § 5.3).
+    Describing is not one of them: ``describe``, molbuilder's own command,
+    writes the portable folder; on the machine that runs it,
     ``prep`` derives everything else and ``launch`` launches one stage's run,
     or a benchmark's trials.  Floor 3 (``job-set.json``) is DERIVED at prep,
     on the target -- nothing is produced on a host and shipped.
@@ -256,7 +258,7 @@ def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
 #: ONE declaration for every verb.
 #:
 #: ``must_exist`` is the ONLY axis on which the verbs differ: five of them
-#: act on a calculation that is already there, and `init` creates one.  That
+#: act on a calculation that is already there, and `molbuilder describe` creates one.  That
 #: is a parameter of the one option, never a second option with its own
 #: semantics -- the fence, the anchor rule and the refusal text stay single.
 def _bundle_option(must_exist: bool = True):
@@ -449,11 +451,14 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # (`workflow.md` § 9) -- refusing before the folder exists, and saying its warnings
     # (a bias point outside its recommended range) the way `prep` says its
     # notes.
+    from ..describe import Description, write_description
     from ..issues import ValidationError
     from ..validation.task import preflight, refuse_on_error
+    desc = Description(task=task, template=_tmpl_text)
     try:
         for issue in refuse_on_error(preflight(task,
-                                               template_text=_tmpl_text)):
+                                               template_text=_tmpl_text,
+                                               request=desc.request)):
             click.echo(f"note: {issue.message}", err=True)
     except ValidationError as exc:
         raise click.ClickException(str(exc))
@@ -467,10 +472,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # same door the describe door uses (`citation_defaults.
     # transport_template_text`): a `citation` row the cited directory does
     # not answer stays VALUELESS (§ 3.8.3).
-    from ..describe import Description, write_description
     try:
-        written = write_description(Description(task=task,
-                                                 template=_tmpl_text), dest)
+        written = write_description(desc, dest)
     except (DescribeError, OSError) as exc:
         raise click.ClickException(str(exc))
 
@@ -497,8 +500,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                                        base=dest)[0])
 
 
-@jobset_group.command("init",
-                      short_help="create the calculation (floor 2 only)")
+@click.command("describe",
+               short_help="describe a calculation: its description and "
+                          "its job request (floor 2 only)")
 @_bundle_option(must_exist=False)
 @click.option("--structure", "structure", default=None, metavar="PATH",
               callback=_resolve_structure,
@@ -561,12 +565,14 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "(linear response); without it, every voltage gets its own "
                    "device SCF and transmission (engines/transport.md 2a.10).  "
                    "Required with several points, never inferred.")
-def init_cmd(structure, bundle: str, shape: str,
+def describe_cmd(structure, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str, slots_opt, bias_opt,
                  low_bias_approximation) -> None:
-    """Write the portable description: the template, ``task.json``, and the
-    data files.
+    """Write the portable description and its job request: the template,
+    ``task.json``, ``job-request.json`` (each stage's group, nothing else
+    asked yet), and the data files.  Describing is not a job verb, so it is
+    not under `molbuilder jobset` (execution/job-request.md 9).
 
     **Floor 2 only -- it renders no deck.**  A deck carries values that depend
     on how it will be launched, so rendering belongs to ``prep`` on the machine
@@ -758,7 +764,7 @@ def status_cmd(stage, bundle: str) -> None:
     (described; prepared, ready to launch or waiting for what it names),
     which warm-restart
     files are present -- and each group's next step, the line that moves
-    it, the first group not finished marked.  The stages are listed from the moment `init` writes them, the
+    it, the first group not finished marked.  The stages are listed from the moment `molbuilder describe` writes them, the
     ones not prepared yet among them (job-system.md § 5.3).  Read-only --
     molbuilder informs; you decide whether to continue or switch.  Reuses
     the same directory decoder as the Results tab.
@@ -979,14 +985,16 @@ def _load_bench_set(calc, stage, verb: str = "launch"):
 TIME_METAVAR = "DURATION"
 TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
              "number of minutes.  A run on a scheduler states one -- here, "
-             "or `allocation.time` / the run card's `time` in task.json -- "
+             "or `allocation.time` / the run card's `time` in "
+             "job-request.json -- "
              "or prep refuses.  Never derived, never estimated "
              "(architecture.md § 5.2).")
 MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  A run "
             "on a scheduler states one -- here, or `allocation.mem` in "
-            "task.json -- or prep refuses (running-a-job.md § 5.3.1).")
+            "job-request.json -- or prep refuses (running-a-job.md "
+            "§ 5.3.1).")
 
 
 def _duration(text):
@@ -1015,7 +1023,8 @@ def _resolve_stage_name(js, stage: str) -> str:
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("words", nargs=-1)
 @click.option("--group", "groups", multiple=True, type=int, metavar="N",
-              help="task: a group to prepare, by its number in task.json -- "
+              help="task: a group to prepare, by its number in "
+                   "job-request.json -- "
                    "repeated for several, each one job (engines/stages.md "
                    "2).  A group prepared and never launched is prepared "
                    "again.")
@@ -1035,7 +1044,7 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "needs).")
 @click.option("--np", "mpi_np", type=int, default=None, metavar="N",
               help="MPI ranks for this prep -- the launch shape, which "
-                   "task.json's `execution` states for every prep "
+                   "the job request's run card states for every prep "
                    "(project-layout.md D2); prep renders the deck for it.  "
                    "Stated nowhere, a SIESTA run is refused.")
 @click.option("--cpus-per-task", type=int, default=None, metavar="C",
@@ -1057,7 +1066,8 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "the target's record -- a partition and a QOS together, "
                    "with its own limits).  On a scheduler a run names one "
                    "-- here, its run card's `domain`, or `allocation.domain` "
-                   "in task.json (a benchmark: here, or `allocation.domain`) "
+                   "in job-request.json (a benchmark: here, or "
+                   "`allocation.domain`) "
                    "-- or prep refuses and lists them.")
 @click.option("--target", default=None, metavar="NAME",
               help="which MACHINE this is for -- a record written by "
@@ -1194,11 +1204,10 @@ def _launch_unit(calc, *, told: dict, dry_run: bool = False):
     # A GROUP A SEQUENCE STILL GOING HOLDS is that job's (R-L45): not
     # offered, nor any stage of it, and said where it goes
     # (`ready.held_by_sequence`).
-    from .group import group_members
     from .ready import held_by_sequence
     held = {g.number: held_by_sequence(calc, g.number) for g in gs}
     held = {n: h for n, h in held.items() if h is not None}
-    in_held = {st for n in held for st in group_members(calc.task, n)}
+    in_held = {st for n in held for st in calc.request.members(n)}
     ready = [n for n in state.launch_offer if n not in held]
     if len(ready) == 1:
         return ready[0], None
@@ -1385,14 +1394,13 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
                  "job per resource shelf):\n"
                  + block(launch_lines("bench", stage, base=base)))
         say_next("then -- a report to read; its `execution` block is "
-                 "yours to copy into task.json:\n"
+                 "yours to copy onto a run card in job-request.json:\n"
                  + block([command("summarize", "bench", stage,
                                   base=base)]))
         return
     # THE LAYOUT'S OWN LINES first -- the folder, the attempt or the points
     # -- then what every layout says alike: what its first launch will take,
-    # the resources, whether the deck agrees with its launch, the pipeline
-    # log, what to do next.
+    # the resources, the pipeline log, what to do next.
     if ans.flat:
         click.echo(f"prepared {stage}: under {base}  (flat: no attempt to "
                    f"open; each run carries the number launch gives it)")
@@ -1400,6 +1408,12 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
         for att, pt in ans.points:
             click.echo(f"prepared {stage} @ {pt.rel}: "
                        f"{Path(att).relative_to(base)}")
+    elif ans.launched:
+        # PREPARED AGAIN FOR ITS JOB REQUEST (`execution/job-request.md`
+        # § 5): its runs kept, its next launch opening its next run.
+        click.echo(f"prepared {stage} again: launched -- its runs are kept, "
+                   f"and its next launch opens its next run with these "
+                   f"files")
     else:
         rep = ans.attempt
         click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
@@ -1455,21 +1469,6 @@ def _echo_prep_answer(ans, base, *, first: bool = True,
             asks.append(f"retries {r['continue_retries']}")
         if asks:
             click.echo(f"  resources: {' | '.join(asks)}")
-    a = ans.agreement
-    if a is not None and a.verdict == "agrees":
-        click.echo(f"  {ans.deck}: rendered for mpi_np {a.rendered_text} "
-                   f"-- agrees with this launch")
-    elif a is not None:
-        # The WHY and the remedy are the agreement module's one wording
-        # (disagreement_note); this surface adds only its framing -- what
-        # will happen next if nothing changes.
-        from .agreement import disagreement_note
-        click.echo(click.style(
-            f"  {ans.deck}: rendered for mpi_np {a.rendered_text}, but this "
-            f"launch asks {a.launch_text}\n"
-            f"    launch WILL REFUSE this -- "
-            + disagreement_note(a, base, bench=ans.kind == "bench"),
-            fg="yellow"), err=True)
     _echo_pipeline_log(ans, base)
     g = ans.group
     if g is not None and ans.stage == g["members"][-1]:
@@ -1668,7 +1667,7 @@ def summarize_cmd(kind: str, words, bundle: str,
         calc, js, out=container / BENCH_RESULT_FILE,
         now_iso=utc_now_iso(), stage=stage)
     click.echo(summary_text(res, out_path, report=report, stage=stage,
-                            base=base, task=calc.task))
+                            base=base, request=calc.request))
     _ledger(base, "summarize", "verdict-written", stage=stage,
             out=str(out_path), points=len(res.points),
             choice=res.choice,
@@ -1754,7 +1753,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("words", nargs=-1)
 @click.option("--group", "groups", multiple=True, type=int, metavar="N",
-              help="task: the group to launch, by its number in task.json "
+              help="task: the group to launch, by its number in "
+                   "job-request.json "
                    "-- its stages as one job (engines/stages.md 2).  A "
                    "group goes whole the first time.  Repeated: the groups "
                    "as ONE job that launches each in turn, when the one "

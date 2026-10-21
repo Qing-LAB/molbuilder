@@ -61,7 +61,7 @@ BDT = Structure(
 
 
 def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
-    """A described calculation, as `jobset init` leaves one."""
+    """A described calculation, as `molbuilder describe` leaves one."""
     cfg, stages = ((SiestaConfig(system_label=name, mesh_cutoff=300.0),
                     default_siesta_stages("publishable"))
                    if engine == "siesta" else
@@ -126,11 +126,12 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     assert all("<-" in ln for ln in chosen), \
         "a ⊕ row with no source is a value with no provenance"
     # the stage's own overrides are attributed to the stage, not the template
-    assert re.search(r"⊕\s+relax_type\s+CG\s+<- stage", text), text
+    assert re.search(r"⊕\s+relax_type\s+CG\s+<- this stage's override", text), \
+        text
     # the allocation is folded in, and says so -- no config file names it
     assert re.search(r"⊕\s+mpi_np\s+8\s+<- allocation", text), text
     # and the template's baseline is still there, so the file is complete
-    assert re.search(r"⊕\s+mesh_cutoff\s+300\.0\s+<- template", text), text
+    assert re.search(r"⊕\s+mesh_cutoff\s+300\.0\s+<- the template", text), text
 
     # THE DECK SAYS THE SAME, in its PROVENANCE block -- the record opened
     # months later, when the log is long gone (`job-contracts.md` § 3.2,
@@ -358,18 +359,12 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     # 2. the real one: a prep of a GPU-without-ELPA calculation refuses with
     #    SIESTA's own sentence, through every layer between.
     dest, stages = _calculation(tmp_path, "siesta", "flat")
-    tpl = dest / "BDT.template.toml"
-
-    def _set(item, old, new):
-        head, sep, tail = tpl.read_text().partition(f"[item.{item}]")
-        assert sep, item
-        body, nxt, rest = tail.partition("\n[item.")
-        assert old in body, (item, body)
-        tpl.write_text(head + sep + body.replace(old, new, 1) + nxt + rest)
     # THE GPU ON, AND THE DIAGONALIZER STATED ScaLAPACK -- not ELPA, the
-    # default (`engines/siesta.md` § 7).
-    _set("use_gpu", "value = false", "value = true")
-    _set("diag_algorithm", 'value = "ELPA-1STAGE"', 'value = "ScaLAPACK"')
+    # default (`engines/siesta.md` § 7) -- on the run card.
+    from support.road import read_request, write_request
+    request = read_request(dest)
+    request["execution"] = {"use_gpu": True, "diag_algorithm": "ScaLAPACK"}
+    write_request(dest, request)
     with pytest.raises((ValueError, PrepError)) as real:
         _prep(dest, stages[0], gres="gpu:1")    # a GPU run states its GPUs
     assert "ELPA" in str(real.value), real.value

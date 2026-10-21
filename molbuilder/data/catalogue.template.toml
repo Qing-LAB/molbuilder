@@ -620,6 +620,7 @@ value = 1
 default = 1
 range = [0, 5]
 group = "staging"
+run_card = true
 label = "Warm-retry budget"
 tier = "advanced"
 help = """
@@ -645,6 +646,7 @@ default = 600
 unit = "s"
 range = [30, 7200]
 group = "staging"
+run_card = true
 label = "Wall-time slack"
 tier = "advanced"
 help = """
@@ -726,7 +728,7 @@ Ignored by CG / Broyden / FIRE geometry relaxation, which do not integrate time.
 
 [item.restart]
 kind = "deck"
-category = ["convergence", "execution"]
+category = ["procedure"]
 engines = ["siesta", "pyscf"]
 # A vibration's RELAXATION rung reads it too (2026-10-19): SIESTA's relax
 # rung is the ordinary relaxation deck, which writes the group from this
@@ -960,7 +962,8 @@ manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
 type = "int"
 engine_default = { none = "the ranks and the orbitals", source = "SIESTA 5.4.2 initparallel.F:229,230: call set_blocksizedefault(Nodes, no_u, blocksizedefault); BlockSize = fdf_integer('blocksize', blocksizedefault)" }
 above = { value = 0, why = "it is a count of orbitals per rank; leave it unset for SIESTA's own automatic (tuning.md 2.11)" }
-group = "budget"
+group = "staging"
+run_card = true
 label = "ScaLAPACK block size"
 null_label = "(auto)"
 optional = true
@@ -983,7 +986,8 @@ engine_key = "Diag.ParallelOverK"
 manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "bool"
 engine_default = { value = false, source = "SIESTA 5.4.2 diag_option.F90:119: ParallelOverK = fdf_get('Diag.ParallelOverK', .false.)" }
-group = "budget"
+group = "staging"
+run_card = true
 label = "ParallelOverK"
 optional = true
 not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point grid and the solver before the deck is written"
@@ -1019,6 +1023,7 @@ allocation = true
 unit = "MB"
 range = [100, 1000000]
 group = "staging"
+run_card = true
 label = "Max memory"
 null_label = "(no cap)"
 optional = true
@@ -1059,7 +1064,7 @@ read_by = ["wrapper"]
 help = """
 OPTIONAL: move the heavy linear algebra onto an NVIDIA CUDA GPU.  It means something different for each engine.
 SIESTA: run the ELPA diagonalization on the GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  Requires an ELPA diagonalizer (GPU + ScaLAPACK is rejected) and an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected).  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  The wrapper refuses to emit if that env is missing.  Affinity hint: GPU favors 1STAGE.
-PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``).  The script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0).  There is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.
+PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``).  The script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0).  There is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.  What gpu4pyscf does not do, for you to weigh: it has no stability analysis, so an unrestricted reference (UHF, UKS) keeps its first SCF solution unchecked on the GPU, where the CPU path may find a lower one; and its solvent model has not been compared with PySCF's here.  Said, never refused -- the choice is yours (engines/pyscf.md 7.3).
 """
 
 [item.diag_algorithm]
@@ -1075,7 +1080,8 @@ choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
 value = "ELPA-1STAGE"
 default = "ELPA-1STAGE"
 engine_default = { none = "what the build carries: ELPA, else Expert, QR with Diag.NoExpert", source = "SIESTA 5.4.2 diag_option.F90:225-242: algo = fdf_get('Diag.Algorithm', trim(algo))" }
-group = "budget"
+group = "staging"
+run_card = true
 label = "Diagonalizer"
 tier = "advanced"
 help = """
@@ -1381,7 +1387,7 @@ Leave it as None and density_fit() auto-picks a fitting basis matched to your or
 
 [item.density_fit]
 kind = "engine"
-category = ["method", "execution"]
+category = ["method"]
 engines = ["pyscf"]
 anchor = "mf"
 engine_key = "mf = mf.density_fit()"
@@ -2725,7 +2731,8 @@ choices = ["BTD", "full"]
 value = "BTD"
 default = "BTD"
 engine_default = { value = "BTD", source = "SIESTA 5.4.2 m_ts_options.F90:180: chars = fdf_get('TS.SolutionMethod', 'BTD')" }
-group = "budget"
+group = "staging"
+run_card = true
 label = "How TranSIESTA inverts the device matrix"
 tier = "advanced"
 help = """
@@ -2839,7 +2846,8 @@ type = "bool"
 value = true
 default = true
 engine_default = { value = true, source = "SIESTA 5.4.2 m_ts_options.F90:476: Elecs(:)%out_of_core = fdf_get('TS.Elecs.Out-of-core', .true.)" }
-group = "stage"
+group = "staging"
+run_card = true
 label = "Keep the leads' Green's functions as files"
 tier = "advanced"
 help = """

@@ -195,7 +195,7 @@ flowchart TB
     end
     subgraph F2["<b>2 · description</b> — what the person asked for"]
       direction LR
-      D1["task.py"]; D2["template_file.py"]; D4["runs.py"]; D5["task_reader.py"]
+      D1["task.py"]; D6["job_request.py"]; D2["template_file.py"]; D4["runs.py"]; D5["task_reader.py"]
     end
     subgraph F1["<b>1 · names &amp; plain facts</b>"]
       direction LR
@@ -223,13 +223,13 @@ floor 1 doing the job it exists for.
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says; whether a job launched from this machine is going; every parameter an engine takes, and what a file of a template or a warm-files vocabulary says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `template` (the catalogue of every parameter and the template format — the template FILE's door is `template_file`, floor 2) · `warmfiles` (the engines' warm-file and scratch vocabularies, and a calculation's own) · `scheduler/` (the record, the probe, the fit, the queue a job names bound to the record; a queue job's cluster, whether the queue lists it and how, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, and whether that job is going — `job-system.md` § 6.0a) · `jobset/sequence` (a sequence of groups' launch record — `job-system.md` § 6.0, *A sequence of groups*) | `resolve_stage_ref` · `stage_token` · `parse_token` · `rung_label` (the label a rung's files are named on — a lead's own stem) · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `calcdirs.described` (is a folder a calculation's root — the description's file, by its name, there) · `calcdirs.where` (where a folder is — its calculation, what it is, and the stage, run, trial and point it sits in) · `catalogue` · `select` · `one` · `read_template` · `warm_list` · `is_scratch` / `scratch_families` · `machine_for` (the record read) · `calculation_environment` (the calculation's copy, read) · `require_activation` · `resolve_environment` (the probe's) · `fit` · `place` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `joblist.is_going` (the one answer to *is this job going* — its process, or its scheduler's list, `None` where this machine cannot tell — which `molbuilder jobs`, `jobset scratch` and whether a sequence still going holds a group, `ready.held_by_sequence`, ask) · `joblist.inside` (the job a reader runs inside — a group's launch inside a sequence's job — whose runs it reads by their own files) with `joblist.Asked` (each scheduler's cluster, asked once a command) and `joblist.scheduler_of` (the scheduler its calculation's copy of the record names) · `queue.cluster` / `listed` / `cancel` · `sequence.write_record` / `read_record` / `sent` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` · a sequence's `launch/<seq>.launch.json` | know what a calculation is — a stage, a ladder, a plan |
-| **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template_file` (the template file's door) · `runs` · `task_reader` (the Results tab's reader of a transport calculation's description, registered by the surfaces) | `task.of` · `write_task` · `template_file.of` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `openable` · `transmission_point` · `folder_answer` | `task.json` · the template | **name a machine** |
+| **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says; whether a job launched from this machine is going; every parameter an engine takes, and what a file of a template or a warm-files vocabulary says | `identity` · `paths` · `calcdirs` · `runfiles` · `runrecord` · `deck_record` (the grammar of a deck's blocks, and the one door of *the same calculation*, each engine's reading registered by the surfaces — [`job-request.md`](?doc=execution/job-request.md) § 6) · `template` (the catalogue of every parameter and the template format — the template FILE's door is `template_file`, floor 2) · `warmfiles` (the engines' warm-file and scratch vocabularies, and a calculation's own) · `scheduler/` (the record, the probe, the fit, the queue a job names bound to the record; a queue job's cluster, whether the queue lists it and how, its cancel) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` · `jobset/planned` (a plan's writes, as values) · `joblist` (each launch's address, and whether that job is going — `job-system.md` § 6.0a) · `jobset/sequence` (a sequence of groups' launch record — `job-system.md` § 6.0, *A sequence of groups*) | `resolve_stage_ref` · `stage_token` · `parse_token` · `rung_label` (the label a rung's files are named on — a lead's own stem) · `Shape.named` · `Shape.stage_dir` · `StageRef` · `run_id` · `calcdirs.described` (is a folder a calculation's root — the description's file, by its name, there) · `calcdirs.where` (where a folder is — its calculation, what it is, and the stage, run, trial and point it sits in) · `catalogue` · `select` · `one` · `read_template` · `warm_list` · `is_scratch` / `scratch_families` · `machine_for` (the record read) · `calculation_environment` (the calculation's copy, read) · `require_activation` · `resolve_environment` (the probe's) · `fit` · `place` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` · `joblist.write` / `every` / `going_here` / `signal_here` · `joblist.is_going` (the one answer to *is this job going* — its process, or its scheduler's list, `None` where this machine cannot tell — which `molbuilder jobs`, `jobset scratch` and whether a sequence still going holds a group, `ready.held_by_sequence`, ask) · `joblist.inside` (the job a reader runs inside — a group's launch inside a sequence's job — whose runs it reads by their own files) with `joblist.Asked` (each scheduler's cluster, asked once a command) and `joblist.scheduler_of` (the scheduler its calculation's copy of the record names) · `queue.cluster` / `listed` / `cancel` · `sequence.write_record` / `read_record` / `sent` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers · a job's address, `<state dir>/jobs/<id>.json` · a sequence's `launch/<seq>.launch.json` | know what a calculation is — a stage, a ladder, a plan |
+| **2** | **description** | what the person asked for — what to compute (the description) and how and where to run it (the job request, [`job-request.md`](?doc=execution/job-request.md)) — and the run a file belongs to, read with it | `task` · `job_request` (the job request's door) · `template_file` (the template file's door) · `runs` · `task_reader` (the Results tab's reader of a transport calculation's description, registered by the surfaces) | `task.of` · `write_task` · `job_request.of` · `template_file.of` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `openable` · `transmission_point` · `folder_answer` | `task.json` · the template · `job-request.json` | the description: **name a machine**; the job request: **state what is computed** — nothing in one read as the other (A17) |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** — and the names that plan gives a stage, a job and their files | `calculation` (the calculation, opened once, with the plan it holds) · `resolve` · `jobset/model` · `jobset/sweep_reader` (the Results tab's reader of a benchmark's plan, registered by the surfaces) · `jobset/naming` · `jobset/ladder` · `jobset/engines` · `jobset/placement` · `jobset/group` · `jobset/shelves` · `jobset/transport_rung` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `calculation.open` · `Calculation.job` (a stage's row in the plan) · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.of` / `write` / `validate` · `warm_declaration` · `stage_home` · `job_dir_names` · `stage_refs` · `run_names` · `open_container` · `source_stage` · `stage_before` · `force_constant_stage` · `fresh_stages` · `engine_seam` · `placed` · `queue_table` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** |
 | **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` · `jobset/gather` · `jobset/ready` | `open_run` · `hand_over` · `latest_attempt` · `ever_launched` · `continuation_answer` · `usable` · `gather_sources` · `composed_for_prep` (a transport calculation's junction, composed at prep only while no stage is launched) · `task_state` · `readiness` · `launched_without` · `regrouped` · `first_launch_takes` · `held_by_sequence` (a group a sequence still going holds, `job-system.md` § 6.0) · `scratch_in` | the folder tree; `run-<n>/` | know about a queue |
-| **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `launch_agreement` · `check_launch_matches_deck` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
+| **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `check_trial_starts_cold` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
 | **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `job_members` · `scratch_answer` (which of a calculation's scratch a run still going keeps; it removes nothing) · `run_summarize_jobset` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobs_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,scratch,probe,machines,migrate}` · `molbuilder jobs {status,stop}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, `launch`'s and `migrate`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry; `migrate`'s its refusals) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobs_cli` · `web` | `molbuilder describe` · `molbuilder jobset {prep,launch,summarize,status,scratch,probe,machines,migrate}` · `molbuilder jobs {status,stop}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, `launch`'s and `migrate`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry; `migrate`'s its refusals) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
 **Every `jobset` module has a floor**, so an import into any of them can be
 judged; the table names each. **`parse/` is floor 1**: a reader turns a file, or a run folder's files, into facts and knows no
@@ -321,7 +321,6 @@ classDiagram
     }
     class Stage {
       +str name
-      +int group
       +Mapping overrides
     }
     class JobSet {
@@ -364,11 +363,6 @@ classDiagram
       +RunRef source
       +bool walk
     }
-    class LaunchAgreement {
-      +str verdict
-      +rendered_for
-      +int launching_at
-    }
     class StageStatus {
       +StageRef ref
       +str state
@@ -382,16 +376,16 @@ classDiagram
     Task ..> JobSet : floor 3 turns one into the other
     JobSet ..> Attempt : floor 4 lays it out
     Attempt *-- HandOver : what it takes from other runs
-    Attempt ..> LaunchAgreement : floor 5 checks before starting
 ```
 
 | object | floor | the question it answers, once | who may build one |
 |---|---|---|---|
 | **`StageRef`** | 1 | *which stage is this?* — an ordinal and a name, together | the resolver, `stage_refs` |
 | **`Environment`** | 1 | *what is this machine?* | `resolve_environment` |
-| **`Task` / `Stage`** | 2 | *what did the person ask for?* | `task.of` |
+| **`Task` / `Stage`** | 2 | *what did the person ask to compute?* | `task.of` |
+| **`JobRequest`** | 2 | *how and where did the person ask it to run?* — the scheduler ask, the run cards, the groups, a benchmark's plan, the reports ([`job-request.md`](?doc=execution/job-request.md)) | `job_request.of` |
 | **`JobSet` / `Job` / `WarmFile`** | 3 | *what jobs does that mean, on this machine?* | `prep`, from the resolved `ParameterSet` (`resolve.py`) — one `Job` per element |
-| **`Resources`** | 3 | *what does this job ask the machine for?* — the nine fields of [`job-contracts.md § 6.2`](?doc=execution/job-contracts.md), in the exchange vocabulary | **two roles, and they are not the same answer twice.** A **surface** assembles *the ask* from what the person said — `--np`, the Build tab's form — which is what [`generator.md § 4.1a`](?doc=execution/generator.md) means by *"stated in the command, at prep"*. `resolve.py` then produces *the per-element allocation*, the ask ⊕ this sweep point's machine axes, one per `ParameterSet` element. § 4.1's containment (capability ⊇ allocation ⊇ sweep) is exactly the relationship between them |
+| **`Resources`** | 3 | *what does this job ask the machine for?* — the fields of [`job-contracts.md § 6.2`](?doc=execution/job-contracts.md), in the exchange vocabulary | **two roles, and they are not the same answer twice.** A **surface** assembles *the ask* from what the person said — `--np`, the Build tab's form — which is what [`generator.md § 4.1a`](?doc=execution/generator.md) means by *"stated in the command, at prep"*. `resolve.py` then produces *the per-element allocation*, the ask ⊕ this sweep point's machine axes, one per `ParameterSet` element. § 4.1's containment (capability ⊇ allocation ⊇ sweep) is exactly the relationship between them |
 | **`Shape`** | 1 | *flat or hierarchical — how deep do this calculation's files go?* | `Shape.named`, from the description — never inferred from the disk |
 | **`Where`** | 1 | *where is this folder in its calculation?* — its calculation's folder, what it is, its record's role, the stage, run, trial and point it sits in, the run's own folder ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) | `calcdirs.where` |
 | **`Run`** | 2 | *which run is this file of, and where are its files?* — its calculation and description, its folder, the label its files are named on, its stage, its run index; its files by role ([`project-layout.md`](?doc=execution/project-layout.md) § 5) | `run_of` |
@@ -404,7 +398,6 @@ classDiagram
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `open_run` — the one opener of a run folder (a stage's attempt, a trial's, a bias point's) |
 | **`Plan`** | 1 | *what will this prep — or this launch — write?* — every file's text and every folder, decided with nothing written, then written in order by `Plan.carry_out` after the save | `jobset/planned.py` — made by the prep entry (`prep_task`, `prep_bench`), filled by `prep_calculation` through `plan_stage`; a launch's is its `LaunchPlan.writes`, carried out by `send_launch` |
 | **`LaunchPlan`** | the launch entry's | *what will this launch send?* — every submission, its members, their attempts, the exact lines and what the send writes | `plan_launch` |
-| **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` (`jobset/agreement.py`, its own floor-5 module, which the prep entry and `submit` both import) |
 | **`StageStatus` / `JobSetStatus`** | 6 | *where has this got to?* | `jobset_status` |
 
 **A `Job` names no other `Job`.** It declares `warm` — *what* it would take from
@@ -493,7 +486,9 @@ calculation's own list *or* the shipped one; a GPU job by its count *or* by
 | **a stage's resolved values** | `resolve` — the ladder's view is made of its answers, never composed a second way | 3 | prep, the preflight's sequence checks, continuation, the frequency stage's force criterion, the transport gather |
 | **the order a structure's atoms are in, and the way back** *(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a)* | the structure's `atom_order`, its order record (null: the person's order); `transport.sort.sort_by` into an engine's order, `Structure.restored()` back, the order record's own methods for a result's per-atom rows and atom indices | 1 | prep, the transport composer, the codec (which refuses to write a remapped structure but for an engine's record), every door that writes for a person, the run door, the vibration finish, the transport record and report |
 | **a run's order record** *(2026-10-14)* | its deck's ATOM-METADATA block, through `runs.declared(run)` | 2 | `runs.view_of` and every door that builds from a run; the vibration finish beside the job, through `deck_record` |
-| **a described calculation** *(2026-10-19, A16)* | `calculation.open(base)` → `Calculation`: its description, its template with its text, and its plan when one is written — read ONCE per verb and passed whole, never the files again; refused in its readers' own words, or as *not a described calculation* (`calculation.refusal`: which of the two records is missing; from one of its stage or attempt folders, the root). A plan with no description beside it is no calculation of molbuilder's: `launch` and `status` refuse it, naming the hand-built sweep's own road | 3 | prep (`prep_task(calc, …)`; its `Described` is this plus prep's later checkpoints), launch (`plan_launch(calc, mode=, bench=…)` — `bench` a benchmark's set with the container it was read from; the send's remake opens the calculation again and reads the bench set again from its container, by design, `job-system.md` § 6.0 step 4 — the one second open of a verb), status (`jobset_status(calc, sweep=)`), summarize, `jobset scratch` (`scratch_answer(calc)`, through `scratch_in(calc)`), the readiness doors (`readiness`, `ladder`, `task_state` take it), `continue_from_choices`, `prepared_already`, `shape_fixed`, `bench_inputs`, the transport record and the displacement sweep, the Task setup tab's routes |
+| **a described calculation** *(2026-10-19, A16)* | `calculation.open(base)` → `Calculation`: its description, its job request, its template with its text, and its plan when one is written — read ONCE per verb and passed whole, never the files again; refused in its readers' own words, or as *not a described calculation* (`calculation.refusal`: which of the two records is missing; from one of its stage or attempt folders, the root). A plan with no description beside it is no calculation of molbuilder's: `launch` and `status` refuse it, naming the hand-built sweep's own road | 3 | prep (`prep_task(calc, …)`; its `Described` is this plus prep's later checkpoints), launch (`plan_launch(calc, mode=, bench=…)` — `bench` a benchmark's set with the container it was read from; the send's remake opens the calculation again and reads the bench set again from its container, by design, `job-system.md` § 6.0 step 4 — the one second open of a verb), status (`jobset_status(calc, sweep=)`), summarize, `jobset scratch` (`scratch_answer(calc)`, through `scratch_in(calc)`), the readiness doors (`readiness`, `ladder`, `task_state` take it), `continue_from_choices`, `prepared_already`, `shape_fixed`, `bench_inputs`, the transport record and the displacement sweep, the Task setup tab's routes |
+| **the job request** *(2.27.0)* | `job_request.of(base, description)` — the folder's `job-request.json`, `None` when there is none, checked against the description its caller holds; every stage of the description with its entry, or refused naming both files ([`job-request.md`](?doc=execution/job-request.md) § 3) | 2 | `calculation.open` (`Calculation.request`); prep's assembly (`prep_inputs`); the group door (`group`); Task setup's cards; status |
+| **the same calculation** *(2.27.0)* | `deck_record.same_calculation(engine, a, b)` → each difference: what the engine computes from two decks, the run settings aside — SIESTA's engine input (`siesta.engine_input`) with every run setting's keyword aside, PySCF's script with its run-settings block, comments and stamps aside ([`job-request.md`](?doc=execution/job-request.md) § 6) | 1 | the transport gather; prep of a launched stage; the run record's `current` and `Run.report` — *is the stage's deck still this run's calculation* |
 | **the description** *(A16)* | `task.of(base)` — the folder's `task.json`, `None` when there is none; one written before a rule is refused naming `jobset migrate`; `task.from_text(text, said_as)` reads a description that is not yet a file (the tab's save); whether one is there, without reading it, is the ground floor's answer, `calcdirs.described(base)` — its file, by the catalogue's name, joined to the folder in one place (`calcdirs.description_path`, which `task.path_of` gives its writer) | 2 | `calculation.open`; what a folder is (`runs.place_of`), the Results tab's reader of a transport calculation's description (`task_reader`) |
 | **the plan** *(A16)* | `JobSet.of(folder, plan=)` — the folder's `job-set.json`: the root's ladder, or a sweep's in its bench container (`materialize.sweep_set_dirs` lists the containers); `None` when there is none; as a prep's plan leaves it when one is given (`jobset.planned`) — the one read prep makes of the set it is writing | 3 | `calculation.open`; the sweep's door, a bench folder's status, the Results tab's reader of a benchmark's plan (`jobset.sweep_reader`), the Results sidebar; `JobSet.write(folder, plan=)` is its writer |
 | **the template** *(A16)* | `template_file.of(base, label)` → `TemplateFile(path, text)`, `None` when there is none; two, or one under another name, refused by name | 2 | `calculation.open`; the writers that need the path (`template_path`) |
@@ -512,7 +507,7 @@ A route owns **an order**, not a floor.
 
 | route | you type | the job it does | its order | floors it visits |
 |---|---|---|---|---|
-| **describe** | `jobset init` | **write** the portable description — the template, `task.json`, the data files | ask → check → write | **2 only** |
+| **describe** | `molbuilder describe` | **write** the portable description and its job request — the template, `task.json`, `job-request.json`, the data files | ask → check → write | **2 only** |
 | **prep** | `jobset prep` | assemble a runnable folder **on the machine that will run it** | plan → save → write → record ([`job-system.md`](?doc=execution/job-system.md) § 5.0); the plan is the five steps below, decided with nothing written | 1 → 2 → 3 → 4 |
 | **submit** | `jobset launch` | one job becomes one running program | plan → show → ask → send → record ([`job-system.md`](?doc=execution/job-system.md) § 6.0); the send saves the folder's state first at a group's first launch, and sends the header prep wrote | 1 → 4 → 5 |
 | **observe** | `jobset status`, `jobset summarize` | answer *where has this got to*, and add up what has landed | newest attempt → read it → add up | 4 → 6 |
@@ -595,11 +590,10 @@ Here is what happens, and **who decides each thing**:
 | # | what happens | who decides | why it is theirs |
 |---|---|---|---|
 | — | your words are read | **7 · surface** | asking and showing is its whole job |
-| 2 | the calculation is opened once (`calculation.open`): `task.json` — what you asked for, and what the tight stage changes — its template, and the plan prep wrote (`job-set.json`) | **2 · description**, **3 · plan** | the description is the only thing that knows what you asked for; the plan, what prep made of it on this machine |
+| 2 | the calculation is opened once (`calculation.open`): `task.json` — what you asked for, and what the tight stage changes — its template, its job request (`job-request.json`, how each stage runs) and the plan prep wrote (`job-set.json`) | **2 · description**, **3 · plan** | the description is the only thing that knows what you asked for; the plan, what prep made of it on this machine |
 | 1 | the calculation's own copy of its machine's record is read, once for the whole launch (`calculation_environment`); a launch never probes and reads no other record | **1 · plain facts** | a fact about that machine, not about your calculation |
 | — | *"tight"* is turned into *which stage that is* | **1 · names** | so a name, a number and a token all reach the same stage |
 | 3 | what prep would write now is compared with what it wrote — the deck, the run script, the header, the job | **3 · render** | it is text rendered from decided values; an edit since prep must not run unsaid |
-| — | the deck is checked against the launch it will get | **5 · launch** | a deck built for 8 ranks must not be started at 32 |
 | — | sent to a queue, the line's request is read off the header prep wrote — its queue, wall and memory as they stand there, `--time` the one value a launch may restate; the job is told the wall it is sent with (`MB_WALL_S`) — a run here, its card's | **5 · launch** | prep decided every value; the launch sends what prep wrote |
 | — | what was resolved is printed for you, and asked | **7 · surface** | so the send is a plain yes |
 | — | the folder's state is saved — the group's first launch | the launch entry's send, through the one save (`checkpoint.save_before`), a file protocol beneath the floors (§ 11) | the state a redo of this group restores, coarse's runs in it |
@@ -635,7 +629,8 @@ the whole system is one sequence, and one rule keeps it one:
 | 3 | **2 + the name you typed**, inside 1's character set | the **id**, tidied once and then quoted by everything after | `run-identity.md` §§ 2–3 |
 | 4 | the **schema** | which fields exist, their types and ranges | `web/form-schema.md` |
 | 5 | the **description** | the values, which fields vary, the stages and their order | `engines/stages.md` § 6 |
-| 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md` § 6.5 |
+| 5b | the **job request** | how and where each run runs — the queue, wall and memory asked, each run's card, which stages share a job | [`job-request.md`](?doc=execution/job-request.md) |
+| 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md` § 6.6 |
 | 7 | **validation** | whether it may be written — errors block, per stage, on the resolved whole | `science/validation.md` |
 | 8 | the **generator** | the decks and their wrappers: the merge, the cell, the pseudopotentials, BENCH-MARKS | `engines/stages.md` § 7 |
 | 9 | the **target's record** | the wrapper's shell — preamble and activation (§ 8.3) | `configuration.md` § 5 |
@@ -645,7 +640,7 @@ the whole system is one sequence, and one rule keeps it one:
 
 Read it downward and the tangles disappear:
 
-- **The browser lives in rows 3–5 only.** That is why it never renders a deck or
+- **The browser lives in rows 3–5b only.** That is why it never renders a deck or
   computes a cell — those are row 8, and row 8 needs row 9, which is a fact
   about a machine the browser is not on.
 - **The id is fixed at row 3 and quoted by everything after.** No later step
@@ -678,7 +673,8 @@ flowchart TB
     subgraph DESC["floor 2 · description — portable, names no machine"]
         direction LR
         TMPL["<b>&lt;label&gt;.template.toml</b><br/>every parameter, with its value"]
-        TASK["<b>task.json</b><br/><code>stages[].overrides</code> · <code>bench</code><br/><code>execution</code> · <code>allocation</code>"]
+        TASK["<b>task.json</b><br/><code>stages[].overrides</code>"]
+        JREQ["<b>job-request.json</b><br/><code>execution</code> · <code>allocation</code><br/><code>bench</code> · the groups"]
     end
     subgraph MACH["floor 1 · machine — measured, never in the description"]
         ENV["<b>environment.json</b> — the TARGET's record<br/><i>checks the ask; never supplies a value of it</i>"]
@@ -688,10 +684,11 @@ flowchart TB
     RES["<b>floor 3 · resolve()</b> → ParameterSet"]
     OUT["<b>the deck</b> · <b>the wrapper</b> · <b>the .sbatch</b>"]
     WEB -->|edits| TASK
+    WEB -->|edits| JREQ
     CLI --> ASM
     WEB --> ASM
-    TASK --> ASM
-    VERD -.->|"a person reads it,<br/>and writes execution"| TASK
+    JREQ --> ASM
+    VERD -.->|"a person reads it,<br/>and writes execution"| JREQ
     ENV -.->|"checks only"| ASM
     ASM --> RES
     TMPL --> RES
@@ -702,29 +699,30 @@ flowchart TB
 
 #### The full chain, for ONE parameter, birth to artifact
 
-**Every parameter already has a value** — that is the premise, and it is the
-catalogue's doing. The only exceptions are the four the catalogue declares
-**valueless** (`template.md` § 6.4), and they are valueless because floor 2
-may not assert a machine's number. So there are exactly two tracks:
+**Every parameter of the calculation already has a value** — that is the
+premise, and it is the catalogue's doing. The exceptions are the run settings,
+which the template declares **valueless** (`template.md` § 6.4): how a run
+runs is the job request's, never the description's ([`job-request.md`](?doc=execution/job-request.md) § 2). So
+there are exactly two tracks:
 
 ```mermaid
 flowchart TB
     CAT["<b>the catalogue</b><br/>every parameter: type · range · unit · default"]
 
-    subgraph VAL["track A — a VALUED parameter (mesh_cutoff, diag_algorithm, basis…)"]
+    subgraph VAL["track A — a VALUED parameter (mesh_cutoff, basis, k-grid…)"]
         direction TB
         A1["<b>1 · describe</b><br/>writes <code>&lt;label&gt;.template.toml</code><br/><i>the value, from the Structure-optimization UI or the default</i>"]
         A2["<b>2 · task.json</b><br/><code>varies</code> promotes it · <code>stages[i].overrides</code> sets this rung's"]
-        A3["<b>3 · a pin at prep</b><br/>a one-point <code>bench</code> entry · <code>execution</code>"]
+        A3["<b>3 · a pin at prep</b><br/>a one-point <code>bench</code> entry — the trials alone"]
         A1 --> A2 --> A3
     end
 
-    subgraph MACH["track B — a VALUELESS parameter (mpi_np · omp_threads · gpu_count · max_memory_mb, a cap whose absence is no cap)"]
+    subgraph MACH["track B — a RUN SETTING, valueless in the template (mpi_np · omp_threads · gpu_count · max_memory_mb, a cap whose absence is no cap · diag_algorithm · use_gpu · block_size …)"]
         direction TB
         B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
-        B2["<b>2 · task.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
+        B2["<b>2 · job-request.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
         B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>execution</code>, then a <code>prep</code> flag.<br/><i>no third source: a benchmark does not steer a run</i>"]
-        B4["<b>3b · nothing stated?</b><br/><b>prep REFUSES</b>, naming the run card<br/>and the flag — no width, no default,<br/>no rank per GPU"]
+        B4["<b>3b · nothing stated?</b><br/>the machine's answers: <b>prep REFUSES</b>, naming the run card<br/>and the flag — no width, no default, no rank per GPU<br/>a speed setting: the item's default, recorded <i>not chosen</i>"]
         B1 --> B2 --> B3
         B3 -.->|"unstated"| B4
     end
@@ -754,12 +752,14 @@ flowchart TB
   written into the deck; no run-time chain touches it. *"What if nobody set
   it?"* cannot arise — the template holds a value for every one.
 - **Track B is the only place an item has no value in the template, and an
-  unstated one has exactly one answer: prep refuses it** *(user, 2026-10-02:
-  "explicit job config is the only way allowed")* — all but the memory cap,
-  `max_memory_mb`, whose absence asks for nothing: no cap is written
-  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2). The refusal names the two
-  places to state it — the run card (`execution` in `task.json`) and the prep
-  flag. There is no width of the target, no rank per GPU, no thread count of
+  unstated machine answer has exactly one answer: prep refuses it** *(user,
+  2026-10-02: "explicit job config is the only way allowed")* — all but the
+  memory cap, `max_memory_mb`, whose absence asks for nothing: no cap is
+  written ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2). The
+  refusal names the two places to state it — the run card (`execution` in
+  `job-request.json`) and the prep flag. **An unstated speed setting takes the
+  item's default**, recorded *not chosen* ([`job-request.md`](?doc=execution/job-request.md) § 4, the user's
+  choice of 2026-10-21): it changes how fast a run goes, never its answer. There is no width of the target, no rank per GPU, no thread count of
   one: each of those was a value nobody stated, and a run is hours before
   anyone finds out which one it got.
 - **Step 5's two artifacts carry the one stated value**, which is why the
@@ -834,7 +834,7 @@ stated.
 | kind | example | weakest → strongest | stated nowhere |
 |---|---|---|---|
 | **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` | cannot happen: the template holds a value |
-| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → **`execution`**, the calculation's then the rung's *(a one-point `bench` pin sets only the bench's trials)* | cannot happen |
+| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | the item's default → **`execution`**, the calculation's then the rung's, in the job request *(a one-point `bench` pin sets only the bench's trials)* | the item's default, recorded *not chosen* ([`job-request.md`](?doc=execution/job-request.md) § 4) |
 | **launch shape** | SIESTA's `mpi_np` · cores per rank (`omp_threads`, PySCF's `threads`) · `gpu_count` for a GPU run | **`execution`** → a `prep` **flag** (`--np`, `--cpus-per-task`, `--gpus`) | **refused at prep**, every target |
 | **scheduler ask** | `mem` | `allocation` → a `prep` **flag** | **refused at prep** when the target has a scheduler |
 | **scheduler ask, per lane** | `time` · `domain` | `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** — and `time` alone, for a submitted job, a `launch` **flag** | **refused at prep** when the target has a scheduler |
@@ -852,7 +852,7 @@ writes none, and then nothing is asked of a queue.
 folded by the shared prep path, so `prep bench` and `prep task` read one `time`
 and one `domain` — and the two lanes want opposite things: a trial's steps are
 cut so it wants minutes, a run wants days. `execution` carries the run's own
-(`stages.md` § 6.8e). **`mem` does not join them**: a trial and a run compute
+(`job-request.md` § 3.2a). **`mem` does not join them**: a trial and a run compute
 the same system and hold about the same amount, so a second home for it would
 be a second place to look and no new answer.
 
@@ -865,7 +865,7 @@ There is no verdict rung in any of the five ladders. `summarize` writes
 the report `summarize` prints, beside the `bench-result.json` record; both are **read by a
 person and by no code**, and what the run uses is `execution` — which exists
 whether or not you ever benchmarked, and a run never requires one
-(`stages.md` § 6.8d).
+(`job-request.md` § 3.2).
 
 After a benchmark, a run that does not name the winner in `execution` does
 **not** use the winner — prep refuses it until a shape is written.
@@ -886,11 +886,11 @@ under one the ranks inside the cores it gave the job. **A placement that costs
 is warned about, never refused** *(the user, 2026-10-17: a rank whose cores
 sit on another socket than its GPU pays in traffic, and the job goes on)*. A
 rung takes a calculation-wide choice only where it reads the item
-([`stages.md`](?doc=engines/stages.md) § 6.8d). The GPU's case, whole,
+([`job-request.md`](?doc=execution/job-request.md) § 3.2). The GPU's case, whole,
 is [`gpu.md`](?doc=execution/gpu.md).
 
 **Where the UI enters, and it is only two places** — which is § 5's *"the
-browser lives in rows 3–5 only"*, restated as values: it **edits floor 2**,
+browser lives in rows 3–5b only"*, restated as values: it **edits floor 2**,
 and it **presses prep with an empty ask**, having no flags. Everything between
 is the same code the command line runs (A12).
 
@@ -929,7 +929,7 @@ sequenceDiagram
     participant O as status<br/>(floor 6)
 
     U->>B: describe the calculation
-    B->>B: write task.json + the template + data files
+    B->>B: write task.json + job-request.json + the template + data files
     Note over B: names NO machine — this folder is portable
     U->>P: scp to the cluster, then `jobset prep task --group 1 --group 2`
     P->>P: the five steps, planned with nothing written
@@ -974,8 +974,9 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 |---|---|---|
 | **A1** | **one speller for the stage token.** `<NN>_<name>` is assembled in `identity` and nowhere else | **review** (see the note under this table) — the set of modules that spell `<NN>_<name>` must BE `{identity.py}` |
 | **A2** | **one layout per calculation**, and nothing guesses which | `test_jobset` — every consumer's layout comes from `Shape.named(task.shape)` |
-| **A3** | **a deck and its launch travel together** | `test_jobset` — the rank count in the deck equals the one it is started at, or it is refused first |
-| **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | **review** (see the note under this table) — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
+| **A3** | **a deck and its launch are prepared together.** One prep renders a deck, its run script and its header from one request, and launch sends what prep wrote; nothing reads a launch value back out of a deck ([`job-request.md`](?doc=execution/job-request.md) § 6) | `tests/data/launch_values.toml` (A9) — one prep's header and run script carry the request the deck was rendered with; R-L15 at a first launch |
+| **A17** *(2.27.0)* | **two records, never read as each other.** The description says what is computed, the job request how and where it runs; a value of one is never taken for a value of the other — a template's run setting asking the scheduler, a deck comment standing in for a launch, a run setting making two decks two calculations ([`job-request.md`](?doc=execution/job-request.md) § 1, § 6); an engine library's limits behind a run setting — gpu4pyscf's — are said as a hint, never counted (§ 2 there) | **review**, and the same-calculation door's case table |
+| **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | **review** (see the note under this table) — **all three**: a `StageRef` only by its resolver, and `Attempt` / `Shape` each in one named function |
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
 | **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N; every `jobset` module has a floor (§ 2.1 names each), and only a surface imports a conductor (prep's entry, launch's, migrate's) or prep's assembly — but for launch's and the gather's comparisons with what prep would write now (§ 2) | **review**, both halves (`process/code-audit.md` § 1c (e); user, 2026-09-27: *"a static code review problem"*) — L1/L2/L3 between top-level packages against `architecture.md` § 3's index, and a floor boundary **inside** a package against § 2.1's table (`jobset/` alone holds floors 1 and 3–7, so `runstatus.py` (6) importing `_cli.py` (7) is a finding). What an upward import breaks at run time shows up by itself (a cycle fails the import; a shipped monitor file fails beside the job, `tests/test_monitor_watches_a_live_run_e2e.py`) |
@@ -986,7 +987,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing. For `prep` the whole verb is one entry per kind, `jobset/prep.py::prep_task` and `prep_bench` | the prep road through both doors — `tests/test_prep_from_the_browser.py` (one prep through each door: the same findings, attempt, agreement and ledger; the preview is the entry stopped before the save; the axis-less bench on both) and `tests/test_task_setup_prep_e2e.py` (the tab previews, then preps the plan it showed) |
 | **A14** | **one composer for a run file's name.** `<label>[_<stage>][-run<N>]<role>` is built by `runfiles` and read back by `runfiles.parse`. No call site concatenates a name, spells a role, or invents a counter keyword — see `job-contracts.md` § 2.2a for which door to call | `test_runfile_names` — the generator over the product of its segments: round trip, and what each segment refuses |
 | **A15** | **one door per fact.** Each fact in § 3.2 is answered by its door alone; a reader asks it and never works the fact out from the files itself | **review**, and each door's case table — a disagreement found is a row of it |
-| **A16** *(2026-10-19)* | **a record is read through its owner's door, and the door takes the folder.** The name of a record molbuilder writes into a calculation — `task.json`, `job-set.json`, the template, `run.json`, the warm files, the machine record, the pipeline log, the last-run mark, the ledger — is the catalogue's (`runfiles.WRITTEN`, B13), taken from it by the record's owner alone (`task`, `jobset.model`, `template_file`, `runrecord`, `warmfiles`, `scheduler.record`, `pipeline_log`, `jobset.ledger`); a path to one is formed only by that owner (`task.path_of`, `JobSet.path_of`, `template_path`, `warmfiles.path_of`) -- the description's by the ground floor, which answers whether a folder is a calculation's root without reading it (`calcdirs.description_path`, which `task.path_of` gives its writer), for its writer and for migrate. A reader asks the owner's door with the FOLDER — `task.of`, `JobSet.of`, `template_file.of` — and the door forms the path, reads, and answers `None` for a record that is not there: no caller joins the name to a folder, probes the path, or reads its bytes. A verb opens its calculation once (`calculation.open`) and passes the object down — the readiness doors take it, the launch planner takes it, the status door takes it; a function that takes a calculation's folder and reads a record its caller holds is the defect, and its signature carries the object instead. A refusal is the door's, said once (`calculation.refusal`); a boundary — the CLI, a route — translates the kind of exception into its own and never re-words or prefixes it. The one second open of a verb is the launch's send, which plans again from the folder as it is (`job-system.md` § 6.0, step 4). Raw reads exist in `jobset/migrate` alone: the description, the template and the plans are read once (`migrate._Records`) and every step reads the decided bodies; the machine record and the run records are read once each by the step that rewrites them. | **review** against this row at every milestone; `tests/test_calculation_door.py` — the refusals through the one door |
+| **A16** *(2026-10-19)* | **a record is read through its owner's door, and the door takes the folder.** The name of a record molbuilder writes into a calculation — `task.json`, `job-request.json`, `job-set.json`, the template, `run.json`, the warm files, the machine record, the pipeline log, the last-run mark, the ledger — is the catalogue's (`runfiles.WRITTEN`, B13), taken from it by the record's owner alone (`task`, `job_request`, `jobset.model`, `template_file`, `runrecord`, `warmfiles`, `scheduler.record`, `pipeline_log`, `jobset.ledger`); a path to one is formed only by that owner (`task.path_of`, `JobSet.path_of`, `template_path`, `warmfiles.path_of`) -- the description's by the ground floor, which answers whether a folder is a calculation's root without reading it (`calcdirs.description_path`, which `task.path_of` gives its writer), for its writer and for migrate. A reader asks the owner's door with the FOLDER — `task.of`, `job_request.of`, `JobSet.of`, `template_file.of` — and the door forms the path, reads, and answers `None` for a record that is not there: no caller joins the name to a folder, probes the path, or reads its bytes. A verb opens its calculation once (`calculation.open`) and passes the object down — the readiness doors take it, the launch planner takes it, the status door takes it; a function that takes a calculation's folder and reads a record its caller holds is the defect, and its signature carries the object instead. A refusal is the door's, said once (`calculation.refusal`); a boundary — the CLI, a route — translates the kind of exception into its own and never re-words or prefixes it. The one second open of a verb is the launch's send, which plans again from the folder as it is (`job-system.md` § 6.0, step 4). Raw reads exist in `jobset/migrate` alone: the description, the template and the plans are read once (`migrate._Records`) and every step reads the decided bodies; the machine record and the run records are read once each by the step that rewrites them. | **review** against this row at every milestone; `tests/test_calculation_door.py` — the refusals through the one door |
 | **A13** | **a run shows its end point.** The launch values the run will be executed with are displayed as what it is launched with carries them — its header where a scheduler runs it, else its run script — read back by each writer's own reader, never re-derived by the surface; a value stated nowhere is the prep's refusal, never a blank | `test_bench_grid_card.py::test_a_run_preview_carries_its_header_line_for_line`, through the browser's door; `tests/test_task_setup_prep_e2e.py` on the page |
 
 > **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
@@ -1044,16 +1045,17 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 >
 > Its contract is stated where the assembly lives: the ask handed in is what
 > the person is saying *right now* — the CLI's flags, or an **empty** `Resources()`
-> from a surface that has none. Never `None`: the run card and the description
+> from a surface that has none. Never `None`: the run card and the allocation
 > are folded *under* it field by field, and there is no field-by-field merge
 > onto nothing.
 >
 > **And the whole VERB is one entry**:
 > `jobset/prep.py::prep_task` (and `prep_bench`) does everything a prep does — the preflight,
-> the plan, the save, the attempt, the launch agreement, the ledger — and returns what it found and decided as data; the
+> the plan, the save, the attempt, the ledger — and returns what it found and decided as data; the
 > command line prints it, the Task setup tab shows it, its preview the same
 > answer stopped before the save ([`job-system.md`](?doc=execution/job-system.md)
-> § 5.0, § 5.3). A launched stage is not prepared again; one never launched
+> § 5.0, § 5.3). A launched stage is prepared again only as the same
+> calculation, for its job request ([`job-request.md`](?doc=execution/job-request.md) § 5); one never launched
 > is prepared again; what a stage takes from another stage's run is its first
 > launch's. A surface that did part of the act itself would skip the rest of
 > it. **The assembly lives beside the conductor**, as its own
@@ -1226,6 +1228,7 @@ flowchart LR
       direction TB
       T["the template<br/><i>every parameter, with a value</i>"]
       TJ["task.json<br/><i>what varies · which stages · the shape</i>"]
+      JRQ["job-request.json<br/><i>how it runs · the groups · the queue asked</i>"]
       DAT["the data files<br/><i>structure · pseudopotentials</i>"]
     end
 
@@ -1339,7 +1342,7 @@ prep takes no flags.)*
 Each prep prints what it resolved — where the configuration came from, what
 it wrote, each stage's run and its own files, what `tight`'s first launch
 will take (`coarse`'s newest run, which must have finished, or the run
-`--from` names), what each will launch with and whether the deck agrees —
+`--from` names), what each will launch with —
 then the launch line ([`job-system.md`](?doc=execution/job-system.md) § 5.3).
 
 **The folder is the same; what you stated at prep is each machine's run**:
@@ -1348,10 +1351,10 @@ then the launch line ([`job-system.md`](?doc=execution/job-system.md) § 5.3).
 |---|---|---|---|
 | the machine's **capability** | 8 cores, no scheduler | its nodes and queues, a scheduler | floor 1 — the target's record, read at `prep` step 1 |
 | this run's **allocation** | 8 ranks × 1 core | 16 ranks × 1 core, on `public`, 2 days, 64 GB | **you** — the run card or a `prep` flag (§ 5.2) |
-| the deck | rendered for 8 ranks | rendered for 16 ranks | floor 3, at step 3 — its BENCH-MARKS records the rank count, which every launch checks the run against (A3); a `BlockSize` the template states is written as given, and the BENCH-MARKS window that count allows is widened to hold it; an unset one is left to SIESTA and draws no window |
+| the deck | rendered for 8 ranks | rendered for 16 ranks | floor 3, at step 3 — its BENCH-MARKS records the rank count it was rendered for, with the run script and the header prep writes beside it (A3); a `BlockSize` the run card states is written as given, and the BENCH-MARKS window that count allows is widened to hold it; an unset one is left to SIESTA and draws no window |
 | the env the wrapper activates | the CPU environment | the CPU environment | floor 3, at step 4 — the job's **GPU request** (`gpu_request`, § 3.2): its `use_gpu` as `resolve` carries it, and its count — never the deck's solver |
 | `.sbatch` | not written | written | floor 3, at step 4, from the target's record naming a scheduler |
-| **the template, `task.json`** | **byte-identical** | **byte-identical** | — |
+| **the template, `task.json`, `job-request.json`** | **byte-identical** | **byte-identical** | — |
 
 **Read the allocation and deck rows together and § 4.1's forced ordering falls
 out.** The deck records the rank count it was rendered for, and the wrapper is
@@ -1494,7 +1497,7 @@ yet.
 | [`engines/stages.md`](?doc=engines/stages.md) § 6.7 | the layout is declared, never guessed | floor 2 writes it, floor 4 reads it |
 | [`project-layout.md`](?doc=execution/project-layout.md) § 2.1 | the portable folder names no machine | floor 2's *must never* |
 | [`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1 | the five steps, in that order | **the `prep` route** |
-| [`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1b | capability at `prep`, allocation as its input | floor 1 resolves capability; floor 5 only checks the agreement |
+| [`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1b | capability at `prep`, allocation as its input | floor 1 resolves capability; floor 5 sends what prep wrote |
 | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 | stages do not chain | floor 3 emits no link; the `launch` route acts on one group or stage — or on several groups named at once, one job whose walk runs each group's own launch (`submit._plan_sequence`) |
 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | the caller's cwd is the contract | floor 5's wrapper activates and execs, nothing more |
 | [`checkpointing.md`](?doc=execution/checkpointing.md) § 2.1 | saving chooses *how*, never *whether* | **outside this stack** — a file protocol beneath all of it, which knows nothing about stages |

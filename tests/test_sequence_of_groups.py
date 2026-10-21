@@ -15,12 +15,12 @@ its wall one group's instead of every group's (the job killed before the
 last group); a job whose runs cannot name the job (the walk not passing its
 sequence and its address); a sequence sent under no header prep wrote.
 """
-import json
 
 import pytest
 
 from support.road import (a_machine_with_queues, calls_made,
-                          describe_calculation, jobset)
+                          describe_calculation, jobset, read_request,
+                          write_request)
 
 
 def _queues():
@@ -32,13 +32,14 @@ def _queues():
 
 
 def _cards(bundle, **by_stage):
-    """Each stage's own run card, as Task setup writes it (`execution`)."""
-    task = json.loads((bundle / "task.json").read_text())
-    task["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
-    for st in task["stages"]:
-        st["execution"] = {**st.get("execution", {}),
-                           **by_stage.get(st["name"], {})}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    """Each stage's own run card, as Task setup writes it -- the job
+    request's `stages.<name>.execution`."""
+    request = read_request(bundle)
+    request["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    for name, entry in request["stages"].items():
+        entry["execution"] = {**entry.get("execution", {}),
+                              **by_stage.get(name, {})}
+    write_request(bundle, request)
 
 
 @pytest.fixture

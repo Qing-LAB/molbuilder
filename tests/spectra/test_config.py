@@ -96,13 +96,13 @@ class TestSpectraFieldMetadata:
         from molbuilder.validation.task import preflight
 
         (tmp_path / "task.json").write_text(json.dumps({
-            "schema": "molbuilder/task@1", "engine": {"name": "pyscf"},
+            "schema": "molbuilder/task@2", "engine": {"name": "pyscf"},
             "shape": "flat", "calculation": "vibration",
             "run": {"name": "v", "id": run_id("v", "H2O"),
                     "created": "2026-08-22T00:00:00-07:00"},
             "structure": {"source": "w.xyz", "formula": "H2O", "atoms": 3},
             "varies": ["dispersion"],
-            "stages": [{"name": "coarse", "group": 1,
+            "stages": [{"name": "coarse",
                         "overrides": {"dispersion": "d5"}}]}))
         issues = preflight(task_of(tmp_path), PySCFConfig)
         bad = [i for i in issues

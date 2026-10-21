@@ -92,6 +92,7 @@ Six words are used throughout. Each is ordinary once you know what it points at.
 | **catalogue** | The master list of *every* setting molbuilder knows about, for every engine, with its type, its allowed range, its unit, its default and its help text. One file, hand-edited: `molbuilder/data/catalogue.template.toml` |
 | **template** | One calculation's copy of that list, narrowed to the engine it will run on, with the answers filled in. Named `<label>.template.toml` |
 | **description** | What *changes* across a calculation — the sequence of steps, and which settings differ between them. Named `task.json` |
+| **job request** | How and where the calculation runs — the queue, wall and memory asked, each step's run card (ranks, threads, GPU, solver), which steps share one job, a benchmark's plan, the reports. Named `job-request.json` |
 | **deck** | The engine's own input file. `.fdf` for SIESTA, `.py` for PySCF. This is what the engine actually reads |
 | **wrapper** | The shell script that activates the right environment, works out how many processors to use, launches the engine, and watches it. Named `<label>.run.sh` |
 | **stage** | One step of a multi-step calculation — *coarse*, then *tight*. molbuilder's idea, not the engine's |
@@ -122,6 +123,7 @@ flowchart TB
     subgraph FOLDER["one calculation = one folder"]
       TMPL["<b>template</b> · <code>&lt;label&gt;.template.toml</code><br/><i>every setting, WITH its answer</i>"]
       TASK["<b>description</b> · <code>task.json</code><br/><i>the steps, and what differs between them</i>"]
+      REQ["<b>job request</b> · <code>job-request.json</code><br/><i>how and where it runs</i>"]
       XYZ["<b>structure pair</b><br/><code>&lt;label&gt;.source.xyz</code> + <code>&lt;label&gt;.source.molstruct.json</code><br/><i>the atoms, and where they came from —<br/>the .source segment is reserved, § 6.3</i>"]
     end
 
@@ -131,7 +133,7 @@ flowchart TB
     XYZ --> PREP
 
     ENV["<b>the target machine</b> · <code>environment.json</code><br/><i>cores · GPUs · scheduler · the queues you can reach<br/>— probed on that machine, never part of the description,<br/>a copy kept beside it at the first prep</i>"]
-    ASK["<b>what you ask for</b><br/><i>ranks · threads · GPUs · wall · queue — a stage's run card, execution</i><br/><i>queue · wall · memory — the calculation's allocation</i><br/><i>both in task.json; a prep command's flag wins</i>"]
+    ASK["<b>what you ask for</b><br/><i>ranks · threads · GPUs · wall · queue — a stage's run card, execution</i><br/><i>queue · wall · memory — the calculation's allocation</i><br/><i>both in job-request.json; a prep command's flag wins</i>"]
 
     ENV --> PREP
     ASK --> PREP
@@ -169,7 +171,7 @@ description — which is what lets you hand the same folder to a colleague on a
 different cluster, or benchmark it on a short queue and run it on a long one,
 **without editing a fact about either machine**. What a run *asks for* — its
 ranks, threads and GPUs, its queue, wall and memory — is its own statement
-in `task.json`: a stage's run card (`execution`) states its ranks, threads,
+in its job request, `job-request.json` ([`job-request.md`](?doc=execution/job-request.md)): a stage's run card (`execution`) states its ranks, threads,
 GPUs, wall and queue; the calculation's `allocation` its queue, wall and
 memory — the memory there alone; the run card wins over the allocation, and
 the `prep` command over both. Nothing fills one in from the machine
@@ -187,7 +189,7 @@ where projects live, the server's settings — and how a shell enters an
 environment here, `env_init`. A job's queue, wall and memory are the job's
 own. The full split is [`configuration.md § 5`](?doc=configuration.md) M-1.
 
-**What to measure is declared too** — `task.json`'s `bench`, the points to
+**What to measure is declared too** — `job-request.json`'s `bench`, the points to
 try — and a benchmark is prepared **per stage** (`prep bench <stage>`),
 because what runs fastest changes between a coarse step and a tight one:
 different grid, different matrix, different best rank count. The measurement
@@ -205,6 +207,7 @@ The ones you will actually meet:
 | `catalogue.template.toml` | the master setting list | **TOML** — a person edits it by hand |
 | `<label>.template.toml` | this calculation's answers | **TOML** — a person reads and edits it |
 | `task.json` | the steps | **JSON** — mostly machine-written |
+| `job-request.json` | how and where it runs | **JSON** — mostly machine-written |
 | `<label>.source.xyz` + `.source.molstruct.json` | the atoms, plus where they came from | plain text + JSON sidecar |
 | `molbuilder.json` | what **you** want from this installation — how a launch is sent, the env names, where projects live, the server's settings — and how a shell enters an environment here (`env_init`) | JSON, hand-edited |
 | `environment.json` | what the target machine **is** | JSON, written by a probe |
@@ -333,7 +336,7 @@ Three ways in, and they all end at the same files:
 | you are | you use | it produces |
 |---|---|---|
 | working in a browser | the parameter tab, then the **Task setup** tab | the template, the description and the structure pair, in a folder you chose |
-| working at a terminal | `molbuilder jobset init` | the same files |
+| working at a terminal | `molbuilder describe` | the same files |
 | already have a folder | `molbuilder jobset prep task` | the runnable directories of the groups you pick — `--group N`, or its question, which offers every group not prepared and preparable |
 
 The browser never writes an engine input. It renders the *form* from the
@@ -417,12 +420,12 @@ one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 > attempts has to keep working after the folder is copied to a cluster
 > (`job-contracts.md` § 2.5b).
 >
-> **`jobset init` is the verb that creates a calculation**, and it names
+> **`molbuilder describe` is the verb that creates a calculation**, and it names
 > both the calculation and its structure from the projects root like
 > everything else:
 >
 > ```
-> molbuilder jobset init --structure P/structure/water.xyz \
+> molbuilder describe --structure P/structure/water.xyz \
 >                        --bundle   P/frequency/water-vib \
 >                        --shape hierarchical --engine pyscf \
 >                        --calculation vibration
@@ -518,7 +521,7 @@ flowchart TB
         FORM["<b>the calculation's form</b> — Build tab (optimization) ·<br/>Spectrum tab (vibration)<br/><code>/api/build/schema/&lt;engine&gt;?calculation=…</code>,<br/>one shared renderer (web/form-schema.md)"]
         DETECT["charge and spin — <code>/api/structure/analyze</code><br/>the one electronic state, for exactly what the form says,<br/>shown on the card; fills nothing (chemistry-correctness.md § 2a)"]
         SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every tab (web/handover-procedure.md)<br/>writes template + structure pair + <code>task.1st.json</code>"]
-        TS["<b>Task setup</b> — shape, stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation (job-contracts.md)"]
+        TS["<b>Task setup</b> — shape, stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation — and <code>job-request.json</code>,<br/>how it runs (execution/job-request.md)"]
     end
     subgraph MACHINE["run it — the machine that will compute"]
         PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps,<br/>workflow.md § 5), wrapper + dirs follow the deck —<br/>planned whole, the folder's state saved, then written"]
@@ -552,7 +555,7 @@ this table exists to rule out)*:
 |---|---|---|---|
 | **① live preflight** | on every form edit, Build tab (`/api/build/preflight`) | the same `validate(struct, cfg)` verdict gate ④ will give — surfaced while the person is still at the form | [`science/validation.md`](?doc=science/validation.md) § 4 |
 | **② the cell gate** | at Send, on the exported envelope | a box the calculation cannot use (degenerate cell, left-handed axes); *notices* (thin vacuum) hold the navigation, never the write | [`web/handover-procedure.md`](?doc=web/handover-procedure.md) |
-| **③ task preflight** | at every describe — Task-setup save, `jobset init` (its transport arm too), the Transport tab's Send — and at dispatch | a description that is not one: unknown keys, identity clashes (the § 6.6 check table), empty ladders (§ 6.5), bench entries that name no execution item and points that fit no item (§ 6.8; `generator.md` § 4.3a), a stage's value past its hard limit; it *warns* on a value, or a bias point, outside its recommended range ([`engines/template.md`](?doc=engines/template.md) § 5.3) | [`engines/stages.md`](?doc=engines/stages.md) §§ 6.5–6.8 |
+| **③ task preflight** | at every describe — Task-setup save, `molbuilder describe` (its transport arm too), the Transport tab's Send — and at dispatch | a description that is not one: unknown keys, identity clashes (the § 6.6 check table), empty ladders (§ 6.5), bench entries that name no execution item and points that fit no item (`job-request.md` § 3.4; `generator.md` § 4.3a), a stage's value past its hard limit; it *warns* on a value, or a bias point, outside its recommended range ([`engines/template.md`](?doc=engines/template.md) § 5.3) | [`engines/stages.md`](?doc=engines/stages.md) §§ 6.5–6.8 |
 | **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges and choices (`validation/metadata.py`) + the electronic state's one family (charge, parity, open shell, what the engine can run — `validation/chemistry.py`) + the engine's and the kind's science (grid, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr. And at the record step, the placement check: a spec with no engine frame, and any atom outside the cell along a non-periodic lattice vector, are refused (`cell.require_placed`, `model/structure-periodicity.md` § 6.0, check 3) | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) §§ 3–4 (step 3.3) |
 | **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |
 

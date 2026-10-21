@@ -25,7 +25,8 @@ import json
 
 import pytest
 
-from support.task_setup_page import every_card_text, unfold
+from support.task_setup_page import (every_card_text, file_text, unfold,
+                                     wait_for_file)
 
 pytestmark = pytest.mark.e2e
 
@@ -180,3 +181,73 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     assert "alphastage" not in text, (
         "the described folder's stage survived a move to one that has none")
 
+
+
+def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
+        page, flask_server, isolated_projects_root):
+    """`task-setup.md` § 4, § 7a, § 8: a hand-over becomes a calculation on
+    this page -- a shape picked, the proposal drawn into both records, a run
+    card filled, the shape changed once more, Save -- and the folder then
+    holds the description and its job request, the run card's value in the
+    job request, the save said beside the button after the folder is read
+    again.
+
+    THE SILENT FAILURES: a shape picked on a hand-over that proposes
+    nothing -- the page editing the hand-over's own text as a description;
+    the save's confirmation wiped by the folder's re-read -- a save that
+    looks like nothing happened; a shape changed after the proposal
+    rebuilding it, every edit made since lost; the run card's value written
+    into no record.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the hand-over's text taken for a
+    description (the shape written into it, no stages proposed); a shape
+    change proposing the records again."""
+    from molbuilder.web.app import create_app
+    from support.envelope import envelope
+    d = (isolated_projects_root / "handover" / "optimization"
+         / "finished_here")
+    d.mkdir(parents=True)
+    out = create_app(config={}).test_client().post(
+        "/api/task-setup/handover", json=dict(
+            {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
+            engine="pyscf", calculation="optimization", name="handed",
+            params={"job_name": "handed"}, dest=str(d))).get_json()
+    assert out["ok"], out
+    for f in out["structure_files"]:
+        (d / f["name"]).write_text(f["text"])
+    (d / out["template_name"]).write_text(out["template_text"])
+    (d / out["handover_name"]).write_text(out["handover_text"])
+
+    _open(page, flask_server, d)
+    page.click("#ts-shape-card .opt[data-shape='hierarchical']")
+    # THE GROUPS CARD APPEARS WITH THE PROPOSAL, folded as every card is:
+    # opened as a person opens it.
+    unfold(page, "ts-groups-card")
+    field = (".ts-next-step:not([hidden]) .ts-runcard "
+             "[aria-label='value for threads']")
+    page.wait_for_selector(field, timeout=20000)
+    page.fill(field, "2")
+    page.dispatch_event(field, "change")
+    wait_for_file(page, "request", '"threads": 2')
+    # ...THE SHAPE CHANGED ONCE MORE: one field of the description, the
+    # edits made since kept.
+    page.click("#ts-shape-card .opt[data-shape='flat']")
+    wait_for_file(page, "task", '"shape": "flat"')
+    assert '"threads": 2' in file_text(page, "request"), (
+        "a shape changed after the proposal rebuilt the records, the run "
+        "card's value lost")
+
+    page.click("#ts-save")
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=20000)
+    page.wait_for_function(
+        "() => { const n = document.getElementById('ts-save-said');"
+        " return n && !n.hidden && /Saved/.test(n.textContent); }",
+        timeout=20000)
+    said = page.evaluate(
+        "() => document.getElementById('ts-save-said').textContent")
+    assert "task.json" in said and "job-request.json" in said, said
+    assert json.loads((d / "task.json").read_text())["shape"] == "flat"
+    request = json.loads((d / "job-request.json").read_text())
+    assert request["stages"] == {
+        "coarse": {"group": 1, "execution": {"threads": 2}}}, request

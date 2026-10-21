@@ -306,19 +306,20 @@ def test_the_sequence_warnings_reach_the_prep_surface(tree):
             # § 6.6a warns about, and the only way to reach
             # it: `continue` is the default, and two identical rungs where the
             # second continues are simply *more steps at these settings*.
-            # ...on its RUN CARD, the one place a rung's `restart` lives
-            # (`stages.md` § 6.8d) -- which the sequence checks read.
-            [Stage(name="a", overrides={"mesh_cutoff": 200.0},
-                   # the launch shape, stated as a person's run card states
-                   # it -- a run with none is refused at prep
-                   # (`architecture.md` § 5.2)
-                   execution={"mpi_np": 2, "omp_threads": 1}),
-             Stage(name="b", overrides={"mesh_cutoff": 200.0},
-                   execution={"restart": "clean", "mpi_np": 2,
-                              "omp_threads": 1})],
+            # `restart` is the stage's own override, what it builds on
+            # (`job-request.md` § 2) -- which the sequence checks read.
+            [Stage(name="a", overrides={"mesh_cutoff": 200.0}),
+             Stage(name="b", overrides={"mesh_cutoff": 200.0,
+                                        "restart": "clean"})],
             engine="siesta", calculation="optimization", shape="hierarchical",
             name="JOB", source=str(tree / "h2.xyz")),
         dest)
+    # the launch shape, stated as a person's run card states it -- a run
+    # with none is refused at prep (`architecture.md` § 5.2)
+    from support.road import read_request, write_request
+    request = read_request(dest)
+    request["execution"] = {"mpi_np": 2, "omp_threads": 1}
+    write_request(dest, request)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
     r = CliRunner()

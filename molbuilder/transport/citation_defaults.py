@@ -4,15 +4,15 @@ Contract: [`engines/transport.md` § 2a.7](?doc=engines/transport.md), ruling 1
 (*"the relaxation DEFAULTS the Class A values; it does not seal them"*), and
 [`engines/template.md` § 6.4](?doc=engines/template.md), the `citation` marker.
 
-**One function, called once, at `jobset init`.** It reads what the citation
+**One function, called once, at `molbuilder describe`.** It reads what the citation
 answers with — its recorded contract (§ 3.1): a cited run's own deck through
 `parse.contract.contract_of`, a cited pair's ``info.calculation`` as that door
 wrote it when the pair was saved — and returns the
-:class:`~molbuilder.config.siesta.SiestaConfig` that `init` writes the
+:class:`~molbuilder.config.siesta.SiestaConfig` that `molbuilder describe` writes the
 template from. After that the template is the answer and this module has no
 further part: `prep` reads the file, not the citation.
 
-**Why this is `init`'s job and not `prep`'s.** The physics (§ 2a.7) requires the leads and the device to agree
+**Why this is `describe`'s job and not `prep`'s.** The physics (§ 2a.7) requires the leads and the device to agree
 *with each other*, which needs the value to be **single**, not **inherited**.
 One template shared by every stage satisfies that exactly, and permits the
 ordinary practice of relaxing with a cheap description and transporting with an
@@ -102,7 +102,7 @@ class CitationAnswers:
 
 
 def citation_answers(cited_path) -> CitationAnswers:
-    """Read the citation once (`engines/transport.md` § 3.8.0: at `init`,
+    """Read the citation once (`engines/transport.md` § 3.8.0: at `molbuilder describe`,
     into this calculation's own template): its recorded contract -- a cited
     run's, its view as the Results tab reads it (`runs.view_of`: its deck
     through `contract_of`), a cited pair's ``info.calculation`` as that door
@@ -167,7 +167,7 @@ def citation_answers(cited_path) -> CitationAnswers:
 
 def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
                                 **chosen) -> "SiestaConfig":
-    """The config `jobset init` and the describe door write a transport
+    """The config `molbuilder describe` and the describe door write a transport
     template from: the citation's answers (:func:`citation_answers`), then
     what the person chose on the shared panel (``chosen``, in the same
     field names) laid over them -- the person may change any of it, for
@@ -219,7 +219,7 @@ def asked_of_the_person(cited) -> Tuple[str, ...]:
 def check_pseudopotentials(cited, psml_lib) -> None:
     """THE PSEUDOPOTENTIALS BY THE CITATION'S KIND (`engines/transport.md`
     § 3.1), asked by both roads that describe a transport calculation --
-    `jobset init` and the Transport tab's describe door: a cited run's
+    `molbuilder describe` and the Transport tab's describe door: a cited run's
     travel with it, so a directory named for one is refused; a cited pair
     brings none, so the directory that holds them all is required, as a
     structure optimization's is (:func:`asked_of_the_person`).  Raises
@@ -229,7 +229,7 @@ def check_pseudopotentials(cited, psml_lib) -> None:
         raise ValueError(
             f"{cited.path.name} is a structure pair, and a pair brings no "
             f"pseudopotentials: name the directory that holds them all "
-            f"(`jobset init --psml-lib DIR`, the template's `psml_lib`), as a "
+            f"(`molbuilder describe --psml-lib DIR`, the template's `psml_lib`), as a "
             f"structure optimization does -- the convention is the bare name "
             f"`pseudopotential`, the projects tree's own "
             f"(engines/transport.md § 3.1).")
@@ -251,7 +251,7 @@ def _the_persons(chosen) -> Dict[str, Any]:
 def transport_template_text(cite_dir, *, label: str, blank=(),
                             **chosen) -> str:
     """The text of a transport description's template -- **the one door
-    both roads write it through** (`jobset init` and the browser's describe
+    both roads write it through** (`molbuilder describe` and the browser's describe
     door), so the file cannot differ by the road that made it.
 
     Its values are :func:`siesta_config_from_citation`'s: the citation's

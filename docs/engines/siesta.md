@@ -181,13 +181,13 @@ spec_for(struct, config=None, *, names, cell=None,
 copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the elements whose <label>.psml was MISSING
 ```
 
-A deck is made on the road: `init` describes the calculation, and `prep`
+A deck is made on the road: `molbuilder describe` describes the calculation, and `prep`
 writes the deck on the machine that will run it — a SIESTA run states its
 ranks and the cores per rank, and on a machine with a queue its queue, wall
 and memory too (`--domain`, `--time`, `--mem`):
 
 ```bash
-molbuilder jobset init --structure P/structure/hemeC.xyz --bundle P/optimization/hemeC \
+molbuilder describe --structure P/structure/hemeC.xyz --bundle P/optimization/hemeC \
     --engine siesta --calculation optimization --shape flat --psml-lib pseudopotential
 molbuilder jobset prep task --group 1 --bundle P/optimization/hemeC --target this \
     --np 4 --cpus-per-task 1
@@ -715,7 +715,7 @@ verb names its stage, on a one-rung ladder exactly as on three
   overlay until 2026-08-16 — flags of the `molbuilder fdf` verb, deleted
   2026-08-11 (§ 1). It then said both spellings survived on `molbuilder pyscf`;
   that command was deleted 2026-09-17, so **neither spelling exists anywhere**.
-  A ladder is declared in `task.json` and built by `jobset init
+  A ladder is declared in `task.json` and built by `molbuilder describe
   --stage-strategy …`.)* The
   `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
   warm-restart files carry forward — which is what lets a later stage find an
@@ -831,7 +831,7 @@ variant tested must render end-to-end without raising.
 was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
 presets), `test_siesta_use_gpu.py` (§ 7's
 two orthogonal decisions, including the rejected GPU + ScaLAPACK pair),
-`test_k_point_mesh.py` (§ 6.1's mesh on every rung, through `jobset init`
+`test_k_point_mesh.py` (§ 6.1's mesh on every rung, through `molbuilder describe`
 and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named
 `test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until
 2026-08-16; neither file exists — they went with the `fdf` verb and the stage

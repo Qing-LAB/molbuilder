@@ -771,7 +771,7 @@ each a notice by its name and level — one table, `READ_NOTICES`, made by
 `model/overview.md` § 2.2a, I9) and `structure.restored` (info, I8). The two
 warned states are refusals for a door that builds from the file; a door that
 only shows it names them in `opened` and opens it, said. `in_your_order` is the
-read of an editor or of `jobset init`: a structure in an engine's order is put
+read of an editor or of `molbuilder describe`: a structure in an engine's order is put
 back in yours and said, and a run whose order nothing states is refused —
 asking to open it as well is refused too. A calculation's own structure needs
 no such read: molbuilder writes it in your order (I1).
@@ -783,7 +783,7 @@ modify the metadata, which would eventually be saved as a JSON")*. A `.xyz`
 with no `.molstruct.json` beside it — and not an engine's own file in one of our
 runs (§ 2.4) — is read as its atoms and coordinates: isolated on every axis, no
 cell, no labels. The load answers what it did not read, and every door that
-opens a file for a person says it — the load route as a notice, `jobset init`
+opens a file for a person says it — the load route as a notice, `molbuilder describe`
 and the CLI as a printed line: *"x.xyz has no .molstruct.json beside it, so
 only its atoms and coordinates were read -- no cell, no labels; its comment line
 was not read as metadata: «…»"* — the line quoted whole, so the person can set
@@ -798,7 +798,7 @@ whole and its sidecar applied to the whole set; then `load(path)` answers
 always had it; `load(path, frame=i)` answers frame `i`, an index outside
 `0 … F−1` refused naming `F`; `load(path, frames=True)` answers the whole set.
 A one-frame file answers the same for all three. A door that prints
-(`jobset init`, `molbuilder validate`) says when it took one frame of
+(`molbuilder describe`, `molbuilder validate`) says when it took one frame of
 several: *"this file holds 3 frames; frame index 0 (of 3) was taken"* — a
 line, never a refusal. **`molbuilder modify` refuses a file of several frames**
 (user, 2026-10-10: *"on a cli, we do not allow direct operation on a
@@ -810,7 +810,7 @@ the Modify tab, which asks.
 > **`molbuilder.load()` stood here and is deleted** *(2026-09-07)*. It read
 > the geometry and not the sidecar — it predated the sidecar by two months and
 > was never swept when the codec landed. Its one production caller was
-> `jobset init`, which therefore wrote descriptions with the author's regions,
+> `molbuilder describe`, which therefore wrote descriptions with the author's regions,
 > frozen atoms and cell missing: the same failure `siesta/input.py` records
 > having fixed at its own door, *"the script relaxed every atom of a structure
 > whose author had frozen two."* A second name for the door is what let the
@@ -898,7 +898,7 @@ copy of any of them:
    the one door for an engine's record, which the transport composer alone
    calls for its junction; so no pair molbuilder writes for a person is
    remapped (I1), and a door that writes for a person — the save, export and
-   hand-over routes, `jobset init`, `xv2xyz --from-run` — restores first. **An engine's own
+   hand-over routes, `molbuilder describe`, `xv2xyz --from-run` — restores first. **An engine's own
    structure file** in a reordered run is read through that run's view
    (`runs.view_of`), carrying the run's order record from its deck (I5) —
    answered as it is, marked, unless an editor asks the load to restore (I8).

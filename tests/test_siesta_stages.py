@@ -88,23 +88,18 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     assert stage.overrides == SIESTA_STAGE_PRESETS[tier]
 
 
-def test_a_stage_has_exactly_the_four_fields_of_section_2():
+def test_a_stage_has_exactly_the_two_fields_of_section_2():
     """§ 2.  Anything else a stage seemed to need turned out to belong to
-    the shared schema or to a producer's input (§ 3).
-
-    `execution` is the third (§ 6.8d): WHAT THIS RUNG RUNS AT, where
-    `overrides` is what it *is*.  Two maps and not one
-    because different things read them -- `overrides` reaches the deck
-    through `varies`, `execution` reaches the launch through the grid
-    enumerator -- and a field that changes the answer is refused from
-    `execution` by name.  `group` is the fourth (2026-10-11): the job the
-    stage runs in, which no single run can mean (§ 3)."""
+    the shared schema, to a producer's input (§ 3), or to the job request:
+    what a rung runs at and the job it runs in are how it runs, the job
+    request's (`execution/job-request.md` § 3.2, § 3.3), and a stage of the
+    description is what it computes -- its name and its `overrides`."""
     # This is a TRIPWIRE ON A DECISION, not a shape check: `task.STAGE_FIELDS`
-    # is derived from these fields, so the two cannot drift, but "four and
+    # is derived from these fields, so the two cannot drift, but "two and
     # no others" is a design ruling and no type says it -- there is no
-    # on/off.  A fifth field should cost a conversation.
+    # on/off.  A third field should cost a conversation.
     assert [f.name for f in dataclasses.fields(Stage)] == [
-        "name", "overrides", "execution", "group"]
+        "name", "overrides"]
 
 
 def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():

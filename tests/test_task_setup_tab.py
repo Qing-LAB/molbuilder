@@ -78,6 +78,8 @@ def test_the_tab_reuses_the_shipped_files_api(endpoint, web_client):
 # --------------------------------------------------------------------- #
 
 import json as _json
+
+from support.road import save_both
 from support.machines import SLURM, WORKSTATION
 
 
@@ -163,7 +165,8 @@ def test_the_handover_carries_the_proposed_ladder(web_client,
         params=params)).get_json()
     assert rendered["ok"], rendered
     over = _json.loads(rendered["handover_text"])
-    assert [(s["name"], s["group"]) for s in over["proposed_stages"]] == ladder
+    assert [(s["name"], over["proposed_groups"][s["name"]])
+            for s in over["proposed_stages"]] == ladder
     assert all(s["overrides"] == {} for s in over["proposed_stages"])
 
 
@@ -189,17 +192,18 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
         (d / rendered["handover_name"]).write_text(rendered["handover_text"])
         over = _json.loads(rendered["handover_text"])
 
-        proposed = {"schema": "molbuilder/task@1", "engine": over["engine"],
+        proposed = {"schema": over["task_schema"], "engine": over["engine"],
                     "calculation": over["calculation"],
                     "shape": "flat", "run": over["run"],
                     "structure": over["structure"], "varies": [],
-                    "stages": [{"name": "coarse", "group": 1,
-                                "overrides": {}}]}
-        r = web_client.post("/api/task-setup/save", json={
-            "dest": str(d), "text": _json.dumps(proposed)})
+                    "stages": [{"name": "coarse", "overrides": {}}]}
+        request = {"schema": over["job_request_schema"],
+                   "stages": {"coarse": {"group": 1}}}
+        r = save_both(d, proposed, request, web_client)
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         assert (d / "task.json").is_file()
+        assert (d / "job-request.json").is_file()
         assert out["stages"] == ["coarse"]
         assert out["handover_here"] is True, (
             "the save door should report the hand-over for the browser to remove")
@@ -215,13 +219,14 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
     d = _fresh_calc_dir(isolated_projects_root)
     try:
         r = web_client.post("/api/task-setup/save",
-                            json={"dest": str(d), "text": "{ not json"})
+                            json={"dest": str(d), "text": "{ not json",
+                                  "request_text": "{}"})
         assert r.status_code == 400
         assert not (d / "task.json").exists(), "a bad description was written"
 
         # complete but for `stages`, so the STAGES refusal is what fires
         from molbuilder.identity import run_id
-        no_stages = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+        no_stages = {"schema": "molbuilder/task@2", "engine": {"name": "siesta"},
                      "calculation": "optimization",
                      "shape": "flat",
                      "run": {"name": "x", "id": run_id("x", "H2"),
@@ -230,7 +235,9 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
                                    "atoms": 2},
                      "varies": []}
         r2 = web_client.post("/api/task-setup/save", json={
-            "dest": str(d), "text": _json.dumps(no_stages)})
+            "dest": str(d), "text": _json.dumps(no_stages),
+            "request_text": _json.dumps({"schema": "molbuilder/job-request@1",
+                                         "stages": {}})})
         assert r2.status_code == 400
         assert "stage" in r2.get_json()["error"].lower(), (
             "the refusal should be the reader's own words")
@@ -255,14 +262,14 @@ def test_the_runtime_loads_before_every_other_script(web_client):
 def test_the_column_picker_offers_no_run_setting(web_client):
     """A run setting is the rung's run card's, never a column (`stages.md`
     § 6.2, § 6.8d; plan § 5w K5): the machine's answers, and a person's --
-    `restart`, `use_gpu`, the solver.  `restart` and `use_gpu` were columns
-    until 2026-09-30, and a rung's `use_gpu` set as one reached its deck and
-    not the scheduler's device ask (SO-C1)."""
+    `use_gpu`, the solver.  `use_gpu` was a column until 2026-09-30, and a
+    rung's `use_gpu` set as one reached its deck and not the scheduler's
+    device ask (SO-C1).  `restart` says what a stage builds on -- the
+    description's, a column (`job-request.md` § 2)."""
     from molbuilder.template import run_settings
     # The set is the catalogue's own answer; that it holds the settings this
     # rule is about is asserted, so an empty answer cannot pass vacuously.
-    assert {"restart", "use_gpu", "diag_algorithm", "mpi_np"} <= run_settings(
-        "siesta")
+    assert {"use_gpu", "diag_algorithm", "mpi_np"} <= run_settings("siesta")
     j = web_client.get("/api/task-setup/columns?engine=siesta"
                        "&calculation=optimization").get_json()
     names = [i["name"] for i in j["items"]]
@@ -414,13 +421,13 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     # one, so no column of the stage table shows it.  The calculation's
     # identity is one; a value a stage may set is none of them.
     over = _json.loads(rendered["handover_text"])
-    described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+    described = {"schema": over["task_schema"], "engine": over["engine"],
                  "calculation": over["calculation"], "shape": "flat",
                  "run": over["run"], "structure": over["structure"],
-                 "varies": [], "stages": [{"name": "relax", "group": 1,
-                                           "overrides": {}}]}
-    s = web_client.post("/api/task-setup/save",
-                        json={"dest": str(d), "text": _json.dumps(described)})
+                 "varies": [], "stages": [{"name": "relax", "overrides": {}}]}
+    s = save_both(d, described, {"schema": over["job_request_schema"],
+                                 "stages": {"relax": {"group": 1}}},
+                  web_client)
     assert s.status_code == 200, s.get_json()
     shared = {r["name"]: r for r in _folder(web_client, d)["template"]["shared"]}
     assert (shared["system_label"]["value"],
@@ -501,15 +508,15 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
 
         # The run card states its launch shape, as a run's must
         # (`architecture.md` § 5.2).
-        described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+        described = {"schema": over["task_schema"], "engine": over["engine"],
                      "calculation": over["calculation"],
                      "shape": "flat", "run": over["run"],
                      "structure": over["structure"], "varies": [],
-                     "execution": {"mpi_np": 1, "omp_threads": 1},
-                     "stages": [{"name": "coarse", "group": 1,
-                                 "overrides": {}}]}
-        s = web_client.post("/api/task-setup/save",
-                            json={"dest": str(d), "text": _json.dumps(described)})
+                     "stages": [{"name": "coarse", "overrides": {}}]}
+        s = save_both(d, described, {
+            "schema": over["job_request_schema"],
+            "execution": {"mpi_np": 1, "omp_threads": 1},
+            "stages": {"coarse": {"group": 1}}}, web_client)
         assert s.status_code == 200, s.get_json()
 
         # the data files the engine will open -- prep refuses without them
@@ -601,15 +608,15 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
     assert 'value = "none"' in blk, blk
 
     over = _json.loads(out["handover_text"])
-    described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+    described = {"schema": over["task_schema"], "engine": over["engine"],
                  "calculation": over["calculation"],
                  "shape": "flat", "run": over["run"],
                  "structure": over["structure"], "varies": [],
-                 "execution": {"threads": 1},
-                 "stages": [{"name": "coarse", "group": 1,
-                             "overrides": {}}]}
-    s = web_client.post("/api/task-setup/save",
-                        json={"dest": str(d), "text": _json.dumps(described)})
+                 "stages": [{"name": "coarse", "overrides": {}}]}
+    s = save_both(d, described, {"schema": over["job_request_schema"],
+                                 "execution": {"threads": 1},
+                                 "stages": {"coarse": {"group": 1}}},
+                  web_client)
     assert s.status_code == 200, s.get_json()
 
     p = subprocess.run(
@@ -671,14 +678,14 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
         (d / out["template_name"]).write_text(out["template_text"])
         over = _json.loads(out["handover_text"])
 
-        described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+        described = {"schema": over["task_schema"], "engine": over["engine"],
                      "calculation": over["calculation"],
                      "shape": "hierarchical", "run": over["run"],
                      "structure": over["structure"], "varies": [],
-                     "stages": [{"name": "coarse", "group": 1,
-                                 "overrides": {}}]}
-        s = web_client.post("/api/task-setup/save",
-                            json={"dest": str(d), "text": _json.dumps(described)})
+                     "stages": [{"name": "coarse", "overrides": {}}]}
+        s = save_both(d, described, {"schema": over["job_request_schema"],
+                                     "stages": {"coarse": {"group": 1}}},
+                      web_client)
         assert s.status_code == 200, s.get_json()
         _pseudos_for(d, ["H"])
 
@@ -757,17 +764,16 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
 def test_the_run_card_offers_only_what_the_kind_carries(web_client):
     """A kind's run card offers the run settings that kind carries
     (`template.md` § 6.3's sibling rule, as the columns are narrowed):
-    `restart` is a relaxation rung's -- an optimization's, and since
-    2026-10-19 a vibration's (`vibration.md`, *the start state is stated
-    where it is read*) -- and a transport's card does not carry it (the
-    item's `calculations`; a value its decks would ignore)."""
+    TranSIESTA's solver is a transport calculation's, and an optimization's
+    card does not carry it (the item's `calculations`; a value its decks
+    would ignore)."""
     def names(kind):
         j = web_client.get("/api/task-setup/sweepable?engine=siesta"
                            f"&calculation={kind}").get_json()
         return {i["name"] for i in j["items"]}
-    assert "restart" in names("optimization")
-    assert "restart" in names("vibration")
-    assert "restart" not in names("transport")
+    assert "ts_solution_method" in names("transport")
+    assert "ts_solution_method" not in names("optimization")
+    assert "ts_solution_method" not in names("vibration")
     assert "use_gpu" in names("vibration")
 
 
@@ -837,7 +843,7 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
     try:
         from molbuilder.identity import run_id
         bad_bounds = {
-            "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+            "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
             "calculation": "optimization",
             "shape": "hierarchical",
             "run": {"name": "x", "id": run_id("x", "H2"),
@@ -848,10 +854,11 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
             # (`engines/template.md` § 5.3); the codec has no opinion about
             # values, so only the preflight can catch this.  (A value merely
             # outside a recommended range is warned, and saves.)
-            "stages": [{"name": "coarse", "group": 1,
+            "stages": [{"name": "coarse",
                         "overrides": {"kgrid": [0, 4, 4]}}]}
-        r = web_client.post("/api/task-setup/save", json={
-            "dest": str(d), "text": _json.dumps(bad_bounds)})
+        r = save_both(d, bad_bounds, {"schema": "molbuilder/job-request@1",
+                                      "stages": {"coarse": {"group": 1}}},
+                      web_client)
         assert r.status_code == 400, r.get_json()
         body = r.get_json()
         assert "preflight" in body["error"], body

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from support.road import describe_calculation, run_road_case
+from support.road import describe_calculation, read_request, run_road_case
 
 TABLE = tomllib.loads(
     (Path(__file__).parent / "data" / "restart_files.toml").read_text())
@@ -60,7 +60,8 @@ def test_the_page_says_which_list_the_calculation_follows(own, tmp_path,
     task = json.loads((bundle / "task.json").read_text())
     got = create_app(config={}).test_client().post(
         "/api/task-setup/prep-plan",
-        json={"task": task, "dest": str(bundle)}).get_json()
+        json={"task": task, "request": read_request(bundle),
+              "dest": str(bundle)}).get_json()
     assert got["ok"] is True, got
     assert got["warm"]["own"] is own, got["warm"]
     assert got["warm"]["path"] == (str(bundle / FILENAME) if own

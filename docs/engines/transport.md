@@ -426,7 +426,7 @@ direction [`SiestaManual542`]. tbtrans takes `TBT.k` as a list —
 (`m_tbt_kpoint.F90`, `read_kgrid`).
 
 **What molbuilder does** *(ruled 2026-09-29, plan § 5w K17; built 2026-09-30
-with `kmesh.py`, K3)*. The offset is a `citation` item: `jobset init`
+with `kmesh.py`, K3)*. The offset is a `citation` item: `molbuilder describe`
 carries the cited run's offset into the template beside its grid — from the
 cited deck's own block, or the recorded contract's `kgrid_displacement` — and
 every stage writes it through the one writer
@@ -524,7 +524,7 @@ rather than a crash — which is why they are guards in code and not advice.
 | 1 | device `kz = 1` | **fixed**: the rung's mesh writes 1 (`kmesh.mesh_for`), the form draws the component locked, and every door refuses another value (`kmesh.fixed` through `template.why_not`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) *(an error in `validation._validate_transport_kind`, the kind's validator, from 2026-09-16 until 2026-09-30, beside a warning about the same axis in the SIESTA validator)* | ✅ on every door. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one was keyed on `TransportConfig` in `_ENGINE_VALIDATORS` while every rung resolved a `SiestaConfig`, so it dispatched for nothing — deleted 2026-09-17, the class 2026-10-02. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
 | 2 | the leads' k-points along z are many (dense) | default **100**, a catalogue row (`electrode_kz`) that each lead's k-point grid reads for its count along z (§ 0.2) | ✅ **held** — the value reaches the deck (the lead's grid writes `0 0 100` as its row along z), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 50 and above 200 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
 | 3 | the k-point grid in the electrode plane (x, y) and its offset are identical in lead and device — so the lead is the bulk of the device's electrode region (§ 0.2) | one shared `kgrid` and `kgrid_displacement`, which every stage's k-point grid reads (`kmesh.mesh_for`) — and TranSIESTA itself stops on *"found incompatible k-grids"* (`ts_electrode.F90:1235`) | ✅ by construction |
-| 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `init` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
+| 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `molbuilder describe` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
 > **Corrected 2026-09-15.** This table said all four were guards in code. Row 2
@@ -1233,7 +1233,7 @@ default grouping is built (the row below).*
 | **The T(E) window belongs to the transmission** | Exposed and tunable **there only**. Consequence: the device deck has no reason to carry the `TBT.*` settings at all, so the two decks legitimately differ and each carries what its own binary reads. What keeps them consistent was never byte-identity; it is the shared Class A values |
 | **Class C starts from the citation, stage by stage** *(TD6, the user 2026-10-09)* | Each SCF stage — the seed, both leads, the device — carries its own mixer and convergence criteria, never one shared set, since a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike; each starts from the one value the cited run converged with (`citation_defaults`, § 3.1) and is changed on its own tab (§ 2a.13). The leads' dense k-points along z are the catalogue's default, 100 (§ 0.2), not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
-| **Default grouping** | The description's groups, 1 1 1 2 3: the preparatory block — seed and both leads — group 1, one submission, since none builds on another; the device group 2; the transmission group 3, each scan one job walking its points ([`engines/stages.md`](?doc=engines/stages.md) § 2; [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6). `jobset prep task` prepares every group at once (`--group 1 --group 2 --group 3` without a terminal); `jobset launch task` sends group 1, and group 2 once the seed and leads have finished — its first launch gathering their files — then group 3 ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*). The device and the transmission never share a job: the transmission builds on the device, which you look at first |
+| **Default grouping** | The job request's groups, 1 1 1 2 3: the preparatory block — seed and both leads — group 1, one submission, since none builds on another; the device group 2; the transmission group 3, each scan one job walking its points ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.3; [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6). `jobset prep task` prepares every group at once (`--group 1 --group 2 --group 3` without a terminal); `jobset launch task` sends group 1, and group 2 once the seed and leads have finished — its first launch gathering their files — then group 3 ([`execution/job-system.md`](?doc=execution/job-system.md), *The task*). The device and the transmission never share a job: the transmission builds on the device, which you look at first |
 | **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c), its points run (Q17-d) and its record carries each frame's point and the mode's average (§ 2a.12, Q17-e); its Results are built (`web/results.md` § 2.5, Q17-f, 2026-10-10) |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
@@ -1659,10 +1659,10 @@ The Results surface shows that label beside the curve, not buried in metadata.
 
 **A list of several voltages states the switch** in `task.json` —
 `"bias": {"voltages_v": [0.0, 0.2, 0.4], "low_bias_approximation": true |
-false}` (`jobset init --bias … --low-bias-approximation / --no-low-bias-approximation`;
+false}` (`molbuilder describe --bias … --low-bias-approximation / --no-low-bias-approximation`;
 the transport tab asks, with nothing chosen, once its list holds a second
 voltage) — and is refused without it: never inferred from the count. A list of
-one voltage is the single bias, and states none — written so, `[0.0]`, by both roads (`jobset init` with no `--bias`, the Transport tab's box); an empty list is written by neither and no reader fills one in (2026-10-18). The tab's list is typed, or
+one voltage is the single bias, and states none — written so, `[0.0]`, by both roads (`molbuilder describe` with no `--bias`, the Transport tab's box); an empty list is written by neither and no reader fills one in (2026-10-18). The tab's list is typed, or
 filled by its **start / stop / step** builder — 0 V first, then the walk — and
 stays editable; one list either way. Beside the junction slot,
 `"swap_electrodes": true` states the electrode rename this calculation makes
@@ -1876,7 +1876,7 @@ points and says to launch it again, the next run taking the done points over
 within its iteration limit does not converge on the next walk either: the same
 start, the same deck. To change it — the mixing, the iteration limit, a smaller
 bias step — change the description and prepare it again, if it was never
-launched; a launched rung is not prepared again — its way back is
+launched; what a launched rung computes is not prepared again — its way back is
 `job-system.md`'s *How the checkpoint supports you*.
 
 A **single-bias** calculation, and a **low-bias** one, have no `v*` level at
@@ -2196,7 +2196,7 @@ TranSIESTA itself stops only at none.
 `--cold` — and every run before it stays as it was.
 
 The consequence for the workflow: **a parameter of a rung never launched is
-changed and its group prepared again**; a launched rung is not prepared again
+changed and its group prepared again**; what a launched rung computes is not prepared again
 — its way back is
 [`execution/job-system.md`](?doc=execution/job-system.md)'s *How the
 checkpoint supports you* — and the previous result stays in the folder's
@@ -2522,7 +2522,7 @@ plots — the transmission deck asks TBtrans for all of them.
 **Composed on read, so a ladder in progress has a report**: the transport
 record is composed from whichever rungs' records exist, each time it is read.
 The Results tab opens it at the calculation's root through its description,
-`task.json` (`web/results.md` § 0.1) — there from `jobset init` on;
+`task.json` (`web/results.md` § 0.1) — there from `molbuilder describe` on;
 `<label>.transport.json` is what `summarize task` writes for the command line.
 **The provenance is what was gathered**, read from each rung's `.gathered-from`
 — never the newest run by file time — and, for a sweep's points, what each
@@ -2594,7 +2594,6 @@ naming one there is refused where it is written (§ 3.8.9).
 | *the equilibrium contour* | `TS.Contours.Eq.Pole`; no `contour.eq` in `%block TS.ChemPot.<name>` | **Stated by its pole energy, never left to the engine**: the device's `TS.ChemPot` blocks write no `contour.eq`, so TranSIESTA takes its continued-fraction branch and counts the poles from `TS.Contours.Eq.Pole`, the row above (§ 6.1c). Unwritten, that energy is TranSIESTA's own π·60·kT·0.7 — about 42 poles (`m_ts_chem_pot.F90:313–319`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses an energy that gives fewer than 20 poles at the run's temperature (§ 6.1c) | 2 |
 | `ts_elecs_eta_ev` | `TS.Elecs.Eta` | The leads' self-energy broadening in the device's NEGF loop. 1 meV, TranSIESTA's own default, written | 3 |
 | `negf_neq_spacing_ev` | `delta` in `%block TS.Contour.nEq.line` | **The bias window's energy spacing**, 0.01 eV — TranSIESTA's own default, written at every device point with the window the cutoff gives (§ 2a.11, *What a run's points share*: a lever on the leads' files); the block is unread at zero bias | 3 |
-| `ts_elecs_out_of_core` | `TS.Elecs.Out-of-core` | **Whether the leads' surface Green's functions are kept as files** (true, TranSIESTA's own default) or recomputed in memory at every SCF iteration (false: no `tsgf/` file, more time per iteration) — § 2a.11, *What a run's points share* | 3 |
 | `ts_scf_dq_converge` · `ts_scf_dq_tolerance` | `TS.SCF.dQ.Converge` · `TS.SCF.dQ.Tolerance` | **The device's charge check.** On (TranSIESTA's default), the NEGF cycle counts as converged only when the device's electrons are off by less than the tolerance — blank is not set, TranSIESTA's thousandth of the electrons on the atoms that are not buffer atoms (`m_ts_options.F90`, `scfconvergence_test.F`). Off lets a run whose density has stopped changing finish with its charge off; SIESTA writes the Hamiltonian the transmission reads only on convergence (`final_H_f_stress.F`) *(2.3.0)* | 3 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening of the device. **Inert at zero bias** — there is no non-equilibrium window to integrate. **Blank is not set** — the line is not written and TranSIESTA takes a tenth of the smallest lead broadening; **0 is written as 0** — no broadening on the device, a value of its own (below) | 3 |
 | `negf_neq_fermi_cutoff_kt` | `TS.Contours.nEq.Fermi.Cutoff` | How far past each lead's Fermi level the bias window reaches, in kT. 5, TranSIESTA's own default, written; **refused below 2.5**, where TranSIESTA stops the run (`at_least`, `m_ts_contour_neq.f90:141-144`) *(2.1.0)* | 3 |
@@ -2673,6 +2672,7 @@ nearly free — so these *should* differ across stages.
 | `mpi_np` · `omp_threads` · `max_memory_mb` · `gpu_count` | the allocation |
 | `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
 | `ts_solution_method` | `TS.SolutionMethod`, the device's: how TranSIESTA inverts the device matrix — speed and memory, never the answer. `BTD` (TranSIESTA's default, which its manual recommends) or `full`; `MUMPS` exists only in a build with that library, which the packaged SIESTA is not, so it is not offered. Set on the device's run card, and written, so the deck says which ran (`m_ts_options.F90:180`) *(2.1.0)* |
+| `ts_elecs_out_of_core` | `TS.Elecs.Out-of-core`, the device's: whether the leads' surface Green's functions are kept as files (true, TranSIESTA's own default) or recomputed in memory at every SCF iteration (false: no `tsgf/` file, more time per iteration) — § 2a.11, *What a run's points share* |
 | `continue_retries` | how many times the wrapper retries — on a transport point, continuing the point's own cycle from its own last density (§ 2a.11) |
 | ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with a cited run, and comes from the person's directory for a cited pair, § 3.1, `template.md` § 5)* |
 
@@ -2704,7 +2704,7 @@ failure it exists to prevent:
 
 | | landed as |
 |---|---|
-| **Class A · Shared** | the **template**, `<label>.template.toml`, written by `jobset init` with its values **defaulted from the cited relaxation** and editable thereafter. A transport folder carried no template at all before this |
+| **Class A · Shared** | the **template**, `<label>.template.toml`, written by `molbuilder describe` with its values **defaulted from the cited relaxation** and editable thereafter. A transport folder carried no template at all before this |
 | **Class C · Stage-local** | `Stage.overrides`, with **`stages = [...]`** on the catalogue row saying which rungs may own each item |
 | **Class D · Role-fixed** | **`role = [...]`** on the row — the third answerer after `allocation` (the scheduler) and `citation` (a cited run). A `role` item is not a form field, not a stage-table column, carries no value in a template of that kind, and no stage override, pin or sweep may set it. **Its answer is put into the rung's config by `resolve`** — the catalogue's `value`, or the rung's own in `role_values` (the device's `transiesta`), or the bias point it renders — so the section writes it like any other item *(since 2026-09-29, K1; until then the walk skipped it and the rung's block typed the line)* |
 | **Class E · Machine** | `allocation` items, unchanged |
@@ -2911,7 +2911,7 @@ The road is the composite, through the ordinary `jobset` verbs:
 #    L-electrode / R-electrode and frozen), and let it CONCLUDE.
 
 # 1. describe the transport calculation: one slot, the finished attempt
-molbuilder jobset init --calculation transport --engine siesta \
+molbuilder describe --calculation transport --engine siesta \
     --shape hierarchical --bundle BDT-Au/transport/BDTTrans \
     --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
     --bias 0.0,0.2 --no-low-bias-approximation
@@ -2941,7 +2941,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 
 | Command | Does | Code |
 |---|---|---|
-| `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
+| `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
 | `jobset prep task [--group N ...]` | show the groups, offer every group not prepared as described and preparable — a changed one among them (`job-system.md`, *The task*, `prep task`, 2); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
@@ -3014,18 +3014,18 @@ that holds all pseudopotentials"; "the record of transport shows where the
 files are copied from")*. The pair carries `info.calculation`; a pair with none
 is refused by name, because a bare structure brings nothing to default the
 settings from. The pseudopotentials come from the directory the person gives —
-`jobset init --psml-lib DIR`, written as the template's `psml_lib`, the
+`molbuilder describe --psml-lib DIR`, written as the template's `psml_lib`, the
 person's (on the Transport tab, the shared panel's field, shown exactly when
 the citation is a pair, § 3.8.1) — required as it is for a structure
 optimization, copied into the calculation by prep, and the transport
 calculation's record shows where they were copied from: its template's
 `psml_lib` row, and the seed deck's note naming that directory; `--psml-lib` is refused for a cited run, whose
 pseudopotentials come with it, and required for a pair — one rule, asked by
-both roads that describe (`citation_defaults.check_pseudopotentials`: `jobset
-init` and the Transport tab's describe door). **Once a calculation
+both roads that describe (`citation_defaults.check_pseudopotentials`:
+`molbuilder describe` and the Transport tab's describe door). **Once a calculation
 cites a pair, leave the pair alone** *(the user, 2026-10-10: "effort should
 be tell user what not to do")*: a new or changed frame set is a new file,
-cited by a new transport calculation (`jobset init`). The pair's two files
+cited by a new transport calculation (`molbuilder describe`). The pair's two files
 are pinned by their sha256 in `slot-provenance.json`, as a cited run's files
 are, and a pair edited all the same is refused by name at the next prep,
 saying so. A frame set's
@@ -3043,7 +3043,7 @@ frame and voltage (§ 2a.11).
 **A calculation's folder is its own.** A calculation does not live inside its
 own input: describing into the cited run's folder, or a folder below it, is
 refused before anything is written (`compose.refuse_inside_citation`, asked by
-the Transport tab's describe door and by `jobset init`) — every later prep
+the Transport tab's describe door and by `molbuilder describe`) — every later prep
 would otherwise write into the finished run it cites. A pair is a file, so no folder is inside it.
 
 **Settings** here means what every stage of the calculation must agree on: the
@@ -3100,7 +3100,7 @@ record; the first step is where the relaxation started, for the lead gate's
 Launched by `jobset launch`, so its launch record and the wrapper's
 conclusion say how it ended (`runrecord.ending`): a folder no calculation
 claims, or one where nothing was launched, holds no run of ours and is
-refused, naming the road — relax the junction through `jobset init` →
+refused, naming the road — relax the junction through `molbuilder describe` →
 `prep task` → `launch task`, then cite that run. Its name and where it sits
 in the tree never matter. Every deck molbuilder writes from a labelled
 structure carries the labels' block.
@@ -3288,7 +3288,7 @@ the parameters this way is what makes the rest of the design fall out.
 | answerer | what | how the template says it |
 |---|---|---|
 | **the person** | the transmission window and grid, the TBtrans outputs, broadening, the NEGF contour, the leads | an ordinary item with a `value` |
-| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | ⚠️ **SUPERSEDED by § 3.8.0** — this says *declared, valueless, filled at `prep`*, which is the SEALED reading § 2a.7 reversed. The values are filled ONCE at `jobset init` into this calculation's template, carry a value there, and the person may change them |
+| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | ⚠️ **SUPERSEDED by § 3.8.0** — this says *declared, valueless, filled at `prep`*, which is the SEALED reading § 2a.7 reversed. The values are filled ONCE at `molbuilder describe` into this calculation's template, carry a value there, and the person may change them |
 | **the description** | job label, the bias list | the label is an ordinary item; the bias is `task.json`'s own `bias` block, because it is the sweep axis (§ 2a.11) |
 | **the machine** | memory ceiling, thread count, ranks | `allocation` items — valueless on floor 2, filled at `prep` (G1) |
 | **the geometry** | which atoms are electrode / bridge / buffer, which are frozen | **not an item at all** — § 7's structure exclusion; it travels in the `.molstruct.json` sidecar and the deck's ATOM-METADATA block |
@@ -3318,7 +3318,7 @@ So transport supplies **four layout tables**, selected by the `stage_token` that
 | `seed` | an ordinary SCF | the electronic contract; no TS/TBT rows |
 | `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` + semi-infinite direction |
 | `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; the shared k-point grid in the electrode plane and one k-point along z ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
-| `transmission` | **its own text since 2026-09-29** (the same text as `device` until then) | the `TS.*` junction description `tbtrans` reads plus the `TBT.*` rows; the binary is `Resources.program = tbtrans` (§ 6.1b) |
+| `transmission` | **its own text since 2026-09-29** (the same text as `device` until then) | the `TS.*` junction description `tbtrans` reads plus the `TBT.*` rows; the binary is `Job.program = tbtrans` (§ 6.1b) |
 
 An item absent from a stage's layout is simply not written into that stage's
 deck. No control flow, no per-item stage key, and the whole mapping is readable
@@ -3412,7 +3412,7 @@ marked **[new]**.
         │       validate → render → write → READ BACK AND CHECK
         │       → the deck, its .validation.txt, the USER-CUSTOM zone
         │
-        └─ the job's facts: the transmission's Resources.program = tbtrans,
+        └─ the job's facts: the transmission's Job.program = tbtrans,
                 the device's scratch_dir = tsgf; run-0 opened
 
   jobset launch task [--group N | --stage <stage>]
@@ -3591,7 +3591,7 @@ fixed.**
 | | |
 |---|---|
 | the `atom-metadata` fence was emitted **twice** | The framework emits it into the record; lifting `_render_seed`'s own call reproduced it in the body, and the reader stops at the first END marker — so the poorer copy won and the framework's was dead text. Two on-disk sources of truth for the region partition. No engine module calls that emitter; transport's must not either |
-| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-preparing a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. the gather now asks whether the run ran the same engine input (§ 6.1): comments — molbuilder's records and stamps among them — are not compared; `script_emit.same_calculation`, which masks the stamps and keeps every other byte, is the run record's and the report's question, not the gather's |
+| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-preparing a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. the gather asks whether the run ran the same engine input (§ 6.1): comments — molbuilder's records and stamps among them — are not compared, nor the run settings' keywords; the run record and the report ask the same door (`deck_record.same_calculation`, [`execution/job-request.md`](?doc=execution/job-request.md) § 6) |
 
 **What it did NOT do, stated so nobody reads more into it.**
 
@@ -3601,7 +3601,7 @@ fixed.**
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1.0e-05`, `DM.EnergyTolerance 1.0e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opened a `PipelineLog` and carried it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=`. *(The arm went 2026-10-05, § 3.6 item 4: prep's one entry opens the log for every kind.)* |
-| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. No check names an unconsumed label: a label outside the partition (`sort.PARTITION_LABELS`) is the person's, never refused, warned about or read (§ 4; [`science/validation.md`](?doc=science/validation.md) § 5) |
+| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `molbuilder describe` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. No check names an unconsumed label: a label outside the partition (`sort.PARTITION_LABELS`) is the person's, never refused, warned about or read (§ 4; [`science/validation.md`](?doc=science/validation.md) § 5) |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` was keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatched for no rung (the engine was deleted 2026-09-17, the class 2026-10-02) — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
 | ~~`validate_subject` is unanswered, so the gate judges a frame the deck does not express~~ — **answered** (`transport/deck.py`: the structure as it arrived with its meshes and the rung; `wizard.as_structure` always states a cell — read 2026-10-18) | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config)` and the stage token (`names.stage`), so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
@@ -3660,7 +3660,7 @@ item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
 
 | question | the answer, and it is the code's |
 |---|---|
-| **When do the cited run's values arrive, and may the person change them?** | **Once, at `jobset init`**, into this calculation's own template, by `transport/citation_defaults.py` — *"the whole of the filling"* (`template.md` § 6.4). After that the template is the answer and `prep` reads the file, never the citation. The person **may change any of them**; a change applies to all five rungs at once because there is one template (§ 2a.7 ruling 1). The older reading — declared valueless, filled at prep, sealed — is withdrawn |
+| **When do the cited run's values arrive, and may the person change them?** | **Once, at `molbuilder describe`**, into this calculation's own template, by `transport/citation_defaults.py` — *"the whole of the filling"* (`template.md` § 6.4). After that the template is the answer and `prep` reads the file, never the citation. The person **may change any of them**; a change applies to all five rungs at once because there is one template (§ 2a.7 ruling 1). The older reading — declared valueless, filled at prep, sealed — is withdrawn |
 | **Where are the shared values edited?** | In **one panel that writes the template** (§ 3.8.2). **Never edited** on the per-rung form, because that form's payload is a rung's override bag and a shared value given to one rung is refused at `prep`. On the transport tab they are **shown by that panel**, directly above the per-rung form, so the form carries no second copy; every other surface that presents the calculation presents them as **read-only echoes naming their source** (`template.md` § 6.6 obligation 3 — § 3.8.9 says which surface does so today). They are not hidden; they are elsewhere |
 | **What generates the form?** | The **catalogue**, narrowed by kind — never a dataclass's field list. Not yet true of the code: the swap that did it was reverted (§ 3.8.6), and the reason is the open decision below |
 
@@ -3741,7 +3741,7 @@ markers the catalogue carries, never by a list a blueprint keeps:
 | `allocation` | the scheduler answers at prep | no | no |
 | `role` | the rung's own identity; a choice with one correct answer | no | never a control: **echoed read-only** at the rung's answer, with why (`locked`, `form-schema.md` § 1.1; K7, 2026-09-30) |
 | `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials: a cited run's travel with it) answer themselves, save what the citation asks of the person — a pair's pseudopotential directory (§ 3.8.1, `citation_defaults.asked_of_the_person`); the same group rule that keeps `staging` off every form (`form-schema.md` § 1.3) | **no** |
-| `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
+| `citation` | a cited run DEFAULTS it at `molbuilder describe` | yes, showing its provenance | no |
 | `stages` | only these rungs may own it | — | routed to those rungs |
 
 **`citation` is not the same as `shared`, and treating it as one was the
@@ -3792,7 +3792,7 @@ correct order".)*
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `stage` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
 | **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — and its shape hierarchical (`task.fixed_by_kind`, from `paths.KIND_ROLES`); the description's reader refuses anything else, naming the five rungs, and Task setup offers no control that would change either (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
-| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `jobset init` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template and `task.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `jobset init`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
+| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `molbuilder describe` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction
 → 2 the shared description, once → 3 check the chemistry → 4 each rung, on
@@ -3892,10 +3892,10 @@ six scattered versions could not do.
 
 | | state |
 |---|---|
-| the citation fills the template at `init` — a finished relaxation run's deck, or a pair's `info.calculation`, through one reader of the recorded contract (§ 3.1) | ✅ **done** (the pair 2026-10-09) |
+| the citation fills the template at `molbuilder describe` — a finished relaxation run's deck, or a pair's `info.calculation`, through one reader of the recorded contract (§ 3.1) | ✅ **done** (the pair 2026-10-09) |
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `allocation` and staging items kept off it by their markers, and the `role` items never a control (echoed read-only since K7) |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
-| a value nobody chose is shown as not chosen | ✅ **done** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text` (2026-09-24); **the file records each value's source** and both surfaces draw it (K7, 2026-09-30). `prep` fills a valueless row with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but the deck does not yet MARK it (the row below) |
+| a value nobody chose is shown as not chosen | ✅ **done** — the panel shows an unanswered `citation` row blank, and `molbuilder describe` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text` (2026-09-24); **the file records each value's source** and both surfaces draw it (K7, 2026-09-30). `prep` fills a valueless row with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but the deck does not yet MARK it (the row below) |
 | the deck viewer | ✅ **done 2026-10-11**, for every calculation, not transport's alone — the Results ladder's *input* and *check report* on each run, each frame and each voltage, in the sidebar's file viewer ([`web/results.md`](?doc=web/results.md) § 2.4) |
 | `role` items never a control on any form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind — and shown read-only at the rung's answer since K7 (`locked`, `form-schema.md` § 1.1) |
 | the Task setup stage table offers no shared value as a column | ✅ **done 2026-09-24** — `/api/task-setup/columns` reads `shared` per kind (measured that morning: thirteen offered, `mesh_cutoff` and `basis_size` among them) |
@@ -3904,7 +3904,7 @@ six scattered versions could not do.
 | the shared values echoed read-only, with their source, on Task setup | ✅ **done 2026-10-11** — the *What came over* card's *Shared by every stage*, every value the kind shares with its source, from the folder answer's `template.shared` (`web/task-setup.md` § 3; `template.md` § 6.6 obligation 3) |
 | a value nobody chose is MARKED as such in the deck | ✅ **done 2026-10-11** — each deck's PROVENANCE block says who set each value it is rendered from, a value nobody chose *the template · not chosen*, and a setting left to the engine says so where its line would be, in its own `not_set` (`template.md` § 6.6 obligations 4 and 5; `job-contracts.md` § 3.2). *(The file's half — each value's source, obligation 2 — is built, K7.)* |
 | the device deck carries only what `siesta` reads | ✅ **done 2026-09-29** (M5 step 1) — the device deck carries no `TBT.*` line (`deck.py::_device_layout`): `siesta` reads none (its binary holds none); the transmission deck keeps the `TS.*` declarations `tbtrans` reads (§ 6.1b) |
-| one panel per engine (§ 3.8.8) | ✅ **done 2026-10-11** — card 4's engine strip, one tab per engine molbuilder knows (`transport.stages.engine_tabs`, from `runfiles.engines` / `electronic_state.engines_for`): TranSIESTA live, PySCF-NEGF disabled with its reason; the schema route, the describe door and `jobset init` refuse an engine that runs no transport with one sentence (`why_no_transport`) |
+| one panel per engine (§ 3.8.8) | ✅ **done 2026-10-11** — card 4's engine strip, one tab per engine molbuilder knows (`transport.stages.engine_tabs`, from `runfiles.engines` / `electronic_state.engines_for`): TranSIESTA live, PySCF-NEGF disabled with its reason; the schema route, the describe door and `molbuilder describe` refuse an engine that runs no transport with one sentence (`why_no_transport`) |
 | the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
 
 ---
@@ -3995,7 +3995,7 @@ disabled with `why_no_transport`'s sentence as its title and its panel's one
 line. The active tab is the engine: core.js sends it on both schema surfaces
 (`&engine=`) and in the describe body, and `task.json` records it. A missing
 engine, an unknown one and one with no backend are each refused by name, at
-the schema route and at the describe door alike — and `jobset init` refuses
+the schema route and at the describe door alike — and `molbuilder describe` refuses
 an engine with the same sentence.
 
 ---
@@ -4012,7 +4012,7 @@ door's question.
 | the per-rung form (`catalogue_to_form_schema(surface="rung", rung=…)`) | ✅ kept off | ✅ a rung's tab is that rung's bag (§ 3.8.2a) | ✅ echoed read-only at the rung's answer, never a control *(K7)* | ✅ the template's value, from the citation, as a blank field's hint *(K7)* | ✅ kept off |
 | the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group save what the citation asks (§ 3.8.1) | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`template.unread_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
-| `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
+| `molbuilder describe` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
 | `prep` (`transport_rung.resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners, and the picker names the calculation's own rungs that read each item, on every kind whose rungs have roles (`web/task-setup.md` § 5, *2026-10-11*) | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)*; on a transport folder the rows are the ladder's five rungs, fixed, the seed included (`task.fixed_by_kind`), and each rung's own values are edited here once the description is written (`web/task-setup.md` § 5.3, *2026-10-11*) | — | — | — |
@@ -4493,7 +4493,7 @@ Two things are easy to get wrong and both are visible here:
   2026-09-29 — the device and the transmission are separate texts, because
   two programs read them (§ 6.1b).  *(Three until then: the device and the
   transmission deck were the same text, only the binary pointed at them
-  differing (`Resources.program`), on the claim that "`TBT.*` keywords are
+  differing (the job's program), on the claim that "`TBT.*` keywords are
   inert to `siesta` and `TS.*` to `tbtrans`, so one text can serve both".
   Measured 2026-09-29, the first half holds and the second does not —
   `tbtrans` reads the `TS.*` electrode and chemical-potential declarations
@@ -4579,8 +4579,10 @@ all that is changed is the comments …")*. The gather takes a run's file when
 the run computed what the deck this rung renders now would compute — the
 question is what the engine reads, never what molbuilder wrote around it.
 Both decks are read as SIESTA reads them, by the one fdf reader
-(`parse.fdf.read_fdf`, `parse.fdf.parse_fdf_params`), and compared by the
-SIESTA engine's own door (`siesta.engine_input.engine_input_differences`):
+(`parse.fdf.read_fdf`, `parse.fdf.parse_fdf_params`), and compared through the
+one door of *the same calculation* (`deck_record.same_calculation`,
+[`job-request.md`](?doc=execution/job-request.md) § 6), by the SIESTA engine's own reading
+(`siesta.engine_input`):
 
 - **comments are not input** — molbuilder's blocks among them, which record
   what molbuilder knows (the labels, the order record, the provenance, the
@@ -4606,6 +4608,13 @@ SIESTA engine's own door (`siesta.engine_input.engine_input_differences`):
   computes what one that leaves it to SIESTA does; an item whose engine value
   follows something else — another keyword, the build, the run — states what
   it follows, and such a keyword stated by one deck alone is a difference;
+- **a run setting is not the calculation**: the keywords the catalogue's run
+  settings write — `Diag.Algorithm`, `BlockSize`, `Diag.ParallelOverK`,
+  `Diag.ELPA.GPU`, `TS.SolutionMethod`, `TS.Elecs.Out-of-core` (their `anchor`
+  or `expands`) — say how fast and where a run computes, never what: a run
+  made at other ranks, another solver or on a GPU computed what this rung's
+  deck computes ([`execution/job-request.md`](?doc=execution/job-request.md)
+  § 2, § 6, the one door every reader of *the same calculation* asks);
 - **the engine's scratch is not input**: where TranSIESTA keeps an electrode's
   surface Green's function file and whether it reads an existing one back —
   the electrode block's `GF`, `GF-file`, `GF.ReUse` and `out-of-core` rows
@@ -4613,8 +4622,10 @@ SIESTA engine's own door (`siesta.engine_input.engine_input_differences`):
   `TS.Elecs.Out-of-core` (`m_ts_options.F90`:472, 476). A file read back is
   checked against the electrode it is for — cell, k-points, weights, energy
   points, atoms — and the run stopped on a mismatch (`m_ts_gf.F90`:139-162,
-  `check_Green`), so neither where it lies nor whether it is reused changes a
-  number the run computes;
+  `check_Green`), never against the electrode's Hamiltonian; so where it lies
+  changes no number, and a file read back is the same input only as one its
+  run wrote — a molbuilder run writes its own, fresh for each run and each
+  voltage (§ 2a.11);
 - **what the engine reads only under bias counts only under bias**: the
   non-equilibrium contours — every `TS.Contours.nEq…` keyword and block, every
   `TS.Contour.nEq.…` block — are read when |`TS.Voltage`| exceeds 10⁻⁵ eV and
@@ -4632,10 +4643,11 @@ another calculation, refused by name, naming every difference — the keyword,
 the block row or the atom, as the run had it and as it renders now — never
 which molbuilder wrote the deck. So a calculation carries across an upgrade of
 molbuilder that changed only how molbuilder writes its decks. **What is compared is the run's deck against the
-deck its stage renders now — nothing else**: launch's check that a stage
-prepared and never launched is still what prep writes (`job-system.md` § 6.0,
-step 1) compares every file prep writes, its stamps masked, because preparing
-such a stage again costs nothing (`prep task --group N`).
+deck its stage renders now — nothing else**: launch's check that a stage's
+prepared files are still what prep writes — at a first launch, and at one that
+takes its inputs anew (`job-system.md` § 6.0, step 1) — compares every file
+prep writes, its stamps masked, because preparing a stage again costs nothing
+(`prep task --group N`).
 
 **Why each stage needs a different text, in one line each** — this is the
 per-stage axis that § 3.2's floor-3 migration has to serve, and it is the
@@ -4790,9 +4802,9 @@ cross-checked against the installed binaries (2026-09-29):
 **A defect this found, in the deck as it was written until 2026-09-29:** the
 transmission rung wrote `TBT.k                  2 2 1` — three integers,
 neither a list nor a block — so `tbtrans` skipped it and samples the SCF's grid from the same deck. It
-changed no answer then: `jobset init` set `tbt_k_grid` to the cited
+changed no answer then: `molbuilder describe` set `tbt_k_grid` to the cited
 run's k-point grid in the electrode plane, which was the SCF's. But a person who raised it for the
-convergence study § 0.3 describes was ignored in silence. *(`jobset init`
+convergence study § 0.3 describes was ignored in silence. *(`molbuilder describe`
 leaves `tbt_k_grid` blank: left blank, it is three times the shared grid,
 `kmesh.transmission_start`, § 0.3b.)* Written
 `TBT.k [2 2 1]`, it is read. *(Nothing ever caught it: no transmission rung has
@@ -5181,7 +5193,7 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 
 > **Which of these are knobs today: all of them.** Every value in the table above
 > is a catalogue row in the calculation's own template, defaulted from the cited
-> run at `jobset init` (§ 2a.7) and editable there — including the basis, the
+> run at `molbuilder describe` (§ 2a.7) and editable there — including the basis, the
 > EnergyShift and the XC pair, which the three layouts render through
 > `BASIS_SECTION` and `XC_SECTION` like any other section item. Measured on a
 > rendered device deck: `PAO.BasisSize DZP`, `PAO.EnergyShift 0.01 Ry`,
@@ -5341,9 +5353,10 @@ single-point, or a relaxation if those layers are not frozen.
   picker takes a run's folder or a pair's `.xyz`, § 3.8.1), and the
   VIEWER follows the citation: MolView loads the cited calculation's
   labeled structure and the chemistry analysis runs on it), state the
-  bias, and **Describe writes the finished `task.json`** into the selected
-  folder (`POST /api/transport/describe` — the web spelling of `jobset
-  init --calculation transport`; no hand-over, because nothing is
+  bias, and **Describe writes the finished `task.json` and its
+  `job-request.json`** into the selected folder (`POST
+  /api/transport/describe` — the web spelling of `molbuilder describe
+  --calculation transport`; no hand-over, because nothing is
   awaiting; written by the server since 2026-10-11, § 3.8.2a).  Transport-only knobs changed in the form ride as
   device-stage overrides; the electronic-contract fields are sealed at
   both doors (the citation's to say).  ⚠️ **SUPERSEDED by § 2a.7 and

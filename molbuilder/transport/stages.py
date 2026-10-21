@@ -46,7 +46,7 @@ from ..paths import KIND_ROLES
 from ..parse.engines import siesta_grammar as _G
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
-#: dependency order.  ``jobset init`` writes exactly these into
+#: dependency order.  ``molbuilder describe`` writes exactly these into
 #: ``task.json``; `prep` names its rungs from the same tuple.  They are the
 #: kind's rung ROLES too, so their one home is the catalogue's role
 #: vocabulary (`paths.KIND_ROLES`, `engines/template.md` § 6.4).
@@ -450,7 +450,7 @@ def stages_for_transport(bags=None):
     overrides that are ITS OWN -- *bags* maps a rung name to that rung's
     mapping, and a rung not named gets an empty bag.
 
-    One door, so the two construction sites -- `jobset init` and the web
+    One door, so the two construction sites -- `molbuilder describe` and the web
     describe door -- cannot build the ladder differently.  A rung this
     ladder does not have is refused by name.
 

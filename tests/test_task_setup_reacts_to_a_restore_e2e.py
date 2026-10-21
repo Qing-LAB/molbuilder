@@ -192,12 +192,18 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     # the tab could not have shown in the first place.
     import dataclasses
 
-    from molbuilder.task import Stage, of as task_of, write_task
+    from molbuilder import job_request
+    from molbuilder.task import of as task_of, write_task
 
+    # ...AND ITS JOB REQUEST BESIDE IT, which names the stages too
+    # (`execution/job-request.md` § 3): the two records are one ladder.
     before = task_of(calc_dir)
+    asked = job_request.of(calc_dir, before)
     renamed = dataclasses.replace(before.stages[0], name="afterwards")
     write_task(calc_dir,
                dataclasses.replace(before, stages=(renamed,)))
+    job_request.write(calc_dir, dataclasses.replace(
+        asked, stages={"afterwards": asked.stages[before.stages[0].name]}))
     page.click("#ps-checkpoint-commit-btn")
     _note(page, "after the edit")
     page.wait_for_function(

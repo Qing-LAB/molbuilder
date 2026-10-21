@@ -1,4 +1,4 @@
-"""`task.json` carries WHEN a calculation should say something.
+"""`job-request.json` carries WHEN a calculation should say something.
 
 **Why the key exists.** The monitor has carried a notifier hook since it was
 written, and `job-contracts.md` calls it *"the deliberate customization
@@ -7,7 +7,7 @@ so."*  What it never had was a cadence anyone would want or a place to set
 one: the hook fired on every changed sample, so a webhook configured against
 it would have sent a message every ten seconds for the length of a run.
 
-`notify` is where the answer lives (`task.Notify`): fire when an SCF cycle
+`notify` is where the answer lives (`job_request.Notify`): fire when an SCF cycle
 converges, fire every N hours, or neither.  Finish is not settable — a run
 ending always reports, which is the reason the hook exists at all.
 
@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.task import SCHEMA, Notify, Task
+from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
+from molbuilder.job_request import Notify, from_dict
+from molbuilder.task import SCHEMA, Task
 
 _BASE = {
     "schema": SCHEMA,
@@ -33,12 +35,18 @@ _BASE = {
     "run": {"name": "JOB", "id": "JOB_H2"},
     "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
     "varies": [],
-    "stages": [{"name": "coarse", "group": 1, "overrides": {}}],
+    "stages": [{"name": "coarse", "overrides": {}}],
 }
+#: The description the job request is read beside (`job-request.md` § 3).
+_DESCRIPTION = Task.from_dict(_BASE)
 
 
-def _task(**extra) -> Task:
-    return Task.from_dict({**_BASE, **extra})
+def _task(**extra):
+    """A job request for the one-stage description above, ``extra`` its
+    blocks."""
+    return from_dict({"schema": REQUEST_SCHEMA,
+                      "stages": {"coarse": {"group": 1}}, **extra},
+                     _DESCRIPTION)
 
 
 def _block(**stated) -> dict:
@@ -57,7 +65,7 @@ def _block(**stated) -> dict:
 def test_both_triggers_round_trip():
     t = _task(notify=_block(on_scf_converged=True, every_hours=6))
     assert t.notify == Notify(on_scf_converged=True, every_hours=6.0)
-    assert Task.from_dict(t.to_dict()).notify == t.notify
+    assert from_dict(t.to_dict(), _DESCRIPTION).notify == t.notify
 
 
 def test_the_triggers_are_independent_not_a_choice():
@@ -72,7 +80,7 @@ def test_the_triggers_are_independent_not_a_choice():
     assert not clock_only.notify.on_scf_converged
 
     for t in (scf_only, clock_only):
-        assert Task.from_dict(t.to_dict()).notify == t.notify
+        assert from_dict(t.to_dict(), _DESCRIPTION).notify == t.notify
 
 
 def test_absent_is_a_state_and_writes_no_key():
@@ -158,7 +166,7 @@ def test_names_round_trip_and_are_deduplicated():
     It grants nothing, so it may travel where an address may not."""
     t = _task(notify=_block(channels=["slack", "lab", "slack"]))
     assert t.notify.channels == ("slack", "lab")
-    assert Task.from_dict(t.to_dict()).notify == t.notify
+    assert from_dict(t.to_dict(), _DESCRIPTION).notify == t.notify
 
 
 def test_every_channel_is_written_as_a_star():
@@ -167,7 +175,7 @@ def test_every_channel_is_written_as_a_star():
     t = _task(notify=_block(on_scf_converged=True))
     assert t.notify.channels is None
     assert t.to_dict()["notify"]["channels"] == ["*"]
-    assert Task.from_dict(t.to_dict()).notify == t.notify
+    assert from_dict(t.to_dict(), _DESCRIPTION).notify == t.notify
 
 
 def test_an_EMPTY_list_survives_the_round_trip():
@@ -180,7 +188,7 @@ def test_an_EMPTY_list_survives_the_round_trip():
     t = _task(notify=_block(channels=[]))
     assert t.notify.channels == ()
     assert t.to_dict()["notify"]["channels"] == []
-    assert Task.from_dict(t.to_dict()).notify.channels == ()
+    assert from_dict(t.to_dict(), _DESCRIPTION).notify.channels == ()
 
 
 @pytest.mark.parametrize("bad,why", [
@@ -235,7 +243,7 @@ def test_a_field_selection_survives_the_round_trip():
     assert t.to_dict()["notify"]["report"] == ["energy", "n_iters"], (
         "the selection was parsed and then not written: "
         + repr(t.to_dict()["notify"]))
-    assert Task.from_dict(t.to_dict()).notify == t.notify
+    assert from_dict(t.to_dict(), _DESCRIPTION).notify == t.notify
 
 
 def test_EVERY_field_is_a_star_and_an_EMPTY_LIST_is_the_summary_alone():
@@ -252,7 +260,7 @@ def test_EVERY_field_is_a_star_and_an_EMPTY_LIST_is_the_summary_alone():
     assert empty.to_dict()["notify"]["report"] == [], (
         "the empty list was dropped, so 'the summary line alone' came back "
         "meaning 'every field'")
-    assert Task.from_dict(empty.to_dict()).notify.report == ()
+    assert from_dict(empty.to_dict(), _DESCRIPTION).notify.report == ()
 
 
 @pytest.mark.parametrize("bad,why", [

@@ -18,7 +18,7 @@ the one plan, [`plans/plan.md`](?doc=plans/plan.md).
 
 **Status: landed.** This document was written first and the code built to it,
 the way `web/spectrumchart.md` and `web/vibrationview.md` were: `task.json`
-and `jobset init` shipped 2026-08-11 (plan step 2), and `prep`'s five
+and `molbuilder describe` shipped 2026-08-11 (plan step 2), and `prep`'s five
 steps — the effective config resolved from the template ⊕ a stage's
 `overrides` and rendered per stage on the target — shipped 2026-08-12
 (step 4). *(This line read "proposed, not built — nothing in `SiestaConfig`
@@ -28,7 +28,7 @@ lives in the roadmap, never in a contract*; the `R1`–`R4` used inside § 4 bel
 are that section's own, and unrelated).
 
 **This contract owns:** what a stage is, which fields are a stage's and which are
-the shared schema's, how an effective config is formed, where a promoted field
+the shared schema's, how an effective config is formed, where a field
 lands, and the shape of `task.json`.
 
 ---
@@ -202,7 +202,7 @@ place; each names the file that holds it, so the claim is checkable.**
 
 #### What a PySCF rung varies
 
-A `Stage` (`task.py`) carries `name`, `overrides` and `execution`, and § 2 says
+A `Stage` (`task.py`) carries `name` and `overrides`, and § 2 says
 `overrides` may name **any field of the shared schema** except the few bound to
 the whole calculation or fixed by the rung (below). So a PySCF rung is
 declared exactly as a SIESTA one is:
@@ -214,8 +214,8 @@ Stage(name="coarse",
 ```
 
 *(No `restart`: the shipped ladders set none. Every rung takes the default,
-`continue`, and a rung that should start over says so on its run card,
-`"execution": {"restart": "clean"}` (§ 6.8d) —
+`continue`, and a rung that should start over says so in its overrides,
+`"overrides": {"restart": "clean"}` (§ 2) —
 [`run-identity.md § 4`](?doc=execution/run-identity.md) rule 3.)*
 
 **What that required was vocabulary, not a new shape** — a knob is only a legal
@@ -318,8 +318,8 @@ selected, except the items bound to the whole calculation — the items the cata
 electronic state first among them (§ 1.3's note; ES1) — the items the rung
 itself fixes (`role`: SIESTA's per-step forces and coordinates, a transport
 rung's solver and bias; `template.md` § 6.4) — and the run settings, the
-catalogue's `execution` items, which each rung states on its run card
-(§ 6.8d).
+catalogue's `execution` items, which each rung's run card states, in the job
+request ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.2).
 
 ### 1.3 The default selection is a group each engine declares, not a list in code
 
@@ -332,9 +332,9 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 | `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | *(2)* `system_label`, `psml_lib` | *(1)* `job_name` |
 | `profile` | set once for the calculation | *(18)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(29)* `method`, `basis`, `functional`, `dispersion`, `solvent`, … |
 | **`stage`** | **the settings that typically vary across a sequence** | *(30)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ`, the transport rungs' own, … | *(12)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level`, … |
-| `budget` | what it is allowed to spend | *(7)* `max_scf_iter`, `scf_must_converge`, `relax_steps`, `block_size`, `parallel_over_k`, `diag_algorithm`, `ts_solution_method` | *(1)* `scf_max_cycle` |
+| `budget` | what it is allowed to spend | *(3)* `max_scf_iter`, `scf_must_converge`, `relax_steps` | *(1)* `scf_max_cycle` |
 | `output` | what the run writes | *(17)* the `write_*` set, `verbose_comments`, the transmission's `tbt_*` outputs and `tbt_progress`, `ts_hs_save` | *(10)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory`, `verbose_comments`, `write_molwatch_log`, `es_n_*` |
-| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, how a run resumes, and how long before its wall it stops | *(8)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart`, `continue_retries`, `wall_slack` | *(6)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `restart`, `wall_slack` |
+| `staging` | answered by the staging surface, Task setup, not by a parameter form — every run setting on the run card ([`execution/job-request.md`](?doc=execution/job-request.md) § 2), and what a stage builds on in the stage table | *(13)* `mpi_np`, `omp_threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `wall_slack`, `continue_retries`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `restart` | *(6)* `threads`, `use_gpu`, `gpu_count`, `max_memory_mb`, `wall_slack`, `restart` |
 
 The counts are the whole group — an item the engine shares with the other
 counted in both — the names a readable sample where the group is long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
@@ -343,13 +343,7 @@ the five items that declare no `engines` list and therefore apply everywhere
 `use_gpu`)
 ([`template.md`](?doc=engines/template.md) § 4.2).
 
-> *(This table read three groups until 2026-08-16, sourced them from the config
-> classes' `metadata["workflow_group"]`, and put `mpi_np` and `omp_threads`
-> under `budget`. All three are stale: the vocabulary is six and lives in the
-> catalogue, and the machine asks moved to `staging` — a form does not ask a
-> person how many ranks the scheduler granted.)*
-
-> **So `varies` starts as what the proposed stages vary** (`task.varies_for` over their overrides — nothing for a fresh one-stage ladder; carried on the hand-over as `proposed_varies`, the one rule `jobset init` and the Task setup page both write with, 2026-10-18), and the user adds to or
+> **So `varies` starts as what the proposed stages vary** (`task.varies_for` over their overrides — nothing for a fresh one-stage ladder; carried on the hand-over as `proposed_varies`, the one rule `molbuilder describe` and the Task setup page both write with, 2026-10-18), and the user adds to or
 > removes from it — declared by each engine, beside the fields themselves, in the
 > one place that already knows what a field *is*. No engine needs code in the
 > shared machinery, and a new engine gets a working starting point by tagging its
@@ -372,19 +366,21 @@ limited to.
 > `restart` says whether a stage starts from what the stage before it produced.
 > It is not a physics parameter, so it sits in `staging`; and because the table's
 > columns were being read off the `stage` group, it could not become a column at
-> all. A ladder built anywhere except `jobset init --stage-strategy` therefore
+> all. A ladder built anywhere except `molbuilder describe --stage-strategy` therefore
 > had no `restart` on any stage — which, while `clean` was the default, meant
 > every stage started clean and the stages were three unrelated runs. Nothing
 > said so; the refusal only arrived later, at `prep --from`, as *"this stage
 > declares no warm-restart files"*. **Flipping the default to `continue`
 > (2026-08-18) is what removed that failure mode**: a ladder that says nothing
-> now continues, which is what a ladder is.
+> now continues, which is what a ladder is. It is the description's — an
+> override like any other, a column of the stage table (§ 2).
 >
 > ⚠ **The tag is a default, never a restriction.** Any field of the shared schema
 > may be promoted, whatever group it carries — § 1.2's rule stands, with its
 > exceptions: an item bound to the whole calculation (`shared`), one the rung
 > fixes (`role`) and a run setting (the catalogue's `execution` items, each
-> rung's run card, § 6.8d) are not columns at all. The group only decides what
+> rung's run card in the job request, [`execution/job-request.md`](?doc=execution/job-request.md) § 3.2) are not columns
+> at all. The group only decides what
 > is *already ticked* when the tab opens.
 >
 > **What the tag was actually built for, since it is easy to over-read.** It is a
@@ -575,18 +571,16 @@ written twice: every tab already has a schema, so every tab gets this.
 ## 2. The object
 
 ```jsonc
-{ "name": "coarse", "group": 1,
+{ "name": "coarse",
   "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04 } }
 ```
 
-**Four fields, and no others.**
+**Two fields, and no others.**
 
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a SIESTA vibration's `Relax` is its relaxation); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
 | `overrides` | map | schema field name → that stage's value |
-| `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
-| `group` | whole number, from 1 | **the job this stage runs in**: the stages with one number are one job, prepared together and launched together ([`job-system.md`](?doc=execution/job-system.md), *The task*). The first stage is group 1; each later stage **repeats the number above it or adds one**, so the groups run in the ladder's order. A stage never shares a group with a stage it builds on — its continuation, a force-constant stage's `relax`, a transport rung's upstream — because a job runs its members one after another with nothing handed between them (§ 6.6); groups that build on each other go in one job as a **sequence**, each group launched — taking what it builds on — when the one before has finished ([`job-system.md`](?doc=execution/job-system.md) § 6.0, *A sequence of groups*); a SIESTA force-constant stage excepted, whose deck is written from `relax`'s finished run at its prep (R-P11), so it is prepared — and sent — after `relax` has run. Required: every writer of a description states it — the defaults repeat the number above wherever that is allowed: the stage builds on none of that group, and its run card states what theirs do on what a job shares (`group.may_join`; else its prep refuses the group, R-P13) — a transport ladder 1 1 1 2 3, an optimization ladder 1 2 3, stages set `restart: clean` 1 1 1 — and a description without it is refused, naming `jobset migrate` |
 
 **There is no `enabled`** *(W38 F5, agreed 2026-09-27 — user: "remove on/off
 for optimization and vibration", "yes, drop the seed switch too")*. A
@@ -620,21 +614,15 @@ why it is the calculation's (`template.why_shared`; ES1 for the state: every run
 it is not a choice (`template.why_role`) — and the same refusal meets a pin or a
 sweep axis naming it (`template.md` § 6.4).
 
-**`group` is the stage's, and it says nothing about what a run computes.**
-The stages of one group share one allocation
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6 lists what
-that holds), so each member's `execution` states the same values for those,
-which Task setup's group card writes into every member at once. A group's members are
-compared by **who they are**, never by the number: removing a stage above
-shifts the numbers below it, and that is no change to any job.
-
-**`overrides` and `execution` are not two names for one thing**, and the
-difference is what reads them. `overrides` changes what the calculation *is* —
-a mesh cutoff, a force tolerance — and lands in the deck through `varies`
-(§ 6.2). `execution` changes how this rung *runs* — ranks, threads, the device,
-the solver — and lands in the launch, by the direct map `generator.md` § 4.3a
-states. A field that changes the answer may never appear in `execution`, and
-validation refuses one by name.
+**`overrides` say what this stage computes, and nothing else.** A mesh
+cutoff, a force tolerance — and **whether it builds on the stage before it**:
+`restart`, `continue` (the template's value) or `clean`, an override like any
+other, a column of the stage table once a stage sets it. How a rung *runs* —
+its ranks, threads, device, solver, and which job it runs in — is its run card
+and its group, in the job request ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.2, § 3.3), which reads
+`restart` from here to know what each stage builds on. A run setting may never
+appear in `overrides`, and a field that changes the answer never on a run
+card; validation refuses either by name.
 
 ---
 
@@ -649,7 +637,10 @@ mis-sorts a field.
 >
 > **2. Of what is left: can a single run mean it?**
 > If yes, it is an ordinary field of the shared schema, which a stage may
-> override like any other — *wherever that field happens to land* (§ 5).
+> override like any other — *wherever that field happens to land* (§ 5) —
+> unless it is a run setting, which says how the run goes, never what it
+> computes, and is stated per stage on the job request's run card instead
+> ([`execution/job-request.md`](?doc=execution/job-request.md) § 2).
 > **A stage types only what a single run cannot mean.**
 
 Question 2 deliberately does **not** ask where the field ends up. A promoted
@@ -669,7 +660,7 @@ description of something that will still exist.
 | `relax_steps` | yes | yes | the shared schema |
 | `relax_force_tol` | yes | yes | the shared schema |
 | `relax_max_displ` | yes | yes | the shared schema |
-| `continue_retries` | yes — `running-a-job.md § 3.5` | yes | the shared schema, routed to the **wrapper** (§ 5) |
+| `continue_retries` | yes — `running-a-job.md § 3.5` | yes | a run setting, on the job request's run card, routed to the **wrapper** (§ 5) |
 | `on_nonconvergence` | **no** — its only effect was the scheduler edge | — | **outside this contract** — and, for SIESTA, **retired with the edges on 2026-08-10** |
 
 Two of those are worth stating explicitly, because both were on the stage type
@@ -704,8 +695,10 @@ is a different object with a different reader
 
 **`continue_retries` passes both questions and is still not a stage field.**
 `running-a-job.md § 3.5` is explicit: a *single* SIESTA run whose wrapper was
-installed with a retry budget re-runs itself with `--continue`. It is an ordinary
-shared field; what made it look special is only where it lands. That is also why
+installed with a retry budget re-runs itself with `--continue` — the same deck
+launched again, warm, as a launch again does — so it is a run setting, stated on
+the run card, per stage or for the calculation ([`execution/job-request.md`](?doc=execution/job-request.md) § 2); what
+made it look special is only where it lands. That is also why
 `job-system.md § 4.1` records that the SIESTA ladder never implemented it — the
 field sat on the stage, and the stage is not what honours it.
 
@@ -715,10 +708,9 @@ a single run can mean it too. `restart` (`continue` | `clean`) joins the shared
 schema; what the generator does with it is
 [`execution/run-identity.md`](?doc=execution/run-identity.md) § 4.
 
-**And `group` is a stage field** *(2026-10-11)*. Question 1: it survives
-without a scheduler — it decides which stages one launch runs, and on a
-machine with no queue that is one walk, one after another. Question 2: no
-single run can mean it — it is about several. So it lands on the stage (§ 2).
+**And `group` is not a stage field.** It says which stages one launch runs
+— how the calculation runs, not what it computes — so it is the job request's
+([`execution/job-request.md`](?doc=execution/job-request.md) § 3.3).
 
 ---
 
@@ -793,10 +785,13 @@ whole or not at all, so there is no such thing as writing the stages that passed
 
 ---
 
-## 5. Where a promoted field lands — four destinations
+## 5. Where a field lands — four destinations
 
-A promoted field is not always a line in the deck, and assuming it is writes
-decks that are subtly wrong for the machine they run on.
+A field is not always a line in the deck, and assuming it is writes decks that
+are subtly wrong for the machine they run on. Where a field's value comes from
+is another question: a run setting's — `diag_algorithm`, `use_gpu`, `mpi_np`,
+`omp_threads` — from the job request's run cards, every other's from the
+template and a stage's overrides ([`execution/job-request.md`](?doc=execution/job-request.md) § 2).
 
 | Kind | Examples | Lands |
 |---|---|---|
@@ -854,7 +849,8 @@ value is read where it is checked. Nobody maintains a mapping table by hand.
 
 **Walltime, memory and partition are deliberately absent from that table.** They
 are not fields of the shared stage schema: they are the job's **scheduler
-ask** — `allocation` (§ 6.8a), the run card's `time` and `domain` (§ 6.8e), or
+ask** — the job request's `allocation`, the run card's `time` and `domain`
+([`execution/job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a), or
 `prep`'s flags — and a named `domain` resolves to a partition and QoS on the
 target's record. Each is stated or refused; none has a default
 ([`architecture.md` § 5.2](?doc=execution/architecture.md)).
@@ -896,13 +892,12 @@ and, when the deck carries a `BlockSize`, the window that rank count allows —
 ([`tuning.md § 2.11`](?doc=engines/tuning.md)). The `BlockSize` value itself is
 never derived: it is the person's, written verbatim, or absent.
 
-**A deck meets only the launch it was rendered for.** `prep` renders the deck
-and the launch together; `prep` warns and `launch` refuses a deck whose recorded
-`mpi_np` differs from the job's (`jobset/agreement.py`), and the way back is a
-new prep — of a stage never launched, at once; a launched one is not prepared
-again (its way back, [`job-system.md`](?doc=execution/job-system.md)'s *How the
-checkpoint supports you*). A benchmark uses the
-same block, because each of its trials is rendered at its own point.
+**A deck is rendered with the launch it is prepared for**, by one prep, and
+a launch sends what prep wrote: nothing compares the deck's record of its rank
+count with a launch ([`execution/job-request.md`](?doc=execution/job-request.md) § 6). A launch at another rank count is a
+prep again — for a launched stage too, whose deck keeps its science and takes
+the new launch's lines ([`execution/job-request.md`](?doc=execution/job-request.md) § 5). A benchmark uses the same block,
+because each of its trials is rendered at its own point.
 
 ---
 
@@ -910,7 +905,7 @@ same block, because each of its trials is rendered at its own point.
 
 ```jsonc
 {
-  "schema": "molbuilder/task@1",
+  "schema": "molbuilder/task@2",
 
   "engine": { "name": "siesta" },
 
@@ -946,26 +941,33 @@ same block, because each of its trials is rendered at its own point.
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
 
   "stages": [
-    { "name": "coarse", "group": 1,
+    { "name": "coarse",
       "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04,
-                     "relax_type": "CG" },
-      // HOW THIS RUNG IS RUN -- its run card (§ 6.8d), never a column.
-      "execution": { "restart": "clean" } },
+                     "relax_type": "CG" } },
 
-    // A NEW GROUP: tight continues from coarse, so it cannot share its job.
-    { "name": "tight", "group": 2,
+    // tight continues from coarse -- its restart is the template's
+    // `continue`; a stage that starts from the structure says
+    // "restart": "clean" here.
+    { "name": "tight",
       "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01,
                      "relax_type": "Broyden" } }
-  ],
+  ]
 
-  // WHAT TO MEASURE (§ 6.8).  Optional.  A machine-answered entry is
-  // points to TRY, never an answer; a non-machine execution entry with
-  // ONE point is what the trials run with, a pin for them alone (user
-  // rule, 2026-08-20; trials only since 2026-09-30).
-  "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2],
-             "use_gpu": [true] }
+  // HOW AND WHERE IT RUNS -- the queue, the run cards, the groups, a
+  // benchmark's plan, the reports -- is job-request.json's, beside this
+  // file (§ 6.8).
 }
 ```
+
+**The calculation kinds a description states**: `optimization`;
+**`vibration`** — the described vibrational-spectroscopy job, whose template
+the catalogue narrows by the `calculations` key (`template.md` § 6.3) and whose
+warm files `pyscf/warm-files.toml` declares; and **`transport`**, the composite
+with its own codec rules (`task.py`): the hierarchical shape, exactly one
+`junction` slot, cited as a tree-relative directory path whose files satisfy
+[`transport.md`](?doc=engines/transport.md) § 3.1, no `structure`, a `bias`
+list — `siesta/warm-files.toml`'s `[transport]` section declares its warm
+vocabulary.
 
 ### 6.1 Four rules
 
@@ -1057,23 +1059,23 @@ column set with nothing left to decide.
 
 *(A run setting is not column material because it is not a per-stage
 **parameter** of the calculation: it is how the rung is run, and it has its
-own block — `execution`, § 6.8d, the rung's run card. A column would be a
+own home — the rung's run card in the job request ([`execution/job-request.md`](?doc=execution/job-request.md)
+§ 3.2). A column would be a
 second home for one value, and a second home is how a rung's `use_gpu`
 reached its deck and not the scheduler's device ask (plan § 5w K5, SO-C1;
-2026-09-30). `template.md` § 7's refusal is the **template's** and stays
-absolute; the description's own channel is a different file with a
-different job, which § 7 now says in as many words.)*
+2026-09-30). The template refuses a value on one, too
+([`template.md`](?doc=engines/template.md) § 7): a run setting is stated on a
+run card and nowhere else.)*
 It is the same membership `prep` already applies when it accepts or refuses an
 override, a pin, or a benchmark axis, so a column the table offers is a column
 `prep` will accept, by construction rather than by agreement.
 
-Concretely, for SIESTA that means the physics settings, and **not** the run
-settings (`template.run_settings`): `restart`, `continue_retries`,
-`wall_slack`, `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`,
-`ts_solution_method` and `ts_elecs_out_of_core`, which a person answers on
-the run card, nor `mpi_np`, `omp_threads`, `gpu_count` or `max_memory_mb`,
-which the machine answers. *(`restart`, `continue_retries` and `use_gpu` were columns until
-2026-09-30.)* A surface that instead borrows the parameter form's list gets
+Concretely, for SIESTA that means the physics settings — `restart` among
+them, what a stage builds on — and **not** the run settings
+(`template.run_settings`): `continue_retries`, `wall_slack`, `use_gpu`,
+`diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method` and
+`ts_elecs_out_of_core`, which a person answers on the run card, nor `mpi_np`,
+`omp_threads`, `gpu_count` or `max_memory_mb`, which the machine answers. A surface that instead borrows the parameter form's list gets
 a different and smaller answer, because that form filters out the whole staging
 panel on purpose: it does not ask a person how many ranks the scheduler granted.
 Filtering a panel and limiting a table are different jobs (§ 1.3).
@@ -1214,7 +1216,7 @@ answers with the same device: a private carrier between two steps of one act.
 
 | | |
 |---|---|
-| **its own schema** | `molbuilder/task-handover@1`, never `molbuilder/task@1`. It has no `shape`, so it would fail that schema's reader — and a file claiming a schema it does not satisfy is worse than one that says what it is. `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident (`job-contracts.md § 6.1`) |
+| **its own schema** | `molbuilder/task-handover@1`, never `molbuilder/task@2`. It has no `shape`, so it would fail that schema's reader — and a file claiming a schema it does not satisfy is worse than one that says what it is. `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident (`job-contracts.md § 6.1`) |
 | **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is chosen by suffix, so the second spelling renders as plain text in the editor a person is meant to read it in; and nothing that looks for `task.json` matches it |
 | **it says what it is** | JSON carries no comments, so the file opens with a `_what` line and an `awaiting` list naming the keys it lacks. It is read by a **person**, in an editor, and should not need a document open beside it |
 
@@ -1238,12 +1240,12 @@ In order, and all of it before anything is written:
 | no `overrides` key names an item the rung fixes (`role` for the kind — SIESTA's per-step forces and coordinates on every kind; a transport rung's solver and bias) | refuse at resolve, naming the item and why it is not a choice |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
-| every stage states a `group`: the first 1, each later one the number above it or one more (§ 2) | refuse (the reader), naming the stage and the rule — a description without groups names `jobset migrate` |
-| no stage shares a group with a stage it builds on (`group.upstream_of`: its continuation, a force-constant stage's `relax`, a transport rung's upstream) — asked here, with the template read, since the ladder's links need it (`group.check_groups`; [`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 3) | refuse, naming both stages and why: one job runs its members with nothing handed between them |
+| no `overrides` key names a run setting — the catalogue's `execution` items, the job request's ([`execution/job-request.md`](?doc=execution/job-request.md) § 2) | refuse, naming the item and its card |
+| the job request beside it: every stage with its entry and its group, no stage in a group with one it builds on — the job request's own check ([`execution/job-request.md`](?doc=execution/job-request.md) § 3, § 3.3), asked here with the template read, since the ladder's links need it (`group.check_groups`; [`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 3) | refuse, in its reader's words — a description holding a job key names `jobset migrate` |
 | every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |
 | every value may stand for its item on this kind — not a component the kind fixes, a choice the kind offers (`offered`, § 6.3a — a vibration's relaxation a relaxer), above its hard limit — one door, `template.why_not` ([`template.md`](?doc=engines/template.md) § 5.3) | refuse, naming the stage, the value and the one reason, the first that holds |
 | every value is inside its item's recommended `range` | **warn**, naming the field and both bounds — a recommendation, the same severity on every surface, and silent for a value refused above ([`template.md`](?doc=engines/template.md) § 5.3) |
-| an `execution` block's values and a bench's points may stand for their items too | refuse, as a stage's value — they become pins and sweep points, and prep would otherwise refuse them first, on the machine that runs it |
+| the job request's run cards' values and a bench's points may stand for their items too | refuse, as a stage's value — they become run settings and sweep points, and prep would otherwise refuse them first, on the machine that runs it |
 | a transport description's bias list: numbers, starting at 0, no two points in one folder (`bias_token`) | refuse (the codec) — each point is one device run in its own `v<V>/` folder ([`transport.md`](?doc=engines/transport.md) § 2a.10) |
 | each bias point inside `bias_voltage_v`'s recommended range | **warn**, as any value |
 
@@ -1299,8 +1301,8 @@ that result away — always a mistake, and an expensive one.
 
 > **What separates them is `start from`, not the overrides.** So the comparison
 > is over the **resolved pair**: two stages whose effective configs are equal
-> *and* whose second says `clean` — on its run card, the one place a rung's
-> `restart` lives (§ 6.8d). Comparing overrides alone would flag the
+> *and* whose second says `clean` — in its overrides, the one place a rung's
+> `restart` lives (§ 2). Comparing the other overrides alone would flag the
 > legitimate case and miss nothing, which is how a warning becomes noise people
 > learn to click through.
 >
@@ -1381,357 +1383,15 @@ to the other — answered 2026-08-07 (`project-layout.md § 8`, item 6): the fla
 shape is a small local run, the hierarchy a staged mission, and you choose one
 when you describe the calculation.
 
-### 6.8a `allocation` — what this calculation asks the scheduler for
+### 6.8 What is not here — the job request
 
-*(User, 2026-08-24.)* Four optional fields, and absent means
-**unstated**:
-
-```json
-"allocation": { "domain": "htc", "time": "0-04:00:00", "mem": "128G" }
-```
-
-| field | what it says |
-|---|---|
-| `domain` | which **queue** — the same answer `--domain` gives. Stated nowhere — here, the run card, `--domain` — on a target with a scheduler, prep refuses |
-| `time` | the **wall**. Stated nowhere — here, the run card, `--time` — on a target with a scheduler, prep refuses ([`architecture.md` § 5.2](?doc=execution/architecture.md)) |
-| `mem` | the **memory ask**. Stated nowhere — here, `--mem` — on a target with a scheduler, prep refuses |
-| `gpu_binding` | whether a GPU ask carries `--gres-flags=enforce-binding` — the job's cores kept beside its GPUs. Unstated, it does; `false` sends the GPU ask without it, for the benchmark and the runs alike, so a benchmark measures the layout the run will use ([`gpu.md`](?doc=execution/gpu.md) G9; user, 2026-10-01) |
-
-**Why it is here and not in `bench`.** § 6.8's rule still holds — the file
-records what a person *asked*, never what a machine *found* — and these are
-asks. `bench` says *which settings to measure*; this says *what to request*.
-A queue name is portable in the same way `"measure ranks at 4, 8, 16"` is: it
-is a decision about this calculation, true wherever the file is opened, and
-§ 6.8's own example of the un-portable thing (*"use 16"*) is a different
-kind of statement.
-
-**One spelling, and it is SLURM's** — `"0-04:00:00"`, `"128G"` *(user,
-2026-08-24: "your record should set unified time format while it is the UI
-that can do some translation for human readability/input")*. Not seconds and
-gigabytes either: what the file holds is what `sbatch` takes.
-
-The reason is not a matter of taste. **The two
-vocabularies disagree**: `04:30` is four minutes thirty to SLURM and four and
-a half hours to a person, so a field holding *whichever spelling arrived*
-cannot be read correctly by anybody. And with nothing converting between this
-key and `Resources.time`, which is SLURM's own, the browser's `"4h"` travelled
-unread as far as the command line, where `sbatch` refused `-t 4h`: the tool's
-own written value, rejected by the tool.
-
-**Translation lives at the edges where humans are** — the Task-setup tab's
-input box, `--time`/`--mem`, and a file typed by hand, which is such an edge
-too. All of them go through one door (`scheduler/quantities.py`'s `canonical_time` /
-`canonical_mem`), and the reader below normalises on the way in, so a
-description written before this rule still opens and a person may still type
-`4h` anywhere. What no layer behind those edges ever meets is a second
-spelling. `Resources` enforces the same invariant on itself, because four
-roads reach it and a fix at one would leave three.
-
-**The queue name is not judged here**: a description written for one cluster
-is opened on another,
-and refusing it here for naming a queue this box never heard of would refuse
-a file that is correct where it is going. The difference is that a spelling
-is machine-independent and a queue name is not — so the spelling can be
-settled at the door and the queue cannot. The target's record answers that,
-at prep, where the machine is known.
-
-**`prep` reads it as the base allocation, and a flag still wins — FIELD by
-field.** `--mem 64G` overrides the memory and leaves the queue and the wall
-standing; `--np 8` overrides neither. Whole-object precedence would let an
-unrelated flag silently drop an ask nobody mentioned, which is the class of
-loss this key exists to end: five Sol jobs (62039301–05, 2026-08-23) died
-against a per-GPU memory default and an invented wall, because the two
-numbers had no home that travelled with the calculation.
-
-**Absent-is-a-state**, like `bench`: nothing asked writes no key, so every
-description written before this existed still says exactly what it always
-said, byte for byte.
-
-### 6.8d `execution` — the ONE condition the run uses
-
-*(User, 2026-09-02: "run parameter is independent from bench grid or bench
-result. User can run without bench… bench and run share the same framework to
-choose/set parameters but run does not produce grid but a single user defined
-condition to run." And: "bench is bench and run is run. They are structurally
-separated in their dir and they are functionally different as the user decides
-to use either.")*
-
-```json
-"execution": { "mpi_np": 8, "omp_threads": 2, "diag_algorithm": "ELPA-2STAGE" }
-```
-
-**One value per parameter, never a list.** A list is `bench`'s shape, and a
-list here is refused by name with that said — the two blocks are the same
-vocabulary at different arity, so the arity is what tells them apart.
-
-| | | |
-|---|---|---|
-| **`bench`** | several values per axis | *measure these* → N trials, in `<stage>/bench/` |
-| **`execution`** | one value per parameter | *use this* → one run, in `<stage>/run-N/` |
-
-**Independent, and both optional.** Declare a bench and no run condition, a
-run condition and no bench, both, or neither. **A run never requires a
-benchmark** — not to have been executed, not to have been declared. The two
-lanes have separate directories (`project-layout.md` § 1.5b) because they are
-separate things, and the file says so too.
-
-**Both calculation-wide and per stage.** The top-level block is what this
-calculation runs at; a rung that wants something else says so on itself, and
-the two compose **field by field** — a stage naming only `mpi_np` keeps the
-calculation's solver and its thread count:
-
-```json
-"stages": [{ "name": "tight", "execution": { "mpi_np": 16 } }]
-```
-
-**A calculation-wide value reaches the rungs that read it** — the item's
-`stages`, by role, asked of `template.reads` ([`template.md`](?doc=engines/template.md)
-§ 6.4) as for an override. A rung whose role does not read an item takes
-nothing of it from the calculation's block: a transport ladder's
-transmission takes no `use_gpu` or `gpu_count`, its `tbtrans` having no GPU
-path, while the seed, the leads and the device take them. A rung's own block
-naming an item it does not read is refused, as its override is. `time` and
-`domain`, which are not catalogue items (§ 6.8e), reach every rung.
-
-**And nowhere else** *(plan § 5w K5, 2026-09-30)*. A run setting is stated
-in this block — the calculation's or the rung's own — and in no other part of
-the description: not as a stage column (§ 6.2), and not by a `bench` row,
-which sets only the trials it declares (§ 6.8). So every reader takes one
-answer, the template's value with the calculation's block over it where the
-rung reads the item, and the rung's over that — the deck, the scheduler's
-device ask, the wrapper and the
-Task setup tab's cards and hints alike — and a transport rung takes its run
-card as every other rung does.
-
-**Absent is a state, as everywhere here.** A run whose launch shape is stated
-neither here nor by a `prep` flag is refused, and the refusal names both
-places ([`architecture.md § 5.2`](?doc=execution/architecture.md)).  **A
-benchmark does not fill it**: it writes a report, and what the run uses is what
-you wrote here.
-
-**Which names may appear** is the catalogue's `execution` items — the same
-membership `bench` uses — **plus `time` and `domain`**, which are not
-catalogue items at all (§ 6.8e). The same split decides where each of the
-catalogue names lands: a machine-answered item becomes the launch shape,
-anything else a pin over the template. The launch shape is a direct map of
-the block's machine items onto the run's request (`prep_inputs.
-declared_run_shape`, `generator.md` § 4.1), never the benchmark's grid
-enumerator, and that request is placed on its queue at prep, its fit said, as
-a trial's cell is fit on its benchmark's.
-
-**Why not `allocation`.** That block is what this calculation asks the
-**scheduler** for — the queue, the wall, the memory, the GPU binding
-(§ 6.8a). `execution` is
-what the **job** runs as. A `--mem` and an `mpi_np` are answered by different
-things and refused by different doors, and one block holding both was tried on
-2026-09-01 and made the reader unable to say which of the two a key belonged
-to.
-
-#### 6.8e `time` and `domain` in `execution` — the two asks a RUN owns
-
-**A benchmark and a run want different wall clocks, and one field cannot hold
-both.** *(User, 2026-09-02, choosing this over a split `allocation`:
-"explicit, right next to prep run so easy to see and confirm.")*
-
-`allocation` is folded by the shared prep path, so `prep bench` and `prep task`
-read the same `time` and the same `domain`. That is one number for two jobs
-with opposite needs:
-
-| `allocation.time` | the benchmark | the real run |
-|---|---|---|
-| `0-04:00:00` | fine | **killed at four hours** |
-| `2-00:00:00` | every ten-minute trial asks for two days, and queues behind everything | fine |
-
-The second row is the one that is easy to miss: a short ask is scheduled into
-gaps almost at once, so a benchmark that asks for two days waits a day to
-start — and a benchmark is the thing you run to *save* time.
-
-```json
-"allocation": { "time": "0-04:00:00", "domain": "htc-debug", "mem": "256G" },
-
-"stages": [{ "name": "tight",
-             "execution": { "mpi_np": 64,
-                            "time": "2-00:00:00", "domain": "public" } }]
-```
-
-**`allocation` is the calculation's ask and the BENCH's; `execution` is this
-RUN's.** So the scheduler ladder gains one rung, for these two names only:
-
-> `allocation` → **`execution`** → a `prep` flag — and stated nowhere,
-> refused at prep on a target with a scheduler; a submitted job's wall may be
-> restated at launch (`launch --time`)
-
-**`mem` is deliberately NOT among them.** The line is *does this differ
-between the two lanes* — and memory does not: a trial and a run compute the
-same system with the same basis, so they hold about the same amount. A wall
-clock differs because a trial's step count is cut; a queue differs because
-short work and long work belong in different ones. A field that would hold
-the same value in both blocks would only be a second place to look.
-
-**They are not catalogue items, and that is not an oversight.** The catalogue
-describes what an *engine* computes with; a wall clock and a queue are what a
-*scheduler* is asked for, and no engine has an opinion about either. They are
-admitted to this block by name — which is also why a run's condition can never
-turn one into a `bench` axis: `bench` takes catalogue items only, and a
-benchmark that swept its own wall clock would be measuring the queue.
-
-### 6.8 `bench` — a plan to measure, never a measurement
-
-**The problem it solves.** A calculation's resource settings — ranks, threads,
-memory, the GPU — cannot be chosen in a browser, because they depend on the
-machine. But *which of them are worth measuring, and over what points* is a
-decision about this calculation, and it is made by the person who set it up. So
-it belongs in the description, and nothing else in `task.json` could hold it:
-`varies` names per-stage physics columns, and `overrides` fills them.
-
-**The rule, and it is the same one § 6 already rests on:**
-
-> `task.json` records what the person **asked** — points to try, or a value
-> they chose. It never records what a machine **found**.
-
-**And ONE point on a NON-MACHINE entry is the value the trials run with**
-*(user rule, 2026-08-20 — the override lane)*:
-`use_gpu: [true]` is applied at prep as a pin over the template for the
-bench's trials, **and only for them**. The run reads its own card — a pin on
-it would be a second home for the run's value beside `execution` (§ 6.8d;
-user: *"trials only"*).
-
-**A machine-answered entry is never an answer here, at any length.**
-`mpi_np: [8]` is *measure eight* — one trial, not a decision. What the RUN
-uses is `execution`, its own block (§ 6.8d), and the two are independent: a
-grid and a decision coexist, because narrowing a row to state the run would
-destroy the plan to measure.
-
-> **The line is decision vs finding, not portable vs not**
-> (`generator.md` § 4.3a). *"Use 16"* is true on one cluster where *"try 4,
-> 8, 16"* is true on all of them — yet `allocation` carries `domain`, and a
-> queue name is no more portable than a rank count; what this file must
-> never hold is what a **machine found**, which is why `summarize` writes its
-> verdict to a report of its own (printed by `summarize`) that no code
-> reads. A person who read a benchmark and chose eight ranks is *asking*, and
-> asks are what this file is for.
->
-> `template.md` § 7 is absolute: the **template** may not
-> carry a machine value, `read_template` refuses a hand-edited
-> `mpi_np`, and the item stays valueless. That rule is about a different
-> file with a different job.
-
-**Where the answer goes instead.** `bench` runs on the target and writes
-`bench-result.json`, whose `choice` carries the measured value alongside the
-rank and GPU counts; `summarize` prints it as a report, and no code reads it —
-what the run uses is its run card (§ 6.8d;
-[`job-system.md § 7`](?doc=execution/job-system.md)). Two files, two jobs: the
-description says what to ask, the result says what the machine said.
-
-**A field may appear here that may never appear in the template**, and that is
-not a contradiction. `mpi_np` as a *point to try* is a question; `mpi_np` as an
-item value would be an assertion about a machine the description has not met.
-The two are different claims and only one of them travels.
-
-**The calculation KINDS this vocabulary serves** *(P0 of the
-spectra-migration plan, 2026-08-20; transport added 2026-08-29)*:
-`optimization`, **`vibration`** — the
-described vibrational-spectroscopy job, whose template the catalogue narrows
-by the `calculations` key (`template.md` § 6.3's sibling rule) and whose
-warm-file section `pyscf/warm-files.toml` already declares — and
-**`transport`**, the composite with its own codec rules (`task.py`:
-transport ⇒ hierarchical shape, exactly one `junction` slot cited
-cited as a tree-relative directory path whose files satisfy [`transport.md`](?doc=engines/transport.md) § 3.1, no `structure`, a `bias` list; `siesta/warm-files.toml`'s
-`[transport]` section declares its warm vocabulary).
-
-**What may be swept is not a free list.** A key must name a field the engine
-already declares sweepable — the `execution` category, which
-[`template.md` § 6.2](?doc=engines/template.md) defines as *"knobs that change
-speed and not the answer"*. Sweeping something outside it means each point
-silently measures a different calculation, and the comparison is meaningless.
-
-**The bench lane speaks SIESTA today, and `prep bench` says so by name.** A
-trial is a MEASUREMENT, and what makes it one is the pin set applied over
-every point: cap the SCF at three cycles, no relaxation steps, force a cold
-start, no continue-retries, and let an unconverged cap end cleanly rather than
-abort. Those five are SIESTA catalogue fields. A PySCF description declares
-none of them, so the pins would resolve against settings the user never wrote
-— and the accident that stops it today is only that the names do not exist:
-the day `PySCFConfig` grows one of them, a `use_gpu` sweep would silently
-enumerate a CPU grid and call it a measurement. So the refusal is explicit,
-raised at `prep bench` before any trial is rendered, and it points at the
-engine's own scaling guidance ([`tuning.md`](?doc=engines/tuning.md)) instead.
-Extending the lane to another engine means giving that engine its own pin set,
-not relaxing the check.
-
-> **Why this is `@1` and not a new major.** The key is optional, and absent is
-> the correct reading of every `task.json` written before it existed: no bench
-> was planned. A major bump would invalidate every description on disk to add
-> something none of them says. Readers that predate the key are not a concern —
-> they ship together with the writer.
-
-### 6.9 `notify` — when this calculation speaks, to whom, and with what
-
-`notify` is the calculation's reporting **policy**: when to speak, to which of
-the running machine's channels — **by name** — and which fields a chat card
-shows. It travels with the description; what a channel name resolves to never
-does ([`run-reports.md`](?doc=execution/run-reports.md) § 1).
-
-```json
-"notify": {"on_scf_converged": true, "every_hours": 6,
-           "channels": ["slack"], "report": ["elapsed_s", "energy", "max_force"]}
-```
-
-| key | type | every / never | none | refused at save |
-|---|---|---|---|---|
-| `on_scf_converged` | boolean | — | `false` | anything but a JSON boolean |
-| `every_hours` | number of hours | `null` is **never** | — | a string (`"6h"`), `0`, a negative or a non-finite number |
-| `channels` | list of channel names | `["*"]` — **every channel the running machine has** | `[]` — **none**: reports off for this calculation | a name that is not letters, digits, `-` and `_`; `"*"` beside a name |
-| `report` | list of report field names | `["*"]` — **every field the run states**, of those the receiver's layout shows for the event (`run-reports.md` § 4.1c) | `[]` — the name, the state and the summary line, with no field grid | a name that is not a report field, or one this calculation's runs can never state; `"*"` beside a name |
-
-**A block states all four keys, every time** *(W57 R10 and D6, 2026-10-06)*:
-a key left out is refused by name. Until then a key was left out for its
-"every" or its "off", so a choice and a block that never said were the same
-bytes, and `{"every_hours": 0}` was read as no block at all; a description
-written before is refused naming `molbuilder jobset migrate --bundle <calc>`,
-which writes each key left out with what its absence meant, and `0` as
-`null`.
-
-What each occasion is and what every message carries are
-[`run-reports.md`](?doc=execution/run-reports.md) § 2 and § 4.1a; which
-channels a list selects is § 3.0 there. **No `notify` block is no
-notification**, the start and the end included; a calculation with a block also
-reports its start and its end, so they are not keys. `notify` present but empty
-is refused:
-absent and empty would be two spellings of one state. **`["*"]` and `[]` are
-two states for `channels` and for `report`**: a person who unticked every box
-asked for something different from a person who kept *every*.
-
-**The name is not on the `report` list, because it is not optional.** Every
-report carries the run's name and, under a scheduler, its job id — in a chat
-card's title, first. A report you cannot attribute to a job is a notification
-you have to go and look up. So `report` is *what else*: it can be empty, and
-it can never remove the name.
-
-**A field is offered for what the run can state.** The fields, their units and
-which runs state each are [`run-reports.md`](?doc=execution/run-reports.md)
-§ 4.1a's table, read from the one declaration, `molbuilder/report_fields.py`,
-which the description, the wrapper, the monitor, the listener and the
-Task-setup card all read — none keeps a list. The card offers only those
-([`task-setup.md`](?doc=web/task-setup.md) § 9b), and a description naming a
-field its calculation can never report is **refused at save, by name**: a field
-that can never arrive is a tick that silently means nothing. **One vocabulary**:
-a field's name is the report's own wire name, so what you tick, what travels
-and what a listener parses are the same word.
-
-**A list is a ceiling, never a floor.** Asking for `energy` on a run that has
-not printed one yields no `energy` field, not an empty one. And `report` shapes
-a chat card — the fields in its grid, in the order and up to the count the
-receiver's layout gives the event ([`run-reports.md`](?doc=execution/run-reports.md)
-§ 4.1c); our own listener receives the whole record (§ 4.1b).
-
-**It is fixed at `prep`, not read at run time.** The wrapper bakes the whole
-block into the monitor's command line
-([`run-reports.md`](?doc=execution/run-reports.md) § 2.6), carried there on
-`jobset.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md)
-§ 6.2) — so what a running job reports cannot change because `task.json` was
-edited while it sat in the queue, and the monitor needs no access to the
-description.
+**How and where the calculation runs is its job request's**, a file of its own
+beside this one, `job-request.json`
+([`execution/job-request.md`](?doc=execution/job-request.md)): what it asks
+the scheduler for (`allocation`), each run's card (`execution`), which stages
+share a job (each stage's `group`), what a benchmark measures (`bench`) and
+when the calculation reports (`notify`). **This file says what is computed, and
+nothing else** — the rule both files keep is § 1 of that contract.
 
 ---
 
@@ -1863,6 +1523,7 @@ ever disagree that one wins.
 projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 ├── <label>.template.toml               ← the science backbone
 ├── task.json                          ← what each stage tunes, and the run id
+├── job-request.json                   ← how and where it runs: queue, run cards, groups
 ├── pseudos/  Au.psml  S.psml  …       ← shared, stored ONCE
 ├── 01_coarse/                         ← written by `prep`, on the target
 │   ├── <label>_01_coarse.fdf             ← template ⊕ coarse ⊕ its run card
@@ -2083,10 +1744,10 @@ work. It is a reason for the history to exist, which § 7.2 already requires.
 
 So the history keeps it: the folder's state is saved before the acts that
 change it — which acts, and the note each writes, are
-[`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 9's. A
-launched stage is not prepared again — its way back is
+[`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 9's. What a
+launched stage computes is not prepared again — its way back is
 [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
-you*.
+you*; how it runs may be ([`execution/job-request.md`](?doc=execution/job-request.md) § 5).
 
 > **The obstacle here is cleared** (2026-08-06). `Repo.init` used to refuse any
 > directory whose subdirectories held a working-dir marker — and § 7.1's layout

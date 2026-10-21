@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from molbuilder.jobset.ask import Prediction, prediction_table
 from molbuilder.runfiles import RunNames
+from support.road import molbuilder
 
 
 # --------------------------------------------------------------------- #
@@ -117,7 +118,7 @@ def _jobset(*args):
 
 def _a_prepped_stage(tree, monkeypatch, *stated):
     """One stage, described and prepared the way a person does it:
-    `jobset init` on a structure in the projects tree, then `prep task
+    `molbuilder describe` on a structure in the projects tree, then `prep task
     --target this`, stating its launch values as flags (``stated``) -- a
     run states them or is refused (`architecture.md` § 5.2).  NO engine
     runs -- asking needs a prepared attempt and nothing more."""
@@ -127,7 +128,7 @@ def _a_prepped_stage(tree, monkeypatch, *stated):
         "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
-    r = _jobset("init", "--structure", "P/structure/h2.xyz",
+    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", "pyscf",
                 "--calculation", "optimization",
                 "--shape", "hierarchical", "--name", "H2")

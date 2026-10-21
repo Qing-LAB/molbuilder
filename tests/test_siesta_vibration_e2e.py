@@ -1,6 +1,6 @@
 """The vibration kind on SIESTA, through the whole described road.
 
-``jobset init --engine siesta --calculation vibration`` → ``prep task`` →
+``molbuilder describe --engine siesta --calculation vibration`` → ``prep task`` →
 ``launch task --mode direct`` on this workstation, and nothing after it: the
 road's CO2 (`support.road.CO2`), listed O O C with the carbon held, the
 force-constant run nudging the two oxygens only, and the modes derived BY THE

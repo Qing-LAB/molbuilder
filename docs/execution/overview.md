@@ -46,6 +46,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
 | What a saved history must always guarantee — the 31 rules behind `molbuilder checkpoint` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
 | How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`engines/transport.md`](?doc=engines/transport.md) § 3.1; the old handoff bundle retired 2026-08-29) |
+| **How and where a calculation runs** — its job request: the run cards, the groups, the queue, a benchmark's plan, the reports, and what may change once a stage is launched | **[`job-request.md`](?doc=execution/job-request.md)** |
 | What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
 | What a **template** is — the file that carries every parameter with its value, and which layer owns each one | **[`engines/template.md`](?doc=engines/template.md)** — in `engines/`, by the same rule: a template is nothing but parameters |
 
@@ -289,7 +290,7 @@ worse than no check: it fails a directory that is working correctly.
 thing at different sizes**, so there is one way in and one vocabulary:
 
 ```
-describe it   →  molbuilder jobset init --structure <structure> --bundle <calculation> --engine siesta|pyscf --calculation <kind> --shape flat|hierarchical [--stage-strategy …]
+describe it   →  molbuilder describe --structure <structure> --bundle <calculation> --engine siesta|pyscf --calculation <kind> --shape flat|hierarchical [--stage-strategy …]
 set it up     →  molbuilder jobset prep     task [--group N]
 run it        →  molbuilder jobset launch   task [--group N | --stage <stage>] [--mode direct|submit]
 look at it    →  molbuilder jobset status

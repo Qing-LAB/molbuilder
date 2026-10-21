@@ -94,11 +94,11 @@ def test_an_optional_item_offers_its_unset_state():
     offer *(auto)* / *(no cap)*.  It cannot be inferred from `null_label`."""
     f = {x["name"]: x for s in catalogue_to_form_schema("siesta")["sections"]
          for x in s["fields"]}
-    # ``block_size``: optional, auto-resolved, and its *(auto)* state is the
-    # whole reason `optional` is written down.
-    assert f["block_size"]["optional"] is True
-    assert f["block_size"]["null_option"] is True
-    assert f["block_size"]["null_label"]
+    # ``net_charge``: optional, worked out from the structure when unset,
+    # and its *(auto)* state is the whole reason `optional` is written down.
+    assert f["net_charge"]["optional"] is True
+    assert f["net_charge"]["null_option"] is True
+    assert f["net_charge"]["null_label"]
     assert f["mesh_cutoff"]["optional"] is False
 
 

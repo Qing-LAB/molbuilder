@@ -203,7 +203,7 @@ CITATION_CONDITION = (
     "that records the optimization it came from -- its .xyz, its "
     ".molstruct.json carrying info.calculation, as the Results tab or "
     "`molbuilder xv2xyz --from-run` saves a finished relaxation "
-    "(engines/transport.md 3.1).  Relax the junction through `jobset init` "
+    "(engines/transport.md 3.1).  Relax the junction through `molbuilder describe` "
     "-> `prep task` -> `launch task`, then cite that run or the pair saved "
     "from it")
 
@@ -493,7 +493,7 @@ def _run_geometry(cited: CitedRun, kinds):
             f"for its {struct.n_atoms} atoms: {why}.  "
             f"Transport derives the electrodes FROM the labels (L-electrode / "
             f"R-electrode; engines/transport.md 3.1, 4) -- label the junction "
-            f"on the Molbuilder tab and relax it through `jobset init` -> "
+            f"on the Molbuilder tab and relax it through `molbuilder describe` -> "
             f"`prep task` -> `launch task`, then cite that run.")
     return (struct, np.asarray(steps.first.positions, dtype=float),
             Path(output))
@@ -840,7 +840,7 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
             f"{'holds' if len(changed) == 1 else 'hold'} the bytes "
             f"{PROVENANCE_FILE} pinned.  This calculation's stages ran on "
             f"the pair as it was; cite the pair as it is now in a new "
-            f"transport calculation (`jobset init`), or restore it "
+            f"transport calculation (`molbuilder describe`), or restore it "
             f"(engines/transport.md 3.1).")
 
 

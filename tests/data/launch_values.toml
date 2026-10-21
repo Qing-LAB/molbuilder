@@ -50,18 +50,18 @@ node_types = [{ cores = 64, nodes = 2 }]
 [[case]]
 name = "a SIESTA run states its rank count -- no width of the target"
 run_unset = ["mpi_np"]
-refused = 'the run card on Task setup ("execution": {"mpi_np": N} in task.json), or --np N'
+refused = 'the run card on Task setup ("execution": {"mpi_np": N} in job-request.json), or --np N'
 
 [[case]]
 name = "a SIESTA run states its cores per rank -- no thread count of one"
 run_unset = ["omp_threads"]
-refused = 'the run card on Task setup ("execution": {"omp_threads": N} in task.json), or --cpus-per-task N'
+refused = 'the run card on Task setup ("execution": {"omp_threads": N} in job-request.json), or --cpus-per-task N'
 
 [[case]]
 name = "a PySCF run states its threads -- not the node's cores"
 engine = "pyscf"
 run_unset = ["threads"]
-refused = 'the run card on Task setup ("execution": {"threads": N} in task.json), or --cpus-per-task N'
+refused = 'the run card on Task setup ("execution": {"threads": N} in job-request.json), or --cpus-per-task N'
 
 [[case]]
 name = "a run on a scheduler names its queue -- shown the record's queues with its fit on each"
@@ -217,7 +217,7 @@ name = "a PySCF run asks one task and its threads -- and its deck runs on those 
 engine = "pyscf"
 run = { threads = 6 }
 header = ["#SBATCH -n 1", "#SBATCH -c 6"]
-deck = ["_mb_cap_threads(6)"]
+deck = ["THREADS = 6", "_mb_cap_threads(THREADS)"]
 run_sh = ["_omp_threads_default=6",
           '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
@@ -239,20 +239,20 @@ name = "a SIESTA run script pins BLAS to one thread"
 run_sh = ["\nexport MKL_NUM_THREADS=1\n", "\nexport OPENBLAS_NUM_THREADS=1\n"]
 
 [[case]]
-name = "a memory cap left unset is no cap -- nothing fills one in: the PySCF deck says it is not stated, and the run's facts record none"
+name = "a memory cap left unset is no cap -- nothing fills one in: the PySCF deck's run settings hold none, and its molecule and the run's facts read them"
 engine = "pyscf"
-deck = ["max_memory = None, # not stated: PySCF's own setting", "max_memory_mb=None"]
+deck = ["MAX_MEMORY_MB = None", "max_memory = MAX_MEMORY_MB,", "max_memory_mb=MAX_MEMORY_MB"]
 
 [[case]]
 name = "...and the PySCF vibration deck alike"
 engine = "pyscf"
 calculation = "vibration"
 stage = "freq"
-deck = ["MAX_MEMORY_MB = None # not stated: PySCF's own setting", "max_memory_mb=None"]
+deck = ["MAX_MEMORY_MB = None", "max_memory = MAX_MEMORY_MB,", "max_memory_mb=MAX_MEMORY_MB"]
 
 [[case]]
 name = "a run's placement is recorded at prep, each value with its source, and said"
-said = ["placed on cpu (cpu/public)", "queue, wall, memory from the description", "ranks, cores per rank from the run card",
+said = ["placed on cpu (cpu/public)", "queue, wall, memory from the allocation", "ranks, cores per rank from the run card",
         "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 
 [[case]]

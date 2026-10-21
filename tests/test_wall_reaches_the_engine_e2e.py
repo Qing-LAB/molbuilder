@@ -2,7 +2,7 @@
 said at the next launch (`running-a-job.md` § 3.6; `engines/siesta.md`
 § 8.9) -- on the real SIESTA, the road's H2.
 
-Driven as a person drives it: ``jobset init`` -> ``prep task`` -> ``launch
+Driven as a person drives it: ``molbuilder describe`` -> ``prep task`` -> ``launch
 task --mode direct --foreground`` with the wall a sent job carries in its
 environment (``MB_WALL_S``, what a launch to a queue exports on its line),
 then the next stage launched over a density file whose write time is the
@@ -15,7 +15,6 @@ silence.
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -23,6 +22,7 @@ import pytest
 
 from _road import conda_hook, env_available, live_siesta
 from support.road import H2, group_words, jobset, road_structure
+from support.road import molbuilder, read_request, write_request
 
 pytestmark = [
     pytest.mark.engine,
@@ -40,10 +40,10 @@ def _write_h2(tree: Path) -> None:
 
 
 def _one_rank(bundle: Path, **card) -> None:
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
-                         "omp_threads": 1, **card}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    request = read_request(bundle)
+    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
+                            "omp_threads": 1, **card}
+    write_request(bundle, request)
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ def walled(isolated_projects_root_module, tmp_path_factory):
     with live_siesta(tree, tmp_path_factory) as mp:
         _write_h2(tree)
         flat = tree / "P" / "opt" / "H2wall"
-        r = jobset("init", "--structure", "P/structure/h2.xyz",
+        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                    "--bundle", "P/opt/H2wall", "--engine", "siesta",
                    "--calculation", "optimization", "--shape", "flat",
                    "--name", "H2", "--psml-lib", "pseudopotential",

@@ -1,6 +1,7 @@
 """THE SAME ENGINE INPUT -- whether two SIESTA decks give the engine the same
-input (`engines/transport.md` § 6.1): the question the transport gather asks
-of a run before it takes its files, never which molbuilder wrote the deck.
+input, the run settings aside (`engines/transport.md` § 6.1): SIESTA's
+reading of *the same calculation* (`deck_record.same_calculation`,
+`execution/job-request.md` § 6), never which molbuilder wrote the deck.
 
 The SIESTA engine's own door, because every part of the answer is SIESTA's:
 what its fdf reader reads (`parse.fdf`), the value it takes for a keyword a
@@ -28,8 +29,10 @@ _LOGICAL = FDF_TRUE_WORDS | FDF_FALSE_WORDS
 #: (`ts_electrode.F90`:606-644).  A file read back is checked against the
 #: electrode it is for -- cell, k-points, weights, energy points, atoms --
 #: and the run stopped on a mismatch (`m_ts_gf.F90`:139-162, `check_Green`),
-#: so neither where it lies nor whether it is reused changes a number the
-#: run computes.  Left out of the comparison.
+#: never against the electrode's Hamiltonian: where it lies changes no
+#: number, and a file read back is the same input only as one its own run
+#: wrote, which a molbuilder run does, fresh for each run and each voltage
+#: (`engines/transport.md` § 2a.11).  Left out of the comparison.
 SCRATCH_KEYWORDS = frozenset({fdf_key("TS.Elecs.GF.ReUse"),
                               fdf_key("TS.Elecs.Out-of-core")})
 ELECTRODE_BLOCK = fdf_key("TS.Elec.")
@@ -66,12 +69,18 @@ def engine_input_differences(ran: str, now: str) -> List[str]:
     fdf reads it, a unit as written; a block row by row.  A keyword one deck
     leaves out is the same input as the other's statement of the engine's
     own default (:func:`engine_defaults`).  The geometry is compared where
-    SIESTA places it, in Å (:func:`_geometry_difference`)."""
+    SIESTA places it, in Å (:func:`_geometry_difference`).  A RUN SETTING'S
+    KEYWORD is no part of it (:func:`run_setting_keywords`): it says how
+    fast and where a run computes, never what (`execution/job-request.md`
+    § 2)."""
     spelled: Dict[str, str] = {}
     ran_keys, ran_blocks = _as_siesta_reads(*read_fdf(ran, spelled_out=spelled),
                                             spelled)
     now_keys, now_blocks = _as_siesta_reads(*read_fdf(now, spelled_out=spelled),
                                             spelled)
+    aside = run_setting_keywords()
+    ran_keys = {k: v for k, v in ran_keys.items() if k not in aside}
+    now_keys = {k: v for k, v in now_keys.items() if k not in aside}
     defaults = engine_defaults()
     out: List[str] = []
     for key in sorted((set(ran_keys) | set(now_keys)) - GEOMETRY_KEYS):
@@ -219,6 +228,22 @@ def _geometry_difference(ran: str, now: str) -> Optional[str]:
     return None
 
 
+def run_setting_keywords() -> frozenset:
+    """Every fdf keyword a SIESTA run setting writes -- the catalogue's
+    `execution` items' ``anchor`` and ``expands`` (`template.md` § 6.2),
+    asked, never listed."""
+    from ..template import catalogue
+    out = set()
+    for it in catalogue().items:
+        if "execution" not in (it.category or ()) or (
+                it.engines and "siesta" not in it.engines):
+            continue
+        for word in ((it.anchor,) if it.anchor else ()) + tuple(
+                it.expands or ()):
+            out.add(fdf_key(word))
+    return frozenset(out)
+
+
 def engine_defaults() -> Dict[str, List[str]]:
     """``{fdf keyword's key: [value, unit]}`` -- every SIESTA item whose
     catalogue row states the engine's own default (``engine_default``), as
@@ -236,4 +261,5 @@ def engine_defaults() -> Dict[str, List[str]]:
     return out
 
 
-__all__ = ["engine_input_differences", "engine_defaults"]
+__all__ = ["engine_input_differences", "engine_defaults",
+           "run_setting_keywords"]

@@ -77,7 +77,9 @@ written into the documents word for word (no move), and 2.26.1 (N3d: the
 e2e batch's older failures owned, three errors of ours among them), 2.26.2
 (N4: every fact on its floor, but the two record readers L1T-D1 holds),
 2.26.3 (L1T-D1: those readers on their records' floors) and 2.26.4 (L1T-D2:
-*where am I*, one ground-floor answer with its context).
+*where am I*, one ground-floor answer with its context), and **2.27.0** (N5, § 1s: what is computed and how it runs, two records -- `task.json` and `job-request.json`; `molbuilder describe`; `jobset migrate` splits a calculation described before).
+
+**After 2.27.0, the user's:** every calculation under `AuBDTAu` is read once `jobset migrate` has run on it -- `lowbias_local` after its local transmission has ended (the `jobset launch` waiting on it holds older code and may end in an error once the run is over; the run's files are the run's own) -- and the dev server restarted on 2.27.0 (the Results tab's *scan failed* there was the server running two releases' code at once).
 
 **On Sol, the user's:** `git pull` to 2.24.1, then `jobset prep task --group
 3` and `jobset launch task --group 3 --mode submit` on
@@ -97,13 +99,13 @@ TBtrans rank, from TBtrans's own `[memory]` lines and the monitor's peak
 (12.31 GB on 16 ranks) — 64 ranks ≈ 50 GB; its wall, from the local run's
 progress lines (≈ 150 h on 16 ranks of a 2016 Xeon), ≈ 37 h at most on 64.
 
-**What runs next** is § 0a's queue, *NOW*: what is computed vs how it runs
-(§ 1s), the memory suggestion (§ 1u) — then § 0a's steps 2–6.
+**What runs next** is § 0a's queue, *NOW*: the memory suggestion (§ 1u)
+— then § 0a's steps 2–6.
 
 **Decisions that wait on the user** — SEQ-ALLOC, WAE, GKN, RL15, V1.9's
 remainder, F11's go, SCHED-R's advance signal (§ 0a). The question this
 handover carried — whether the run-setting keywords count in the same-input
-comparison — is answered by § 1s item 3 (they do not), built with § 1s.
+comparison — is answered by § 1s item 3 (they do not), built in 2.27.0.
 
 **Only Sol can show**, when the user is there: the junction on Sol (E13), the
 AuBDTAu workflow, a group's header under a real scheduler (Q13), why no
@@ -118,73 +120,9 @@ run it on this workstation")*.
 
 ---
 
-## 1s. What is computed vs how it runs — the evaluation, and the separation *(2026-10-20; the user's yes: "build it as 2.24.0 after 2.23.2" — N5 in § 0a's queue)*
+## 1s. What is computed vs how it runs — **shipped 2.27.0** *(N5)*
 
-*(the user, 2026-10-20: "it is completely stupid to have this involved in a
-job scheduling"; "carefully evaluate the jobset logic and see how much
-mixing you already have between science request vs job request")*
-
-**The finding, verified at the code** (one fresh audit plus a read of the
-description, the plan, `resolve` and the catalogue): the two are mixed in
-five places, and the first two cost a person a run.
-
-| # | where | what is mixed | what it costs |
-|---|---|---|---|
-| 1 | the transport gather's *same engine input* check (`siesta/engine_input.py`, `gather.py`; `transport.md` § 6.1) | the deck compared as science while it carries `BlockSize` (prep derives it from the rank count), `Diag.ParallelOverK`, `Diag.Algorithm`, `Diag.ELPA.GPU`, `TS.SolutionMethod` (its own help: *"never the answer"*) | more ranks, another solver or the GPU switch makes a finished seed or device run "another calculation"; the rung after it refuses to gather — met here: an older device run differs in `Diag.ParallelOverK` alone |
-| 2 | a launched stage is frozen whole (`job-system.md` § 5.0 rule 5, `submit._as_described`) | the deck (science) and its header and run script (queue, wall, memory, ranks) prepared, frozen and compared as one | a run out of memory or wall cannot continue on a bigger request; the only road is the state saved before its group's first launch, its runs left behind; `--time` is the one value a launch may restate |
-| 3 | the description `task.json` | beside the science (structure or citation, kind, stages and what they vary, voltages): the queue, wall and memory (`allocation`), the run card (`execution`, each stage's own), the benchmark grid (`bench`), the notification policy (`notify`), which stages share a job (`stages[].group`) | a queue change is a description edit, saved and checkpointed as one; it then trips 1 and 2 |
-| 4 | the template, the science file | 13 run settings (`execution`) carry template values beside the run card — `block_size`, `parallel_over_k`, `diag_algorithm`, `use_gpu`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack`, `continue_retries`, … (`template.py` writes them, `resolve` lays the card over) | two homes: a template solver or `use_gpu = true` is silently in force while the card is blank; the Build tab and the run card both show them |
-| 5 | catalogue categories | `density_fit` is `method` + `execution` though it changes the energy (its help: up to 0.1 kcal/mol); `restart` — what a stage builds on — is `convergence` + `execution`, set on the run card; SIESTA's `continue_retries` is `execution`, PySCF's `geom_continue_retries` `procedure`, one step budget | a science choice sits on the resources card, a run setting decides a ladder link |
-
-And the command line: `init`, which describes the science (`--bias`,
-`--slot`, `--structure`, …), sits in the `jobset` group beside `prep` and
-`launch`; it needs nothing of the job code but the next-step line it prints.
-The docs state the boundary two opposite ways (`task.py`'s header and
-`project-layout.md`: *"names no machine"*; `stages.md` § 6.8: the person's
-asks belong in the description).
-
-**The rule proposed**: *a calculation is two records with two editors — the
-description says what is computed; the job request says how and where it
-runs. Nothing in one is read as the other.*
-
-1. **The job request leaves `task.json`** — `allocation`, `execution` (and
-   each stage's), `bench`, `notify` and the stages' groups — into one file
-   beside it (proposed: `job-request.json`), written by the run card and
-   prep's flags, saved on its own; `task.json` holds the science alone.
-2. **The run settings leave the template**: every `execution` item is
-   valueless there, as the machine-answered ones already are, and lives on
-   the run card alone. `density_fit` becomes `method`; `restart` a stage's
-   own science (what it builds on), never on the card; both retry budgets
-   `procedure`.
-3. **"The same calculation" compares science only**: the same-input check
-   leaves out every `execution` keyword, as it leaves out the engine's
-   scratch (this closes the open question in the handover).
-4. **A launched stage's job request may change**: prep writes its header and
-   run script again; its deck — the science — stays frozen; the next launch
-   sends the new request, and its `run.json` records it.
-5. **The command line**: `init` leaves `jobset` (proposed:
-   `molbuilder describe`); `jobset` prepares, launches and observes.
-   `launch --from/--cold/--gather` and `prep --from` stay: each picks one
-   run's input among runs that exist only after the earlier run, and is
-   recorded with that run (`continued_from`, `written_at`).
-6. **One statement of the boundary** in the contract, every opposite one
-   removed; `Resources` the job request alone (`program` moves to the job's
-   traits, the notify policy to the job request).
-
-`shape` stays in the description: it is how the folder is laid out, fixed at
-`init` for the folder's life — neither science nor a request that can change.
-
-**The scope, measured** (2026-10-20):
-
-| what | affected | how |
-|---|---|---|
-| calculations on disk | every one | the readers refuse an older `task.json`, naming `jobset migrate`, which moves the keys and the template's run-setting values onto the run card — decks render the same, so no prepared stage is refused (to check on a copy of a prepared calculation) |
-| code reading the moved keys | `allocation` 31 lines in 7 files; the run card 16 in 8; `bench` 18 in 7; `notify` 6 in 4; stage groups 33 | through one reader of the new file |
-| the Task setup page | 182 of `task-setup/viewer.js`'s 4892 lines name these keys; its Save | two records saved |
-| tests | 67 files name these keys; 37 calls in 22 files drive `jobset init` | re-pointed |
-| docs | 93 mentions of `jobset init` in 30 files; the boundary's statements | rewritten |
-
-**When**: N5, contract first — § 0a's queue, *NOW*.
+Built as two records, `task.json` and `job-request.json` ([`execution/job-request.md`](?doc=execution/job-request.md)); the section as it stood is [`archive/2026-10-21-1s-job-request.md`](?doc=archive/2026-10-21-1s-job-request.md). A calculation described before 2.27.0 is read after `jobset migrate` (§ 8 there).
 
 ## 1t. The layers, measured — every upward import *(2026-10-20; the three decisions the user's, given 2026-10-20 — N4 in § 0a's queue)*
 
@@ -449,7 +387,7 @@ below says.
 | **N3c** | **done 2026-10-21** — docs, no move | **The engine's wall and a file written as the job ended — is it documented?** Check that the work giving the engine its wall (SIESTA's `MaxWalltime` from the job's wall less its slack, `MB_WALL_S`, `running-a-job.md` § 3.6) and the check of a dependent file's write time against the engine's stop time — the warning that a file may have been cut off mid-write, a task or job stopped during its last write (the *written as the job ended* warning, `submit`'s `warned`) — are stated EXPLICITLY in the contract, the documents and the README: that they exist, their mechanism, and the exact message a person sees; a gap found is written in, a mismatch with the code reported. **Found and written in:** § 3.6 quoted none of the lines a person sees of the wall, gave the warning's scope as a stage launched again only (it is every launch that continues from a run's files, and the flat layout's files read in place), said it showed on "both doors" (it is the launch's two lines and the ledger; `status` and the browser do not compare), and quoted it with a dash the code does not print; now § 3.6 has every line word for word, the scope, the end it compares with (the closing record, to the whole second) and a run with none, and `siesta.md` § 8.9, `pyscf.md` § 3.9, `run-reports.md` § 2.1b, `job-system.md` § 5.4, the documents index and the README say it. No mismatch in the code; one question, WAE below | the user, 2026-10-20: *"there was a work on adding -wall time to engine, and correctly check the writing/access time of dependent file and the stop time of the engine to warn about potential corrupted writing (task/job stopped during last writing), see if this is correctly documented explicitly about its existence, mechanism, and message in the contract/document/README"* |
 | **N3d** | **shipped 2.26.1** | **The e2e batch's older failures, owned one by one** — found by 2.26.0's full `e2e` batch (500 tests, 2026-10-20) and failing the same on the pushed 2.25.2, so older than the sequence work: `test_bench_summary_inspector_e2e` (4: the page's polling), `test_inspector_registry_e2e` (7: the dropdown's headings, the error card, a viewer's teardown), `test_results_file_picker_e2e` (a rescan's parsing state), `test_siesta_run_in_the_viewer_e2e` (opened again and again), `test_vibration_e2e` (the monitor's status line no longer says *SCF iteration*, it says *SCF rows*), and a notebook test that differs from run to run. Each judged against its contract -- the code wrong, or the test asserting a rule no longer stated -- never called flaky; a timing one read wait by wait against the page code. **What they were** (the changelog's 2.26.1 row): three errors of ours -- a PySCF run's status line without its SCF iteration (2.21.0), a plain `.xyz` opened as a trajectory on the Results tab (2.16.3), a benchmark's folder opening nothing -- and tests mounting viewers without the server's answer they match on since 2.13.3; the notebook's one miss did not come back on its own, and its wait now says why when it fails | 2.26.0's batch; the user, 2026-10-20: *"push when all green"* -- these are not green, said so at the push |
 | **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
-| **N5** | a middle number | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
+| **N5** | **shipped 2.27.0** | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 
 ### THE ORDER — the remaining work, by priority *(2026-10-13)*

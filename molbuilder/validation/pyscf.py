@@ -161,6 +161,41 @@ def _check_periodic_structure_in_a_gas_phase_script(
     )]
 
 
+def _gpu_library_limits(struct: Structure, cfg,
+                        calculation: str) -> List[Issue]:
+    """What gpu4pyscf does not do that PySCF does, where this run asks for
+    the GPU -- each a ``warn``, never an ``error``: choosing the GPU
+    knowing it is the person's (`execution/job-request.md` § 2,
+    `engines/pyscf.md` § 7.3).  An unrestricted reference: gpu4pyscf has
+    no stability analysis, so on the GPU the SCF keeps its first solution
+    unchecked.  A solvent model: gpu4pyscf's has not been compared with
+    PySCF's here."""
+    out: List[Issue] = []
+    from ..chemistry import every_label_resolves
+    from ..electronic_state import electronic_state
+    if every_label_resolves(struct):
+        kind = calculation if calculation in ("optimization",
+                                              "vibration") else "optimization"
+        state = electronic_state(struct, cfg, kind=kind)
+        if state.spin_treatment.value == "unrestricted":
+            out.append(Issue(
+                "warn",
+                "use_gpu with an unrestricted reference: gpu4pyscf has no "
+                "stability analysis, so on the GPU the SCF keeps its first "
+                "solution unchecked -- the CPU path checks it, and may find "
+                "a lower state (engines/pyscf.md § 7.3).  The run's log says "
+                "`stability: NOT CHECKED`.",
+                "config.use_gpu"))
+    if str(getattr(cfg, "solvent", "") or "").strip():
+        out.append(Issue(
+            "warn",
+            "use_gpu with a solvent model: gpu4pyscf's solvent has not been "
+            "compared with PySCF's here -- the numbers are its own "
+            "(engines/pyscf.md § 7.3).",
+            "config.use_gpu"))
+    return out
+
+
 def _validate_pyscf(struct: Structure, cfg,
                     cell: Optional[np.ndarray] = None, *,
                     calculation: str = "optimization", **_) -> List[Issue]:
@@ -255,6 +290,11 @@ def _validate_pyscf(struct: Structure, cfg,
                 "J. Phys. Chem. B 113, 6378 (2009) [Marenich2009].",
                 "config.solvent_method",
             ))
+
+    # gpu4pyscf'S OWN LIMITS, SAID -- every kind (`execution/job-request.md`
+    # § 2; the user, 2026-10-21: "a hint and information is enough").
+    if bool(getattr(cfg, "use_gpu", False)):
+        issues += _gpu_library_limits(struct, cfg, calculation)
 
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(

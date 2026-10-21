@@ -258,7 +258,7 @@ class Item:
     read_by: Tuple[str, ...] = ()           # § 6.1 — who ELSE derives from it
     #: ``kind = "wrapper"`` -- THE WORDS THE RUN SCRIPT PASSES THE ENGINE on
     #: its command line for this item, by the program it starts
-    #: (``Resources.program``; the engine's own by default): ``{program:
+    #: (``Job.program``; the engine's own by default): ``{program:
     #: [word, ...]}``, each word with the placeholders the script fills
     #: (``{left}``, ``{slack}`` for `wall_slack`).  A program not named takes
     #: the item some other way -- a PySCF deck from its environment -- or not
@@ -355,7 +355,7 @@ class Item:
     calculations: Tuple[str, ...] = ()
     #: A KIND'S OWN RECOMMENDATION for this parameter, as ``(kind, value)``
     #: pairs (§ 6.3a): what a form built for that kind shows and what
-    #: `init` writes into that kind's template in place of the general
+    #: `molbuilder describe` writes into that kind's template in place of the general
     #: default -- a frequency's relaxation is tighter than an optimization's.
     #: Pairs rather than a mapping so the frozen item stays hashable.
     recommended: Tuple[Tuple[str, Any], ...] = ()
@@ -1035,17 +1035,22 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             #
             # `citation` is NOT among them: the cited run **defaults** these
             # values and the person may change them, everywhere at once
-            # (`engines/transport.md` § 2a.7), so what it produces at `init`
+            # (`engines/transport.md` § 2a.7), so what it produces at `molbuilder describe`
             # is an ordinary template value.
             # AND the rows the caller says nobody answered (``valueless``,
             # `engines/transport.md` § 3.8.3): a citation that carries no
             # deck answers no basis, and writing the class default there
             # would claim a run said something no run said.
+            # ...AND A RUN SETTING, every one: its value is the job
+            # request's run card, else the catalogue's default
+            # (`execution/job-request.md` § 2) -- never the template's.
             value=(None
                    if (it.allocation or calculation in it.role
+                       or "execution" in (it.category or ())
                        or it.name in set(valueless))
                    else getattr(config, it.name, it.value)),
-            source=(None if (it.allocation or calculation in it.role)
+            source=(None if (it.allocation or calculation in it.role
+                             or "execution" in (it.category or ()))
                     else told.get(it.name, "default")),
             # THE KIND'S RECOMMENDATION IS THE TEMPLATE'S DEFAULT (§ 6.3a);
             # the table itself does not travel -- a per-kind template has
@@ -1513,7 +1518,7 @@ def with_recommended(item: "Item", calculation: str) -> "Item":
 
 def apply_recommended(config, calculation: str, *, engine: str = ""):
     """A copy of ``config`` carrying every recommendation the catalogue makes
-    for ``calculation`` on its engine (§ 6.3a) -- what `init` writes a kind's
+    for ``calculation`` on its engine (§ 6.3a) -- what `molbuilder describe` writes a kind's
     template from, so the template starts where the kind says it should."""
     eng = engine or engine_name(type(config))
     updates = {}
@@ -1795,11 +1800,11 @@ def shared_by_every_stage(engine: str, kind: str) -> frozenset:
 def run_settings(engine: str) -> frozenset:
     """The settings a rung states on its RUN CARD -- the catalogue's
     `execution` items (§ 6.2), the machine's answers among them -- asked
-    rather than listed.  Each has one home, the calculation's ``execution``
-    with the rung's over it (`engines/stages.md` § 6.8d, plan § 5w K5): never
-    a stage column or override (:func:`why_run_setting`), which the
-    description's own check and ``resolve`` refuse and the Task setup table
-    does not offer."""
+    rather than listed.  Each has one home, the job request's run cards --
+    the calculation's with the rung's over it (`execution/job-request.md`
+    § 2) -- never the template, a stage column or an override
+    (:func:`why_run_setting`), which the description's own check and
+    ``resolve`` refuse and the Task setup table does not offer."""
     return frozenset(it.name for it in select(catalogue(), engine=engine)
                      if "execution" in (it.category or ()))
 
@@ -1807,10 +1812,10 @@ def run_settings(engine: str) -> frozenset:
 def why_run_setting(name: str) -> str:
     """Why a run setting cannot be a column -- the clause a refusal puts
     after *"stage <s> overrides <name>"* or *"'varies' names <name>"*."""
-    return (f"a run setting: the rung states it on its run card -- "
-            f"\"execution\": {{\"{name}\": ...}} on the stage, or on the "
-            f"calculation for every rung (engines/stages.md 6.8d) -- never "
-            f"as a stage column")
+    return (f"a run setting: the rung states it on its run card in "
+            f"job-request.json -- \"execution\": {{\"{name}\": ...}} on the "
+            f"stage's entry, or on the calculation for every rung "
+            f"(execution/job-request.md 2) -- never as a stage column")
 
 
 #: The calculation's identity -- `shared` for every SIESTA kind (2026-09-29,

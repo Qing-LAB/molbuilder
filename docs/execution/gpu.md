@@ -45,12 +45,12 @@ accurate/accommodating" — "and which part is none of your business".)*
 
 | question | answered by, where | what molbuilder does with it |
 |---|---|---|
-| **Does this run use a GPU?** | the person — `use_gpu` on the run card (`execution`), over the template's value; an axis of a bench | renders each engine's keyword (`Diag.ELPA.GPU`, gpu4pyscf), takes SIESTA to its GPU build, asks the scheduler for GPUs. Not said, no GPU is asked for |
+| **Does this run use a GPU?** | the person — `use_gpu` on the run card (`execution`), over the catalogue's default (`false`, [`job-request.md`](?doc=execution/job-request.md) § 4); an axis of a bench | renders each engine's keyword (`Diag.ELPA.GPU`, gpu4pyscf), takes SIESTA to its GPU build, asks the scheduler for GPUs. Not said, no GPU is asked for |
 | **How many GPUs?** | the person — `gpu_count` on the run card, both engines, or `--gpus N` on the prep | asks `--gres=gpu:N`. **No default, and no count without the GPU:** a run that uses a GPU and states no count, or states a count and does not use the GPU, is refused at prep, before anything is written, naming where each is said (G5). A bench that names no `gpu_count` measures each count that divides its rank counts, up to the most one node holds (§ 3.1) |
 | **Which queue may take it?** | the person — the queue the job names (`allocation.domain`, the run card, `--domain`); the target's scheduler decides | the job is placed there and its fit printed: the nodes of that queue carrying at least N GPUs that also hold its cores and memory, of how many — a queue whose record lists no GPUs has none ([`scheduler.md`](?doc=execution/scheduler.md) R2a, R3). Never refused for it (R6) |
 | **Where is GPU work submitted?** | the job — the queue it names | that queue, as for any job; nothing on the record sends GPU work elsewhere |
-| **Which rungs take the calculation's GPU?** | the catalogue — the rungs whose role reads `use_gpu` | a calculation-wide `use_gpu` and `gpu_count` reach only those rungs: never a transport ladder's transmission, whose `tbtrans` has no GPU path ([`stages.md`](?doc=engines/stages.md) § 6.8d); a rung's own card stating one there is refused |
-| **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `task.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
+| **Which rungs take the calculation's GPU?** | the catalogue — the rungs whose role reads `use_gpu` | a calculation-wide `use_gpu` and `gpu_count` reach only those rungs: never a transport ladder's transmission, whose `tbtrans` has no GPU path ([`job-request.md`](?doc=execution/job-request.md) § 3.2); a rung's own card stating one there is refused |
+| **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `job-request.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
 | **How do the ranks share the GPUs?** | molbuilder's launch script, at run time | spreads the ranks over the GPUs the job was GIVEN (counted from `CUDA_VISIBLE_DEVICES`), starts MPS when ranks outnumber GPUs and says so as decided, binds each rank to cores of its own off a scheduler and runs the ranks inside the cores a scheduler gave ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.3) — a rank whose cores lie on another socket than its GPU is warned about in the run's log, never refused (G10). The rank and thread counts are the stated ones — a GPU job that states none is refused at prep, like any job ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 | **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: said at prep when the target's record lists no GPU build of SIESTA — the job is prepared, the note names the env and its install; PySCF: checked at run start, because a login node cannot see a device (G6, G8) |
 
@@ -95,10 +95,10 @@ queue and memory are its own, its memory asked exactly as a CPU job's
 | name | answered by | lives in | decides |
 |---|---|---|---|
 | **`use_gpu`** | **the person** | catalogue · `staging` · `read_by=[wrapper]` | run the solve on a GPU or not |
-| `diag_algorithm` | **the person** | catalogue · `budget` · SIESTA only | the eigensolver — **and nothing else** |
+| `diag_algorithm` | **the person** | catalogue · `staging` · SIESTA only | the eigensolver — **and nothing else** |
 | `gpu_count` | **the person** | catalogue · `allocation` · `staging` · both engines | how many GPUs a run or a trial **asks** for — no default (G5); read by the rungs that read `use_gpu` (`stages`: never a transport ladder's transmission, whose `tbtrans` has no GPU path) |
 | `gres` | **derived at prep** | `Resources` | the GPU ask, `gpu:<n>` — a count, which the header's GPU directive takes in the target's scheduler kind's words ([`scheduler.md`](?doc=execution/scheduler.md) § 6a); molbuilder names no card (R2a) |
-| `gpu_binding` | **the person**, to turn it off | `task.json` · `allocation` → `Resources` | whether the ask carries `--gres-flags=enforce-binding` (G9) |
+| `gpu_binding` | **the person**, to turn it off | `job-request.json` · `allocation` → `Resources` | whether the ask carries `--gres-flags=enforce-binding` (G9) |
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
 | `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck: `_mb_to_gpu(mf)`, imported from its bundle (`runtime_info.to_gpu`) | the same, for PySCF |
 | `Device(type, per_node)` | **the probe** | `environment.json` · `Domain.gpu`, each machine's `gpu` | what one node of a queue **offers**; its `type` is shown, never compared |
@@ -132,8 +132,8 @@ flag on the catalogue item read through one door. *A document that calls
 **G3 — The solver is not the accelerator.** `diag_algorithm` chooses the
 eigensolver and decides **no environment and no resource** — the packaged
 SIESTA carries ELPA through ELSI and runs both stages on CPU, measured.
-Only `Diag.ELPA.GPU true` re-routes anything. The two are easy to confuse
-and sit on different cards on purpose.
+Only `Diag.ELPA.GPU true` re-routes anything. The two are easy to confuse,
+so they are two rows on the run card, each its own question.
 
 **G4 — The ask and what a node offers are different names.** A request
 states `gpu_count`; a record states each machine's `gpu`. The fit counts the
@@ -186,9 +186,9 @@ not.** Every GPU ask carries `--gres-flags=enforce-binding`: the scheduler is
 asked to give the job cores on the socket its GPUs are attached to, which the
 launch script's per-rank NUMA pin relies on. It never makes a submission
 fail; it can delay the start while such cores free up. `"gpu_binding":
-false` in `task.json`'s `allocation` turns it off for the whole calculation —
+false` in `job-request.json`'s `allocation` turns it off for the whole calculation —
 its benchmark and its runs alike, so a benchmark measures the layout the run
-will use ([`stages.md`](?doc=engines/stages.md) § 6.8a). *(The user,
+will use ([`job-request.md`](?doc=execution/job-request.md) § 3.1). *(The user,
 2026-10-01: "some task never needs this and some task may benefit, i believe
 sol never guarantees this anyway".)*
 
@@ -207,8 +207,8 @@ so and the run goes on *(the user, 2026-10-17)*.
 ```mermaid
 flowchart TB
     subgraph ASK["floor 2 — what the person answers, portable"]
-        SOLVER["<b>diag_algorithm</b><br/><i>budget card, SIESTA</i><br/>ScaLAPACK · ELPA-1STAGE · ELPA-2STAGE"]
-        WANT["<b>use_gpu</b><br/><i>staging card, both engines</i><br/>true · false"]
+        SOLVER["<b>diag_algorithm</b><br/><i>the run card, SIESTA</i><br/>ScaLAPACK · ELPA-1STAGE · ELPA-2STAGE"]
+        WANT["<b>use_gpu</b><br/><i>the run card, both engines</i><br/>true · false"]
         COUNT["<b>gpu_count</b><br/><i>staging, allocation</i><br/>the ASK — stated, or prep refuses (G5)"]
     end
 
@@ -257,9 +257,9 @@ coordinate, so a trial's deck and its family agree by construction.
 Submission then groups trials by their exact resource ask, so **a CPU trial
 never holds a device**.
 
-With **one point** it is the trials' value, applied at prep as a pin over the
-template for the bench's trials; the run's GPU choice is its run card's
-(`execution`, [`stages.md`](?doc=engines/stages.md) § 6.8d).
+With **one point** it is the trials' value, applied at prep as a pin for the
+bench's trials, over the calculation's run card; the run's GPU choice is its run card's
+(`execution`, [`job-request.md`](?doc=execution/job-request.md) § 3.2).
 
 *(This is § 4.3a of [`generator.md`](?doc=execution/generator.md); it is
 drawn here only because the graph is the same walk.)*
@@ -271,7 +271,7 @@ drawn here only because the graph is the same walk.)*
 **§ 1's cases are one table, run down the road**:
 `tests/data/gpu_contract.toml`, each row what a person or a probe writes and
 what molbuilder must answer, and `tests/test_gpu_contract.py` driving every
-row through `init → prep → launch --dry-run`. Two layers: allowed or
+row through `describe → prep → launch --dry-run`. Two layers: allowed or
 refused, with the words; what is produced (the header, the line a launch
 sends, the deck, the run script, a benchmark's trials). What a run does with
 the GPUs it is given is read where the GPUs are, with the engine:

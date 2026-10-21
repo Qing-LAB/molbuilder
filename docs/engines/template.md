@@ -500,15 +500,15 @@ convergence is checked, not assumed.
 Per-tier: screening 150 · publishable 350 · tight 500."""
 
 # kind = "deck" + read_by — a MERGED item whose value ALSO leaves the deck
-# (§ 6.1).  It was `enable_gpu` (SIESTA) and `use_gpu` (PySCF) until
-# 2026-08-23; one question gets one item, and each engine's writer renders
-# its own reach — `net_charge`'s worked example, § 6.3.
+# (§ 6.1): one question gets one item, and each engine's writer renders its
+# own reach — `net_charge`'s worked example, § 6.3.  A RUN SETTING
+# (`execution`), so VALUELESS here: the job request's run card answers it,
+# else its `default` (§ 6.4).
 [item.use_gpu]
 kind     = "deck"
 category = ["execution"]
 expands  = ["Diag.ELPA.GPU", "gpu4pyscf"]
 type     = "bool"
-value    = false
 default  = false
 group    = "staging"
 read_by  = ["wrapper"]
@@ -550,12 +550,12 @@ help       = """
 The order species are declared in.  A .XV read against a different order lands
 every coordinate on the wrong atom (run-identity.md § 4)."""
 
-# kind = "wrapper" — never reaches the deck at all.
+# kind = "wrapper" — never reaches the deck at all: the run script carries it.
+# A run setting, valueless here.
 [item.continue_retries]
 kind     = "wrapper"
 category = ["execution"]
 type     = "int"
-value    = 1
 default  = 1
 range    = [0, 5]
 group    = "staging"
@@ -569,16 +569,18 @@ category = ["execution"]
 anchor   = "BlockSize"
 type     = "int"
 optional = true
-group    = "budget"
+group    = "staging"
 help     = """
 The ScaLAPACK/ELPA distribution block, in orbitals.  Left unset the keyword is
 NOT WRITTEN and SIESTA uses its own automatic; set to a number, that number is
 written verbatim (tuning.md § 2.11)."""
 ```
 
-**Two absences in this file are meaningful and neither is an omission.**
-`block_size` has no `value` — that is *explicitly unset* (§ 3), the state a
-missing key encodes. `unpaired_electrons` has neither `value` nor `default` —
+**Four absences in this file are meaningful and none is an omission.**
+`use_gpu`, `continue_retries` and `block_size` have no `value` — they are run
+settings, and a run's are its job request's (§ 6.4; [`execution/job-request.md`](?doc=execution/job-request.md) § 2): what a run card
+states, else the item's `default`, or for `block_size`, which has none,
+SIESTA's own automatic. `unpaired_electrons` has neither `value` nor `default` —
 it is `optional`, so *unset* is one of its legal answers and there is no default
 to fall back to: unset is *auto*, answered by the electronic-state class
 (`science/chemistry-correctness.md` § 2a).
@@ -609,7 +611,7 @@ flowchart TD
     TPL --> RD
     RD -->|"this engine's items only"| CFG
     CFG --> DECK
-    ALLOC -.->|"the allocation items, valueless in the file"| DECK
+    ALLOC -.->|"the run settings, valueless in the file"| DECK
 
     CAT -.->|"⛔ never derived FROM a config class"| CFG
 ```
@@ -622,7 +624,7 @@ flowchart TD
 | surface → template | **only the answers.** The items themselves are not re-invented; the surface is filling in a form whose questions the catalogue already asked |
 | template → config | narrowed to one engine first, **then** read as that schema's fields. Skip the narrowing and a two-engine file is refused for both engines, each seeing the other's items as names it does not know |
 | config → deck | the engine's own writer, which never sees the template. It receives an ordinary config object, which is why a config class is a **translator** and not a source (§ 2.1) |
-| prep ⇢ deck | the allocation items (`allocation = true` in the catalogue: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) are answered here, by the run's own ask — its run card (`task.json`'s `execution`) or prep's flags — on the machine that runs it, never in the file (§ 6.4, § 7) |
+| prep ⇢ deck | the run settings — the `execution` category, the machine's answers among them (`allocation = true`: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) — are answered here, by the run's own ask: its run card in the job request, or prep's flags — a speed setting nobody stated, by the item's default — on the machine that runs it, never in the file (§ 6.4, § 7; [`execution/job-request.md`](?doc=execution/job-request.md) § 2) |
 
 > **⛔ There is no config → template writer, and there must not be one.**
 > `render_template(config)` reflected a Python class into a file, which made the
@@ -663,16 +665,16 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
 | `manual` | **where the engine's own documentation defines this keyword** — `SIESTA 5.4.2 §6.9.2 'Mixing options'`. Read by nobody but a person reviewing the catalogue, and **the one key no config class mirrors** — § 5.1. *(It rides into a calculation's own template like every other key; "catalogue-only" said here until 2026-08-17 and meant the second thing, which is the claim that matters)* |
 | `expands` | what a `deck` item produces, as a list — engine keywords, or the deck mechanism's name when the product is control flow (see § 3's row) |
-| `launch` | `kind = "wrapper"` — the words the run script passes the engine on its command line for this item, a table by the program it starts (`Resources.program`, the engine's own by default): `launch.siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"]`, the placeholders the script fills; a program not named takes the item some other way (a PySCF deck reads its environment) or not at all (`tbtrans`). The run script renders the words, never spells them ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
+| `launch` | `kind = "wrapper"` — the words the run script passes the engine on its command line for this item, a table by the program it starts (`Job.program`, the engine's own by default): `launch.siesta = ["-fdf", "MaxWalltime={left}:s", "-fdf", "MaxWalltime.Slack={slack}:s"]`, the placeholders the script fills; a program not named takes the item some other way (a PySCF deck reads its environment) or not at all (`tbtrans`). The run script renders the words, never spells them ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — thirteen since two retired selectors went, 2026-09-28 — stay out of an optimization template by declaration |
-| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows as a blank field's hint and what `init` and the form doors write into that kind's template when nobody chose, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
+| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows as a blank field's hint and what `molbuilder describe` and the form doors write into that kind's template when nobody chose, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
 | `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
-| `run_card` | **a row on every run card from the start**, blank until stated — `run_card = true` on the launch: `mpi_np`, `omp_threads`, `threads`, `use_gpu`, `gpu_count` (2026-10-11; [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2b). One boolean, read by the run card through `/api/task-setup/sweepable`; it states no value and decides nothing prep does |
+| `run_card` | **a row on every run card from the start**, blank until stated — `run_card = true` on every run setting, the `execution` category's items (2026-10-11 for the launch's, 2.27.0 for the rest; [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2b). One boolean, read by the run card through `/api/task-setup/sweepable`; it states no value and decides nothing prep does |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `h_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
@@ -1208,7 +1210,9 @@ step"* is a sentence, not a taxonomy.
 
 > **`execution` is the exception, and stays precise.** A benchmark takes
 > `category="execution"` as the **sweepable set** — the knobs that change speed
-> and not the answer (§ 6.2). Tagging something `execution` that changes the
+> and not the answer (§ 6.2) — and the job request takes it as **the run
+> settings**, which live on its run cards alone and never here (§ 6.4;
+> [`execution/job-request.md`](?doc=execution/job-request.md) § 2). Tagging something `execution` that changes the
 > answer means a sweep silently measures a different calculation at each point.
 > So `execution` is a claim about the parameter, not a hint about where to show
 > it, and an item carrying it should carry nothing that contradicts it.
@@ -1226,8 +1230,8 @@ is the semantics; how many panels they become is the surface's call.
 | 2 | `method` | *at what level of theory?* | `xc_functional`, `xc_authors`, `basis_size` | `method` (DFT or HF), `functional`, `basis`, `ecp`, `dispersion` |
 | 3 | `accuracy` | *how precisely are the equations solved?* | `mesh_cutoff`, `kgrid`, `dm_tolerance` | `grid_level`, `scf_conv_tol`, `scf_conv_tol_grad` |
 | 4 | `convergence` | *how do I reach it when it fights?* | `max_scf_iter` | `scf_max_cycle`, `level_shift`, `damp`, `diis_space`, `scf_soscf` |
-| 5 | `procedure` | *what does the run carry out, and what does it leave behind?* | `relax_type`, `relax_steps`, the `write_*` set | `optimize`, `chkfile`, `save_*` (the old `compute_frequencies` retired with the vibration kind) |
-| 6 | `execution` | *how does it run on this machine?* | `diag_algorithm`, `block_size`, `continue_retries` | `threads`, `use_gpu` |
+| 5 | `procedure` | *what does the run carry out, and what does it leave behind?* | `relax_type`, `relax_steps`, `restart`, the `write_*` set | `optimize`, `chkfile`, `save_*` (the old `compute_frequencies` retired with the vibration kind) |
+| 6 | `execution` | *how does it run on this machine?* — the run settings, the job request's ([`execution/job-request.md`](?doc=execution/job-request.md) § 2) | `diag_algorithm`, `block_size`, `use_gpu`, `continue_retries` | `threads`, `use_gpu` |
 
 **Why `accuracy` and `convergence` are two categories and not one.** Accuracy is
 *what answer you will accept*; convergence is *how to reach it*. A user whose SCF
@@ -1474,7 +1478,7 @@ Three readers, one rule: the form-schema door narrowed to a kind
 (`/api/build/schema/<engine>?calculation=<kind>`) presents the recommended
 value as the field's `default` — the hint beside a blank field, *not chosen*
 (`form-schema.md` § 1.1, K7); every door that writes a template from a form or
-a flag lays it under what the person gave (`jobset init` and the form doors'
+a flag lays it under what the person gave (`molbuilder describe` and the form doors'
 `_shared.config_from_params`, both through `apply_recommended`), so a field
 nobody chose is written as the kind's recommendation and recorded as nobody's
 (`source = "default"`, § 6.6); and `template_with_values(..., calculation=)`
@@ -1552,7 +1556,7 @@ the `BlockSize` pattern (§ 12), generalised.
 | `value` set | chosen | honoured verbatim, everywhere |
 | absent from the file | not a parameter of this calculation | nobody; the engine's own default applies |
 
-**There are answerers outside floor 2, not one** *(two ruled 2026-09-15; the
+**There are answerers outside the template, not one** *(two ruled 2026-09-15; the
 rung's `role`, the third, 2026-09-16 — below)*.
 `allocation` marks an item the **scheduler** answers; `citation` marks one a
 **cited run** answers. `select(t, allocation=True)` / `select(t, citation=True)`
@@ -1562,8 +1566,9 @@ are how a layer asks which is which instead of carrying its own list of names.
 
 | marker | who answers | when | what the template holds |
 |---|---|---|---|
-| `allocation` | the scheduler | at `prep`, on the machine that runs it | nothing — declared, valueless |
-| `citation` | the citation's recorded contract — a cited run's deck, or a cited pair's `info.calculation` (`engines/transport.md` § 3.1) | at **`jobset init`**, once | **a value**, which the person may then change |
+| `allocation` | the job request's run card or a `prep` flag — the launch shape and the memory cap, the machine's answers; stated nowhere, the shape is refused and the cap is none ([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2) | at `prep`, on the machine that runs it | nothing — declared, valueless |
+| the `execution` category's other items, the speed settings | the job request's run card, else the item's `default` ([`execution/job-request.md`](?doc=execution/job-request.md) § 2, § 4) | at `prep` | nothing — declared, valueless; a value written here is refused, naming `jobset migrate` |
+| `citation` | the citation's recorded contract — a cited run's deck, or a cited pair's `info.calculation` (`engines/transport.md` § 3.1) | at **`molbuilder describe`**, once | **a value**, which the person may then change |
 | `role` | the rung — the catalogue's `value`, or the rung's own `role_values` answer, or the bias point it renders | at `resolve`, for each rung | nothing — declared, valueless; no door may set it (the third answerer, below) |
 | `shared` | *(not an answerer — a scope)* | — | whatever answered it; the value binds every rung and no stage overrides it |
 
@@ -1572,7 +1577,7 @@ The `citation` row said *"declared, valueless, filled at `prep`"* until
 reversed it: the cited relaxation **DEFAULTS** these values into the
 calculation's own template, and after that the template is the answer.
 `transport/citation_defaults.py` is the whole of the filling, it runs once at
-`init`, and `prep` reads the file rather than the citation.
+`molbuilder describe`, and `prep` reads the file rather than the citation.
 
 The invariant the seal protected is untouched, because it never needed the
 seal: the electrode and the device cannot disagree when there is **one** value
@@ -1805,17 +1810,17 @@ help       = "How many MPI ranks to run with."
 
 | the item | what it means | unset → | may it carry a value? |
 |---|---|---|---|
-| `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck writes `max_memory = None`, which PySCF reads as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
-| `optional = true`, no value | *unset is a legal answer* | the engine's own default | yes |
+| `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck's run-settings block writes `MAX_MEMORY_MB = None`, which its `gto.M` hands PySCF as `max_memory`, read as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
+| `optional = true`, no value | *unset is a legal answer* | the engine's own default | yes — unless the item is a run setting (the `execution` category): its value is the job request's run card, never the template's (`execution/job-request.md` § 2) |
 
 **Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` — and
 `select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
 them: not the deck writer, not the web form, not `prep`.
 
 **`block_size` is the case that shows why one flag is enough.** The scheduler
-does not grant it: the person sets it, or a benchmark measures it, so its item
-may legitimately carry a value. It says that by being
-**unflagged and `optional` with no value** — no extra key, no second name.
+does not grant it: the person sets it on the run card, or a benchmark measures
+it — a speed setting, `optional`, with no default ([`execution/job-request.md`](?doc=execution/job-request.md) § 4). It
+says that by being **unflagged** — no extra key, no second name.
 
 > ### ⛔ The `resolver` registry is RETIRED — deleted 2026-08-17
 >
@@ -1849,7 +1854,7 @@ it may not say *"this job has 8 ranks"*. The rule's failure case was a
 hand-edited `mpi_np` **with a value** rendering a deck for ranks the allocation
 never granted — which stays impossible, because a reader refuses a value on the
 item and the value arrives at `prep` from the run's own ask — its run card
-(`task.json`'s `execution`) or prep's flags. The template carries the
+in the job request ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.2) or prep's flags. The template carries the
 **question**, the run states the **ask**, and `prep` resolves it.
 Same distinction `bench/result.py` draws between `asked` and `effective`, and for
 the same reason.
@@ -1903,11 +1908,11 @@ Five obligations, each naming the reader it binds.
 
 | | obligation | held by |
 |---|---|---|
-| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the scheduler (`allocation`); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers, `shared` among them (§ 5) |
-| **2 — recorded with its source** | The description on disk — this calculation's template, and the stage bags in `task.json` — carries each item's value **and where it came from**. The three states a shared panel shows (*from the junction you cited · you set this · not chosen*) are states of the FILE, not of a screen. A file that holds `400` and cannot say whose `400` it is holds a number nobody can check. | § 4.3's writer; `transport/citation_defaults.py` at `init` |
+| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the scheduler (`allocation`); the job request's run card (the `execution` category); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers, `shared` among them (§ 5) |
+| **2 — recorded with its source** | The description on disk — this calculation's template, and the stage bags in `task.json` — carries each item's value **and where it came from**. The three states a shared panel shows (*from the junction you cited · you set this · not chosen*) are states of the FILE, not of a screen. A file that holds `400` and cannot say whose `400` it is holds a number nobody can check. | § 4.3's writer; `transport/citation_defaults.py` at `molbuilder describe` |
 | **3 — shown everywhere, edited in one place** | Every surface that presents the calculation presents **every** parameter of it, at every rung: as a control where this surface owns it, otherwise as a **read-only echo naming the source and the reason** — *shared by all five rungs, change it in the shared block* · *fixed by this rung's role* · *the scheduler answers this at prep*. Leaving a parameter off a screen because it is not editable there is a defect: it makes the parameter look absent, which is the failure every rebuilt transport form has had. | [`form-schema.md`](?doc=web/form-schema.md); [`transport.md`](?doc=engines/transport.md) § 2a.6, *one editing surface, many read-only echoes* |
 | **4 — explicit in the deck** | Every item of a rung's layout is written into that rung's deck with the value that will apply. A value nobody chose is written as the documented default **and marked as such**. An item deliberately unset (`optional`, at `None`) states so in the deck, naming the engine default that therefore applies. **No value reaches the engine by omission.** § 6.4's third state — *absent from the file: not a parameter of this calculation* — still says which items a KIND has; it no longer licenses silence for an item the kind has. | § 8.1 `prep`; the deck writers |
-| **5 — traceable** | From any deck line a reader reaches the item, its value, its source at prep (pin · sweep · stage · role · allocation · template — `resolve.provenance`) **and the template value's own origin from obligation 2**, and the decision that set it (`pipeline.log`, `jobset-decisions.log`) — **on every road, browser and CLI alike**. | `resolve.py`, `pipeline_log.py`, `jobset/ledger.py` |
+| **5 — traceable** | From any deck line a reader reaches the item, its value, its source at prep (pin · sweep · stage · role · the stage's run card · the calculation's run card · the catalogue's default · allocation · template — `resolve.provenance`, [`execution/job-request.md`](?doc=execution/job-request.md) § 4) **and the template value's own origin from obligation 2**, and the decision that set it (`pipeline.log`, `jobset-decisions.log`) — **on every road, browser and CLI alike**. | `resolve.py`, `pipeline_log.py`, `jobset/ledger.py` |
 
 **Measured against the tree, 2026-09-23 — where it does not yet hold:**
 
@@ -1955,7 +1960,7 @@ second and third on 2026-10-11 (plan § 5u.1, step 10):
 | the choice | proposed |
 |---|---|
 | the source key on a template item, and its vocabulary | `source`, one of `cited` · `person` · `default` — **ruled 2026-09-29, built (K7); `record` retired with decision 7, 2026-10-08**. The one writer (`template_with_values`) writes it from what its caller knows: a cited run's answers are `cited`, what the person's form sent `person`, and everything else `default` — *not chosen* (its value is what the writer wrote before: the documented default, or none for transport's unanswered `citation` rows, § 3.8.3). The one reader (`read_template`) reads it, and every form field carries it (`form-schema.md` § 1.1). A template written before has no `source`: it reads as *not recorded*, said so and never guessed, until the next describe writes one |
-| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck. **Its shape** *(2026-10-11)*: `parameters:`, one row per item the rung's deck is rendered from — the kind's `engine` and `deck` items the rung reads (`reads`), the scheduler's excepted — each by its name — the template's own word for it — and **who set its value**, in the words of `resolve`'s layers (*a pin · a sweep point · this stage's override · the rung*) and, for the template's, the template's own (*the template · from the junction you cited · you set this · not chosen · not recorded*), an optional item nobody set with who answers it — the electronic state, the k-point mesh (the k-point split, and a transmission's mesh, three times the shared one), a Nosé run's initial temperature, or the engine's own default (`resolve.BLANK_ANSWERED_BY`) — and a `SystemLabel` prep spells as the rung's or the trial's (`resolve.SET_AFTER`); the rows a rung decided first, as the pipeline log orders them (`pipeline_log.config_rows`). `resolve` puts them on each element (`ResolvedConfig.deck_sources`), and every road that renders a deck hands them over — prep's, and the re-render the gather compares with (`job-contracts.md` § 3.2) |
+| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck. **Its shape** *(2026-10-11)*: `parameters:`, one row per item the rung's deck is rendered from — the kind's `engine` and `deck` items the rung reads (`reads`), the scheduler's excepted — each by its name — the template's own word for it — and **who set its value**, in the words of `resolve`'s layers (*a pin · a sweep point · this stage's override · the rung · the stage's run card · the calculation's run card · the catalogue's default · not chosen*, [`execution/job-request.md`](?doc=execution/job-request.md) § 4) and, for the template's, the template's own (*the template · from the junction you cited · you set this · not chosen · not recorded*), an optional item nobody set with who answers it — the electronic state, the k-point mesh (the k-point split, and a transmission's mesh, three times the shared one), a Nosé run's initial temperature, or the engine's own default (`resolve.BLANK_ANSWERED_BY`) — and a `SystemLabel` prep spells as the rung's or the trial's (`resolve.SET_AFTER`); the rows a rung decided first, as the pipeline log orders them (`pipeline_log.config_rows`). `resolve` puts them on each element (`ResolvedConfig.deck_sources`), and every road that renders a deck hands them over — prep's, and the re-render the gather compares with (`job-contracts.md` § 3.2) |
 | the deck's *not set* line for an `optional` item at `None` | a comment where the line would be, `# <keyword> not written: <not_set>` — the item's `not_set` (§ 5), written by whatever writes the item: the engine's line door, which alone knows whether an item it writes nothing for is not set or does not apply to this run (a target temperature in a CG relaxation), or the block that writes it (PySCF's solvent decoration and the vibration deck's density-fitting keywords). One helper words it for both engines (`script_emit.not_set_line`) *(2026-10-11)* |
 
 ---
@@ -1975,15 +1980,14 @@ Three things are **not** items, each excluded by a rule that already exists:
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
 
 > **This rule is the TEMPLATE's, and it stays absolute** *(clarified
-> 2026-09-01)*. It was written as *"floor 2 must never assert a machine"*, and
-> floor 2 is two files. `read_template` refuses a hand-written `mpi_np` and
+> 2026-09-01)*. `read_template` refuses a hand-written `mpi_np` and
 > always will: this file is what a run's parameters ARE, shared by every stage
 > and every machine, and a rank count is true of neither.
 >
-> `task.json` is the other file and answers a different question — *what did
-> the person ASK for* — so its **`execution` block** states a machine value
-> and is the design's own channel for it
-> ([`stages.md § 6.8d`](?doc=engines/stages.md)). A one-point `bench` entry
+> The job request is another file of floor 2 and answers a different
+> question — *how did the person ASK it to run* — so its run cards state a machine value and
+> are the design's own channel for it ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.2). A one-point
+> `bench` entry
 > is NOT that channel: `mpi_np: [8]` is *measure eight*, one trial, and the
 > run never reads it ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 > Nothing about this section changes: the item here is still valueless, and a
@@ -2383,7 +2387,7 @@ flowchart TD
       ENV["<code>jobset probe --write</code> → environment.json<br/><i>cores · GPUs · scheduler · queues</i><br/>read by prep (machine_for), never probed by it"]
     end
 
-    ASK["the run's ask — its run card (task.json's execution)<br/>or prep's flags<br/><i>ranks · threads · GPUs · memory</i>"]
+    ASK["the run's ask — its run card (job-request.json)<br/>or prep's flags<br/><i>ranks · threads · GPUs · the run settings</i>"]
 
     subgraph F3["floor 3 · plan — engine-agnostic"]
       EFF["resolve.effective_config(cfg, overrides, where=)<br/><b>the ⊕ operator — stages.md § 4's one place</b>"]
@@ -2427,16 +2431,17 @@ flowchart TD
 
 ### 10a.2 Precedence, in the order `resolve` applies it
 
-**template ⊕ stage overrides ⊕ sweep point ⊕ pin ⊕ the rung's answers** — and
-every one of those ⊕ is the same function, `effective_config`, called five
-times:
+**template ⊕ stage overrides ⊕ run settings ⊕ sweep point ⊕ pin ⊕ the rung's
+answers** — and every one of those ⊕ is the same function, `effective_config`,
+called six times:
 
 | step | where the cells come from | refused if they name a machine fact | refused if they name what the rung fixes (§ 6.4) |
 |---|---|---|---|
 | base | `config_from_template` | — | **yes**, unless the value is the answer every rung gives |
 | ⊕ stage | `task.json`'s stage `overrides` | **yes** — § 7 | **yes** |
+| ⊕ run settings | the run settings that are not the launch shape, over each item's `default`: a run's, the job request's run cards, the rung's over the calculation's (`prep_inputs.run_inputs`); a benchmark trial's, the calculation's card alone ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.4, § 4) | **yes** | **yes** |
 | ⊕ sweep | the sweep point | **yes** | **yes** |
-| ⊕ pin | the run card's values that are not the launch shape — `task.json`'s `execution`, the rung's over the calculation's (`prep_inputs.run_inputs`); a benchmark's one-point declarations alike | **yes** | **yes** |
+| ⊕ pin | a benchmark trial's alone: its one-point declarations and its measurement pins (`generator.md` § 4.2) | **yes** | **yes** |
 | ⊕ the rung's answers | `template.role_answers`, provenance `role` — last, so it replaces nothing a person said | — | — |
 
 And then one question of the result, whatever layer set each value: **is it
@@ -2548,8 +2553,8 @@ deck, and once past it.
 flowchart TB
     IT["<b>[item.use_gpu]</b><br/>kind=deck · expands=[Diag.ELPA.GPU, gpu4pyscf] · read_by=[wrapper]"]
 
-    FORM["<b>the form</b><br/>a checkbox on the <i>staging</i> card,<br/>legend <i>execution</i>, badge the whole engine_key,<br/>the same on both engines:<br/><code>Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)</code>"]
-    TPL["<b>the template</b><br/><code>value = true</code>"]
+    FORM["<b>Task setup's run card</b><br/>a checkbox, legend <i>execution</i>,<br/>badge the whole engine_key, the same on both engines:<br/><code>Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)</code>"]
+    TPL["<b>the job request</b><br/><code>execution: { use_gpu: true }</code>"]
 
     subgraph PREP["prep, on the target machine"]
       direction TB
@@ -2568,7 +2573,7 @@ flowchart TB
     IT --> FORM --> TPL --> S2
     S4 --> E1 & E2 & E3
     E1 & E2 & E3 --> SH["<code>&lt;label&gt;.run.sh</code> + <code>.sbatch</code>"]
-    SH --> SUB["<b>launch</b><br/><i>checks the deck and its launch still agree,<br/>then sends the header prep wrote: ONE job</i>"]
+    SH --> SUB["<b>launch</b><br/><i>sends the header prep wrote: ONE job</i>"]
 ```
 
 **Three things this picture is for.**
@@ -2720,7 +2725,7 @@ sequenceDiagram
     participant W as the wrapper writer
 
     U->>B: describe the calculation
-    B->>B: write the template + task.json + data files
+    B->>B: write the template + task.json + job-request.json + data files
     Note over B: names NO machine (G1)
     U->>P: scp the folder, then `jobset prep task --group 1`
     P->>P: step 1 — read the target's record (machine_for)
@@ -2824,14 +2829,15 @@ description.
   **Answered 2026-08-11 (user): it is an ordinary item with no `value`.**
   `BlockSize` was the example and it is now the pattern. A surface shows the item,
   its `type = "int"` and its guidance; an empty `value` means *omit the keyword
-  and let the engine use its own default*; a value the user or a benchmark
-  supplies is written verbatim ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
+  and let the engine use its own default*; a value the user states is written
+  verbatim ([`tuning.md § 2.11`](?doc=engines/tuning.md)) -- and since 2.27.0,
+  `block_size` being a run setting, that value is the job request's run card's,
+  never the template's ([`execution/job-request.md`](?doc=execution/job-request.md) § 2).
 
   ```toml
   # NOT `allocation`: the scheduler does not grant a block size.  The
-  # person sets it or a benchmark measures it, so
-  # this item may legitimately carry a value -- which is exactly what being
-  # unflagged, `optional`, and valueless already says (§ 6.4).
+  # person sets it on the run card, or a benchmark measures it -- a run
+  # setting, so the template holds no value for it (§ 6.4).
   [item.block_size]
   kind     = "engine"
   category = ["execution"]
@@ -2840,7 +2846,7 @@ description.
   optional = true
     # no `value`, and no `range` -- both settled in tuning.md § 2.11, which owns
   # this knob.  Read it there rather than here.
-  group    = "budget"
+  group    = "staging"
   help     = """
   The ScaLAPACK/ELPA distribution block, in orbitals.  TWO STATES: left as
   (auto) the keyword is NOT WRITTEN and SIESTA uses its own automatic; set to a

@@ -63,8 +63,7 @@ from . import runfiles as _rf
 from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
                           BLOCK_ENGINE_OFFSET, BLOCK_HEADER, BLOCK_PARAMETERS,
                           BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
-                          MARKER_RE, begin_marker, end_marker,
-                          without_stamps)
+                          MARKER_RE, begin_marker, end_marker)
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing
@@ -125,31 +124,6 @@ def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
                 and isinstance(arr[0], str)):
             rows.append(dict(zip(_ROW_FIELDS, arr)))
     return rows
-
-
-def same_calculation(a: str, b: str) -> bool:
-    """Do two decks describe the SAME calculation?
-
-    **Not the same bytes.**  A deck carries a generated-at timestamp and the
-    generator's git sha, and neither says anything about what the engine will
-    compute -- so a byte comparison answers "was this file written by the same
-    invocation", which is a different and much narrower question.
-
-    Asked where a run's deck is compared with its stage's own -- the run
-    record's ``current`` and the run's report (`runs.Run.report`).  The
-    transport gather asks a different question, what the ENGINE reads
-    (`siesta.engine_input.engine_input_differences`).
-
-    The stamps are masked by the one rule a plan's identity is asked by too
-    (`deck_record.without_stamps`): fields, never whole fences -- the
-    atom-metadata fence holds the region partition, and two decks that
-    disagree about THAT are emphatically not the same calculation.  The
-    provenance block's ``parameters`` table is compared too: a value whose
-    setter changed is a description that changed, and a prepared ladder's
-    description does not change under it (`job-contracts.md` § 3.2).
-    """
-    return (without_stamps(a.encode("utf-8"))
-            == without_stamps(b.encode("utf-8")))
 
 
 # --------------------------------------------------------------------- #

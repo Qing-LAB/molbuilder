@@ -1,5 +1,5 @@
 """The k-point mesh -- every axis's sampling decided in one place -- through
-the road: `jobset init` -> `jobset prep task` -> the deck and its validation
+the road: `molbuilder describe` -> `jobset prep task` -> the deck and its validation
 report, or the refusal.
 
 PINS: ``docs/engines/siesta.md`` § 6.1 (the mesh: each axis's role, the one

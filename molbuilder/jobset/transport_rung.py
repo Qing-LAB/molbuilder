@@ -68,15 +68,16 @@ def provide_pseudos(struct, cfg, base: Path,
                 f"directory ({citation}).  The pseudopotentials travel "
                 f"with the citation (engines/transport.md § 3.1): a "
                 f"relaxation run of molbuilder's own holds the .psml it "
-                f"ran with, so relax the junction through `jobset init` -> "
+                f"ran with, so relax the junction through `molbuilder describe` -> "
                 f"`prep task` -> `launch task` and cite that run.")
     screen_pseudos(species, cfg, pdir)
 
 
 def resolve_transport(task, stage: str, allocation, *, template_text,
-                      pins=None, log=None):
+                      run_settings=None, log=None):
     """Floor 3's step 2 for a transport rung — the template ⊕ its overrides
-    ⊕ its run card's settings (``pins``, `stages.md` § 6.8d) -- from the
+    ⊕ its run card's settings (``run_settings``, `job-request.md` § 4) --
+    from the
     template's text as the prep read it, once (`script-preparation.md`
     § 3.0).
 
@@ -110,7 +111,8 @@ def resolve_transport(task, stage: str, allocation, *, template_text,
         log.received("stage", stage)
     try:
         ps = resolve(template_text, task, SiestaConfig,
-                     allocation=allocation, stage=stage, pins=pins)
+                     allocation=allocation, stage=stage,
+                     run_settings=run_settings)
     except ResolveError as exc:
         # `resolve` translates the template's and the overrides' refusals
         # (ValueError) into its own.
@@ -205,15 +207,15 @@ def transport_parts(task, stage: str, composed, config):
 
 
 def transport_rung(task, stage: str, composed, allocation, *,
-                   template_text, pins=None, log=None):
+                   template_text, run_settings=None, log=None):
     """``(struct, config, state, element)`` of one transport rung, resolved
     NOW from the current template, junction and run card -- what the gather
     renders an upstream rung from (:func:`rung_deck_now`): the template ⊕
     the rung's overrides ⊕ its run card (:func:`resolve_transport`), then
     the parts the conductor's rung reads too (:func:`transport_parts`)."""
     element = resolve_transport(task, stage, allocation,
-                                 template_text=template_text, pins=pins,
-                                 log=log)
+                                 template_text=template_text,
+                                 run_settings=run_settings, log=log)
     struct, configure, state = transport_parts(task, stage, composed,
                                                 element.render_config())
     return struct, configure(element.render_config()), state, element

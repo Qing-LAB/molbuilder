@@ -91,14 +91,14 @@ flowchart LR
   its queue, wall and memory too (`--domain`, `--time`, `--mem`):
 
   ```bash
-  molbuilder jobset init --structure P/structure/water.xyz --bundle P/optimization/water \
+  molbuilder describe --structure P/structure/water.xyz --bundle P/optimization/water \
       --engine pyscf --calculation optimization --shape flat
   molbuilder jobset prep task --group 1 --bundle P/optimization/water --target this \
       --cpus-per-task 4
   ```
 
   **A ladder is N decks** (§ 1.1a), declared in `task.json` and built by
-  `jobset init --engine pyscf --stage-strategy …`, which is the one door
+  `molbuilder describe --engine pyscf --stage-strategy …`, which is the one door
   either engine's ladder is authored through. *(`--stage-strategy` was taken
   off the deleted `pyscf` verb on 2026-08-18 for exactly this reason, which
   was the first half of the argument that finished it.)*
@@ -205,7 +205,7 @@ molbuilder's, imported from the bundle (`runtime_info.probe_gpu`,
 `runtime_info.to_gpu`, § 3):
 
 ```python
-USE_GPU = True                    # the literal config value
+USE_GPU = True                    # the run-settings block's (§ 3)
 _USING_GPU = _mb_probe_gpu(_RUNTIME_INFO) if USE_GPU else False
 #   cupy + gpu4pyscf importable, a device with compute capability >= 7.0 --
 #   or SystemExit: NO CPU FALLBACK, the run stops
@@ -227,7 +227,7 @@ forced rather than chosen.
 **There is no CPU fallback** *(user, 2026-08-17)*. All three failure paths —
 `gpu4pyscf` not importable, no usable device, a failed `.to_gpu()` promotion —
 **exit**, with a message naming the cause and the two ways out (run where the
-GPU is, or set `use_gpu = false`). The script previously printed
+GPU is, or set `use_gpu` to false on its run card). The script previously printed
 *"CPU fallback."* and carried on; that made a GPU run and a CPU run
 indistinguishable without reading the log, and it made a benchmark dishonest.
 
@@ -355,6 +355,15 @@ count and of four constants, and the thread and GPU set-up — the last moved
 the same day at the user's word, *"yes to #1"*. User: "we could use one code base and maintain it
 rather than through generated python code"; "move the rest into the bundle";
 the fresh-eyes review the same day found what the first pass left.)*
+
+**The run settings stand in one block, at the script's head** *(2.27.0)*. The
+RUN-SETTINGS block ([`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 3.1) holds the names the script gives the run settings its run card states
+— `THREADS`, `USE_GPU`, `GPU_COUNT`, `MAX_MEMORY_MB`, `WALL_SLACK` — and every other line reads them by name: the thread caps,
+the GPU probe (§ 2a), `gto.M`'s `max_memory`, the runtime facts, the
+effective-parameters table.
+So what the script computes is the script with that run-settings block aside, and a launched
+stage given another request keeps its science ([`execution/job-request.md`](?doc=execution/job-request.md) § 5, § 6).
 
 **Non-convergence policy.** A deck carries one rung's policy —
 `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} (default `halt`) — deciding
@@ -833,6 +842,13 @@ one, and without one says **NOT CHECKED** and why, the outcome a check that
 cannot run always reports. *(It called it until 2026-09-29: calling
 `NotImplemented` raises a `TypeError` nothing expected, and every open-shell run
 on a GPU died before its first step — the M11 review, PO-C2.)*
+
+**Said before the run too, and never refused** *(the user, 2026-10-21: "a
+hint and information is enough")*: an unrestricted reference on the GPU is
+told among prep's notes, and the run card's GPU switch says it for every
+PySCF calculation — gpu4pyscf's limit, the person's choice. So is a solvent
+model on the GPU, whose gpu4pyscf form has not been compared with PySCF's here
+([`execution/job-request.md`](?doc=execution/job-request.md) § 2).
 
 **Why the energy and not the orbitals.** Comparing orbital *coefficients* to
 decide "did this change" looks obvious and is wrong. A degenerate shell — O₂'s

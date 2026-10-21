@@ -1104,11 +1104,10 @@ def prep_the_group_of(base, stage, **kw):
     """`prep task --group N` for the group ``stage`` is in -- through the one
     entry the command line and the Task setup tab call (`prep.prep_task`)
     -- and ``stage``'s answer."""
-    from molbuilder.jobset.group import number_of
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.prep import prep_task
     calc = open_calculation(Path(base))
-    answers = prep_task(calc, "task", groups=[number_of(calc.task, stage)],
+    answers = prep_task(calc, "task", groups=[calc.request.group_of(stage)],
                         **kw)
     return next(a for a in answers if a.stage == stage)
 

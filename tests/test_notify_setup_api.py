@@ -782,18 +782,19 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
     Not vacuous: seconds per iteration is not offered for a PySCF run (the
     timing instrument is the SIESTA wrapper's), nor a step for a transport
     one (its rungs are single points)."""
+    from molbuilder import job_request
     from molbuilder.report_fields import NAMES
     from molbuilder.task import SCHEMA, Task
 
     c, _ = client
 
     def described(engine, calculation, report):
+        """A description of ``engine`` and ``calculation``, and the job
+        request reporting ``report`` -- read as the save reads both."""
         d = {"schema": SCHEMA, "engine": {"name": engine},
              "shape": "hierarchical", "run": {"name": "J", "id": "J_H2"},
              "varies": [], "calculation": calculation,
-             "stages": [{"name": "s", "group": 1, "overrides": {}}],
-             "notify": {"on_scf_converged": False, "every_hours": None,
-                        "channels": ["*"], "report": report}}
+             "stages": [{"name": "s", "overrides": {}}]}
         if calculation == "transport":
             # its identity is the junction it cites (run-identity.md 2.0a),
             # and its stages are its rungs (engines/transport.md § 3.8.2a)
@@ -801,13 +802,18 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
             d["run"]["id"] = "J_p_optimization_relax"
             # THE SINGLE BIAS, STATED (`engines/transport.md` § 2a.10).
             d["bias"] = {"voltages_v": [0.0]}
-            d["stages"] = [{"name": n, "group": g, "overrides": {}}
-                           for n, g in (("seed", 1), ("electrode_L", 1),
-                                        ("electrode_R", 1), ("device", 2),
-                                        ("transmission", 3))]
+            d["stages"] = [{"name": n, "overrides": {}}
+                           for n in ("seed", "electrode_L", "electrode_R",
+                                     "device", "transmission")]
         else:
             d["structure"] = {"source": "h2.xyz", "formula": "H2", "atoms": 2}
-        return Task.from_dict(d)
+        task = Task.from_dict(d)
+        return job_request.from_dict(
+            {"schema": job_request.SCHEMA,
+             "stages": {st.name: {"group": i + 1}
+                        for i, st in enumerate(task.stages)},
+             "notify": {"on_scf_converged": False, "every_hours": None,
+                        "channels": ["*"], "report": report}}, task)
 
     offered_somewhere = {}
     for engine, calculation in (("siesta", "optimization"),

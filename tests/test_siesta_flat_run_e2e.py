@@ -2,7 +2,7 @@
 says about it (`process/testing.md` § 6: a test about what a run ended as,
 produced or shows makes that run with the engine, through the road).
 
-``jobset init`` (flat, the shipped `publishable` ladder) -> ``prep task
+``molbuilder describe`` (flat, the shipped `publishable` ladder) -> ``prep task
 --group 1`` -> ``launch task --stage coarse --mode direct`` -> ``prep task --group 2``, on an
 H2 in a 10 Å box, isolated on every axis, its first atom held: the coarse
 stage's run beside the medium stage's deck in one folder, SIESTA's own files
@@ -35,6 +35,7 @@ import pytest
 
 from _road import conda_hook, env_available, live_siesta, set_template_value
 from support.road import H2, road_structure
+from support.road import molbuilder, read_request, write_request
 
 pytestmark = [
     pytest.mark.engine,
@@ -61,10 +62,10 @@ def _write_h2(tree: Path, name: str) -> None:
 def _one_rank(bundle: Path, **card) -> None:
     """The run card: one rank, one thread -- an H2 needs no more -- and
     what else ``card`` states."""
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
-                         "omp_threads": 1, **card}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    request = read_request(bundle)
+    request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
+                            "omp_threads": 1, **card}
+    write_request(bundle, request)
 
 
 def _as_written(path: Path):
@@ -83,7 +84,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
         _write_h2(tree, "h2.xyz")
 
         flat = tree / "P" / "opt" / "H2flat"
-        r = jobset("init", "--structure", "P/structure/h2.xyz",
+        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                    "--bundle", "P/opt/H2flat", "--engine", "siesta",
                    "--calculation", "optimization", "--shape", "flat",
                    "--name", "H2", "--psml-lib", "pseudopotential",
@@ -108,15 +109,16 @@ def road(isolated_projects_root_module, tmp_path_factory):
         # ONE MOVE ALLOWED, AND NO RETRY: the relaxation ends out of moves
         # (`running-a-job.md` § 3.5), and that run is the one asked about.
         capped = tree / "P" / "opt" / "H2cap"
-        r = jobset("init", "--structure", "P/structure/h2.xyz",
+        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                    "--bundle", "P/opt/H2cap", "--engine", "siesta",
                    "--calculation", "optimization", "--shape", "flat",
                    "--name", "H2", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
-        _one_rank(capped, restart="clean")
+        # ...its retry budget the run card's, a run setting; its start
+        # from the structure the template's, what it computes.
+        _one_rank(capped, continue_retries=0)
+        set_template_value(capped / "H2.template.toml", "restart", '"clean"')
         set_template_value(capped / "H2.template.toml", "relax_steps", "1")
-        set_template_value(capped / "H2.template.toml", "continue_retries",
-                           "0")
         r = jobset("prep", "task", *group_words(capped, "coarse"),
                    "--bundle", capped, "--target", "this")
         assert r.exit_code == 0, r.output
@@ -143,7 +145,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
         # its launch record (`job-system.md` § 5.4) -- a calculation of its
         # own, so the folders above keep speaking for the runs they hold.
         chain = tree / "P" / "opt" / "H2chain"
-        r = jobset("init", "--structure", "P/structure/h2.xyz",
+        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                    "--bundle", "P/opt/H2chain", "--engine", "siesta",
                    "--calculation", "optimization", "--shape", "flat",
                    "--name", "H2", "--psml-lib", "pseudopotential",

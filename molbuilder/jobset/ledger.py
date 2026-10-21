@@ -16,7 +16,7 @@ ledger only records.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_task` (`job-system.md` § 5.3), writes
 its lines (`preflight-report`, `saved`, a force-constant stage's
-`continues`, `launch-agreement`, `prepared`, and `refused`), after its save,
+`continues`, `prepared`, and `refused`), after its save,
 for the command line and the Task setup tab alike.  `launch`'s, likewise
 (`jobset/submit.py`: `plan_launch`, `ask_launch`, `send_launch`), writes
 its refusals, the question it put and its answer (`question`, a *no* too),

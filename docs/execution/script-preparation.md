@@ -57,7 +57,7 @@ flowchart TB
     F5["<b>5 · launch</b> — start one program<br/><code>jobset/submit</code> · <code>jobset/agreement</code>"]
     F4["<b>4 · layout</b> — folders, attempts<br/><code>jobset/materialize</code> · <code>jobset/ready</code>"]
     F3["<b>3 · plan &amp; render</b> — values, names, and the text of every file<br/><code>calculation</code> · <code>resolve</code> · <code>jobset/model</code> · <code>jobset/naming</code> · <code>siesta/stages</code> · <code>bench/grid</code><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
-    F2["<b>2 · description</b> — what the person asked for<br/><code>task</code> · <code>template_file</code>"]
+    F2["<b>2 · description</b> — what the person asked for<br/><code>task</code> · <code>job_request</code> · <code>template_file</code>"]
     F1["<b>1 · names &amp; plain facts</b><br/><code>identity</code> · <code>scheduler</code> · <code>persist</code> · <code>template</code> · <code>parse</code>"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
     PREP["<b>prep</b> — the conductor<br/><i>not a floor: it walks them</i>"]
@@ -245,7 +245,7 @@ Every adjacent pair is a data dependency, not a convention.
 | **data files → write** | a refusal must arrive before a folder is half-built |
 | **structure → parameters** | forced by the language when the deck is a program that executes top to bottom, as PySCF's is; the same convention when it is a keyword list, as SIESTA's is |
 | **write → promises** | the promise is made by the text that was just written |
-| **write → step 4** | the wrapper reads the finished deck for the environment and the rank count |
+| **write → step 4** | the wrapper is written beside the finished deck, the environment and the counts handed to it — a deck's comment never stands in for a launch value (A17) |
 | **declare → step 4** | the wrapper's header carries the job's own resources |
 | 4 → 5 | the tree links to what was rendered |
 

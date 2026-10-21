@@ -1,9 +1,11 @@
 """The save bar says what is unsaved — `task-setup.md` § 7a, § 9a.1.
 
-Every card of the page folds, the `task.json` editor among them, and Save
-sits in a bar pinned to the bottom of the window. ONE rule is load-bearing:
+Every card of the page folds, the editor of `task.json` and
+`job-request.json` among them, and Save sits in a bar pinned to the bottom of
+the window. ONE rule is load-bearing:
 
-    a buffer that differs from the file on disk is said, in the bar.
+    a buffer that differs from its file on disk is said, in the bar --
+    either record's.
 
 Getting that wrong is silent and expensive — you set up a calculation through
 the cards, never press Save, and close the tab with nothing written. It was
@@ -28,30 +30,36 @@ VIEWER = ROOT / "molbuilder/web/static/task-setup/viewer.js"
 
 def _fns() -> str:
     src = VIEWER.read_text(encoding="utf-8")
-    i = src.index("/** Say whether the buffer differs from disk")
+    i = src.index("/** The records the editor holds")
     j = src.index("/* ---------- loading a folder ---------- */", i)
     body = src[i:j]
-    # `ensureEditor` boots CodeMirror over the network; the harness supplies a
-    # buffer of its own, which is the only part `setEditorText` touches.
+    # `ensureEditor` boots CodeMirror over the network; the harness supplies
+    # an editor and a buffer per record of its own, which are the only parts
+    # `setBuffers` touches.
     return body.replace("await ensureEditor()", "_cm")
 
 
-#: The bar's two elements, and the buffer.  `refreshSave` repaints why Save
-#: is held and the cards' heads, and `saidSave` what the last save did --
-#: neither is what this file asks about.
-HARNESS = """
-    const _attrs = {};
-    const _els = { "ts-dirty": { hidden: true },
-                   "ts-savebar": { setAttribute(k, v) { _attrs[k] = v; } } };
-    function $(id) { return _els[id] || null; }
-    function refreshSave() {}
-    function saidSave() {}
-    const _cm = { _v: "",
-                  setValue(v) { this._v = v; },
-                  getValue() { return this._v; },
-                  clearHistory() {},
-                  refresh() {} };
-    let _diskText = "";
+def _doc() -> str:
+    return """{ _v: "",
+                setValue(v) { this._v = v; },
+                getValue() { return this._v; },
+                clearHistory() {} }"""
+
+
+#: The bar's two elements, and the buffers.  `refreshSave` repaints why
+#: Save is held and the cards' heads, and `saidSave` what the last save did
+#: -- neither is what this file asks about.
+HARNESS = f"""
+    const _attrs = {{}};
+    const _els = {{ "ts-dirty": {{ hidden: true }},
+                   "ts-savebar": {{ setAttribute(k, v) {{ _attrs[k] = v; }} }} }};
+    function $(id) {{ return _els[id] || null; }}
+    function refreshSave() {{}}
+    function saidSave() {{}}
+    const _cm = {{ refresh() {{}} }};
+    const _docs = {{ task: {_doc()}, request: {_doc()} }};
+    let _disk = {{ task: "", request: "" }};
+    let _parses = {{ task: true, request: true }};
 """
 
 
@@ -80,19 +88,24 @@ def _said(js_after: str) -> bool:
     return out["words"]
 
 
-#: (what happened, the buffer's moves, is it unsaved)
+#: What the folder holds, read: both records' files.
+_READ = ("await setBuffers({ task: '{\"a\":1}', request: '{\"r\":1}' },"
+         " { fromDisk: true });")
+
+#: (what happened, the buffers' moves, is it unsaved)
 _ROWS = [
-    ("what the folder holds is not an unsaved edit",
-     "await setEditorText('{\"a\":1}', { fromDisk: true });", False),
-    ("a card edit is unsaved",
-     "await setEditorText('{\"a\":1}', { fromDisk: true });"
-     " await setEditorText('{\"a\":2}');", True),
+    ("what the folder holds is not an unsaved edit", _READ, False),
+    ("a card edit of the description is unsaved",
+     _READ + " await setBuffers({ task: '{\"a\":2}' });", True),
+    ("a card edit of the job request alone is unsaved",
+     _READ + " await setBuffers({ request: '{\"r\":2}' });", True),
     ("saving settles it -- the folder re-read carries the edit",
-     "await setEditorText('{\"a\":1}', { fromDisk: true });"
-     " await setEditorText('{\"a\":2}');"
-     " await setEditorText('{\"a\":2}', { fromDisk: true });", False),
+     _READ + " await setBuffers({ request: '{\"r\":2}' });"
+     " await setBuffers({ task: '{\"a\":1}', request: '{\"r\":2}' },"
+     " { fromDisk: true });", False),
     ("a folder with no description starts clean",
-     "await setEditorText('', { fromDisk: true });", False),
+     "await setBuffers({ task: '', request: '' }, { fromDisk: true });",
+     False),
 ]
 
 

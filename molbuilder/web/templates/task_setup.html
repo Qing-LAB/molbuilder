@@ -308,16 +308,26 @@
         <div id="ts-prep"></div>
       </details>
 
-      {#- THE DESCRIPTION ITSELF, LAST IN THE COLUMN AND FOLDED
-         (task-setup.md § 9a.1; user, 2026-09-01: "we should allow the
+      {#- THE RECORDS THEMSELVES, LAST IN THE COLUMN AND FOLDED
+         (task-setup.md § 9a, § 9a.1; user, 2026-09-01: "we should allow the
          task.json view to be foldable, and have its width to be consistent
-         with the other cards"): a place to check or correct the
-         description, not a step.  An unsaved edit is the save bar's to
+         with the other cards"): a place to check or correct them, not a
+         step -- the description and its job request, a tab each, their
+         names the folder answer's.  An unsaved edit is the save bar's to
          say. -#}
       <details class="card fold ts-editor-card" id="ts-editor-card">
-        <summary><h2>task.json</h2><span class="fold-sum">the file itself
-          &mdash; open it to check or correct what the cards above
-          say</span></summary>
+        <summary><h2>The files</h2><span class="fold-sum">task.json and
+          job-request.json themselves &mdash; open them to check or correct
+          what the cards above say</span></summary>
+        <nav class="ts-steptabs" id="ts-editor-tabs" role="tablist"
+             aria-label="the file shown">
+          <button type="button" class="ts-steptab" role="tab"
+                  id="ts-editor-tab-task" data-tab="task"
+                  aria-selected="true">task.json</button>
+          <button type="button" class="ts-steptab" role="tab"
+                  id="ts-editor-tab-request" data-tab="request"
+                  aria-selected="false">job-request.json</button>
+        </nav>
         <div class="ts-editor" id="ts-editor"></div>
       </details>
 
@@ -332,7 +342,7 @@
       <div class="card ts-savebar" id="ts-savebar" data-dirty="false">
         <p class="ts-savebar-say">
           <span class="ts-dirty" id="ts-dirty" hidden>Edited &mdash; not
-            saved. Prep reads task.json from disk: save before
+            saved. Prep reads the files on disk: save before
             Preview.</span>
           <span class="ts-ask-note ts-keeps-lines" id="ts-save-said"
                 hidden></span>
@@ -354,20 +364,26 @@
            structure is listed because it is what the calculation is OF: a
            person checking a description before a week of compute is checking
            the geometry as much as the parameters. #}
-        {#- SAVE WRITES THE FIRST: `/api/task-setup/save` writes `task.json`
-            alone.  The others arrive with the hand-over from the tab the
-            structure came from (`build.py::api_task_setup_handover`), or
-            with the Transport tab's describe, which writes the description
-            and its template itself. -#}
-        <p class="hint">What is in the folder. Save writes the first; the
-          others arrive when you hand a structure over, or when the Transport
-          tab describes a calculation here.</p>
+        {#- SAVE WRITES THE FIRST TWO: `/api/task-setup/save` writes
+            `task.json` and `job-request.json` alone.  The others arrive with
+            the hand-over from the tab the structure came from
+            (`build.py::api_task_setup_handover`), or with the Transport
+            tab's describe, which writes the records and the template
+            itself. -#}
+        <p class="hint">What is in the folder. Save writes the first two;
+          the others arrive when you hand a structure over, or when the
+          Transport tab describes a calculation here.</p>
         <ul class="ts-files" id="ts-file-list">
           <li>
             <span class="ts-file-name" id="ts-f-task-name">—</span>
-            <span class="ts-file-what">what varies, the stages,
-              what to measure<br>
+            <span class="ts-file-what">what varies, the stages<br>
               <span class="ts-file-state" data-exists="no" id="ts-f-task">not there yet</span></span>
+          </li>
+          <li>
+            <span class="ts-file-name" id="ts-f-req-name">—</span>
+            <span class="ts-file-what">how it runs: the groups, the run
+              cards, the queue, what to measure, the reports<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-req">not there yet</span></span>
           </li>
           <li>
             <span class="ts-file-name" id="ts-f-tmpl-name">—</span>
@@ -436,7 +452,7 @@
          "stages".
 
          ONE CARD, ONE FILE.  Everything here
-         goes into task.json, which TRAVELS -- the ticks, and the channel
+         goes into job-request.json, which TRAVELS -- the ticks, and the channel
          NAMES, which are labels the person chose and not credentials.  The
          addresses and keys those names resolve to are on the This-machine
          tab, in a file that never travels: the separation is held by the
@@ -445,7 +461,7 @@
         <summary><h2>Tell me how it is going</h2><span class="fold-sum" id="ts-notify-card-sum"></span></summary>
         <p class="hint">A long run does not need watching. Tick what is
           worth a message and it is written into this calculation's
-          description. Nothing ticked is no reports at all; <strong>once
+          job request. Nothing ticked is no reports at all; <strong>once
           anything is, the run's start and end report too</strong>.</p>
 
         <div class="ts-notify-opts">

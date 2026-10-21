@@ -8,7 +8,7 @@ once: every module that reads a run asks for it here (*"it should be
 integrated/merged with existing e2e tests so one run of e2e would produce all
 information"*).
 
-Each run is made down the road -- `jobset init`, `prep`,
+Each run is made down the road -- `molbuilder describe`, `prep`,
 `launch` -- with the real SIESTA (`_road.live_siesta`), writes down what
 every command it typed answered, and leaves the process environment as it
 found it before any test reads the run: a later test in the same worker
@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
+from support.road import molbuilder
 
 
 @dataclass
@@ -238,17 +239,18 @@ def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
 def _described(tree: Path, where: str, *, structure: dict, name: str,
                calculation: str, stage_strategy: str = "",
                **blocks) -> Path:
-    """`jobset init` of the road's ``structure`` (`support.road`, written
-    where `init` takes it), SIESTA, layered folders, the ``calculation``'s
-    own ladder or ``stage_strategy``; then the description's run card and
-    benchmark as given -- each block stated, or left out.  THE ONE MAKER of
-    a calculation on the road with the engine."""
+    """`molbuilder describe` of the road's ``structure`` (`support.road`,
+    written where `describe` takes it), SIESTA, layered folders, the
+    ``calculation``'s own ladder or ``stage_strategy``; then the job
+    request's blocks as given -- its run card, its allocation, its
+    benchmark: each stated, or left out.  THE ONE MAKER of a calculation on
+    the road with the engine."""
     from molbuilder.workingcopy_structure import StructureCodec
-    from support.road import jobset, road_structure
+    from support.road import road_structure
     (tree / "P" / "structure").mkdir(parents=True, exist_ok=True)
     source = f"P/structure/{name.lower()}.xyz"
     StructureCodec().write(road_structure(structure), tree / source)
-    r = jobset("init", "--structure", source, "--bundle", where,
+    r = molbuilder("describe", "--structure", source, "--bundle", where,
                "--engine", "siesta", "--calculation", calculation,
                "--shape", "hierarchical", "--name", name,
                "--psml-lib", "pseudopotential",
@@ -256,13 +258,14 @@ def _described(tree: Path, where: str, *, structure: dict, name: str,
                  else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / where
-    task = json.loads((bundle / "task.json").read_text())
+    from support.road import read_request, write_request
+    request = read_request(bundle)
     for block, value in blocks.items():
         if value is None:
-            task.pop(block, None)
+            request.pop(block, None)
         else:
-            task[block] = value
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+            request[block] = value
+    write_request(bundle, request)
     return bundle
 
 
@@ -398,7 +401,6 @@ def layered(tmp_path_factory) -> RealRun:
         _left_to_end(run)
         # ...AND THE JOBS LAUNCHED FROM HERE, asked once it ended, and again
         # (`job-system.md` § 6.0a).
-        from support.road import molbuilder
         run.jobs["after it ended"] = molbuilder("jobs", "status")
         run.jobs["again"] = molbuilder("jobs", "status")
         _taken(run, "status", "status")

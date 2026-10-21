@@ -194,7 +194,7 @@ def test_the_form_and_the_stage_table_offer_the_kinds_set():
 def test_a_description_refuses_what_its_kind_does_not_offer():
     """Gate ③ (`validation/task.py`): a rung's value the kind does not offer
     is refused when the description is WRITTEN -- the describe door
-    `jobset init` and the web hand-over share -- never first at prep, on the
+    `molbuilder describe` and the web hand-over share -- never first at prep, on the
     machine that runs it (`engines/template.md` § 6.3a).
 
     MUTATION THIS MUST FAIL AGAINST: the check removed from gate ③ (the

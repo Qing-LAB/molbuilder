@@ -91,7 +91,7 @@ def psml_sources(elements, *, dest_dir=None,
     where a file is.
 
     In the folder, ``pseudos/`` before the root.  Both are real at different
-    moments -- `init` and a travelled bundle leave `<El>.psml` at the root,
+    moments -- `molbuilder describe` and a travelled bundle leave `<El>.psml` at the root,
     and the first `prep` moves them into ``pseudos/``, keeping what is
     already there.  Asking only the root would refuse a calculation whose
     pseudopotentials are already in place.

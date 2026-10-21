@@ -2,7 +2,7 @@
 `docs/execution/project-layout.md` § 5), case by case.
 
 THE CASES ARE DATA -- ``tests/data/the_catalogue.toml`` -- and each runs down
-the road a person runs (`support.road.run_road_case`): `jobset init` and
+the road a person runs (`support.road.run_road_case`): `molbuilder describe` and
 `prep`.
 
 PREVENTS: the Task setup card naming a file no run writes -- the flat

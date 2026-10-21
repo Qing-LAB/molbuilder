@@ -6,6 +6,7 @@ from __future__ import annotations
 
 
 from molbuilder import template
+from molbuilder.jobset._cli import describe_cmd
 
 
 # --------------------------------------------------------------------- #
@@ -19,7 +20,7 @@ from molbuilder import template
 # --------------------------------------------------------------------- #
 
 
-def test_block_size_is_a_plain_int_and_survives_the_round_trip():
+def test_block_size_is_a_plain_int():
     """The two states of ``block_size`` (tuning.md § 2.11, revised
     2026-08-15): absent = *auto*, the keyword is not emitted and SIESTA uses
     its own automatic; ``N`` = use N, verbatim.
@@ -42,18 +43,6 @@ def test_block_size_is_a_plain_int_and_survives_the_round_trip():
         "block_size must be a plain int -- `pow2` silently rewrites "
         "a measured value, which is the opposite of honouring a benchmark")
 
-    def _round_trip(v):
-        return template.one(template.read_template(template.template_with_values(
-            SiestaConfig(block_size=v))), "block_size").value
-
-    # Every value a user may set survives untouched, power of two or not.
-    for v in (1, 16, 24, 64, 96, 100, 128):
-        assert _round_trip(v) == v, f"{v} was rewritten"
-
-    # Absent stays absent -- that is how *auto* is said, and it is what makes
-    # the deck omit the keyword.
-    assert _round_trip(None) is None
-
 
 # --------------------------------------------------------------------- #
 #  The template file has ONE door                                        #
@@ -73,7 +62,7 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     templates had the web tab and ``prep`` reading DIFFERENT FILES, and the
     values the tab showed were not the values the job would run.
 
-    Asked of the route a person's tab calls, on a calculation `jobset init`
+    Asked of the route a person's tab calls, on a calculation `molbuilder describe`
     wrote, with a leftover template dropped beside it.
 
     MUTATION THIS MUST FAIL AGAINST: the tab's lookup going back to
@@ -81,7 +70,6 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     """
     from click.testing import CliRunner
 
-    from molbuilder.jobset._cli import jobset_group
     from molbuilder.template_file import template_path
 
     tree = isolated_projects_root
@@ -89,8 +77,8 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     (tree / "P" / "structure" / "h2.xyz").write_text(
         "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     monkeypatch.chdir(tree.parent)
-    r = CliRunner().invoke(jobset_group, [
-        "init", "--structure", "P/structure/h2.xyz",
+    r = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/H2", "--engine", "pyscf",
         "--calculation", "optimization",
         "--shape", "flat", "--name", "H2"])

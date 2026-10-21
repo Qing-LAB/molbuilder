@@ -1,6 +1,6 @@
 """The transport calculation KIND -- `engines/transport.md` § 1 and § 3.1: one
 slot, one explicitly named directory, nothing picked for you -- asked where a
-person meets it, `jobset init`.
+person meets it, `molbuilder describe`.
 
 * `init --calculation transport` refuses: no junction slot or a second one, a
   citation that is not tree-relative, and every option whose answer arrives
@@ -23,14 +23,14 @@ from click.testing import CliRunner
 
 from molbuilder.identity import run_id
 from molbuilder.task import Run, Stage, Task
+from molbuilder.jobset._cli import describe_cmd
 
 _CITE = "BDT-Au/optimization/JunctionRelax/01_coarse/run-2"
 _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
 
 def _stages():
-    return tuple(Stage(name=n, overrides={}, group=g)
-                 for n, g in zip(_STAGES, (1, 1, 1, 2, 3)))
+    return tuple(Stage(name=n, overrides={}) for n in _STAGES)
 
 
 def test_round_trip_and_no_structure_block():
@@ -68,8 +68,7 @@ def test_a_ladder_is_its_five_rungs_every_one(names):
 
     MUTATION THIS MUST FAIL AGAINST: the reader letting the seed be left out
     (ruling Q4's skip, withdrawn)."""
-    stages = tuple(Stage(name=n, overrides={}, group=i + 1)
-                   for i, n in enumerate(names))
+    stages = tuple(Stage(name=n, overrides={}) for n in names)
     with pytest.raises(ValueError) as got:
         Task(engine="siesta", shape="hierarchical",
              run=Run(name="T", id=run_id("T", _CITE, stage_names=names)),
@@ -93,9 +92,8 @@ def tree(tmp_path, monkeypatch):
 
 
 def _init(args):
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group,
-                              ["init", "--engine", "siesta"] + args)
+    return CliRunner().invoke(describe_cmd,
+                              ["--engine", "siesta"] + args)
 
 
 _TRANSPORT = ["--calculation", "transport", "--shape", "hierarchical",

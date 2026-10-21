@@ -5,6 +5,7 @@ from __future__ import annotations
 
 
 from molbuilder.siesta import SiestaConfig
+from molbuilder.jobset._cli import describe_cmd
 
 
 # --------------------------------------------------------------------- #
@@ -29,13 +30,12 @@ def test_gap_5_siesta_pao_energy_shift_default_is_tight():
 
 def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
                                                          monkeypatch):
-    """Through `jobset init` and `prep`: PySCF applies a core potential only
+    """Through `molbuilder describe` and `prep`: PySCF applies a core potential only
     when the script names it (PySCF 2.14 `gto/mole.py`, `build`), so gold on
     def2-SVP with none declared is every electron in a valence basis -- and
     the settings check says so, naming the basis's own (`config.ecp`).
     Declared as it says, the hint goes and the potential reaches `gto.M`."""
     import dataclasses
-    import json
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
@@ -50,8 +50,8 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tmp_path)
     run = CliRunner()
-    r = run.invoke(jobset_group, [
-        "init", "--structure", "P/structure/a.xyz", "--bundle",
+    r = run.invoke(describe_cmd, [
+        "--structure", "P/structure/a.xyz", "--bundle",
         "P/spectrum/A", "--engine", "pyscf", "--shape", "flat",
         "--calculation", "vibration", "--name", "A"])
     assert r.exit_code == 0, r.output
@@ -59,9 +59,10 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     # THE RUN CARD STATES THE THREADS, as a described calculation does
     # (`architecture.md` § 5.2); how a shell enters an environment is the
     # machine record's (`configuration.md` § 5 M-1).
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {"threads": 1}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    from support.road import read_request, write_request
+    request = read_request(bundle)
+    request["execution"] = {"threads": 1}
+    write_request(bundle, request)
 
     def prep(answers=None):
         r = run.invoke(jobset_group, ["prep", "task", "--group", "1", "--bundle",

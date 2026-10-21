@@ -548,7 +548,7 @@ SIESTA_RESTART_GROUP = RestartGroup(
 #: science none.  These are the names every worked example in
 #: ``engines/stages.md`` uses.
 #:
-#: ONE table: the ladder builders, the build route and ``jobset init`` name
+#: ONE table: the ladder builders, the build route and ``molbuilder describe`` name
 #: tiers from it.
 
 

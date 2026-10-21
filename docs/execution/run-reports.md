@@ -11,7 +11,7 @@ place in a run directory and the boundary it may not cross; § 2.6 — the
 wrapper, and its `_mb_ending`;
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 — attempt, run
 index, launch record, conclusion marker;
-[`engines/stages.md`](?doc=engines/stages.md) § 6.9 — the `notify` block;
+[`job-request.md`](?doc=execution/job-request.md) § 3.5 — the `notify` block;
 [`web/task-setup.md`](?doc=web/task-setup.md) § 9b — the card that writes it;
 [`web/this-machine.md`](?doc=web/this-machine.md) — the tab that sets up the
 channels;
@@ -30,7 +30,7 @@ and this is the rule for how it tells you what it sees.
 
 ```mermaid
 flowchart LR
-    T["task.json notify block<br/>when · which channels · which fields"]
+    T["job-request.json notify block<br/>when · which channels · which fields"]
     P["prep bakes it into the wrapper<br/>as the monitor's flags"]
     M["mb_monitor.pyz<br/>beside the run"]
     F["secrets/notify<br/>this machine's channels"]
@@ -46,8 +46,9 @@ flowchart LR
 
 ## 1. Why the split is the whole thing
 
-A `task.json` **travels**. It goes to a cluster, into a citation's composed
-copy, into a colleague's copy of your project. That is what a description is for.
+A calculation's folder **travels** — its description and its job request with
+it. It goes to a cluster, into a citation's composed copy, into a colleague's
+copy of your project. That is what a description is for.
 
 A webhook URL does not travel — it is a fact about one person's Slack, and for
 Slack and Discord it *is* the credential, with no separate token beside it.
@@ -55,15 +56,15 @@ Anything that travels must therefore not carry it.
 
 | | lives in | travels? |
 |---|---|---|
-| **the policy** — when to speak, which channels **by name**, which fields | `task.json`'s `notify` block ([`stages.md`](?doc=engines/stages.md) § 6.9) | **yes**, and safely: *"every six hours, to `slack`"* is true wherever the file is opened |
+| **the policy** — when to speak, which channels **by name**, which fields | `job-request.json`'s `notify` block ([`job-request.md`](?doc=execution/job-request.md) § 3.5) | **yes**, and safely: *"every six hours, to `slack`"* is true wherever the file is opened |
 | **the channels** — what each name resolves to: the address, and the secret | the user's own file, `<config dir>/secrets/notify`, mode `0600` (§ 3) | **no**, ever |
 
 **A name travels; what it points at does not** — and that is what lets a
-description say where its reports go at all. `"slack"` is a label the person
+job request say where its reports go at all. `"slack"` is a label the person
 chose on their own machine: not a credential, it grants nothing, and on a
 machine that has no channel by that name it resolves to nothing and says so in
 the monitor log. It fits the line [`task-setup.md`](?doc=web/task-setup.md)
-§ 6.1 draws for every setting — a description holds what a person decides,
+§ 6.1 draws for every setting — a job request holds what a person decides,
 never what a machine found — and adds one: never a secret.
 
 > **On the directory.** Secrets live in `config_dir()`'s `secrets/`, which
@@ -469,7 +470,7 @@ Nothing else reaches stderr in a healthy run.
 | `--notify-on-scf` | `notify.on_scf_converged` | send `scf_converged` |
 | `--notify-every-hours N` | `notify.every_hours` | send `periodic`; `0` is never |
 | `--notify-channels` | `notify.channels` | absent (no `notify` block): nothing is sent; `*`: every channel on this machine; `""`: none; `a,b`: those (§ 3.0) |
-| `--notify-report` | `notify.report` | the fields a chat card shows; absent: all; `""`: none ([`stages.md`](?doc=engines/stages.md) § 6.9). A name that is not a field is dropped, not fatal |
+| `--notify-report` | `notify.report` | the fields a chat card shows; absent: all; `""`: none ([`job-request.md`](?doc=execution/job-request.md) § 3.5). A name that is not a field is dropped, not fatal |
 
 The bundle's second verb, `mb_monitor.pyz ending OUTPUT [--stderr FILE]
 [QUESTION [ARG]]`, is `_run_ending`'s door, which the wrapper asks
@@ -559,7 +560,7 @@ anything.
 | `headers` | no | extra HTTP headers, for a generic endpoint that has no other way to be told who is calling |
 
 A name is the person's own label — letters, digits, `-` and `_`, up to 64 — so
-it is written into a description and read back without quoting. Nothing
+it is written into a job request and read back without quoting. Nothing
 generates one and nothing has a special meaning.
 
 **Two ways to hold a credential, because only one server is ours.** A third
@@ -585,15 +586,15 @@ the run's own state:
 editing anything; set `MB_NOTIFY_KEY` with it when that URL is a molbuilder
 listener, which refuses an unsigned report with a `404` the notifier swallows.
 It names no channel, so § 3.0's selection does not apply: a run whose
-description says `channels: []` still posts there — setting it is the act of
+job request says `channels: []` still posts there — setting it is the act of
 asking for this one report.
 
 ### 3.0 Which channels one run uses
 
-The description names them, every block every time
-([`stages.md`](?doc=engines/stages.md) § 6.9):
+The job request names them, every block every time
+([`job-request.md`](?doc=execution/job-request.md) § 3.5):
 
-| `notify.channels` in `task.json` | the run reports to |
+| `notify.channels` in `job-request.json` | the run reports to |
 |---|---|
 | no `notify` block | **nothing** — nothing is set up |
 | `["*"]` | **every channel on this machine** — it travels as `--notify-channels "*"`, resolved on the machine that runs the job |
@@ -607,7 +608,7 @@ An unticked list read as *all of them* would send a report to a channel the
 person just unticked, which is why `[]` and `["*"]` are two states.
 
 **A named channel this machine does not have is skipped, and said in the
-monitor log.** That is the travelling case: a description written at a desk,
+monitor log.** That is the travelling case: a job request written at a desk,
 opened on a cluster. It cannot be an error — the run is not wrong — and it must
 not be silent, because silence here is indistinguishable from working. **A
 machine with no channels file at all is said the same way**, once per run
@@ -628,9 +629,9 @@ routes under `/api/notify/` ([`web-api.md`](?doc=web/web-api.md) § 4) — a
 blueprint apart from the public listener (§ 4). The tab owns the page; this
 section owns what a save does to the file.
 
-**§ 1's split holds.** The policy and the channel names go into `task.json`;
-the addresses and keys into this file, on the machine they belong to. The
-Task-setup card writes `task.json` and nothing else — it sets policy and never
+**§ 1's split holds.** The policy and the channel names go into
+`job-request.json`; the addresses and keys into this file, on the machine they
+belong to. The Task-setup card writes the job request's `notify` and nothing else — it sets policy and never
 sees a key ([`task-setup.md`](?doc=web/task-setup.md) § 9b).
 
 | rule | why |
@@ -650,7 +651,7 @@ another machine
 file on that machine is the user's job by design; a surface may say what the
 monitor will look for and where ([`this-machine.md`](?doc=web/this-machine.md)
 § 3.1), and does not generate a file for a machine it cannot see. The
-**names** are what Task setup offers, so a description can be written against
+**names** are what Task setup offers, so a job request can be written against
 channels that exist only on the far machine.
 
 **Whose file is it?** `config_dir()` belongs to the OS account the server runs
@@ -751,7 +752,7 @@ when — because somebody parses it later with no session to ask:
 | `received_at` | the listener | our clock. **Both** clocks, because when they disagree that is itself worth seeing |
 
 **The report fields** — one declaration, `molbuilder/report_fields.py`, which
-the description, the wrapper, the monitor, the listener and the Task-setup
+the job request, the wrapper, the monitor, the listener and the Task-setup
 card all read; each is read by § 2.3's readers:
 
 | field | unit | what it is | runs that state it |
@@ -788,7 +789,7 @@ path.
 title is the run, its job id and its state — `bdt_au_01_coarse · 62238108 —
 running`; the summary line is its text; its colour is the state's — running
 blue, finished green, failed red (the layout file's colours, § 4.1c); and its fields are the report fields
-`notify.report` selected ([`stages.md`](?doc=engines/stages.md) § 6.9), in the
+`notify.report` selected ([`job-request.md`](?doc=execution/job-request.md) § 3.5), in the
 order and up to the count the receiver's layout gives the event (§ 4.1c), each
 as its declaration says it (`ReportField.said`) — with its unit; a length of
 time in words (`6h`, `span_words`); a share as the engine printed it, its
@@ -854,7 +855,7 @@ stops there; the reports route and the Test button in their answer.
 **What stays the code's.** The title: the run, its job and its state, always
 (§ 4.1b). A card's fields are the receiver's order for the report's event,
 narrowed by the calculation's `notify.report` — the person's ceiling, never a
-floor ([`stages.md`](?doc=engines/stages.md) § 6.9) — then by what the run
+floor ([`job-request.md`](?doc=execution/job-request.md) § 3.5) — then by what the run
 stated (an absent field stays absent), then cut at the receiver's limit. The
 order is the layout's, so two people who ticked the same boxes get the same
 card. A report whose event the receiver's order has no row for — one that
@@ -862,7 +863,7 @@ names none — is laid out in the declaration's order, whole.
 
 **A ticked field the layout leaves off one event is shown at the others.**
 The layout says what a *start* card is for and what a *finish* card is for.
-The refusal at save (§ 6.9) is for a field no run of the calculation can ever
+The refusal at save ([`job-request.md`](?doc=execution/job-request.md) § 3.5) is for a field no run of the calculation can ever
 state; a field left off every event's order is refused at load, by name, for
 the same reason — a tick nobody can ever see. A field named by the layout that
 no declaration knows (`report_fields.py`) is refused at load, by name — the
@@ -932,7 +933,7 @@ uses (`auth_setup.issue_notify_key`):
 |---|---|
 | `<user>` | whose key; it becomes the record's filename, so letters, digits and `. _ @ + -` |
 | `--host URL` | the server as the job will reach it; used only to print the cluster's file |
-| `--channel NAME` | the channel name the printed file uses, default `molbuilder` — what a description ticks, so re-issuing under the same name changes no description |
+| `--channel NAME` | the channel name the printed file uses, default `molbuilder` — what a job request ticks, so re-issuing under the same name changes no job request |
 | `--replace` | re-issue for a user who has a key; the old one stops working at once |
 | `--route SEGMENT` | adopt a segment already live elsewhere. One that differs from the file's **moves the route**, and the command says so: every key issued under the old segment stops working |
 
@@ -1001,7 +1002,7 @@ asks, and what the wrapper then does is the wrapper's
 
 | the question | the answer |
 |---|---|
-| when should this calculation speak, to whom, with what | `task.Notify` — `task.json`'s `notify` block ([`stages.md`](?doc=engines/stages.md) § 6.9) |
+| when should this calculation speak, to whom, with what | `job_request.Notify` — `job-request.json`'s `notify` block ([`job-request.md`](?doc=execution/job-request.md) § 3.5) |
 | how it reaches the wrapper | `jobset.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2) |
 | how it reaches the monitor | the flags on the `mb_monitor.pyz` line (§ 2.6), rendered by `runwrap._monitor_block` |
 | which run it watches | `--label` / `--stage` / `--run`; every file named through `runfiles` (§ 2.3) |

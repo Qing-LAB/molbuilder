@@ -1,5 +1,5 @@
 {
-  "schema": "molbuilder/task@1",
+  "schema": "molbuilder/task@2",
   "engine": {
     "name": "siesta"
   },
@@ -23,38 +23,19 @@
   "stages": [
     {
       "name": "coarse",
-      "group": 1,
       "overrides": {
         "mesh_cutoff": 150,
         "relax_force_tol": 0.04,
         "relax_type": "CG"
-      },
-      "execution": {
-        "restart": "clean"
       }
     },
     {
       "name": "tight",
-      "group": 2,
       "overrides": {
         "mesh_cutoff": 300,
         "relax_force_tol": 0.01,
         "relax_type": "Broyden"
       }
     }
-  ],
-  "bench": {
-    "mpi_np": [
-      4,
-      8,
-      16
-    ],
-    "omp_threads": [
-      1,
-      2
-    ],
-    "use_gpu": [
-      true
-    ]
-  }
+  ]
 }

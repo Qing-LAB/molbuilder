@@ -3,7 +3,7 @@
 #
 # A deck is written one way, by `jobset prep` -- the engine describes it, the
 # framework renders, writes and checks it (`script-preparation.md` § 4.3) --
-# so every row here is prepared on the road: `jobset init` of a held H2, or of
+# so every row here is prepared on the road: `molbuilder describe` of a held H2, or of
 # the structure the row gives, then `prep`, and the deck read where prep
 # wrote it (`process/testing.md` § 3a).  `tests/test_the_deck.py` runs every
 # case through the one runner every contract table shares

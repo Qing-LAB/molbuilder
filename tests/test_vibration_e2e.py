@@ -23,6 +23,7 @@ import pytest
 
 from _road import conda_hook, env_available
 from support.road import group_words
+from molbuilder.jobset._cli import describe_cmd
 
 CONDA_SH = conda_hook()
 
@@ -39,15 +40,19 @@ WATER = "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n"
 def _bundle_head(folder, *objects) -> str:
     """A probe's first lines, the way a PySCF script starts
     (`engines/pyscf.md` § 3): ``mb_pyscf.pyz`` written into ``folder``, then
-    the script's own head and an import of each of ``objects`` from the
+    its run settings, its own head and an import of each of ``objects`` from the
     bundle, bound as ``_mb_<its name>`` -- so a probe runs the code a run
     executes, under the env that runs it, where molbuilder is not
     installed.  It is started as a run script starts a deck, with its run's
     number (``--run 0``, `runtime_info.run_given`)."""
-    from molbuilder.pyscf.input import emit_bundle_imports, emit_script_head
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.pyscf.input import (emit_bundle_imports,
+                                        emit_run_settings_block,
+                                        emit_script_head)
     from molbuilder.runwrap import PYSCF_BUNDLE, pyscf_bundle
     (folder / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
-    return "\n".join([*emit_script_head(None),
+    return "\n".join([*emit_run_settings_block(PySCFConfig()),
+                      *emit_script_head(),
                       *emit_bundle_imports(*objects)])
 
 
@@ -58,7 +63,6 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
     into its pair by the codec -- never as a form field."""
     from click.testing import CliRunner
 
-    from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
@@ -72,8 +76,8 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
         (tree / "P" / "structure" / "w.xyz").write_text(WATER)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tmp_path)
-    r = CliRunner().invoke(jobset_group, [
-        "init", "--structure", "P/structure/w.xyz",
+    r = CliRunner().invoke(describe_cmd, [
+        "--structure", "P/structure/w.xyz",
         "--bundle", "P/frequency/V",
         "--engine", "pyscf", "--shape", "hierarchical",
         "--calculation", "vibration", "--name", "W"])
@@ -84,9 +88,10 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    task = json.loads((bundle / "task.json").read_text())
-    task["execution"] = {**task.get("execution", {}), "threads": 1}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    from support.road import read_request, write_request
+    request = read_request(bundle)
+    request["execution"] = {**request.get("execution", {}), "threads": 1}
+    write_request(bundle, request)
     return bundle
 
 
@@ -112,11 +117,12 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     bundle = _describe(tmp_path, monkeypatch)
     # A converged SCF is worth a message (`stages.md` § 6.9's neighbour,
     # `notify.on_scf_converged`): asked for here the way a person asks, in
-    # the description, so the monitor beside the run is told to send them.
-    task = json.loads((bundle / "task.json").read_text())
-    task["notify"] = {"on_scf_converged": True, "every_hours": None,
-                      "channels": ["*"], "report": ["*"]}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    # the job request, so the monitor beside the run is told to send them.
+    from support.road import read_request, write_request
+    request = read_request(bundle)
+    request["notify"] = {"on_scf_converged": True, "every_hours": None,
+                         "channels": ["*"], "report": ["*"]}
+    write_request(bundle, request)
     d = _prep_and_run(bundle)
 
     from molbuilder.spectra.results import SCHEMA_VERSION

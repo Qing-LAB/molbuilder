@@ -197,7 +197,7 @@ straight:
 
 | half | file | set up |
 |---|---|---|
-| **when** to speak | the calculation's `task.json` | tick it on the Task-setup card — portable, no secrets |
+| **when** to speak | the calculation's `job-request.json` (its `notify`) | tick it on the Task-setup card — portable, no secrets |
 | **where** to send | `<config dir>/secrets/notify` on the machine that **runs the job** | `molbuilder notify-token <you>` prints the address + key and says exactly where to put them; the Task-setup card can write the file for you when the job runs on the same machine |
 
 On a cluster, that file lives in **your cluster home** (the card hands you
@@ -215,9 +215,10 @@ build the molecule            the Molbuilder tab (or bring an .xyz)
 set the physics               the Structure-optimization tab
 Send to Task setup            writes the portable folder
 shape · stages · bench        the Task-setup tab; saving writes task.json
+                              and job-request.json
 prep bench <stage>            on the target; renders trials
 launch bench <stage>          one grouped job; summarize writes the verdict
-prep task · launch task       the production stage, verdict applied
+prep task · launch task       the production stage, at the run card you wrote
 the Results tab               watch it run; read what it made
 ```
 

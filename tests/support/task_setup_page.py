@@ -46,3 +46,26 @@ def every_card_text(page) -> str:
         assert not closed.count(), f"a group of #{card} would not open"
         texts.append(page.inner_text(f"#{card}"))
     return "\n".join(texts)
+
+
+def file_text(page, which: str) -> str:
+    """The text the editor holds for record ``which`` -- ``task`` or
+    ``request`` -- read as a person reads it: its tab chosen in the files
+    card (`task-setup.md` § 9a)."""
+    unfold(page, "ts-editor-card")
+    page.click(f"#ts-editor-tab-{which}")
+    return page.evaluate(
+        "() => document.querySelector('.CodeMirror').CodeMirror.getValue()")
+
+
+def wait_for_file(page, which: str, pattern: str,
+                  timeout: int = 10000) -> None:
+    """Wait until record ``which``'s text, its tab chosen, matches the
+    regular expression ``pattern`` -- what a card wrote reaching the
+    buffer Save sends."""
+    unfold(page, "ts-editor-card")
+    page.click(f"#ts-editor-tab-{which}")
+    page.wait_for_function(
+        "(re) => { const cm = document.querySelector('.CodeMirror');"
+        " return !!cm && new RegExp(re).test(cm.CodeMirror.getValue()); }",
+        arg=pattern, timeout=timeout)

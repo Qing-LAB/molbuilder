@@ -1,4 +1,4 @@
-"""The launch door -- through the road: `jobset init`, `prep`, `launch`.
+"""The launch door -- through the road: `molbuilder describe`, `prep`, `launch`.
 
 PINS: ``docs/execution/job-system.md`` § 6.0 (launch sends the header its
 prep wrote, each stage its own; `-J <calculation>/<job>`);
@@ -22,7 +22,8 @@ import json
 import pytest
 from molbuilder.calculation import open as open_calculation
 
-from support.road import (a_machine_with_queues, calls_made, describe_calculation,
+from support.road import (read_request, write_request,
+                          a_machine_with_queues, calls_made, describe_calculation,
                           group_words, jobset, stage_file)
 
 
@@ -40,14 +41,14 @@ def _queues(gpu: bool = False):
 
 
 def _states_its_wall_and_memory(bundle, **more):
-    """The calculation states its wall and its memory -- task.json's
+    """The calculation states its wall and its memory -- its job request's
     `allocation` -- as a run on a scheduler does, or prep refuses
     (`architecture.md` § 5.2).  Its QUEUE each prep names for its own stage
     (`--domain`), which is what this file is about -- or, given here, the
-    description names it for every stage."""
-    task = json.loads((bundle / "task.json").read_text())
-    task["allocation"] = {"time": "0-01:00:00", "mem": "8G", **more}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    job request names it for every stage."""
+    request = read_request(bundle)
+    request["allocation"] = {"time": "0-01:00:00", "mem": "8G", **more}
+    write_request(bundle, request)
     return bundle
 
 

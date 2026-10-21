@@ -352,7 +352,7 @@ differ:
 
 - **refused** — `GeometryChangedError`, naming the file and the way out — by
   every door that builds something from the structure: prep reading a
-  calculation's structure, `jobset init`, the CLI, a deck's file reader, a
+  calculation's structure, `molbuilder describe`, the CLI, a deck's file reader, a
   transport citation of a pair;
 - **said** — the file opens, the load saying its labels and cell were saved for
   other coordinates — by the browser's load route, the one door of the

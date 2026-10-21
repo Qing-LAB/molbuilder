@@ -7,6 +7,16 @@ was written before (:func:`_kept_as`): a plan's code (``m6``, ``w57``), a
 day, or a release.  A file renamed keeps every byte, so nothing is kept
 beside it.  Each change is said, with its rule.
 
+**The job request** (2.27.0, :func:`_split`): a description written before
+holds how it runs inside `task.json` (`molbuilder/task@1`) -- its
+`allocation`, run cards, groups, `bench` and `notify` -- and its run
+settings' values in its template.  They move into `job-request.json`, a file
+of its own (`execution/job-request.md` § 8): the template's run-setting
+values onto the calculation's run card, where it states none, but a value
+the template records *not chosen* that is the catalogue's default now; and
+`restart` and `density_fit`, which say what is computed, off the cards -- the
+calculation's into the template, a stage's into its overrides.
+
 **The records** (:func:`_migrate_records`).  `task.json`: its `calculation`
 (W57), a notify block's four values and *never* as ``null`` (W57); a stage's
 `enabled` (2026-10-03) -- a ``true`` removed, a stage switched off refused by
@@ -19,7 +29,9 @@ rest the number above where the ladder allows it.  Each `job-set.json` --
 the root's and each sweep's: a job's `point`, `finish`, `resumes`,
 `placement` and `members` (W57; `members` written as `group` before 2.7.0),
 its `written_at` and `asked` (2.7.0) and its `scratch_dir` (2.22.0), each
-with the meaning its absence had.
+with the meaning its absence had; the program it runs, onto the job
+(`Job.program`, 2.27.0), and a placement's source ``description`` said
+``allocation``.
 
 **The machine's record** (:func:`_migrate_machine_record`): a calculation's
 copy names its scheduler as a block since 2.10.1 (`configuration.md` § 5
@@ -199,6 +211,20 @@ _JOB_ABSENT = {"point": ({}, "w57"), "finish": (None, "w57"),
 #: kept: the members of the job it was prepared in (2.7.0).
 _JOB_RENAMED = {"group": ("members", "2.7.0")}
 
+#: THE RELEASE THE JOB REQUEST BECAME A RECORD OF ITS OWN
+#: (`execution/job-request.md` § 8): the rule a description holding it, a
+#: template holding a run setting's value and a plan whose resources name
+#: the program were written before.
+_SPLIT = "2.27.0"
+#: The description's schema before the split.
+_TASK_AT_1 = "molbuilder/task@1"
+#: The keys of the job request a description held before it.
+_JOB_KEYS = ("allocation", "execution", "bench", "notify")
+#: What a run card held before that says what is computed: moved off the
+#: cards, the calculation's into the template, a stage's into its overrides
+#: (`execution/job-request.md` § 2).
+_COMPUTED_ON_CARDS = ("restart", "density_fit")
+
 #: The rules named by their plan's code, at the day each took effect; a
 #: rule named by its day says it itself, and every numbered release came
 #: after them all (2.0.0, 2026-10-11).
@@ -281,6 +307,14 @@ class _Records:
     #: The template's migration, decided once (:func:`_migrate_template`):
     #: ``_UNDECIDED`` until asked, then the decision or ``None``.
     _template_decision: Any = _UNDECIDED
+    #: What the calculation's run card held that says what is computed
+    #: (:data:`_COMPUTED_ON_CARDS`), taken off it for the template -- set by
+    #: the records step before the template's decision is asked.
+    from_card: Dict[str, Any] = None
+
+    #: The job request as the records step decided it -- ``None`` until
+    #: then (:func:`_migrate_records`).
+    request: Any = None
 
     @classmethod
     def read(cls, base: Path) -> "_Records":
@@ -297,7 +331,7 @@ class _Records:
             path = JobSet.path_of(folder)
             if path.is_file():
                 jobsets[folder] = _read_raw(path)
-        return cls(base=base, task=obj, jobsets=jobsets)
+        return cls(base=base, task=obj, jobsets=jobsets, from_card={})
 
     def calculation(self, task) -> "Calculation":
         """The calculation as this migration decided it -- its description,
@@ -315,9 +349,16 @@ class _Records:
                 f"{JobSet.path_of(self.base)} does not read as this "
                 f"molbuilder writes it, and no rule here rewrites it; "
                 f"nothing was written: {exc}") from None
+        from ..job_request import JobRequest, StageRequest
+        jr = self.request
         return Calculation(base=self.base, task=task,
                            template=self.template_for(task.label),
-                           jobset=js)
+                           jobset=js,
+                           request=(jr if jr is not None else JobRequest(
+                               stages={st.name: StageRequest(group=i + 1)
+                                       for i, st in enumerate(task.stages)},
+                               engine=str(task.engine),
+                               calculation=str(task.calculation))))
 
     def template_for(self, label: str) -> Optional["TemplateFile"]:
         """The calculation's template, read once (`template_file.of`); a folder
@@ -325,7 +366,7 @@ class _Records:
         if not self._template_read:
             from ..template_file import of as template_of
             try:
-                self.template = template_of(self.base, label)
+                self.template = template_of(self.base, label, raw=True)
             except ValueError as exc:
                 raise MigrateError(str(exc)) from exc
             self._template_read = True
@@ -353,9 +394,10 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
     from .group import may_join
     base = rec.base
     # THE LADDER'S LINKS do not depend on the numbers: read on the
-    # description with each stage a group of its own...
-    task = Task.from_dict({**obj, "stages": [
-        {**st, "group": i + 1} for i, st in enumerate(stages)]})
+    # description (:func:`_description_view`), each stage's run card the
+    # job request's, every stage a group of its own...
+    task = Task.from_dict(_description_view(obj))
+    cards = _cards_view(obj, task)
     # ...AS THIS MIGRATION LEAVES IT (:func:`_migrate_template`, every
     # decision before any write): the template it writes, and the stages'
     # own values with an older zero or a retired item taken out -- the links
@@ -395,7 +437,7 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
             continue
         joins = (job is None and above is not None
                  and jobs.get(stage_key(above)) is None
-                 and may_join(task, name, members, text))
+                 and may_join(task, cards, name, members, text))
         groups.append(groups[-1] if joins else (groups[-1] + 1 if groups
                                                 else 1))
         members = members + [name] if joins else [name]
@@ -405,6 +447,131 @@ def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
             f"each stage states the job it runs in -- a prepared one its "
             f"job's, the rest the number above where the ladder allows it "
             f"and the run cards share one allocation)"]
+
+
+def _description_view(obj: dict) -> dict:
+    """``obj`` -- a raw description, before the split or after -- as the
+    description alone: what is computed, the job request's keys left out
+    (`execution/job-request.md` § 1), at the schema the reader reads -- and
+    what a stage's run card said of what is computed (`restart`,
+    `density_fit`) among its overrides, as the split leaves it, so every
+    step reads the ladder the migration writes: the groups' links and the
+    template's decision alike (§ 8)."""
+    from ..task import SCHEMA
+    out = {k: v for k, v in obj.items() if k not in _JOB_KEYS}
+    out["schema"] = SCHEMA
+    varies = list(obj.get("varies") or [])
+    stages = []
+    for st in (obj.get("stages") or []):
+        if not isinstance(st, dict):
+            stages.append(st)
+            continue
+        own = st.get("execution") or {}
+        moved = {k: own[k] for k in _COMPUTED_ON_CARDS if k in own}
+        view = {k: v for k, v in st.items()
+                if k not in ("group", "execution")}
+        if moved:
+            view["overrides"] = {**(view.get("overrides") or {}), **moved}
+            varies = list(dict.fromkeys([*varies, *moved]))
+        stages.append(view)
+    out["stages"] = stages
+    if "varies" in obj or varies:
+        out["varies"] = varies
+    return out
+
+
+def _cards_view(obj: dict, task):
+    """The run cards ``obj`` holds -- the calculation's and each stage's --
+    as a job request, each stage a group of its own: what the groups' rule
+    reads of what a job shares (`group.card_shares`)."""
+    from ..job_request import JobRequest, StageRequest
+    by = {st.get("name"): st for st in (obj.get("stages") or [])
+          if isinstance(st, dict)}
+    return JobRequest(
+        stages={st.name: StageRequest(
+            group=i + 1, execution=dict((by.get(st.name) or {})
+                                        .get("execution") or {}))
+                for i, st in enumerate(task.stages)},
+        execution=dict(obj.get("execution") or {}),
+        engine=str(task.engine), calculation=str(task.calculation))
+
+
+def _split(rec: "_Records", obj: dict, task) -> Tuple[dict, dict, List[str]]:
+    """THE JOB REQUEST, A RECORD OF ITS OWN (`execution/job-request.md`
+    § 8): ``(the description, the job request, a line per change)`` from
+    ``obj``, a description written before.  Each stage's group and run card
+    and the calculation's `allocation`, card, `bench` and `notify` move into
+    the job request; a stage card's `restart` and `density_fit` into its
+    overrides, `varies` gaining them (the calculation's went to the
+    template, :func:`_decide_template`); the template's run-setting values
+    onto the calculation's card, where it states none -- but one the
+    template records *not chosen* that is the catalogue's default now.  A
+    `bench` row naming what is computed is refused by name."""
+    from .. import template as _T
+    from ..job_request import SCHEMA
+    said: List[str] = []
+    desc = _description_view(obj)
+    bench = dict(obj.get("bench") or {})
+    measured = sorted(set(bench) & set(_COMPUTED_ON_CARDS))
+    if measured:
+        raise MigrateError(
+            f"task.json's bench measures {', '.join(map(repr, measured))}, "
+            f"which say{'s' if len(measured) == 1 else ''} what is computed, "
+            f"never how fast -- a benchmark measures run settings alone "
+            f"(execution/job-request.md § 2).  Remove "
+            f"{'it' if len(measured) == 1 else 'them'} from the bench, then "
+            f"run the migration again; nothing was written.")
+    card = {k: v for k, v in (obj.get("execution") or {}).items()
+            if k not in _COMPUTED_ON_CARDS}
+    stages: Dict[str, dict] = {}
+    for st, raw in zip(desc["stages"], obj.get("stages") or []):
+        own = dict(raw.get("execution") or {})
+        moved = {k: own.pop(k) for k in _COMPUTED_ON_CARDS if k in own}
+        if moved:
+            st["overrides"] = {**(st.get("overrides") or {}), **moved}
+            desc["varies"] = list(dict.fromkeys(
+                [*(desc.get("varies") or []), *moved]))
+            said += [f"stage {st['name']!r} {k} = {v!r}: off its run card, "
+                     f"into its overrides -- it says what is computed"
+                     for k, v in moved.items()]
+        stages[st["name"]] = {"group": raw.get("group"),
+                              **({"execution": own} if own else {})}
+    said += [f"{k} = {v!r}: off the calculation's run card, into the "
+             f"template -- it says what is computed"
+             for k, v in sorted(rec.from_card.items())]
+    # THE TEMPLATE'S RUN-SETTING VALUES, onto the calculation's card -- a run
+    # setting by the catalogue's word now (`template.run_settings`), never
+    # by the older template's own category: `restart` and `density_fit`
+    # were run settings there, and stay in the template, what is computed.
+    template = rec.template_for(task.label)
+    run_settings = _T.run_settings(str(task.engine))
+    if template is not None:
+        for it in _T.read_template(template.text).items:
+            if (it.name not in run_settings
+                    or it.value is None or it.name in card):
+                continue
+            item = _T.one(_T.catalogue(), it.name, engine=str(task.engine))
+            if (it.source == "default" and item is not None
+                    and it.value == item.value):
+                said.append(f"{it.name} = {it.value!r}: the catalogue's "
+                            f"default, not chosen -- taken out of the "
+                            f"template; a run takes it there still")
+                continue
+            card[it.name] = it.value
+            said.append(f"{it.name} = {it.value!r}: out of the template, "
+                        f"onto the calculation's run card in "
+                        f"job-request.json")
+    request = {"schema": SCHEMA,
+               **({"allocation": obj["allocation"]}
+                  if obj.get("allocation") else {}),
+               **({"execution": card} if card else {}),
+               "stages": stages,
+               **({"bench": bench} if bench else {}),
+               **({"notify": obj["notify"]} if obj.get("notify") else {})}
+    said.insert(0, "how it runs -- its allocation, run cards, groups, bench "
+                   "and reports -- moved into job-request.json, a record of "
+                   "its own")
+    return desc, request, said
 
 
 def _migrate_records(rec: "_Records"):
@@ -428,6 +595,15 @@ def _migrate_records(rec: "_Records"):
     task_path = path_of(base)
     obj = rec.task
     lines: List[Tuple[str, str]] = []          # (what changed, its rule)
+    # WRITTEN BEFORE THE SPLIT (`task@1`): the calculation's card's
+    # `restart` and `density_fit` are taken off it FIRST, for the
+    # template's decision every later step asks.
+    before_split = str(obj.get("schema") or "") == _TASK_AT_1
+    if before_split:
+        card = obj.get("execution")
+        if isinstance(card, dict):
+            rec.from_card = {k: card.pop(k) for k in _COMPUTED_ON_CARDS
+                             if k in card}
     for key, (meant, rule) in _TASK_ABSENT.items():
         if key not in obj:
             obj[key] = meant
@@ -463,7 +639,7 @@ def _migrate_records(rec: "_Records"):
             bias is None
             or (isinstance(bias, dict) and not bias.get("voltages_v"))):
         # THE SINGLE BIAS, STATED (`engines/transport.md` § 2a.10, 2.16.3):
-        # `jobset init` with no `--bias` wrote no voltages before, and the
+        # `molbuilder describe` with no `--bias` wrote no voltages before, and the
         # reader refuses a transport description stating none.
         obj["bias"] = {**(bias or {}), "voltages_v": [0.0]}
         lines.append(("bias.voltages_v = [0.0] (2.16.3: a transport "
@@ -503,19 +679,61 @@ def _migrate_records(rec: "_Records"):
         raise MigrateError(f"{task_path.name}: its stages' groups cannot be "
                            f"decided, so nothing was written: {exc}") from None
     lines += [(ln, "2.7.0") for ln in grouped]
+    request_body = None
+    if before_split:
+        try:
+            view = Task.from_dict(_description_view(obj))
+        except ValueError as exc:
+            raise _refused_rewrite(task_path, exc) from None
+        desc, request_body, split_said = _split(rec, obj, view)
+        lines += [(ln, _SPLIT) for ln in split_said]
+    else:
+        desc = obj
     try:
-        task = Task.from_dict(obj)
+        task = Task.from_dict(desc)
     except ValueError as exc:
         raise _refused_rewrite(task_path, exc) from None
     if lines:
         writes.add(task_path, json_text(task.to_dict()),
                    {rule for _ln, rule in lines})
         said += [f"{TASK_FILENAME}: {ln}" for ln, _rule in lines]
+    if request_body is not None:
+        from .. import job_request as _jr
+        jr_path = _jr.path_of(base)
+        if jr_path.exists():
+            raise MigrateError(
+                f"{jr_path.name} is already there beside a description "
+                f"written before it -- which of the two says how the "
+                f"calculation runs is yours to decide: remove one, then run "
+                f"the migration again; nothing was written.")
+        try:
+            rec.request = _jr.from_dict(request_body, task)
+        except ValueError as exc:
+            raise _refused_rewrite(jr_path, exc) from None
+        writes.add(jr_path, json_text(rec.request.to_dict()), frozenset())
+        said.append(f"{jr_path.name}: written -- how the calculation runs, "
+                    f"a record of its own ({_SPLIT})")
 
     for folder, d in rec.jobsets.items():
         js_path = JobSet.path_of(folder)
         filled, missing, renamed = 0, set(), set()
+        split = 0
         for job in d.get("jobs") or []:
+            # THE PROGRAM IS THE JOB'S (`Job.program`, 2.27.0), and a
+            # placement's source that was the description, the allocation's.
+            res = job.get("resources")
+            if isinstance(res, dict) and "program" in res:
+                job["program"] = res.pop("program")
+                split += 1
+            elif "program" not in job:
+                job["program"] = None
+                split += 1
+            src = (job.get("placement") or {}).get("from")
+            if isinstance(src, dict) and "description" in src.values():
+                job["placement"]["from"] = {
+                    k: ("allocation" if v == "description" else v)
+                    for k, v in src.items()}
+                split += 1
             old = {o: n for o, (n, _rule) in _JOB_RENAMED.items()
                    if o in job and n not in job}
             for o, n in old.items():
@@ -527,7 +745,7 @@ def _migrate_records(rec: "_Records"):
                 filled += 1
                 missing |= set(gaps)
                 renamed |= set(old)
-        if not filled:
+        if not filled and not split:
             continue
         try:
             body = JobSet.from_dict(d).to_dict()
@@ -535,14 +753,19 @@ def _migrate_records(rec: "_Records"):
             raise _refused_rewrite(js_path, exc) from None
         writes.add(js_path, json_text(body),
                    {_JOB_ABSENT[k][1] for k in missing}
-                   | {_JOB_RENAMED[o][1] for o in renamed})
-        said.append(f"{js_path.relative_to(base)}: {filled} job(s) -- "
+                   | {_JOB_RENAMED[o][1] for o in renamed}
+                   | ({_SPLIT} if split else set()))
+        said.append(f"{js_path.relative_to(base)}: "
+                    f"{max(filled, 1)} job(s) -- "
                     + "; ".join(
                         ([f"given {', '.join(k for k in _JOB_ABSENT if k in missing)}"
                           f" (left out, as their absence meant)"]
                          if missing else [])
                         + [f"`{o}` renamed `{_JOB_RENAMED[o][0]}`"
-                           for o in sorted(renamed)]))
+                           for o in sorted(renamed)]
+                        + ([f"the program onto the job, a placement's source "
+                            f"`description` said `allocation` ({_SPLIT})"]
+                           if split else [])))
     return said, writes, task
 
 
@@ -828,8 +1051,9 @@ def migrate_state(base) -> List[str]:
             f"migration again.")
     # A KEPT FILE IS NEVER WRITTEN OVER: it is the only copy of what the
     # file was before an earlier migration.
+    # A NEW FILE -- the job request a split writes -- keeps nothing.
     kept = {path: path.with_name(path.name + _kept_as(rules))
-            for path, (_text, rules) in writes.items()}
+            for path, (_text, rules) in writes.items() if path.exists()}
     held = [k for k in kept.values() if k.exists()]
     if held:
         raise MigrateError(
@@ -842,14 +1066,15 @@ def migrate_state(base) -> List[str]:
     # (`persist.write_bytes`, `execution/architecture.md` § 2.1).
     from ..persist import write_bytes
     for path, (text, _rules) in writes.items():
-        write_bytes(kept[path], path.read_bytes())
+        if path in kept:
+            write_bytes(kept[path], path.read_bytes())
         write_bytes(path, text.encode("utf-8"))
     for old, new in moves:
         old.rename(new)
     if l_write is not None:
         write_bytes(l_write[0], l_write[1].encode("utf-8"))
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
-             for path in writes]
+             for path in writes if path in kept]
     said += n_said + lead_said + l_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
@@ -1082,8 +1307,15 @@ def _decide_template(rec: "_Records", task):
             f"item holds -- a misspelling, or a value written on a machine "
             f"fact (engines/template.md § 7); prep refuses it too.  Correct "
             f"it, then run the migration again; nothing was written.")
+    # A RUN SETTING'S VALUE, written before the split: the template carries
+    # none (`execution/job-request.md` § 2) -- the records step moves it
+    # onto the calculation's run card (:func:`_split`) -- and the
+    # calculation's card's `restart` and `density_fit`, which say what is
+    # computed, come into the template.
+    run_vals = sorted(k for k in vals if k in _T.run_settings(engine))
+    from_card = dict(rec.from_card or {})
     if not (old_items or old_values or zeros or renamed or retired
-            or stage_retired or varies_retired):
+            or stage_retired or varies_retired or run_vals or from_card):
         raise _NothingInTheTemplate(
             f"{tmpl.name} carries no item written before the electronic "
             f"state's, no 0 written before {_T.ZERO_MEANING_CHANGED_AT} "
@@ -1113,6 +1345,9 @@ def _decide_template(rec: "_Records", task):
     kept = {k: v for k, v in vals.items()
             if k in known and k not in old_names and k not in zeros}
     kept.update(state)
+    kept.update(from_card)
+    said += [f"{k} = {vals[k]!r}: a run setting -- written valueless, its "
+             f"value the job request's" for k in run_vals]
     try:
         cfg = config_cls(**kept)
     except (TypeError, ValueError) as exc:
@@ -1134,6 +1369,9 @@ def _decide_template(rec: "_Records", task):
     sources = {renamed_to.get(it.name, it.name): it.source for it in mine
                if renamed_to.get(it.name, it.name) in known}
     sources.update({k: sources.get(k) for k in kept})
+    # THE CARD'S SCIENCE was the person's statement on the calculation's
+    # run card.
+    sources.update({k: "person" for k in from_card})
     new_text = _T.template_with_values(cfg, engine=engine, calculation=kind,
                                        title=_leading_comment(text),
                                        valueless=valueless,
@@ -1163,6 +1401,7 @@ def _decide_template(rec: "_Records", task):
     # earliest (:func:`_kept_as`).
     rules = frozenset((["m6"] if state_said else [])
                       + ([_T.ZERO_MEANING_CHANGED_AT] if zeros else [])
+                      + ([_SPLIT] if run_vals or from_card else [])
                       + renamed_at + retired_at)
     task_rules = frozenset(
         ([_T.ZERO_MEANING_CHANGED_AT] if stage_zeros else [])
@@ -1188,7 +1427,7 @@ def _inner_comments(text: str) -> int:
 
 
 def _leading_comment(text: str) -> str:
-    """The file's header comment, without its ``#`` -- what ``init`` wrote as
+    """The file's header comment, without its ``#`` -- what ``molbuilder describe`` wrote as
     the title, carried over unchanged."""
     lines = []
     for ln in text.splitlines():

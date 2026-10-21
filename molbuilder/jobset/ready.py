@@ -103,6 +103,10 @@ class GroupAnswer:
     number: int
     members: List[str]
     answers: List[Readiness]
+    #: The layout keeps each run in a folder of its own (the hierarchical
+    #: one): a launched group may then be prepared again for its job
+    #: request (`execution/job-request.md` § 5).
+    keeps_runs: bool = True
 
     @property
     def launched(self) -> bool:
@@ -128,10 +132,13 @@ class GroupAnswer:
 
     @property
     def preparable(self) -> bool:
-        """It may be prepared now: no member launched, and every member
-        preparable -- a force-constant stage once its `relax` has finished."""
-        return not self.launched and all(
-            a.prepared or a.ready for a in self.answers)
+        """It may be prepared now: every member preparable -- a
+        force-constant stage once its `relax` has finished -- and no member
+        launched, or, on the hierarchical layout, launched with what it
+        computes kept: prepared again for its job request
+        (`execution/job-request.md` § 5)."""
+        return ((not self.launched or self.keeps_runs)
+                and all(a.prepared or a.ready for a in self.answers))
 
     @property
     def prepared_by(self) -> Optional[str]:
@@ -168,9 +175,9 @@ def held_by_sequence(calc, number: int, *, asked=None
     bare launch's offer."""
     from ..identity import stage_key
     from ..joblist import Asked, Job, every, is_going
-    from .group import group_members, same_members
-    base, task = Path(calc.base), calc.task
-    stages = group_members(task, number)
+    from .group import same_members
+    base = Path(calc.base)
+    stages = calc.request.members(number)
     keys = {stage_key(s) for s in stages}
     asked = asked if asked is not None else Asked()
     for job in every():
@@ -226,11 +233,14 @@ def _sent_by(calc, stages, job) -> bool:
 
 
 def launched_already(calc, stage: str) -> Optional[str]:
-    """Why ``stage`` is not prepared again -- it was launched -- or ``None``
-    (`job-system.md` § 5.0, checkpoint 2a): earlier runs' facts are read
-    from the stage's job and its description (the optimizer a ``.CG``
-    follows, a swept rung's points), so its runs must keep the deck and job
-    they ran with.  The way back is the state saved before its group's first
+    """Why ``stage`` is not prepared again -- launched, on the FLAT layout --
+    or ``None`` (`execution/job-request.md` § 5; `job-system.md` § 5.0,
+    checkpoint 2a): there a stage's runs share its folder's deck and run
+    script, so a deck rendered anew would rewrite what an earlier run's
+    record reads as its own.  On the hierarchical layout each run holds its
+    own copy, and a launched stage is prepared again for its job request --
+    its deck the same calculation, which the prep asks of the deck it
+    renders.  The way back is the state saved before its group's first
     launch, every run it builds on in it (`job-system.md`, *How the
     checkpoint supports you*).  ``calc`` is the calculation as the verb
     read it (A16)."""
@@ -244,12 +254,12 @@ def launched_already(calc, stage: str) -> Optional[str]:
         launched = ever_launched(calc, job)
     except LaunchRecordError as exc:
         return str(exc)
-    if not launched:
+    if not launched or calc.shape.keeps_attempts_as_directories:
         return None
-    return (f"stage {stage!r} was launched -- a launched stage is not "
-            f"prepared again: its runs' facts are read from its job and its "
-            f"description, so they must stay what its runs ran with "
-            f"(job-system.md § 5.0).  To change it, "
+    return (f"stage {stage!r} was launched, and on the flat layout a launched "
+            f"stage is not prepared again: its runs share its folder's deck "
+            f"and run script, which its runs' records read as theirs "
+            f"(execution/job-request.md § 5).  To change it, "
             + redo_launched(stage, calc=calc))
 
 
@@ -270,40 +280,61 @@ def launched_stage(calc) -> Optional[str]:
     return None
 
 
-def launched_without(calc, number: int) -> Optional[Tuple[str, List[str]]]:
-    """``(launched, joined)`` -- a stage of group ``number`` that was
-    launched, and the stages the group holds now that it was launched
-    without -- or ``None``.  A launched group's members are fixed
-    (`job-system.md`, *The task*).  A launch record that does not read
-    raises, as the one door does (`materialize.ever_launched`)."""
+def launched_without(calc, number: int
+                     ) -> Optional[Tuple[str, List[str], List[str]]]:
+    """``(launched, joined, left)`` -- a stage of group ``number`` that was
+    launched, the stages the group holds now that it was launched without,
+    and the stages it was launched with that the group holds no longer --
+    or ``None``.  A launched group's members are fixed (`job-system.md`,
+    *The task*; `execution/job-request.md` § 5).  A launch record that does
+    not read raises, as the one door does (`materialize.ever_launched`)."""
     from ..identity import stage_key
-    from .group import group_members, members_of
+    from .group import members_of
     from .materialize import ever_launched
-    task, jobset = calc.task, calc.jobset
-    held = group_members(task, number)
+    jobset = calc.jobset
+    held = calc.request.members(number)
     for m in held:
         job = jobset.job(m) if jobset else None
         if job is None or not ever_launched(calc, job):
             continue
+        had = members_of(job)
         joined = [h for h in held if not any(
-            stage_key(h) == stage_key(x) for x in members_of(job))]
-        if joined:
-            return m, joined
+            stage_key(h) == stage_key(x) for x in had)]
+        left = [x for x in had if not any(
+            stage_key(x) == stage_key(h) for h in held)]
+        if joined or left:
+            return m, joined, left
     return None
 
 
 def joined_launched(calc, number: int, launched: str,
-                    joined: List[str]) -> str:
-    """The way on for stages put into a launched group: a group of their own,
-    or the group formed anew from the state saved before its first launch."""
+                    joined: List[str], left: List[str]) -> str:
+    """The way on for a launched group whose members changed: a stage put
+    into it, a group of its own; a stage taken out of it, put back beside
+    the one launched with it; or the group formed anew from the state saved
+    before its first launch."""
     from .commands import redo_launched
-    said = ", ".join(f"`{h}`" for h in joined)
-    one = len(joined) == 1
-    return (f"group {number} holds {said} beside `{launched}`, which was "
-            f"launched without {'it' if one else 'them'} -- a launched "
-            f"group's members are fixed: give {said} a group of "
-            f"{'its' if one else 'their'} own (Task setup, or task.json), or, "
-            f"to form the group anew, "
+
+    def said(names):
+        return ", ".join(f"`{h}`" for h in names)
+    what, ways = [], []
+    if joined:
+        one = len(joined) == 1
+        what.append(f"group {number} holds {said(joined)} beside "
+                    f"`{launched}`, which was launched without "
+                    f"{'it' if one else 'them'}")
+        ways.append(f"give {said(joined)} a group of "
+                    f"{'its' if one else 'their'} own")
+    if left:
+        one = len(left) == 1
+        what.append(f"`{launched}` was launched in one job with "
+                    f"{said(left)}, and group {number} now holds "
+                    f"`{launched}` without {'it' if one else 'them'}")
+        ways.append(f"put {said(left)} back beside `{launched}` in one "
+                    f"group")
+    return ("; ".join(what) + " -- a launched group's members are fixed: "
+            + " and ".join(ways) + " (Task setup, or job-request.json), "
+            "or, to form the group anew, "
             + redo_launched(launched, calc=calc))
 
 
@@ -318,14 +349,13 @@ def regrouped(calc, stage: str) -> Optional[str]:
     from ..identity import stage_key
     from ..runrecord import LaunchRecordError
     from .commands import block, prep_group_lines
-    from .group import (formed_again, group_members, members_of, number_of,
-                        same_members)
-    task, jobset, base = calc.task, calc.jobset, calc.base
-    g = number_of(task, stage)
+    from .group import formed_again, members_of, same_members
+    jobset, base = calc.jobset, calc.base
+    g = calc.request.group_of(stage)
     job = jobset.job(stage)
     if g is None or job is None:
         return None
-    members = group_members(task, g)
+    members = calc.request.members(g)
     had = members_of(job)
     if same_members(had, members):
         return None
@@ -335,7 +365,7 @@ def regrouped(calc, stage: str) -> Optional[str]:
     said = (f"`{stage}` was prepared {was}, and its group {g} is "
             f"{', '.join(f'`{m}`' for m in members)} now -- groups are "
             f"matched by their members")
-    numbers = formed_again(task, jobset.jobs, [g])
+    numbers = formed_again(calc.request, jobset.jobs, [g])
     for n in numbers:
         try:
             hit = launched_without(calc, n)
@@ -389,7 +419,6 @@ def first_launch_takes(calc, stage: str, job, *,
         if from_attempt:
             from .commands import block, command, words_for
             from .continuation import cannot_be_named
-            from .group import number_of
             # A RUN ON THE FLAT LAYOUT, which keeps none to name, is
             # refused as such -- never told to a prep that would refuse it
             # too.
@@ -402,7 +431,7 @@ def first_launch_takes(calc, stage: str, job, *,
                 f"launch takes that run's files -- another `relax` run is "
                 f"said at its prep (engines/vibration.md § 5.2a):\n"
                 + block([command("prep", *words_for(
-                    "task", groups=[number_of(task, stage)]), base=base,
+                    "task", groups=[calc.request.group_of(stage)]), base=base,
                     flags=("--from", from_attempt))]))
         if job.written_at is None:
             from .commands import way_back
@@ -563,8 +592,7 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
     from .ladder import force_constant_stage
     from .materialize import ever_launched
     task, jobset = calc.task, calc.jobset
-    from .group import number_of
-    group = number_of(task, stage)
+    group = calc.request.group_of(stage)
     job = calc.job(stage)
     if job is not None:
         from .group import members_of
@@ -727,19 +755,22 @@ def task_state(calc, *, verdict: bool = False) -> TaskState:
     question); `status` and the folder answer leave it unread."""
     answers = ladder(calc, verdict=verdict)
     return TaskState(calc.task, calc.template_text, calc.jobset, answers,
-                     groups(calc.task, answers))
+                     groups(calc.request, answers,
+                            keeps_runs=calc.shape.keeps_attempts_as_directories))
 
 
-def groups(task, answers: List[Readiness]) -> List[GroupAnswer]:
-    """The description's groups, in order, each with its members' answers
-    (``answers``, :func:`ladder`'s)."""
+def groups(request, answers: List[Readiness], *,
+           keeps_runs: bool = True) -> List[GroupAnswer]:
+    """The job request's groups, in order, each with its members' answers
+    (``answers``, :func:`ladder`'s); ``keeps_runs``, the layout's."""
     by = {a.stage: a for a in answers}
     out: List[GroupAnswer] = []
-    for st in task.stages:
-        if not out or out[-1].number != st.group:
-            out.append(GroupAnswer(st.group, [], []))
-        out[-1].members.append(st.name)
-        out[-1].answers.append(by[st.name])
+    for name, entry in request.stages.items():
+        if not out or out[-1].number != entry.group:
+            out.append(GroupAnswer(entry.group, [], [],
+                                   keeps_runs=keeps_runs))
+        out[-1].members.append(name)
+        out[-1].answers.append(by[name])
     return out
 
 

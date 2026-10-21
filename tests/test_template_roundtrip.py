@@ -48,17 +48,20 @@ def test_a_config_survives_the_round_trip(cfg):
     produce the ordinary config a stage's ``overrides`` land on (`stages.md`
     § 4).  If the trip is lossy, every stage resolves against something the
     user did not write."""
-    back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
+    text = T.template_with_values(cfg)
+    back = T.config_from_template(text, SiestaConfig)
     for item in T.items_of(SiestaConfig).values():
-        if item.allocation:
-            # DELIBERATELY lossy at @2 (§ 2, G1): a machine fact's value is
-            # never written, so it cannot come back.  The item travels; the
-            # answer does not, and `prep` supplies it on the machine that
-            # granted it.  A round trip that preserved it would mean the
-            # description had asserted a machine fact.
-            assert getattr(back, item.name) is None, (
+        if "execution" in (item.category or ()):
+            # DELIBERATELY lossy (`execution/job-request.md` § 2): a run
+            # setting's value -- the machine's answers among them (§ 2, G1)
+            # -- is never written, so it cannot come back.  The item
+            # travels; the value is the job request's run card, and `prep`
+            # supplies it.  A round trip that preserved it would put one
+            # value in two records.
+            held = {it.name: it for it in T.read_template(text).items}
+            assert item.name not in held or held[item.name].value is None, (
                 f"{item.name}'s value survived the trip; the template "
-                f"asserted a machine fact and is no longer portable")
+                f"states a run setting")
             continue
         assert getattr(back, item.name) == getattr(cfg, item.name), item.name
 

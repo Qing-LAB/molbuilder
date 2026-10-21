@@ -1,7 +1,7 @@
 """The launch protocol (`docs/execution/job-system.md` § 6.0), case by case.
 
 THE CASES ARE DATA -- ``tests/data/launch_protocol.toml`` -- and each runs
-down the road a person runs (`support.road.run_road_case`): `jobset init`,
+down the road a person runs (`support.road.run_road_case`): `molbuilder describe`,
 `prep` and `launch`, each row stopping before an engine would run -- a
 refusal, or a dry run.
 

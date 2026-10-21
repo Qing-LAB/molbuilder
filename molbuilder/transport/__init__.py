@@ -12,7 +12,7 @@ here:
     the five rungs renders through, and ``SHAPE_OF_RUNG``, the table
     saying which of the four deck shapes each rung gets.
   * :mod:`.citation_defaults` — what the cited run contributes to the
-    template, once, at ``jobset init``.
+    template, once, at ``molbuilder describe``.
   * :mod:`.record`    — ``summarize task``'s ``<label>.transport.json``
     (``molbuilder/transport-result@8``), the frames' average in it their
     post-process's (`molbuilder.frame_average`, outside this package).

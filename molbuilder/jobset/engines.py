@@ -120,7 +120,7 @@ def pseudo_dir(base: Path, plan=None) -> Path:
     """THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
     pseudopotential copies live in ``pseudos/``, one folder, instead of
     N ``<El>.psml`` entries loose at the root.  Root strays -- put there
-    by `init`, an earlier prep, or a travelled bundle -- are ADOPTED,
+    by `molbuilder describe`, an earlier prep, or a travelled bundle -- are ADOPTED,
     the same move-in the deck adoption uses.  The run directories are
     untouched by this: each still receives ``<El>.psml`` beside the
     deck (that is SIESTA's own contract; it has no search path).
@@ -161,7 +161,7 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     cannot start, after a queue wait and however long MPI takes to come up.
 
     **Idempotent, and the folder wins.**  Anything already here was put here by
-    an earlier prep, by `jobset init`, or by travelling with the folder;
+    an earlier prep, by `molbuilder describe`, or by travelling with the folder;
     `copy_pseudopotentials` leaves it alone.  Only what is missing is fetched,
     from the library named by ``psml_lib``.
 

@@ -154,7 +154,7 @@ script will look for and where:
 
 | | |
 |---|---|
-| `<config dir>/secrets/notify` | the channels file, `0600`, same shape as here. A channel a description ticks must exist there under the same name, or nothing is sent to it — the monitor log says which |
+| `<config dir>/secrets/notify` | the channels file, `0600`, same shape as here. A channel a job request ticks must exist there under the same name, or nothing is sent to it — the monitor log says which |
 | `<config dir>` is | `$MOLBUILDER_CONFIG_DIR` exactly as given; else `$XDG_CONFIG_HOME/molbuilder`; else `~/.config/molbuilder` — resolved **on that machine**, so it need not match this one's |
 
 It emits no shell and holds no key. An earlier version generated a

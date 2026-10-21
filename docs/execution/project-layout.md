@@ -28,7 +28,7 @@ restate the rules inside a single run directory — those are `job-contracts.md`
 ## The short version
 
 **A calculation is a portable folder; everything the machine derives
-stays one level down.** The folder `init` writes travels to any machine
+stays one level down.** The folder `molbuilder describe` writes travels to any machine
 unchanged; **`prep` adds stage dirs *and the attempt inside them*; `launch`
 runs what prep set up and records that it ran.**
 
@@ -38,6 +38,7 @@ refuses a hierarchical stage with no attempt open — § 1.6.2.)*
 ```
 <project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
   task.json  <label>.template.toml      the description + the answers
+  job-request.json                      how and where it runs
   <label>.source.xyz (+.molstruct.json) the structure pair
   pseudos/  (H.psml, ...)               travel with the calculation
   01_coarse/                            <- prep writes the stage (hierarchical shape)
@@ -56,11 +57,11 @@ the manifest, § 5.*
 | key rule | one line | where |
 |---|---|---|
 | **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
-| **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at init, never inferred | § 1 |
+| **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at `molbuilder describe`, never inferred | § 1 |
 | **attempt = run-N** | every try is its own numbered dir; warm files are COPIED from the attempt you name | § 1.5, § 1.6 |
 | **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6.3 |
-| **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `task.json`'s `execution` | § 2.3.2 |
-| **who writes where** | init → the portable floor; prep → stage dirs **and the attempt in them**; launch → `run.json`; the run → its output, the monitor's files and the wrapper's conclusion marker; a person → anything, said aloud | § 2, § 1.6.3 |
+| **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `job-request.json`'s `execution` | § 2.3.2 |
+| **who writes where** | `molbuilder describe` → the portable floor; prep → stage dirs **and the attempt in them**; launch → `run.json`; the run → its output, the monitor's files and the wrapper's conclusion marker; a person → anything, said aloud | § 2, § 1.6.3 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
 
 ---
@@ -213,8 +214,8 @@ one directory and tells them apart by filename; hierarchical gives each stage a
 directory and each attempt a directory inside it.
 
 **The one real migration LANDED.** The browser writes a **template plus
-`task.json`** — the parameter tabs hand over to Task setup, which saves the
-description — and `prep` renders every deck on the target: into one directory
+`task.json`**, and the job request beside them — the parameter tabs hand over
+to Task setup, which saves the description and the job request — and `prep` renders every deck on the target: into one directory
 for the flat shape, or into stage directories for the hierarchical one. The
 UI produces the second-to-last file in the chain, never the last. *(Until
 2026-08-18 the Build tab wrote a finished `.fdf` and its `.run.sh` — a single
@@ -223,13 +224,13 @@ off that as future work. The deck-rendering web routes were deleted the same
 day the hand-over shipped; proven end to end 2026-08-19.)*
 
 **One package, two layouts, and you choose.** The browser always writes the same
-thing — a template, `task.json`, the data files, none of it naming a
-machine. `prep`, on the machine that will run it, translates that into a runnable
+thing — a template, `task.json`, `job-request.json`, the data files, none of
+it naming a machine. `prep`, on the machine that will run it, translates that into a runnable
 directory **in whichever shape you ask for**.
 
 ```mermaid
 flowchart LR
-    UI["<b>the browser</b><br/>template.toml · task.json<br/>data files<br/><i>always the same output</i>"]
+    UI["<b>the browser</b><br/>template.toml · task.json<br/>job-request.json · data files<br/><i>always the same output</i>"]
     P{"<b>prep</b><br/>on the target machine"}
     F["<b>flat</b><br/>one directory<br/>suffixes keep stages apart"]
     H["<b>hierarchical</b><br/>directories keep them apart"]
@@ -245,6 +246,7 @@ flowchart LR
 ```
 au_bdt_relax/
 ├── task.json  <label>.template.toml   the description: this root IS the run
+├── job-request.json                   how and where it runs
 ├── pseudos/                        the library's copies (§ 2.6) …
 ├── Au.psml  S.psml                 … copied again beside the decks: SIESTA
 │                                      opens them only where it runs
@@ -298,9 +300,11 @@ exactly why stage 2 overwrites them.
 ```
 bdt-relax/                            the CALCULATION — the user typed this name
 ├── <label>.template.toml              ─┐ the description: written by the
-├── task.json                         ─┘ browser (or `jobset init`) —
+├── task.json                         ─┘ browser (or `molbuilder describe`) —
 │                                        portable, names no machine, says
 │                                        the id — label plus formula
+├── job-request.json                     how and where it runs — the run
+│                                        cards, the groups, the queue asked
 ├── <label>.source.xyz  + sidecar        the structure pair (§ 6.3's .source
 │                                        reservation), from the hand-over
 ├── pseudos/  Au.psml  S.psml         the library's copies, gathered by `prep`
@@ -614,8 +618,9 @@ which is why there is no migration step and nothing to reindex.
 
 **A run directory is written once and never modified.** Launching a stage again
 after it stopped makes `run-1`, carrying what it needs from `run-0` and leaving
-`run-0` exactly as it was. A change to a launched stage is not a run: the stage
-is not prepared again, and its way back is
+`run-0` exactly as it was. A change to a launched stage is not a run: a
+change of how it runs prepares it again, its deck the same calculation
+([`job-request.md`](?doc=execution/job-request.md) § 5); a change of what it computes takes its way back,
 [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
 you*.
 
@@ -763,7 +768,7 @@ of it is in place before the engine sees the directory:
 
 | | How | Why |
 |---|---|---|
-| the deck, **the wrapper**, the monitor, the pseudopotentials | **copied** from the stage directory — into the first run by each prep of the stage while it is never launched, and put back by its first launch; into a later one by the launch that opens it | the run directory holds everything its engine reads, and a link holds nothing once the folder moves. The deck is the stage's one deck because a different deck would mean different science, and different science is a stage (§ 1.5a) |
+| the deck, **the wrapper**, the monitor, the pseudopotentials | **copied** from the stage directory — into the first run by each prep of the stage while it is never launched, and put back by its first launch; into a later one by the launch that opens it | the run directory holds everything its engine reads, and a link holds nothing once the folder moves. The deck is the stage's one deck because a different calculation is a stage (§ 1.5b); a launched stage prepared again for its job request changes only its run settings' lines ([`job-request.md`](?doc=execution/job-request.md) § 5) |
 | whatever this run continues from | **copied**, by the launch | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
 
@@ -794,11 +799,14 @@ are exactly two.**
 stays small; the **directory structure** carries the flexibility. You can read a
 folder and know what happened without opening a file: a new stage name means
 somebody changed the science, a new `run-` number means somebody launched the
-same deck again — its `continued_from` says from what, or that it started cold.
+same calculation again — its `continued_from` says from what, or that it
+started cold.
 
-**Every run of a stage runs the same deck.** A different deck means different
-science, and different science is a stage. That is why § 1.5's table copies the
-stage's one deck into each run and never renders one per run.
+**Every run of a stage runs the same calculation.** Different science is a
+stage; what may differ between two runs' decks is their run settings' lines,
+after the stage's group was prepared again for its job request
+([`job-request.md`](?doc=execution/job-request.md) § 5, § 6). That is why § 1.5's table copies the stage's one
+deck into each run and never renders one per run.
 
 **The case that looks like it needs a third mechanism does not.** *"Coarse hit
 its step limit and I want to keep going, but with a tighter force tolerance"* is
@@ -830,9 +838,10 @@ same `continued_from` record, different depth.
 > run cold and the run keeps its increasing index and i don't see a
 > problem")*: `launch task --stage <stage> --cold` opens the next `run-x` with
 > nothing carried in, `continued_from` empty, and the runs before it stay as
-> they were. A launched stage's deck is not prepared again: the way back is
-> [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
-> supports you*.
+> they were. A launched stage's deck is prepared again only for a change of
+> its job request, as the same calculation ([`job-request.md`](?doc=execution/job-request.md) § 5); any other
+> change's way back is [`job-system.md`](?doc=execution/job-system.md)'s *How
+> the checkpoint supports you*.
 
 > ✅ **The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
 > prologue created and arranged a run in shell — scanning for run
@@ -956,8 +965,10 @@ run starts; a later run's progress is its engine's own.
 
 **`prep` opens only a first run.** A stage prepared and **never launched** is
 prepared again, its group whole: its `run-0` emptied and filled anew
-(§ 1.6.3), its files rendered anew. A launched one is refused — its way back
-is [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
+(§ 1.6.3), its files rendered anew. A launched one is prepared again only for
+its job request, on the hierarchical layout, and opens no run
+([`job-request.md`](?doc=execution/job-request.md) § 5); any other change is refused — its way back is
+[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
 supports you*.
 **The next run is `launch`'s**: launching a stage whose run has run
 opens `run-<n+1>`, continuing from its own latest run, so a launched run is
@@ -1145,9 +1156,8 @@ launch inside it the launch they would type.
 2026-10-07/08 and 2026-10-11)*. No
 judgement stands between them — a transport ladder's seed and its two leads
 each start from the structure — so waiting in the queue three times buys
-nothing. **A group is the stages one number names** in the description — how
-the numbers are given is [`engines/stages.md`](?doc=engines/stages.md) § 2's
-rule. Each member is prepared
+nothing. **A group is the stages one number names** in the job request — how
+the numbers are given is [`job-request.md`](?doc=execution/job-request.md) § 3.3's rule. Each member is prepared
 as it would be alone — its own run, deck, run script and record — and the
 group is written on each one's job in `job-set.json` (`members`, its stages in
 order), with one header for the group's job, rendered for the group's request
@@ -1165,7 +1175,7 @@ builds on another (its upstream, the one fact § 2.3.4 and
 preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6;
 [`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 3). A
 group is its members, never its number
-([`engines/stages.md`](?doc=engines/stages.md) § 2): a job
+([`job-request.md`](?doc=execution/job-request.md) § 3.3): a job
 whose members are no longer one group is formed again by its prep, every group
 its members are in now named in that prep, and its old header removed — as is
 the header of a job whose member's row leaves `job-set.json` when the
@@ -1190,7 +1200,7 @@ runs) — a first launch too,
 for an ordinary hierarchical rung, when the copy from the stage before is
 skipped ([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you
 type). The flat shape reuses one directory and opens no run, so there a stage
-starts clean by its run card's `restart: clean`, and a first launch's
+starts clean by its override `restart: clean`, and a first launch's
 `--cold` is refused, saying so ([`job-system.md`](?doc=execution/job-system.md)
 § 5.4). The run script's
 own `--cold` names the warm files a clean start would overwrite and refuses
@@ -1213,7 +1223,7 @@ what only the target machine can**.
 | the **structure pair** | `<label>.source.xyz` + its sidecar | it is the same everywhere. *(Pseudopotentials are NOT the browser's to write — `prep` copies them from the library on the target, or `describe --psml-lib` does; § 2.6, stated 2026-08-18)* |
 | the **template** | the science backbone — **every parameter, carrying the value that holds unless a stage changes it** | it is physics |
 | **`task.json`** | the variables each stage tunes | it is the mission |
-| the **resource intent** | *use a GPU · this is a big job · aim for this scale* | a wish, not a number |
+| **`job-request.json`** | how each run is run — the run cards (a GPU or not among them), the groups, the queue, wall and memory asked | it is the person's ask, checked on each target ([`job-request.md`](?doc=execution/job-request.md)) |
 
 **The terminal — `prep`, on the machine that will run it — turns that into a
 runnable directory**, because only there do you know:
@@ -1229,7 +1239,7 @@ machine's resolved parameters — writes the wrapper, builds the run directory, 
 brings in whatever you told it to continue from.
 
 **A described calculation is read through one door**, `calculation.open(base)`
-— the description, the template with its text, the plan when one is written —
+— the description, its job request, the template with its text, the plan when one is written —
 once per verb, passed whole; each record's own door takes the folder and
 answers `None` for a record that is not there
 ([`architecture.md`](?doc=execution/architecture.md) § 3.2, rule A16).
@@ -1271,7 +1281,7 @@ benchmark's report reaches them only through a person:
 ```mermaid
 flowchart LR
     T["<b>template.toml</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
-    S["<b>task.json</b><br/>this stage's values · its run card<br/><i>the browser · portable</i>"]
+    S["<b>task.json · job-request.json</b><br/>this stage's values · its run card<br/><i>the browser · portable</i>"]
     M["<b>environment.json</b> · <b>molbuilder.json</b><br/>the target's activation and queues · env names<br/><i>outside the tree</i>"]
     B["<b>bench-result.json</b><br/>what each trial measured, and the fastest<br/><i>measured here, a report — applied by nobody</i>"]
     D["<b>&lt;label&gt;_&lt;token&gt;.fdf</b><br/>the deck the engine reads"]
@@ -1283,7 +1293,8 @@ flowchart LR
     B -.->|"a person reads it,<br/>writes execution"| S
 ```
 
-Read the arrows: **the first two are the description, portable; the third is
+Read the arrows: **the first two are portable — the description, and its job
+request beside it; the third is
 the machine's, and it does not exist until you are standing on the machine** —
 which is why the deck is finished there. A benchmark's `bench-result.json` is
 no input of a deck: it is a report a person reads, and what it found reaches a
@@ -1293,7 +1304,8 @@ deck only through what that person writes into the run card (`execution`,
 | Input | Comes from | Decides |
 |---|---|---|
 | `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter of the calculation, with its base value.** The hardware's parameters are *named* here too, deliberately without values — the run's ask answers them |
-| `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type — and how it runs: the stage's run card (`execution`: ranks, cores per rank, GPUs, wall, queue) and the description's `allocation` (queue, wall, memory), with `prep`'s flags over both |
+| `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type, what it builds on |
+| `job-request.json` | the browser | how it runs: the stage's run card (`execution`: ranks, cores per rank, GPUs, the run settings, wall, queue) and the calculation's `allocation` (queue, wall, memory), with `prep`'s flags over both ([`job-request.md`](?doc=execution/job-request.md)) |
 | the target's `environment.json` · `molbuilder.json` | outside the tree | how to activate an environment there, which queues exist (the record); which environment to use (`molbuilder.json`) |
 
 **A worked instance.** One template, prepared for two machines with two asks —
@@ -1327,14 +1339,14 @@ and it is where every join is made:**
 
 ```mermaid
 flowchart LR
-    UI["<b>browser</b><br/>data files · the template<br/>task.json · resource intent"]
+    UI["<b>browser</b><br/>data files · the template<br/>task.json · job-request.json"]
     P{"<b>prep</b><br/>on the target machine"}
     B["benchmark<br/>runs"]
     R["a run<br/>runs"]
 
     UI --> P
     P -->|"prep bench"| B
-    B -->|"a report you read, and write into task.json"| UI
+    B -->|"a report you read, and write into job-request.json"| UI
     P -->|"a run directory"| R
     R -->|"its results, and what you learned"| P
 ```
@@ -1346,8 +1358,8 @@ machine's parameters*:
 | You are doing | You give `prep` |
 |---|---|
 | measuring, before committing | the stage, and *benchmark this* |
-| the real run, using what you measured | the stage — and what you wrote into `task.json` from the benchmark's report (§ 2.3.3: `prep` never reads a verdict) |
-| a redo of that run | nothing — `launch` it again, which continues from its newest run by itself; a launched stage is not prepared again, so a change takes its way back (`job-system.md`, *How the checkpoint supports you*) |
+| the real run, using what you measured | the stage — and what you wrote into `job-request.json` from the benchmark's report (§ 2.3.3: `prep` never reads a verdict) |
+| a redo of that run | nothing — `launch` it again, which continues from its newest run by itself; a change of how it runs, its group prepared again first (`job-request.md` § 5); a change of what it computes takes its way back (`job-system.md`, *How the checkpoint supports you*) |
 | the next stage | its group — prepared any time; its first launch takes what it builds on (`job-system.md`, *The task*, *What a stage takes, and when*) |
 
 **Nothing distinguishes those in the machinery.** "Continue from
@@ -1431,7 +1443,7 @@ Naming them apart is what makes step 1 answerable.
   inside a capability: wall time, memory, which queue. It is a property of
   *this run*, and two runs on the same machine routinely differ.
   **Ranks, cores per rank and GPUs are not here.** They are the launch's
-  SHAPE, they belong to `task.json`'s `execution` block, and they travel a
+  SHAPE, they belong to `job-request.json`'s `execution` block, and they travel a
   ladder of their own — the two are separate rungs in
   [`architecture.md § 5.2`](?doc=execution/architecture.md) precisely because
   a queue that grants a wall clock grants no rank count
@@ -1462,8 +1474,8 @@ Naming them apart is what makes step 1 answerable.
 | **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them a run **uses** — its own statement (`allocation.domain`, `--domain`), never a default ([`architecture.md` § 5.2](?doc=execution/architecture.md)); the activation is a fact of the machine, in its record. **A machine reports what exists; only you can say what you want** — and a machine's facts are recorded by the probe on that machine, its record copied to where you prep (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
 | **M2a** | **A fact is recorded by the probe ON its machine — measured, or declared to the probe there** (`--set`, `--scheduler`; the activation copied from that machine's `molbuilder.json`), and the record is copied to where you prep. *What partitions and QoS you can reach* is such a fact; a queue list written by hand on another machine is refused (`configuration.md` § 5). *Which one this run uses* is the run's own statement. `prep` checks that the second is among the first — a queue the record lists — and says the run's fit on it, never a veto ([`scheduler.md`](?doc=execution/scheduler.md) R6) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. *(History: the workstation-describing-a-cluster case is served now by probing ON the cluster and copying its record — a queue list written on another machine is refused, 2026-10-02.)* Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
-| **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape now IS a description field — `task.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *tied to the rank count* (the block-size window), plus the GPU line written from the job's GPU request — the request that also picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
-| **M5** | **`launch` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
+| **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape is now the person's own statement — `job-request.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *tied to the rank count* (the block-size window), plus the GPU line written from the job's GPU request — the request that also picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
+| **M5** | **`launch` decides nothing. It sends what prep wrote — one job.** | A deck and its launch are prepared together, by one prep, from one request ([`architecture.md`](?doc=execution/architecture.md) A3), so there is no second answer for a launch to disagree with; a launch at another request is a prep again — of a launched stage too, whose deck keeps what it computes ([`job-request.md`](?doc=execution/job-request.md) § 5) |
 | **M6** | ~~A workstation needs no config file~~ — **AMENDED 2026-08-17 (user): a workstation records its capability in a config file too, in the same shape a cluster uses.** Detection still answers *what is here*; the file answers *what a run may have*, and `prep` needs the second to say how an ask sits on the machine before anything runs ([`scheduler.md`](?doc=execution/scheduler.md) R6) | The original reasoning was *nothing is rationed*, which held only while nothing was said. Once `prep` says each ask's fit on the target's record, a workstation with no record is the one machine where it cannot be said — so the rule that was sparing the user a file was instead leaving them uninformed. **One shape for both kinds of machine** also means the probe verb, the config reader and `prep`'s bound have one path rather than a workstation special case. |
 
 ##### What this looks like in practice
@@ -1676,7 +1688,7 @@ NOTHING APPLIES THIS.  It is what the benchmark found; the decision is yours to 
       diag_algorithm = 'ELPA-1STAGE'
       use_gpu = True
 
-To run at it, put this in task.json and save:
+To run at it, put this in job-request.json and save:
 
     "execution": {
       "diag_algorithm": "ELPA-1STAGE",
@@ -1685,7 +1697,7 @@ To run at it, put this in task.json and save:
       "use_gpu": true
     }
 
-Until you do, `prep task` launches at what task.json states, and
+Until you do, `prep task` launches at what job-request.json states, and
 refuses a launch value it states nowhere (architecture.md 5.2) --
 a benchmark does not steer a run.
 ```
@@ -1720,7 +1732,7 @@ molbuilder jobset prep task --group 2
   resources: mpi_np 4 | omp 6
 ```
 
-**Every number in that line came from `task.json`.** Not from the benchmark,
+**Every number in that line came from `job-request.json`.** Not from the benchmark,
 which reports and does not steer; not from this box, which is not the target.
 A launch value nobody stated is refused by name
 ([`architecture.md § 5.2`](?doc=execution/architecture.md)), and there is no
@@ -1729,7 +1741,7 @@ them what to write.**
 
 **FINDING IS NOT PERMISSION, AND THERE IS NO LONGER A FILE THAT GRANTS IT.**
 A benchmark lives inside the stage it measured, so prep can always *find*
-one — and it never reads it. Permission is `task.json`'s `execution`, which
+one — and it never reads it. Permission is `job-request.json`'s `execution`, which
 you write: the full ladder is
 [`architecture.md § 5.2`](?doc=execution/architecture.md) — template <
 `execution` (the calculation's, then the rung's) < flags, with **no rung
@@ -1744,7 +1756,7 @@ records asks, and a benchmark's job is to tell you what to declare.)*
 
 **And when `execution` states no launch shape, `prep` refuses** — before it
 writes anything — and names both places to state it: the run card (`execution`
-in `task.json`) and the prep flags (`--np`, `--cpus-per-task`, `--gpus`); a
+in `job-request.json`) and the prep flags (`--np`, `--cpus-per-task`, `--gpus`); a
 benchmark (`prep bench`) is how to find values worth stating. The wrapper has
 no default of its own on any engine — **PySCF has no rank count**, and its
 thread count is stated like SIESTA's cores per rank —
@@ -1779,7 +1791,6 @@ prepared tight: 02_tight/run-0
   brought in: bdt_au_02_tight.fdf, Au.psml, …, mb_monitor.pyz, bdt_au_02_tight.run.sh
   at launch: takes bdt_au.XV, bdt_au.DM, … from `coarse`'s newest run, which must have finished
   resources: mpi_np 4 | omp 6
-  bdt_au_02_tight.fdf: rendered for mpi_np 4 -- agrees with this launch
 …
 next -- launch the group that can go, each group one job:
     molbuilder jobset launch task --bundle bdt_au --mode direct   # here
@@ -1874,8 +1885,11 @@ right name.
 > the ones it started from — and needs no prep (`job-system.md` § 5.4); both
 > that and continuing to the next stage are *"copy this run's warm files into
 > a new attempt"*. Launched again cold, or a stage that takes nothing from its
-> own runs, its next attempt holds no warm file. A launched stage is not
-> prepared again — its way back is
+> own runs, its next attempt holds no warm file. A launched stage is
+> prepared again only for a change of its job request, on this layout, each
+> deck the same calculation as its runs ran
+> ([`job-request.md`](?doc=execution/job-request.md) § 5); to change what it
+> computes, its way back is
 > [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
 > supports you*.
 
@@ -1884,10 +1898,11 @@ right name.
 | Input | Where it comes from | What it decides |
 |---|---|---|
 | the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
+| the job request (`job-request.json`) | the browser, or a terminal | each stage's group, the run cards, the queue, wall and memory asked, a benchmark's plan, the reports ([`job-request.md`](?doc=execution/job-request.md)) |
 | the template | the browser | everything about the system that does not depend on the machine |
 | **which groups** | you, on the command line — `--group N`, repeated for several | which stages are prepared, and so which overrides apply |
 | **the machine** | its record, read — `jobset probe` wrote it; `prep` never probes (§ 2.3.1) | ranks, GPUs, scheduler, activation → snapshotted as `environment.json` |
-| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep task` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it into `execution`. |
+| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep task` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it onto a run card in the job request. |
 | a finished run *(optional)* | what the stage builds on, taken by its first `launch` — or, for a force-constant stage, the `relax` run its `prep` writes its deck at (`job-system.md`, *The task*, *What a stage takes, and when*) | which coordinates and density matrix the run starts from |
 
 | Output | What it is |
@@ -1897,11 +1912,13 @@ right name.
 | `<NN>_<stage>/run-<n>/` | a fresh attempt: its `calcdir.json`, the stage's own files copied in — the warm files from the run it continues from arrive at its first launch |
 | the printed report | what was resolved and measured, and what each stage's first launch will take — the thing you check before submitting |
 
-**A launched stage is not prepared again.** Its prep opens its first attempt;
-until something has been submitted into it, a prep again renders it anew, its
-group whole; once something has — `launch`'s `run.json` is what says so
-(§ 1.6.3) — that attempt is finished with (§ 1.5), and `launch` opens the next.
-A prep of a launched stage is refused — its way back is
+**A launched stage is prepared again only for how it runs.** Its prep opens
+its first attempt; until something has been submitted into it, a prep again
+renders it anew, its group whole; once something has — `launch`'s `run.json`
+is what says so (§ 1.6.3) — that attempt is finished with (§ 1.5), and
+`launch` opens the next. A prep of a launched stage renders its deck, scripts
+and row anew for a change of its job request, and opens no run; one whose deck
+would compute something else is refused ([`job-request.md`](?doc=execution/job-request.md) § 5), its way back
 [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
 you*.
 
@@ -1928,7 +1945,7 @@ sequenceDiagram
     U->>C: jobset summarize bench tight
     C->>T: bench-result.json (written) + the report (printed)
 
-    Note over U: you read the report, write `execution` in task.json
+    Note over U: you read the report, write `execution` in job-request.json
 
     U->>C: jobset prep task --group 2 (uses `execution`)
     C->>T: 02_tight/<label>_02_tight.fdf · run-0/
@@ -2030,7 +2047,7 @@ self-contained when moved to a cluster.
 **The copy happens at `prep`, and doing it twice costs nothing.** For each element
 the deck names, `prep` looks in the calculation's own folder first and does
 nothing if the file is already there — put there by an earlier `prep`, by
-`jobset init`, or by having travelled with the folder. Only what is missing is
+`molbuilder describe`, or by having travelled with the folder. Only what is missing is
 copied, from the library in `pseudopotential/`.
 
 **Why `prep` and not the surface that wrote the description.** `prep` is the step
@@ -2039,7 +2056,7 @@ fact about that machine — the same class of fact as how many cores there are. 
 is also the step that already decides what the shared package contains, so putting
 the copy anywhere else would mean two places deciding one thing. And it is the
 only arrangement under which the two ways of describing a calculation — the
-browser and `jobset init` — end up with identical folders, because neither of
+browser and `molbuilder describe` — end up with identical folders, because neither of
 them has to remember to do it.
 
 **Where the library is, is said once.** `psml_lib` is a path like any other the
@@ -2049,7 +2066,7 @@ means itself, a leading `./` or `../` means *from this calculation*, and a bare
 `pseudopotential` means *the `projects/` tree this calculation lives in* —
 found by walking up from the calculation folder, so the same template works on
 the workstation that wrote it and the cluster that runs it. `prep`, the
-browser's validation and `jobset init --psml-lib` all resolve it through
+browser's validation and `molbuilder describe --psml-lib` all resolve it through
 that one rule; before 2026-08-21 they had three rules between them, and
 `describe` had a fourth that was simply the working directory.
 
@@ -2069,7 +2086,7 @@ however long MPI takes to come up first.
 
 > **Stated 2026-08-18 (user).** The rule above — a calculation copies what it
 > needs — was already here, and nothing was said about who performs the copy. So
-> one route did it (`jobset init`, while writing the folder) and the browser's
+> one route did it (`molbuilder describe`, while writing the folder) and the browser's
 > hand-over did not, and a calculation described in the browser reached `prep`,
 > rendered its decks, laid out its directories and reported success with no
 > pseudopotentials anywhere in it. Nothing checked: the coverage check reads the
@@ -2714,10 +2731,8 @@ the deck's stem; `<N>` is the run script's run index; `<El>` an element.
 
 **Kinds** — what losing the file costs (§ 5.7): **source**, nothing else can
 rebuild it; **input**, copied in as it was; **derived**, rendered by `prep` —
-again while the stage is never launched; a launched stage is not prepared
-again (its way back,
-[`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports
-you*); **record**, what a verb
+again while the stage is never launched, and for a launched one's change of
+its job request, as the same calculation (`job-request.md` § 5); **record**, what a verb
 or a run said about itself; **result**, what a run produced.
 
 ### 5.1 The calculation root — both shapes
@@ -2730,23 +2745,24 @@ and in a remapped pair's sidecar, never a file of its own
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template_file.template_path` | `template_file.of` | source |
-| `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
-| `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
-| `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
+| `<label>.template.toml` | every parameter, with the value it was given | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template_file.template_path` | `template_file.of` | source |
+| `<label>.source.xyz` | the structure the calculation is of | the hand-over and `molbuilder describe` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
+| `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `molbuilder describe` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.transport.json` *(transport)* | the transport results, summarised by `summarize task` from the transmission points that ran | `jobset summarize task` (`transport.record.write_record`) | `parse.sidecars.transport.TransportRecordFileParser` | result |
 | `<label>.transport.nc` *(transport)* | the transport results as data on their grid -- every point's raw outputs beside what is derived from them, a frame set's definition beside every frame's values (NetCDF-4) | `jobset summarize task` (`transport.datafile.write_data_file`) | `transport.datafile.read_data_file` | result |
 | `<label>.fc-sweep.json` *(SIESTA, vibration)* — only: two or more force-constant stages | the force-constant stages compared, when the ladder has two or more (a displacement sweep), by `summarize task`: each stage and what it varied, every mode's frequency per stage, the force-constant changes, and where each stage's files are | `jobset summarize task` (`spectra.displacement_sweep.write_sweep`) | `parse.sidecars.fc_sweep.FcSweepRecordFileParser` | result |
 | `<label>.last-run` — only: the flat layout, where a calculation's stages share its folder | the last run in this folder -- the run whose restart files and results lie here | the run script, the moment its engine starts (`runwrap`); `jobset migrate`, for runs launched before 2.7.0 | `runrecord.last_run` | record |
 | `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | every prep, from either door, beside its `STAGE-PLAN.md` (`pipeline_log.PipelineLog`) | none | record |
-| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init` and the Transport tab's describe door (`describe.write_description`); Task setup's Save | `task.of` | source |
+| `task.json` | the description: what varies, the stages, the shape, the structure | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); Task setup's Save; `jobset migrate` | `task.of` | source |
+| `job-request.json` | the job request: the queue, wall and memory asked, the run cards, each stage's group, a benchmark's plan, the reports | `molbuilder describe` and the Transport tab's describe door (`describe.write_description`); Task setup's Save; `jobset migrate` | `job_request.of` | source |
+| `<kept>.pre-<rule>` — only: a calculation migrated | a record as it was before `jobset migrate` rewrote it | `jobset migrate`, beside the record it rewrote | none | record |
 | `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
 | `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.of` | derived |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
-| `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
+| `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines.pseudo_dir`, `materialize`); `molbuilder describe --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.recorded_junction` | derived |
 | `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.recorded_junction` | derived |
 | `junction.cited.fdf` *(transport)* — only: a run is cited | the deck the junction was cited from, as it was | the prep that composes the junction, or records an older one's order (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
@@ -2887,9 +2903,11 @@ Each is removed when its write ends; only a kill in between leaves one.
 
 ### 5.7 Two sources, everything else derived
 
-> **Two sources, everything else derived.** The **template** and **`task.json`**
-> are the files at the calculation level that cannot be reconstructed from the
-> others, and they are two because they answer two questions: the template says
+> **Two sources of what is computed, one of how it runs, everything else
+> derived.** The **template** and **`task.json`** say what is computed, and
+> **`job-request.json`** how and where it runs ([`job-request.md`](?doc=execution/job-request.md)) — the files at the
+> calculation level that cannot be reconstructed from the others. The first two
+> are two because they answer two questions: the template says
 > *what every parameter is*, the description says *which of them step, and to
 > what* (`stages.md` § 6.2). Neither derives the other — a template holds values
 > `task.json` never mentions, and `task.json` holds intent no deck records. That
@@ -2909,9 +2927,10 @@ optional, and read only for the restart files it lists (§ 5.1).
 | File | Level | Format | Holds |
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — the config directory (`$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder` — `configuration.md` § 2.1c) | validated, no version | **what you want**: how a launch is sent, env names, the server's settings — and how a shell enters an environment on this machine, `env_init` ([`configuration.md` § 4](?doc=configuration.md)) |
-| `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the parameters the hardware decides (the `execution` category) but carries **no value** for them: the question is the calculation's, the answer is `prep`'s, from `environment.json` |
-| `task.json` | ③ calculation | `molbuilder/task@1` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference, and an optional `bench` plan. **No `base` key** — what does not change is in the template, once (`stages.md` § 4) |
-| `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep` — again while the stage is never launched; a launched stage is not prepared again (its way back, `job-system.md`, *How the checkpoint supports you*) |
+| `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the run settings (the `execution` category) but carries **no value** for them: their values are the job request's run cards, else the catalogue's default ([`job-request.md`](?doc=execution/job-request.md) §§ 2, 4); the target's record checks the machine's answers and supplies none |
+| `task.json` | ③ calculation | `molbuilder/task@2` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference. **No `base` key** — what does not change is in the template, once (`stages.md` § 4) |
+| `job-request.json` | ③ calculation | `molbuilder/job-request@1` | **how and where it runs**: the scheduler ask (`allocation`), the run cards (`execution`), each stage's group, an optional `bench` plan and `notify` policy ([`job-request.md`](?doc=execution/job-request.md)) |
+| `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep` — again while the stage is never launched, and for a launched one's change of its job request, as the same calculation (`job-request.md` § 5) |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
 | `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@3` | the machine **as probed**: topology, scheduler (its kind and where its commands are), site, reachable domains, and the activation and preamble copied from that machine's `molbuilder.json` — and, in the calculation's copy, the machine it is set to (`machine`, its first prep's). Never what you want from it — that is `molbuilder.json` |
 | ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
@@ -2931,9 +2950,9 @@ themselves were deleted.)*
 **The split is strict, and it is why a calculation folder is portable**: the
 machine's knowledge lives in its record, outside the calculation until `prep`
 snapshots it; the science lives in `task.json`, inside it. A calculation carries
-no activation command and no machine's queue list; what it may carry is the
-job's own ask — `allocation`'s queue, wall and memory, the run card's shape —
-which each target's record checks
+no activation command and no machine's queue list; what it carries beside its
+science is the job's own ask — `job-request.json`: `allocation`'s queue, wall
+and memory, the run card's shape — which each target's record checks
 ([`architecture.md` § 5.2](?doc=execution/architecture.md)). Copy it to another
 cluster and it still describes the same calculation (`job-system.md § 2`,
 decision 3).
@@ -3182,7 +3201,7 @@ than no invariant, because it fails a directory that is working correctly.
    retries included, which run within it (§ 1.6.1) — it never changes, and once archived
    it must never differ from its recorded checksum — which is
    `checkpointing.md`'s I2 applied to a directory instead of a file (§ 11).
-9. **The description is the only source at ③.** No produce and no run modifies it
+9. **The description and its job request are the only sources at ③.** No produce and no run modifies it
    (`checkpointing.md`, S4).
 
 **Composition**
@@ -3196,10 +3215,11 @@ than no invariant, because it fails a directory that is working correctly.
     `environment.json` at the root, the benchmark files in the stage's
     `bench/` container (§ 5.8). *(The last sentence said they "sit at ④"
     until 2026-08-12 — one of the three numberings § 2.6's note records.)*
-11. **A parameter difference is a different deck; a resource difference is a
-    different launch.** Neither mechanism is used for the other's job.
+11. **A parameter difference is a different calculation; a resource or
+    run-setting difference is a different launch** ([`job-request.md`](?doc=execution/job-request.md) § 5, § 6).
+    Neither mechanism is used for the other's job.
 12. **Derived files can be deleted and regenerated** from **the template plus
-    `task.json`** plus the machine's config, byte-identical except for the
+    `task.json`** plus the job request and the machine's config, byte-identical except for the
     provenance timestamp. *(Named only `task.json` until 2026-08-16 — the
     template is the other source, and a deck cannot be rebuilt without it:
     § 5.)*
@@ -3234,8 +3254,8 @@ than no invariant, because it fails a directory that is working correctly.
 1. ~~**Does a trial's answer feed the stage automatically?**~~ **Answered
    2026-08-07: no — nothing is applied that the user did not hand back.**
    `bench-result.json` sits beside the stage that was measured, so prep can
-   always *find* one; finding is not permission. **Permission is `task.json`'s
-   `execution`, which a person writes** (§ 2.3.3) *(2026-08-19 — the hand-back
+   always *find* one; finding is not permission. **Permission is
+   `job-request.json`'s `execution`, which a person writes** (§ 2.3.3) *(2026-08-19 — the hand-back
    was an interactive `use it? [y/N]` until then; 2026-09-02 — it was an
    editable `run-config.toml` prep folded in until then. The doctrine never
    moved; what moved is that the answer is now written where every other ask

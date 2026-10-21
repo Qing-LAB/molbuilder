@@ -3,7 +3,7 @@
 § 3.2, `docs/web/results.md` § 4.1), case by case.
 
 THE CASES ARE DATA -- ``tests/data/hand_overs.toml`` -- and each runs down
-the road a person runs (`support.road.run_road_case`): `jobset init` and
+the road a person runs (`support.road.run_road_case`): `molbuilder describe` and
 `prep`, deciding from the folder as it stands; a test lays no run
 (`process/testing.md` § 6).
 
@@ -47,8 +47,7 @@ def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
                 run=derive_run("T", "J/x", stage_names=rungs),
                 structure=None, calculation="transport",
                 slots={"junction": "J/x"}, bias=(0.0,), varies=(),
-                execution={}, stages=tuple(
-                    Stage(name=n, overrides={}) for n in rungs))
+                stages=tuple(Stage(name=n, overrides={}) for n in rungs))
     from molbuilder.calculation import Calculation
     calc = Calculation(base=tmp_path, task=task, template=None, jobset=None)
     for asked in ({"from_attempt": "01_seed/run-0"}, {"cold": True}):

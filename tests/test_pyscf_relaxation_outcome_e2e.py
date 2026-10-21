@@ -8,7 +8,7 @@ called ``optimize``, which drops it, and wired the policy to
 steps was recorded converged and handed on under every policy (the M11
 review).  Both now relax through the one spliced ``relax_policy.relax``.
 
-Driven through ``jobset init`` -> ``prep task`` -> ``launch task --mode
+Driven through ``molbuilder describe`` -> ``prep task`` -> ``launch task --mode
 direct`` on H2 started at 0.95 Å, far from its minimum, with the rung's own
 values in ``task.json``'s stage overrides, as the Task setup table saves them:
 one or two geometry steps cannot relax it.
@@ -22,6 +22,7 @@ import pytest
 
 from _road import conda_hook, env_available
 from support.road import group_words
+from support.road import molbuilder
 
 CONDA_SH = conda_hook()
 
@@ -69,7 +70,7 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     StructureCodec().write(struct, tree / "P" / "structure" / "h2.xyz")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
-    r = _jobset("init", "--structure", "P/structure/h2.xyz",
+    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", f"P/{calculation}/H2", "--engine", "pyscf",
                 "--shape", "flat", "--name", "H2",
                 "--calculation", calculation)
@@ -88,11 +89,15 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     task = task_of(bundle)
     # The run states its threads (`architecture.md` § 5.2); a case's own
     # run card goes over it.
-    stage = dataclasses.replace(task.stages[0], overrides=dict(overrides),
-                                execution={"threads": 1, **(execution or {})})
+    stage = dataclasses.replace(task.stages[0], overrides=dict(overrides))
     write_task(bundle, dataclasses.replace(
         task, stages=(stage,),
         varies=tuple(dict.fromkeys((*task.varies, *overrides)))))
+    from support.road import read_request, write_request
+    request = read_request(bundle)
+    request["stages"][stage.name]["execution"] = {"threads": 1,
+                                                  **(execution or {})}
+    write_request(bundle, request)
     # How a shell enters conda HERE is this machine's record's to say.
     from conftest import write_machine_record
     write_machine_record(env_init={

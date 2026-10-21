@@ -336,7 +336,7 @@ authority on what it takes.
 a queue stated nowhere, or one the record does not list; a wall or memory
 stated nowhere ([`submission.md`](?doc=execution/submission.md) S1, S2); a
 GPU run with no count, or a count with no GPU ([`gpu.md`](?doc=execution/gpu.md)
-G5); a deck that disagrees with its header. A machine whose record's
+G5). A machine whose record's
 scheduler kind has no queue has nothing to send to: prep writes no header,
 and the job runs directly; a kind with a queue whose record lists no domains
 names no queue a run could name, and its run is refused at prep.
@@ -366,9 +366,9 @@ none of molbuilder's business at the launch time to decide what is allowed to
 launch")*. What prep placed on the target's record is what launch sends:
 launch sends the header prep wrote, walks no graph and fits nothing. What it
 checks is prep's own files — at a first launch, prep's own planning asked
-again on the calculation's own files (its description, its template and its
-copy of the target's record), refusing a prep that is no longer what they
-give; every launch, that a deck agrees with its launch's counts
+again on the calculation's own files (its description, its job request, its
+template and its copy of the target's record), refusing a prep that is no
+longer what they give; every launch, that a benchmark trial starts cold
 (`job-system.md` § 6.0, R-L15, R-L16, R-L29). That copy is the one its first prep
 took, and no probe replaces it (`configuration.md` M-3): a calculation meant
 for a machine whose record has changed since goes back to the state saved
@@ -588,7 +588,7 @@ already running where the answer is.
   records **every pair** the account's associations allow (`sacctmgr show
   assoc`, its partition and QoS columns; an association naming no partition
   holds on every one), each with the wall its pair allows — a partition the
-  account holds three QoS on is three domains. The name a description uses
+  account holds three QoS on is three domains. The name a job request uses
   (`allocation.domain`) is the partition's for one pair of it — the one
   whose QoS is `public`, else the one named like the partition — and
   `<partition>-<qos>` for every other; the header is written from the pair,
@@ -832,7 +832,7 @@ d.header_lines(record.kind)   # what the .sbatch carries, wall included (R5),
 #   (R1): launch sends this header
 ```
 
-**The job names its queue; `place` chooses none** — the description, the
-run card or `prep --domain` names it — and **its fit is said**: naming a queue
+**The job names its queue; `place` chooses none** — the job request's
+allocation, its run card or `prep --domain` names it — and **its fit is said**: naming a queue
 none of whose machines hold the job earns R4's numbers beside the placement,
 and the scheduler's answer when it is sent — never a refusal of ours (R6).

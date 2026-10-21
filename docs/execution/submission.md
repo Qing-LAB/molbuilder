@@ -82,7 +82,7 @@ nobody to ask (no terminal), nothing goes and the launch is refused.
 **S5 — The queue is named, never inferred — and checked where it is named.** Which queue to spend a day of
 wall-clock in is a judgement about priority, contention and what else is
 running — none of it on the machine's record, all of it the person's. So the
-person names one — in the description (`allocation.domain`, the run card's
+person names one — in the job request (`allocation.domain`, the run card's
 `domain`) or with `prep --domain` — and a run on a scheduler that names none
 is refused at prep; launch sends to that queue and names none of its own. **Prep places the job on the queue it names** and prints
 its fit — its wall, memory, ranks, cores and GPUs against that queue's
@@ -136,7 +136,7 @@ about to submit:
 
 *Every line is read off the very `sbatch` commands about to be sent and the
 headers they send: each shelf's header written at the benchmark's prep, from
-what it placed on the benchmark's one queue, its wall the description's
+what it placed on the benchmark's one queue, its wall the job request's
 (`allocation.time`). What a GPU shelf's ranks mean for its device — the
 GPU-sharing note — is said at that prep, where the grid can still change.*
 

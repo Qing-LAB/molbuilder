@@ -2,7 +2,7 @@
 floor 3 (`execution/architecture.md` § 2.1; `job-system.md` § 5.4).
 
 A stage of an independent ladder continues from the stage before it, as the
-description resolves it (a run card's ``restart: clean`` starts it from the
+description resolves it (an override ``restart: clean`` starts it from the
 structure); a SIESTA vibration's force-constant stage builds on its
 ``relax`` (`engines/vibration.md` § 5.2a); a transport rung takes its kind's
 gather.  Read off the description and its template -- which RUN of that
@@ -57,8 +57,8 @@ def independent(task) -> bool:
 
 def resolved_stages(task, template_text: Optional[str] = None) -> list:
     """``[(stage, resolved config)]`` of the described stages, as `prep`
-    resolves them (`resolve.resolved_ladder`: template ⊕ stage overrides ⊕
-    the run card) -- from ``template_text`` as the verb read it (A16);
+    resolves them (`resolve.resolved_ladder`: template ⊕ stage overrides)
+    -- from ``template_text`` as the verb read it (A16);
     ``[]`` with none."""
     from ..resolve import resolved_ladder
     from .engines import engine_seam
@@ -79,8 +79,8 @@ def stage_before(task, stage: str,
                   template_text: Optional[str] = None) -> Optional[str]:
     """The stage ``stage`` continues from by default -- the one
     before it in the ladder, resolved as `prep` resolves it (template ⊕
-    stage overrides ⊕ the run card, so a card's ``restart: clean`` is read)
-    -- or ``None``: a linked kind, the first stage, one that starts clean,
+    stage overrides, so an override's ``restart: clean`` is read) -- or
+    ``None``: a linked kind, the first stage, one that starts clean,
     one the description does not hold (which prep refuses at its checkpoint
     2)."""
     from ..identity import continues
@@ -99,7 +99,7 @@ def stage_before(task, stage: str,
 def fresh_stages(calculation: str, engine: str, *,
                  already_relaxed: bool) -> tuple:
     """THE LADDER A NEW DESCRIPTION STARTS WITH, before it is numbered --
-    the one rule, asked by `jobset init` and by the hand-over the parameter
+    the one rule, asked by `molbuilder describe` and by the hand-over the parameter
     tabs send (`web/handover-procedure.md`): a vibration's own ladder, read
     from the person's one statement (`pyscf/stages.py::vibration_stages`,
     `engines/vibration.md` § 2.2, § 5.2a); every other kind the ordinary

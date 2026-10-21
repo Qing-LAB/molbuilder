@@ -7,7 +7,8 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 """
 from __future__ import annotations
 
-from support.road import group_words, shelf_headers
+from support.road import (group_words, read_request, shelf_headers,
+                          write_request)
 
 import json
 import pathlib
@@ -71,13 +72,12 @@ _ENTERS = {"activation": "conda activate", "preamble": "true"}
 
 
 def _state_the_run(dest, **card):
-    """The description's run card states the run's launch shape, as a
-    person's description does: a run whose shape is stated nowhere is
-    refused at prep (`architecture.md` § 5.2)."""
-    tj = dest / "task.json"
-    d = json.loads(tj.read_text())
-    d["execution"] = {"mpi_np": 2, "omp_threads": 1, **card}
-    tj.write_text(json.dumps(d, indent=2))
+    """The job request's run card states the run's launch shape, as a
+    person's does: a run whose shape is stated nowhere is refused at prep
+    (`architecture.md` § 5.2)."""
+    req = read_request(dest)
+    req["execution"] = {"mpi_np": 2, "omp_threads": 1, **card}
+    write_request(dest, req)
 
 
 @pytest.fixture(autouse=True)
@@ -93,7 +93,7 @@ def calc(tree):
     """A GPU calculation, described, on a machine whose probe found one a100.
 
     ``use_gpu=True`` is stated here rather than assumed, because it is the
-    DESCRIPTION that decides whether this is a GPU benchmark —
+    run card that decides whether this is a GPU benchmark —
     `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the Job
     Prep UI"*.  Every test below is about the G × K × C grid.
     """
@@ -104,8 +104,7 @@ def calc(tree):
     dest = tree / "calc"
     D.write_description(
         D.build_description(struct,
-                            SiestaConfig(system_label="JOB", use_gpu=True,
-                                         diag_algorithm="ELPA-1STAGE"),
+                            SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
                             engine="siesta",
                             calculation="optimization",
@@ -124,15 +123,16 @@ def calc(tree):
                     env_init=_ENTERS).to_json() + "\n")
     # A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2), and a GPU run
     # how many GPUs (`execution/gpu.md` G5): the calculation's run card says
-    # it once, for every rung that does not say otherwise.  The bench never
-    # reads it -- its shapes and GPU counts are its own grid's.
-    _state_the_run(dest, gpu_count=1)
+    # it once, for every rung that does not say otherwise -- the GPU and
+    # the solver with it.  The bench takes the GPU from it; its shapes and
+    # GPU counts are its own grid's.
+    _state_the_run(dest, use_gpu=True, diag_algorithm="ELPA-1STAGE",
+                   gpu_count=1)
     # ...and the wall and memory a job handed to a scheduler states, which
     # the benchmark's trials share: these tests launch them in submit mode.
-    tj = dest / "task.json"
-    d = json.loads(tj.read_text())
-    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
-    tj.write_text(json.dumps(d, indent=2))
+    req = read_request(dest)
+    req["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    write_request(dest, req)
     return dest
 
 
@@ -163,10 +163,9 @@ def _on_a_queue(calc):
                        "node_types": [{"cores": 4, "nodes": 1,
                                        "gpu": {"a100": 1}}]}]
     (calc / "environment.json").write_text(json.dumps(rec, indent=2) + "\n")
-    tj = calc / "task.json"
-    d = json.loads(tj.read_text())
-    d["allocation"]["domain"] = "gpu"
-    tj.write_text(json.dumps(d, indent=2))
+    req = read_request(calc)
+    req["allocation"]["domain"] = "gpu"
+    write_request(calc, req)
 
 
 def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
@@ -324,24 +323,17 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
 
 
 def _describe_cpu(calc):
-    """Turn this calculation's description back to CPU.
+    """Turn this calculation's run card back to CPU.
 
     The `calc` fixture asks for the GPU because the grid tests are about the
     G × K × C grid.  A test whose claim is *"the verdict was NOT applied"*
     cannot use it: `Diag.ELPA.GPU .true.` in the deck only proves a verdict was
-    taken if the description did not ask for the GPU itself.  So the claim and
-    the fixture are separated here rather than weakened.
+    taken if the run card did not ask for the GPU itself.  So the claim and
+    the fixture are separated here rather than weakened.  A CPU run states
+    no GPU count: one stated for a run that does not use the GPU is refused
+    at prep (`execution/gpu.md` G5).
     """
-    p = calc / "JOB.template.toml"
-    text = p.read_text()
-    i = text.index("[item.use_gpu]")
-    j = text.index("[item.", i + 1)
-    p.write_text(text[:i]
-                 + text[i:j].replace("value = true", "value = false")
-                 + text[j:])
-    # ...and a CPU run states no GPU count: one stated for a run that does
-    # not use the GPU is refused at prep (`execution/gpu.md` G5).
-    _state_the_run(calc)
+    _state_the_run(calc, use_gpu=False, diag_algorithm="ELPA-1STAGE")
 
 
 def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
@@ -595,10 +587,10 @@ class TestTheRunsOwnCondition:
 
     @staticmethod
     def _write(calc, **doc):
-        d = json.loads((calc / "task.json").read_text())
-        d["allocation"] = {"time": "0-01:00:00"}
-        d.update(doc)
-        (calc / "task.json").write_text(json.dumps(d, indent=2))
+        req = read_request(calc)
+        req["allocation"] = {"time": "0-01:00:00"}
+        req.update(doc)
+        write_request(calc, req)
 
     @staticmethod
     def _run(calc, stage="coarse", *extra):
@@ -624,18 +616,17 @@ class TestTheRunsOwnCondition:
         """The case the conflated design could not express at all."""
         self._write(calc, bench=self.BENCH,
                     execution={"mpi_np": 2, "omp_threads": 2,
-                               "gpu_count": 1})
+                               "use_gpu": True, "gpu_count": 1})
         r = self._run(calc)["resources"]
         assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
         # AND THE PLAN TO MEASURE SURVIVES, byte for byte
-        assert json.loads((calc / "task.json").read_text())["bench"] \
-            == self.BENCH
+        assert read_request(calc)["bench"] == self.BENCH
 
     def test_a_run_needs_no_bench_at_all(self, calc):
         """*"User can run without bench."*  Not executed, not summarized,
         not even declared."""
         self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
-                                     "gpu_count": 1})
+                                     "use_gpu": True, "gpu_count": 1})
         r = self._run(calc)["resources"]
         assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
 
@@ -648,11 +639,8 @@ class TestTheRunsOwnCondition:
 
         from molbuilder.jobset._cli import jobset_group
         for bench in (self.BENCH, {"mpi_np": [8], "omp_threads": [2]}):
-            self._write(calc, bench=bench)
-            (calc / "task.json").write_text(
-                json.dumps({k: v for k, v in
-                            json.loads((calc / "task.json").read_text()).items()
-                            if k != "execution"}, indent=2))
+            # ...the run on the GPU, its launch shape stated nowhere
+            self._write(calc, bench=bench, execution={"use_gpu": True})
             # The GPU count on the prep: this calculation runs on a GPU, and
             # a GPU run states how many (`gpu.md` G5) -- a count, not a shape.
             r = CliRunner().invoke(jobset_group,
@@ -664,17 +652,17 @@ class TestTheRunsOwnCondition:
     def test_a_stage_lays_its_own_over_the_calculations(self, calc):
         """Both scopes, FIELD BY FIELD: a rung naming only `mpi_np` keeps the
         calculation's thread count."""
-        d = json.loads((calc / "task.json").read_text())
-        stages = [dict(s) for s in d["stages"]]
-        stages[0]["execution"] = {"mpi_np": 2}
+        stages = read_request(calc)["stages"]
+        first_name, second_name = list(stages)[:2]
+        stages[first_name]["execution"] = {"mpi_np": 2}
         self._write(calc, execution={"mpi_np": 1, "omp_threads": 2,
-                                     "gpu_count": 1},
+                                     "use_gpu": True, "gpu_count": 1},
                     stages=stages)
-        first = self._run(calc, stages[0]["name"])["resources"]
+        first = self._run(calc, first_name)["resources"]
         assert (first["mpi_np"], first["cpus_per_task"]) == (2, 2)
         # the second before the first has run: from the structure, said out
         # loud (`job-system.md` § 5.4)
-        second = self._run(calc, stages[1]["name"])["resources"]
+        second = self._run(calc, second_name)["resources"]
         assert (second["mpi_np"], second["cpus_per_task"]) == (1, 2)
 
     def test_the_whole_condition_reaches_the_launch_and_the_deck(self, calc):
@@ -702,14 +690,12 @@ class TestTheRunsOwnCondition:
         exactly this."""
         from molbuilder.jobset.prep_inputs import prep_run_inputs
         from molbuilder.jobset.model import Resources
-        from molbuilder.task import of as task_of
 
         self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
                                      "use_gpu": False})
-        task = task_of(calc)
+        request = open_calculation(calc).request
         for ask in (None, Resources()):
-            alloc, _pins, chosen = prep_run_inputs(
-                calc, task, "coarse", ask)
+            alloc, _pins, chosen = prep_run_inputs(request, "coarse", ask)
             assert isinstance(alloc, Resources), ask
             assert chosen["mpi_np"] == 2 and chosen["cpus_per_task"] == 2
 
@@ -728,15 +714,14 @@ class TestTheRunsOwnCondition:
           * a rung with no `execution` keeps the calculation's
           * `mem` is NOT among them and stays the calculation's
         """
-        import json
 
-        d = json.loads((calc / "task.json").read_text())
-        d["allocation"] = {"time": "0-04:00:00", "domain": "debug",
-                           "mem": "256G"}
-        d["stages"][0]["execution"] = {"mpi_np": 64,
-                                       "time": "2-00:00:00",
-                                       "domain": "public"}
-        (calc / "task.json").write_text(json.dumps(d, indent=2))
+        req = read_request(calc)
+        req["allocation"] = {"time": "0-04:00:00", "domain": "debug",
+                             "mem": "256G"}
+        req["stages"]["coarse"]["execution"] = {"mpi_np": 64,
+                                                "time": "2-00:00:00",
+                                                "domain": "public"}
+        write_request(calc, req)
 
         # THE ALLOCATION EACH JOB IS WRITTEN WITH -- its row in the plan,
         # `job-set.json`, the stage resolved and its allocation folded once
@@ -1173,16 +1158,14 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tree):
 # --------------------------------------------------------------------- #
 #  The declared grid drives the sweep (roadmap § 0.1 B1)                 #
 # --------------------------------------------------------------------- #
-# generator.md § 4.3a: `task.json`'s `bench` DECLARES what to measure —
+# generator.md § 4.3a: the job request's `bench` DECLARES what to measure —
 # portable points, resolved here.
 
 
 def _declare_bench(calc, axes):
-    import json as _json
-    p = calc / "task.json"
-    obj = _json.loads(p.read_text())
-    obj["bench"] = axes
-    p.write_text(_json.dumps(obj, indent=2) + "\n")
+    req = read_request(calc)
+    req["bench"] = axes
+    write_request(calc, req)
 
 
 def test_the_declared_grid_is_the_sweep(calc):
@@ -1404,13 +1387,15 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tree):
     dest = tree / "pycalc"
     D.write_description(
         D.build_description(struct, PySCFConfig(job_name="JOB"),
-                            [Stage(name="only", overrides={},
-                                   execution={"threads": 3})],
+                            [Stage(name="only", overrides={})],
                             engine="pyscf",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
                             source=str(tree / "h2.xyz")),
         dest)
+    req = read_request(dest)
+    req["stages"]["only"]["execution"] = {"threads": 3}
+    write_request(dest, req)
     (dest / "environment.json").write_text(
         Environment(scheduler=WORKSTATION,
                     topology=Topology(sockets=1, cores_per_socket=4),

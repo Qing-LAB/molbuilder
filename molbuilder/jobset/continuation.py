@@ -432,11 +432,11 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
     from ..paths import Shape
     from .materialize import FLAT_HAS_NO_ATTEMPTS
     if not Shape.named(task.shape).keeps_attempts_as_directories:
-        # A STAGE OF AN INDEPENDENT LADDER starts clean by its run card; a
-        # linked one builds on what its kind says, and is told no way it
-        # does not have.
+        # A STAGE OF AN INDEPENDENT LADDER starts clean by its `restart`
+        # override; a linked one builds on what its kind says, and is told
+        # no way it does not have.
         return FLAT_HAS_NO_ATTEMPTS + (
-            "  A stage starts clean by its run card's `restart: clean`."
+            "  A stage starts clean by its override `restart: clean`."
             if independent(task) else "")
     if getattr(task, "calculation", None) == "transport":
         # A TRANSPORT RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
@@ -540,15 +540,15 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     from ..identity import stage_key
     from .commands import (block, command, launch_lines, launch_pending,
                            run_first, words_for)
-    from .group import number_of
     run_prev = block(run_first(prev, calc=calc))
-    g_prev, g_stage = number_of(task, prev), number_of(task, stage)
+    g_prev = calc.request.group_of(prev)
+    g_stage = calc.request.group_of(stage)
     # A CHOICE OF RUN A LAUNCH SAYS FOR ONE STAGE (`job-system.md` § 5.4):
     # a member of a group of several, whose first launch takes the group
     # whole, is offered it once it is a group of its own -- a benchmark
     # measures one stage, never a group.
-    mates = [s.name for s in task.stages if s.group == g_stage
-             and stage_key(s.name) != stage_key(stage)]
+    mates = [n for n in calc.request.members(g_stage)
+             if stage_key(n) != stage_key(stage)]
     alone = linked or bench or not mates
 
     def _taking(*flags) -> List[str]:
@@ -558,17 +558,17 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
         return launch_lines("task", stage, base=base, flags=flags)
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
     # names an attempt-less start, which the flat layout -- one folder, no
-    # attempts -- refuses; there a stage starts clean by its run card.
+    # attempts -- refuses; there a stage starts clean by its `restart`.
     clean = ("" if linked else
-             f"or start `{stage}` clean: set its run card's `restart` to "
-             f"`clean` (Task setup, or task.json)\n" if flat else
+             f"or start `{stage}` clean: set its `restart` override to "
+             f"`clean` (Task setup's stage table, or task.json)\n" if flat else
              f"or start `{stage}` from the calculation's structure --\n"
              + block(_taking("--cold")) + "\n" if alone else
              f"or choose what `{stage}` starts from -- an earlier run of "
              f"`{prev}` (--from) or the calculation's structure (--cold): a "
              f"launch says that for one stage, and `{stage}` is in group "
              f"{g_stage} with {', '.join(f'`{m}`' for m in mates)}, so give "
-             f"it a group of its own first (Task setup, or task.json) and "
+             f"it a group of its own first (Task setup, or job-request.json) and "
              f"prepare that group\n")
     rule = ("(engines/vibration.md § 5.2a)" if linked
             else "(job-system.md § 5.4)")

@@ -30,7 +30,9 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     molbuilder module the bundle does not carry -- ``from .runfiles import
     compose`` at the top of `structure.py`, which fails in the bundle with
     *attempted relative import with no known parent package*."""
+    from molbuilder.config.pyscf import PySCFConfig
     from molbuilder.pyscf.input import (_sidecar_for, emit_bundle_imports,
+                                        emit_run_settings_block,
                                         emit_script_head)
     from molbuilder.runwrap import (PYSCF_BUNDLE, PYSCF_COMPANIONS,
                                     pyscf_bundle)
@@ -56,12 +58,13 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
                       regions={FROZEN_LABEL: [0]})
     relaxed = [[0.0, 0.0, 0.1173], [0.0, 0.7612, -0.4713],
                [0.0, -0.7612, -0.4713]]
-    # The script's own head -- its anchor, the bundle on the path, its
-    # threads sized -- then every member the bundle holds, each found where
-    # the script's imports find it.
+    # The script's run settings and its own head -- its anchor, the bundle
+    # on the path, its threads sized -- then every member the bundle holds,
+    # each found where the script's imports find it.
     members = sorted(name[:-len(".py")] for name in PYSCF_COMPANIONS)
     script = "\n".join([
-        *emit_script_head(None),
+        *emit_run_settings_block(PySCFConfig()),
+        *emit_script_head(),
         *emit_bundle_imports(StructureCodec, select_modes),
         "import importlib, json, os",
         f"_found = {{m: os.path.basename(os.path.dirname("

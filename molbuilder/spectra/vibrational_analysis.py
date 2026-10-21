@@ -289,7 +289,8 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
                 f"run, at the geometry it stopped at; then prepare this "
                 f"stage's group again once it has finished.")
     first = ("untick `already_relaxed` and add the `relax` stage before "
-             "this one (Task setup, or task.json)"
+             "this one (Task setup, or task.json and its group in "
+             "job-request.json)"
              if str(engine).lower() == "siesta" else
              "untick `already_relaxed` so the calculation relaxes first")
     return (f"Relax first -- if this stage was launched, first go back to "

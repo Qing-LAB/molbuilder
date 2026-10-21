@@ -1,4 +1,4 @@
-"""The road a test drives -- `jobset init`, `prep`, `launch` -- and the one
+"""The road a test drives -- `molbuilder describe`, `prep`, `launch` -- and the one
 thing a test may put beside it: a machine whose record names queues, with a
 scheduler that queues nothing.  A run is made on the road or not at all: an
 output copied into a stage's folder, or a conclusion written by hand, is a
@@ -13,7 +13,7 @@ from the road it imitates.  The steps live here once.
 * :func:`jobset` -- the verbs, as a person types them;
 * :func:`each_is_taken` -- every command an output prints, typed back as
   printed (`job-system.md` § 5.3: what molbuilder prints, you can type);
-* :func:`describe_calculation` -- `jobset init` of a held H2 in a box, or
+* :func:`describe_calculation` -- `molbuilder describe` of a held H2 in a box, or
   the structure a row gives, SIESTA, the shipped `publishable` ladder
   (coarse, medium);
 * :func:`ladder_edited` -- a description's ladder edited through Task
@@ -150,7 +150,7 @@ def describe_calculation(tmp_path, monkeypatch, *,
                          engine: str = "siesta",
                          structure: "dict | None" = None,
                          stage_strategy: "str | None" = None) -> Path:
-    """`jobset init` on ``structure`` -- :data:`H2` unless given: its
+    """`molbuilder describe` on ``structure`` -- :data:`H2` unless given: its
     ``elements``, ``positions`` (Å), ``regions`` (``frozen_atoms`` among
     them), its box's three edges, ``cell`` (Å), and each axis's
     ``axis_kind`` (isolated unless given) -- the bundle, at
@@ -160,9 +160,10 @@ def describe_calculation(tmp_path, monkeypatch, *,
     (`relax`, `freq`).
 
     ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
-    SIESTA, one thread for PySCF -- as a described calculation does: a run
-    whose shape is stated nowhere is refused at prep (`architecture.md`
-    § 5.2).  A test about that refusal takes the card away."""
+    SIESTA, one thread for PySCF -- in its job request, as a described
+    calculation does: a run whose shape is stated nowhere is refused at prep
+    (`architecture.md` § 5.2).  A test about that refusal takes the card
+    away."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.workingcopy_structure import StructureCodec
@@ -178,7 +179,7 @@ def describe_calculation(tmp_path, monkeypatch, *,
     strategy = (stage_strategy if stage_strategy is not None
                 else "publishable" if calculation == "optimization" and siesta
                 else "")
-    r = jobset("init", "--structure", STRUCTURE,
+    r = molbuilder("describe", "--structure", STRUCTURE,
                "--bundle", f"P/{calculation}/{name}", "--engine", engine,
                "--shape", shape, "--name", name,
                "--calculation", calculation,
@@ -186,12 +187,35 @@ def describe_calculation(tmp_path, monkeypatch, *,
                *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / name
-    import json
-    task = json.loads((bundle / "task.json").read_text())
-    task.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
-                    else {"threads": 1})
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    request = read_request(bundle)
+    request.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
+                       else {"threads": 1})
+    write_request(bundle, request)
     return bundle
+
+
+def read_request(bundle: Path) -> dict:
+    """The calculation's ``job-request.json``, as it lies."""
+    import json
+    return json.loads((bundle / "job-request.json").read_text())
+
+
+def write_request(bundle: Path, request: dict) -> None:
+    """The calculation's ``job-request.json``, written as a person edits it."""
+    import json
+    (bundle / "job-request.json").write_text(json.dumps(request, indent=2))
+
+
+def save_both(bundle: Path, task: dict, request: dict, client=None):
+    """``task`` and ``request`` through Task setup's Save -- the page's
+    door, which writes both (`execution/job-request.md` § 7)."""
+    import json
+    if client is None:
+        from molbuilder.web.app import create_app
+        client = create_app(config={}).test_client()
+    return client.post("/api/task-setup/save",
+                       json={"dest": str(bundle), "text": json.dumps(task),
+                             "request_text": json.dumps(request)})
 
 
 def a_machine_with_queues(tmp_path, monkeypatch, domains,
@@ -267,7 +291,7 @@ def calls_made(calls: Path):
 # --------------------------------------------------------------------- #
 #
 # A contract's cases are rows of a TOML table (`tests/data/<contract>.toml`),
-# and every row runs down the road a person runs -- `jobset init`, the
+# and every row runs down the road a person runs -- `molbuilder describe`, the
 # description and the target's record written as the row says, `prep`,
 # `launch --dry-run` -- checking the layers it names (`docs/process/testing.md`
 # § 6):
@@ -300,15 +324,16 @@ def calls_made(calls: Path):
 #      `bench_header` and `bench_header_lacks`).
 #
 # INPUTS: `engine` (siesta | pyscf); `groups` -- each stage's group, in
-# order, over the ones `jobset init` gave; `stage_run` -- a stage's own run
-# card, `{name = {...}}`; `run` -- the run card, task.json
-# `execution`, over the table's `run_base` for the engine (a row with
-# `bench`: its own `run` alone); `allocation` --
-# task.json `allocation`, over the table's `allocation_base` where the
+# order, over the ones `molbuilder describe` gave; `stage_run` -- a stage's
+# own run card, `{name = {...}}`; `run` -- the calculation's run card, the
+# job request's `execution`, over the table's `run_base` for the engine (a
+# row with `bench`: its own `run` alone); `allocation` -- the job request's
+# `allocation`, over the table's `allocation_base` where the
 # machine has a scheduler; `run_unset` / `allocation_unset` -- base keys a row
 # takes away; `template` -- values in the template (SIESTA's over the
-# table's `siesta_template`); `bench` -- task.json `bench`, then `prep bench`;
-# `notify` -- task.json `notify`, when the calculation speaks up;
+# table's `siesta_template`); `bench` -- the job request's `bench`, then
+# `prep bench`; `notify` -- the job request's `notify`, when the calculation
+# speaks up;
 # `machine_config` -- THIS machine's `molbuilder.json`; `prep` / `launch` --
 # the flags typed (launch
 # with `--mode submit`, unless `launch_mode` names another -- "" for none, so
@@ -334,7 +359,12 @@ def calls_made(calls: Path):
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "task", "--group", "1"]`), the calculation
-# and the target named as the row's own prep names them; `removed` / `added` -- the
+# and the target named as the row's own prep names them; `launched` -- the
+# stages then launched, each its newest run's launch record written by its
+# writer, no engine started (`_road_launched`); `changed` -- the records then
+# changed through Task setup's Save: blocks of the job request
+# (`{execution = {...}}`), and `overrides`, `{stage = {name = value}}`, into
+# the description (`_road_changed`); `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `regrouped` -- each stage's group set
 # anew, one number a stage, through the same Save; `source_edited` --
@@ -349,11 +379,11 @@ def calls_made(calls: Path):
 # stage (or a list of stages) the row's prep names, `coarse` unless given --
 # typed as the group each is in; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
-# `calculation` -- the kind `jobset init` describes, an optimization unless
+# `calculation` -- the kind `molbuilder describe` describes, an optimization unless
 # given; `shape` -- the shape it describes, hierarchical unless given;
 # `structure` -- the structure it describes, H2 unless given
 # (`describe_calculation`: `elements`, `positions`, `regions`, `cell`,
-# `axis_kind`); `stage_strategy` -- the ladder `jobset init` is told,
+# `axis_kind`); `stage_strategy` -- the ladder `molbuilder describe` is told,
 # `publishable` for a SIESTA optimization unless given, `""` for the one
 # stage the template alone describes.
 #
@@ -507,18 +537,20 @@ def ladder_edited(case, bundle) -> None:
     varies, `engines/stages.md` § 6.2), written through Task setup's Save as
     the page writes them."""
     import json
-    from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
+    request = read_request(bundle)
+    groups = {n: e["group"] for n, e in request["stages"].items()}
     gone = set(case.get("removed", ()))
     task["stages"] = [st for st in task["stages"] if st["name"] not in gone]
     for new in case.get("added", ()):
         # A NEW STAGE, A NEW GROUP, every stage below it moved one on -- as
         # the page adds one (`task-setup.md` § 5.3).
         at = new.get("at", len(task["stages"]))
-        g = task["stages"][at - 1]["group"] + 1 if at else 1
+        g = groups[task["stages"][at - 1]["name"]] + 1 if at else 1
         for st in task["stages"][at:]:
-            st["group"] += 1
-        task["stages"].insert(at, {"name": new["name"], "group": g,
+            groups[st["name"]] += 1
+        groups[new["name"]] = g
+        task["stages"].insert(at, {"name": new["name"],
                                    **({"overrides": new["overrides"]}
                                       if new.get("overrides") else {})})
         task["varies"] = sorted(set(task.get("varies") or [])
@@ -526,13 +558,15 @@ def ladder_edited(case, bundle) -> None:
     # THE NUMBERS AGAIN FROM 1, each stage keeping who it shares a job with.
     seen = []
     for st in task["stages"]:
-        if st["group"] not in seen:
-            seen.append(st["group"])
-    for st in task["stages"]:
-        st["group"] = seen.index(st["group"]) + 1
-    r = create_app(config={}).test_client().post(
-        "/api/task-setup/save",
-        json={"dest": str(bundle), "text": json.dumps(task)})
+        if groups[st["name"]] not in seen:
+            seen.append(groups[st["name"]])
+    entries = request["stages"]
+    request["stages"] = {
+        st["name"]: {**{k: v for k, v in entries.get(st["name"], {}).items()
+                        if k != "group"},
+                     "group": seen.index(groups[st["name"]]) + 1}
+        for st in task["stages"]}
+    r = save_both(bundle, task, request)
     assert r.status_code == 200, (r.get_json() or {}).get("error")
 
 
@@ -565,13 +599,53 @@ def _road_regrouped(groups, bundle) -> None:
     order -- through Task setup's Save, as the page's Group column writes
     them."""
     import json
-    from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
+    request = read_request(bundle)
     for st, g in zip(task["stages"], groups):
-        st["group"] = g
-    r = create_app(config={}).test_client().post(
-        "/api/task-setup/save",
-        json={"dest": str(bundle), "text": json.dumps(task)})
+        request["stages"][st["name"]]["group"] = g
+    r = save_both(bundle, task, request)
+    assert r.status_code == 200, (r.get_json() or {}).get("error")
+
+
+def _road_launched(case, bundle) -> None:
+    """Each stage ``launched`` names, its newest run recorded as launched
+    here -- the record a launch writes, by its writer
+    (`runrecord.write_launch`): no engine starts, and the stage is launched
+    as every reader asks it (`materialize.ever_launched`)."""
+    if not case.get("launched"):
+        return
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.paths import attempt_dir, attempts_in
+    from molbuilder.runrecord import write_launch
+    calc = open_calculation(bundle)
+    for stage in case["launched"]:
+        home = stage_home(bundle, calc.task, stage)
+        names = home.names(calc.task.shape)
+        where = (attempt_dir(home.dir, attempts_in(home.dir)[-1])
+                 if calc.shape.keeps_attempts_as_directories else home.dir)
+        write_launch(where, names=names, run=0, mode="direct",
+                     command=["bash", names.stem + ".run.sh", "--run", "0"])
+
+
+def _road_changed(case, bundle) -> None:
+    """The records changed through Task setup's Save before the row's prep
+    -- ``changed``'s blocks of how it runs into the job request, and its
+    ``overrides``, ``{stage: {name: value}}``, into the description, each
+    name joining `varies`."""
+    if "changed" not in case:
+        return
+    import json
+    task = json.loads((bundle / "task.json").read_text())
+    request = read_request(bundle)
+    for key, value in case["changed"].items():
+        if key == "overrides":
+            for stage, values in value.items():
+                st = next(s for s in task["stages"] if s["name"] == stage)
+                st["overrides"] = {**st.get("overrides", {}), **values}
+                task["varies"] = sorted(set(task["varies"]) | set(values))
+        else:
+            request[key] = value
+    r = save_both(bundle, task, request)
     assert r.status_code == 200, (r.get_json() or {}).get("error")
 
 
@@ -585,15 +659,19 @@ def _road_saved(case, bundle) -> None:
     import json
     from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
+    request = read_request(bundle)
     shape = task.get("shape")
-    task.update(case["saved"])
+    # EACH CHANGED KEY INTO ITS RECORD: how it runs into the job request,
+    # what is computed into the description (`execution/job-request.md` § 1).
+    for key, value in case["saved"].items():
+        (request if key in ("allocation", "execution", "bench", "notify")
+         else task)[key] = value
     client = create_app(config={}).test_client()
     # What the shape card is told before anything is typed: the same answer
     # the save refuses with (`task-setup.md` § 4).
     card = client.get("/api/task-setup/folder",
                       query_string={"dir": str(bundle)}).get_json()
-    r = client.post("/api/task-setup/save",
-                    json={"dest": str(bundle), "text": json.dumps(task)})
+    r = save_both(bundle, task, request, client)
     said = (r.get_json() or {}).get("error") or ""
     if "save_refused" not in case:
         assert r.status_code == 200, said
@@ -819,9 +897,12 @@ def _over_base(base, mine, unset):
 
 
 def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
-    """`jobset init` of H2 or the case's own structure, then the case's
-    template values, description blocks and this machine's
-    `molbuilder.json`."""
+    """`molbuilder describe` of H2 or the case's own structure, then the
+    case's template values, its job request's blocks and this machine's
+    `molbuilder.json` -- a run setting among the table's or the case's
+    template values stated on the calculation's run card, where it lives
+    (`execution/job-request.md` § 2), and a stage's own `restart` in its
+    overrides, where what it builds on is said."""
     import dataclasses
     import json
     engine = case.get("engine", "siesta")
@@ -831,9 +912,13 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
                                   shape=case.get("shape", "hierarchical"),
                                   structure=case.get("structure"),
                                   stage_strategy=case.get("stage_strategy"))
+    from molbuilder.template import run_settings
+    on_card = run_settings(engine)
     values = (dict(table.get("siesta_template", {}))
               if engine == "siesta" else {})
     values.update(case.get("template", {}))
+    card_values = {k: v for k, v in values.items() if k in on_card}
+    values = {k: v for k, v in values.items() if k not in on_card}
     if values:
         from molbuilder.config.pyscf import PySCFConfig
         from molbuilder.config.siesta import SiestaConfig
@@ -847,20 +932,29 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
         path.write_text(template_with_values(cfg, engine=engine,
                                              calculation=calculation))
     task = json.loads((bundle / "task.json").read_text())
+    request = read_request(bundle)
     # THE GROUPS THE ROW STATES, one number a stage, in order -- and each
-    # stage's own run card, by name.
+    # stage's own run card, by name; what says what a stage computes
+    # (`restart`) into its overrides.
     for st, g in zip(task["stages"], case.get("groups", ())):
-        st["group"] = g
+        request["stages"][st["name"]]["group"] = g
     for st in task["stages"]:
-        if st["name"] in case.get("stage_run", {}):
-            st["execution"] = {**st.get("execution", {}),
-                               **case["stage_run"][st["name"]]}
+        mine = dict(case.get("stage_run", {}).get(st["name"], {}))
+        own = {k: mine.pop(k) for k in list(mine) if k not in on_card
+               and k not in ("time", "domain")}
+        if own:
+            st["overrides"] = {**st.get("overrides", {}), **own}
+            task["varies"] = sorted(set(task.get("varies") or []) | set(own))
+        if mine:
+            entry = request["stages"][st["name"]]
+            entry["execution"] = {**entry.get("execution", {}), **mine}
     scheduled = case.get("machine", table.get("machine", "this")) \
         != "workstation"
+    run = (_over_base(table.get("run_base", {}).get(engine),
+                      case.get("run"), case.get("run_unset"))
+           if "bench" not in case else case.get("run"))
     blocks = {
-        "execution": (_over_base(table.get("run_base", {}).get(engine),
-                                 case.get("run"), case.get("run_unset"))
-                      if "bench" not in case else case.get("run")),
+        "execution": ({**card_values, **(run or {})} or None),
         "allocation": _over_base(
             table.get("allocation_base") if scheduled else None,
             case.get("allocation"), case.get("allocation_unset")),
@@ -869,10 +963,11 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     }
     for block, value in blocks.items():
         if value:
-            task[block] = value
+            request[block] = value
         else:
-            task.pop(block, None)      # the row states none of it
+            request.pop(block, None)   # the row states none of it
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    write_request(bundle, request)
     if "probe" not in case:
         _write_machine_config(case)
     return bundle
@@ -1044,7 +1139,7 @@ def _named(kind: str, stage, bundle, *, verb: str = "prep") -> tuple:
             name = resolve_stage_ref(refs, s).name
         except ValueError:
             return tuple(x for s in stages for x in ("--stage", s))
-        g = next(st.group for st in task.stages if st.name == name)
+        g = read_request(Path(bundle))["stages"][name]["group"]
         if g not in groups:
             groups.append(g)
     return tuple(x for g in groups for x in ("--group", str(g)))
@@ -1052,7 +1147,7 @@ def _named(kind: str, stage, bundle, *, verb: str = "prep") -> tuple:
 
 def group_words(bundle, *stages) -> tuple:
     """``--group N`` for the groups ``stages`` are in, as the calculation's
-    own description numbers them -- how a person names them to `prep task`
+    own job request numbers them -- how a person names them to `prep task`
     (`job-system.md` § 5.3)."""
     return _named("task", list(stages), bundle)
 
@@ -1078,6 +1173,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         got = jobset(*words, "--bundle", bundle,
                      *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
+    _road_launched(case, bundle)
+    _road_changed(case, bundle)
     if "removed" in case or "added" in case:
         ladder_edited(case, bundle)
     if "source_edited" in case:

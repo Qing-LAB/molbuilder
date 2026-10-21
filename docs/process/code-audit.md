@@ -276,7 +276,7 @@ where molbuilder is not installed, which
 `tests/test_monitor_watches_a_live_run_e2e.py` runs. **The proof that the imports
 and the shipped files' dependencies comply is a workflow that finishes end to
 end** *(user, 2026-09-27)*: the road tests launch real runs through
-`jobset init → prep → launch` in each engine's own env and assert that the
+`molbuilder describe → prep → launch` in each engine's own env and assert that the
 monitor beside the job closed with its report — `test_siesta_vibration_e2e.py`
 (SIESTA), `test_vibration_e2e.py` (PySCF). The monitor imports every shipped
 file when it starts, so a file that reached into molbuilder, or a package the

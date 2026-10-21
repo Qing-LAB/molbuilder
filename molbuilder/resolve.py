@@ -149,9 +149,9 @@ class ResolvedConfig:
         never name a machine: a deck is rendered at `prep`, on the machine that
         will run it, and it records what it assumed in its BENCH-MARKS block. A
         deck rendered without a rank count says ``mpi_np auto`` and then gets
-        launched at 32 — which is the disagreement `check_launch_matches_deck`
-        was written to catch, and the ``-np 14`` / ``propor: IMAX = 0`` crash
-        that prompted it.
+        launched at 32 -- the ``-np 14`` / ``propor: IMAX = 0`` crash -- so
+        prep renders a deck and its launch from one request, together
+        (`architecture.md` A3).
 
         So the machine facts are **not** on the description and **are** on the
         emitter's argument. Those are different objects.
@@ -337,7 +337,12 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
 #: Where a resolved value came from, in words -- `provenance`'s own sources.
 #: Said by a refusal and by the deck's PROVENANCE table alike.
 LAYER_WORDS = {"template": "the template", "stage": "this stage's override",
-               "sweep": "a sweep point", "pin": "a pin", "role": "the rung"}
+               "sweep": "a sweep point", "pin": "a pin", "role": "the rung",
+               # A RUN SETTING'S, in words of its own (`execution/
+               # job-request.md` § 4): the card it came from, or nobody's.
+               "stage_card": "the stage's run card",
+               "calc_card": "the calculation's run card",
+               "default": "the catalogue's default · not chosen"}
 
 #: WHO SETS A VALUE AFTER THE LAYERS -- the deck's PROVENANCE table's words
 #: for the deck's ``SystemLabel`` where prep spells it (`job-contracts.md`
@@ -396,6 +401,10 @@ def _deck_sources(values, provenance: Mapping[str, str],
         who = LAYER_WORDS.get(src, src)
         if src == "template":
             who = f"{who} · {SOURCE_WORDS[origins.get(name) or 'unrecorded']}"
+        if src == "default" and value is None:
+            # A RUN SETTING WITH NO DEFAULT, stated by no card: its not-set
+            # line's answer (`job-request.md` § 4).
+            who = SOURCE_WORDS["default"]
         if value is None and items[name]:
             who = f"{who} · {BLANK_ANSWERED_BY.get(name, BLANK_ENGINE)}"
         rows.append((name, who))
@@ -436,6 +445,7 @@ def resolve(template_text: str, task, config_cls, *,
             sweep: Union[Mapping[str, Sequence[Any]],
                          Sequence[Mapping[str, Any]], None] = None,
             pins: Optional[Mapping[str, Any]] = None,
+            run_settings: Optional[Mapping[str, Tuple[Any, str]]] = None,
             translation: Optional[MachineTranslation] = None,
             environment: Any = None) -> ParameterSet:
     """Turn the description and this machine's allocation into a `ParameterSet`.
@@ -448,9 +458,13 @@ def resolve(template_text: str, task, config_cls, *,
     ``sweep`` is ``{axis: [values]}`` (a cross product) or an explicit
     ``[{axis: value, ...}, ...]`` (a dependent enumeration — see
     :func:`_points`), and turns the result into a list of that many points;
-    ``pins`` are the parameters given a value for this prep alone (§ 4.2 —
-    ``BlockSize`` is the only member today, and it is a member by rule: its
-    right value depends on the allocation).
+    ``run_settings`` are the run settings the job request's cards state,
+    ``{name: (value, "stage_card" | "calc_card")}`` -- laid over the
+    template, which holds none of them, under the sweep; a run setting no
+    card states is the catalogue's default, not chosen
+    (`execution/job-request.md` § 4).  ``pins`` are a benchmark trial's
+    alone: its one-point declarations and its measurement pins
+    (`generator.md` § 4.2), laid last but the rung's answers.
 
     ``translation`` is the specialisation's coupling
     (:class:`MachineTranslation`): its declared axes, and what machine ask
@@ -514,11 +528,11 @@ def resolve(template_text: str, task, config_cls, *,
     deck_items = _deck_items(_engine, _kind, stage_obj.name)
 
     if stage_obj.overrides:
-        # A RUN SETTING is the rung's run card's (`engines/stages.md`
-        # § 6.8d, plan § 5w K5) -- the machine's answers and a person's
-        # alike.  It arrives here as a pin, from `execution`.
-        from .template import run_settings, why_run_setting
-        bad = sorted(set(stage_obj.overrides) & run_settings(_engine))
+        # A RUN SETTING is the job request's (`execution/job-request.md`
+        # § 2) -- the machine's answers and a person's alike.  It arrives
+        # here as a run setting, from a run card.
+        from .template import run_settings as _settings_of, why_run_setting
+        bad = sorted(set(stage_obj.overrides) & _settings_of(_engine))
         if bad:
             raise ResolveError(
                 f"stage {stage_obj.name!r} overrides {bad[0]!r}, "
@@ -572,6 +586,34 @@ def resolve(template_text: str, task, config_cls, *,
             # range -- a person's edit, said by name (the same translation).
             raise ResolveError(str(exc)) from exc
         provenance.update({k: "stage" for k in stage_obj.overrides})
+
+    # THE RUN SETTINGS (`execution/job-request.md` § 4): the template holds
+    # none, so each is the catalogue's default -- not chosen -- until a run
+    # card states it, the stage's over the calculation's.
+    from .template import run_settings as _run_settings_of
+    ours = _run_settings_of(_engine) & known
+    provenance.update({k: "default" for k in ours
+                       if provenance.get(k) == "template"})
+    run_settings = dict(run_settings or {})
+    if run_settings:
+        bad = sorted(set(run_settings) - ours)
+        if bad:
+            raise ResolveError(
+                f"run setting(s) {', '.join(map(repr, bad))} name nothing "
+                f"a run card states for {config_cls.__name__} "
+                f"(execution/job-request.md 2).")
+        held = sorted(set(run_settings) & fixed)
+        if held:
+            raise ResolveError(
+                f"run setting(s) {', '.join(map(repr, held))} name what the "
+                f"rung fixes: {why_role(held[0])}.")
+        try:
+            base = effective_config(base, {k: v for k, (v, _layer)
+                                           in run_settings.items()})
+        except ValueError as exc:
+            raise ResolveError(str(exc)) from exc
+        provenance.update({k: layer for k, (_v, layer)
+                           in run_settings.items()})
 
     pins = dict(pins or {})
     bad = sorted(set(pins) & machine_facts)
@@ -691,7 +733,8 @@ def resolve(template_text: str, task, config_cls, *,
                 resources = dataclasses.replace(resources,
                                                 continue_retries=budget)
         # THE WALL SLACK RIDES THE SAME WAY (`running-a-job.md` § 3.6): the
-        # run card's value, else the template's, onto the job for its wrapper.
+        # run card's value, else the catalogue's default, onto the job for
+        # its wrapper.
         if resources.wall_slack is None:
             slack = getattr(values, "wall_slack", None)
             if slack is not None:
@@ -750,30 +793,22 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     """``[(stage name, resolved config)]`` for every stage of the ladder, in
     ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
     § 6.6a), resolved by the SAME primitives as `prep task` step 2 (template
-    ⊕ stage overrides ⊕ the rung's run card), so what the checks compare is
-    what the decks would say -- a rung's ``restart`` included, which § 6.6a
-    reads and which lives on the run card alone (§ 6.8d).  No machine fact
-    is involved: a sequence question never needs the allocation.
+    ⊕ stage overrides ⊕ the rung's own answers), so what the checks compare
+    is what the decks compute -- a rung's ``restart`` included, which § 6.6a
+    reads.  No run setting is laid in: the job request says how a rung runs,
+    never what it computes (`execution/job-request.md` § 1, A17).
 
     Exists so the surface that surfaces those findings does not re-derive
     the resolution with primitives of its own — the caller-re-derivation
     habit `job-system.md` § 9 diagnoses.
     """
-    from .template import (config_from_template, engine_name, role_answers,
-                           template_fields)
+    from .template import config_from_template, engine_name, role_answers
     base = config_from_template(template_text, config_cls)
     engine = engine_name(config_cls)
     kind = task.calculation
-    known = template_fields(config_cls)
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
         values = effective_config(base, s.overrides) if s.overrides else base
-        # The rung's run card, as `prep task` pins it: its template items --
-        # the machine's answers are the launch, never a value of the deck.
-        card = {k: v for k, v in task.run_condition(s.name).items()
-                if k in known}
-        if card:
-            values = effective_config(values, card)
         # ...and the rung's own answers, last, as `resolve` lays them.
         answers = role_answers(engine, kind, s.name)
         out.append((s.name,

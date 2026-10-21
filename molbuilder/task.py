@@ -12,8 +12,10 @@ the per-stage cells that differ (``stages[].overrides``).
 **It carries only what CHANGES.**  Everything that does not is in the template
 (``<label>.template.toml``), written once — so there is no ``base`` key here, and a
 stage that omits a varied field renders with the template's value (§ 4).  It
-**names no machine** either: ranks, queues and walltimes are decided by ``prep``
-on the target (``execution/project-layout.md`` § 2.1).
+**says nothing of how the calculation runs**: the queue, the run cards, the
+groups, a benchmark's plan and the reports are its job request's,
+``job-request.json`` (``execution/job-request.md``), and a key of that record
+written here is refused, saying where it belongs.
 
 LAYER.  L1: at load it imports only stdlib-only L1 modules (``persist``,
 ``identity``, ``paths``, ``runfiles``, ``config_dir``, ``report_fields``,
@@ -40,8 +42,8 @@ Those belong to resolution (P2 below), which already has the schema in hand:
           (``bias_token``)
   P2      the engine has a generator · every
           named field exists in the schema · every value is one that field's
-          DECLARED TYPE can hold · every value -- a stage's, an execution
-          block's, a bench point -- may stand for its item on the kind (the
+          DECLARED TYPE can hold · every value of a stage's may stand for
+          its item on the kind (the
           one per-value door, ``template.why_not``: refused) and is inside
           its recommended range (warned), a bias point too ·
           and § 6.6a's
@@ -64,16 +66,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
-from . import report_fields as _report_fields
-from .config_dir import is_channel_name
 from .identity import normalise_id, run_id, stage_key
 from .persist import check_schema, read_json, write_json
-# The record's spelling for the two asks.  A TOP-LEVEL import:
-# `scheduler.quantities` is a stdlib-only codec at the same layer.
-from .scheduler.quantities import canonical_mem, canonical_time
 
 
-SCHEMA = "molbuilder/task@1"
+SCHEMA = "molbuilder/task@2"
 #: Its name is the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
 from .runfiles import TASK_FILE as FILENAME  # noqa: E402
 
@@ -82,7 +79,7 @@ from .runfiles import TASK_FILE as FILENAME  # noqa: E402
 # and stdlib-only; this module validates a DECLARED shape against it.
 from .paths import SHAPES
 
-#: § 2 — "three fields, and no others".  An ``overrides`` map naming one of
+#: § 2 — "two fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
 #:
 #: DERIVED FROM THE DATACLASS, not typed beside it: a hand-written tuple here
@@ -97,9 +94,13 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
-             "structure", "varies", "stages", "calculation", "bench",
-             "allocation", "execution",
-             "notify", "slots", "bias", "swap_electrodes")
+             "structure", "varies", "stages", "calculation",
+             "slots", "bias", "swap_electrodes")
+#: The job request's keys (`execution/job-request.md` § 3) -- refused here
+#: by name, saying where each belongs: nothing in one record is read as the
+#: other (A17).
+_JOB_KEYS = ("allocation", "execution", "bench", "notify")
+_JOB_STAGE_KEYS = ("group", "execution")
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
 def fixed_by_kind(calculation: str) -> Optional[Dict[str, Any]]:
@@ -122,47 +123,9 @@ def fixed_by_kind(calculation: str) -> Optional[Dict[str, Any]]:
 #: or a structure pair's .xyz -- what makes it citable is what it holds,
 #: never its name or its position in molbuilder's own layout.  FORM only
 #: here: a relative path with no traversal; the tree fence and the
-#: condition live where the filesystem is (`init` resolves, `prep` composes
+#: condition live where the filesystem is (`molbuilder describe` resolves, `prep` composes
 #: -- transport/compose.classify_citation).
 _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
-#: The SCHEDULER asks of an `allocation` block (`stages.md` § 6.8a): the
-#: three SLURM spells as text, and the one it switches -- whether a GPU ask
-#: carries its binding (`execution/gpu.md` G9).  The launch SHAPE -- ranks,
-#: threads, GPUs -- is not here: it is the run card's (`execution`,
-#: `stages.md` § 6.8d) and a benchmark's axes (`bench`).
-_ALLOCATION_KEYS = ("domain", "time", "mem")
-_ALLOCATION_SWITCHES = ("gpu_binding",)
-_NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
-
-#: The two SCHEDULER asks a run owns, admitted to `execution` by name
-#: (`stages.md` § 6.8e).  They are not catalogue items and never will be: the
-#: catalogue describes what an ENGINE computes with, and no engine has an
-#: opinion about a wall clock or a queue.
-#:
-#: `mem` is deliberately absent.  The line is *does this differ between the
-#: bench lane and the run lane* -- a wall does (a trial's steps are cut) and a
-#: queue does (short work and long work belong in different ones); the memory
-#: a job holds does not, so a second home for it would be a second place to
-#: look and no new answer.
-LANE_ASKS = ("time", "domain")
-
-#: THE LANE ASKS AS A PAGE OFFERS THEM -- each with its words, its help and
-#: an example -- served to the Task setup page (`/api/task-setup/sweepable`,
-#: `lane_asks`), which keeps no table of its own (`web/task-setup.md`
-#: § 6.2b).  One home for the two rows' words and the two names above.
-LANE_ASK_ROWS = (
-    {"name": "time", "label": "wall clock for this run",
-     "help": ("D-HH:MM:SS -- what the scheduler is asked for; in a group "
-              "of stages each row is one stage's own, and the job asks for "
-              "their sum (the bench keeps the calculation's short one)"),
-     "placeholder": "2-00:00:00"},
-    {"name": "domain", "label": "queue for this run",
-     "help": "the bench can stay on a short-turnaround queue",
-     "placeholder": "public"},
-)
-assert tuple(r["name"] for r in LANE_ASK_ROWS) == LANE_ASKS
-
-
 def bias_token(v: float) -> str:
     """The ONE spelling of a bias point's directory name — ``v0``,
     ``v0.2``, ``v-0.5`` (user ruling 2026-08-29: plain v-dirs, production
@@ -205,106 +168,6 @@ class Run:
 
 
 @dataclass(frozen=True)
-class Allocation:
-    """**What this calculation asks the scheduler for** — the queue, the
-    wall, the memory, and whether a GPU ask carries its binding.
-
-    Added 2026-08-24 (user), because the Task-setup tab could set neither a
-    time nor a memory ask and `prep` had no way to learn one: five Sol jobs
-    (62039301-05) died against limits nobody chose -- a per-GPU memory
-    default and a wall the framework invented -- because the two numbers had
-    no home that travelled with the calculation.
-
-    **Every field is optional, and absent means UNSTATED** -- never a
-    default wearing a number's clothes (`submission.md` S1).  A run sent to
-    a queue states its queue, wall and memory, here or as a flag, or prep
-    refuses it (`architecture.md` § 5.2: nothing fills one in).
-
-    **ONE SPELLING, AND IT IS SLURM'S** -- ``"0-04:00:00"``, ``"128G"``
-    (user, 2026-08-24: *"your record should set unified time format while
-    it is the UI that can do some translation for human readability /
-    input"*).  A record that held whichever spelling arrived could not be
-    read correctly by anybody, because the two vocabularies DISAGREE:
-    ``04:30`` is four minutes thirty to SLURM and four and a half hours to
-    a person.
-
-    Translation belongs at the edges where humans are -- the Task-setup
-    tab's input box, the CLI's ``--time`` / ``--mem`` -- and every one of
-    them goes through `quantities.canonical_time` / `quantities.canonical_mem`.
-    A file typed by hand is such an edge too, so the reader below accepts a
-    human spelling and normalises it on the way in; what it RETURNS is always
-    the record's.
-    """
-    domain: str = ""
-    time: str = ""
-    mem: str = ""
-    #: ``False`` turns off ``--gres-flags=enforce-binding`` for this
-    #: calculation's GPU asks -- its benchmark and its runs alike, so a
-    #: benchmark measures the layout the run will use (`execution/gpu.md`
-    #: G9).  ``None`` is unstated, and the rule is that the binding is sent.
-    gpu_binding: Optional[bool] = None
-
-    def __bool__(self) -> bool:
-        return bool(self.domain or self.time or self.mem
-                    or self.gpu_binding is not None)
-
-
-@dataclass(frozen=True)
-class Notify:
-    """**WHEN this calculation should say something** — and deliberately
-    nothing about *where*.
-
-    The destination and its credential live on the machine that runs the job --
-    in the config directory, at ``notify``, mode 0600 -- and never here.  The
-    path is `monitor.default_notify_path()`'s to answer (`configuration.md`
-    § 2.1c).  This file travels:
-    to a cluster, into a citation's composed copy, to whoever you hand the calculation
-    to.  **A policy is safe to carry; a token is not**, and the split is what
-    lets the rest of the record stay shareable.
-
-    Finish is not a field.  A run ending — cleanly or not — always notifies if
-    a destination is configured at all, because that is the reason the hook
-    exists: nobody has to be at the cluster at 3am.  What is settable is the
-    noise *before* then.
-
-    **A block, or none**: ``Task.notify`` is ``None`` with no block -- no
-    notification at all, not even the start and the end (user, 2026-09-26:
-    nothing set up, nothing sent, `run-reports.md` § 2) -- and a ``Notify``
-    is a block, which reports the start and the end at least, its four
-    values written whole.
-    ``channels`` and ``report`` ``None`` are EVERY channel and EVERY field,
-    written ``["*"]``.
-    """
-    #: Fire when a step's SCF reaches its criterion -- a relaxation's move, a
-    #: force-constant run's displacement (`run-reports.md` § 2.2).  A single
-    #: point states no step, and its finish message is the whole report.
-    on_scf_converged: bool = False
-    #: Fire every N hours -- HOURS, because the point of this is reassurance
-    #: over a long run, not a live feed.  ``None`` is never, written
-    #: ``null``; a period is a positive number (W57 R10: "every 0 hours"
-    #: reads as anything but never).
-    every_hours: Optional[float] = None
-    #: WHICH channels, **by name** -- and a name is all that travels.  What
-    #: the name resolves to (an address, usually a credential) is the
-    #: machine's own file and is never here; that is 1's split, and a label
-    #: the person chose is safe to carry where a URL is not.
-    #:
-    #: ``None`` means every channel the running machine has, written
-    #: ``["*"]``.  An EMPTY tuple is a different state and not a spelling of
-    #: the same one: reports off for this calculation, on a machine where
-    #: they are set up, written ``[]``.
-    channels: Optional[Tuple[str, ...]] = None
-
-    #: WHAT each report carries, beyond the name (`stages.md` § 6.9).
-    #: ``None`` is every field the monitor could determine; ``()`` is the
-    #: summary line with no field grid.  **The calculation's label and job id
-    #: are not settable**: a report you cannot attribute to a job is a
-    #: notification you have to go and look up.
-    report: Optional[Tuple[str, ...]] = None
-
-
-
-@dataclass(frozen=True)
 class StructureRef:
     """§ 6.3 — a reference plus a witness, never a copy.
 
@@ -324,21 +187,12 @@ class StructureRef:
 
 @dataclass(frozen=True)
 class Stage:
-    """§ 2 — a name, the cells that differ, and what this rung RUNS at when
-    it differs from the calculation's own answer.  A stage is in the
-    description or it is not: there is no on/off (`engines/stages.md`
-    § 2)."""
+    """§ 2 — a name and the cells that differ.  A stage is in the
+    description or it is not: there is no on/off (`engines/stages.md` § 2).
+    How it runs -- its run card, the job it runs in -- is the job request's
+    (`execution/job-request.md` § 3.2, § 3.3)."""
     name: str
     overrides: Mapping[str, Any] = field(default_factory=dict)
-    #: § 6.8d, per stage: one value per parameter, laid over the top-level
-    #: block FIELD BY FIELD.  A rung naming only `mpi_np` keeps the
-    #: calculation's solver and its thread count.
-    execution: Mapping[str, Any] = field(default_factory=dict)
-    #: THE JOB THIS STAGE RUNS IN (§ 2, plan § 5aa): the stages with one
-    #: number are one job.  Every description on disk states it; ``None``
-    #: is a producer's ladder before it is numbered (`group.numbered`),
-    #: which the writer refuses.
-    group: Optional[int] = None
 
     def __post_init__(self) -> None:
         """The name rule holds for the object too, not only for the file.
@@ -353,12 +207,6 @@ class Stage:
                 f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
                 "becomes a filename and a shell word "
                 "(engines/stages.md 6.6)")
-        if self.group is not None and (not isinstance(self.group, int)
-                                       or isinstance(self.group, bool)
-                                       or self.group < 1):
-            raise ValueError(
-                f"stage {self.name!r}: group {self.group!r} must be a whole "
-                f"number from 1 -- the job it runs in (engines/stages.md 2)")
 
 
 @dataclass(frozen=True)
@@ -397,49 +245,6 @@ class Task:
     varies: Optional[Tuple[str, ...]] = None
     stages: Optional[Tuple[Stage, ...]] = None
 
-    #: WHAT THIS CALCULATION ASKS THE SCHEDULER FOR -- the queue, the wall,
-    #: the memory, the GPU binding (:class:`Allocation`).  Absent-is-a-state, like ``bench``:
-    #: an empty one writes no key.
-    #:
-    #: `prep` reads it as the BASE allocation and an explicit flag still
-    #: wins, so the file answers once what the CLI would otherwise have to
-    #: be told every time -- which is what makes a prepared bundle carry
-    #: everything its launch needs.
-    allocation: "Allocation" = field(default_factory=lambda: Allocation())
-
-    #: WHEN this calculation should say something (:class:`Notify`).  The
-    #: policy only -- the destination and its credential stay on the machine
-    #: that runs the job, because this file travels and a token must not.
-    #: ``None`` with no block, which writes no key: no notification at all.
-    notify: "Optional[Notify]" = None
-
-    #: § 6.8 -- WHAT TO MEASURE before committing: field name -> the points to
-    #: try.  Empty means no benchmark is planned.
-    #:
-    #: WHAT THE PERSON ASKED, NEVER WHAT A MACHINE FOUND (stages.md § 6.8,
-    #: amended 2026-08-20).  ``{"mpi_np": (4, 8, 16)}`` is true on every
-    #: machine; ``mpi_np = 16`` is true on one, and would make this file a
-    #: machine's opinion rather than a calculation's description.  A
-    #: NON-machine execution entry with ONE point is a chosen value -- the
-    #: override lane (`generator.md` § 4.3a), applied at prep as a pin.
-    #: The measurement lands in ``bench-result.json`` on the target, whose
-    #: ``choice`` carries it (`job-system.md` § 7).
-    #:
-    #: It is also why a field may appear HERE that may never appear as a
-    #: template item value (`template.md` § 7): as a point to try it is a
-    #: question; as an item value it would be an assertion about a machine
-    #: this description has not met.
-    bench: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
-
-    #: THE ONE CONDITION A RUN USES (`stages.md` § 6.8d) -- one value per
-    #: parameter, never a list.  INDEPENDENT of ``bench``: a calculation may
-    #: declare a grid to measure, a condition to run, both, or neither, and a
-    #: run never requires a benchmark.  The two are the same vocabulary at
-    #: different arity, which is why they are two keys and not one: narrowing
-    #: a `bench` row to say what the run uses would DESTROY the plan to
-    #: measure, and a person needs both at once (user, 2026-09-02).
-    execution: Dict[str, Any] = field(default_factory=dict)
-
     #: THE COMPOSITE'S INPUTS (engines/transport.md § 2a.14, § 3.1) -- slot name ->
     #: an EXPLICIT directory citation (a tree-relative path whose FILES
     #: satisfy the 4.1b condition; ruling Q1 + the 2026-08-29 amendment).
@@ -459,7 +264,7 @@ class Task:
     swap_electrodes: bool = False
 
     #: THE BIAS SWEEP AXIS, volts (engines/transport.md § 2a.10) -- like
-    #: ``bench``, a list of points the description asks for, not a
+    #: a benchmark's plan, a list of points the description asks for, not a
     #: machine's answer.  Empty means zero-bias only (the default every
     #: transport description says by omitting the key).  When present
     #: the first entry must be 0.0: the treatment's one zero-bias device
@@ -644,72 +449,7 @@ class Task:
                     f"directory, its deck and its status row -- two stages "
                     f"sharing one silently hand one the other's files "
                     f"(engines/stages.md 6.6)")
-            # THE GROUPS' SHAPE (§ 2): every stage states one or none does
-            # (a producer's ladder before `group.numbered`); the first is 1,
-            # each later one the number above or one more.  Whether a stage
-            # may share a group is the ladder's links, asked at resolve
-            # (`group.check_groups`, § 6.6).
-            stated = [s.group is not None for s in self.stages]
-            if any(stated) and not all(stated):
-                raise ValueError(
-                    f"task: stage(s) "
-                    f"{', '.join(repr(s.name) for s in self.stages if s.group is None)}"
-                    f" state no group while the others do -- every stage "
-                    f"states the job it runs in (engines/stages.md 2)")
-            above = 0
-            for s in self.stages if all(stated) else ():
-                if s.group not in (above, above + 1):
-                    raise ValueError(
-                        f"task: stage {s.name!r} is in group {s.group}"
-                        + (f", after group {above}" if above else "")
-                        + " -- the first stage is group 1, and each later "
-                          "one repeats the number above it or adds one, so "
-                          "the groups run in the ladder's order "
-                          "(engines/stages.md 2)")
-                above = s.group
         self._check_id()
-
-    # ----- the run card (stages.md 6.8d) ------------------------------- #
-
-    def run_condition(self, stage: Optional[str] = None) -> Dict[str, Any]:
-        """What a rung's run uses -- the calculation's ``execution`` with the
-        rung's own over it, FIELD BY FIELD (`stages.md` § 6.8d).
-
-        The one place a run setting lives (plan § 5w K5), so this is the one
-        answer every reader takes: the deck's pins and the launch shape at
-        ``prep``, the scheduler's device ask, the sequence checks, the Task
-        setup tab.  A stage naming only ``mpi_np`` keeps the calculation's
-        solver and its thread count; whole-object precedence would drop the
-        two nobody mentioned.
-
-        A CALCULATION-WIDE VALUE IS A RUNG'S WHERE THE RUNG READS IT -- the
-        item's ``stages`` (`template.reads`, `stages.md` § 6.8d), as
-        an override is: a transport ladder's transmission takes none of the
-        calculation's GPU values, its `tbtrans` having no GPU path
-        (`execution/gpu.md` § 1.3).  A rung's own card stating one it does
-        not read is refused (`validation.task`).
-        """
-        out = dict(self.execution or {})
-        if stage is not None and out:
-            out = {k: v for k, v in out.items()
-                   if self._rung_reads(k, stage)}
-        for st in (self.stages or ()):
-            if stage is not None and st.name == stage:
-                out.update(dict(st.execution or {}))
-        return out
-
-    def _rung_reads(self, name: str, stage: str) -> bool:
-        """Whether the rung ``stage`` reads run-card ``name`` -- a catalogue
-        item it reads (`template.reads`), or a name no item carries, the
-        run's own scheduler asks (:data:`LANE_ASKS`)."""
-        from .template import catalogue, one, reads
-        try:
-            item = one(catalogue(), name, engine=str(self.engine))
-        except KeyError:
-            return True                  # not an item: the lane's own asks
-        # AN ITEM NOT FOR THIS ENGINE is the description check's refusal.
-        return item is None or reads(item, str(self.engine),
-                                     self.calculation, stage)
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
 
@@ -777,7 +517,7 @@ class Task:
                 f"which one is right is not something this reader may guess "
                 f"(run-identity.md 2.0a and 3 rule 1)")
 
-    # ----- persistence (task@1) -------------------------------------- #
+    # ----- persistence (task@2) -------------------------------------- #
     # ``to_dict`` / ``from_dict`` are the house names for a dataclass<->JSON
     # pair (26 of them under ``molbuilder/``); ``jobset/model.py::JobSet`` is
     # the closest analogue -- also a persisted plan for a multi-directory
@@ -878,6 +618,11 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "enters its calculation centred in its cell.  "
                 "`molbuilder jobset migrate` in the calculation's folder "
                 "removes the key", where="centre_junction")
+    for key in _JOB_KEYS:
+        if key in obj:
+            _refuse(f"{key!r} says how the calculation runs, which is its job "
+                    f"request's, job-request.json -- not the description's "
+                    f"(execution/job-request.md 1)", where=key)
     _check_keys(obj, _TOP_KEYS, where="")
 
     engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")
@@ -977,9 +722,6 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "Give it a single entry: "
                 '"stages": [{"name": "coarse", "overrides": {}}]')
 
-    bench = bench_from_obj(obj)
-    execution = _execution_from_obj(obj)
-
     raw_stages = obj["stages"]
     if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
         _refuse("'stages' is present but empty. A job has at least one stage "
@@ -998,232 +740,10 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # differ in nothing but their name.  (``None`` is reserved for the
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
-                varies=varies, stages=stages, calculation=calc, bench=bench,
-                execution=execution,
-                allocation=_allocation_from_obj(obj),
-                notify=_notify_from_obj(obj, engine=engine,
-                                        calculation=calc),
+                varies=varies, stages=stages, calculation=calc,
                 slots=slots, bias=bias,
                 low_bias_approximation=low_bias_approximation,
                 swap_electrodes=swap_electrodes)
-
-
-def bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
-    """§ 6.8's ``bench`` -- field name -> the points to try.
-
-    Absent is a real state and the common one: no benchmark planned.  Present
-    and empty is refused, because an empty plan and no plan are the same thing
-    said two ways and a reader should not have to know they are.
-
-    SHAPE ONLY, and deliberately.  Whether a name is a field the engine
-    declares SWEEPABLE -- `template.md` § 6.2's ``execution`` category, *"knobs
-    that change speed and not the answer"* -- is a MEMBERSHIP question, and
-    answering it means reading the catalogue, which is L2.  This module is L1
-    (`architecture.md` § 3), and the same split already applies to ``calculation``
-    just above: shape here, membership where the vocabulary is read.  The
-    membership check lives in ``validation/task.py``.
-    """
-    raw = obj.get("bench")
-    if raw is None:
-        return {}
-    if not isinstance(raw, Mapping) or not raw:
-        _refuse("'bench' is present but not a non-empty object. Omit the key "
-                "entirely when no benchmark is planned -- absent and empty "
-                "would be two spellings of one state (engines/stages.md 6.8)")
-    out: Dict[str, Tuple[Any, ...]] = {}
-    for name, points in raw.items():
-        if not isinstance(points, (list, tuple)) or not points:
-            _refuse(f"bench[{name!r}] must be a non-empty list of points to "
-                    f"try, got {points!r}")
-        if any(isinstance(p, (list, tuple, dict)) for p in points):
-            _refuse(f"bench[{name!r}] takes scalar points; got a nested value")
-        out[str(name)] = tuple(points)
-    return out
-
-
-def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
-    """``allocation`` -> :class:`Allocation`; absent is an empty one.
-
-    **The two asks are read and normalised here; the queue name is not
-    judged here.**  Those are different questions and they get different
-    answers:
-
-    * ``time`` and ``mem`` have a spelling this record defines (SLURM's,
-      see :class:`Allocation`), so a value that cannot be read AT ALL is
-      refused now, by name, while it is still cheap to fix -- and one that
-      can is stored in the record's spelling, so nothing downstream ever
-      meets two.
-
-    * ``domain`` is NOT checked against this machine's queues.  A
-      description written for one cluster is opened on another, and
-      refusing it here for naming a queue this box never heard of would
-      refuse a file that is perfectly correct where it is going.  The
-      machine record answers that, at launch, where the machine is known.
-    """
-    raw = obj.get("allocation")
-    if raw is None:
-        return Allocation()
-    if not isinstance(raw, Mapping) or not raw:
-        _refuse("'allocation' is present but not a non-empty object. Omit "
-                "the key entirely when nothing is asked for -- absent and "
-                "empty would be two spellings of one state")
-    # A LAUNCH SHAPE LANDING HERE IS THE ORDINARY MISTAKE, not a typo: it is
-    # what a person reasonably reaches for.  The refusal names the block it
-    # belongs in.
-    _check_keys(raw, _ALLOCATION_KEYS + _ALLOCATION_SWITCHES,
-                where="allocation",
-                note=". Ranks, threads and GPUs are not asked here -- they "
-                     "are the run card's (`execution`: \"mpi_np\": 8), and "
-                     "a benchmark's axes (`bench`) (stages.md 6.8d)")
-    for k in _ALLOCATION_KEYS:
-        v = raw.get(k)
-        if v is not None and not isinstance(v, str):
-            _refuse(f"allocation.{k} must be a string -- write it the way "
-                    f"you would type it (\"4h\", \"128G\", "
-                    f"\"7-00:00:00\"); got {type(v).__name__}")
-    for k in _ALLOCATION_SWITCHES:
-        v = raw.get(k)
-        if v is not None and not isinstance(v, bool):
-            _refuse(f"allocation.{k} must be true or false; got "
-                    f"{type(v).__name__}")
-    # Normalised on the way in, so nothing downstream meets two spellings
-    # (the class docstring says why).  A refusal here names the field and
-    # the forms it takes, because "invalid allocation" tells a person
-    # nothing about which of three values to go and look at.
-    def _canon(fn, key):
-        v = raw.get(key)
-        if not v:
-            return ""
-        try:
-            return fn(v) or ""
-        except ValueError as exc:
-            _refuse(f"allocation.{key}: {exc}")
-    return Allocation(domain=str(raw.get("domain") or ""),
-                      time=_canon(canonical_time, "time"),
-                      mem=_canon(canonical_mem, "mem"),
-                      gpu_binding=raw.get("gpu_binding"))
-
-
-def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
-                     calculation: str) -> "Optional[Notify]":
-    """``notify`` -> :class:`Notify`, or ``None`` with no block: no
-    notification at all (`run-reports.md` § 2).
-
-    Both triggers are refused by TYPE rather than coerced.  ``"true"`` is
-    not a boolean and ``"6"`` is not a number, and silently accepting either
-    would make a file that reads one way and behaves another -- the class
-    it belongs to exists precisely so a person can look at the record and
-    know what their job will do.
-
-    A period is a positive, finite number of hours, or ``null`` for never:
-    there is no reading of "every minus two hours" or "every 0 hours", and
-    letting one through would arm a timer that fires on every pass.
-    """
-    raw = obj.get("notify")
-    if raw is None:
-        return None
-    if not isinstance(raw, Mapping) or not raw:
-        _refuse("'notify' is present but not a non-empty object. Omit the "
-                "key when nothing should be reported -- absent and empty "
-                "would be two spellings of one state")
-    _check_keys(raw, _NOTIFY_KEYS, where="notify")
-    # A BLOCK STATES ALL FOUR: "every channel" and "every field" are
-    # written `["*"]`, never a key left out.
-    missing = [k for k in _NOTIFY_KEYS if k not in raw]
-    if missing:
-        _refuse(f"notify states no {', '.join(repr(k) for k in missing)} -- "
-                f"a notify block states all four: on_scf_converged, "
-                f"every_hours (null for never), channels ([\"*\"] for every "
-                f"channel), report ([\"*\"] for every field)")
-
-    scf = raw["on_scf_converged"]
-    if not isinstance(scf, bool):
-        _refuse(f"notify.on_scf_converged must be true or false, not "
-                f"{type(scf).__name__} -- write a JSON boolean, not a string")
-
-    hours = raw["every_hours"]
-    if hours is not None:
-        if isinstance(hours, bool) or not isinstance(hours, (int, float)):
-            _refuse(f"notify.every_hours must be a number of HOURS, not "
-                    f"{type(hours).__name__} -- write 6, not \"6\" or "
-                    f"\"6h\"")
-        hours = float(hours)
-        if hours != hours or hours in (float("inf"), float("-inf")):
-            _refuse("notify.every_hours must be a finite number of hours")
-        if hours <= 0:
-            _refuse(f"notify.every_hours must be a positive number of hours "
-                    f"(got {hours:g}) -- null is never")
-
-    # EVERY, NONE, OR THESE -- three states, each written (`run-reports.md`
-    # § 3.0, `stages.md` § 6.9): `["*"]` is every channel the running
-    # machine has (`None` here), `[]` is none, a list is those.
-    chans = _every_or_these(
-        raw["channels"], "channels", "channel NAMES",
-        lambda item: (None if is_channel_name(item) else
-                      f"{item!r} is not a channel name -- letters, digits, "
-                      f"'-' and '_'. A name is all that travels; the address "
-                      f"and key stay on the machine"))
-    # THE ONE DECLARATION answers, for THIS calculation: a field its runs
-    # can never state is refused by name (`stages.md` § 6.9).
-    report = _every_or_these(
-        raw["report"], "report", "report FIELD NAMES",
-        lambda item: _report_fields.refusal(str(item), engine, calculation))
-    return Notify(on_scf_converged=scf, every_hours=hours, channels=chans,
-                  report=report)
-
-
-def _every_or_these(got, key: str, what: str, refusal
-                    ) -> Optional[Tuple[str, ...]]:
-    """A notify list as written -- ``["*"]`` every (``None``), ``[]`` none,
-    names those -- each name asked of ``refusal`` (a sentence, or ``None``
-    for a name it takes)."""
-    if not isinstance(got, list):
-        _refuse(f"notify.{key} must be a list of {what}, not "
-                f"{type(got).__name__} -- [\"*\"] for every one, [] for none")
-    if "*" in got:
-        if got != ["*"]:
-            _refuse(f"notify.{key}: \"*\" is every one, and stands alone -- "
-                    f"not beside names ({got!r})")
-        return None
-    names = []
-    for item in got:
-        why = refusal(item)
-        if why is not None:
-            _refuse(f"notify.{key}: {why}")
-        if item not in names:
-            names.append(item)
-    return tuple(names)
-
-
-def _execution_from_obj(obj: Mapping[str, Any], *, where: str = "") -> Dict[str, Any]:
-    """``execution`` -> ``{name: one value}`` (`stages.md` § 6.8d).
-
-    **The one condition a RUN uses**, and the arity is what tells it from
-    `bench`: several values per axis is a plan to measure, one value per
-    parameter is what to use.  So a LIST here is refused by name, with the
-    block it belongs in said out loud -- "invalid" would send a person
-    looking for a typo instead of to the other lane.
-
-    MEMBERSHIP is not this function's question, exactly as it is not
-    `bench_from_obj`'s: a name must be an `execution` catalogue item, and
-    `validation/task.py` owns that because deciding what a name MEANS takes
-    the vocabulary and this module is L1.  Shape is checked here.
-    """
-    raw = obj.get("execution")
-    if raw is None:
-        return {}
-    at = f"{where} execution" if where else "execution"
-    out: Dict[str, Any] = {}
-    for key, val in _as_object(raw, where=at).items():
-        if isinstance(val, (list, tuple)):
-            _refuse(f"{key!r} takes ONE value here, not a list -- a list of "
-                    f"points to try is `bench`'s shape, and the two are "
-                    f"separate blocks on purpose (engines/stages.md 6.8d)",
-                    where=at)
-        if isinstance(val, Mapping):
-            _refuse(f"{key!r} takes a scalar, got an object", where=at)
-        out[key] = val
-    return out
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -1242,24 +762,18 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "it is in the description or it is not (engines/stages.md 2).  "
                 "A description written before carries the key: `jobset "
                 "migrate` removes it", where=where)
+    for key in _JOB_STAGE_KEYS:
+        if key in obj:
+            _refuse(f"{key!r} says how the stage runs, which is the job "
+                    f"request's, job-request.json -- its entry under "
+                    f"'stages' (execution/job-request.md 3.2, 3.3)",
+                    where=where)
     _check_keys(obj, STAGE_FIELDS, where=where)
     if "name" not in obj:
         _refuse("missing required key 'name'", where=where)
     if not STAGE_NAME_RE.fullmatch(name):
         _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
                 "a filename (engines/stages.md 6.6)")
-    # THE JOB IT RUNS IN, stated by every description (§ 2): one written
-    # before 2026-10-11 has none, and `jobset migrate` writes it.
-    if "group" not in obj:
-        _refuse("no 'group' -- every stage states the job it runs in "
-                "(engines/stages.md 2, 2026-10-11); `molbuilder jobset "
-                "migrate` writes it", where=where)
-    group = obj["group"]
-    if not isinstance(group, int) or isinstance(group, bool) or group < 1:
-        _refuse(f"group {group!r} must be a whole number from 1 -- the job "
-                "this stage runs in (engines/stages.md 2)", where=where)
-
-    execution = _execution_from_obj(obj, where=where)
     overrides = dict(_as_object(obj.get("overrides") or {},
                                 where=f"{where} overrides"))
     for key in overrides:
@@ -1283,15 +797,14 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "promoted, or a demoted parameter leaves a value hiding "
                 "(engines/stages.md 6.2)", where=where)
 
-    return Stage(name=name, overrides=overrides, execution=execution,
-                 group=group)
+    return Stage(name=name, overrides=overrides)
 
 
 def fresh_varies(stages) -> Tuple[str, ...]:
     """What a fresh ladder VARIES -- :func:`varies_for` over its stages'
     overrides: nothing for the one-stage start, each tier's keys for a
     `--stage-strategy` ladder.  The one rule both writers of a description
-    ask: `jobset init` and the hand-over (`proposed_varies`, which the Task
+    ask: `molbuilder describe` and the hand-over (`proposed_varies`, which the Task
     setup page copies; 2026-10-19)."""
     return varies_for(st.overrides for st in stages)
 
@@ -1391,32 +904,29 @@ def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
 
 def never_as_zero(hours) -> bool:
     """Whether a notify period is the spelling of *never* a description
-    used before 2026-10-06, ``0`` -- ``null`` since: refused by the reader
-    (:func:`_written_before`), rewritten by `jobset migrate`."""
+    used before 2026-10-06, ``0`` -- ``null`` since: a description written
+    then is `molbuilder/task@1`, refused by the reader
+    (:func:`_written_before`), and `jobset migrate` rewrites it."""
     return (isinstance(hours, (int, float)) and not isinstance(hours, bool)
             and hours == 0)
 
 
 def _written_before(obj: Mapping[str, Any]) -> List[str]:
     """What a description written before a rule says otherwise, said as
-    :func:`of` says it, with the command for its folder -- no `calculation`,
-    a notify block short of its four or a period of ``0`` for never
-    (``null`` since; 2026-10-06), a stage's `enabled` (2026-10-03), a stage
-    without its `group` (2026-10-11), `centre_junction` (retired 2.6.0), a
-    transport description stating no voltages (2.16.3) -- or ``[]``."""
+    :func:`of` says it, with the command for its folder -- how it runs in
+    its own record (`molbuilder/task@1`, 2.27.0; its notify block's and its
+    groups' older rules with it, which the same rewrite settles), no
+    `calculation` (2026-10-06), a stage's `enabled` (2026-10-03),
+    `centre_junction` (retired 2.6.0), a transport description stating no
+    voltages (2.16.3) -- or ``[]``."""
     out: List[str] = []
-    raw = obj.get("notify")
-    # an empty block was refused before as now -- the reader's to refuse
-    if "calculation" not in obj or (
-            isinstance(raw, Mapping) and raw
-            and (any(k not in raw for k in _NOTIFY_KEYS)
-                 or never_as_zero(raw.get("every_hours")))):
-        out.append("its `calculation`, and its notify block whole with null "
-                   "for never (2026-10-06)")
+    if str(obj.get("schema") or "") == "molbuilder/task@1":
+        out.append("how it runs -- its queue, its run cards, its groups, a "
+                   "benchmark's plan, its reports -- in its job request, "
+                   "job-request.json (2.27.0)")
+    if "calculation" not in obj:
+        out.append("its `calculation` (2026-10-06)")
     stages = obj.get("stages")
-    if isinstance(stages, (list, tuple)) and any(
-            isinstance(st, Mapping) and "group" not in st for st in stages):
-        out.append("every stage's `group`, the job it runs in (2026-10-11)")
     if isinstance(stages, (list, tuple)) and any(
             isinstance(st, Mapping) and "enabled" in st for st in stages):
         out.append("its stages with no on/off switch (2026-10-03)")
@@ -1468,54 +978,12 @@ def _task_to_dict(task: Task) -> dict:
                             "atoms": task.structure.atoms,
                             **({"fingerprint": task.structure.fingerprint}
                                if task.structure.fingerprint else {})}
-    # Absent together, never empty -- an empty list would be a second way to
-    # spell "one stage" (§ 6.5).
-    # § 6.8: omitted when empty, so "no benchmark planned" has ONE spelling
-    # on disk.
-    if task.bench:
-        out["bench"] = {k: list(v) for k, v in task.bench.items()}
-    # BESIDE IT, NEVER INSIDE IT (§ 6.8d): one value per parameter, and the
-    # two blocks coexist because a plan to measure and a condition to run are
-    # different things a person needs at the same time.
-    if task.execution:
-        out["execution"] = dict(task.execution)
-    # Absent when nothing is asked for, and each field omitted when unset --
-    # so "unstated" has ONE spelling on disk (S1).
-    if task.allocation:
-        out["allocation"] = {
-            k: v for k, v in (("domain", task.allocation.domain),
-                              ("time", task.allocation.time),
-                              ("mem", task.allocation.mem)) if v}
-        # A SWITCH IS WRITTEN WHEN IT IS SAID, false included -- `false` is
-        # the one value that changes anything.
-        if task.allocation.gpu_binding is not None:
-            out["allocation"]["gpu_binding"] = task.allocation.gpu_binding
-    if task.notify is not None:
-        # THE BLOCK WHOLE: its four values, "every" written `["*"]`
-        # (`run-reports.md` § 3.0).
-        n = task.notify
-        out["notify"] = {
-            "on_scf_converged": bool(n.on_scf_converged),
-            "every_hours": n.every_hours,
-            "channels": ["*"] if n.channels is None else list(n.channels),
-            "report": ["*"] if n.report is None else list(n.report),
-        }
     if task.stages:
-        # EVERY STAGE STATES ITS GROUP on disk (§ 2): a producer's ladder is
-        # numbered before it is written (`group.numbered`).
-        if any(s.group is None for s in task.stages):
-            raise ValueError(
-                "task: a description is written with every stage's group "
-                "-- number the ladder first (jobset.group.numbered; "
-                "engines/stages.md 2)")
+        # Absent together, never empty -- an empty list would be a second
+        # way to spell "one stage" (§ 6.5).
         out["varies"] = list(task.varies or ())
-        out["stages"] = [
-            # `execution` omitted when empty, like every other block here:
-            # a rung that runs at the calculation's own answer says nothing.
-            {"name": s.name, "group": s.group,
-             "overrides": dict(s.overrides),
-             **({"execution": dict(s.execution)} if s.execution else {})}
-            for s in task.stages]
+        out["stages"] = [{"name": s.name, "overrides": dict(s.overrides)}
+                         for s in task.stages]
     return out
 
 
@@ -1526,9 +994,8 @@ def write_task(base, task: Task):
 
 
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
-           "Allocation",
            "Run", "StructureRef", "Stage", "Task",
-           "bench_from_obj", "derive_run", "of", "from_text", "path_of",
+           "derive_run", "of", "from_text", "path_of",
            "varies_for", "write_task"]
 
 

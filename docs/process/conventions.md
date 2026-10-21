@@ -163,7 +163,8 @@ table said 13, listed `pyscf` — deleted that day — and omitted `notify-token
 | `peptide` `dna` `rna` `smiles` `name` | build a structure | ([`web/tabs.md`](?doc=web/tabs.md)) |
 | `modify` | one structure-edit op per call | |
 | `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
-| `jobset` | **every calculation, every engine** — init / prep / launch / status / summarize | ([`execution/job-system.md`](?doc=execution/job-system.md)) |
+| `describe` | write a calculation's description and its job request — not a job verb ([`execution/job-request.md`](?doc=execution/job-request.md) § 9) | |
+| `jobset` | **every calculation, every engine** — prep / launch / status / summarize / migrate | ([`execution/job-system.md`](?doc=execution/job-system.md)) |
 | `envs` `pseudo` `checkpoint` `watch` | the four remaining sub-groups | |
 | `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→the structure **pair** (`--from-run` also takes what the run declared — its labels, held atoms and axes — from its own deck, and what it says about itself, its `info.calculation` and `info.relaxation`) · dump a runtime-info sidecar · watch a job | |
 | `auth-setup` `notify-token` `serve` `jupyter` | the auth config · a run-report key · the web UI · its notebook | ([`ops/deployment.md`](?doc=ops/deployment.md)) |
@@ -191,8 +192,8 @@ it: a ladder is N decks and that command wrote one, which is why
 > earlier: it wrote a **finished deck** straight from CLI flags, and
 > `fdf --jobset` wrote a whole flat bundle — both skipping the description that
 > makes a calculation reproducible. **Describing a calculation is
-> `molbuilder jobset init`**, which writes the portable package — the
-> template, `task.json`, the data files — and `prep` renders the deck from it on
+> `molbuilder describe`**, which writes the portable package — the
+> template, `task.json`, `job-request.json`, the data files — and `prep` renders the deck from it on
 > the machine that will run it
 > ([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
 >
@@ -283,7 +284,7 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
   derived from `SiestaConfig`/`PySCFConfig` field metadata, so a `choices=` field
   becomes a `click.Choice` that fails at parse time (exit 2) — the CLI and the web
   form expose the *same* options from one source. That is also what makes
-  `jobset init` possible without a second flag list: the template it writes is
+  `molbuilder describe` possible without a second flag list: the template it writes is
   generated from the same metadata ([`template.md § 5`](?doc=engines/template.md)).
 
 ## 4. Where the guards live (test map)

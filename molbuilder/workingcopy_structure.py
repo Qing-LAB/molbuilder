@@ -472,7 +472,7 @@ class StructureCodec:
         ``<label>.source.xyz`` and its sidecar -- the catalogue's name
         (`runfiles.WRITTEN`, `job-contracts.md` § 6.3), for :meth:`files` to
         give the format's suffix.  Both writers of a calculation's structure
-        ask it: the hand-over and `jobset init`.  Written AS GIVEN, its
+        ask it: the hand-over and `molbuilder describe`.  Written AS GIVEN, its
         origin's record with it: prep decides how the calculation takes it
         (`cell.entering`, `jobset.prep._structure_for`)."""
         from .runfiles import compose

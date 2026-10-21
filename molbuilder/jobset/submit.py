@@ -64,8 +64,7 @@ from ..scheduler.quantities import slurm_time as _slurm_time
 # NOTE: `job_dir_names` is NOT imported here.  It is the naming
 # authority (materialize.py), and the places THIS module needs it import
 # it locally beside the siblings they use.
-from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
-                        check_trial_starts_cold)
+from .agreement import TrialNotCold, check_trial_starts_cold
 from .model import KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources
 from .continuation import Continuation, relaunch
 from .planned import Plan, found
@@ -1691,17 +1690,17 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         # matched by who they are, never by their number (`job-system.md`,
         # *The task*), so a description renumbered since the job went is
         # refused here, not launched as another group (R-L46).
-        from .group import group_members, same_members
+        from .group import same_members
         sent = next((g["stages"] for g in inside.record.groups
                      if int(g["number"]) == int(number)), None)
-        if sent is None or not same_members(sent, group_members(calc.task,
-                                                                number)):
+        now = calc.request.members(number)
+        if sent is None or not same_members(sent, now):
             raise SubmitError(
-                f"group {number} of the description is "
-                f"{', '.join(group_members(calc.task, number)) or 'none'}, "
+                f"group {number} of the job request is "
+                f"{', '.join(now) or 'none'}, "
                 f"and the sequence {inside.name} was sent with "
                 f"{', '.join(sent) if sent else 'no such group'} -- the "
-                f"description changed since the job went, so this group is "
+                f"job request changed since the job went, so this group is "
                 f"not launched in it (job-system.md § 6.0; R-L46).")
     if number is not None:
         # A GROUP A SEQUENCE STILL GOING HOLDS is that job's to launch
@@ -1746,7 +1745,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         # A GROUP'S FIRST LAUNCH: the save its send makes first (R-L24) --
         # the group named by its members, as every way back names it.
         from .group import named
-        plan.save_before = f"launch task {named(calc.task, number)}"
+        plan.save_before = f"launch task {named(calc.request, number)}"
     return plan
 
 
@@ -1763,26 +1762,26 @@ def _checked(calc, machine):
 def _the_group(calc, *, group, only,
                one: bool) -> Tuple[Optional[List[str]], Optional[int]]:
     """``(members, number)`` of what a task's launch sends, by the
-    description's groups (`engines/stages.md` § 2) -- ``members`` the
+    job request's groups (`execution/job-request.md` § 3.3) -- ``members`` the
     group's stages in ladder order, as their jobs name them, when ``group``
     names one, else ``None``; ``number`` the group launched, or the group
     ``only`` is in.  A name in any case is one name.  Refused: a group the
-    description does not hold, or not prepared; a launched group whose
-    members the description changed -- they are fixed; a group whose
+    job request does not hold, or not prepared; a launched group whose
+    members the job request changed -- they are fixed; a group whose
     prepared jobs hold other members than it does now -- its prep forms it
     again (R-L8); ``one`` (``--from`` / ``--cold`` / ``--gather``) for a
     group of several (R-L9); a member's first launch alone while its group
     holds others -- a group goes whole the first time (R-L6)."""
     from ..identity import stage_key
     from .commands import launch_lines, prep_group_lines
-    from .group import group_members, members_of, number_of, same_members
+    from .group import members_of, same_members
     from .ready import regrouped
-    jobset, base, task = calc.jobset, Path(calc.base), calc.task
+    jobset, base, request = calc.jobset, Path(calc.base), calc.request
     if group is None:
         if only is None:
             return None, None
-        number = number_of(task, only)
-        described = group_members(task, number)
+        number = request.group_of(only)
+        described = request.members(number)
         # ``only`` is a job of the plan: resolved against it (`_planned`).
         if ever_launched(calc, jobset.job(only)):
             return None, number
@@ -1797,12 +1796,12 @@ def _the_group(calc, *, group, only,
         if why:
             raise SubmitError(why)
         return None, number
-    members = group_members(task, group)
+    members = request.members(group)
     if not members:
         raise SubmitError(
-            f"group {group}: the description holds groups "
-            f"{', '.join(map(str, sorted({st.group for st in task.stages})))}"
-            f" (engines/stages.md § 2).")
+            f"group {group}: the job request holds groups "
+            f"{', '.join(map(str, request.numbers))}"
+            f" (execution/job-request.md § 3.3).")
     ran = [j for j in map(jobset.job, members)
            if j is not None and ever_launched(calc, j)]
     changed = next((j for j in ran if not same_members(members_of(j),
@@ -1813,12 +1812,12 @@ def _the_group(calc, *, group, only,
         raise SubmitError(
             f"group {group} was launched as "
             f"{', '.join(f'`{m}`' for m in members_of(changed))}, and the "
-            f"description gives it {', '.join(f'`{m}`' for m in members)} "
+            f"job request gives it {', '.join(f'`{m}`' for m in members)} "
             f"now -- a launched group's members are fixed, so it is not "
             f"launched whole.  Launch a member again alone:\n"
             + block(launch_lines("task", ran[0].name, base=base))
             + "\n  or put the members back as they were launched (Task "
-              "setup, or task.json); or, to form the group anew, "
+              "setup, or job-request.json); or, to form the group anew, "
             + redo_launched(changed.name, calc=calc))
     missing = [m for m in members if jobset.job(m) is None]
     if missing:
@@ -2549,9 +2548,8 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *, shape,
         # here the deck itself is verified -- where it IS, the trial's
         # attempt (`project-layout.md` § 1.5a).
         try:
-            check_launch_matches_deck(m.read_from, job, bench=True)
             check_trial_starts_cold(m.read_from, job)
-        except DeckLaunchMismatch as e:
+        except TrialNotCold as e:
             raise SubmitError(str(e)) from e
         run_name = m.names.name(".run.sh")
         if not (m.read_from / run_name).exists():
@@ -2778,10 +2776,6 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             seen_rounds.add(pt.volts)
             empties[len(steps)] = scratch_at
         prior = _before(pt)
-        try:
-            check_launch_matches_deck(stage_dir / pt.rel, job, bench=False)
-        except DeckLaunchMismatch as e:
-            raise SubmitError(str(e)) from e
         tries = next_run(pdir, names)
         # ITS START, one hand-over decided now: its record written beside
         # it, so the record says what each point started from
@@ -3010,10 +3004,6 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     members: List[_Member] = []
     for job in jobs:
         m = _plan_member(calc, job, writes=plan.writes, described=described)
-        try:
-            check_launch_matches_deck(m.read_from, job, bench=False)
-        except DeckLaunchMismatch as e:
-            raise SubmitError(str(e)) from e
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, m.names.name(".run.sh"))]
         members.append(m)
@@ -3125,7 +3115,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     import sys
     from ..runfiles import LAUNCH_DIR
     from .commands import block, prep_sequence_lines
-    from .group import group_members, sequence_names
+    from .group import sequence_names
     from .ready import held_by_sequence
     from .sequence import Record, record_path, record_text
     base, task = Path(calc.base), calc.task
@@ -3146,9 +3136,9 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
         held = held_by_sequence(calc, n)
         if held is not None:
             raise SubmitError(_held_by(held, n, base))
-    groups = [{"number": n, "stages": list(group_members(task, n))}
+    groups = [{"number": n, "stages": list(calc.request.members(n))}
               for n in numbers]
-    names = sequence_names(base, task, numbers)
+    names = sequence_names(base, task, calc.request, numbers)
     words = ", ".join(map(str, numbers))
     # THE FIRST GROUP'S PLAN, made as its own launch makes it now, run here
     # inside the job -- its refusal is this launch's; nothing of it is
@@ -3256,7 +3246,8 @@ def _sequence_header_is_prep_s(calc, numbers, groups, header,
                                      frames=frames_of(base)))
                      if len(js) == 1 else 0) for n, js in jobs_of.items()}
     try:
-        now, _less = sequence_header(base, task, numbers, jobs_of, points_of,
+        now, _less = sequence_header(base, task, calc.request, numbers,
+                                     jobs_of, points_of,
                                      described().environment)
     except PrepError as exc:
         raise SubmitError(str(exc)) from None
@@ -3326,18 +3317,13 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
                          time_s=time_s, told=told, machine=machine,
                          inside=inside)
             continue
-        try:
-            # A NAMED TRIAL'S way back is its benchmark's, not a group's.
-            check_launch_matches_deck(m.read_from, job,
-                                      bench=jobset.kind == KIND_SWEEP)
-            if jobset.kind == KIND_SWEEP:
-                # the cold gate rides the named-trial door too (user,
-                # 2026-08-21) -- one rule, every launch path
+        if jobset.kind == KIND_SWEEP:
+            # the cold gate rides the named-trial door too (user,
+            # 2026-08-21) -- one rule, every launch path
+            try:
                 check_trial_starts_cold(m.read_from, job)
-        except DeckLaunchMismatch as e:
-            # M5: the refusal is the launch's -- the agreement floor states
-            # the fact, this verb is what declines to act on it.
-            raise SubmitError(str(e)) from e
+            except TrialNotCold as e:
+                raise SubmitError(str(e)) from e
         run_name = m.names.name(".run.sh")
         sbatch_name = m.names.name(".sbatch")
         plan.reads += [_as_found(m.read_from / f, base)

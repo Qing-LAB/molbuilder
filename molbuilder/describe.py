@@ -1,4 +1,4 @@
-"""``describe`` — write the portable description, and nothing else.
+"""``describe`` — write the portable description and its job request.
 
 **Module:** L2. Imports ``task``, ``template``, ``identity`` and
 ``validation.task``; imported by ``jobset/_cli``, ``jobset/materialize`` and
@@ -8,15 +8,18 @@ checked in memory, and :func:`write_description` is the only part that touches
 a disk.
 
 **Contract:** [`execution/architecture.md`](?doc=execution/architecture.md) § 4
-— the `describe` route: *"**write** the portable description — the template,
-``task.json``, the data files · ask → check → write · **floor 2 only**"* ·
+— the `describe` route: *"**write** the portable description and its job
+request — the template, ``task.json``, ``job-request.json``, the data files ·
+ask → check → write · **floor 2 only**"* ·
+[`execution/job-request.md`](?doc=execution/job-request.md) § 9 ·
 [`execution/job-system.md`](?doc=execution/job-system.md) § 5.1 (the command) ·
 [`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.1 (what
 makes the folder portable) · [`engines/stages.md`](?doc=engines/stages.md) § 6.6
 (the split preflight).
 
-WHAT IT WRITES, AND WHAT IT MUST NOT.  Two files: ``<label>.template.toml`` and
-``task.json``, plus whatever data files travel (pseudopotentials).  **It renders
+WHAT IT WRITES, AND WHAT IT MUST NOT.  Three files: ``<label>.template.toml``,
+``task.json`` and ``job-request.json`` -- each stage's group, nothing else
+asked yet -- plus whatever data files travel (pseudopotentials).  **It renders
 no deck.**  That is the whole of *floor 2 only*: rendering moved to ``prep``
 step 3 because a deck carries values that depend on how it will be launched
 (`project-layout.md` § 2.3.1), and a description that named a machine would stop
@@ -51,6 +54,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .job_request import FILENAME as JOB_REQUEST_FILENAME
+from .job_request import JobRequest
 from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
 from .template_file import template_filename as _template_filename
@@ -64,10 +69,11 @@ class DescribeError(Exception):
 
 @dataclass(frozen=True)
 class Description:
-    """A calculation's portable description, as **data** — no filesystem.
+    """A calculation's portable description and its job request, as
+    **data** — no filesystem.
 
-    ``task`` is the mission and ``template`` the parameter catalogue; together
-    they are floor 2 entire. ``pseudo_species`` names the elements whose
+    ``task`` is the mission and ``template`` the parameter catalogue;
+    ``request`` how it runs -- with them, floor 2 entire. ``pseudo_species`` names the elements whose
     ``.psml`` files travel with it — the only *data* files a SIESTA calculation
     needs beyond the structure.  The structure is a REFERENCE in this object
     (``task.structure.source`` names it; no bytes here) — but
@@ -78,14 +84,20 @@ class Description:
     task: Task
     template: str
     pseudo_species: Tuple[str, ...] = ()
+    request: Optional[JobRequest] = None
 
     def __post_init__(self) -> None:
-        """EVERY STAGE STATES ITS GROUP (`engines/stages.md` § 2): a ladder
-        a producer built is numbered here, so every description -- `jobset
-        init`'s, the Transport tab's -- is written with them: the defaults
-        repeat the number above wherever the ladder's links allow it."""
-        from .jobset.group import numbered
-        object.__setattr__(self, "task", numbered(self.task, self.template))
+        """EVERY STAGE STATES ITS GROUP (`execution/job-request.md` § 3.3):
+        a new calculation's job request, its ladder numbered here when the
+        producer states none -- `molbuilder describe`'s, the Transport
+        tab's -- the defaults repeating the number above wherever the
+        ladder's links allow it."""
+        if self.request is None:
+            from .job_request import fresh
+            from .jobset.group import default_groups
+            groups = default_groups(self.task, None, self.template)
+            object.__setattr__(self, "request", fresh(self.task, {
+                st.name: g for st, g in zip(self.task.stages, groups)}))
 
     @property
     def label(self) -> str:
@@ -94,15 +106,19 @@ class Description:
         return self.task.label
 
     def files(self) -> Dict[str, str]:
-        """``{filename: text}`` — the two files a description *is*.
+        """``{filename: text}`` — the three files a calculation's start
+        *is*.
 
         The template's name comes from the label and one constant; the
-        description's from the codec that owns it. Neither is spelled out
-        here, because exactly one module owns each name.
+        description's and the job request's from the codecs that own them.
+        None is spelled out here, because exactly one module owns each name.
         """
+        import json
         return {
             _template_filename(self.label): self.template,
             TASK_FILENAME: _task_json_text(self.task),
+            JOB_REQUEST_FILENAME: json.dumps(self.request.to_dict(),
+                                             indent=2) + "\n",
         }
 
 
@@ -218,7 +234,7 @@ def refuse_described(dest, *, shown: Optional[str] = None) -> None:
     """ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse): a folder that
     already holds a description is changed in Task setup or its
     ``task.json``, never described again.  Asked by every door that
-    describes -- `jobset init` and the Transport tab's describe door
+    describes -- `molbuilder describe` and the Transport tab's describe door
     (`engines/transport.md` § 3.8.2a) -- before anything is read or
     written.  ``shown`` is the folder as the door's reader names it (the
     browser's, from the projects root); the path otherwise."""

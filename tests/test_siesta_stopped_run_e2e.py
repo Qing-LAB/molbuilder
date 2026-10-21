@@ -1,7 +1,7 @@
 """A SIESTA run that SIESTA stops, made on the road, and what each reader says
 about it.
 
-``jobset init`` -> ``prep task --group 1`` -> ``launch task --mode direct`` on an
+``molbuilder describe`` -> ``prep task --group 1`` -> ``launch task --mode direct`` on an
 H2 relaxation whose SCF cannot converge within its cap: ten cycles of plain
 linear mixing at weight 0.001 against a DM tolerance of 1e-8, set in the
 calculation's template, with ``SCF.MustConverge`` left at SIESTA's default --
@@ -32,6 +32,7 @@ import pytest
 
 from _road import conda_hook, env_available, env_bin
 from support.road import group_words
+from support.road import molbuilder, read_request, write_request
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CONDA_SH = conda_hook()
@@ -112,7 +113,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         assert (bin_ / "siesta").is_file(), bin_
         mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
 
-        r = _jobset("init", "--structure", "P/structure/h2.xyz",
+        r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                     "--bundle", "P/opt/R", "--engine", "siesta",
                     "--shape", "hierarchical", "--calculation", "optimization",
                     "--name", "H2", "--psml-lib", "pseudopotential",
@@ -120,10 +121,11 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         assert r.exit_code == 0, r.output
         bundle = tree / "P" / "opt" / "R"
         task = json.loads((bundle / "task.json").read_text())
-        task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
-                             "omp_threads": 1}
         assert [s["name"] for s in task["stages"]] == ["coarse", "medium"], task
-        (bundle / "task.json").write_text(json.dumps(task, indent=2))
+        request = read_request(bundle)
+        request["execution"] = {**request.get("execution", {}), "mpi_np": 1,
+                                "omp_threads": 1}
+        write_request(bundle, request)
         for name, value in _CANNOT_CONVERGE.items():
             _set_item(bundle / "H2.template.toml", name, value)
 

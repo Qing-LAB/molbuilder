@@ -1,4 +1,4 @@
-"""What molbuilder prints, you can type -- through the road: `jobset init`,
+"""What molbuilder prints, you can type -- through the road: `molbuilder describe`,
 `prep`, `launch`, `status`, and every command they print, typed back as
 printed (`support.road.each_is_taken`).
 
@@ -28,20 +28,19 @@ from __future__ import annotations
 
 import pytest
 
-from support.road import describe_calculation, each_is_taken, jobset, printed_commands
+from support.road import (describe_calculation, each_is_taken, jobset,
+                          printed_commands, read_request, write_request)
 
 
 def _described(tmp_path, monkeypatch, **kw):
-    """`describe_calculation`'s calculation, its description stating the wall and the
-    memory too -- the two values a job handed to a scheduler states
+    """`describe_calculation`'s calculation, its job request stating the wall
+    and the memory too -- the two values a job handed to a scheduler states
     (`architecture.md` § 5.2) -- so the `--mode submit` line a next step
     prints is one that is taken, as it is for a person who stated them."""
-    import json
     bundle = describe_calculation(tmp_path, monkeypatch, **kw)
-    tj = bundle / "task.json"
-    d = json.loads(tj.read_text())
-    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
-    tj.write_text(json.dumps(d, indent=2))
+    request = read_request(bundle)
+    request["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    write_request(bundle, request)
     return bundle
 
 

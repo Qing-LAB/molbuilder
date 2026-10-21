@@ -1,4 +1,4 @@
-"""`prep` refuses before it writes -- through the road: `jobset init`, `prep`.
+"""`prep` refuses before it writes -- through the road: `molbuilder describe`, `prep`.
 
 PINS: ``docs/execution/job-system.md`` § 5.4 (*what cannot be taken is
 refused before anything is written too: a run that is not an attempt of this

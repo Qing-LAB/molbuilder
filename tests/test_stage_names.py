@@ -1,4 +1,4 @@
-"""A stage is named the way it is typed -- through the road: `jobset init`,
+"""A stage is named the way it is typed -- through the road: `molbuilder describe`,
 the Task-setup save, `prep`, the deck's own header, `launch --dry-run`.
 
 PINS: ``docs/execution/job-system.md`` § 5.3 (a stage is its name, in any
@@ -27,6 +27,7 @@ import re
 
 import numpy as np
 import pytest
+from support.road import molbuilder, read_request, save_both, write_request
 
 
 def _jobset(*args):
@@ -37,7 +38,7 @@ def _jobset(*args):
 
 
 def _described(tmp_path, monkeypatch, engine, calculation):
-    """`jobset init` on a held H2 in a box, the way a person starts one."""
+    """`molbuilder describe` on a held H2 in a box, the way a person starts one."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
@@ -56,7 +57,7 @@ def _described(tmp_path, monkeypatch, engine, calculation):
         tree / "P" / "structure" / "h2.xyz")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
-    r = _jobset("init", "--structure", "P/structure/h2.xyz",
+    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", f"P/{calculation}/H2", "--engine", engine,
                 "--shape", "hierarchical", "--calculation", calculation,
                 "--name", "H2",
@@ -66,11 +67,10 @@ def _described(tmp_path, monkeypatch, engine, calculation):
     bundle = tree / "P" / calculation / "H2"
     # THE RUN CARD STATES THE LAUNCH SHAPE, as a person's does: a run whose
     # shape is stated nowhere is refused at prep (`architecture.md` § 5.2).
-    tj = bundle / "task.json"
-    d = json.loads(tj.read_text())
-    d["execution"] = ({"mpi_np": 2, "omp_threads": 1} if engine == "siesta"
-                      else {"threads": 1})
-    tj.write_text(json.dumps(d, indent=2))
+    request = read_request(bundle)
+    request["execution"] = ({"mpi_np": 2, "omp_threads": 1}
+                            if engine == "siesta" else {"threads": 1})
+    write_request(bundle, request)
     return bundle
 
 
@@ -126,14 +126,11 @@ def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
     MUTATIONS THIS MUST FAIL AGAINST: the role rule matching the exact name
     (`Relax` renders force constants); prep finding the relaxation rung by
     the exact name (`freq` is told the ladder has no relax stage)."""
-    from molbuilder.web.app import create_app
     bundle = _described(tmp_path, monkeypatch, "siesta", "vibration")
     task = json.loads((bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"], task
     task["stages"][0]["name"] = "Relax"
-    r = create_app(config={}).test_client().post(
-        "/api/task-setup/save",
-        json={"dest": str(bundle), "text": json.dumps(task)})
+    r = save_both(bundle, task, read_request(bundle))
     assert r.status_code == 200, r.get_json()
 
     r = _jobset("prep", "task", "--group", "1", "--bundle", bundle,

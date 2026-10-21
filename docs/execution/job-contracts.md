@@ -46,8 +46,9 @@ actually open, and who writes them:
 
 | file | what it is | writer | section |
 |---|---|---|---|
-| `task.json` (`molbuilder/task@1`) | the description: engine, shape, stages, bench axes | `init` / Task-setup save / the transport describe door | § 2 |
-| `<label>.template.toml` | the answers, narrowed to one engine | `init` / a hand-over / the transport describe door | § 2 |
+| `task.json` (`molbuilder/task@2`) | the description: engine, shape, stages and what each varies | `molbuilder describe` / Task-setup save / the transport describe door | § 2 |
+| `job-request.json` (`molbuilder/job-request@1`) | how and where it runs: the scheduler ask, the run cards, the groups, bench axes, the reports | `molbuilder describe` / Task-setup save / the transport describe door | [`job-request.md`](?doc=execution/job-request.md) |
+| `<label>.template.toml` | the answers, narrowed to one engine | `molbuilder describe` / a hand-over / the transport describe door | § 2 |
 | `environment.json` (`environment@3`) | what a machine IS: its scheduler, topology, domains, ceilings | `jobset probe` | § 6.1 |
 | `job-set.json` | floor 3 — the derived work list | `prep`, on the target | § 2 |
 | `<label>.run.sh` / `.sbatch` | the wrapper + submission script, with reserved `=== molbuilder ... ===` blocks | `prep` | § 3 |
@@ -208,8 +209,8 @@ waits for its closing lines ([`run-reports.md`](?doc=execution/run-reports.md)
 
 **It carries the notifier, and that is why nobody has to be at the cluster**: a
 run that ends at 3 am can say so. The calculation states *when* to speak and to
-*which channels, by name*, in `task.json`'s `notify` block
-([`stages.md`](?doc=engines/stages.md) § 6.9); what a name resolves to is the
+*which channels, by name*, in `job-request.json`'s `notify` block
+([`job-request.md`](?doc=execution/job-request.md) § 3.5); what a name resolves to is the
 user's own file on the machine that runs the job, which never travels with the
 description ([`run-reports.md`](?doc=execution/run-reports.md) §§ 1, 3). What
 should happen when something notable occurs, and how often, is the user's to
@@ -868,11 +869,11 @@ the string*.
 
 | verb | takes | citation |
 |---|---|---|
-| `init`, `prep`, `launch`, `status`, `summarize`, `migrate`, `scratch` | `--bundle` | **tree address**, fenced to the root |
-| `init` | `--structure` | **tree address** — a structure lives in `<project>/structure/` |
+| `molbuilder describe`; `jobset prep`, `launch`, `status`, `summarize`, `migrate`, `scratch` | `--bundle` | **tree address**, fenced to the root |
+| `describe` | `--structure` | **tree address** — a structure lives in `<project>/structure/` |
 | `prep` | `--from NN_relax/run-N` | inside-bundle |
 | `launch` | `--from NN_STAGE/run-N` | inside-bundle |
-| `init` | `--psml-lib` | § 2.5a's rule — a path inside the tree, measured from its root |
+| `describe` | `--psml-lib` | § 2.5a's rule — a path inside the tree, measured from its root |
 
 *(`probe --out DIR` stood here — a directory for the record — until
 2026-10-02, when it was removed (user: "probe --out goes away"): the record's
@@ -882,24 +883,14 @@ and a probe run elsewhere is copied there, never written beside it.)*
 **Every verb names a calculation the same way, through one declaration.**
 `--bundle` is a single `click.option` shared by all seven
 (`_cli._bundle_option`); the rule, the fence and the refusal text exist
-once. `init` differs from the other six in exactly one respect — its bundle **may not exist yet**, because it is
-the verb that creates one — and that is a parameter of the shared option,
-not a second option with its own semantics.
-
-> **`init` was called `describe` until 2026-08-22.** Two things were wrong
-> with the old form. The name: it is the only verb that was named after its
-> output rather than its action, which is why a verb that creates a whole
-> calculation read like one that prints a summary — `prep` does not write
-> "a prep", `launch` does not write "a launch". And the addressing: it took
-> two bare `click.Path` positionals read from the working directory, so it
-> could create a calculation **outside** the tree that every other verb
-> then refused to act on — a state reachable by following the tool's own
-> help.
->
-> The artifact keeps its name. What `init` writes is still **the
-> description**, floor 2 is still the description floor, and
-> `write_description` is still what writes it. A verb names an action; an
-> artifact keeps its own noun.
+once. `describe` differs from the other six in exactly one respect — its
+bundle **may not exist yet**, because it is the verb that creates one — and
+that is a parameter of the shared option, not a second option with its own
+semantics. **It is not a `jobset` verb**: it writes a calculation — its
+description, its job request and its data files (`describe.write_description`)
+— which no job runs yet ([`job-request.md`](?doc=execution/job-request.md) § 9). A calculation is created inside
+the tree, never from bare paths read in the working directory, so every other
+verb can act on it.
 
 
 
@@ -1109,8 +1100,9 @@ molbuilder generates engine input that gets **copied** out of the edit
 directory into project/run directories and travels onward — often away from
 its originating `.molstruct.json` sidecar. To keep provenance and label
 metadata attached to the script itself, molbuilder reserves **comment-block
-regions** of every generated file for its own use, plus one clearly-marked
-zone the user owns.
+regions** of every generated file for its own use — and in a PySCF script one
+block of live lines, RUN-SETTINGS, below — plus one clearly-marked zone the user
+owns.
 
 The payoff: `tail -40 my-job.fdf` answers "which molbuilder made this, with
 what defaults" *(this said `head -50` while the record blocks led the file —
@@ -1129,8 +1121,9 @@ nearer 300) before the first SIESTA keyword.  The record is data ABOUT the
 file, so it follows the calculation behind the machine-record banner;
 USER-CUSTOM stays on the science side of that line because it is the one
 block a person is meant to edit.  The code carried this rationale; the
-contract now does too.)* **Every reserved block is optional** — a file with
-none of them is still a valid engine input. Only the ENGINE BODY is always
+contract now does too.)* **Every reserved block is optional** but a PySCF
+script's RUN-SETTINGS, whose names the script's own lines read — a file with
+none of the others is still a valid engine input. Only the ENGINE BODY is always
 present (it is the file's actual content, not a "block"). A tool that needs
 a specific block refuses cleanly when it is absent, rather than guessing —
 and parsers find blocks by MARKERS, never by position, so the order is
@@ -1148,7 +1141,8 @@ flowchart TD
     V["VIBRATION  — what a SIESTA force-constant job's finish reads"]
     E --> U --> M --> P --> B --> A --> O --> V
 ```
-*(HEADER remains reserved-but-unemitted.)*
+*(HEADER remains reserved-but-unemitted. RUN-SETTINGS is a PySCF script's
+first lines, before its first import, which the lines after it read.)*
 
 Every reserved block is delimited by literal marker lines; parsers find
 blocks by scanning for them.  **The grammar has one home, `molbuilder/deck_record.py`**
@@ -1188,12 +1182,25 @@ block is emitted by every engine):
 | ENGINE-OFFSET | ✅ | ✅ | ✅ | — |
 | VIBRATION | ✅² | — | — | — |
 | USER-CUSTOM | ✅ | ✅ | — | ✅ |
+| RUN-SETTINGS | — | ✅ | — | — |
 
 ¹ Conditional — emitted only when the structure has something the block carries: a label, a channel, a named value or an order record (§ 3.4) — so a deck written from a remapped structure always carries it (`model/overview.md` § 2.2a, I5; 2026-10-14).
 ² A force-constant deck only (`engines/vibration.md` § 5.3): the stationarity
 criterion, the person's statement and the relax stage's relaxation record,
 which the job's finish reads — written by `script_emit.emit_vibration_record`,
 read by `deck_record.extract_vibration_record`.
+
+**RUN-SETTINGS — a PySCF script's run settings, in one block** *(2.27.0)*.
+Live lines, not comments, between the block markers, at the script's head:
+the names the script gives every run setting it carries — its threads, its GPU
+switch and count, its memory cap, its wall slack (`THREADS`, `USE_GPU`, `GPU_COUNT`, `MAX_MEMORY_MB`, `WALL_SLACK`) — which
+every other line reads by name, the effective-parameters table (`_MB_PARAMS`)
+included. It is what the same-calculation door sets aside for a PySCF deck
+([`job-request.md`](?doc=execution/job-request.md) § 6), so a
+launched stage may be launched with another request and its script stay the
+same calculation. A SIESTA deck needs
+no such block: its door reads keywords by name, and leaves the run settings' aside
+wherever they stand.
 
 > **HEADER is reserved but not currently emitted.** The grammar reserves a
 > HEADER block and `script_emit.emit_header` exists, but no generator calls it
@@ -1202,7 +1209,7 @@ read by `deck_record.extract_vibration_record`.
 > **BENCH-MARKS is SIESTA-only, and stays that way** *(retired 2026-09-03,
 > user: "retire all of them")*. A PySCF bench block was named in the design and
 > never built; it is not a gap awaiting a fix. The bench lane speaks SIESTA
-> (`stages.md` § 6.8) — its measurement pins are SIESTA catalogue fields —
+> (`job-request.md` § 3.4) — its measurement pins are SIESTA catalogue fields —
 > so a block declaring overrides for an engine the lane refuses would be the
 > deck advertising something nothing can use.
 
@@ -1272,7 +1279,8 @@ generation time:
   items the rung reads, the scheduler's excepted, which `resolved-defaults`
   reports — by the template's own name for it, and where its value came from:
   `resolve`'s layer (*a pin · a sweep point · this stage's override · the
-  rung*) and, for the template's, the template's own record of it (*the
+  rung*), a run setting's (*the stage's run card · the calculation's run card
+  · the catalogue's default · not chosen*, [`job-request.md`](?doc=execution/job-request.md) § 4) and, for the template's, the template's own record of it (*the
   template · from the junction you cited · you set this · not chosen · not
   recorded*). *Not chosen* marks a value nobody chose — obligation 4's mark:
   the documented default, written; and for an optional item nobody set, the
@@ -1410,15 +1418,13 @@ a catalogue that says `1000` and `300.0`.)*
   > an absent field as *"not offered for override"* rather than as an error,
   > which § 3.1's *"every reserved block is optional"* already requires of it.
 
-- **The metadata carries the launch the deck was rendered for.** `mpi_np`
-  joins `n_atoms` and `gpu_mode`, so a deck meeting a different launch is
-  caught: `prep` warns and `launch` refuses when the deck's `mpi_np` differs
-  from the job's (`jobset/agreement.py`), and the way back is a new prep of a
-  stage never launched; a launched one is not prepared again (its way back,
-  [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint
-  supports you*). PROVENANCE records the rank count too;
-  that block is the record a **human** reads, and this is the one a **tool**
-  parses.
+- **The metadata records the launch the deck was rendered for** — `mpi_np`
+  beside `n_atoms` and `gpu_mode`, the rank count `BlockSize`'s window is drawn
+  from. It is a record and nothing reads it as a launch: one prep renders the
+  deck and its launch together, and launch sends what prep wrote
+  ([`architecture.md`](?doc=execution/architecture.md) A3; [`job-request.md`](?doc=execution/job-request.md) § 6).
+  PROVENANCE records the rank count too; that block is the record a **human**
+  reads, and this is the one a **tool** parses.
 
 > **BENCH-MARKS and the template are emitted from ONE source, and that is a
 > rule rather than a convenience.** Both declare `type`, `range`, `unit` and
@@ -1627,7 +1633,7 @@ when that arm went — `script-preparation.md` § 3.0)*.
 |---|---|
 | the web Build tab, regenerating | **preserved** — merged twice over, harmlessly |
 | the web Build tab, edit-save | **preserved** — the merge is skipped on purpose, because you are committing your own text and a merge would undo edits *inside* the zone |
-| `jobset prep` of a stage already prepared | a stage never launched is **prepared again**, its group whole; a launched one is **refused** — its way back is [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports you* |
+| `jobset prep` of a stage already prepared | a stage never launched is **prepared again**, its group whole; a launched one is prepared again for its job request on the hierarchical layout when each deck is the same calculation as its runs ran — a USER-CUSTOM block its run's deck held, rendered empty now, is a difference — and else **refused**, on the flat layout always ([`job-request.md`](?doc=execution/job-request.md) § 5): its way back is [`job-system.md`](?doc=execution/job-system.md)'s *How the checkpoint supports you* |
 | `jobset prep`, every kind — transport too | **empty** — a stage is rendered from its description each time it is prepared (a stage never launched, again), never from its previous deck's text |
 
 > **This table listed `prep` and the CLI as LOSING the text until 2026-09-05,
@@ -2290,11 +2296,12 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `schema`, `generated_at`, `environment`, `system`, `points`, `choice`, `tool` — *this row said `points`, `choice`, `recommend` until 2026-09-05; `recommend_resources` was deleted 2026-08-24 (user) and `to_dict()` has not emitted it since, though records written before then still carry the key on disk* |
 | Bench group | `<seq>_<stage>/bench/launch/bench-group-<side>-<cell>.run.sh` + its `.log` for a shelf sent to a queue (`bench-group-cpu-G0K4C1`, its name in full always -- `generator.md` § 4.3a), `bench-group.run.sh` + `bench-group.log` for the walk of every unlaunched trial here (flat: `bench_<seq>_<stage>/launch/`) (+ its `.sbatch`, written at the benchmark's prep, and SLURM's own `slurm.%j.out` — all four in `launch/`, roadmap 7.10 L3, so the container holds trial directories and one folder rather than the group's machinery mixed among them) — the grouped submission's sequencer and its log (user, 2026-08-20): the sequencer regenerated at each `launch bench <stage>` — sent to a queue, or run here (one walk of them all, `--mode direct`) — from the trials still unlaunched, through the benchmark's walk (`submit._walk_script`, `job-system.md` § 6.0); runs each from the container (the parent that sees every trial) — under the per-trial bound `--trial-timeout` gives, and, run here, told its own wall (`running-a-job.md` § 3.6) — and exits nonzero when any trial failed so `squeue` prompts a look at the log. **One group per side AND resource shelf** (`generator.md` § 4.3a, 2026-08-21), named in full always (`runfiles.GroupNames.of_trials`): its side, `-cpu`/`-gpu`, and its shelf token (`-G2K16C1` = 2 GPUs, 16 ranks **per GPU**, 1 core per rank) — **the same spelling its trials carry**, read off a trial rather than derived a second way. It was `-g2n32c1` (lowercase, `n` = TOTAL ranks) until 2026-08-24, while the very directories that job launches were named `bench-G2K16C1…`: same three facts, two vocabularies, side by side in one listing — which is what § 6.3 exists to prevent. Same files per group, each an exact-fit allocation so nothing idles inside it. | *(bash + text)* | `jobset/submit.py` | one `run_member` line per pending trial |
 | Bench report | **not a file.** `jobset summarize` PRINTS what was measured and the `execution` block that would use it; a run uses it only once someone has written that block. It was `<seq>_<stage>/bench/bench-recommendation.txt` until 2026-09-04 — zero were ever written across the project tree — and `run-config.toml`, `molbuilder/run-config@1`, an editable TOML `prep run` folded in, until 2026-09-02. | *(no file)* | `jobset/summarize.py` | — |
-| Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` — each job written WHOLE, every key every time (`name`, `script`, `resources`, `warm`, `traits`, `point`, `finish`, `resumes`, `scratch_dir`, `placement`, `members`, `written_at`, `asked`; `null` or `{}` where there is none; `members` — the members of the job it was prepared in, its group's in the description, in ladder order, this one among them, `null` for a group of one ([`engines/stages.md`](?doc=engines/stages.md) § 2, [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6); `scratch_dir` — the folder of a device run's own its engine's scratch lies in, the vocabulary's (§ 4.2a), `null` for every other stage; `written_at` — a SIESTA force-constant stage's `relax` run its deck is written at, decided at its prep, whose files its first launch copies ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a), `null` for every other stage — and `asked` — what its prep was told beside the description: `allocation`, the launch values its command line said, `env` and `emit_sbatch`, so launch plans the stage again as its prep did when it checks the prepared stage is still what the description gives ([`job-system.md`](?doc=execution/job-system.md) § 6.0); a set whose jobs lack any of these keys is refused naming `jobset migrate` for its folder, which writes them): its `resources`, and for a run prepared for a queue its `placement`: the queue prep placed it on (`domain`, `partition`, `qos`) and where each value came from (`from`: `flag`, `run card` or `description`, per field) — what its header renders, and launch sends to ([`job-system.md`](?doc=execution/job-system.md) § 6.0) |
+| Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` — each job written WHOLE, every key every time (`name`, `script`, `resources`, `warm`, `traits`, `point`, `finish`, `resumes`, `scratch_dir`, `placement`, `members`, `written_at`, `asked`, `program`; `null` or `{}` where there is none; `members` — the members of the job it was prepared in, its group's in the job request, in ladder order, this one among them, `null` for a group of one ([`job-request.md`](?doc=execution/job-request.md) § 3.3, [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6); `scratch_dir` — the folder of a device run's own its engine's scratch lies in, the vocabulary's (§ 4.2a), `null` for every other stage; `written_at` — a SIESTA force-constant stage's `relax` run its deck is written at, decided at its prep, whose files its first launch copies ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a), `null` for every other stage — and `asked` — what its prep was told beside its records: `allocation`, the launch values its command line said, `env` and `emit_sbatch`, so launch plans the stage again as its prep did when it checks the prepared stage is still what the description gives ([`job-system.md`](?doc=execution/job-system.md) § 6.0); a set whose jobs lack any of these keys is refused naming `jobset migrate` for its folder, which writes them): its `resources`, and for a run prepared for a queue its `placement`: the queue prep placed it on (`domain`, `partition`, `qos`) and where each value came from (`from`: `flag`, `run card` or `allocation`, per field) — what its header renders, and launch sends to ([`job-system.md`](?doc=execution/job-system.md) § 6.0) |
 | Warm-file vocabulary | `<engine>/warm-files.toml`, shipped IN the engine's package (§ 4.2a); a calculation may carry its own copy (U6a) | `molbuilder/warm-files@1` | `warmfiles.py` | `[base]` + one section per calculation type; rows of `suffix` · `carry` · `requires_same` · `honoured_by`; a section's own `resumes`, and for a swept kind `along`, `scratch`, `scratch_dir` |
-| Task hand-over | `task.1st.json` — beside where `task.json` will go; **removed** when the description is saved | `molbuilder/task-handover@1` | `web/blueprints/build.py` (`api_task_setup_handover`) | `_what` (a line saying what the file is, since JSON has no comments), `engine`, `run`, `structure`, `awaiting` — the keys it is missing and who supplies them. **Deliberately not `molbuilder/task@1`**: it has no `shape`, so it would fail that schema's own reader, and `check_schema` refuses a wrong artifact by name. The extension is last (`task.1st.json`, not `task.json.1st`) so the editor highlights it as JSON and so nothing looking for `task.json` finds it — `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder is a calculation root |
-| Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]`, `calculation` (the KIND, written every time — an optimization's was left out until 2026-10-06, plan W57 R10; a description written before is refused naming `jobset migrate` for its folder), `bench` (the declared benchmark lane: pins, machine axes and value axes — `generator.md` § 4.3a), `allocation` (what this calculation ASKS THE SCHEDULER FOR — `domain` / `time` / `mem`, each optional, absent meaning unstated; `engines/stages.md` § 6.8a), `notify` (WHEN to speak, to which channels by name, with what — never where: the destination lives on the running machine; a block is written whole, its four keys every time, `stages.md` § 6.9), and the transport composite's pair: `slots` (exactly one `junction` citation, by its tree-relative path ([`engines/transport.md`](?doc=engines/transport.md) § 3.1): a finished relaxation run's folder, or a structure pair's `.xyz` whose `.molstruct.json` carries `info.calculation`) + `bias` (the voltage list; >1 is a sweep) + `swap_electrodes` (the electrode rename it makes on its own copy of the junction, `engines/transport.md` § 4; false writes no key; 2.5.0's `centre_junction` is retired — `jobset migrate` removes it), its `stages` the five rungs in order, every one, and its shape hierarchical (`task.fixed_by_kind`) — **what changes**; what does not is in `<label>.template.toml` (a transport calculation's too: its `jobset init` and the Transport tab write one, defaulted from the cited run, and prep refuses one without it — `engines/transport.md` § 2a.3) |
-| Template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>`, and `written_by` — the molbuilder version that wrote it, since 2.1.0 (`template.md` § 3) — *(`fingerprint` was another top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — `prep` resolves it from `environment.json`). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
+| Task hand-over | `task.1st.json` — beside where `task.json` will go; **removed** when the description is saved | `molbuilder/task-handover@1` | `web/blueprints/build.py` (`api_task_setup_handover`) | `_what` (a line saying what the file is, since JSON has no comments), `engine`, `run`, `structure`, `awaiting` — the keys it is missing and who supplies them. **Deliberately not `molbuilder/task@2`**: it has no `shape`, so it would fail that schema's own reader, and `check_schema` refuses a wrong artifact by name. The extension is last (`task.1st.json`, not `task.json.1st`) so the editor highlights it as JSON and so nothing looking for `task.json` finds it — `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder is a calculation root |
+| Task description | `task.json` | `molbuilder/task@2` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` (each its `name` and `overrides`), `calculation` (the KIND, written every time — a description written before is refused naming `jobset migrate` for its folder), and the transport composite's pair: `slots` (exactly one `junction` citation, by its tree-relative path ([`engines/transport.md`](?doc=engines/transport.md) § 3.1): a finished relaxation run's folder, or a structure pair's `.xyz` whose `.molstruct.json` carries `info.calculation`) + `bias` (the voltage list; >1 is a sweep) + `swap_electrodes` (the electrode rename it makes on its own copy of the junction, `engines/transport.md` § 4; false writes no key; 2.5.0's `centre_junction` is retired — `jobset migrate` removes it), its `stages` the five rungs in order, every one, and its shape hierarchical (`task.fixed_by_kind`) — **what is computed, and what changes**: nothing of how it runs, which is the job request's (next row; a description holding a job key is refused naming `jobset migrate`); what does not change is in `<label>.template.toml` (a transport calculation's too: its `molbuilder describe` and the Transport tab write one, defaulted from the cited run, and prep refuses one without it — `engines/transport.md` § 2a.3) |
+| Job request | `job-request.json`, beside `task.json` | `molbuilder/job-request@1` | `job_request.py` | `allocation` (what this calculation ASKS THE SCHEDULER FOR — `domain` / `time` / `mem` / `gpu_binding`, each optional, absent meaning unstated), `execution` (the calculation's run card), `stages` (every stage of the description by its name: its `group`, and its own `execution`), `bench` (the declared benchmark lane: pins, machine axes and value axes — `generator.md` § 4.3a), `notify` (WHEN to speak, to which channels by name, with what — never where: the destination lives on the running machine; a block is written whole, its four keys every time) — **how and where the calculation runs**, never what it computes ([`job-request.md`](?doc=execution/job-request.md)) |
+| Template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>`, and `written_by` — the molbuilder version that wrote it, since 2.1.0 (`template.md` § 3) — *(`fingerprint` was another top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — its answers are the job request's run cards, else the catalogue's default, [`job-request.md`](?doc=execution/job-request.md) § 2, § 4; the target's record checks the machine's and supplies none). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` — the structure→execution pair (a built/modified structure travelling into a description); the run→calculation use of this pair retired 2026-08-29 with `bundle_writer.py` (§ 5 — citations replaced it) | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `workingcopy_structure.StructureCodec`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `geometry_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` — a trial keeps attempts as a stage does (`project-layout.md` § 1.5a), so a launched trial's attempt carries one too; a flat stage's run's own `<basename>-run<N>.run.json` beside its deck, one per run number, a warm retry's included (`project-layout.md` § 1.6.3; one `<basename>.run.json` per stage until 2026-10-06, refused since, naming `jobset migrate` for its folder); written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `runrecord.py` (`write_launch`, through `persist`, a retry's by `record_retry` beside the job; read by `launch_record` — one that does not read is an error naming the file) | every key, every time, its null an answer: `mode`, `command`, `job_id` (null for a run here), `launched_at`, `continued_from` (null: it started from the structure), `placed_on` (the queue — domain, partition, qos — and the wall and memory it was sent with, read off the header prep wrote by its kind's spelling, the wall the launch's `--time` where it restated one — `submit._Sent`, [`scheduler.md`](?doc=execution/scheduler.md) R9; null for a run here, which no queue placed), `retry_of` (null for a launch; for a warm retry, the number of the run it retries — its other keys are that run's launch's, the same job, but its own start and `continued_from`, the run it retries), `scheduler` (null for a run here; for a job sent to a queue, `{kind, stderr}` — the scheduler kind it was sent to and where that scheduler writes the job's error file, from the run's own folder: the attempt's own, or the `launch/` folder of the walk it rides; `stderr` null where the job's id was not read — the file the run door reads for how the scheduler ended the job, [`scheduler.md`](?doc=execution/scheduler.md) R16; written by the one sender, which knows the job's id and where the header it sent lies — the scheduler writes its output files beside it), `sequence` (null for every run but one a sequence's group sent: the sequence's name, its walk and launch record in the calculation's `launch/`, [`job-system.md`](?doc=execution/job-system.md) § 6.0, *A sequence of groups* — its `mode`, `command`, `job_id`, `placed_on` and `scheduler` then the job's, as the sequence's launch record states them; a record without it was written by a launch that sent its run itself) *(`continued_from` and `placed_on` were left out in those cases until 2026-10-06; `retry_of` is written since then, and a record without it was written by a launch; a record without `scheduler` was written before it was recorded, and the scheduler's word is looked for where that job's header put it — the run's own folder, under the file catalogue's name, `slurm.<id>.err`)* |
@@ -2460,11 +2467,11 @@ them; within a layer, one concept has exactly one name.
 |---|---|---|---|
 | MPI ranks | `mpi_np` | `mpi_np` → `-n` | *(same name)* |
 | OMP cores / rank | `omp_threads` (SIESTA), `threads` (PySCF) | **`cpus_per_task`** → `-c` | `resolve.py` — the allocation is assembled at `prep` in exchange names (`--cpus-per-task`); a sweep's `C` axis reaches it through `MachineTranslation` |
-| Walltime | `time` (`allocation`, the run card) | **`time`** → `-t` | `scheduler.quantities.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
+| Walltime | `time` (`allocation`, the run card) | **`time`** → `-t` | `scheduler.quantities.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `job-request.md` § 3.1 |
 | Memory | `mem` (`allocation`) | `mem` → `--mem` | `scheduler.quantities.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
 | Per-rank memory cap | `max_memory_mb` | `max_memory_mb` — **not a SLURM flag** | the wrapper's `ulimit -v`. A different question from `mem`, which asks the *scheduler*; they shared a row until 2026-08-24 and the row could not describe either translation correctly |
 | Whole-node | — *(`gpu.exclusive` until 2026-10-01; nothing asks for one since)* | `exclusive` → `--exclusive --mem=0`, the kind's `whole_node`, written instead of `--mem` | — |
-| GPU binding | `allocation.gpu_binding` (`task.json`) | `gpu_binding` → `--gres-flags=enforce-binding` beside a GPU ask, unless `false` | `prep`'s fold of the description (`execution/gpu.md` G9) |
+| GPU binding | `allocation.gpu_binding` (`job-request.json`) | `gpu_binding` → `--gres-flags=enforce-binding` beside a GPU ask, unless `false` | `prep`'s fold of the job request (`execution/gpu.md` G9) |
 | Partition | — *(the target's record)* | `partition` → `-p` | resolved from `domain` |
 | QoS | — *(the target's record)* | `qos` → `-q` | resolved from `domain` |
 | Routing domain | `domain` (`allocation`, the run card) | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
@@ -2517,21 +2524,22 @@ rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **sixteen** fields: eight the
-scheduler reads, and eight riders that become no scheduler flag. A rider rides
+The `jobset.Resources` dataclass holds exactly **sixteen** fields — the job's
+request, and nothing of what it computes: eight the scheduler reads, and eight
+riders that become no scheduler flag. A rider rides
 here because the alternative is a second hand-kept road from a job to its
 wrapper, and a copied argument list has lost fields on that road before.
 
 | field | read by | what it carries |
 |---|---|---|
 | `domain` · `time` · `exclusive` · `mem` · `gres` · `gpu_binding` · `mpi_np` · `cpus_per_task` | the submit engine | the ask the scheduler reads (the table above); `gpu_binding` is the calculation's switch for the binding a GPU ask carries (`execution/gpu.md` G9) |
-| `program` | the wrapper | WHICH binary it launches; unset is the engine's own. The transmission stage's is `tbtrans` (`engines/transport.md` § 6.1b) |
 | `continue_retries` | the wrapper | the warm-retry budget — the table's last row above; running-a-job.md § 3.5 |
 | `max_memory_mb` | the wrapper | its `ulimit -v` cap — a runtime guard against a runaway allocation, distinct from `mem`, which asks the scheduler |
+| `wall_slack` | the wrapper | how much of the wall the engine keeps to stop cleanly, its files saved ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6) |
 | `use_gpu` | the wrapper | *does this run use a GPU* — carried, so a PySCF GPU run routes too; a SIESTA deck's own GPU keywords answer only where nothing is carried — a wrapper for a deck someone points at, which has no allocation (`execution/gpu.md` G7) |
 | `notify_on_scf` · `notify_every_hours` | the monitor's command line | WHEN the calculation speaks (run-reports.md § 2) |
 | `notify_channels` | the monitor's command line | WHICH of the running machine's channels, by name. Unset renders no flag and means every channel; an empty tuple renders one and means none (run-reports.md § 3.0) |
-| `notify_report` | the monitor's command line | WHICH report fields a chat card shows — the name is always sent. Unset is every field; an empty tuple is the summary line alone (stages.md § 6.9) |
+| `notify_report` | the monitor's command line | WHICH report fields a chat card shows — the name is always sent. Unset is every field; an empty tuple is the summary line alone (job-request.md § 3.5) |
 
 **Where to send a report never rides here**: a wrapper is a file in the run
 directory, readable by anyone who can see the filesystem, so an address and
@@ -2542,14 +2550,14 @@ equality test now holds it to the dataclass in both directions.)*  `partition`
 and `qos` are **not** `Resources` fields; they are the target record's,
 resolved from `domain`.
 
-**Besides its name, script and `resources`, a `Job` carries `warm` and `traits`** — which
+**Besides its name, script and `resources`, a `Job` carries `program`** — which binary runs its deck: the rung's own, the transmission's `tbtrans` (`engines/transport.md` § 6.1b), `null` the engine's — a fact of what the rung is, never of its request, so it rides the job and not its `Resources`; **and `warm` and `traits`** — which
 files it would take from a run it is continued from, and the values a condition
 on one is compared against — and `point` (a trial's sweep coordinate), `finish`
 (the bundle that finishes a run its engine leaves unfinished), `resumes` (whether
 a re-run of its kind continues, § 4.2a), `placement` (the queue its prep
 placed it on and where each value came from, [`job-system.md`](?doc=execution/job-system.md)
 § 6.0), `members` (the members of the job it was prepared in, in order — one job,
-[`engines/stages.md`](?doc=engines/stages.md) § 2,
+[`job-request.md`](?doc=execution/job-request.md) § 3.3,
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6), `written_at`
 (a force-constant stage's `relax` run, decided at its prep) and `asked` (what
 its prep was told beside the description). None is a resource, and none names

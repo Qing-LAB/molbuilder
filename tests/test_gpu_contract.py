@@ -2,7 +2,7 @@
 
 THE CASES ARE DATA -- ``tests/data/gpu_contract.toml`` -- and each runs down
 the road a person runs (`support.road.run_road_case`, the one runner every
-contract table shares): `jobset init`, the description and the target's
+contract table shares): `molbuilder describe`, the description and the target's
 record written as the case says, `prep`, `launch --dry-run`, and on a
 machine with no queue the run script's own dry run.  Three layers (user,
 2026-10-01: "(1) query, allow or deny, (2) correctly produce slurm

@@ -1,12 +1,14 @@
 """A described calculation, read through one door (`execution/architecture.md`
 § 3.2, rule A16; `project-layout.md` § 2.1).
 
-A DESCRIBED CALCULATION is a template plus ``task.json`` in one folder, and
-its plan (``job-set.json``) once a prep wrote one.  Every verb that works on
-a calculation opens it HERE, once, and passes the object down -- prep, launch,
-status, summarize, the readiness doors, the Task setup tab's routes.  Each
-record is read by its owner's door, which takes the folder (`task.of`,
-`template_file.of`, `JobSet.of`); nothing here forms a path.  A plan with no
+A DESCRIBED CALCULATION is a template plus ``task.json`` in one folder, with
+its job request beside them (``job-request.json``, `execution/job-request.md`),
+and its plan (``job-set.json``) once a prep wrote one.  Every verb that works
+on a calculation opens it HERE, once, and passes the object down -- prep,
+launch, status, summarize, the readiness doors, the Task setup tab's routes.
+Each record is read by its owner's door, which takes the folder (`task.of`,
+`job_request.of`, `template_file.of`, `JobSet.of`); nothing here forms a
+path.  A plan with no
 description beside it is no calculation of molbuilder's: the verbs refuse
 it, and `launch`'s refusal says a hand-built sweep is launched and read by
 hand.
@@ -23,8 +25,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from . import job_request as _job_request
 from . import task as _task
 from . import template_file as _template_file
+from .job_request import JobRequest
 from .jobset.model import JobSet
 from .task import Task
 from .template_file import TemplateFile
@@ -47,6 +51,11 @@ class Calculation:
     #: The plan, when a prep has written one -- as the given ``plan``
     #: leaves it (`jobset.planned`).
     jobset: Optional[JobSet]
+    #: HOW AND WHERE IT RUNS (`execution/job-request.md`), read against the
+    #: description -- always there for a calculation :func:`open` read;
+    #: ``None`` only in `jobset migrate`'s own composition from raw records,
+    #: before it has written one.
+    request: Optional[JobRequest] = None
 
     @property
     def label(self) -> str:
@@ -87,7 +96,8 @@ def register_readers() -> None:
     registry -- a transport calculation's description (`task_reader`, floor
     2) and a benchmark's plan (`jobset.sweep_reader`, floor 3), each on its
     record's floor and read through its owner's door, which the registry,
-    on floor 1, imports none of (`execution/architecture.md` § 2.1).  Called
+    on floor 1, imports none of (`execution/architecture.md` § 2.1) -- and
+    each engine's reading of the same calculation, into its door.  Called
     by each surface as it starts -- the web app (`web.app.create_app`) and
     the command line (`cli.main`) -- so the Results tab's folder door finds
     both.  Idempotent, as the registry is."""
@@ -96,17 +106,25 @@ def register_readers() -> None:
     from .task_reader import TransportTaskFileParser
     register(TransportTaskFileParser)
     register(JobSetSweepFileParser)
+    # ...AND EACH ENGINE'S READING OF THE SAME CALCULATION, into its one
+    # door on floor 1 (`deck_record.same_calculation`,
+    # `execution/job-request.md` § 6), which imports none.
+    from .deck_record import register_reading
+    from .pyscf.script_input import script_differences
+    from .siesta.engine_input import engine_input_differences
+    register_reading("siesta", engine_input_differences)
+    register_reading("pyscf", script_differences)
 
 
 def open(base) -> Calculation:
     """THE DOOR: the described calculation in ``base``, read once.
 
     Refused (:class:`NotACalculation`) when ``base`` holds no description
-    with its template -- saying which of the two is missing; from inside a
-    calculation, naming its root (`calcdirs.root_of`), since the verbs work
-    on the calculation and `init` there would describe a new one inside an
-    attempt (W52).  A description or a template that does not read is
-    refused in its reader's own words (`ValueError`): those name the file
+    with its template and its job request -- saying which is missing; from
+    inside a calculation, naming its root (`calcdirs.root_of`), since the
+    verbs work on the calculation and `molbuilder describe` there would
+    describe a new one inside an attempt (W52).  A record that does not read
+    is refused in its reader's own words (`ValueError`): those name the file
     and, for a record written before a rule, `jobset migrate`.
     """
     calc = _open(base)
@@ -116,8 +134,8 @@ def open(base) -> Calculation:
 
 
 def _open(base) -> Optional[Calculation]:
-    """The calculation, or ``None`` when ``base`` holds no description or
-    no template -- one look at each record."""
+    """The calculation, or ``None`` when ``base`` holds no description, no
+    template or no job request -- one look at each record."""
     base = Path(base).resolve()
     task = _task.of(base)
     if task is None:
@@ -125,8 +143,11 @@ def _open(base) -> Optional[Calculation]:
     template = _template_file.of(base, task.label)
     if template is None:
         return None
+    request = _job_request.of(base, task)
+    if request is None:
+        return None
     return Calculation(base=base, task=task, template=template,
-                       jobset=JobSet.of(base))
+                       jobset=JobSet.of(base), request=request)
 
 
 def refusal(base) -> str:
@@ -141,10 +162,15 @@ def refusal(base) -> str:
                 f"verbs work on the calculation -- name that folder (the "
                 f"command line's `--bundle`).")
     if calcdirs.described(base):
+        if not _job_request.path_of(base).is_file():
+            return (f"{base} holds {_task.FILENAME} but no "
+                    f"{_job_request.FILENAME} beside it -- a calculation is "
+                    f"described by both (execution/job-request.md § 7); "
+                    f"Task setup's Save writes them together.")
         return (f"{base} holds {_task.FILENAME} but no template beside it "
                 f"-- a described calculation is the two together "
-                f"(project-layout.md § 2.1); run `molbuilder jobset init` "
+                f"(project-layout.md § 2.1); run `molbuilder describe` "
                 f"in a folder of its own.")
     return (f"{base} is not a described calculation -- no "
             f"{_task.FILENAME} + template pair (project-layout.md § 2.1); "
-            f"run `molbuilder jobset init` first.")
+            f"run `molbuilder describe` first.")

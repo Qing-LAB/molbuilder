@@ -12,7 +12,7 @@ bundle ONCE whether it loads, so a bundle that cannot load prints its error
 once and the wrapper says the ending cannot be read (`job-contracts.md`
 § 2.6).
 
-Driven through ``jobset init`` -> ``prep task`` -> ``launch task --mode
+Driven through ``molbuilder describe`` -> ``prep task`` -> ``launch task --mode
 direct``: an H2 PySCF run once as prepared and once with one of the bundle's
 own member files replaced after prep by one that fails at import, as a file
 the job's python cannot load does; and an H2 SIESTA relaxation broken the same
@@ -30,6 +30,7 @@ import pytest
 
 from _road import conda_hook, env_available, env_bin
 from support.road import group_words
+from support.road import molbuilder
 
 CONDA_SH = conda_hook()
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -79,7 +80,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
                     tree / "pseudopotential" / "H.psml")
         monkeypatch.setenv("PATH", f"{env_bin('molbuilder-siesta')}"
                                    f"{os.pathsep}{os.environ['PATH']}")
-    r = _jobset("init", "--structure", "P/structure/h2.xyz",
+    r = molbuilder("describe", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", engine,
                 "--calculation", "optimization",
                 "--shape", "hierarchical" if siesta else "flat",

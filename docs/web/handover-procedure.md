@@ -83,8 +83,8 @@ can use"* (`projects.md` § 1), and it carries the roots guard, the lock, the
 uniform `{ok, …}` envelope and the sidebar re-list.
 
 **Step 3 — finish, in Task setup.** It reads the folder, asks for what the
-parameter tab could not know, and on save writes `task.json` — then removes the
-hand-over.
+parameter tab could not know, and on save writes `task.json` and
+`job-request.json` — then removes the hand-over.
 
 ### 2.1 The cell gate — the rule this procedure owns *(workflow.md § 9 gate ②)*
 
@@ -130,7 +130,7 @@ doing work (`stages.md` § 6.5a is the contract):
 
 | | |
 |---|---|
-| **its own schema** | never `molbuilder/task@1`. It has no `shape`, so it would fail that reader — and `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident |
+| **its own schema** | never `molbuilder/task@2`. It has no `shape`, so it would fail that reader — and `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident |
 | **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is by suffix, so the second spelling is plain text in the editor a person reads it in — and nothing looking for `task.json` matches it, which matters because `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder **declares itself a calculation root** |
 | **it says what it is** | JSON has no comments, so it opens with a `_what` line and an `awaiting` list naming the keys it lacks. A person reads it, in an editor, and should not need a document open beside it |
 
@@ -166,7 +166,7 @@ The split is `projects.md`'s, not this document's invention:
 |---|---|---|
 | the structure's pair, the template, the hand-over | **the browser**, via `writeFile` — a transport calculation's template is its describe door's, with its `task.json` (row 3) | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
 | removing the hand-over | **the browser**, via `deleteEntry` | likewise, and **only after** the write succeeded: the reverse order loses the parameters if the write fails |
-| `task.json` | **the server**, via `/api/task-setup/save` — or, for a transport calculation, `/api/transport/describe`, which writes the whole description in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.task.from_text`, the same door `prep` uses, so the browser cannot become a second drifting writer |
+| `task.json` and `job-request.json` | **the server**, via `/api/task-setup/save` (`task.from_text`, `job_request.from_text`) — or, for a transport calculation, `/api/transport/describe`, which writes the whole description and its job request in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.task.from_text`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
 ---
 
@@ -227,7 +227,7 @@ The three prerequisites named here landed with the spectra migration
    is stated relaxed; on PySCF the relaxation is the deck's own Phase 0.
    **The hand-over carries that ladder, numbered** (`proposed_stages`, each
    entry as `task.json` states a stage), made by the server's one rule —
-   `jobset.ladder.fresh_stages`, which `jobset init` asks too, through
+   `jobset.ladder.fresh_stages`, which `molbuilder describe` asks too, through
    `jobset.group.numbered_fresh` — and Task setup shows it as what will be
    written, deriving nothing *(until 2.15.3 the page re-derived it in
    JavaScript, a second copy of the rule)*. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the page copies it into `varies` and seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).
@@ -248,11 +248,11 @@ owns questions the sending tab leaves open (shape, stages, what varies).
 The composite leaves NONE open: its rungs and the hierarchical shape are
 fixed by the kind (`task.fixed_by_kind`: all five, the seed among them), the
 electronic contract — its spin included — is
-defaulted into the template from the cited run at `init`, where the shared
+defaulted into the template from the cited run at `molbuilder describe`, where the shared
 panel edits it for every rung, and the knobs ride the stages' override bags.
 So the Transport tab describes DIRECTLY — `POST /api/transport/describe`
-writes the complete description, the template and `task.json`, through the
-server in one act (`describe.write_description`, as `jobset init`), into a
+writes the complete description, the template, `task.json` and `job-request.json`, through the
+server in one act (`describe.write_description`, as `molbuilder describe`), into a
 folder that holds none — and **nothing is
 awaiting** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
 P7b).  The `transport-handover@1` schema this section once proposed was
@@ -301,7 +301,7 @@ End to end, in `tests/test_task_setup_tab.py`:
 | the render endpoint returns the texts and **leaves the folder untouched** | a render that writes is not a render |
 | neither surface calls `/api/files/write` directly | a second writer, and `projects.md` § 1's guard is bypassed |
 | the hand-over declares its own schema, lacks `shape`/`stages`, and says what it is | it could be read as a description |
-| save writes `task.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer |
+| save writes `task.json` and `job-request.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer |
 
 **And the whole chain runs, in a test and not in somebody's memory of driving
 it** — `test_the_whole_chain_from_structure_to_rendered_deck`. Hand-over →

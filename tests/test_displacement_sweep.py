@@ -4,10 +4,11 @@ of one stage is which mode of another is asked of free water made on the
 road, `tests/test_vibration_e2e.py`.
 """
 from __future__ import annotations
+from molbuilder.jobset._cli import describe_cmd
 
 
 def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
-    """`jobset init` a PySCF vibration, then `summarize task`: refused by
+    """`molbuilder describe` a PySCF vibration, then `summarize task`: refused by
     name, before anything is read -- its second derivatives are analytic,
     so no stage takes a finite difference whose step could be swept
     (`engines/vibration.md` § 5.9).  Nothing runs, so no engine is needed."""
@@ -22,8 +23,8 @@ def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tmp_path)
     run = CliRunner()
-    r = run.invoke(jobset_group, [
-        "init", "--structure", "P/structure/w.xyz", "--bundle",
+    r = run.invoke(describe_cmd, [
+        "--structure", "P/structure/w.xyz", "--bundle",
         "P/frequency/V", "--engine", "pyscf", "--shape", "hierarchical",
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output

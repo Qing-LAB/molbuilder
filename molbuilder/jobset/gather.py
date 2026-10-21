@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
 from ..runfiles import RunNames
-from ..siesta.engine_input import engine_input_differences
+from ..deck_record import same_calculation
 from ..runrecord import RunRef
 from .errors import PrepError, user_error_as_prep
 from .materialize import GATHERED, HandOver, hand_over
@@ -104,7 +104,6 @@ def transport_inputs(calc, stage: str, *, point=None,
         from .commands import (block, launch_lines, launch_pending,
                                redo_launched, run_first as _run_first)
         from .continuation import read_run, state_remedy
-        from .group import number_of
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
         redo = redo_launched(upstream, calc=calc)
@@ -141,7 +140,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                         f"{newest.relative_to(base)}, whole -- and it has "
                         f"not been launched.  Launch it --\n"
                         + block(launch_pending(upstream,
-                                               number_of(task, upstream),
+                                               calc.request.group_of(upstream),
                                                newest.name, base=base))
                         + q2)
             else:
@@ -179,7 +178,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                 # alone.
                 why, first = state_remedy(
                     c, st, block(launch_pending(
-                        upstream, number_of(task, upstream),
+                        upstream, calc.request.group_of(upstream),
                         newest.name if newest is not None else None,
                         base=base)
                         if st == "pending"
@@ -209,7 +208,9 @@ def transport_inputs(calc, stage: str, *, point=None,
         _run = run_of(where, stage=token)
         ran = _run.deck if _run is not None else None
         ran_text = ran.read_text() if ran is not None else None
-        differs = (engine_input_differences(ran_text, now)
+        # THE ONE DOOR of the same calculation (`job-request.md` § 6): the
+        # engine's reading, the run settings aside.
+        differs = (same_calculation(task.engine, ran_text, now)
                    if ran_text is not None else ["it holds no deck"])
         if differs:
             raise PrepError(
@@ -358,7 +359,7 @@ def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
                 f"cited junction -- the record then travels with the folder "
                 f"(engines/transport.md § 3.1).")
     if not afresh:
-        numbers = sorted({st.group for st in task.stages})
+        numbers = calc.request.numbers
         return (f"this calculation's junction is not composed again here: "
                 f"{reason}.  It is composed by a prep of the calculation's "
                 f"groups --\n" + block(prep_group_lines(numbers, base=base)))
@@ -377,11 +378,12 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     from .model import Resources
     from .prep_inputs import run_inputs
     base, task = calc.base, calc.task
-    # THE RUNG'S PINS, as `prep task` takes them from its card (`run_inputs`).
-    _shape, pins = run_inputs(base, task, stage)
+    # THE RUNG'S RUN SETTINGS, as `prep task` takes them from its card
+    # (`run_inputs`).
+    _shape, settings = run_inputs(calc.request, stage)
     struct, config, state, _element = transport_rung(
         task, stage, composed, Resources(), template_text=calc.template_text,
-        pins=pins or None)
+        run_settings=settings or None)
     struct = at_frame(struct, point)
     spec, cfg = transport_spec(task, stage, struct, config, state, point,
                                 base=base)

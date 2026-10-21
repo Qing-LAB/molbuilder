@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from support.machines import SLURM, WORKSTATION
+from molbuilder.jobset._cli import describe_cmd
 
 
 #: A record as `jobset probe --write` writes one.  It carries `env_init`,
@@ -74,27 +75,32 @@ def _prep(bundle: str, *extra):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner()
-    init = r.invoke(jobset_group, [
-        "init", "--structure", "P/structure/h2.xyz", "--bundle", bundle,
+    init = r.invoke(describe_cmd, [
+        "--structure", "P/structure/h2.xyz", "--bundle", bundle,
         "--shape", "flat", "--engine", "pyscf",
         "--calculation", "optimization",
         "--stage-strategy", "publishable"])
     assert init.exit_code == 0, init.output
     # EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): the run card's
     # threads, and the queue, wall and memory a cluster's header carries --
-    # in the description, so every prep of this bundle states them.
+    # in the job request, so every prep of this bundle states them.
     from molbuilder.projects import projects_root
-    tj = projects_root() / bundle / "task.json"
-    d = json.loads(tj.read_text())
-    d["execution"] = {"threads": 1}
-    d["allocation"] = {"domain": "q", "time": "01:00:00", "mem": "1G"}
+    from support.road import read_request, write_request
+    where = projects_root() / bundle
+    req = read_request(where)
+    req["execution"] = {"threads": 1}
+    req["allocation"] = {"domain": "q", "time": "01:00:00", "mem": "1G"}
+    write_request(where, req)
     # THE NEXT STAGE STARTS CLEAN, so a test can prep it without a run of
     # `coarse` to continue from -- a prepared stage is not prepared again
     # (`job-system.md` § 5.0), so what these tests ask of a calculation that
     # is already prepared, they ask of its next stage (`_prep_next`).
+    tj = where / "task.json"
+    d = json.loads(tj.read_text())
+    d["varies"] = sorted(set(d["varies"]) | {"restart"})
     for st in d["stages"]:
         if st["name"] == "medium":
-            st["execution"] = {"restart": "clean"}
+            st["overrides"]["restart"] = "clean"
     tj.write_text(json.dumps(d, indent=2))
     return r.invoke(jobset_group,
                     ["prep", "task", "--group", "1", "--bundle", bundle, *extra])
@@ -102,7 +108,7 @@ def _prep(bundle: str, *extra):
 
 def _prep_next(bundle: str, *extra):
     """The calculation's NEXT stage, `medium`, prepared after `coarse` was --
-    starting clean (`_prep` set its run card)."""
+    starting clean (`_prep` set its restart)."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     return CliRunner().invoke(jobset_group, [
@@ -147,17 +153,18 @@ class TestTheUserChoosesTheMachine:
         # SIESTA, the engine the bench lane speaks: a PySCF description is
         # refused before any machine is asked (`prep_inputs.bench_refusal`),
         # so it cannot reach the question this test is about.
-        init = r.invoke(jobset_group, [
-            "init", "--structure", "P/structure/h2.xyz",
+        init = r.invoke(describe_cmd, [
+            "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/wb",
             "--shape", "flat", "--engine", "siesta",
             "--calculation", "optimization"])
         assert init.exit_code == 0, init.output
         # a bench needs an axis to measure; declare one the way the tab does
-        import json as _json
-        tj = machines.tree / "P" / "optimization" / "wb" / "task.json"
-        d = _json.loads(tj.read_text()); d["bench"] = {"omp_threads": [1, 2]}
-        tj.write_text(_json.dumps(d))
+        from support.road import read_request, write_request
+        where = machines.tree / "P" / "optimization" / "wb"
+        req = read_request(where)
+        req["bench"] = {"omp_threads": [1, 2]}
+        write_request(where, req)
         res = r.invoke(jobset_group,
                        ["prep", "bench", "coarse",
                         "--bundle", "P/optimization/wb"])

@@ -1,161 +1,26 @@
-"""Does the deck agree with the launch?  (P6 unit 2 · `project-layout.md`
-§ 2.3.1 — *"step 3 cannot precede step 1"* · § 2.3.4 M5)
+"""A benchmark trial starts cold -- the one check a launch makes of a deck
+(`job-system.md` R-L29; `execution/job-request.md` § 6).
 
-**Module**: the ONE comparison between what a deck was rendered for and the
-launch it is about to get, plus the ONE wording of why a mismatch matters.
-**Callers**: `jobset/submit`'s launch planning (the refusal, M5's *"`submit`
-decides nothing … refuses if they do not"*), `jobset/prep.plan_stage`
-(the warning at `prep`, where changing your mind is still cheap -- each door
-shows it from the entry's answer), and `jobset/submit`'s per-trial
-gate calling :func:`check_trial_starts_cold` (the door VERIFIES the
-run's starting state; prep's measurement pin is the one setter); the
-fixture-level tests in `test_jobset` / `test_prep_calculation`.
-
-**Why its own module**: the comparison serves BOTH surfaces and belongs to
-neither; a floor both import downward from keeps them free of an import cycle.
-
-The warning and the refusal cannot come to different conclusions because
-both read :func:`launch_agreement`; after this module they cannot *say*
-different things either, because both embed :func:`disagreement_note`.
+prep bakes the INTENT -- the measurement pin resolves ``restart = clean``
+into each trial's deck -- and the submission verifies the artifact it is
+about to send: a trial that would warm-start measures a continued run, not
+its point.  Nothing else of a deck is read as a launch: prep writes a deck
+and its launch together, once (`architecture.md` A3), and launch sends what
+prep wrote.  **Callers**: `jobset/submit`'s benchmark doors -- every trial,
+sent by name or riding its shelf's walk.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
 
-from ..identity import checkpoint_words, way_back_words
-
-
-@dataclass(frozen=True)
-class LaunchAgreement:
-    """Whether a deck was rendered for the launch it is about to get.
-
-    ``verdict`` is one of:
-
-    | ``"silent"`` | the deck makes no claim about its launch, so there is nothing to disagree with — and nothing to refuse |
-    | ``"agrees"`` | the rank count it was rendered for is the one it will get |
-    | ``"differs"`` | the two are different numbers, or one is `auto` and the other is not |
-
-    ``rendered_for`` is what the deck's BENCH-MARKS block records (an int, or
-    the string ``"auto"``); ``launching_at`` is the job's ``mpi_np`` (an int,
-    or ``None`` meaning *let the wrapper decide*).
-    """
-    verdict:      str
-    rendered_for: Optional[Union[int, str]] = None
-    launching_at: Optional[int] = None
-
-    @staticmethod
-    def _fmt(v) -> str:
-        return "auto" if v in ("auto", None) else str(v)
-
-    @property
-    def rendered_text(self) -> str:
-        return self._fmt(self.rendered_for)
-
-    @property
-    def launch_text(self) -> str:
-        return self._fmt(self.launching_at)
+from ..identity import checkpoint_words
 
 
-def launch_agreement(job_dir, job, *, text=None) -> LaunchAgreement:
-    """Read the deck's launch claim and compare it with this job's.
-
-    `project-layout.md § 2.3.1` states the five steps and says the order is
-    **forced**: *"Step 3 cannot precede step 1, because a deck carries values
-    that depend on how it will be launched — a block size derived from the rank
-    count … A parameter that depends on the launch cannot be decided before the
-    launch is known."*
-
-    A deck can still meet a launch it was not rendered for: an edited
-    `job-set.json`, a hand-carried deck, an edited wrapper.
-
-    **Recording is not agreeing**: this is the
-    comparison, and a person is owed its answer at the moment they are still
-    deciding (`prep`) — not only at the moment they are committing cluster
-    time (`launch`).
-
-    ``text`` is the deck as it will be written, for one `prep` has planned
-    and not yet written (`jobset.planned`).
-    """
-    if text is None:
-        deck = Path(job_dir) / os.path.basename(job.script)
-        if not deck.is_file():
-            return LaunchAgreement("silent")
-        text = deck.read_text(encoding="utf-8", errors="replace")
-    from ..script_emit import read_bench_marks_block
-    marks = read_bench_marks_block(text)
-    if not marks or "mpi_np" not in marks:
-        # A deck with no BENCH-MARKS block says nothing about its launch, so
-        # there is nothing to disagree with.  The check is an agreement between
-        # two statements, never a demand that every deck make one.
-        return LaunchAgreement("silent")
-    rendered_for = marks["mpi_np"]                 # an int, or the str "auto"
-    launching_at = job.resources.mpi_np            # an int, or None == auto
-    agree = ((rendered_for == "auto" and launching_at is None)
-             or rendered_for == launching_at)
-    return LaunchAgreement("agrees" if agree else "differs",
-                           rendered_for, launching_at)
-
-
-def disagreement_note(a: LaunchAgreement, folder, *, bench: bool) -> str:
-    """The ONE wording of why a mismatch matters and what to do — embedded
-    by the `prep` warning and the `launch` refusal alike, so the two
-    surfaces cannot drift into explaining one fact two ways.  The way back
-    is a task stage's (`identity.way_back_words`), or a benchmark's
-    (``bench``): the state saved before its prep."""
-    redo = (_bench_anew(folder) if bench else
-            way_back_words(None) + " -- " + checkpoint_words(folder) + ".")
-    return ("a deck derives values from the rank count -- BlockSize above "
-            "all -- so one rendered for a different launch is wrong for "
-            "this one (project-layout.md § 2.3.1: a parameter that depends "
-            "on the launch cannot be decided before the launch is known).  "
-            f"`prep` renders the deck and the launch together (`--np`, or "
-            f"the run card's `mpi_np`), and `launch` takes no width of its "
-            f"own: for the width it will launch at ({a.launch_text}), "
-            + redo)
-
-
-class DeckLaunchMismatch(Exception):
-    """The deck was rendered for one launch and is meeting another.
-    `launch` translates this into its own refusal (M5: the refusal is
-    submit's); anything else may catch it by name without importing
-    `launch` at all."""
-
-
-def check_launch_matches_deck(job_dir, job, *, bench: bool) -> None:
-    """Refuse a launch the deck was not rendered for (P6 unit 2) -- a task
-    stage's, or a benchmark trial's (``bench``), whose ways back differ.
-
-    Three outcomes:
-
-    * deck ``auto`` + launch ``auto`` — both defer to the wrapper. Fine.
-    * deck ``auto`` + launch ``N`` — the deck's launch-derived values were
-      computed with **no** rank count, and now one is being imposed. Refused.
-    * deck ``N`` + launch ``M`` — refused, with both numbers named.
-
-    This is the last honest moment, not the first: :func:`launch_agreement`
-    answers the same question at `prep`, where it is still cheap to change
-    your mind.
-    """
-    a = launch_agreement(job_dir, job)
-    if a.verdict != "differs":
-        return
-    deck = os.path.basename(job.script)
-    raise DeckLaunchMismatch(
-        f"job {job.name!r}: this deck ({deck}) was rendered for mpi_np "
-        f"{a.rendered_text}, and you are launching it at "
-        f"{a.launch_text}.\n  " + disagreement_note(
-            a, _calculation_of(job_dir), bench=bench) + "\n"
-        "  The deck records what it assumed in its BENCH-MARKS block, "
-        "which is what made this checkable.")
-
-
-__all__ = ["LaunchAgreement", "launch_agreement", "disagreement_note",
-           "DeckLaunchMismatch", "check_launch_matches_deck",
-           "check_trial_starts_cold"]
+class TrialNotCold(Exception):
+    """A benchmark trial's deck would not start cold -- the launch declines
+    to send it (`job-system.md` R-L29)."""
 
 
 def _bench_anew(folder) -> str:
@@ -192,8 +57,7 @@ def check_trial_starts_cold(job_dir, job) -> None:
     passes silently -- absence says nothing,
     and the launch itself fails loudly without one.
 
-    Raises :class:`DeckLaunchMismatch` (the same family as the launch
-    agreement -- submission declines to act on a deck that disagrees).
+    Raises :class:`TrialNotCold`: submission declines to send it.
     """
     deck = Path(job_dir) / os.path.basename(job.script)
     if not deck.is_file():
@@ -210,13 +74,13 @@ def check_trial_starts_cold(job_dir, job) -> None:
     from ..script_emit import deck_values
     saves = deck_values("restart", "siesta", text)
     if not saves:
-        raise DeckLaunchMismatch(
+        raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} carries no restart group at "
             f"all, so its cold start cannot be vouched for (prep always "
             f"writes the clean group).  " + _bench_anew(_calculation_of(job_dir)))
     warm = [k for k, v in saves.items() if fdf_true(str(v).split())]
     if warm:
-        raise DeckLaunchMismatch(
+        raise TrialNotCold(
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "
             f"not its point (generator.md § 4.3a).  For the cold deck, "

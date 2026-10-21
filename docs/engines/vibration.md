@@ -185,7 +185,7 @@ modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
 ```mermaid
 flowchart LR
   M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine on the strip<br/>(a periodic structure defaults to SIESTA),<br/>set parameters (the catalogue's form per engine),<br/>read the live checks"]
-  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
+  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json and job-request.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
   T -->|"prep task"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA, from a sorted copy: &lt;label&gt;_01_freq.fdf (box ticked),<br/>or &lt;label&gt;_01_relax.fdf, then &lt;label&gt;_02_freq.fdf<br/>prepared once relax has finished"]
   P -->|"launch task"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
   R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 9,<br/>its data file .spectra.nc beside it"]
@@ -195,7 +195,7 @@ flowchart LR
 The CLI walks the same road without the browser:
 
 ```bash
-molbuilder jobset init --structure P/structure/x.xyz --bundle P/frequency/F \
+molbuilder describe --structure P/structure/x.xyz --bundle P/frequency/F \
     --engine pyscf|siesta --calculation vibration --name X --shape hierarchical
 # SIESTA: its ranks and the cores per rank
 molbuilder jobset prep task --bundle P/frequency/F --target this \
@@ -207,7 +207,7 @@ molbuilder jobset launch task --bundle P/frequency/F --mode direct --yes
 ```
 
 `prep` states the launch shape — SIESTA's ranks and cores per rank, PySCF's
-threads — on its line or in the description's run card, or it refuses
+threads — on its line or in the job request's run card, or it refuses
 (`placement.launch_refusal`, which also refuses a rank count for PySCF, an
 engine that runs one process). On SIESTA with the box unticked the ladder is
 two groups, `relax` then `freq`, and `freq` is prepared once `relax` has
@@ -217,7 +217,7 @@ The measuring run — PySCF's one, SIESTA's `freq` — ends with
 `<label>.spectra.json` in its attempt (§ 5.5 for SIESTA) — the launch, started in the background,
 returns at once, and `jobset status` follows it; there is no step after it.
 
-`init` refuses `--stage-strategy` for this kind (a *ladder* is a
+`molbuilder describe` refuses `--stage-strategy` for this kind (a *ladder* is a
 description's list of stages, each a *rung* with its own parameter set; a
 *tier* ladder — coarse, medium, tight — grades an optimisation's convergence,
 and a vibration's ladder is its measurement, with the relaxation before it on
@@ -440,7 +440,7 @@ them as *vary per stage*.
 **The engine is not an item.** Which program runs a described job is the
 description's `engine` (`task.json`), chosen on the Spectrum tab's engine
 strip the way the Structure-optimization tab has always chosen it, carried by
-the hand-over, refused by `init` for anything but the two engines. A
+the hand-over, refused by `molbuilder describe` for anything but the two engines. A
 one-choice `engine` form item stood in for the strip until 2026-09-24 and
 retired with it: a parameter of the deck it never was.
 
@@ -1171,7 +1171,7 @@ SIESTA cannot relax and take force constants in one run (`MD.TypeOfRun` is
 one thing per run), so the vibration ladder on SIESTA is **two stages when
 the box is unticked** — `relax`, then `freq` — and one, `freq`, when it is
 ticked (`pyscf/stages.py::vibration_stages(engine, already_relaxed=…)`,
-read from the template's own value at `init` and at the hand-over's proposal).
+read from the template's own value at `molbuilder describe` and at the hand-over's proposal).
 
 **The `relax` stage is an ordinary SIESTA relaxation deck** rendered from the
 same template and the same **sorted copy** (§ 5.2): `MD.TypeOfRun` from
@@ -1252,7 +1252,7 @@ is the launch's. Its prep records the `relax` run it took on the stage's job
 another's: `--cold` there is refused as the rows say, and `--from` is refused
 naming the `prep task … --from` line that takes another `relax` run (a stage
 never launched is prepared again); launched again, `--from` is refused with
-the way back, since a launched stage is not prepared again
+the way back, since what a launched stage computes is not prepared again
 (`ready.first_launch_takes`, `submit._launch_again`):
 
 | the ladder | asked | the geometry | the files | recorded |
@@ -1292,7 +1292,7 @@ that run, or edited since": measured on the Au–BDT–Au spectrum, whose input
 was the final frame of its own relaxation.)*
 
 **The ladder is the order; the box decides what is proposed and what is
-recorded.** `init` and the hand-over read the box to propose the ladder
+recorded.** `molbuilder describe` and the hand-over read the box to propose the ladder
 (§ 2.2). Once described, a ladder that holds a `relax` stage runs
 it whatever the box says, and `freq` takes its geometry — a person who ticks
 the box after describing removes the stage, and the Task setup
@@ -1579,7 +1579,7 @@ the one remedy for how the geometry was reached — **one text,
 `vibrational_analysis.nonstationary_remedy`, which `prep` (§ 5.8) and the
 PySCF deck (§ 4.3) write too**, each leading with the step that can always
 be taken first — if this stage has been launched, go back to the state saved
-before its group's first launch (a launched stage is not prepared again,
+before its group's first launch (what a launched stage computes is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0; one never launched is
 prepared again): when the ladder's stage
 relaxed it (the block's `relaxation_stage`), launch that stage again — it
@@ -1689,7 +1689,7 @@ outcome instead (§ 5.2a): its largest remaining force on the moved atoms
 against this calculation's tolerance, as information when within it and as a
 **warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — in the order it can be done: if
 this stage has been launched, go back to the state saved before its group's
-first launch (a launched stage is not prepared again,
+first launch (what a launched stage computes is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0; one never launched — a
 preview's — needs no restore), launch the `relax` stage again — it continues
 from its newest attempt, at the geometry it stopped at — and prep this stage
@@ -2542,7 +2542,7 @@ Each names where it holds and what pins it.
 | `molbuilder/transport/sort.py` · `molbuilder/atom_permutation.py` | `sort_by`, `SORT_KEYS`, `apply_order` — `sort_by` sets the copy's `atom_order` and refuses a remapped input; the record itself — `Permutation`, the type of the structure's `atom_order`, read from a dict by its one reader (`Permutation.from_dict`), `original_of` and `sorted_of` — in `atom_permutation`, which travels with the finish (§ 5.2; `model/overview.md` § 2.2a) |
 | `molbuilder/deck_record.py` | the molbuilder blocks' grammar and their one JSON reader, with `extract_engine_offset`, `extract_vibration_record`, and `extract_atom_metadata` with `order_record_of`, the ATOM-METADATA block's order record (`model/overview.md` § 2.2a, I5) — below `script_emit`, which writes the blocks, so the finish can read the three beside the job (§ 5.3) |
 | `molbuilder/validation/spectra.py` · `validation/__init__.py` | the two kinds' checks and the dispatch (§ 3.3) |
-| `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep, the relax stage's record into the deck's `vibration` block, the finish onto the stage's job; `init`'s kind gate; the bundle brought into each attempt |
+| `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep, the relax stage's record into the deck's `vibration` block, the finish onto the stage's job; `molbuilder describe`'s kind gate; the bundle brought into each attempt |
 | `molbuilder/runwrap.py` | the run wrapper — its banner names the held atoms from the deck's one spelling, and it runs the finish after a force-constant run; `VIBRATION_BUNDLE` / `VIBRATION_COMPANIONS`, what travels for the finish (§ 5.5); `PYSCF_BUNDLE` / `PYSCF_COMPANIONS`, what the PySCF script imports (`engines/pyscf.md` § 3); `bundles_for`, the one list of what travels beside a deck |
 | `molbuilder/web/blueprints/spectra.py` · `build.py` | the tab page, `/api/spectra/load` and `_loaded`; the schema, preflight and hand-over doors |
 | `molbuilder/web/static/lib/inspectors/fc-sweep.js` | the sweep record's presenter on the Results tab (§ 5.9) |
@@ -2586,9 +2586,9 @@ flowchart TB
 | `POST /api/build/preflight` | the live checks: `validate(struct, cfg, calculation="vibration")` |
 | `POST /api/structure/analyze` | the charge and spin each form's vibration will carry — the one electronic state, for exactly what the form says, about the structure the viewer holds; the chemistry card shows it and fills nothing in |
 | `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |
-| `POST /api/task-setup/save` · `/prep` | write `task.json`; run `prep` for the groups picked, each one job, on a named machine — the function the terminal's `prep task` runs |
+| `POST /api/task-setup/save` · `/prep` | write `task.json` and `job-request.json`; run `prep` for the groups picked, each one job, on a named machine — the function the terminal's `prep task` runs |
 | `POST /api/spectra/load` | parse an existing `.spectra.json` into display data; typed errors |
-| `molbuilder jobset init / prep / launch` | the same road from a terminal (§ 2.1); the run ends with the result |
+| `molbuilder describe / prep / launch` | the same road from a terminal (§ 2.1); the run ends with the result |
 | `molbuilder jobset summarize task [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |
 
 ---

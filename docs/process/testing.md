@@ -27,7 +27,7 @@ touched (§ 6.1), and a tier whole only when the change reaches that far.
 ### Tier 1 — the basic suite: installation and correctness
 
 **What it holds**: what molbuilder PREPARES, driven the way a person drives it
-— the road up to the run (`jobset init → prep → launch --dry-run`; the case
+— the road up to the run (`molbuilder describe → prep → launch --dry-run`; the case
 tables, § 6) and the one function that writes or reads the script folder: the
 deck, the run script, the walk, the plan — and machine records written in
 molbuilder's own format to describe a machine — its cores, its queues and their
@@ -96,8 +96,8 @@ steps:
    command — where the record says it is, off PATH — writes each call down and
    refuses it: what a scheduler answers is read here, never typed into a basic
    test.
-2. **A field run.** The smallest real job, on the road, on the target: `jobset
-   init` a held H2, `jobset prep task --group 1 --target <name>`, then on the target
+2. **A field run.** The smallest real job, on the road, on the target: `molbuilder
+   describe` a held H2, `jobset prep task --group 1 --target <name>`, then on the target
    `jobset launch task --group 1` with its mode, `jobset status`, and the Results tab.
    It shows the run script enters the target's environments, the header is one
    its scheduler takes, and the run's records read back -- the job id, the
@@ -360,7 +360,7 @@ so a second copy is a **review** finding
 ([`process/code-audit.md`](?doc=process/code-audit.md) § 1c) — while it
 agrees with the first it gives the same answer, and nothing a run observes
 can tell them apart. Where the failure such a scan reached for matters, the
-test RUNS the code — the route, the CLI, `jobset init → prep → launch` — and
+test RUNS the code — the route, the CLI, `molbuilder describe → prep → launch` — and
 asserts what came out. The exceptions are § 3a's short list, each a rule whose
 break is silent and that no run can show — a composed name found by hand
 among them — where reading the file is the only instrument there is.
@@ -499,7 +499,7 @@ code actually makes:**
 | the thing under test | the product to assert on | how |
 |---|---|---|
 | a route | the response — status, body, headers | the Flask test client |
-| a deck, a run script, a `.sbatch` header | the file `prep` writes | a row down the road (§ 6): `init → prep`, then the file read |
+| a deck, a run script, a `.sbatch` header | the file `prep` writes | a row down the road (§ 6): `describe → prep`, then the file read |
 | a JS module | what it *does* — call it and check the result or the DOM it changed | `tests/_node_esm.py` (§ 4) |
 | a whole page's flow | what a person sees after acting | a Playwright `*_e2e.py` (§ 5) |
 
@@ -718,7 +718,7 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   correctly execute locally if that's the target")*. Where a contract is a
   set of cases — what a person or a probe writes, and what molbuilder must
   answer — the cases are rows of one data file, and ONE runner drives each
-  down the road a person runs (`init → prep → launch --dry-run`), checking
+  down the road a person runs (`describe → prep → launch --dry-run`), checking
   two layers: **allowed or refused**, with the words; **what is produced** —
   the header, the `sbatch` line, the deck, the run script — and, before
   them, **what the probe records** when a row runs the probe itself: what it
@@ -733,7 +733,7 @@ These are the durable patterns — follow them and the e2e tests stay stable:
 - **A run is made on the road, or not at all** *(user, 2026-10-03: "why would
   any fucker copy an .out to some fucking other directory and call it the
   result"; "retire all")*. A test that asserts what a run ended as, produced,
-  hands on or shows makes that run with the engine, through `init → prep →
+  hands on or shows makes that run with the engine, through `describe → prep →
   launch`. Everything else is a run that never happened, and a test built on
   one is not written: an output copied into a stage's folder, renamed, cut
   or edited; an output invented as text — handed straight to a parser as
@@ -778,7 +778,7 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   that's an end to end by definition", and on a test that needs a run:
   "either disassembled into api tests of individual parser/action functions
   that works on the script dir, or merged into real e2e functions")*. An API
-  test drives `init → prep → launch --dry-run`, or calls the one function
+  test drives `describe → prep → launch --dry-run`, or calls the one function
   that writes or reads the script folder, and no engine runs in it (tier 1's
   tripwire). A test that reads what an engine wrote — what a stage builds on,
   what a launch continues from, how a run ended, what a citation composes,
@@ -977,9 +977,9 @@ deliberately not installed there.
   contract tables' one runner), `live_server.py`, `real_runs.py`.
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
-  through `jobset init → prep`, because the pair is one file. Written
+  through `molbuilder describe → prep`, because the pair is one file. Written
   2026-09-07 after four readers of that pair were found, one of which
-  (`molbuilder.load()`) dropped the sidecar entirely and cost `jobset init`
+  (`molbuilder.load()`) dropped the sidecar entirely and cost `molbuilder describe`
   the author's regions and frozen atoms. It scanned the package for direct
   reader calls until 2026-09-26; it drives the road now, so a reader that
   drops the sidecar anywhere on it shows up as the deck that relaxes every

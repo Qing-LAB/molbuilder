@@ -76,12 +76,24 @@ def calc_dir(isolated_projects_root_module):
             run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
             varies=("kgrid",),
-            stages=(Stage(name="tight", overrides={}, group=1),)))
+            stages=(Stage(name="tight", overrides={}),)))
+        _request_beside(d)
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
         # removes.
         pass
+
+
+def _request_beside(d):
+    """The job request beside the description written above, each stage
+    its own group -- a calculation's folder holds both
+    (`execution/job-request.md` § 7)."""
+    from molbuilder import job_request
+    from molbuilder.task import of as task_of
+    task = task_of(d)
+    job_request.write(d, job_request.fresh(
+        task, {st.name: i + 1 for i, st in enumerate(task.stages)}))
 
 
 @pytest.fixture(scope="module")
@@ -217,7 +229,8 @@ def bool_column_dir(isolated_projects_root_module):
             run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
             varies=("write_coor_xmol",),
-            stages=(Stage(name="tight", overrides={}, group=1),)))
+            stages=(Stage(name="tight", overrides={}),)))
+        _request_beside(d)
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
@@ -280,9 +293,9 @@ def out_of_set_dir(isolated_projects_root_module):
         run=derive_run("probe", stage_names=("relax", "freq")),
         structure=StructureRef(source="probe.source.xyz"),
         calculation="vibration", varies=("relax_type",),
-        stages=(Stage(name="relax", overrides={"relax_type": "Verlet"},
-                      group=1),
-                Stage(name="freq", overrides={}, group=2))))
+        stages=(Stage(name="relax", overrides={"relax_type": "Verlet"}),
+                Stage(name="freq", overrides={}))))
+    _request_beside(d)
     yield d
 
 

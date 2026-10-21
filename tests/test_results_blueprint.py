@@ -477,7 +477,7 @@ class TestTheContractEndpoint:
 
     def test_a_calculations_folders_are_answered_by_the_run_door(
             self, isolated, tmp_path, monkeypatch):
-        """Through the road -- `jobset init` and `prep` of an H2 relaxation,
+        """Through the road -- `molbuilder describe` and `prep` of an H2 relaxation,
         no engine run -- the run door answers each folder as what it IS
         (`project-layout.md` § 1.4a; `execution/architecture.md` § 3.2):
 
@@ -565,7 +565,7 @@ class TestTheContractEndpoint:
     @pytest.mark.parametrize("shape", ["hierarchical", "flat"])
     def test_every_folder_prep_makes_says_where_it_is(
             self, isolated, tmp_path, monkeypatch, shape):
-        """Through the road -- `jobset init`, `prep task` and `prep bench`
+        """Through the road -- `molbuilder describe`, `prep task` and `prep bench`
         of an H2 relaxation, no engine run -- every folder prep made answers
         the Results tab's door with where it is: its calculation, what it
         is, its role, and the stage, run and trial it sits in

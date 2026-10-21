@@ -445,13 +445,13 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
         out += [""]
 
     if block:
-        out += ["To run at it, put this in task.json and save:", ""]
+        out += ["To run at it, put this in job-request.json and save:", ""]
         import json as _json
         body = _json.dumps(block, indent=2, sort_keys=True).split("\n")
         out += ['    "execution": ' + body[0]]
         out += ["    " + ln for ln in body[1:]]
         out += [""]
-    out += ["Until you do, `prep task` launches at what task.json states, and",
+    out += ["Until you do, `prep task` launches at what job-request.json states, and",
             "refuses a launch value it states nowhere (architecture.md 5.2) --",
             "a benchmark does not steer a run.",
             ""]
@@ -534,11 +534,13 @@ def _point_table(points: List[BenchPoint]):
 
 def summary_text(res: BenchResult, out_path: Path, *,
                  report: Optional[str] = None,
-                 stage: Optional[str] = None, base=None, task=None) -> str:
+                 stage: Optional[str] = None, base=None,
+                 request=None) -> str:
     """The verb's stdout: the measurement table, the verdict, THE REPORT,
     and what to do next.  ``report`` is ``run_summarize_jobset``'s third
-    return; ``stage`` names the stage in the next-commands and ``base`` the
-    calculation they act on (`commands`).
+    return; ``stage`` names the stage in the next-commands, ``base`` the
+    calculation they act on (`commands`) and ``request`` its job request,
+    whose groups they name.
     """
     lines = ["bench-summarize: measured points (fastest first)"]
     ranked = sorted(
@@ -597,15 +599,16 @@ def summary_text(res: BenchResult, out_path: Path, *,
             lines.append(report.rstrip())
             lines.append("")
         lines.append("  next:")
-        lines.append(f"    1. put the `execution` block above in task.json, "
-                     f"as stages[{stage_word}].execution or calculation-wide")
+        lines.append(f"    1. put the `execution` block above in "
+                     f"job-request.json, as stages.{stage_word}.execution or "
+                     f"calculation-wide")
         if stage:
             # ONE COMMAND A LINE, the step's sentence above it (`commands`):
             # the calculation named when it is known, the mode stated where
             # its config sets none.
             from .commands import (command, launch_lines, prep_group_lines,
                                    stage_group)
-            g = stage_group(task, stage)
+            g = stage_group(request, stage)
             lines.append("    2. prep the stage's group -- it uses what you "
                          "wrote, and nothing else:")
             lines.append("         " + (prep_group_lines([g], base=base)[0]

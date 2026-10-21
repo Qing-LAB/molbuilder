@@ -79,8 +79,8 @@ _SCHEDULER_RETIRED = (
     "{path}: 'scheduler' is no longer configured -- "
     "delete the block.  Nothing in it may be set for every job:\n"
     "  * a job's queue, wall, memory, ranks and cores per rank are the JOB's "
-    "own: its description (`allocation`, or the run card `execution` in "
-    "task.json) or the prep flags (--domain, --time, --mem, --np, "
+    "own: its job request (`allocation`, or a run card `execution` in "
+    "job-request.json) or the prep flags (--domain, --time, --mem, --np, "
     "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
     "  * a machine's scheduler and queues are its RECORD's: `{probe}` ON that "
     "machine -- with --name and the name you prep it by when it is not this "
@@ -97,12 +97,12 @@ _SCRIPT_GENERATION_RENAMED = (
     "    \"env_init\": {env_init}\n"
     "instead.  (docs/configuration.md § 4)")
 
-#: `execution` is the RUN CARD in task.json -- ranks, threads, GPUs, wall,
+#: `execution` is the RUN CARD in job-request.json -- ranks, threads, GPUs, wall,
 #: queue.  This file used the same name for how a launch is sent, and carried a
 #: default queue (`domain`) every job without one received.
 _EXECUTION_RENAMED = (
     "{path}: 'execution' is now 'launch', so that "
-    "`execution` means only the run card in task.json.  Write\n"
+    "`execution` means only the run card in job-request.json.  Write\n"
     "    \"launch\": {launch}\n"
     "instead.{dropped}  (docs/configuration.md § 4)")
 
@@ -736,7 +736,7 @@ def _read_execution_renamed(raw: Mapping[str, Any]):
                   if k != "mode" and not _is_comment(k))
     dropped = (f"  {', '.join(map(repr, gone))} "
                f"{'has' if len(gone) == 1 else 'have'} no replacement: a job "
-               f"names its own queue (`allocation.domain` in task.json, or "
+               f"names its own queue (`allocation.domain` in job-request.json, or "
                f"--domain)." if gone else "")
     raise RuntimeConfigError(_EXECUTION_RENAMED.format(
         path=CONFIG_FILENAME, launch=launch, dropped=dropped))

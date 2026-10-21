@@ -342,21 +342,6 @@ def test_comma_text_is_refused_for_a_list_field():
     assert "['Au', 'C', 'H', 'S']" in issue.message
 
 
-def test_a_run_card_value_the_rung_does_not_read_is_refused():
-    """A run card's value is read by the rung's deck or by nothing
-    (`template.md` § 6.3, § 6.4's ``stages``), as an override is (K4):
-    `restart` is read by a relaxation rung -- an optimization's, and since
-    2026-10-19 a vibration's (`vibration.md`, *the start state is stated
-    where it is read*) -- and on a force-constant rung's card it would be
-    pinned into a deck that ignores it."""
-    issues = _errors(preflight(_task(
-        calculation="vibration", varies=(),
-        stages=(Stage(name="fc", overrides={},
-                      execution={"restart": "clean"}),))))
-    assert any("restart" in i.message and "relaxation rung" in i.message
-               and "'fc'" in i.message for i in issues), issues
-
-
 def test_an_optional_field_still_checks_the_type_inside_it():
     """The other half of the source-text bug.  ``Optional[float]`` is not
     the string ``"float"``, so an optional field accepted anything at all."""

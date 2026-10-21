@@ -123,7 +123,7 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
     cfg = T.config_from_template(text, _Cited)
     assert cfg.basis == "TZP", (
         "a transport template answering a cited item is now the ORDINARY "
-        "state: it is what `jobset init` writes, defaulted from the cited "
+        "state: it is what `molbuilder describe` writes, defaulted from the cited "
         "run, and what a person edits afterwards")
 
 

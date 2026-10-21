@@ -1227,17 +1227,16 @@ def test_siesta_form_schema_matches_documented_layout():
         # read-only at that answer (`locked`, § 6.6 obligation 3; plan § 5w
         # K7) -- never a control.
         ("procedure",  14),
-        # mpi_np, omp_threads, max_memory_mb and use_gpu are on the staging
-        # surface: bench axes measured on the machine, not parameters typed
-        # beside the physics.
-        ("execution",   3),
     ], got
 
     # `staging` items are declared parameters this surface does not ask
-    # (user, 2026-08-15).  `restart` and `continue_retries` are the two
-    # today; a regression that put them back would land here.
-    ids = [f["id"] for s in sch["sections"] for f in s["fields"]]
-    assert not [i for i in ids if "restart" in i or "retr" in i], ids
+    # (user, 2026-08-15): every run setting -- the run card's
+    # (`execution/job-request.md` § 2) -- and `restart`, the stage
+    # table's.  A regression that put one back would land here.
+    from molbuilder.template import run_settings
+    names = {f["name"] for s in sch["sections"] for f in s["fields"]}
+    assert not names & (run_settings("siesta") | {"restart"}), sorted(
+        names & (run_settings("siesta") | {"restart"}))
 
 
 def test_api_build_schema_returns_siesta_schema(web_client):

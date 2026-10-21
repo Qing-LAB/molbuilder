@@ -288,15 +288,16 @@ class Run:
         (`runfiles.WRITTEN`) -- or ``None``: also when prep has written
         another deck there since this run's (a re-prep), whose report the
         file now is, when that one is another calculation
-        (`script_emit.same_calculation`, as the record's ``current`` asks)."""
+        (`deck_record.same_calculation`, as the record's ``current`` asks)."""
         deck, prepared = self.deck, self.stage_deck
         if deck is None or prepared is None or not prepared.is_file():
             return None
         if prepared.resolve() != deck.resolve():
-            from molbuilder.script_emit import same_calculation
+            from molbuilder.deck_record import same_calculation
             # Read as the record reads a deck (`record._read`): one file
             # that will not decode costs its own row, never the ladder's.
-            if not same_calculation(
+            if same_calculation(
+                    self.place.task.engine,
                     deck.read_text(encoding="utf-8", errors="replace"),
                     prepared.read_text(encoding="utf-8", errors="replace")):
                 return None

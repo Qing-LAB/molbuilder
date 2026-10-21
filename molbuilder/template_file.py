@@ -40,17 +40,23 @@ class TemplateFile(NamedTuple):
     text: str
 
 
-def of(base, label: str) -> Optional[TemplateFile]:
+def of(base, label: str, *, raw: bool = False) -> Optional[TemplateFile]:
     """THE TEMPLATE'S DOOR (`execution/architecture.md` § 3.2, A16): this
     calculation's template in *base*, read -- the folder's one template,
     named for the calculation's *label* -- or ``None`` when there is none.
 
     **A folder is one calculation** (`project-layout.md` § 1.4), and its
     template is ``<label>.template.toml`` -- the name :func:`template_path`
-    forms for the writers (`jobset init`, the hand-over, the Transport tab,
+    forms for the writers (`molbuilder describe`, the hand-over, the Transport tab,
     `jobset migrate`).  So two templates, or one under another name, is a
     folder molbuilder did not leave, and it is refused by name rather than
     read (W38 M1).  *Nothing here* is ``None``, an answer.
+
+    **A run setting carries no value here** (`execution/job-request.md`
+    § 2): it is the job request's, so a template stating one -- written
+    before 2.27.0, or by hand -- is refused, naming `jobset migrate`, which
+    moves it onto the calculation's run card.  ``raw`` reads the file as it
+    lies, for that migration alone (`architecture.md` A16).
     """
     # `.template.toml` IS a role `runfiles.WRITTEN` declares -- the answers
     # file, written once at the bundle root -- so the search is the
@@ -71,7 +77,34 @@ def of(base, label: str) -> Optional[TemplateFile]:
             f"{found[0]} is not this calculation's template: a calculation "
             f"labelled {label!r} keeps its parameters in "
             f"{template_filename(label)}, the name it was described with.")
-    return TemplateFile(found[0], found[0].read_text(encoding="utf-8"))
+    text = found[0].read_text(encoding="utf-8")
+    if not raw:
+        _refuse_run_settings(found[0], text, base)
+    return TemplateFile(found[0], text)
+
+
+def _refuse_run_settings(path, text: str, base) -> None:
+    """A value on a run setting, refused by name, naming the command that
+    moves it (`execution/job-request.md` § 2, § 8)."""
+    from .identity import migrate_as_typed
+    from .template import read_template
+    try:
+        items = read_template(text).items
+    except ValueError:
+        # A TEMPLATE THAT DOES NOT READ is refused by its readers, in their
+        # words, where each reads it -- prep's resolve; status, in its table
+        # (`job-system.md` § 5.3).  This door asks what one that reads states.
+        return
+    stated = [it.name for it in items
+              if "execution" in (it.category or ()) and it.value is not None]
+    if stated:
+        raise ValueError(
+            f"{path.name} states {', '.join(stated)}: a run setting is the "
+            f"job request's, never the template's (execution/job-request.md "
+            f"§ 2).  `{migrate_as_typed(base)}` moves "
+            f"{'it' if len(stated) == 1 else 'them'} onto the calculation's "
+            f"run card in job-request.json, the old file kept beside the "
+            f"new.")
 
 
 __all__ = ["TemplateFile", "of", "template_filename", "template_path"]

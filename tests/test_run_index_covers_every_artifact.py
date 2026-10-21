@@ -41,7 +41,7 @@ from molbuilder.identity import is_ours
 LABEL = "H2_01_coarse"
 
 def _a_prepared_calculation(tmp_path: Path, monkeypatch) -> Path:
-    """A real flat calculation, described by `jobset init` and prepared by
+    """A real flat calculation, described by `molbuilder describe` and prepared by
     `jobset prep` -- the road a person takes.
 
     Returns the folder its stage runs in -- deck, wrapper and the shipped

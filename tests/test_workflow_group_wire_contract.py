@@ -245,7 +245,7 @@ def test_the_task_setup_save_findings_carry_their_workflow_group(
     assert over and over.get("ok"), over
     (d / over["handover_name"]).write_text(over["handover_text"])
     h = _json.loads(over["handover_text"])
-    proposed = {"schema": "molbuilder/task@1", "engine": h["engine"],
+    proposed = {"schema": h["task_schema"], "engine": h["engine"],
                 "calculation": h["calculation"],
                 "shape": "flat", "run": h["run"], "structure": h["structure"],
                 # the field must be PROMOTED before a stage may override it
@@ -253,10 +253,12 @@ def test_the_task_setup_save_findings_carry_their_workflow_group(
                 # the preflight ever runs.
                 "varies": [key],
                 # a STRING where the field is an int -> `config.<key>`
-                "stages": [{"name": "coarse", "group": 1,
+                "stages": [{"name": "coarse",
                             "overrides": {key: "not-an-int"}}]}
-    r = web_client.post("/api/task-setup/save",
-                        json={"dest": str(d), "text": _json.dumps(proposed)})
+    from support.road import save_both
+    r = save_both(d, proposed, {"schema": h["job_request_schema"],
+                                "stages": {"coarse": {"group": 1}}},
+                  web_client)
     body = r.get_json()
     findings = body.get("findings") or []
     ours = [f for f in findings if f.get("where") == f"config.{key}"]

@@ -39,7 +39,7 @@ render identically.
 |---|---|---|
 | **the spine** | one picture of every arrow, template to deck | § 3 |
 | **machine-fit** | a bench cell is fit on its one queue: one declared whole is kept with its fit, one the machine proposed that no node holds is left out with the numbers, one past the prep's own ask is left out by name | § 4.3a |
-| **nothing invented** | a sweep varies only what the description declares; defaults come from the catalogue, answers from the template | § 4 |
+| **nothing invented** | a sweep varies only what the job request's `bench` declares; defaults come from the catalogue, answers from the template | § 4 |
 | **speed data is presented, never judged** | results record the machine each trial LANDED on; comparisons are grouped by machine kind and shown — the user is the analyzer | § 4.4a-b |
 | **the engine seam** | an engine is a plugin behind one interface, not a branch in the pipeline | § 7 |
 
@@ -221,7 +221,7 @@ families, and they differ in *who is allowed to bound them*:
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
 | **parameter** | `block_size` · `mesh_cutoff` · `pao_energy_shift` | the template item's own `range` · `choices` · `type` | **the catalogue** | it is a parameter, and § 7 of `template.md` makes every parameter of the calculation an item |
-| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, and marked as one the machine answers (`template.md` § 6.4) | **the allocation** — see § 4.1 | the **template** must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1). The **description** may, in its own block — `execution` (`stages.md` § 6.8d), never `bench`, whose points are always things to try |
+| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, and marked as one the machine answers (`template.md` § 6.4) | **the allocation** — see § 4.1 | the **template** must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1). The **job request** may, in its own block — `execution` (`job-request.md` § 3.2), never `bench`, whose points are always things to try |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
 for every parameter; the allocation is stated for this run and is itself bounded
@@ -287,46 +287,30 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 | | stated in | shape |
 |---|---|---|
 | **capability** | the target machine's record, `environment.json` — **its hardware and its queues**, probed on that machine and copied here ([`configuration.md` § 5](?doc=configuration.md)) | the domain menu (probed into `environment.json`) carries **limits** (`max_time`, `max_mem_gb`, `node_types`) and the **probed GPU inventory** of each row — the facts § 4.3a's GPU family and its cell-by-cell fit check read |
-| **allocation** | `task.json` — a stage's run card (`execution`), then the description's `allocation` — with `prep`'s flags over both (`prep_inputs.prep_run_inputs`) — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, memory, and the domain |
+| **allocation** | `job-request.json` — a stage's run card (`execution`), then the calculation's `allocation` — with `prep`'s flags over both (`prep_inputs.prep_run_inputs`) — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, memory, and the domain |
 | **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
 
-### 4.2 The third `prep` input: a parameter **pin**
+### 4.2 A pin is the benchmark's; `block_size` is a run setting
 
-**`prep` takes three inputs, not two** — an allocation, a sweep, and a set of
-**pins**: template parameters given a value for *this* prep, overriding what the
-description carries. **`block_size` is the only member today**, and it is a member
-by rule rather than by exception:
+**A pin is what a benchmark's trials run with** — its one-point declarations
+and its measurement pins (§ 4.3a), laid over each trial and over nothing else.
+A run has no pin: what it runs at is its run card.
 
-> **A parameter belongs in the pin channel when its right value depends on the
-> allocation.** `block_size`'s ceiling is orbitals ÷ ranks, and ranks are an
-> allocation — so it cannot be finally decided in a description that names no
-> machine. **Anything else that varies belongs in a stage's `overrides`**, where
-> the description can carry it.
-
-It is a science parameter — a template item — *and* something a benchmark
-measures and a person then pins for the real run.
-
-**Its precedence is three-deep, and each level is a real state:**
+**`block_size` is a run setting** ([`job-request.md`](?doc=execution/job-request.md) § 2): its ceiling is
+orbitals ÷ ranks, and ranks are the run's, so it is stated beside them, on the
+run card — or measured by a benchmark and then written there by a person.
 
 | given | source | meaning |
 |---|---|---|
-| stated at `prep` | the command | you benchmarked it and chose |
-| not stated | **the template's value** | whatever the description carries |
-| template carries none | **SIESTA's own automatic** | the keyword is not emitted at all — `tuning.md` § 2.11's second state, and the default. *(This row read "`tuning.md` § 2.11's *unset → proposed*" until 2026-08-16; nothing proposes one.)* |
-
-> **The pin channel is bounded by that rule, not by a list**, which is what stops
-> it becoming a general "override anything at `prep`" back door. A second member
-> would have to argue the same dependency; none does today.
+| on a run card | the job request — the rung's, else the calculation's | you benchmarked it and chose |
+| stated nowhere | **SIESTA's own automatic** | the keyword is not written at all — `tuning.md` § 2.11's second state, the item having no default ([`job-request.md`](?doc=execution/job-request.md) § 4) |
 
 ### 4.3 A sweep is declared; an allocation is asked for
 
-*(Retitled 2026-09-02. It read "Neither one ever enters the description" and
-was written when neither did. A **sweep** has been declared in `task.json`
-since 2026-08-17 (§ 4.3a), and the run's own condition since 2026-09-02
-(`stages.md` § 6.8d) — what stays out is the **scheduler's** grant, which is
-what M4 was always about. The paragraph below is kept because its reasoning
-about splitting one concept across two floors is still the reason the two are
-one block each rather than four.)*
+*(A **sweep** is declared in the job request (§ 4.3a), and so is the run's own
+condition (`job-request.md` § 3.2) — what stays out is the **scheduler's**
+grant, which is what M4 is about. The paragraph below gives the reason the two
+are one block each rather than four.)*
 
 **A sweep and an allocation reach `prep` together**, and a machine axis is
 resolved *against* an allocation rather than being one. Putting a parameter axis in the
@@ -339,10 +323,10 @@ else runs on a different cluster at a configuration of their own. **None of
 those three edits it.** That is what floor 2's *names no machine* is actually
 buying.
 
-#### 4.3a A sweep is per STAGE, and it is DECLARED in the description
+#### 4.3a A sweep is per STAGE, and it is DECLARED in the job request
 
 > **Settled by the user, 2026-08-17**, closing a disagreement between this
-> document and [`engines/stages.md`](?doc=engines/stages.md) § 6.8: *"sweep is
+> document and [`job-request.md`](?doc=execution/job-request.md) § 3.4: *"sweep is
 > decided at prep, not in the description, and it is specifically tied to a
 > stage because a stage chooses its run parameters based on bench results."*
 
@@ -351,19 +335,26 @@ because both halves are real and they are different acts:
 
 | | | |
 |---|---|---|
-| **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
-| **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template for the bench's trials *(user rule, 2026-08-20)* — and only for them: what the RUN uses is `execution`, its own block (below) |
+| **what to measure** | `job-request.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
+| **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** for the bench's trials, over what they take otherwise ([`job-request.md`](?doc=execution/job-request.md) § 3.4) *(user rule, 2026-08-20)* — and only for them: what the RUN uses is `execution`, its own block (below) |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
 | **what was fastest** | `<stage>/bench/bench-result.json` | **measured** — a report a person reads; the next `prep task` reads only what that person then writes in `execution` (`prep_inputs.prep_run_inputs`: no second rung) |
 
+**What a trial runs with, for every speed setting**: its sweep point, over its
+one-point declarations, over the calculation's run card, over the catalogue's
+default — never a rung's own card, which is that rung's run
+([`job-request.md`](?doc=execution/job-request.md) § 3.4). **Whether the trials are a GPU family** is the
+same answer for `use_gpu`: the bench's points for it (two points, both
+families), else the calculation's card, else the default, `false`.
+
 > **Precedence when several sources name one knob** — the full ladder is
-> [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a run's
-> deck knob it reads: the template → the calculation's **`execution`** → the
-> rung's → explicit CLI flags.  **A `bench` declaration is not on this
+> [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a run
+> setting it reads: the catalogue's default → the calculation's
+> **`execution`** → the rung's; the launch shape has a `prep` flag over both.  **A `bench` declaration is not on this
 > ladder** *(2026-09-30)*: it is what the trials run with.  **Nor is a
 > benchmark's verdict** *(2026-09-02)*: it writes a report a person reads,
-> and what the run uses is what that person then wrote.  Flags beat
-> everything, exactly as they do today.  A **multi-point** non-machine entry
+> and what the run uses is what that person then wrote.  A **multi-point**
+> non-machine entry
 > is a **value axis** — the rule below.
 
 #### The run's condition is its OWN declaration — `execution`
@@ -401,8 +392,8 @@ work, and it is a property of the data model rather than of any surface.
 `resolve()`.** Both lanes end in `plan_stage → resolve() → ParameterSet
 → the renderers`, and that is what "one framework" means. What differs is the
 step above it: a bench hands down a sweep and its translation; a run hands
-down one condition, split by the catalogue into the launch shape and the pins
-(`_declared_execution_pins` for the second half).
+down one condition, split by the catalogue into the launch shape and its run
+settings, laid over the catalogue's defaults ([`job-request.md`](?doc=execution/job-request.md) § 4).
 
 **The run does NOT go through the grid enumerator.** `bench_inputs`
 (`jobset/prep_inputs.py`) is a
@@ -411,15 +402,15 @@ so the machine half is a **direct map** from the catalogue's name to the
 `Resources` field. See *"Where `execution`'s machine values land"* below, and
 the recorded detour that proves why.
 
-**It is both calculation-wide and per stage** (`stages.md` § 6.8d): the block
+**It is both calculation-wide and per stage** (`job-request.md` § 3.2): the block
 says what this calculation runs at, and a rung that differs says so on
 itself, field by field over the calculation's.
 
 **Precedence gains one rung, and it goes where the person's own words go:**
 
-> template < the calculation's **`execution`** < the rung's **`execution`** < a `prep` flag
+> the catalogue's default < the calculation's **`execution`** < the rung's **`execution`** — and for the launch shape, a `prep` flag over both
 
-*(A one-point `bench` pin sets only the trials — `stages.md` § 6.8d's "and
+*(A one-point `bench` pin sets only the trials — `job-request.md` § 3.2's "and
 nowhere else".)*
 
 `execution` is what a person **asked for**, in the file that records asks, and
@@ -477,10 +468,10 @@ person asked for, and nothing a machine found sits beside it — a benchmark
 reports, and a person writes. The full ladder is
 [`architecture.md § 5.2`](?doc=execution/architecture.md).
 
-> **§ 4.3 above forbids a MACHINE'S OPINION in the description, not a
+> **§ 4.3 above forbids a MACHINE'S OPINION in the job request, not a
 > DECISION.** What floor 2 may never hold is what a machine **found** —
 > `summarize`'s verdict has its own file for exactly that reason
-> (`stages.md` § 6.8). *"Run it at 8"*, chosen by a person who read the
+> (`job-request.md` § 3.4). *"Run it at 8"*, chosen by a person who read the
 > benchmark or already knew, is an **ask**, and asks are what this file is
 > for. The sentence *"a machine axis IS an allocation"* conflates an axis
 > with an allocation; an axis is the set you want measured, and the
@@ -613,7 +604,7 @@ framework rule, not a script patch)*:
   records each trial's point (the coordinate as data, never parsed back
   from a name), the winner is matched by its label, and the report's
   `execution` block carries the winner's value coordinates — what a person
-  writes into `task.json` for the run to use (§ 4.3a).
+  writes into `job-request.json` for the run to use (§ 4.3a).
 - **Comparability is stated, not assumed**: CPU trials compare across
   same-silicon partitions; GPU numbers are the GPU build's own; the
   verdict reports per-combination facts and choosing stays yours
@@ -809,7 +800,7 @@ flowchart TB
     F5["<b>5 · launch</b><br/><code>jobset/submit</code>"]
     F4["<b>4 · layout</b><br/><code>jobset/materialize</code> · <code>jobset/gather</code>"]
     F3["<b>3 · plan &amp; render</b><br/><code>resolve</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
-    F2["<b>2 · description</b><br/><code>task</code> · <code>template_file</code>"]
+    F2["<b>2 · description</b><br/><code>task</code> · <code>job_request</code> · <code>template_file</code>"]
     F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>runfiles</code> · <code>paths</code> (<code>Shape</code>) · <code>scheduler/</code> · <code>parse</code> · <code>template</code> (the catalogue)"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
 ```
@@ -983,7 +974,7 @@ exist in the sections above and in the companion contracts; this section is the
 cross-cutting answer, and it points rather than copies — a value stated twice
 is a value that drifts, which is § 3's whole argument.)*
 
-**Every parameter in the system belongs to exactly one of five classes, and
+**Every parameter in the system belongs to exactly one of six classes, and
 the class answers three questions at once: WHO decides the value, WHEN it is
 decided, and WHERE its default comes from.**  A parameter that seems to belong
 to two classes is the smell § 4 warns about — the same fact decided on two
@@ -991,11 +982,12 @@ floors.
 
 | class | examples | decided at | by | default comes from |
 |---|---|---|---|---|
-| **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis, `restart` | **describe** (floor 2) | the user, per stage | the **catalogue** — the single source § 3 draws; the template carries the answer |
+| **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis | **describe** (floor 2) | the user, per stage | the **catalogue** — the single source § 3 draws; the template carries the answer |
 | **2 · structure facts** | cell, **vacuum**, frozen atoms, regions | before describe (the structure file), or **at describe** (`--vacuum`) | whoever built the structure | *unset* — a cell is resolved from the structure at render, with a named default and a warning when nobody chose |
-| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | **no default**: every launch value is stated — `allocation` for the queue, wall and memory, `execution` for the launch shape (`stages.md` § 6.8d), or a flag — or prep refuses the run ([`architecture.md`](?doc=execution/architecture.md) § 5.2); the target's record checks an ask and supplies none, and never the **template** ([`engines/template.md`](?doc=engines/template.md) § 7 forbids a value there) *(an item neither named was answered by the wrapper at run time until 2026-10-02)* |
+| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | **no default**: every launch value is stated — `allocation` for the queue, wall and memory, `execution` for the launch shape (`job-request.md` § 3.2), or a flag — or prep refuses the run, but the memory cap (`max_memory_mb`), which stated nowhere is no cap ([`architecture.md`](?doc=execution/architecture.md) § 5.2); the target's record checks an ask and supplies none, and never the **template** ([`engines/template.md`](?doc=engines/template.md) § 7 forbids a value there) *(an item neither named was answered by the wrapper at run time until 2026-10-02)* |
 | **4 · runtime overrides** | `-np` / `-omp` flags, `MB_NP`, `OMP_NUM_THREADS`, `--mps` / `--no-mps` | **launch**, inside the wrapper | the person or scheduler launching | the values class 3 baked; see the chain below |
-| **5 · policy** | `continue_retries`, stage `restart` policy | **describe** (floor 2) | the user | the catalogue, like class 1 — a policy is portable, which is why it is *not* class 3 |
+| **5 · policy** | stage `restart` policy | **describe** (floor 2) | the user | the catalogue, like class 1 — a policy is portable, which is why it is *not* class 3 |
+| **6 · run settings** | `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack`, `continue_retries` | **describe** — the job request (floor 2), and again for a launched stage | the user, calculation-wide or per stage | the **catalogue**'s default, recorded *not chosen* ([`job-request.md`](?doc=execution/job-request.md) § 4) |
 
 ### 10.0 The whole picture
 
@@ -1005,7 +997,7 @@ comes from, who may change it, and where the two surfaces hand theirs in. It
 lives there because § 5 of that document owns *in what order decisions get
 fixed*, and a value's provenance is that question asked about a number.
 
-The five classes below are the same fact read per-parameter rather than
+The six classes below are the same fact read per-parameter rather than
 per-ladder: which class a parameter is in tells you *who* decides it and
 *when*, and § 5.2 tells you what beats what inside that class.
 
@@ -1074,7 +1066,7 @@ not appear in a floor-2 template at all.
 
 **"No default" means the run states it.** `execution` is somebody saying, and
 a flag beats it (§ 4.3a). The item stays valueless in the template either way —
-the decision lives in the description, which is a different file with a
+the decision lives in the job request, which is a different file with a
 different job. The target's record **checks** the statement and never supplies
 one: a rank count read off a machine's width is a number nobody stated for this
 run.

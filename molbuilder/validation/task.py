@@ -47,7 +47,8 @@ from ..template import is_member
 
 def preflight(task, config_cls=None, *,
               generators: Optional[Dict[str, Any]] = None,
-              template_text: Optional[str] = None) -> List[Issue]:
+              template_text: Optional[str] = None,
+              request=None) -> List[Issue]:
     """§ 6.6's schema-dependent half, in the order the contract lists them.
 
     ``task`` is a parsed :class:`molbuilder.task.Task` — the codec's own four
@@ -64,6 +65,12 @@ def preflight(task, config_cls=None, *,
     Both compare RESOLVED stages, so they need the template, and both are
     *"a warning, not a preflight row"* (§ 6.6a): they proceed.  Optional
     because half of § 6.6 is answerable from the description alone.
+
+    ``request``, when the caller holds the job request beside it
+    (`execution/job-request.md` § 7), adds its checks: the run cards' and
+    the benchmark's names and values (:func:`request_checks`), and -- with
+    the template -- that no stage shares a group with one it builds on
+    (`group.check_groups`).
 
     Every finding names what it refused (§ 6.6's right-hand column) — this is a
     file people edit by hand, so a refusal owes them the offending key, the
@@ -92,10 +99,8 @@ def preflight(task, config_cls=None, *,
     # outside it and each point measures a DIFFERENT calculation -- so the
     # comparison the benchmark exists to make says nothing, and it says
     # nothing silently, which is why this is an error rather than a warning.
-    out.extend(_bench_names_a_speed_knob(task, cls))
-    out.extend(_run_card_names_what_its_rung_reads(task))
-    out.extend(bench_points_fit_their_items(task))
-    out.extend(_described_values_may_stand(task))
+    if request is not None:
+        out.extend(request_checks(request, cls))
 
     # -- 3. every named field exists in the schema ------------------------
     fields = {f.name: f for f in dataclasses.fields(cls)}
@@ -127,15 +132,16 @@ def preflight(task, config_cls=None, *,
     # the description resolves it.
     stepless = check_a_relaxation_takes_a_step(ladder, engine=_engine,
                                                kind=_kind)
-    # NO STAGE SHARES A GROUP WITH ONE IT BUILDS ON (§ 6.6): the ladder's
-    # links, asked with the template -- an independent ladder's are its
-    # resolved stages' `restart`, so they are asked of a ladder that
-    # resolves; one that does not is refused above, or by prep.
-    if ladder:
+    # NO STAGE SHARES A GROUP WITH ONE IT BUILDS ON (`job-request.md`
+    # § 3.3): the request's numbers against the ladder's links, asked with
+    # the template -- an independent ladder's are its resolved stages'
+    # `restart`, so they are asked of a ladder that resolves; one that does
+    # not is refused above, or by prep.
+    if ladder and request is not None:
         from ..jobset.group import check_groups
-        why = check_groups(task, template_text)
+        why = check_groups(task, request, template_text)
         if why:
-            out.append(Issue("error", why, where="stages.group"))
+            out.append(Issue("error", why, where="job_request.stages.group"))
 
     # -- 4. every value is inside the schema's bounds ---------------------
     #  ...which begins with being a value that field can HOLD: `relax_steps:
@@ -158,14 +164,26 @@ def preflight(task, config_cls=None, *,
 
 
 
-def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
-    """§ 6.8: every ``bench`` key is an ``execution``-category field.
+def request_checks(request, cls) -> List[Issue]:
+    """THE JOB REQUEST'S OWN CHECKS that need the vocabulary
+    (`execution/job-request.md` § 3.2, § 3.4): every bench key a speed knob,
+    every run card's name an item its rung reads, every bench point fitting
+    its item, every value one its item may hold -- ``request`` read against
+    the description, whose engine and kind it holds."""
+    return [*_bench_names_a_speed_knob(request, cls),
+            *_run_card_names_what_its_rung_reads(request),
+            *bench_points_fit_their_items(request),
+            *_described_values_may_stand(request)]
+
+
+def _bench_names_a_speed_knob(request, cls) -> List[Issue]:
+    """§ 3.4: every ``bench`` key is an ``execution``-category field.
 
     Read off the CONFIG CLASS's own metadata rather than a list kept here --
     a second list of which parameters are sweepable is the copy that goes
     stale, and this codebase has four documented cases of exactly that.
     """
-    plan = getattr(task, "bench", None)
+    plan = request.bench
     if not plan:
         return []
     from ..template import items_of
@@ -178,16 +196,16 @@ def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
         known = ", ".join(sorted(sweepable)) or "(none)"
         out.append(Issue(
             "error",
-            f"bench names {name!r}, which {task.engine} does not declare as "
+            f"bench names {name!r}, which {request.engine} does not declare as "
             f"an `execution` parameter -- so sweeping it would measure a "
             f"different calculation at each point and the comparison would "
             f"mean nothing. Sweepable here: {known}",
-            where=f"task.bench.{name}"))
+            where=f"job_request.bench.{name}"))
     return out
 
 
-def _run_card_names_what_its_rung_reads(task) -> List[Issue]:
-    """`stages.md` § 6.8d: every name in an ``execution`` block -- the
+def _run_card_names_what_its_rung_reads(request) -> List[Issue]:
+    """`job-request.md` § 3.2: every name in an ``execution`` block -- the
     calculation's or a stage's -- is an `execution` catalogue item the kind
     carries, and on a stage's own card one its rung reads.
 
@@ -201,29 +219,29 @@ def _run_card_names_what_its_rung_reads(task) -> List[Issue]:
     naming a switch that rung does not have (`web/task-setup.md` § 6.2b).
     """
     from ..template import catalogue, reads, select, why_unread
-    blocks = [("execution", getattr(task, "execution", None) or {}, None)]
-    for st in (getattr(task, "stages", None) or ()):
-        if getattr(st, "execution", None):
-            blocks.append((f"stage {st.name!r} execution",
-                           dict(st.execution), st.name))
+    blocks = [("execution", dict(request.execution or {}), None)]
+    for name, entry in request.stages.items():
+        if entry.execution:
+            blocks.append((f"stage {name!r} execution",
+                           dict(entry.execution), name))
     if not any(b for _w, b, _s in blocks):
         return []
     # THE CATALOGUE'S `execution` ITEMS, PLUS THE TWO LANE ASKS.  `time` and
     # `domain` are not catalogue items -- an engine has no opinion about a
     # wall clock or a queue -- but a RUN owns them separately from the bench
-    # (`stages.md` § 6.8e), so they are admitted here by name.
-    from ..task import LANE_ASKS
+    # (`job-request.md` § 3.2a), so they are admitted here by name.
+    from ..job_request import LANE_ASKS
     from ..template import a_kind
-    kind = _kind_of(task)
-    every = {i.name for i in select(catalogue(), engine=task.engine)
+    kind = _kind_of(request)
+    every = {i.name for i in select(catalogue(), engine=request.engine)
              if "execution" in (i.category or ())}
     # ...THAT THIS KIND CARRIES: a run card's value is read by the kind's
     # decks or by nothing (`template.md` § 6.3), as an override is (K4).
-    carried = {i.name: i for i in select(catalogue(), engine=task.engine,
+    carried = {i.name: i for i in select(catalogue(), engine=request.engine,
                                          calculation=kind)
                if "execution" in (i.category or ())}
     known = set(carried) | set(LANE_ASKS)
-    engine = str(task.engine)
+    engine = str(request.engine)
     out: List[Issue] = []
     for where, block, stage in blocks:
         for name in sorted(block):
@@ -237,7 +255,7 @@ def _run_card_names_what_its_rung_reads(task) -> List[Issue]:
                         then="remove it from that run card -- on Task "
                              "setup, the × beside it")
                     + ".",
-                    where=f"task.{where}.{name}"))
+                    where=f"job_request.{where}.{name}"))
                 continue
             if name in known:
                 continue
@@ -247,50 +265,51 @@ def _run_card_names_what_its_rung_reads(task) -> List[Issue]:
                     f"{where} names {name!r}, which {a_kind(kind)} does not "
                     f"carry -- no rung of it reads it, so the value would "
                     f"change nothing (engines/template.md 6.3)",
-                    where=f"task.{where}.{name}"))
+                    where=f"job_request.{where}.{name}"))
                 continue
             out.append(Issue(
                 "error",
                 f"{where} names {name!r}, which is not an execution setting "
-                f"of {task.engine}.  This block says what the RUN uses -- "
+                f"of {request.engine}.  This block says what the RUN uses -- "
                 f"ranks, threads, the device, the solver.  A physics value "
                 f"belongs in the template, and a per-stage one in that "
-                f"stage's `overrides` (engines/stages.md 6.2).  Execution "
-                f"settings here: {', '.join(sorted(known)) or '(none)'}",
-                where=f"task.{where}.{name}"))
+                f"stage's `overrides` in task.json (engines/stages.md 6.2).  "
+                f"Execution settings here: "
+                f"{', '.join(sorted(known)) or '(none)'}",
+                where=f"job_request.{where}.{name}"))
     return out
 
 
-def _described_values_may_stand(task) -> List[Issue]:
-    """The values a description holds OUTSIDE its stages' overrides -- an
-    ``execution`` block's, the calculation's or a stage's, and a bench's
-    points -- asked of the one per-value door as a stage's value is
-    (`engines/template.md` § 5.3): they become pins and sweep points.  A name the other checks refuse
-    (not an execution item, not a speed knob) is theirs; this asks only
-    whether the value may stand."""
+def _described_values_may_stand(request) -> List[Issue]:
+    """The values a job request holds -- an ``execution`` block's, the
+    calculation's or a stage's, and a bench's points -- asked of the one
+    per-value door as a stage's value is (`engines/template.md` § 5.3):
+    they become run settings and sweep points.  A name the other checks
+    refuse (not an execution item, not a speed knob) is theirs; this asks
+    only whether the value may stand."""
     out: List[Issue] = []
-    blocks = [("execution", getattr(task, "execution", None) or {})]
-    for st in (getattr(task, "stages", None) or ()):
-        if getattr(st, "execution", None):
-            blocks.append((f"stage {st.name!r} execution", dict(st.execution)))
+    blocks = [("execution", dict(request.execution or {}))]
+    for name, entry in request.stages.items():
+        if entry.execution:
+            blocks.append((f"stage {name!r} execution", dict(entry.execution)))
     for where, block in blocks:
         for name in sorted(block):
-            clause = _why_not(task, name, block[name])
+            clause = _why_not(request, name, block[name])
             if clause:
                 out.append(Issue(
                     "error", f"{where} sets {name} = {block[name]!r}{clause}.",
-                    where=f"task.{where}.{name}"))
-    for name in sorted(getattr(task, "bench", None) or {}):
-        for v in task.bench[name]:
-            clause = _why_not(task, name, v)
+                    where=f"job_request.{where}.{name}"))
+    for name in sorted(request.bench or {}):
+        for v in request.bench[name]:
+            clause = _why_not(request, name, v)
             if clause:
                 out.append(Issue(
                     "error", f"bench declares {name} = {v!r}{clause}.",
-                    where=f"task.bench.{name}"))
+                    where=f"job_request.bench.{name}"))
     return out
 
 
-def bench_points_fit_their_items(task) -> List[Issue]:
+def bench_points_fit_their_items(request) -> List[Issue]:
     """`generator.md` § 4.3a's shape half at DESCRIBE time: every declared
     point must fit its item -- a bool item takes true/false, an enum point
     must be one of the item's choices, and a repeated point would measure
@@ -302,11 +321,11 @@ def bench_points_fit_their_items(task) -> List[Issue]:
     Membership is the sibling's question; an unknown name is skipped here
     because `_bench_names_a_speed_knob` already reported it.
     """
-    plan = getattr(task, "bench", None)
+    plan = request.bench
     if not plan:
         return []
     from ..template import catalogue, select
-    items = {i.name: i for i in select(catalogue(), engine=task.engine)
+    items = {i.name: i for i in select(catalogue(), engine=request.engine)
              if "execution" in (i.category or ())}
     out: List[Issue] = []
     for name in sorted(plan):
@@ -320,20 +339,20 @@ def bench_points_fit_their_items(task) -> List[Issue]:
                     "error",
                     f"bench declares {name!r} = {v!r}; the item is a bool "
                     f"-- write true or false.",
-                    where=f"task.bench.{name}"))
+                    where=f"job_request.bench.{name}"))
             elif it.type == "enum" and it.choices \
                     and not is_member(v, it.choices):
                 out.append(Issue(
                     "error",
                     f"bench declares {name!r} = {v!r}; the choices are "
                     f"{', '.join(map(str, it.choices))}.",
-                    where=f"task.bench.{name}"))
+                    where=f"job_request.bench.{name}"))
         if len(pts) != len(set(pts)):
             out.append(Issue(
                 "error",
                 f"bench declares {name!r} = {pts!r}; a repeated point "
                 f"would measure one configuration twice.",
-                where=f"task.bench.{name}"))
+                where=f"job_request.bench.{name}"))
     return out
 
 

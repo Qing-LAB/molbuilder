@@ -60,7 +60,7 @@ the whole taxonomy, and it is what § 3's table is sorted by.
 |---|---|---|
 | **a person** | somebody decided it. Nothing in the program may overwrite it | `molbuilder.json` |
 | **a probe** | a machine was asked, and it answered | `environment.json` |
-| **a producing verb** | `describe` (or the web's Task-setup tab) wrote down what a calculation *is* | `<label>.template.toml`, `task.json`, `task.1st.json` |
+| **a producing verb** | `describe` (or the web's Task-setup tab) wrote down what a calculation *is* | `<label>.template.toml`, `task.json`, `job-request.json`, `task.1st.json` |
 | **the engine's package** | it ships with the code, as data rather than as Python | `catalogue.template.toml`, `<engine>/warm-files.toml` |
 
 **The taxonomy is not descriptive; it is enforced.** Two rules follow from it and
@@ -82,7 +82,7 @@ Two scopes exist:
 | # | scope | where | what may live here |
 |---|---|---|---|
 | 1 | **machine** | `molbuilder.json` — **one file**, in the config directory named by `$MOLBUILDER_CONFIG_DIR` or the XDG default. A copy in the working directory is **not read**, and you are told so (§ 2.1a) | every section of it (§ 4) |
-| 2 | **calculation** | the folder itself: `task.json`, `<label>.template.toml`, `environment.json`, an optional `warm-files.toml` | what this one calculation is |
+| 2 | **calculation** | the folder itself: `task.json`, `job-request.json`, `<label>.template.toml`, `environment.json`, an optional `warm-files.toml` | what this one calculation is |
 
 ### 2.1 Where each file is looked for, in order
 
@@ -95,7 +95,7 @@ No file is merged with another.
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` — the config directory is § 2.1c's three branches, **`MOLBUILDER_CONFIG_DIR` included**; this row stated only the last two until 2026-09-12 — and when none answers, nothing: **no reader probes** (M-4; until 2026-10-01 a fourth row read *a fresh probe, only when the caller asked*) | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
 | `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` in the package | first found wins — a calculation's tuned copy replaces the shipped one, and is the list in effect for it (`warmfiles.warm_list`), its `scratch_dir` included. **Whether a file is an engine's scratch is always asked of the shipped files, every engine's** (`warmfiles.is_scratch`): what the checkpoint never stores and a restore removes, what `jobset scratch` empties — a calculation's copy is a file somebody can edit between a save and a restore ([`execution/checkpointing.md`](?doc=execution/checkpointing.md) S1, S1c) |
-| `<label>.template.toml`, `task.json` | the calculation folder, and nowhere else | there is nothing to combine — one calculation, one description |
+| `<label>.template.toml`, `task.json`, `job-request.json` | the calculation folder, and nowhere else | there is nothing to combine — one calculation, one description |
 
 **`environment.json` has no working-directory step, and that is deliberate.** A
 calculation folder is very often the working directory, so a cwd step would make
@@ -632,6 +632,7 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `environment.json` | a probe | machine *and* calculation (§ 5 M-3) | **what the target machine is** — cores, GPUs, scheduler, the queues you can actually reach, and how a shell enters an environment there |
 | `<label>.template.toml` | `describe` / the Task-setup tab | calculation | **every parameter of this calculation**, with the value in force |
 | `task.json` | `describe` / the Task-setup tab | calculation | **what changes** — the ladder, what varies, the structure reference |
+| `job-request.json` | `describe` / the Task-setup tab | calculation | **how and where it runs** — the queue, wall and memory asked, the run cards, each stage's group, a benchmark's plan, the reports ([`execution/job-request.md`](?doc=execution/job-request.md)) |
 | `task.1st.json` | the Task-setup tab | calculation | a partial description in flight; **removed** when the real one is saved |
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
 | `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries, and which are the engine's scratch — recomputed by every run, never carried, never saved by a checkpoint. A calculation may carry its own tuned copy, which is the list in effect for it, its `scratch_dir` included (`Job.scratch_dir`); whether a file is an engine's scratch is asked of the shipped files alone, every engine's (`warmfiles.is_scratch`, § 2.1) |
@@ -930,7 +931,7 @@ make the same file fail as an unknown key, which tells the person nothing.
 |---|---|---|
 | `scheduler` — every key in it: `kind`, `directives` (partition, QoS, account, mail, export), `defaults` (time, cores per task, memory), `placement_priority`, `routing`, `gpu` | 2026-10-02 | A target's queues are its record's: `jobset probe --write` ON that machine, the record copied here (§ 5). A job's queue, wall, memory and shape are the job's own (`execution/architecture.md` § 5.2) |
 | `script_generation` | 2026-10-02 | Renamed `env_init`, for what it holds: how a shell on this machine enters an environment — the same two keys |
-| `execution` | 2026-10-02 | Renamed `launch`. `execution` is the run card in `task.json`, and means only that |
+| `execution` | 2026-10-02 | Renamed `launch`. `execution` is the run card in `job-request.json`, and means only that |
 | `notify_keys_file` · `notify_route` | 2026-08-31 | The key file carries its own route ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `envs.host` | 2026-10-02 | Delete it: the host env is always `molbuilder` (§ 2.1c) |
 | `secret_key_file`, at the top level or inside `auth` | 2026-08-31 | The session key has one home, `secrets/secret_key` (§ 2.1e) |
@@ -1249,16 +1250,17 @@ before the field existed.
 
 ## 6. The calculation's own files
 
-Three files describe one calculation, and the split between them is the reason
+Four files describe one calculation, and the split between them is the reason
 a calculation folder is portable at all.
 
 | file | holds | why it is separate |
 |---|---|---|
 | `<label>.template.toml` | **every** parameter, with the value in force | what the calculation *is*. Made from the catalogue, so a parameter exists in one place |
 | `task.json` | **what changes** — the ladder, what varies, the structure reference | what the calculation *does*. Keeping it out of the template is what lets one template serve every stage |
+| `job-request.json` | **how and where it runs** — the queue, wall and memory asked, the run cards, the groups, a benchmark's plan, the reports | a request may change while what is computed may not ([`execution/job-request.md`](?doc=execution/job-request.md) § 1) — it names no machine either: a queue's name is the person's ask, checked against the target's record at prep |
 | `environment.json` | the machine (§ 5) | **not portable** — it is the one file that describes where you are rather than what you asked for |
 
-**The machine is deliberately not in the first two.** That is what lets you hand
+**The machine is deliberately not in the first three.** That is what lets you hand
 the folder to a colleague on a different cluster, or benchmark it on a short
 queue and run it on a long one, without editing it. The rule is
 [`generator.md` § 4.1](?doc=execution/generator.md).

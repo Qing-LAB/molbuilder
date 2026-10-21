@@ -328,14 +328,13 @@ def spec_for(struct: Structure,
         out.append("")
 
         # ---------------- The run's own set-up, from the bundle ------------
-        # The deck's anchor and the bundle first, then its threads -- sized,
-        # and BLAS capped, before numpy loads -- and what it records about
+        # Its run settings first, in their block (`job-contracts.md` § 3.1),
+        # then the deck's anchor and the bundle, its threads -- sized, and
+        # BLAS capped, before numpy loads -- and what it records about
         # itself (`runtime_info`, `engines/pyscf.md` § 3).
-        out += emit_script_head(cfg.threads)
-        out += emit_runtime_facts(
-            use_gpu=bool(getattr(cfg, "use_gpu", False)),
-            max_memory_mb=(int(cfg.max_memory_mb) if cfg.max_memory_mb else None),
-        )
+        out += emit_run_settings_block(cfg)
+        out += emit_script_head()
+        out += emit_runtime_facts()
         out.append("import time")
         # ``_os`` is used by the warm-restart blocks (geometry override
         # at gto.M() time + chkfile SCF init-guess after mf is built).
@@ -360,7 +359,7 @@ def spec_for(struct: Structure,
 
         # THE GPU, when this run asks for it -- probed now, on the node that
         # runs it, and moved onto below once the mf is assembled (`to_gpu`).
-        out += emit_gpu_probe(bool(getattr(cfg, "use_gpu", False)))
+        out += emit_gpu_probe()
         if cfg.optimize:
             # geomeTRIC is the one optimizer (`engines/pyscf.md` § 3).  Its
             # import is checked HERE, before any SCF is paid for, with a
@@ -491,13 +490,10 @@ def spec_for(struct: Structure,
             # `compose` would build, not a second assembly of it.
             out.append(f'    output     = _mb_outfile('
                        f'{run_file_expr(names, ROLE_LOG)}),')
-        # A CAP LEFT UNSET IS NO CAP (`template.md` § 2), and the deck says
-        # so: `None`, which PySCF's `Mole.build` reads as not given, keeping
-        # its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB -- a figure it
-        # plans its work by).
-        out.append(f"    max_memory = {cfg.max_memory_mb},   # MB"
-                   if cfg.max_memory_mb else
-                   "    max_memory = None,   # not stated: PySCF's own setting")
+        # THE ZONE'S CAP (`job-contracts.md` § 3.1) -- `None` where none is
+        # stated, which PySCF's `Mole.build` reads as not given, keeping its
+        # own setting (`PYSCF_MAX_MEMORY`, else 4000 MB).
+        out.append("    max_memory = MAX_MEMORY_MB,   # MB, the run settings'")
         out.append("    unit       = 'Ang',")
         out.append(")")
         out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '
@@ -881,6 +877,7 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
     out.append("        return '(absent)'")
     out.append("")
     out.append("_MB_PARAMS = {}")
+    block = run_settings_block_names()
     _resolved = {"net_charge": state.net_charge.value,
                  "spin_treatment": state.spin_treatment.value,
                  "unpaired_electrons": state.unpaired_electrons.value,
@@ -896,8 +893,12 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
             # read back like any other setting (pyscf.md § 7a).
             expr = None
         third = f"_mb_read(lambda: {expr})" if expr else "None"
+        # A RUN SETTING'S ROW READS ITS ZONE, by name (`job-contracts.md`
+        # § 3.1): the one line that states it.
+        said = (block[name] if name in block
+                else repr(_layout.as_written(name, param.value)))
         out.append(f"_MB_PARAMS[{name!r}] = ({param.default!r}, "
-                   f"{_layout.as_written(name, param.value)!r}, {third})")
+                   f"{said}, {third})")
     out.append("")
     out.append("import json as _mb_json")
     from ..deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
@@ -1372,12 +1373,49 @@ def emit_outfile_helper() -> List[str]:
             ""]
 
 
-def emit_script_head(threads: Optional[int]) -> List[str]:
-    """Every PySCF deck's first lines after its docstring: the deck's anchor
-    (:func:`emit_outfile_helper`), ``mb_pyscf.pyz`` on its import path
-    (:func:`emit_bundle_path`), the run's number its run script gave it
+def run_settings_block_names() -> dict:
+    """``{item: its name in the block}`` -- every run setting a PySCF script
+    carries (`template.run_settings`), named as the item, upper case:
+    ``THREADS``, ``USE_GPU``, ``GPU_COUNT``, ``MAX_MEMORY_MB``,
+    ``WALL_SLACK``."""
+    from ..template import run_settings
+    return {name: name.upper() for name in sorted(run_settings("pyscf"))}
+
+
+def emit_run_settings_block(cfg) -> List[str]:
+    """THE RUN-SETTINGS BLOCK (`execution/job-contracts.md` § 3.1): a PySCF
+    script's first lines after its docstring, before its first import --
+    every run setting it carries, the job request's run card's value or the
+    catalogue's default, which every other line reads by name.  What the
+    same-calculation door sets aside for a PySCF script
+    (`execution/job-request.md` § 6)."""
+    from ..deck_record import BLOCK_RUN_SETTINGS, begin_marker, end_marker
+    out = ["# The run settings this script runs with -- the job request's "
+           "run card,",
+           "# else the catalogue's default (execution/job-request.md § 4).  "
+           "Every line",
+           "# below reads them here, by name.",
+           begin_marker(BLOCK_RUN_SETTINGS)]
+    for name, var in run_settings_block_names().items():
+        value = getattr(cfg, name, None)
+        if name == "max_memory_mb":
+            # A CAP LEFT UNSET IS NO CAP (`template.md` § 2): `None`.
+            value = int(value) if value else None
+        elif isinstance(value, bool) or value is None:
+            pass
+        elif isinstance(value, (int, float)):
+            value = int(value)
+        out.append(f"{var} = {value!r}")
+    out += [end_marker(BLOCK_RUN_SETTINGS), ""]
+    return out
+
+
+def emit_script_head() -> List[str]:
+    """Every PySCF deck's first lines after its run settings: the deck's
+    anchor (:func:`emit_outfile_helper`), ``mb_pyscf.pyz`` on its import
+    path (:func:`emit_bundle_path`), the run's number its run script gave it
     (``_MB_RUN``, `runtime_info.run_given`), and the run's threads --
-    ``threads``, the run's own count, or ``None`` to take the allocation's
+    ``THREADS``, the run's own count, or ``None`` to take the allocation's
     -- sized, with
     BLAS capped, before numpy is imported (`runtime_info.cap_threads`), from
     a member that imports only the standard library.  It imports the rest of
@@ -1388,7 +1426,6 @@ def emit_script_head(threads: Optional[int]) -> List[str]:
     the caps would start its BLAS on every core (`engines/pyscf.md` § 3)."""
     from ..runtime_info import (cap_threads, probe_gpu, run_given,
                                 runtime_facts)
-    stated = None if threads is None else int(threads)
     return (emit_outfile_helper() + emit_bundle_path()
             + emit_bundle_imports(cap_threads, runtime_facts, probe_gpu,
                                   run_given)
@@ -1398,21 +1435,19 @@ def emit_script_head(threads: Optional[int]) -> List[str]:
                "_MB_RUN = _mb_run_given()",
                "# This run's threads, and every BLAS capped at one -- before "
                "numpy loads",
-               f"_MB_REQUESTED_THREADS, _MB_PHYS_CORES = "
-               f"_mb_cap_threads({stated!r})",
+               "_MB_REQUESTED_THREADS, _MB_PHYS_CORES = "
+               "_mb_cap_threads(THREADS)",
                ""])
 
 
-def emit_runtime_facts(*, use_gpu: bool,
-                       max_memory_mb: Optional[int]) -> List[str]:
+def emit_runtime_facts() -> List[str]:
     """``_RUNTIME_INFO`` -- what the run records about itself as it starts
     (`runtime_info.runtime_facts`), which the result writers copy out and
     the steps after add to.  After :func:`emit_script_head`, whose thread
-    count it reports."""
+    count it reports; its memory cap and GPU ask the block's."""
     return ["_RUNTIME_INFO = _mb_runtime_facts(",
             "    _MB_REQUESTED_THREADS, _MB_PHYS_CORES,",
-            f"    max_memory_mb={max_memory_mb!r}, "
-            f"gpu_requested={bool(use_gpu)!r})",
+            "    max_memory_mb=MAX_MEMORY_MB, gpu_requested=bool(USE_GPU))",
             ""]
 
 
@@ -1429,19 +1464,15 @@ def emit_pyscf_threads() -> List[str]:
             ""]
 
 
-def emit_gpu_probe(use_gpu: Optional[bool]) -> List[str]:
-    """``_USING_GPU`` -- the GPU this run asked for, probed when the run
-    starts, on the node that runs it (`runtime_info.probe_gpu`): found, or
-    the run stops, with no CPU fallback (`engines/overview.md` § 3a).
-    ``use_gpu`` states ``USE_GPU`` first; ``None`` for a deck whose values
-    state it already (the vibration deck)."""
-    out = ["# The GPU, when this run asks for it: found, or the run stops --",
-           "# no CPU fallback (`runtime_info.probe_gpu`)."]
-    if use_gpu is not None:
-        out.append(f"USE_GPU = {bool(use_gpu)!r}")
-    out += ["_USING_GPU = _mb_probe_gpu(_RUNTIME_INFO) if USE_GPU else False",
+def emit_gpu_probe() -> List[str]:
+    """``_USING_GPU`` -- the GPU this run asked for (the block's
+    ``USE_GPU``), probed when the run starts, on the node that runs it
+    (`runtime_info.probe_gpu`): found, or the run stops, with no CPU
+    fallback (`engines/overview.md` § 3a)."""
+    return ["# The GPU, when this run asks for it: found, or the run stops --",
+            "# no CPU fallback (`runtime_info.probe_gpu`).",
+            "_USING_GPU = _mb_probe_gpu(_RUNTIME_INFO) if USE_GPU else False",
             ""]
-    return out
 
 
 def emit_bundle_path() -> List[str]:

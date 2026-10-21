@@ -22,7 +22,7 @@ Keys of a ``[[case]]``:
     ``read_document`` -- ``Structure.from_xyz(document)``;
     ``lone_file`` -- ``document`` written alone, no sidecar, and read through
     every door that opens a file for a person (``structure.md`` § 2.3):
-    ``StructureCodec.load(..., said_out=[...])``, which ``jobset init`` and
+    ``StructureCodec.load(..., said_out=[...])``, which ``molbuilder describe`` and
     the CLI print from, and ``POST /api/build/load`` with ``{path}`` and with
     ``{text, filename}`` -- each answering the same, in the same sentence.
 ``held``

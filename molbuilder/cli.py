@@ -6,7 +6,7 @@ Subcommands:
     molbuilder rna AUGCAUGCAU --out file.xyz
     molbuilder smiles "c1ccccc1" --out benzene.xyz
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
-    molbuilder jobset init --structure P/structure/in.xyz \
+    molbuilder describe --structure P/structure/in.xyz \
         --bundle P/optimization/calc --engine siesta \
         --calculation optimization --shape flat --stage-strategy publishable
     molbuilder serve start --port 8000
@@ -170,8 +170,11 @@ cli.add_command(envs_group)
 
 # `molbuilder jobset ...`  (engine-agnostic staged execution).  See
 # molbuilder/jobset/ + docs/execution/job-system.md.
-from .jobset._cli import jobset_group
+from .jobset._cli import describe_cmd, jobset_group
 cli.add_command(jobset_group)
+# `molbuilder describe` -- a calculation's description and its job request,
+# written once; describing is not a job verb (docs/execution/job-request.md 9).
+cli.add_command(describe_cmd)
 
 # `molbuilder jobs ...`  (status / stop): the jobs launched from this
 # machine, kept the way a server is (docs/execution/job-system.md 6.0a).
@@ -378,7 +381,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder dna ATGC | molbuilder validate -
 
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
-            && molbuilder jobset init --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --calculation optimization --shape flat
+            && molbuilder describe --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --calculation optimization --shape flat
     """
     from .validation import structure_findings, validate
 

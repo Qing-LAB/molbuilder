@@ -1,5 +1,5 @@
 """A recommended range and a hard limit -- one severity each, on every surface
--- through the road: the Task-setup save, `jobset init`, `jobset prep`.
+-- through the road: the Task-setup save, `molbuilder describe`, `jobset prep`.
 
 PINS: ``docs/engines/template.md`` § 5.3 (`range` warned and never refused;
 `above` refused everywhere with one message, through ``template.why_not``;
@@ -32,6 +32,7 @@ from molbuilder.config.pyscf import PySCFConfig
 from test_fixed_and_shared_items import _template_says
 from test_what_a_kind_offers import _siesta
 from support.junction import _isolated  # noqa: F401 -- its sandbox, autouse
+from support.road import save_both
 
 
 @pytest.mark.parametrize("engine, name, reason", [
@@ -82,18 +83,19 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
     from test_task_setup_tab import _fresh_calc_dir
     d = _fresh_calc_dir(isolated_projects_root)
     described = {
-        "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+        "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
         "calculation": "optimization",
         "shape": "hierarchical",
         "run": {"name": "x", "id": run_id("x", "H2"),
                 "created": "2026-09-30T00:00:00-07:00"},
         "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
         "varies": ["kgrid", "mesh_cutoff"],
-        "stages": [{"name": "coarse", "group": 1,
+        "stages": [{"name": "coarse",
                     "overrides": {"mesh_cutoff": 2000.0,
                                   "kgrid": [100, 1, 1]}}]}
-    r = web_client.post("/api/task-setup/save", json={
-        "dest": str(d), "text": json.dumps(described)})
+    r = save_both(d, described, {"schema": "molbuilder/job-request@1",
+                                 "stages": {"coarse": {"group": 1}}},
+                  web_client)
     assert r.status_code == 200, r.get_json()
     assert (d / "task.json").is_file()
     for where, said in (("config.mesh_cutoff", "mesh_cutoff = 2000.0"),
@@ -110,10 +112,10 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
     """The description's own check at the Task-setup save, where a person's
     hand-edited description lands:
 
-    * an ``execution`` block's value and a bench's point become pins and
-      sweep points, so the one per-value door is asked about them as about a
-      stage's value -- ``block_size = 0`` is refused here, not first by
-      `prep bench` on the cluster;
+    * a run card's value and a bench's point -- the job request's -- become
+      run settings and sweep points, so the one per-value door is asked
+      about them as about a stage's value -- ``block_size = 0`` is refused
+      here, not first by `prep bench` on the cluster;
     * one value draws one refusal (`engines/template.md` § 5.3): a quoted
       component is the type check's alone, never the limit's beside it; and
       a WHOLE float is the count it names, as `resolve` will see it
@@ -128,25 +130,26 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
     from test_task_setup_tab import _fresh_calc_dir
     d = _fresh_calc_dir(isolated_projects_root)
     base = {
-        "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+        "schema": "molbuilder/task@2", "engine": {"name": "siesta"},
         "calculation": "optimization",
         "shape": "hierarchical",
         "run": {"name": "x", "id": run_id("x", "H2"),
                 "created": "2026-09-30T00:00:00-07:00"},
         "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
         "varies": [],
-        "stages": [{"name": "coarse", "group": 1, "overrides": {}}]}
+        "stages": [{"name": "coarse", "overrides": {}}]}
 
     def save(**change):
         described = json.loads(json.dumps(base))
+        request = {"schema": "molbuilder/job-request@1",
+                   "stages": {"coarse": {"group": 1}}}
         for key, value in change.items():
             if key == "overrides":
                 described["varies"] = sorted(value)
                 described["stages"][0]["overrides"] = value
             else:
-                described[key] = value
-        r = web_client.post("/api/task-setup/save", json={
-            "dest": str(d), "text": json.dumps(described)})
+                request[key] = value
+        r = save_both(d, described, request, web_client)
         assert r.status_code == 400, r.get_json()
         return r.get_json()
 

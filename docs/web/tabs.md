@@ -27,8 +27,8 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 | **Molbuilder** | `/molbuilder` | build / edit / assemble a structure | this doc § 2 |
 | **Structure optimization** | `/structure-optimization` | collect a SIESTA/PySCF relaxation's parameters and Send them to Task setup (the deck itself is written by `prep`, on the machine that runs it) | this doc § 3 |
 | **Spectrum calculation** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; view any `.spectra.json` | [`spectra.md`](?doc=web/spectra.md) |
-| **Transport calculation** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` directly (no hand-over) | this doc § 4 |
-| **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`task-setup.md`](?doc=web/task-setup.md) |
+| **Transport calculation** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` and `job-request.json` directly (no hand-over) | this doc § 4 |
+| **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` and `job-request.json`, an editor tab each | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **This machine** | `/this-machine` | the box you are signed in to, not a calculation: its notification channels and its run-report listener. **The only surface where a secret is typed** | [`this-machine.md`](?doc=web/this-machine.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
@@ -42,7 +42,7 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 > **It reads AND writes.** It follows the projects sidebar's selected folder,
 > resolves a hand-over (`task.1st.json`) or an existing description, offers
 > the stage table, the machine card and the benchmark panel as views of the
-> editor buffer, and **Save writes `task.json` through its own door**
+> editor buffers, and **Save writes `task.json` and `job-request.json` through its own door**
 > (`POST /api/task-setup/save`) — the same reader and the same preflight the
 > CLI uses, so a description that fails its own checks is refused with the
 > findings, not repaired. *(It shipped read-only on 2026-08-16; the write
@@ -53,7 +53,7 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 > standing in a tab called "Job Prep" would reasonably expect it to prep. *Job*
 > is taken twice over besides: a `Job` is a member of a `JobSet`, and it is the
 > scheduler's word. **Task** is the file the tab edits (`task.json`,
-> `molbuilder/task@1`), chosen for the same reason: it describes one task, and
+> `molbuilder/task@2`, beside its job request), chosen for the same reason: it describes one task, and
 > the stage list is *how* that task is broken up. The reasoning is
 > `archive/2026-08-16-task-setup-plan.md` § 8. *(The tab shipped as "Job Prep"
 > for one commit on 2026-08-16 and was renamed the same day — the name was taken
@@ -264,8 +264,8 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 
 ## 4. Transport — the composite's describe surface
 
-The tab writes a transport calculation's description itself — `task.json` and
-its template, into the folder the sidebar selects (no hand-over to Task setup:
+The tab writes a transport calculation's description itself — `task.json`,
+its job request and its template, into the folder the sidebar selects (no hand-over to Task setup:
 the five stages and the hierarchical shape are fixed by design). What it is,
 rule by rule, lives in [`engines/transport.md`](?doc=engines/transport.md)
 § 3.8; this section is the map of the page as built *(rewritten 2026-10-08,
@@ -313,7 +313,7 @@ B8)*.
 5. **Describe** — one button, enabled once a junction is cited and the
    shared panel and the rungs' tabs are drawn for it (until then they hold
    the last citation's values). `POST /api/transport/describe` writes the
-   template and `task.json` into the selected folder, or refuses: a refusal
+   template, `task.json` and `job-request.json` into the selected folder, or refuses: a refusal
    lands beside the control it names (the bias list, its treatment, a rung's
    field on its own tab, brought into view), and the status line says it too.
    The page does not navigate. Describe is one act: a folder that already

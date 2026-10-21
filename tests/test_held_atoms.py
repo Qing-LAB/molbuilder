@@ -2,7 +2,7 @@
 § 5.3), case by case.
 
 THE CASES ARE DATA -- ``tests/data/held_atoms.toml`` -- and each runs down
-the road a person runs (`support.road.run_road_case`): `jobset init` of a
+the road a person runs (`support.road.run_road_case`): `molbuilder describe` of a
 held H2, `prep`.  The files are the ones our code writes; a test lays none
 (`process/testing.md` § 6).
 

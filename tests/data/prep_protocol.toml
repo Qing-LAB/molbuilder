@@ -2,8 +2,9 @@
 #
 # Prep prepares the groups picked (`--group N`), each one job; a group
 # prepared and never launched is prepared again, whole (user, 2026-10-11); a
-# launched stage is not -- its way back is the state saved before its
-# group's first launch.  What a stage takes from another stage's run is its
+# launched one is prepared again for its job request alone, its runs kept,
+# on the hierarchical layout -- what it computes takes the way back, the
+# state saved before its group's first launch (user, 2026-10-21).  What a stage takes from another stage's run is its
 # first launch's: launch refuses, before anything is sent, a stage whose
 # upstream has not finished.  Before prep writes, it saves the folder's
 # state -- always, the note led by the time it was taken -- and says so
@@ -208,10 +209,10 @@ stage = "medium"
 deck = ["MD.TypeOfRun Broyden", "MD.MaxForceTol 0.04", "# Stage 02_medium --"]
 
 [[case]]
-name = "a group the description does not hold is refused by its number, naming the ones it does"
+name = "a group the job request does not hold is refused by its number, naming the ones it does"
 stage = ""
 prep = ["--group", "9"]
-refused = ["group 9: the description holds groups 1, 2"]
+refused = ["group 9: the job request holds groups 1, 2"]
 made_lacks = ["job-set.json"]
 
 [[case]]
@@ -361,3 +362,46 @@ name = "a prep naming no group shows the groups and, with nobody to ask, is refu
 stage = ""
 refused = ["the task's groups:", "group 1", "coarse", "nobody to ask which groups to prepare", "prep task --group 1 --group 2"]
 made_lacks = ["job-set.json", "01_coarse"]
+
+# ===================================================================== #
+#  A LAUNCHED STAGE AND ITS JOB REQUEST                                  #
+#  (`execution/job-request.md` § 5; user, 2026-10-21)                   #
+# ===================================================================== #
+
+[[case]]
+name = "a launched group is prepared again for its job request -- its runs kept, no run opened, each deck the same calculation as the one its run ran"
+before = [["prep", "task", "--group", "1"]]
+launched = ["coarse"]
+changed = { execution = { mpi_np = 4, omp_threads = 1 } }
+kept = ["01_coarse/run-0/H2_01_coarse.fdf", "01_coarse/run-0/run.json"]
+# ...and no progress log left beside the stage's deck, which no run writes:
+# a log with no closing line reads as a run still going.
+made_lacks = ["01_coarse/run-1", "01_coarse/H2_01_coarse.molwatch.log"]
+said = ["prepared coarse again: launched -- its runs are kept", "mpi_np 4",
+        "at its next launch: launched again, it continues from its own latest run"]
+
+[[case]]
+name = "...and refused when the decks it renders now compute something else -- naming what differs and the way back, writing nothing"
+before = [["prep", "task", "--group", "1"]]
+launched = ["coarse"]
+changed = { overrides = { coarse = { mesh_cutoff = 400.0 } } }
+kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh"]
+refused = ["stage 'coarse' was launched, and its deck rendered now is not the calculation its runs ran", "MeshCutoff"]
+
+[[case]]
+name = "...and on the flat layout, where its runs share its folder, a launched stage is not prepared again"
+shape = "flat"
+before = [["prep", "task", "--group", "1"]]
+launched = ["coarse"]
+changed = { execution = { mpi_np = 4, omp_threads = 1 } }
+refused = ["stage 'coarse' was launched, and on the flat layout a launched stage is not prepared again"]
+
+[[case]]
+name = "...and a stage taken out of a launched group is refused, naming it and the way back -- the group's members are fixed"
+groups = [1, 1]
+stage_run = { medium = { restart = "clean" } }
+before = [["prep", "task", "--group", "1"]]
+launched = ["coarse", "medium"]
+regrouped = [1, 2]
+stage = "coarse"
+refused = ["`coarse` was launched in one job with `medium`, and group 1 now holds `coarse` without it", "put `medium` back beside `coarse` in one group"]

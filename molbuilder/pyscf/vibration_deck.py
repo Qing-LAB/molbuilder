@@ -42,7 +42,8 @@ from .. import script_emit as _sc
 from ..structure import FROZEN_LABEL, Structure
 from .input import (emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
-                    emit_runtime_facts, emit_save_call, emit_script_head,
+                    emit_run_settings_block, emit_runtime_facts,
+                    emit_save_call, emit_script_head,
                     run_file_expr, ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
 
 # The science emitters, composed here.
@@ -627,15 +628,13 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         out: List[str] = []
         out += _emit_header_docstring(struct, view, methods_md=methods_md,
                                       names=names)
-        # The deck's anchor and the bundle first, then its threads and what
-        # it records about itself -- the run's own set-up, from the bundle
+        # Its run settings first, in their block (`job-contracts.md` § 3.1),
+        # then the deck's anchor and the bundle, its threads and what it
+        # records about itself -- the run's own set-up, from the bundle
         # (`input.emit_script_head`, `engines/pyscf.md` § 3).
-        out += emit_script_head(view.threads)
-        out += emit_runtime_facts(
-            use_gpu=bool(view.use_gpu),
-            max_memory_mb=(int(view.max_memory_mb)
-                           if view.max_memory_mb else None),
-        )
+        out += emit_run_settings_block(view)
+        out += emit_script_head()
+        out += emit_runtime_facts()
         out += _emit_imports(view)
         out += emit_pyscf_threads()
         out += _emit_constants(struct, view, methods_md=methods_md,
@@ -660,11 +659,11 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         out += [""] + emit_density_fit_kw(cfg)
         out += emit_solvent_apply_fn(cfg)
         # THE GPU, probed at the run's start (`runtime_info.probe_gpu`);
-        # ``USE_GPU`` is one of this deck's values.  Its ONE way of using
+        # ``USE_GPU`` is the block's.  Its ONE way of using
         # the device is class selection, below: every mf it builds is
         # gpu4pyscf's when the probe found the GPU -- never the
         # optimization deck's promotion (`to_gpu`).
-        out += emit_gpu_probe(None)
+        out += emit_gpu_probe()
         out.append("if _USING_GPU:")
         out.append("    from gpu4pyscf import scf as _gpu_scf")
         if view.is_dft:

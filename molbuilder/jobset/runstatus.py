@@ -536,12 +536,13 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
             if job is None:
                 stages.append(_not_prepared(ref, r))
                 continue
-            # THE DESCRIPTION'S NAME AND NUMBER on its row: the ladder is the
-            # description's, and `status <stage>` finds the row by it -- and
+            # THE DESCRIPTION'S NAME AND THE JOB REQUEST'S NUMBER on its row:
+            # the ladder is the description's, and `status <stage>` finds the
+            # row by it -- and
             # a stage never launched, the ready door's words for its launch.
             row = dataclasses.replace(
                 _job_status(base, jobset, job, task, **kw), ref=ref,
-                group=st.group)
+                group=calc.request.group_of(st.name))
             if not r.launched and row.state == "pending":
                 row = dataclasses.replace(row, detail=r.detail,
                                           takes=list(r.takes), why=r.why)

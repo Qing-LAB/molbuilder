@@ -1,6 +1,6 @@
 """A GROUP: the stages that run as one job, by the number each states in
-`task.json` (`engines/stages.md` § 2, `project-layout.md` § 1.6.6; plan
-§ 5aa).
+the job request (`execution/job-request.md` § 3.3, `project-layout.md`
+§ 1.6.6; plan § 5aa).
 
 Stages that do not build on one another -- a transport ladder's seed and its
 two leads -- wait in the queue once instead of once each.  Each member is
@@ -12,11 +12,11 @@ members in the ladder's order.
 This module answers the group's questions, each in one place:
 
 * **does a stage build on another** (:func:`upstream_of`) -- the one fact
-  the ladder already states: a transport rung's inputs
+  the description already states: a transport rung's inputs
   (`transport.stages.stage_inputs`), a force-constant stage's `relax`, an
   independent stage's stage before (`ladder.source_stage`) -- and so
-  **the numbers a new description takes** (:func:`default_groups`,
-  :func:`numbered`) and **whether the stated ones keep it**
+  **the numbers a new calculation takes** (:func:`default_groups`,
+  :func:`fresh_groups`) and **whether the stated ones keep it**
   (:func:`check_groups`);
 * **can the members share one allocation** (:func:`envelope`) -- one queue,
   one count of ranks, cores per rank and GPUs; the wall the sum of theirs,
@@ -24,6 +24,10 @@ This module answers the group's questions, each in one place:
 * **what the group's files are called** (:func:`names_for`,
   `runfiles.GroupNames.of_stages`) -- one
   ``GroupNames`` from the members' tokens, in order.
+
+The numbers are the job request's; what a stage builds on is the
+description's.  A function that asks both takes both, and reads each as
+itself (A17).
 """
 from __future__ import annotations
 
@@ -53,20 +57,23 @@ SHARED = {"domain": "queue", "mpi_np": "ranks",
 
 
 
-def card_shares(task, stage: str) -> dict:
-    """``stage``'s run card (`Task.run_condition`) on what a job's members
-    share (:data:`SHARED`), by field -- ``None`` where it states nothing."""
+def card_shares(request, stage: str) -> dict:
+    """``stage``'s run card (`JobRequest.run_condition`) on what a job's
+    members share (:data:`SHARED`), by field -- ``None`` where it states
+    nothing, and everywhere for a ladder with no request yet."""
     from .model import AS_RESOURCE
-    card = {AS_RESOURCE.get(k, k): v
-            for k, v in task.run_condition(stage).items()}
+    card = ({AS_RESOURCE.get(k, k): v
+             for k, v in request.run_condition(stage).items()}
+            if request is not None else {})
     return {f: card.get(f) for f in SHARED}
 
 
 def upstream_of(task, stage: str,
                 template_text: Optional[str] = None) -> Set[str]:
-    """The stages ``stage`` builds on, as the ladder states it: a transport
-    rung's inputs, a force-constant stage's `relax`, an independent stage's
-    stage before it (none for one set `restart: clean`, or the first)."""
+    """The stages ``stage`` builds on, as the description states it: a
+    transport rung's inputs, a force-constant stage's `relax`, an
+    independent stage's stage before it (none for one set `restart: clean`,
+    or the first)."""
     if getattr(task, "calculation", None) == "transport":
         from ..transport.stages import inputs_of
         return {src for src, _f in inputs_of(task, stage)}
@@ -78,33 +85,33 @@ def upstream_of(task, stage: str,
 def linked(task, stage: str,
            template_text: Optional[str] = None) -> bool:
     """Whether what ``stage`` builds on is its KIND's -- a transport rung's
-    inputs, a force-constant stage's `relax` -- which no run card changes;
+    inputs, a force-constant stage's `relax` -- which no override changes;
     ``False`` for an independent ladder's stage, which builds on the stage
-    before it only while its run card's `restart` continues
-    (`job-system.md` § 5.4)."""
+    before it only while its `restart` continues (`job-system.md` § 5.4)."""
     if getattr(task, "calculation", None) == "transport":
         return True
     from .ladder import source_stage
     return bool(source_stage(task, stage, template_text)[1])
 
 
-def may_join(task, stage: str, members: Sequence[str],
+def may_join(task, request, stage: str, members: Sequence[str],
              template_text: Optional[str] = None) -> bool:
     """Whether ``stage`` may share the job ``members`` make, the group
-    above it, by default (`engines/stages.md` § 2: the defaults repeat the
-    number above wherever that is allowed): it builds on none of them
-    (:func:`upstream_of`), and its run card states what theirs do on what a
-    job shares (:func:`card_shares`) -- else prep would refuse the group
-    (`job-system.md` R-P13).  The one rule both writers of numbers ask --
-    a new description's (:func:`default_groups`) and an older one's
+    above it, by default (`execution/job-request.md` § 3.3: the defaults
+    repeat the number above wherever that is allowed): it builds on none of
+    them (:func:`upstream_of`), and its run card states what theirs do on
+    what a job shares (:func:`card_shares`) -- else prep would refuse the
+    group (`job-system.md` R-P13).  The one rule every writer of numbers
+    asks -- a new calculation's (:func:`default_groups`) and an older one's
     (`migrate`)."""
     return (bool(members)
             and not upstream_of(task, stage, template_text)
             & set(members)
-            and card_shares(task, stage) == card_shares(task, members[0]))
+            and card_shares(request, stage)
+            == card_shares(request, members[0]))
 
 
-def why_not_join(task, stage: str, members: Sequence[str],
+def why_not_join(task, request, stage: str, members: Sequence[str],
                  template_text: Optional[str] = None) -> Optional[str]:
     """Why ``stage`` may not share the job ``members`` make -- the sentence
     the Task setup page shows beside its row (`web/task-setup.md` § 5),
@@ -114,32 +121,33 @@ def why_not_join(task, stage: str, members: Sequence[str],
         return None
     fed = upstream_of(task, stage, template_text) & set(members)
     if fed:
-        named = ", ".join(f"`{n}`" for n in members if n in fed)
+        named_ = ", ".join(f"`{n}`" for n in members if n in fed)
         kind_s = linked(task, stage, template_text)
-        return (f"`{stage}` builds on {named}, in the group above: one job "
+        return (f"`{stage}` builds on {named_}, in the group above: one job "
                 f"runs its members one after another with nothing handed "
                 f"between them"
                 + ("" if kind_s else
-                   " -- or, for it to start from its own deck, set its run "
-                   "card's `restart` to `clean`"))
-    if card_shares(task, stage) != card_shares(task, members[0]):
+                   " -- or, for it to start from its own deck, set its "
+                   "`restart` override to `clean`"))
+    if card_shares(request, stage) != card_shares(request, members[0]):
         return (f"`{stage}`'s run card states other values than the group "
                 f"above's on what one job shares; set them alike, or give "
                 f"it a new group")
     return None
 
 
-def default_groups(task, template_text: Optional[str] = None
-                   ) -> Tuple[int, ...]:
-    """The numbers a new description takes (`engines/stages.md` § 2): the
-    first stage group 1; each later one the number above it wherever it
-    may join that group (:func:`may_join`), else one more -- a transport
-    ladder 1 1 1 2 3, an optimization ladder 1 2 3, stages set `restart:
-    clean` 1 1 1."""
+def default_groups(task, request=None,
+                   template_text: Optional[str] = None) -> Tuple[int, ...]:
+    """The numbers a new calculation takes (`execution/job-request.md`
+    § 3.3): the first stage group 1; each later one the number above it
+    wherever it may join that group (:func:`may_join`), else one more -- a
+    transport ladder 1 1 1 2 3, an optimization ladder 1 2 3, stages set
+    `restart: clean` 1 1 1.  ``request`` is the run cards they are asked
+    against; ``None`` for a ladder that states none."""
     out: List[int] = []
     members: List[str] = []
     for st in task.stages:
-        if out and may_join(task, st.name, members, template_text):
+        if out and may_join(task, request, st.name, members, template_text):
             out.append(out[-1])
             members.append(st.name)
         else:
@@ -151,76 +159,55 @@ def default_groups(task, template_text: Optional[str] = None
 @dataclass(frozen=True)
 class _Fresh:
     """A ladder before it is a description -- what :func:`default_groups`
-    reads of one: the kind, the engine, the stages, and no run card (a
-    fresh ladder states none, `ladder.fresh_stages`)."""
+    reads of one: the kind, the engine and the stages."""
     calculation: str
     engine: str
     stages: tuple
 
-    def run_condition(self, _stage: str) -> dict:
-        return {}
 
-
-def numbered_fresh(stages, *, engine: str, calculation: str,
-                   template_text: str):
-    """``stages``, a fresh ladder (`ladder.fresh_stages`), with every stage's
-    group stated by :func:`default_groups` -- the rule a description is
-    numbered with, asked before any description holds the ladder: the
-    hand-over's proposal (`web/handover-procedure.md`), which Task setup
-    shows as what will be written."""
-    import dataclasses
+def fresh_groups(stages, *, engine: str, calculation: str,
+                 template_text: str) -> Tuple[int, ...]:
+    """The groups of ``stages``, a fresh ladder (`ladder.fresh_stages`), by
+    :func:`default_groups` -- the rule a new calculation is numbered with,
+    asked before any description holds the ladder: the hand-over's proposal
+    (`web/handover-procedure.md`), which Task setup shows as what will be
+    written."""
     like = _Fresh(calculation=str(calculation), engine=str(engine),
                   stages=tuple(stages))
-    return tuple(dataclasses.replace(st, group=g)
-                 for st, g in zip(like.stages,
-                                  default_groups(like, template_text)))
+    return default_groups(like, None, template_text)
 
 
-def numbered(task, template_text: Optional[str] = None):
-    """``task`` with every stage's group stated: as given when its stages
-    state them, else :func:`default_groups` -- what a new description is
-    numbered with as it is made (`describe.Description`), before any writer
-    writes it."""
-    if all(st.group is not None for st in task.stages):
-        return task
-    import dataclasses
-    return dataclasses.replace(task, stages=tuple(
-        dataclasses.replace(st, group=g)
-        for st, g in zip(task.stages, default_groups(task, template_text))))
-
-
-def check_groups(task, template_text: Optional[str] = None
+def check_groups(task, request, template_text: Optional[str] = None
                  ) -> Optional[str]:
     """Why the stated groups cannot run -- a stage sharing a group with one
-    it builds on, both named -- or ``None`` (`engines/stages.md` § 6.6):
-    one job runs its members one after another with nothing handed between
-    them.  A ladder not numbered yet has nothing to check: the numbers
-    :func:`numbered` gives it keep the rule by construction."""
-    if any(st.group is None for st in task.stages):
-        return None
+    it builds on, both named -- or ``None`` (`execution/job-request.md`
+    § 3.3): one job runs its members one after another with nothing handed
+    between them.  The numbers are the request's; what a stage builds on,
+    the description's."""
     seen: dict = {}
     for st in task.stages:
-        members = seen.setdefault(st.group, [])
+        number = request.group_of(st.name)
+        members = seen.setdefault(number, [])
         fed = upstream_of(task, st.name, template_text) & set(members)
         if fed:
-            named = [f"`{n}`" for n in members if n in fed]
-            on = (", ".join(named[:-1]) + " and " + named[-1]
-                  if len(named) > 1 else named[0])
+            names = [f"`{n}`" for n in members if n in fed]
+            on = (", ".join(names[:-1]) + " and " + names[-1]
+                  if len(names) > 1 else names[0])
             # THE OTHER WAY OUT, where there is one: an independent stage
             # builds on the stage before it only while it continues, so set
             # clean it builds on nothing; a linked stage's input is its
-            # kind's, whatever its run card says.
+            # kind's, whatever its overrides say.
             kind_s = linked(task, st.name, template_text)
-            return (f"`{st.name}` is in group {st.group} with {on}, which "
+            return (f"`{st.name}` is in group {number} with {on}, which "
                     f"it builds on: one job runs its members one after "
                     f"another with nothing handed between them, so "
                     f"`{st.name}` would start before you have looked at "
-                    f"what {on} produced (engines/stages.md § 2).  Give "
-                    f"`{st.name}` a new group -- one more than the group "
-                    f"above" + ("." if kind_s else
-                                f"; or, for it to start from its own deck "
-                                f"rather than from {on}, set its run "
-                                f"card's `restart` to `clean`."))
+                    f"what {on} produced (execution/job-request.md § 3.3).  "
+                    f"Give `{st.name}` a new group -- one more than the "
+                    f"group above" + ("." if kind_s else
+                                      f"; or, for it to start from its own "
+                                      f"deck rather than from {on}, set its "
+                                      f"`restart` override to `clean`."))
         members.append(st.name)
     return None
 
@@ -348,31 +335,31 @@ def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
         exclusive=any(r.exclusive for r in rs))
 
 
-def sequence_names(base, task, numbers: Sequence[int]) -> GroupNames:
+def sequence_names(base, task, request, numbers: Sequence[int]
+                   ) -> GroupNames:
     """The names of a sequence of groups' one job -- its header, walk, log
     and launch record in `launch/`: the label and every member's token,
     the groups in order (`runfiles.GroupNames.of_sequence`)."""
     from .naming import stage_home
     return GroupNames.of_sequence(task.label, [
         stage_home(base, task, n).token
-        for g in sorted(numbers) for n in group_members(task, g)])
+        for g in sorted(numbers) for n in request.members(g)])
 
 
-def number_of(task, stage: str) -> Optional[int]:
-    """The group ``stage`` is in, as the description numbers it -- a name in
-    any case one name (`engines/stages.md` § 2) -- or ``None`` for a stage
-    the description does not hold.  The one lookup."""
-    from ..identity import stage_key
-    return next((st.group for st in task.stages
-                 if stage_key(st.name) == stage_key(stage)), None)
+def number_of(request, stage: str) -> Optional[int]:
+    """The group ``stage`` is in, as the job request numbers it -- a name in
+    any case one name -- or ``None`` for a stage it does not hold.  The one
+    lookup (`JobRequest.group_of`)."""
+    return request.group_of(stage)
 
 
-def named(task, number: int) -> str:
+def named(request, number: int) -> str:
     """Group ``number`` in words, by its members as well as its number --
     ``group 2 (device)`` -- since a group is matched by its members and a
-    number shifts when a stage above it is removed (`engines/stages.md`
-    § 2): what a saved state's note and a way back name it by."""
-    return f"group {number} ({', '.join(group_members(task, number))})"
+    number shifts when a stage above it is removed
+    (`execution/job-request.md` § 3.3): what a saved state's note and a way
+    back name it by."""
+    return f"group {number} ({', '.join(request.members(number))})"
 
 
 def members_of(job) -> List[str]:
@@ -384,25 +371,25 @@ def members_of(job) -> List[str]:
 def same_members(a: Sequence[str], b: Sequence[str]) -> bool:
     """Whether two member lists are one job's -- the same stages in the same
     order, a name in any case one name (`engines/stages.md` § 2): how a
-    prepared job is matched to the description's group."""
+    prepared job is matched to the job request's group."""
     from ..identity import stage_key
     return [stage_key(m) for m in a] == [stage_key(m) for m in b]
 
 
-def formed_again(task, jobs, numbers) -> List[int]:
+def formed_again(request, jobs, numbers) -> List[int]:
     """The groups a prep of ``numbers`` names: those, and every group a
     member of a prepared job (``jobs``) of theirs is in now, wherever that
     job's members are no longer one group -- a job is formed again whole,
     in one prep (`job-system.md`, *The task*, step 3) -- until none is
     left out."""
     from ..identity import stage_key
-    group_of = {stage_key(st.name): st.group for st in task.stages}
+    group_of = {stage_key(n): e.group for n, e in request.stages.items()}
     jobs_of = {stage_key(j.name): members_of(j) for j in jobs}
     out: Set[int] = set(numbers)
     while True:
         more = set()
         for n in out:
-            members = group_members(task, n)
+            members = request.members(n)
             for st in members:
                 job = jobs_of.get(stage_key(st))
                 if job is not None and not same_members(job, members):
@@ -413,10 +400,10 @@ def formed_again(task, jobs, numbers) -> List[int]:
         out |= more
 
 
-def group_members(task, number: int) -> List[str]:
-    """The stages group ``number`` holds, in ladder order (`engines/stages.md`
-    § 2) -- the one lookup."""
-    return [st.name for st in task.stages if st.group == number]
+def group_members(request, number: int) -> List[str]:
+    """The stages group ``number`` holds, in ladder order -- the one lookup
+    (`JobRequest.members`)."""
+    return request.members(number)
 
 
 def header_of(calc, job):
@@ -450,7 +437,7 @@ def names_for(base, task, members: Sequence[str]) -> GroupNames:
 
 __all__ = ["GroupError", "SHARED", "card_shares",
            "upstream_of", "linked", "may_join",
-           "default_groups", "numbered",
+           "default_groups", "fresh_groups",
            "check_groups", "envelope", "number_of", "named", "members_of",
            "same_members", "formed_again", "header_of",
            "group_members",

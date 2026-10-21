@@ -13,6 +13,8 @@ structural, answerable from the file alone:
     * no ``overrides`` key names a stage field (§ 2)
     * every stage's ``overrides`` holds only keys in ``varies``
     * unknown keys refused, naming the key
+    * how it runs -- a job request's block -- refused, naming
+      ``job-request.json``; one written before 2.27.0 naming migrate
 
 The rows that need the engine's schema are not here: they would force
 ``molbuilder/task.py`` to import an engine -- an L1 module reaching up a
@@ -62,7 +64,7 @@ def test_written_file_is_named_and_versioned(example, tmp_path):
     p = tmp_path / FILENAME
     write_task(p.parent, Task.from_dict(example))
     assert p.name == "task.json"
-    assert json.loads(p.read_text())["schema"] == SCHEMA == "molbuilder/task@1"
+    assert json.loads(p.read_text())["schema"] == SCHEMA == "molbuilder/task@2"
 
 
 # --------------------------------------------------------------------- #
@@ -122,26 +124,33 @@ def test_stage_name_outside_the_set_is_refused(example, bad):
     assert "A-Za-z0-9_" in str(e.value)
 
 
-@pytest.mark.parametrize("groups,said", [
-    ((1, None), "jobset migrate"),
-    ((2, 2), "the first stage is group 1"),
-    ((1, 3), "repeats the number above it or adds one"),
-    ((1, 0), "whole number from 1"),
-    ((1, True), "whole number from 1"),
-], ids=["absent", "first-not-1", "skips-one", "zero", "a-switch"])
-def test_a_group_outside_the_rule_is_refused_naming_it(example, groups, said):
-    """§ 2 / § 6.6: every stage states its group -- the first 1, each later
-    one the number above it or one more -- and one written before the rule
-    names the command that writes it.  A skipped or unordered number would
-    prepare and launch the jobs out of the ladder's order."""
-    for st, g in zip(example["stages"], groups):
-        if g is None:
-            del st["group"]
-        else:
-            st["group"] = g
+@pytest.mark.parametrize("edit,said", [
+    (lambda d: d.update(bench={"mpi_np": [4, 8]}), "'bench' says how"),
+    (lambda d: d.update(allocation={"domain": "htc"}), "'allocation' says how"),
+    (lambda d: d["stages"][0].update(group=1), "'group' says how"),
+    (lambda d: d["stages"][0].update(execution={"mpi_np": 8}),
+     "'execution' says how"),
+], ids=["bench", "allocation", "a-stage's-group", "a-stage's-card"])
+def test_how_it_runs_is_refused_naming_the_job_request(example, edit, said):
+    """`execution/job-request.md` § 1: what is computed and how it runs are
+    two records.  A job request's block in the description is refused
+    naming the file that holds it -- read, it would be a second home for
+    one fact, and dropped, a choice the person made lost on Save."""
+    edit(example)
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
-    assert said in str(e.value)
+    assert said in str(e.value) and "job-request.json" in str(e.value)
+
+
+def test_a_description_written_before_the_job_request_names_migrate(example):
+    """`job-request.md` § 8: a ``molbuilder/task@1`` description held how it
+    runs in its own record; the reader names `jobset migrate`, which splits
+    it, rather than reading half of it."""
+    from molbuilder.task import from_text
+    example["schema"] = "molbuilder/task@1"
+    with pytest.raises(ValueError) as e:
+        from_text(json.dumps(example))
+    assert "job-request.json" in str(e.value) and "migrate" in str(e.value)
 
 
 def test_missing_shape_is_refused_saying_so(example):
@@ -161,15 +170,15 @@ def test_shape_must_be_one_of_the_two(example):
 
 
 def test_a_different_schema_major_is_refused(example):
-    example["schema"] = "molbuilder/task@2"
+    example["schema"] = "molbuilder/task@3"
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
-    assert "task@2" in str(e.value)
+    assert "task@3" in str(e.value)
 
 
 def test_a_same_major_minor_bump_is_tolerated(example):
     """job-contracts § 6.1: check the MAJOR only."""
-    example["schema"] = "molbuilder/task@1.4"
+    example["schema"] = "molbuilder/task@2.4"
     Task.from_dict(example)
 
 
@@ -246,7 +255,7 @@ def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
     looking at."""
     p = tmp_path / FILENAME
     one = dict(example)
-    one["stages"] = [{"name": "coarse", "group": 1, "overrides": {}}]
+    one["stages"] = [{"name": "coarse", "overrides": {}}]
     one["varies"] = []
     write_task(p.parent, Task.from_dict(one))
     written = json.loads(p.read_text())
@@ -427,10 +436,8 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
         structure=StructureRef(source="projects/x/structure/h2.xyz",
                                formula="H2", atoms=2),
         varies=("mesh_cutoff",),
-        stages=(Stage(name="coarse", overrides={"mesh_cutoff": 150},
-                      execution={"restart": "clean"}, group=1),
-                Stage(name="tight", overrides={"mesh_cutoff": 300},
-                      execution={"restart": "continue"}, group=2)),
+        stages=(Stage(name="coarse", overrides={"mesh_cutoff": 150}),
+                Stage(name="tight", overrides={"mesh_cutoff": 300})),
     )
     p = write_task(tmp_path, task)
     assert task_of(p.parent) == task

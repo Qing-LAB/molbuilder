@@ -77,7 +77,7 @@ describes*): the **Structure-optimization tab** collects the physics —
 every parameter, stated once — and **Send to Task setup** writes the
 hand-over into the calculation folder you picked; the **Task setup tab**
 then asks what only it may ask — the shape, the stages, what varies — and
-its save writes the real `task.json`.
+its save writes the real `task.json` and its `job-request.json`.
 
 |  | **base** | **01 coarse** | **02 tight** |
 |---|---|---|---|
@@ -125,8 +125,10 @@ change can be brought back):
 projects/BDT-Au/optimization/bdt-relax/    ← the folder name is yours to pick
 ├── BDT_Au_relax.template.toml      every parameter of the calculation —
 │                                  the hardware's named, not answered
-├── task.json                      what each stage tunes, + the bench plan,
-│                                  and the id — BDT_Au_relax_Au38C6H4S2
+├── task.json                      what each stage tunes, and the id —
+│                                  BDT_Au_relax_Au38C6H4S2
+├── job-request.json               each stage's run card and group, the
+│                                  bench plan
 ├── BDT_Au_relax.source.xyz          the structure pair, from the hand-over
 └── BDT_Au_relax.source.molstruct.json
 ```
@@ -256,7 +258,7 @@ answer reaches **the next `prep`**, not the description — deliberately:
 a rank count is a machine fact the description must never carry
 (`engines/template.md` § 7).  `summarize bench` writes the verdict into the
 terminal as the report `summarize` prints, which **no code
-reads**: you read the winner and write it into `task.json`'s `execution`, and
+reads**: you read the winner and write it into `job-request.json`'s `execution`, and
 that is what `prep task --group <N>` uses
 *(interactive `use it? [y/N]` until 2026-08-19; an editable `run-config.toml`
 `prep` folded in until 2026-09-02 — the answer moved into the
@@ -484,7 +486,7 @@ describing #5's fix in terms the layout contract had already ruled out.
 | 1 | **Saving the structure into the tree is a step nobody owns.** The description points at a path; a workspace geometry has none | small, but it is the first thing a user hits |
 | 2 | ~~**Produce/prep boundary is undefined locally.**~~ **Closed 2026-08-11** (plan steps 3–4, § 4's own ✅ above): `prep` owns the containers on EVERY machine — host-equals-target is the same call | ✅ closed |
 | 3 | ~~**Nothing connects a benchmark to the stage it measures.**~~ **Closed 2026-08-12** (the fold): `prep bench <stage>` renders trials into the stage's own container — the connection is structural | ✅ closed |
-| 4 | ~~**The measured answer reaches a script, never the description.**~~ **Closed 2026-08-12, and REVERSED 2026-09-02**: the measured answer now reaches *a person*, printed by `summarize`, and reaches the run only when they write it into `task.json`'s `execution`. The premise that fell is that a verdict should reach the launch by itself — the description does carry the decision, because a decision a person made is an ask, not a machine fact (`architecture.md` § 5.2) | ✅ closed, then reversed |
+| 4 | ~~**The measured answer reaches a script, never the description.**~~ **Closed 2026-08-12, and REVERSED 2026-09-02**: the measured answer now reaches *a person*, printed by `summarize`, and reaches the run only when they write it into `job-request.json`'s `execution`. The premise that fell is that a verdict should reach the launch by itself — the description does carry the decision, because a decision a person made is an ask, not a machine fact (`architecture.md` § 5.2) | ✅ closed, then reversed |
 | 5 | ~~**Stage-to-stage carry is broken.**~~ **Closed 2026-08-10.** The producer stopped emitting `depends_on` and `Carry` entirely, so nothing dangles. ⚠ This row used to say *"fixed by resolving the attempt at **submit**"* — which contradicted `project-layout.md § 2.3.4`, where the copy is made **at `prep`, from the run you name with `--from`**. The contract was right: by then the source has already finished, so there is nothing to resolve later | ✅ closed |
 | 6 | ~~**Stage directories are named `point-<name>`.**~~ **Closed 2026-08-10.** `job_dir_names` branches on `JobSet.kind`; a ladder gets `01_coarse/`, a sweep keeps `point-*` | ✅ closed |
 | 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `job-system.md` and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset launch run <stage>`, stage as the positional (user, 2026-08-10). ⚠ *This row also said `--chain` runs a ladder unattended; it does not — line 327 of this same document records it deleted on that date, and stages do not chain (`project-layout.md` § 1.6). Corrected 2026-08-11.* The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |
@@ -528,7 +530,7 @@ table keeps the count.*
 | # | Gap | Recorded in | Blocks |
 |---|---|---|---|
 | 9 | ✅ **CLOSED 2026-08-11** (plan step 1): `describe` emits `<label>.template.toml` from the schema | `template.md` · plan P12 u6b | — |
-| 10 | ✅ **CLOSED 2026-08-11** (plan step 2, `b7ca09d7`): `jobset init` writes template + `task.json` + data files | `job-system.md § 5.1`, § 5.3's grammar | — |
+| 10 | ✅ **CLOSED 2026-08-11** (plan step 2, `b7ca09d7`): `molbuilder describe` writes template + `task.json` + data files | `job-system.md § 5.1`, § 5.3's grammar | — |
 | 11 | ⛔ **MOOT 2026-08-14**: the `schema_fingerprint` mechanism is **retired**, so the gap it named cannot be open. One writer, one reader, and a warning weaker than the per-field rows that ran right after it (`template.md` § 10, `stages.md` § 6.6) | `stages.md § 6.6` | — |
 | 12 | **`user_custom` has no schema field.** It must be an ordinary item for USER-CUSTOM text to survive `prep`; no engine config declares one | `template.md § 9.2`, § 12 | the reserved-block completeness claim (G6) |
 | 13 | **The `required` check is unbuilt.** A stage may declare what it cannot run without; nothing verifies it in the run directory | `job-contracts.md § 4.4` · `stages.md § 5` | a TranSIESTA ladder starting without its `.TSHS` |

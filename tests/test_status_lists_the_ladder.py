@@ -1,5 +1,5 @@
 """`jobset status` lists the description's ladder -- through the road:
-`jobset init`, the Task-setup save, `prep`, `status`, the Results tab.
+`molbuilder describe`, the Task-setup save, `prep`, `status`, the Results tab.
 
 PINS: ``docs/execution/job-system.md`` § 5.3 (the table is the description's
 ladder: every stage with its number from the moment `init` writes it, the ones
@@ -49,8 +49,8 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     MUTATIONS THIS MUST FAIL AGAINST: the continuation door raising (a
     traceback); stages joined to jobs by exact name; a stage folder told to
     run `init`."""
-    from molbuilder.web.app import create_app
-    from support.road import describe_calculation, jobset
+    from support.road import (describe_calculation, jobset, read_request,
+                              save_both)
     bundle = describe_calculation(tmp_path, monkeypatch)
 
     template = next(bundle.glob("*.template.toml"))
@@ -68,9 +68,7 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
 
     task = json.loads((bundle / "task.json").read_text())
     task["stages"][0]["name"] = "COARSE"
-    r = create_app(config={}).test_client().post(
-        "/api/task-setup/save",
-        json={"dest": str(bundle), "text": json.dumps(task)})
+    r = save_both(bundle, task, read_request(bundle))
     assert r.status_code == 200, r.get_json()
     r = jobset("status", "--bundle", bundle)
     assert r.exit_code == 0, r.output
@@ -79,7 +77,7 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     r = jobset("status", "--bundle", bundle / "01_coarse")
     assert r.exit_code != 0, r.output
     assert "is a folder of the calculation at" in r.output, r.output
-    assert "jobset init" not in r.output, r.output
+    assert "molbuilder describe" not in r.output, r.output
 
 
 def test_status_ends_with_each_groups_next_step(tmp_path, monkeypatch):

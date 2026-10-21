@@ -464,7 +464,7 @@ A person who opens a five-rung transport calculation therefore sees which of
 the five is outstanding — `engines/transport.md` § 2a.12's third requirement
 — and what to type to go on, instead of *pick a file*. A rung's files are read by opening the
 rung's directory; the product, when present — a transport root's `task.json`
-from `init` on — is what `openable` picks at the root.
+from `molbuilder describe` on — is what `openable` picks at the root.
 
 **Every run of the calculation, in one place, picked in place** *(user,
 2026-10-03: "this gives a bird's eye of one parent task dir that can
@@ -504,9 +504,10 @@ carries two more buttons, under *files*: **input** — the deck the run read,
 in its own folder (`Run.deck`) — and **check report** — the `.validation.txt`
 prep wrote beside the deck it copied, in the stage's folder or the bias
 point's within it (`Run.report`, in `Run.prepared`) — while that deck is
-still the one the run read (`script_emit.same_calculation`, the record's
-`current`): after a re-prep that changed the calculation the file there checks
-the new deck, so an earlier run draws no *check report*. Each opens in the
+the same calculation as the one the run read (`deck_record.same_calculation`,
+the record's `current`, [`job-request.md`](?doc=execution/job-request.md) § 6): a re-prep for a job request
+keeps it so, and the check there is the run's too; one that changed the
+calculation draws an earlier run no *check report*. Each opens in the
 sidebar's file viewer, as the Run panel's **View** does (§ 3a); the panel
 keeps its result. The server names both files, root-relative, on each run of
 `runs[]` (`deck`, `validation`, `runstatus.every_run`); a button whose file is
@@ -529,7 +530,7 @@ the report is the root's product, composed on read
 (`/api/transport/record`, [`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12), so a ladder in progress has one and a rung that ran since is shown as
 it is now. The root opens it through its **description**, `task.json` (§ 0.1),
-which is there from `jobset init` on — never through the record file, which
+which is there from `molbuilder describe` on — never through the record file, which
 exists only after a first `summarize task`.
 
 **Where it stands** *(2026-10-07)*: built — the record's fields
@@ -539,7 +540,7 @@ trajectory viewer on it, the charts' theme (`lib/plot-theme.js`), the report
 (`lib/inspectors/transport.js`, a module, and its sheet), the ladder above the
 panel. **Checked on a real calculation** *(2026-10-07)*: a 16-atom carbon
 chain (`projects/claude-transport-walk/transport/chain-t`, six frozen atoms per
-lead, SZ, 100 Ry) run through `init → prep → launch` for all five rungs at 0 and
+lead, SZ, 100 Ry) run through `describe → prep → launch` for all five rungs at 0 and
 0.2 V, then `summarize task`: T(E_F) = 2.0, the cumulene's two π channels; the
 record's DOS, PDOS, both leads' bulk DOS, L's spectral DOS and four eigenchannels
 read from the real `.TBT.nc`; the device's NEGF E_F, dQ and charges; the

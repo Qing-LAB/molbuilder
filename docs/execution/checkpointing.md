@@ -1392,7 +1392,7 @@ git in env ... long time ago".)*
   too. Half (a) alone passes while a stage overwrites another stage's `.DM`.
 
 **S4 — the description is input; everything else is derived.** No produce and no
-run may edit `task.json`.
+run may edit `task.json` or `job-request.json`.
 
 - **Test:** hash it before and after.
 

@@ -34,27 +34,31 @@ from support.junction import _isolated  # noqa: F401 -- its sandbox, autouse
 
 
 def _described(engine, stages, calculation="optimization"):
-    """A description as a person's editor leaves it: ``stages`` the rows,
-    ``varies`` what they override."""
+    """A description as a person's editor leaves it, and its job request:
+    ``stages`` the rows, ``varies`` what they override -- each row its own
+    group, as the page numbers a stage it adds."""
     from molbuilder.identity import run_id
-    out = {"schema": "molbuilder/task@1", "engine": {"name": engine},
-           "calculation": "optimization",
-           "shape": "hierarchical",
-           "run": {"name": "x", "id": run_id("x", "H2"),
-                   "created": "2026-09-30T00:00:00-07:00"},
-           "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
-           "varies": sorted({k for s in stages for k in s["overrides"]}),
-           # EACH ROW ITS OWN GROUP, as the page numbers a stage it adds.
-           "stages": [dict(s, group=s.get("group", i + 1))
-                      for i, s in enumerate(stages)]}
-    if calculation != "optimization":
-        out["calculation"] = calculation
-    return out
+    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
+    from molbuilder.task import SCHEMA as TASK_SCHEMA
+    task = {"schema": TASK_SCHEMA, "engine": {"name": engine},
+            "calculation": calculation,
+            "shape": "hierarchical",
+            "run": {"name": "x", "id": run_id("x", "H2"),
+                    "created": "2026-09-30T00:00:00-07:00"},
+            "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
+            "varies": sorted({k for s in stages for k in s["overrides"]}),
+            "stages": stages}
+    request = {"schema": REQUEST_SCHEMA,
+               "stages": {s["name"]: {"group": i + 1}
+                          for i, s in enumerate(stages)}}
+    return task, request
 
 
 def _save(web_client, dest, described):
-    return web_client.post("/api/task-setup/save", json={
-        "dest": str(dest), "text": json.dumps(described)})
+    """``described`` -- a description and its job request -- through Task
+    setup's Save, which writes both."""
+    from support.road import save_both
+    return save_both(dest, *described, client=web_client)
 
 
 #: A transport calculation's five rungs, in their default groups, and the
@@ -65,24 +69,29 @@ _CITE = "J/optimization/relax/01_coarse/run-0"
 
 
 def _transport(*, execution=None, on=None, rung_execution=None):
-    """A transport description as Task setup's Save takes it: ``execution``
-    the calculation's run card, ``rung_execution`` the card of rung ``on``."""
+    """A transport description and its job request as Task setup's Save
+    takes them: ``execution`` the calculation's run card, ``rung_execution``
+    the card of rung ``on``."""
     from molbuilder.identity import run_id
-    out = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
-           "calculation": "transport", "shape": "hierarchical",
-           "run": {"name": "t", "id": run_id("t", _CITE, stage_names=_RUNGS),
-                   "created": "2026-10-12T00:00:00-07:00"},
-           "slots": {"junction": _CITE},
-           "bias": {"voltages_v": [0.0, 0.2],
-                    "low_bias_approximation": False},
-           "varies": [],
-           "stages": [dict({"name": n, "group": g, "overrides": {}},
-                           **({"execution": rung_execution} if n == on
-                              else {}))
-                      for n, g in zip(_RUNGS, _GROUPS)]}
+    from molbuilder.job_request import SCHEMA as REQUEST_SCHEMA
+    from molbuilder.task import SCHEMA as TASK_SCHEMA
+    task = {"schema": TASK_SCHEMA, "engine": {"name": "siesta"},
+            "calculation": "transport", "shape": "hierarchical",
+            "run": {"name": "t", "id": run_id("t", _CITE, stage_names=_RUNGS),
+                    "created": "2026-10-12T00:00:00-07:00"},
+            "slots": {"junction": _CITE},
+            "bias": {"voltages_v": [0.0, 0.2],
+                     "low_bias_approximation": False},
+            "varies": [],
+            "stages": [{"name": n, "overrides": {}} for n in _RUNGS]}
+    request = {"schema": REQUEST_SCHEMA,
+               "stages": {n: dict({"group": g},
+                                  **({"execution": rung_execution}
+                                     if n == on else {}))
+                          for n, g in zip(_RUNGS, _GROUPS)}}
     if execution is not None:
-        out["execution"] = execution
-    return out
+        request["execution"] = execution
+    return task, request
 
 
 def _template_beside(dest, engine, calculation, cfg):
@@ -175,72 +184,42 @@ def test_a_calculation_wide_value_is_taken_by_the_rungs_that_read_it(
         web_client, isolated_projects_root):
     """`engines/stages.md` § 6.8d, `execution/gpu.md` § 1.1: a calculation-
     wide value reaches the rungs the item's ``stages`` names.  A transport
-    calculation run on the GPU is saved, and each SCF rung's prep takes the
-    GPU and its count, while the transmission's -- `tbtrans` runs on no GPU
-    -- takes neither, its other values kept.  Read through what a rung's
-    prep takes from the description (`prep_inputs.run_inputs`: the launch
-    shape and the deck's pins), not prep's files: a transport rung is
-    prepared on a finished relaxation, which only the engine makes, and the
-    real junction's e2e runs on the CPU.  Without it the transmission was a
-    GPU job, holding a device it never uses (measured 2026-10-17).
+    calculation run on the GPU is saved, and each SCF rung resolves to a run
+    on one GPU, while the transmission -- `tbtrans` runs on no GPU --
+    resolves to a run on none, its other values kept, so prep's G5 has
+    nothing to refuse there.  Read through prep's two steps for a rung
+    (`prep_inputs.run_inputs`, then `resolve`), not prep's files: a
+    transport rung is prepared on a finished relaxation, which only the
+    engine makes, and the real junction's e2e runs on the CPU.  Without it
+    the transmission was a GPU job, holding a device it never uses
+    (measured 2026-10-17).
 
     MUTATION THIS MUST FAIL AGAINST: the calculation's card handed whole to
-    every rung (`Task.run_condition`)."""
-    from molbuilder.jobset.prep_inputs import run_inputs
-    from molbuilder.task import FILENAME, of as task_of
-    d = isolated_projects_root / "J" / "transport" / "t"
-    d.mkdir(parents=True)
-    r = _save(web_client, d, _transport(execution={
-        "use_gpu": True, "gpu_count": 1, "mpi_np": 4, "omp_threads": 1}))
-    assert r.status_code == 200, r.get_json()
-    task = task_of(d)
-    for rung in _RUNGS[:-1]:
-        shape, pins = run_inputs(d, task, rung)
-        assert (shape.get("gres"), pins.get("use_gpu")) == ("gpu:1", True), \
-            (rung, shape, pins)
-    shape, pins = run_inputs(d, task, "transmission")
-    assert "gres" not in shape and "use_gpu" not in pins, (shape, pins)
-    assert (shape.get("mpi_np"), shape.get("cpus_per_task")) == (4, 1), shape
-
-
-def test_the_templates_gpu_is_taken_by_the_rungs_that_read_it(
-        web_client, isolated_projects_root):
-    """`engines/stages.md` § 6.8d, `execution/gpu.md` § 1.1: the GPU said in
-    the calculation's own template, its count on the calculation's card,
-    reaches the rungs that read it -- each SCF rung resolves to a run on one
-    GPU, and the transmission to a run on none, so prep's G5 has nothing to
-    refuse there.  Read through prep's two steps for a rung
-    (`prep_inputs.run_inputs`, then `resolve`), not prep's files, for the
-    reason the test above gives.  Without it the transmission resolved to a
-    GPU run with no count, refused with no way out: the calculation's card
-    does not reach it, and a count on its own card is refused (measured
-    2026-10-17).
-
-    MUTATION THIS MUST FAIL AGAINST: `resolve` carrying the template's
-    `use_gpu` onto every rung."""
-    import dataclasses
+    every rung (`JobRequest.run_condition`)."""
+    from molbuilder.calculation import open as open_calculation
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.jobset.model import Resources, gpu_request
     from molbuilder.jobset.prep_inputs import run_inputs
     from molbuilder.resolve import resolve
-    from molbuilder.task import FILENAME, of as task_of
     from molbuilder.template import template_with_values
     from molbuilder.template_file import template_path
     d = isolated_projects_root / "J" / "transport" / "t"
     d.mkdir(parents=True)
-    text = template_with_values(
-        dataclasses.replace(SiestaConfig(), use_gpu=True), engine="siesta",
-        calculation="transport")
+    text = template_with_values(SiestaConfig(), engine="siesta",
+                                calculation="transport")
     template_path(d, "t").write_text(text, encoding="utf-8")
     r = _save(web_client, d, _transport(execution={
-        "gpu_count": 1, "mpi_np": 4, "omp_threads": 1}))
+        "use_gpu": True, "gpu_count": 1, "mpi_np": 4, "omp_threads": 1}))
     assert r.status_code == 200, r.get_json()
-    task = task_of(d)
+    calc = open_calculation(d)
     asked = {}
     for rung in _RUNGS:
-        shape, pins = run_inputs(d, task, rung)
-        ps = resolve(text, task, SiestaConfig, allocation=Resources(**shape),
-                     stage=rung, pins=pins)
+        shape, settings = run_inputs(calc.request, rung)
+        assert (shape.get("mpi_np"), shape.get("cpus_per_task")) == (4, 1), \
+            (rung, shape)
+        ps = resolve(text, calc.task, SiestaConfig,
+                     allocation=Resources(**shape), stage=rung,
+                     run_settings=settings)
         g = gpu_request(ps.elements[0].resources)
         asked[rung] = (g.uses, g.count)
     assert asked == {**{rung: (True, 1) for rung in _RUNGS[:-1]},

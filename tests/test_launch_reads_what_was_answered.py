@@ -12,7 +12,7 @@ documented as what a person types and `Resources.time` as what SLURM takes,
 and nothing translated between them.
 
 The rule: **the record holds ONE spelling, SLURM's, and
-translation happens at the edges where humans are** (`task.py::Allocation`,
+translation happens at the edges where humans are** (`job_request.Allocation`,
 `scheduler.quantities.canonical_time`/`canonical_mem`).
 """
 from __future__ import annotations
@@ -39,18 +39,6 @@ class TestTheRecordHoldsOneSpelling:
             Resources(time="4h", mem="80GB").to_dict())))
         assert r.time == "0-04:00:00" and r.mem == "80G"
 
-
-    def test_task_json_allocation_is_normalised_on_read(self):
-        from molbuilder.task import _allocation_from_obj
-        a = _allocation_from_obj(
-            {"allocation": {"domain": "htc", "time": "4h", "mem": "256G"}})
-        assert (a.domain, a.time, a.mem) == ("htc", "0-04:00:00", "256G")
-
-    def test_an_unreadable_allocation_names_its_field(self):
-        from molbuilder.task import _allocation_from_obj
-        with pytest.raises(Exception) as e:
-            _allocation_from_obj({"allocation": {"time": "banana"}})
-        assert "allocation.time" in str(e.value)
 
 
 class TestAStatedValueIsNeverLostQuietly:

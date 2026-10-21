@@ -4,7 +4,7 @@ it, the stage that builds on it (`engines/vibration.md` § 5.2a), and the
 vibration gate's verdicts on a structure that carries it (§ 2.2, the record
 table).
 
-``jobset init --calculation vibration`` (hierarchical) -> ``prep task --group 1``
+``molbuilder describe --calculation vibration`` (hierarchical) -> ``prep task --group 1``
 -> ``launch task --stage relax --mode direct``, on the road's CO2 in a 10 Å
 box, isolated, listed O O C with its carbon held: the `relax` stage of the
 kind's own ladder, at the kind's own tight tolerance, its deck written in the

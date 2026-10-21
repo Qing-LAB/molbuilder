@@ -41,7 +41,8 @@ pytest.importorskip("flask")
 
 from pathlib import Path
 
-from support.task_setup_page import unfold
+from support.road import read_request, write_request
+from support.task_setup_page import file_text, unfold, wait_for_file
 from support.machines import SLURM, WORKSTATION
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,7 +77,7 @@ def _a_described_probe(root, execution=None):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.scheduler import Domain, Environment, Topology
     from molbuilder.structure import Structure
-    from molbuilder.task import Allocation, Stage, of as task_of, write_task
+    from molbuilder.task import Stage
 
     src_dir = root / "structure"
     src_dir.mkdir(parents=True)
@@ -125,15 +126,13 @@ def _a_described_probe(root, execution=None):
                                            "activation": "conda activate"},
                         ).to_json() + "\n", encoding="utf-8")
         # ...and a run on it STATES its queue, wall, memory and cores per
-        # rank (`architecture.md` § 5.2): the description says them, and the
+        # rank (`architecture.md` § 5.2): the job request says them, and the
         # card adds the rank count the test types.
-        t = task_of(d)
-        write_task(d, type(t)(
-            **{**{f.name: getattr(t, f.name)
-                  for f in __import__("dataclasses").fields(t)},
-               "execution": execution or {"omp_threads": 1},
-               "allocation": Allocation(domain="public", time="0-04:00:00",
-                                        mem="8G")}))
+        req = read_request(d)
+        req["execution"] = execution or {"omp_threads": 1}
+        req["allocation"] = {"domain": "public", "time": "0-04:00:00",
+                             "mem": "8G"}
+        write_request(d, req)
         return d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
@@ -208,10 +207,7 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     page.wait_for_selector(sel, timeout=20000)
     page.fill(sel, "8")
     page.dispatch_event(sel, "change")
-    page.wait_for_function(
-        "() => { const cm = document.querySelector('.CodeMirror');"
-        " return cm && /\"mpi_np\"/.test(cm.CodeMirror.getValue()); }",
-        timeout=10000)
+    wait_for_file(page, "request", '"mpi_np"')
 
     # ── SAVE SAYS WHAT IT DID -- the state it saved first among it ─────
     page.click("#ts-save")
@@ -222,10 +218,10 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         timeout=20000)
 
     # ...and it reached disk, which is the only bridge to prep.
-    on_disk = json.loads((calc_dir / "task.json").read_text())
-    assert on_disk["stages"][0].get("execution", {}).get("mpi_np") == 8, (
-        "Save said it wrote, and the file does not carry it: "
-        + json.dumps(on_disk["stages"][0]))
+    on_disk = read_request(calc_dir)
+    assert on_disk["stages"]["coarse"].get("execution", {}).get(
+        "mpi_np") == 8, ("Save said it wrote, and the file does not carry "
+                         "it: " + json.dumps(on_disk["stages"]))
 
     # ── PREVIEW ENABLES PREP, AND NOT THE OTHER WAY ROUND ──────────────
     # The task's one Prep, its group ticked as the folder opens.
@@ -284,7 +280,7 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     """`task-setup.md` § 11.1, `checkpointing.md` § 9: Prep task here saves
     the folder's state before it writes -- always, the note led by the time
     it was taken -- and the answer says so.  An unsaved edit is not in the
-    task.json prep reads, so Prep refuses it first (§ 7a).  The group,
+    files prep reads, so Prep refuses it first (§ 7a).  The group,
     prepared and never launched, is shown so when the folder opens again
     (`task-setup.md` § 11): its box unticked, so nothing is prepared until
     it is picked again, and its tab's lines are its launch (W55 B4)."""
@@ -308,7 +304,7 @@ def test_the_tab_saves_the_folder_first_and_says_so(
             "b => /Prep task here/.test(b.textContent) && !b.disabled)",
             arg=f"{box} .ts-prep button", timeout=30000)
 
-    # AN UNSAVED EDIT IS NOT IN THE task.json PREP READS, so Prep refuses it
+    # AN UNSAVED EDIT IS NOT IN THE FILES PREP READS, so Prep refuses it
     # and nothing renders.
     ready()
     original = page.evaluate(
@@ -432,7 +428,7 @@ def filled_dir(isolated_projects_root_module):
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.scheduler import Environment, Topology
     from molbuilder.structure import Structure
-    from molbuilder.task import Allocation, Stage, of as task_of, write_task
+    from molbuilder.task import Stage
 
     root = isolated_projects_root_module / "prep_filled"
     src_dir = root / "structure"
@@ -470,18 +466,13 @@ def filled_dir(isolated_projects_root_module):
         #   `time`         chosen    -- a LANE ASK, this run's own (§ 6.8e)
         # and `allocation` beside them, which is a different block for a
         # different question (§ 7).
-        t = task_of(d)
-        write_task(d, type(t)(
-            **{**{f.name: getattr(t, f.name)
-                  for f in __import__("dataclasses").fields(t)},
-               "execution": {"mpi_np": 16},
-               "allocation": Allocation(time="0-04:00:00", mem="16G",
-                                        domain="debug"),
-               "stages": (Stage(name="coarse",
-                                overrides={"mesh_cutoff": 200},
-                                execution={"omp_threads": 4,
-                                           "time": "2-00:00:00"},
-                                group=1),)}))
+        req = read_request(d)
+        req["execution"] = {"mpi_np": 16}
+        req["allocation"] = {"time": "0-04:00:00", "mem": "16G",
+                             "domain": "debug"}
+        req["stages"] = {"coarse": {"group": 1, "execution": {
+            "omp_threads": 4, "time": "2-00:00:00"}}}
+        write_request(d, req)
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
@@ -529,13 +520,13 @@ def binding_dir(isolated_projects_root_module):
 
 
 def _saved_allocation(where, ok, timeout=20.0):
-    """`task.json`'s `allocation`, once a save has made ``ok`` true of it --
-    what the page wrote is the file, so the file is what is waited on."""
+    """The job request's `allocation`, once a save has made ``ok`` true of
+    it -- what the page wrote is the file, so the file is what is waited
+    on."""
     import time
     end = time.monotonic() + timeout
     while True:
-        alloc = json.loads((where / "task.json").read_text()).get(
-            "allocation", {})
+        alloc = read_request(where).get("allocation", {})
         if ok(alloc) or time.monotonic() > end:
             return alloc
         time.sleep(0.1)
@@ -581,10 +572,12 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
 
 
 def _rows(page):
-    """Every run-card row, as {name: {kind, value, placeholder}}."""
+    """Every row of the run card on show, as {name: {kind, value,
+    placeholder}} -- the open tab's, a group's or *every stage*."""
     return page.evaluate(
         "() => { const out = {};"
-        " for (const r of document.querySelectorAll('.ts-runcard .ts-row')) {"
+        " for (const r of document.querySelectorAll("
+        "      '.ts-next-step:not([hidden]) .ts-runcard .ts-row')) {"
         "   const n = r.querySelector('.ts-row-name');"
         "   const i = r.querySelector('.ts-runval');"
         "   if (!n || !i) continue;"
@@ -604,8 +597,9 @@ def test_a_folder_opens_showing_what_it_already_states(
     (`task-setup.md` § 2.1, § 9's *open a folder* row).
 
     The page holds no state of its own, so everything on screen has to come
-    back out of `task.json` -- and § 6.2b's three row states are how the card
-    says WHICH of the two `execution` blocks answered each row.
+    back out of the files -- and § 6.2b's three row states are how the card
+    says WHICH of the job request's two `execution` blocks answered each
+    row.
 
     **The empty field on an inherited row is the load-bearing half.** Filling
     it with the merged value would make blank unreachable: clearing writes
@@ -632,12 +626,12 @@ def test_a_folder_opens_showing_what_it_already_states(
         f"reached: {rows['mpi_np']}")
     assert "16" in rows["mpi_np"]["placeholder"], rows["mpi_np"]
     assert "every stage" in rows["mpi_np"]["placeholder"], rows["mpi_np"]
-    # ...or the TEMPLATE's value, for a row no block states: the GPU switch,
-    # a launch row on every card, which the run takes from the template --
-    # never "not stated", which says prep will refuse it (measured
-    # 2026-10-12: the diagonaliser read so, and its template answered).
+    # ...or the item's DEFAULT, for a row no card states: the GPU switch,
+    # a run setting on every card, which the run takes from the catalogue
+    # (`job-request.md` § 4) -- never "not stated", which says prep will
+    # refuse it (measured 2026-10-12: the diagonaliser read so).
     assert rows["use_gpu"]["kind"] == "inherited", rows["use_gpu"]
-    assert rows["use_gpu"]["placeholder"] == "\u2014 false (template)", (
+    assert rows["use_gpu"]["placeholder"] == "\u2014 false (default)", (
         rows["use_gpu"])
 
     # A LANE ASK is an ordinary chosen row -- `time` is the RUN's own, and
@@ -661,9 +655,41 @@ def test_a_folder_opens_showing_what_it_already_states(
         "on purpose -- a trial and a run hold about the same memory")
 
 
+def test_the_every_stage_card_writes_the_calculations_own_card(
+        page, flask_server, isolated_projects_root_module):
+    """`task-setup.md` § 6.2b: the calculation-wide run card is written by
+    the run card's *every stage* view -- the job request's `execution`,
+    never a stage's own card -- and a group's card shows it behind its
+    blank field, marked *(every stage)*.
+
+    THE SILENT FAILURE: the view writing the stages' own cards, so every
+    rung seems to run at a value that only the stages of that day do, and
+    a stage added later runs without it.
+
+    MUTATION THIS MUST FAIL AGAINST: the view's writes going to the
+    members' own cards."""
+    calc = _a_described_probe(isolated_projects_root_module / "every_stage")
+    _open(page, flask_server, calc)
+    page.click("#ts-groups .ts-steptab[data-tab='every']")
+    field = (".ts-next-step:not([hidden]) .ts-runcard "
+             "[aria-label='value for omp_threads']")
+    page.wait_for_selector(field, timeout=20000)
+    page.fill(field, "3")
+    page.dispatch_event(field, "change")
+    wait_for_file(page, "request", '"omp_threads": 3')
+    request = json.loads(file_text(page, "request"))
+    assert request["execution"]["omp_threads"] == 3, request
+    assert "execution" not in request["stages"]["coarse"], request
+    # ...and the group's card shows it behind its blank field.
+    page.click("#ts-groups .ts-steptab[data-tab='1']")
+    row = _rows(page)["omp_threads"]
+    assert row["kind"] == "inherited" and row["value"] == "", row
+    assert "3 (every stage)" in row["placeholder"], row
+
+
 def test_what_you_typed_is_still_there_when_you_come_back(
         page, flask_server, filled_dir):
-    """**Persistency is `task.json`, and nothing else** (§ 7a).
+    """**Persistency is the files, and nothing else** (§ 7a).
 
     There is no page-level store to remember a form: the value is written to
     the file by Save, and the file is what the page reads on the way back in.
@@ -683,8 +709,9 @@ def test_what_you_typed_is_still_there_when_you_come_back(
         " return n && !n.hidden && /Saved/.test(n.textContent); }",
         timeout=20000)
 
-    on_disk = json.loads((filled_dir / "task.json").read_text())
-    assert on_disk["stages"][0]["execution"]["omp_threads"] == 6, on_disk
+    on_disk = read_request(filled_dir)
+    assert on_disk["stages"]["coarse"]["execution"]["omp_threads"] == 6, \
+        on_disk
 
     # 1 -- away to another tab, and back.
     page.goto(f"{flask_server}/molbuilder")
@@ -707,7 +734,8 @@ def test_a_row_has_a_remove_button_only_where_its_blank_cannot_remove_it(
     """§ 6.2b *(user, 2026-10-12: "i clicked "x" and it stayed, just the
     value being cleared")*: a row that stands -- a launch row, one the
     calculation states -- has no ×, its blank clears it; a row added by
-    *+ Add setting* and not filled has one, and it removes the row.
+    *+ Add setting* and not filled has one, and it removes the row: the
+    run's own queue, `domain`, which no card of this folder states.
 
     MUTATIONS THIS MUST FAIL AGAINST: a × on every row (the standing rows
     carry one that can only clear); the added row's × not removing it."""
@@ -721,15 +749,15 @@ def test_a_row_has_a_remove_button_only_where_its_blank_cannot_remove_it(
     page.evaluate(
         "() => { const c = document.querySelector('.ts-runcard');"
         "  const s = c.querySelector('select.ts-pick');"
-        "  s.value = 'block_size';"
+        "  s.value = 'domain';"
         "  s.dispatchEvent(new Event('change', {bubbles: true}));"
         "  for (const b of c.querySelectorAll('button'))"
         "    if (/Add setting/.test(b.textContent)) { b.click(); return; } }")
-    field = '.ts-runcard [aria-label="value for block_size"]'
+    field = '.ts-runcard [aria-label="value for domain"]'
     page.wait_for_selector(field, timeout=10000)
-    assert _rows(page)["block_size"]["drop"], "the added row has no ×"
+    assert _rows(page)["domain"]["drop"], "the added row has no ×"
     page.click(".ts-runcard .ts-row:has([aria-label=\"value for "
-               "block_size\"]) > .ts-rowbtn-drop")
+               "domain\"]) > .ts-rowbtn-drop")
     page.wait_for_selector(field, state="detached", timeout=10000)
 
 
@@ -749,13 +777,13 @@ def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
     page.evaluate(
         "() => { const c = document.querySelector('.ts-runcard');"
         "  const s = c.querySelector('select.ts-pick');"
-        "  s.value = 'block_size';"
+        "  s.value = 'domain';"
         "  s.dispatchEvent(new Event('change', {bubbles: true}));"
         "  for (const b of c.querySelectorAll('button'))"
         "    if (/Add setting/.test(b.textContent)) { b.click(); return; } }")
     page.wait_for_function(
         "() => !!document.querySelector("
-        "  '.ts-runcard [aria-label=\"value for block_size\"]')",
+        "  '.ts-runcard [aria-label=\"value for domain\"]')",
         timeout=10000)
 
     # ...now switch folders THE WAY THE SIDEBAR DOES, without a reload --
@@ -776,7 +804,7 @@ def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
     unfold(page, "ts-groups-card")     # a folder opened anew folds its cards
     page.wait_for_selector(".ts-runcard", timeout=20000)
 
-    assert "block_size" not in _rows(page), (
+    assert "domain" not in _rows(page), (
         "a row added on the previous folder followed the page into this "
         "one -- § 2.1's 'no in-progress buffer that outlives a directory "
         "change'")
@@ -941,8 +969,9 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
         " return !!n && !n.hidden && /Saved/.test(n.textContent); }"), (
         "the save finished without saying so")
     # The value reached disk, which is the point of blocking at all.
-    on_disk = json.loads((filled_dir / "task.json").read_text())
-    assert on_disk["stages"][0]["execution"]["omp_threads"] == 3, on_disk
+    on_disk = read_request(filled_dir)
+    assert on_disk["stages"]["coarse"]["execution"]["omp_threads"] == 3, \
+        on_disk
 
     for what, act in _CARD_EDITS:
         logs.append((what, fenced(lambda: act(page))))
@@ -981,7 +1010,7 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     """
     # A GRID TO CHECK: two points to measure, stated for this test and put
     # back after it -- the module's other tests share the folder.
-    tj = Path(filled_dir) / "task.json"
+    tj = Path(filled_dir) / "job-request.json"
     kept = tj.read_text()
     d = json.loads(kept)
     d["bench"] = {"mpi_np": [2, 4], "omp_threads": [1]}
@@ -1032,7 +1061,6 @@ def two_stage_dir(isolated_projects_root):
     (`viewer.js`: `benchVarying`) -- the half itself renders on every stage
     of a description `prep bench` takes (`if (!_fs.benchRefusal)`).
     """
-    import json as _json
 
     import numpy as np
 
@@ -1070,12 +1098,11 @@ def two_stage_dir(isolated_projects_root):
 
         # The axes to measure, declared once for the calculation -- which is
         # exactly why every enabled stage can be measured.
-        task = _json.loads((d / "task.json").read_text())
-        task["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
+        req = read_request(d)
+        req["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
         # ...and the run's shape, stated -- a run states it or is refused.
-        task["execution"] = {"mpi_np": 2, "omp_threads": 1}
-        (d / "task.json").write_text(_json.dumps(task, indent=2),
-                                     encoding="utf-8")
+        req["execution"] = {"mpi_np": 2, "omp_threads": 1}
+        write_request(d, req)
 
         # THIS MACHINE'S record, where `jobset probe --write` puts it -- not
         # a copy in the calculation, which only its first prep writes
@@ -1141,7 +1168,7 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
         "the group tabs do not explain themselves")
     # A person who filled the card and then wants something else for ONE prep
     # needs to know a flag wins -- otherwise the only visible path is editing
-    # `task.json` again.
+    # the job request again.
     # The flags named are `jobset prep task`'s own (`--omp` is not one).
     assert "--np / --cpus-per-task / --time" in hints, (
         "a person who filled the card is not told a flag still overrides it")
@@ -1262,8 +1289,8 @@ def test_the_notify_card_offers_this_machines_channels(
     description loads, `loadChannelNames()` asks the server, and the answer
     is painted as one label per channel.  Any of the three failing leaves a
     person unable to ask for a report that the machine is perfectly capable
-    of sending -- and nothing else notices, because `task.json` is valid
-    either way.
+    of sending -- and nothing else notices, because `job-request.json` is
+    valid either way.
 
     WHY THE SECRET IS NOT CHECKED HERE.  It cannot reach this page: `_row` in
     `notify_setup.py` is the one door out and emits no `url` and no `key` at
@@ -1385,8 +1412,9 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
 
 def test_no_rung_is_taught_a_from_by_default(
         page, flask_server, two_stage_dir):
-    """By default the page composes no `--from`, even for a rung whose run
-    card says it continues: which run a stage continues from is then its
+    """By default the page composes no `--from`, even for a rung that
+    continues (its `restart`, the default): which run a stage continues
+    from is then its
     first launch's answer -- the newest attempt of the stage before it,
     which must have finished (`job-system.md` § 5.4, plan W37) -- and a
     `--from` is taken as said, so it appears only when a person chooses a
@@ -1394,12 +1422,6 @@ def test_no_rung_is_taught_a_from_by_default(
 
     MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again.
     """
-    import json as _json
-    tj = two_stage_dir / "task.json"
-    doc = _json.loads(tj.read_text())
-    doc["stages"][1]["execution"] = dict(doc["stages"][1].get("execution")
-                                         or {}, restart="continue")
-    tj.write_text(_json.dumps(doc, indent=2))
     for n in (0, 1):
         (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
     _open(page, flask_server, two_stage_dir)
@@ -1425,8 +1447,6 @@ def test_a_FLAT_bundle_is_taught_no_from_at_all(
     tj = two_stage_dir / "task.json"
     doc = _json.loads(tj.read_text())
     doc["shape"] = "flat"
-    doc["stages"][1]["execution"] = dict(doc["stages"][1].get("execution")
-                                         or {}, restart="continue")
     tj.write_text(_json.dumps(doc, indent=2))
 
     _open(page, flask_server, two_stage_dir)
