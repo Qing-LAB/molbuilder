@@ -52,6 +52,14 @@ name = "a plain .xyz opens as a structure"
 file = "/tmp/water_demo/water.xyz"
 opens = "structure"
 
+# ...with the directory's answer too: the trajectory parser reads any .xyz,
+# and no catalogue row names this one (2.16.3 opened it as a trajectory).
+[[pick]]
+name = "...and with the answer the directory gives it, no role, still"
+file = "/projects/foo/w.xyz"
+meta = { parser = "pyscf", engine = "unknown" }
+opens = "structure"
+
 [[pick]]
 name = "a .molwatch.log opens as a trajectory"
 file = "/tmp/run/foo.molwatch.log"
@@ -249,7 +257,7 @@ file = ""
 [[heading]]
 name = "a .out in a SIESTA run sits under SIESTA optimization"
 file = "/projects/foo/bar.out"
-meta = { engine = "siesta", role = ".out" }
+meta = { engine = "siesta", role = ".out", parser = "siesta" }
 heading = "SIESTA optimization"
 
 # Every engine writes a .molwatch.log: filed by suffix, SIESTA runs once sat
@@ -257,7 +265,7 @@ heading = "SIESTA optimization"
 [[heading]]
 name = "a .molwatch.log in a PySCF run, under PySCF optimization"
 file = "/projects/foo/run.molwatch.log"
-meta = { engine = "pyscf", role = ".molwatch.log" }
+meta = { engine = "pyscf", role = ".molwatch.log", parser = "molwatch" }
 heading = "PySCF optimization"
 
 # Without an engine in the answer, the file is named for what it is and the
@@ -265,20 +273,20 @@ heading = "PySCF optimization"
 [[heading]]
 name = "a .out whose answer names no engine sits under Optimization"
 file = "/projects/foo/bar.out"
-meta = { role = ".out" }
+meta = { role = ".out", parser = "siesta" }
 heading = "Optimization"
 
 [[heading]]
 name = "...and a *_geom_optim.xyz"
 file = "/projects/foo/BDT_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz" }
+meta = { role = "_geom_optim.xyz", parser = "pyscf" }
 heading = "Optimization"
 
 # `unknown` is the directory declining to name an engine, read as no answer.
 [[heading]]
 name = "a run whose engine is unknown names none"
 file = "/projects/foo/BDT_geom_optim.xyz"
-meta = { role = "_geom_optim.xyz", engine = "unknown" }
+meta = { role = "_geom_optim.xyz", parser = "pyscf", engine = "unknown" }
 heading = "Optimization"
 
 # A transport calculation's report opens through its description, on the

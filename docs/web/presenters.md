@@ -126,10 +126,13 @@ no filename answer at all:
   ([`results.md`](?doc=web/results.md) § 2.3);
 - the **engine** is a fact about the run directory that no filename carries.
 
-**A run's viewer claims nothing without it** (2026-10-18): `trajectory` reads
-the catalogue's role and nothing else, the sidecar viewers (`spectra`,
+**A run's viewer claims nothing without it** (2026-10-18): `trajectory`
+claims a file the catalogue names — its `role` — that one of its three parsers
+reads, the registry's `parser` (the progress log's, SIESTA's output's,
+geomeTRIC's trajectory's: the last reads any `.xyz`, so the role is what tells
+a run's trajectory from a geometry file); the sidecar viewers (`spectra`,
 `fc-sweep`, `bench-summary`, `transport`) the registry's `parser`; a file the
-directory answers nothing about is left to what its FORMAT says — a `.xyz` or
+catalogue does not name is left to what its FORMAT says — a `.xyz` or
 `.pdb` is a geometry, the structure preview's, which no catalogue row names;
 a `.json` or `.log` the text pane's. No suffix read off a name stands in for
 the answer. `engine: "unknown"` is the directory declining to name one, which
@@ -227,7 +230,7 @@ and stops there; their internals belong with the Results/Spectra tab docs.
 1. You pick `run_1.molwatch.log` in the Results file dropdown.
 2. The controller asks the registry "who handles this?". It checks each viewer's
    `match` in order; the **trajectory** viewer (registered before the generic
-   text viewer, so it wins) says yes, because the directory's answer names the file's parser (§ 2) — a name alone matches nothing.
+   text viewer, so it wins) says yes, because the directory's answer names the file's role and its parser (§ 2) — a name alone matches nothing.
 3. The controller shows a "parsing…" cover, puts away whatever was mounted, and
    hands the panel to the trajectory viewer.
 4. That viewer is a thin wrapper: it fetches its panel layout and calls the

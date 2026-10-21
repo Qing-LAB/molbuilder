@@ -19,12 +19,14 @@ try:                                        # inside molbuilder
         CONTINUE, END_BUBBLE, END_SECTION,
         SectionRule, compile_rules, matches_regex_ci, starts_with_ci,
     )
+    from .transiesta import scf_words as _scf_words
 except ImportError:                         # beside a job, as the monitor's
     import molwatch_grammar as _MG
     from _section_rules import (
         CONTINUE, END_BUBBLE, END_SECTION,
         SectionRule, compile_rules, matches_regex_ci, starts_with_ci,
     )
+    from transiesta import scf_words as _scf_words
 
 
 class MolwatchReader:
@@ -288,10 +290,13 @@ class MolwatchReader:
     def now(self) -> Dict[str, Any]:
         """Where the run is NOW, as read so far -- the last step block the
         run wrote, which is written when its step ENDS.  ``{step, energy,
-        max_force, cycle, residuals, scf_cycles, last_cycle, steps_done,
-        scf_rows, targets}``, each present only when the log states it:
-        the step's index, energy and largest force; its SCF's last cycle
-        and that cycle's residuals -- ``{name: (value, tolerance, unit)}``,
+        max_force, cycle, doing, residuals, scf_cycles, last_cycle,
+        steps_done, scf_rows, targets}``, each present only when the log
+        states it: the step's index, energy and largest force; its SCF's
+        last cycle, and in words where the run is (``doing``, `model/parse.md`
+        § 2b: *SCF iteration 12*, by the words every reading pass says it
+        in, `transiesta.scf_words` -- PySCF's one SCF phase unnamed), and
+        that cycle's residuals -- ``{name: (value, tolerance, unit)}``,
         each beside the criterion the log states for it
         (`molwatch_grammar.scf_criteria`), ``None`` where it states none;
         how many steps are done and how many SCF cycles they ran.
@@ -316,6 +321,7 @@ class MolwatchReader:
                 out["last_cycle"] = last
                 if last.get("cycle") is not None:
                     out["cycle"] = last["cycle"]
+                    out["doing"] = _scf_words(None, last["cycle"])
                 crit = _MG.scf_criteria(self.runtime_info).get(
                     _MG.SCF_PHASE, {})
                 residuals = {

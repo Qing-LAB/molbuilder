@@ -108,44 +108,29 @@ def server():
         t.join(timeout=5)
 
 
-def _mount(page, base, path):
-    """Open /results and mount whichever inspector claims ``path`` — the
-    same route the controller takes when you pick a file."""
+def _open(page, base, folder, *, before=""):
+    """The Results tab bound to the sweep's ``folder``, the way a returning
+    tab finds it -- a benchmark's folder opens its ``job-set.json``
+    (`runs._container_product`), which the picker announces with the
+    server's answer for it and the tab's viewer mounts (`web/presenters.md`
+    § 2) -- until the sweep's page is on screen.  ``before`` runs ahead of
+    every page script.  Returns the page's errors, collected as they come."""
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{base}/results", wait_until="networkidle")
-    # Wait for THIS inspector to have registered, not merely for the
-    # registry to exist: every inspector is a separate deferred script, so
-    # `pick` is callable a tick before bench-summary.js has run and would
-    # hand the file to whoever is registered by then.
-    page.wait_for_function("() => window.molbuilder"
-                           " && window.molbuilder.inspectors"
-                           " && window.molbuilder.inspectors.pick"
-                           " && window.molbuilder.inspectors"
-                           "        .benchSummaryInspector")
-    name = page.evaluate(
-        """(p) => {
-            const insp = window.molbuilder.inspectors.pick(p);
-            if (!insp) return null;
-            const host = document.getElementById('inspector-host');
-            host.innerHTML = '';
-            window.__handle = insp.mount(host, p, { showError: (m) => {
-                host.textContent = 'ERROR: ' + m; } });
-            return insp.name;
-        }""", str(path))
-    return name, errors
+    page.add_init_script(
+        "try { sessionStorage.setItem('molbuilder.current_dir', "
+        f"{json.dumps(str(folder))}); }} catch (_) {{}}" + before)
+    page.goto(f"{base}/results")
+    page.wait_for_selector(".bench-summary", timeout=15000)
+    return errors
 
 
-def test_dispose_stops_the_polling_and_clears_the_host(page, server, sweep):
-    """B4 polls every 15 s; a viewer that keeps polling after it is put
-    away is the leak the registry's dispose contract exists to prevent."""
-    jpath, _winner, _n = sweep
-    _mount(page, server, jpath)
-    page.wait_for_selector(".bench-summary", timeout=10000)
-    page.evaluate("() => window.__handle.dispose()")
-    assert page.locator(".bench-summary").count() == 0
-    assert page.evaluate(
-        "() => document.getElementById('inspector-host').innerHTML") == ""
+def _put_away(page):
+    """What the tab does when the picker announces nothing to show: the
+    viewer disposes of the page on screen (`results/viewer.js`)."""
+    page.evaluate("""() => document.dispatchEvent(new CustomEvent(
+        window.molbuilder.constants.EVENT_FILE_SELECTED,
+        { detail: { file: "" } }))""")
 
 
 def test_the_page_says_when_it_last_looked(page, server, sweep):
@@ -153,8 +138,7 @@ def test_the_page_says_when_it_last_looked(page, server, sweep):
     a sweep is watched precisely while it runs, so a silently stale verdict
     is worse than none."""
     jpath, _winner, _n = sweep
-    _mount(page, server, jpath)
-    page.wait_for_selector(".bench-summary", timeout=10000)
+    _open(page, server, jpath.parent)
     foot = page.locator(".bench-foot").inner_text().strip()
     assert "last looked" in foot, foot
     # and it carries a clock reading, not just the words
@@ -167,48 +151,45 @@ def test_the_declared_cadence_is_the_trajectory_viewers(page, server, sweep):
     else on this page can see that number, so a viewer that drifted off it
     would pass every other test."""
     jpath, _winner, _n = sweep
-    _mount(page, server, jpath)
-    page.wait_for_selector(".bench-summary", timeout=10000)
+    _open(page, server, jpath.parent)
     assert page.evaluate(
         "() => window.molbuilder.inspectors.benchSummaryInspector.pollMs"
     ) == 15000
 
 
-def test_it_really_re_polls(page, server, sweep):
-    """B4's first half: the page IS live.
+def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
+    """B4's first half: the page IS live -- and put away, it stops and
+    leaves nothing (the registry's dispose contract: a viewer that keeps
+    polling after it is put away is the leak it exists to prevent).
 
-    Collapsing the long delay rather than waiting 15 s for it -- the
-    presenter schedules through ``window.setTimeout``, so shortening only
-    the long schedules proves the loop re-arms without the test sitting
-    through a real cadence.
+    The declared cadence collapsed rather than waited through -- the
+    presenter schedules through ``window.setTimeout``, so shortening the
+    15 s schedules proves the loop re-arms without the test sitting
+    through a real cadence.  A cycle is that short wait AND the server's
+    answer, measured here at 150-400 ms, so "stopped" is watched for five
+    of the longest cycles seen while it ran, never less than 2 s: a watch
+    shorter than one cycle sees a running loop as stopped.
     """
     jpath, _winner, _n = sweep
-    errors = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/results", wait_until="networkidle")
-    page.wait_for_function("() => window.molbuilder"
-                           " && window.molbuilder.inspectors"
-                           "        .benchSummaryInspector")
-    page.evaluate("""(p) => {
-        window.__fetches = 0;
+    errors = _open(page, server, jpath.parent, before="""
+        window.__starts = [];
         const realFetch = window.fetch;
         window.fetch = (...a) => {
-            if (String(a[0]).includes('/api/bench/summary')) window.__fetches++;
+            if (String(a[0]).includes('/api/bench/summary'))
+                window.__starts.push(performance.now());
             return realFetch(...a);
         };
         const realTimeout = window.setTimeout;
         window.setTimeout = (fn, ms, ...r) =>
-            realTimeout(fn, ms >= 10000 ? 40 : ms, ...r);
-        const insp = window.molbuilder.inspectors.pick(p);
-        const host = document.getElementById('inspector-host');
-        host.innerHTML = '';
-        window.__handle = insp.mount(host, p, { showError: () => {} });
-        return 0;
-    }""", str(jpath))
-    page.wait_for_function("() => window.__fetches >= 3", timeout=10000)
-    page.evaluate("() => window.__handle.dispose()")
-    before = page.evaluate("() => window.__fetches")
-    page.wait_for_timeout(400)
-    assert page.evaluate("() => window.__fetches") == before, (
-        "it kept polling after dispose")
+            realTimeout(fn, ms === 15000 ? 40 : ms, ...r);""")
+    page.wait_for_function("() => window.__starts.length >= 3", timeout=10000)
+    starts = page.evaluate("() => window.__starts")
+    cycle_ms = max(b - a for a, b in zip(starts, starts[1:]))
+    _put_away(page)
+    assert page.locator(".bench-summary").count() == 0
+    before = page.evaluate("() => window.__starts.length")
+    page.wait_for_timeout(max(2000, 5 * cycle_ms))
+    assert page.evaluate("() => window.__starts.length") == before, (
+        "it kept polling after it was put away")
+    assert page.locator(".bench-summary").count() == 0
     assert not errors, errors

@@ -85,8 +85,10 @@ def _status(base):
     return json.loads(_ask(f"{base}/api/jupyter/status")[1])
 
 
-def _until(ask, *, within_s, what):
-    """``ask()`` until it answers truthily, or fail naming ``what``."""
+def _until(ask, *, within_s, what, evidence=None):
+    """``ask()`` until it answers truthily, or fail naming ``what`` -- with
+    what ``evidence()`` says, when given: a wait that ends in a failure
+    keeps the reason it has."""
     deadline = time.monotonic() + within_s
     while time.monotonic() < deadline:
         try:
@@ -96,7 +98,8 @@ def _until(ask, *, within_s, what):
         if answer:
             return answer
         time.sleep(0.5)
-    pytest.fail(f"{what} within {within_s} s")
+    pytest.fail(f"{what} within {within_s} s"
+                + (f"\n{evidence()}" if evidence else ""))
 
 
 @contextmanager
@@ -143,8 +146,28 @@ def _stack(root: Path, scheme: str):
         rc, said = _molbuilder(env, log, "jupyter", "start", "--port",
                                str(port))
         assert rc == 0, said
+
+        def notebook_said():
+            """The server's last status answer and the end of the
+            notebook's own log (`config_dir.jupyter_log`, under this
+            stack's state folder) and of the verbs."""
+            from unittest import mock
+            from molbuilder.config_dir import jupyter_log
+            with mock.patch.dict(os.environ,
+                                 {"XDG_STATE_HOME": env["XDG_STATE_HOME"]}):
+                nb_log = jupyter_log(port)
+            try:
+                st = _status(base)
+            except OSError as exc:
+                st = f"unreadable: {exc}"
+            nb = (nb_log.read_text(errors="replace")[-4000:]
+                  if nb_log.is_file() else "(none written)")
+            return (f"status: {st}\nverbs:\n{log.read_text()[-2000:]}\n"
+                    f"notebook log {nb_log}:\n{nb}")
+
         _until(lambda: (lambda st: st["running"] and st["answering"])(
-            _status(base)), within_s=180, what="the notebook answering")
+            _status(base)), within_s=180, what="the notebook answering",
+            evidence=notebook_said)
         yield {"base": base, "port": port, "env": env, "log": log}
     finally:
         rc, said = _molbuilder(env, log, "serve", "stop", "--port",

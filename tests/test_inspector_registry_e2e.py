@@ -337,7 +337,8 @@ class TestInspectorListenerTeardown:
         gone.mkdir(parents=True, exist_ok=True)
         # Each with the directory's answer, as the page passes it.
         files = {"trajectory": [str(gone / "vanished.molwatch.log"),
-                                {"role": ".molwatch.log"}],
+                                {"parser": "molwatch",
+                                 "role": ".molwatch.log"}],
                  "spectra": [str(gone / "vanished.spectra.json"),
                              {"parser": "spectra-json"}]}
         _open_results(page, flask_server)
@@ -411,7 +412,7 @@ class TestInspectorErrorCardRuntime:
             const reg  = window.molbuilder.inspectors;
             const ctx  = reg.createDefaultContext(host);
             reg.mount(host, "/projects/foo/run.molwatch.log", ctx,
-                      { role: ".molwatch.log" });
+                      { parser: "molwatch", role: ".molwatch.log" });
         }""")
         # The adapter's .catch() handler renders the error card; wait
         # for it (the fetch + setHTML + DOM update is microtask-fast
@@ -457,8 +458,10 @@ class TestInspectorErrorCardRuntime:
             const host = document.getElementById("inspector-host");
             const reg  = window.molbuilder.inspectors;
             const ctx  = reg.createDefaultContext(host);
-            // Mount A (trajectory).
-            const handleA = reg.mount(host, "/x/a.molwatch.log", ctx);
+            // Mount A (trajectory), with the directory's answer for the
+            // file, as the page passes it.
+            const handleA = reg.mount(host, "/x/a.molwatch.log", ctx,
+                { parser: "molwatch", role: ".molwatch.log" });
             // Immediately dispose A (simulates user picking another
             // file before A's partial fetch resolves).
             handleA.dispose();

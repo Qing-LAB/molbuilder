@@ -11,6 +11,7 @@ Results tab as a person opens it, in its folder.
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime
 
@@ -179,17 +180,24 @@ def test_opening_the_run_again_and_again_leaves_what_once_left(
     MUTATION THIS MUST FAIL AGAINST: a listener the trajectory viewer adds
     outside the viewers' shared scope."""
     from molbuilder import diagnostics
-    from molbuilder.runs import openable
+    from molbuilder.runs import folder_answer, openable
     from support.leftovers import SPY, grew
     output, _ = openable(finished)
+    # THE SERVER'S ANSWER FOR THE FILE, as the picker passes it to the
+    # viewer (`/api/results/dir`'s row, `file-picker.js` `_metaFor`).
+    answer = folder_answer(os.path.dirname(output))
+    row = next(f for f in answer["files"]
+               if f["name"] == os.path.basename(output))
+    meta = {**{k: row[k] for k in ("role", "label", "stage", "parser")},
+            "engine": answer["engine"]}
     monkeypatch.setattr(type(diagnostics.get_capabilities()),
                         "file_picker_roots",
                         lambda self: ((tree.resolve(), "road"),))
     page.goto(f"{flask_server}/results", wait_until="networkidle")
     page.wait_for_function(
-        "(f) => { const r = (window.molbuilder || {}).inspectors;"
-        "  return !!r && (r.pick(f) || {}).name === 'trajectory'; }",
-        arg=str(output), timeout=10000)
+        "(c) => { const r = (window.molbuilder || {}).inspectors;"
+        "  return !!r && (r.pick(c.file, c.meta) || {}).name === 'trajectory'; }",
+        arg={"file": str(output), "meta": meta}, timeout=10000)
     left = page.evaluate("""async (c) => {
         const reg = window.molbuilder.inspectors;
         const spy = """ + SPY + """;
@@ -201,7 +209,7 @@ def test_opening_the_run_again_and_again_leaves_what_once_left(
                 window.molbuilder.constants.EVENT_INSPECTOR_READY,
                 (e) => resolve((e && e.detail) || {}), { once: true }));
             const handle = reg.mount(host, c.file,
-                                     reg.createDefaultContext(host));
+                                     reg.createDefaultContext(host), c.meta);
             const said = await Promise.race([ended,
                 new Promise((r) => setTimeout(() => r(null), 15000))]);
             handle.dispose();
@@ -222,7 +230,7 @@ def test_opening_the_run_again_and_again_leaves_what_once_left(
         } finally {
             spy.restore();
         }
-    }""", {"file": str(output), "times": 5})
+    }""", {"file": str(output), "meta": meta, "times": 5})
     assert "error" not in left, left
     assert not grew(left), (
         "opening the run five times left more on the page than opening it "

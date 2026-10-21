@@ -55,7 +55,10 @@
      * A file with no answer is claimed by nothing -- never by a suffix or a
      * role spelled here (`parse.md` R-RO1).  The three parsers whose files
      * this inspector presents are the run's progress log, SIESTA's output
-     * and geomeTRIC's trajectory, by the registry's own names. */
+     * and geomeTRIC's trajectory, by the registry's own names -- each for a
+     * file the catalogue NAMES (its role): the trajectory parser reads any
+     * `.xyz`, so a geometry file no catalogue row names stays the structure
+     * preview's (`presenters.md` § 2). */
     const TRAJECTORY_PARSERS = ["molwatch", "siesta", "pyscf"];
     /* A run's structure parts -- the input echoed back and the geometry
      * reached (the PySCF geometry parser's files), and geomeTRIC's stream
@@ -69,7 +72,8 @@
         coreScriptDir: "trajectory",
         partialUrl:    "/partials/trajectory-inspector",
         match: (file, meta) =>
-            !!(meta && TRAJECTORY_PARSERS.indexOf(meta.parser) >= 0),
+            !!(meta && meta.role
+               && TRAJECTORY_PARSERS.indexOf(meta.parser) >= 0),
         // The picker groups a run's files under the engine's own heading.
         resultCategory: (file, meta) => {
             /* THE ENGINE COMES FROM THE SERVER: `/api/results/dir` answers
