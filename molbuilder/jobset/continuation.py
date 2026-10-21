@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..runrecord import LaunchRecordError
+from .ladder import (force_constant_stage, independent, relax_stage_of,
+                     source_stage, stage_config)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,7 +166,7 @@ def flat_files(base, task, cont: Optional[Continuation]
     last = last_run(base, task.label)
     if last is None or str(last) == cont.run:
         return cont
-    from .materialize import ladder_homes
+    from .naming import ladder_homes
     named = parse_run_name(str(last), task.label)
     home = next((h for h in ladder_homes(base, task)
                  if h.token == named.stage), None)
@@ -200,13 +202,12 @@ def done(folder, names, *, launch=None, products=(),
     it is instead, in the run door's words.  Done is three facts, all read
     from the folder's own files: it **finished** (the one status door,
     :func:`usable`); its run **converged** where it has an SCF or a
-    relaxation (the same scan, `runstatus.converged_of`); and it **holds**
+    relaxation (the same scan, `RunStatus.verdict`); and it **holds**
     ``products`` -- what the rungs downstream take from it.  ``launch`` is
     the launch record the folder's run was sent with (a point's is its
     run's), and ``launched_in`` the folder it lies in when not ``folder``
     (a point's run's folder; `run_status`)."""
     from ..parse.dirs import run_status
-    from .runstatus import converged_of
     folder = Path(folder)
     if not folder.is_dir():
         return False, "not opened"
@@ -219,7 +220,7 @@ def done(folder, names, *, launch=None, products=(),
     if not usable(st.state):
         return False, st.detail or st.state
     if st.verdict is not None and not st.verdict[1]:
-        return False, f"finished, not converged ({converged_of(st)})"
+        return False, f"finished, not converged ({st.converged_words})"
     missing = [_said(p) for p in products if not _held(folder, p)]
     if missing:
         return False, f"finished without {', '.join(missing)}"
@@ -265,7 +266,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..parse.contract import relaxation_of
     from ..runs import concluded as _concluded, run_of
     from ..runrecord import ending, newest_run
-    from .materialize import stage_home
+    from .naming import stage_home
     home = stage_home(base, task, stage)
     token, names = home.token, home.names(task.shape)
     run = run if run is not None else newest_run(attempt, names)
@@ -347,7 +348,7 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
     template_text = calc.template_text
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         try:
-            cfg = _stage_config(task, stage, template_text)
+            cfg = stage_config(task, stage, template_text)
         except unreadable() as exc:
             return None, (f"what `{stage}` builds on cannot be read: "
                           f"{exc}")
@@ -400,7 +401,7 @@ def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
     with the two ways out rather than measured at a geometry nobody chose
     (§ 2.2).  ``None`` when the ladder holds a `relax`, or the structure is
     stated relaxed."""
-    from ..pyscf.stages import VIBRATION_RELAX_STAGE
+    from ..config.stages import VIBRATION_RELAX_STAGE
     if relax_stage_of(task) is not None or stated:
         return None
     return (f"the structure is not stated to be relaxed (already_relaxed is "
@@ -435,7 +436,7 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
         # does not have.
         return FLAT_HAS_NO_ATTEMPTS + (
             "  A stage starts clean by its run card's `restart: clean`."
-            if _independent(task) else "")
+            if independent(task) else "")
     if getattr(task, "calculation", None) == "transport":
         # A TRANSPORT RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
         # upstream (`gather.gather_sources`), never named.
@@ -444,7 +445,7 @@ def cannot_be_named(base: Path, task, stage: str, from_attempt,
                 "gathered by its kind at its first launch, and anew with "
                 "--gather when it is launched again (engines/transport.md "
                 "§ 6.1, job-system.md § 5.4).")
-    if (from_attempt and not _independent(task)
+    if (from_attempt and not independent(task)
             and not force_constant_stage(task, stage)):
         # A LINKED KIND'S FIRST RUNG -- a vibration's `relax`, PySCF's one
         # rung -- builds on the calculation's structure; a run of another
@@ -522,8 +523,9 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
-    from .materialize import latest_attempt, stage_home
-    base, task, jobset = Path(calc.base), calc.task, calc.jobset
+    from .materialize import latest_attempt
+    from .naming import stage_home
+    base, task = Path(calc.base), calc.task
     sh = Shape.named(task.shape)
     # THE STAGE BEFORE'S HOME, from the one door: its names and its folder.
     home = stage_home(base, task, prev)
@@ -575,9 +577,8 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
 
     run = None
     if flat:
-        # PREPARED, by the one door (`ready.job_of`): its row in the plan.
-        from .ready import job_of
-        if job_of(jobset, prev) is None:
+        # PREPARED, by the one door (`Calculation.job`): its row in the plan.
+        if calc.job(prev) is None:
             return None, (f"{lead}, which has not run yet.  Run it "
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = base, None
@@ -655,7 +656,7 @@ def relaunch(calc, job, *, cold: bool = False, ran=None
     ``calc`` is the calculation as the launch opened it (A16)."""
     from ..paths import Shape
     from ..runrecord import newest_run
-    from .materialize import stage_home
+    from .naming import stage_home
     base, task = Path(calc.base), calc.task
     stage = job.name
     if cold or not job.relaunch_continues:
@@ -704,89 +705,6 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
             "of time (project-layout.md § 1.6)", again)
 
 
-def force_constant_stage(task, stage: str) -> bool:
-    """A force-constant stage of a SIESTA vibration -- `freq`, or any stage
-    after `relax` in a displacement sweep, asked of its role and never of a
-    name (`pyscf.stages.vibration_render_kind`, `engines/vibration.md`
-    § 5.2a).  A PySCF vibration's one rung relaxes inside its deck."""
-    if (str(getattr(task, "engine", "")) != "siesta"
-            or getattr(task, "calculation", None) != "vibration"):
-        return False
-    from ..pyscf.stages import vibration_render_kind
-    return vibration_render_kind(stage) == "vibration"
-
-
-def relax_stage_of(task) -> Optional[str]:
-    """The ladder's relaxation rung, which every force-constant stage
-    builds on, or ``None`` -- the structure is then measured as given, and
-    must be stated relaxed (`engines/vibration.md` § 5.2a).  By the one role
-    rule, the name in any case (plan § 5w K12)."""
-    from ..pyscf.stages import vibration_render_kind
-    return next((s.name for s in task.stages
-                 if vibration_render_kind(s.name) != "vibration"), None)
-
-
-def source_stage(task, stage: str, template_text: Optional[str] = None
-                  ) -> Tuple[Optional[str], bool]:
-    """``(the stage whose run ``stage`` builds on by default, linked)``: the
-    stage before it in an independent ladder (:func:`stage_before`), or the
-    `relax` a force-constant stage builds on (linked) -- ``(None, ...)``
-    when it builds on none."""
-    if force_constant_stage(task, stage):
-        return relax_stage_of(task), True
-    return stage_before(task, stage, template_text), False
-
-
-def _independent(task) -> bool:
-    """An INDEPENDENT ladder, whose stages continue one from another: a kind
-    without rung roles (`paths.KIND_ROLES`).  A linked stage's input is
-    its kind's: a transport rung's gather (`gather.gather_sources`),
-    and a force-constant stage builds on `relax` (:func:`source_stage`)."""
-    from ..paths import KIND_ROLES
-    return task.calculation not in KIND_ROLES
-
-
-def _ladder(task, template_text: Optional[str] = None) -> list:
-    """``[(stage, resolved config)]`` of the described stages, as `prep`
-    resolves them (`resolve.resolved_ladder`: template ⊕ stage overrides ⊕
-    the run card) -- from ``template_text`` as the verb read it (A16);
-    ``[]`` with none."""
-    from ..resolve import resolved_ladder
-    from .engines import engine_seam
-    if template_text is None:
-        return []
-    return resolved_ladder(template_text, task,
-                           engine_seam(str(task.engine)).config_cls)
-
-
-def _stage_config(task, stage: str, template_text: Optional[str] = None):
-    """``stage``'s resolved config (:func:`_ladder`), or ``None``."""
-    from ..identity import stage_key
-    return next((c for n, c in _ladder(task, template_text)
-                 if stage_key(n) == stage_key(stage)), None)
-
-
-def stage_before(task, stage: str,
-                  template_text: Optional[str] = None) -> Optional[str]:
-    """The stage ``stage`` continues from by default -- the one
-    before it in the ladder, resolved as `prep` resolves it (template ⊕
-    stage overrides ⊕ the run card, so a card's ``restart: clean`` is read)
-    -- or ``None``: a linked kind, the first stage, one that starts clean,
-    one the description does not hold (which prep refuses at its checkpoint
-    2)."""
-    from ..identity import continues
-    if not _independent(task):
-        return None
-    ladder = _ladder(task, template_text)
-    names = [n for n, _c in ladder]
-    if stage not in names:
-        return None
-    i = names.index(stage)
-    if i == 0 or not continues(ladder[i][1]):
-        return None
-    return names[i - 1]
-
-
 def continue_from_choices(calc, stage: str) -> Optional[dict]:
     """What Task setup's **Continue from** offers ``stage`` -- the default
     and, when the verb that takes it would refuse it, why; every run of the
@@ -800,7 +718,7 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
-    from .materialize import stage_home
+    from .naming import stage_home
     base, task = Path(calc.base), calc.task
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         # NO `relax` TO BUILD ON: the structure as given when it is stated
@@ -1034,7 +952,7 @@ def stage_run_state(base, task, stage: str, run) -> "Tuple[str, str]":
     scratch` of each run that holds an engine's scratch."""
     from ..runrecord import launch_record
     from ..transport.stages import frames_of, products_of, rung_points
-    from .materialize import stage_home
+    from .naming import stage_home
     names = stage_home(base, task, stage).names(task.shape)
     if rung_points(task, stage, frames=frames_of(base)):
         launch = launch_record(run, names)

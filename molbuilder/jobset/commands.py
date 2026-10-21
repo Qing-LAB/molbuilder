@@ -329,11 +329,10 @@ def redo_launched(stage: Optional[str], *, calc) -> str:
     calculation as the verb read it (A16): its description and its plan."""
     from .group import (group_members, members_of, named, number_of,
                         same_members)
-    from .ready import job_of
-    base, task, jobset = calc.base, calc.task, calc.jobset
+    base, task = calc.base, calc.task
     g = (number_of(task, stage)
          if task is not None and stage is not None else None)
-    job = job_of(jobset, stage) if stage is not None else None
+    job = calc.job(stage) if stage is not None else None
     ran = members_of(job) if job is not None else None
     what = ("the first launch of its group" if g is None else
             f"the first launch of {named(task, g)}"

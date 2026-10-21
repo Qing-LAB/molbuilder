@@ -64,7 +64,7 @@ def _record(job, decision: str, **facts) -> None:
     """A stop's decision in the calculation's ledger -- in a described
     calculation only: a job's address outlives a folder moved or deleted."""
     from .jobset.ledger import record
-    from .task import described
+    from .calcdirs import described
     if described(job.calculation):
         record(job.calculation, "jobs stop", decision, job=job.id, **facts)
 

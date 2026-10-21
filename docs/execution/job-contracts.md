@@ -264,7 +264,7 @@ and a reader later opens carries the same **basename**:
 - **SIESTA** — the basename **is** the `.fdf`'s `SystemLabel`. A transport
   lead's is its own: `<label>_L-electrode` / `<label>_R-electrode`, the stem
   the device deck's `TS.Elec.<name> HS` line names, so a lead run's `.TSHS`,
-  `.DM`, `.XV`, deck and output all share it (`transport.stages.rung_label`,
+  `.DM`, `.XV`, deck and output all share it (`identity.rung_label`,
   the one door prep, the gather and the run door ask; `engines/transport.md`
   § 1).
 - **PySCF** — the basename **is** the script's `JOB = "…"` literal.
@@ -501,7 +501,7 @@ is:
 
 | you have… and you want… | call |
 |---|---|
-| a stage, in its calculation's shape → **the name each of its files has**, the run's number where the catalogue numbers it — what every writer of a stage's files, and every script rendered to write them, names them by | `RunNames.of(label, stage, shape, trial=False)` → `.name(role, run)`; `.template(role)` / `.tail(role)` leave the run's number as `{run}` for a rendered script to fill when it runs (`materialize.run_names` builds a job's; `runs.Run.names` a run's) |
+| a stage, in its calculation's shape → **the name each of its files has**, the run's number where the catalogue numbers it — what every writer of a stage's files, and every script rendered to write them, names them by | `RunNames.of(label, stage, shape, trial=False)` → `.name(role, run)`; `.template(role)` / `.tail(role)` leave the run's number as `{run}` for a rendered script to fill when it runs (`naming.run_names` builds a job's; `runs.Run.names` a run's) |
 | a label, a role, maybe a stage and an attempt → **the name** | `compose(label, role, stage=None, run=None, **counters)` |
 | a filename → **its segments back** | `parse(filename, label, roles=())` — pass your engine's roles when a role of yours begins with `_` |
 | a label and a stage → **the part every role attaches to** (your tail is not a role: a log suffix, a directory) | `stem(label, stage=None)` |
@@ -523,7 +523,7 @@ literal (`".molwatch.log"`, `"_geom_optim.xyz"`) at a call site; glob for one
 with a star you placed by hand; split a name on `_`; key a name on a stage's
 *position* rather than its token; or read `""` as "no ladder" — every
 description has a stage, and an empty token is refused where a name is made
-(`paths.bench_container`, `materialize.stage_home`, `pipeline_log.log_name`)
+(`paths.bench_container`, `naming.stage_home`, `pipeline_log.log_name`)
 *(it said "say `token or None` and mean it" until 2026-10-06)*.
 
 **A name is correct because it came out of a checked generator**, not because a
@@ -2460,8 +2460,8 @@ them; within a layer, one concept has exactly one name.
 |---|---|---|---|
 | MPI ranks | `mpi_np` | `mpi_np` → `-n` | *(same name)* |
 | OMP cores / rank | `omp_threads` (SIESTA), `threads` (PySCF) | **`cpus_per_task`** → `-c` | `resolve.py` — the allocation is assembled at `prep` in exchange names (`--cpus-per-task`); a sweep's `C` axis reaches it through `MachineTranslation` |
-| Walltime | `time` (`allocation`, the run card) | **`time`** → `-t` | `ask.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
-| Memory | `mem` (`allocation`) | `mem` → `--mem` | `ask.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
+| Walltime | `time` (`allocation`, the run card) | **`time`** → `-t` | `scheduler.quantities.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
+| Memory | `mem` (`allocation`) | `mem` → `--mem` | `scheduler.quantities.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
 | Per-rank memory cap | `max_memory_mb` | `max_memory_mb` — **not a SLURM flag** | the wrapper's `ulimit -v`. A different question from `mem`, which asks the *scheduler*; they shared a row until 2026-08-24 and the row could not describe either translation correctly |
 | Whole-node | — *(`gpu.exclusive` until 2026-10-01; nothing asks for one since)* | `exclusive` → `--exclusive --mem=0`, the kind's `whole_node`, written instead of `--mem` | — |
 | GPU binding | `allocation.gpu_binding` (`task.json`) | `gpu_binding` → `--gres-flags=enforce-binding` beside a GPU ask, unless `false` | `prep`'s fold of the description (`execution/gpu.md` G9) |

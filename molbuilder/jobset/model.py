@@ -486,6 +486,19 @@ class Job:
 OPTIMIZER_TRAIT = "optimizer"
 
 
+def warm_declaration(engine: str, label: str, kind: Optional[str] = None,
+                     base=None) -> List[WarmFile]:
+    """What a run of ``kind`` would take from a run it continues -- the warm
+    list's carry rows (`warmfiles.warm_list`), each file named by the run's
+    ``label`` through the one composer (`runfiles.compose`, which refuses a
+    suffix that is no role) -- a job's ``warm``.  The one declaration every
+    engine's stages hand their jobs; :func:`warm_carry` interprets it."""
+    from ..runfiles import compose
+    from ..warmfiles import warm_list
+    return [WarmFile(compose(label, r.suffix), requires_same=r.requires_same)
+            for r in warm_list(engine, kind, base).carry_rules]
+
+
 def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     """What ``job`` takes from ``source`` — the pair's answer, not an edge's.
 

@@ -348,8 +348,8 @@ def junction(tmp_path_factory):
     citation, ``cited_before`` -- the cited run's files as the relaxation
     left them -- and every answer the road gave, by step."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.template import (config_from_template, template_path,
-                                     template_with_values)
+    from molbuilder.template import config_from_template, template_with_values
+    from molbuilder.template_file import template_path
     from molbuilder.web.app import create_app
     from support.real_runs import RealRun, Said, _on_the_road, _taken, _typed
     from support.road import group_words, jobset, ladder_edited
@@ -681,7 +681,7 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
     first naming the short queue, then the long one.  What each prep said,
     and the walk's header as the second wrote it."""
     import dataclasses as _dc
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import LAUNCH_DIR, GroupNames, RunNames
     from molbuilder.scheduler import Domain
     from molbuilder.scheduler.record import (machine_scope_path,
@@ -1062,7 +1062,7 @@ def _prepared_decks(run, stage):
     """The decks ``stage`` prepared: its one deck in the stage's folder, or
     each point's (`transport.stages.point_folders`) -- named by the run's
     one naming door (`runfiles.RunNames`)."""
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     from molbuilder.transport.stages import point_folders
     task = task_of(run.bundle)
@@ -1712,7 +1712,7 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
     `.gathered-from`, no `.continued-from`) -- and within a frame each next
     voltage starts from the converged point before it in THAT frame (its
     `.continued-from`)."""
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import RunNames
     from molbuilder.runrecord import read_continued_from, read_gathered_from
     from molbuilder.task import of as task_of
@@ -1747,7 +1747,7 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     skipped (the pair still in the folder at the end); `GF.ReUse` off (no
     *Using GF-file*); the estimate not reading the lead's run."""
     from molbuilder import calcdirs
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.parse import detect
     from molbuilder.runs import openable, run_of
     from molbuilder.task import of as task_of

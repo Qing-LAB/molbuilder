@@ -22,7 +22,7 @@ from .model import KIND_LADDER  # noqa: E402
 
 from typing import List, Optional
 
-from .materialize import stage_refs
+from .naming import stage_refs
 from .model import JobSet
 
 

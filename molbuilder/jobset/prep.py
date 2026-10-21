@@ -38,11 +38,11 @@ import numpy as np
 from typing import (TYPE_CHECKING, Callable, Dict, List, NamedTuple,
                     Optional, Sequence, Tuple)
 
+from .. import calcdirs
 from .. import script_emit as _sc
-from .. import task as _task
 from ..paths import Shape
-from .materialize import (job_dir_names, materialize, run_names,
-                          stage_home, ladder_homes)
+from .materialize import materialize
+from .naming import job_dir_names, run_names, stage_home, ladder_homes
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
@@ -51,8 +51,8 @@ from ..runfiles import RunNames
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam, siesta_provide_pseudos
-from .transport_rung import (at_frame, at_point, composed_for_prep,
-                             scratch_dir_of,
+from .gather import composed_for_prep
+from .transport_rung import (at_frame, at_point, scratch_dir_of,
                              provide_pseudos, transport_parts,
                              transport_sources)
 
@@ -142,7 +142,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
         # trial's files live in its attempt when the shape keeps them
         # (`project-layout.md` § 1.5a).
         _jd = base / _dir_of[job.name]
-        # THE NAMES OF THIS JOB'S FILES (`materialize.run_names`) -- what its
+        # THE NAMES OF THIS JOB'S FILES (`naming.run_names`) -- what its
         # run script names every file of its runs by.
         _names = run_names(jobset, job, _sh)
         if jobset.kind == KIND_SWEEP:
@@ -305,7 +305,7 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
     states (`chemistry.atomic_mass`, I3)."""
     from .. import __version__ as _mb_version
     from ..chemistry import atomic_mass
-    from ..pyscf.stages import VIBRATION_RELAX_STAGE
+    from ..config.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
     from ..structure import IDENTITY_FIELDS
     # The record is of the ladder's relaxation rung: `_vibration_stage_geometry`
@@ -364,7 +364,8 @@ def _vibration_stage_geometry(calc, pset, struct, *, builds_on=None,
     output holds no geometry this calculation's.
     """
     from ..pyscf.stages import vibration_render_kind
-    from .continuation import relax_stage_of, unrelaxed_refusal
+    from .continuation import unrelaxed_refusal
+    from .ladder import relax_stage_of
     base, task = calc.base, calc.task
     if vibration_render_kind(pset.stage) != "vibration":
         return struct, None, None
@@ -476,7 +477,7 @@ def _structure_for(task, base: Path, pset):
     against a structure that has since changed would otherwise build a
     different calculation under the same id — § 1's second failure mode.
     """
-    from ..sidecars.molstruct import GeometryChangedError
+    from ..structure_pair import GeometryChangedError
     from ..workingcopy_structure import StructureCodec
     codec = StructureCodec()
     src = Path(task.structure.source)
@@ -844,7 +845,7 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     Asked by the prep entry at its checkpoint 4, where the job it makes is
     placed (`job-system.md` § 5.0).  ``template`` ``None`` is refused: the
     folder is a template PLUS a description.  ``home`` is the stage's
-    (`materialize.stage_home`): its token and the label its files are
+    (`naming.stage_home`): its token and the label its files are
     named on."""
     from ..resolve import ResolveError, resolve
     from .prep_inputs import fold_allocation
@@ -1060,8 +1061,8 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                               plan=plan)
     token = resolved.token
     jobs: List[Job] = []
-    from .materialize import (trial_dir,
-                              trial_work_dir)
+    from .materialize import trial_work_dir
+    from .naming import trial_dir
     from ..paths import Shape as _Shape
     _shape = _Shape.named(task.shape)
     # ONE line per unique finding, however many trials repeat it (user,
@@ -1114,7 +1115,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # where the launch will look for it.
             if element.is_trial:
                 # ONE RULE, asked -- not composed again from the same two
-                # facts.  `materialize.trial_dir` is what `job_dir_names`
+                # facts.  `naming.trial_dir` is what `job_dir_names`
                 # itself uses, so the deck is born where the launch looks by
                 # CONSTRUCTION rather than by a comment promising it.
                 #
@@ -1386,7 +1387,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # walls summed (`group.envelope`) -- launch sends it as it is.
         from ..runfiles import GroupNames
         from .group import envelope
-        from .materialize import open_container, run_names
+        from .naming import open_container, run_names
         job = js.job(stage)
         walk = walk_header_of(
             home.dir, GroupNames.of_points(
@@ -1418,7 +1419,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # § 6.0): its trials' shared request -- launch walks the trials
         # still to run and sends it as it is.
         from ..runfiles import LAUNCH_DIR
-        from .materialize import open_container
+        from .naming import open_container
         from .shelves import ShelfError, shelf_request, shelves_of
         try:
             shelves = [(names, shelf_request(trials), trials)
@@ -1582,7 +1583,7 @@ def _merge_run_jobset(old: Optional[JobSet], new: JobSet,
     merged = dataclasses.replace(new, jobs=kept + list(new.jobs))
     # The plan's order is the LADDER's, not the order stages were prepared
     # in: `tight` prepared before `medium` is still listed after it.  The seq token is zero-padded (§ 6.3) so it sorts as it reads.
-    from .materialize import stage_refs
+    from .naming import stage_refs
     refs = stage_refs(merged)
     return dataclasses.replace(
         merged, jobs=sorted(merged.jobs,
@@ -2047,7 +2048,7 @@ def prepared_already(calc, kind: str, stage: str) -> Optional[str]:
     from ..paths import Shape
     from .commands import rollback
     from ..paths import bench_container
-    from .materialize import job_dir_names
+    from .naming import job_dir_names
     base, task = Path(calc.base), calc.task
     if kind == "bench":
         home = base / bench_container(Shape.named(task.shape),
@@ -2057,12 +2058,11 @@ def prepared_already(calc, kind: str, stage: str) -> Optional[str]:
         what, where = (f"the benchmark of stage {stage!r}",
                        f"{home.relative_to(base)}/")
     else:
-        from .ready import job_of
-        js = calc.jobset
-        job = job_of(js, stage)
+        job = calc.job(stage)
         if job is None:
             return None
-        home = job_dir_names(js, Shape.named(task.shape)).get(job.name, "")
+        home = job_dir_names(calc.jobset, Shape.named(task.shape)).get(
+            job.name, "")
         where = (f"{home}/" if home not in ("", ".")
                  else "in this calculation's folder")
         return f"stage {stage!r} is prepared ({where})"
@@ -2325,7 +2325,8 @@ def plan_stage(base, described: Described, kind: str, stage: str, *,
     # from, the rung builders and the plan's merge read this.
     pcalc = described.calc.as_planned(plan)
     if continuation is DECIDE:
-        from .continuation import continuation_answer, force_constant_stage
+        from .continuation import continuation_answer
+        from .ladder import force_constant_stage
         continuation = None
         if force_constant_stage(task, stage):
             # A BENCHMARK of a force-constant stage writes every trial at the
@@ -2497,7 +2498,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         # -- and the refusal is a decision too, written down in a described
         # calculation (W52); a preview records nothing.
         findings = described.findings if described is not None else []
-        if not preview and _task.described(base):
+        if not preview and calcdirs.described(base):
             _record_preflight(base, findings, stage=stage)
             ledger(base, "prep", "refused", kind="bench", stage=stage,
                    reason=str(exc))
@@ -2523,7 +2524,7 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
             # machine or written (W52).  THE STAGES IT TAKES are offered: one
             # it refuses is not (2a).
             from .commands import name_a_stage
-            from .materialize import described_refs
+            from .naming import described_refs
             takes = [r for r in described_refs(base, task)
                      if not prepared_already(described.calc, "bench", r.name)]
             raise PrepError(
@@ -2836,7 +2837,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     def _refuse(why: str) -> PrepError:
         # A REFUSAL IS WRITTEN DOWN; a preview records nothing
         # (`job-system.md` § 5.0, rule 3 and *a preview*).
-        if not preview and _task.described(base):
+        if not preview and calcdirs.described(base):
             _asked()
             ledger(base, "prep", "refused", kind="task", groups=numbers,
                    reason=why)
@@ -2928,7 +2929,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     # A LAUNCHED MEMBER among them is the refusal that names the way out --
     # a launched group's members are fixed (§ 5.0, 2a) -- before any other.
     from ..runrecord import LaunchRecordError
-    from .group import joined_launched, launched_without
+    from .ready import joined_launched, launched_without
     from .ready import launched_already
     for n in whole:
         # A STAGE PUT INTO A LAUNCHED GROUP: that stage is the change, and
@@ -2966,7 +2967,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             f"prep, so pick "
             + ("it" if len(missing) == 1 else "them") + " too:\n"
             + block(prep_group_lines(whole, base=base)))
-    from .continuation import force_constant_stage
+    from .ladder import force_constant_stage
     if from_attempt and not any(force_constant_stage(task, st)
                                 for n in numbers for st in members[n]):
         raise _refuse(
@@ -3025,7 +3026,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                environment, emit_sbatch=emit_sbatch)
             had = set(the_plan.writes())
             if got is not None:
-                from .materialize import open_container
+                from .naming import open_container
                 open_container(base, base / LAUNCH_DIR, the_plan)
                 headers[n] = got.path
                 the_plan.text(got.path, got.text)
@@ -3057,7 +3058,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                         points_of, environment,
                                         emit_sbatch=emit_sbatch)
             if got is not None:
-                from .materialize import open_container
+                from .naming import open_container
                 open_container(base, base / LAUNCH_DIR, the_plan)
                 the_plan.text(got.path, got.text)
             else:

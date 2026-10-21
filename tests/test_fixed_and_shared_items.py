@@ -49,7 +49,7 @@ def _template_says(dest, name, value):
     product's own reader and writer."""
     from molbuilder.task import of as task_of
     from molbuilder.template import _emit, read_template
-    from molbuilder.template import of as template_of
+    from molbuilder.template_file import of as template_of
     tmpl = template_of(dest, task_of(dest).label)
     parsed = read_template(tmpl.text)
     tmpl.path.write_text(_emit(

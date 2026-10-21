@@ -6,6 +6,7 @@ import pytest
 from molbuilder.structure import Structure, AtomChannel, annotations_to_json
 from molbuilder.sidecars import molstruct
 from molbuilder.workingcopy_structure import StructureCodec
+from molbuilder.structure_pair import MolstructJsonError
 
 
 def _hash():
@@ -73,7 +74,7 @@ def test_load_refuses_a_malformed_channel_naming_its_file(tmp_path, channel,
     side = molstruct.sidecar_path_for(p)
     side.write_text(json.dumps(dict(json.loads(side.read_text()),
                                     annotations={"x": channel})))
-    with pytest.raises(molstruct.MolstructJsonError) as exc:
+    with pytest.raises(MolstructJsonError) as exc:
         StructureCodec().load(p)
     assert words in str(exc.value), exc.value
     assert str(side) in str(exc.value) and "'x'" in str(exc.value), exc.value

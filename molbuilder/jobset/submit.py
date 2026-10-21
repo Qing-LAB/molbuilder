@@ -72,7 +72,8 @@ from .planned import Plan, found
 from ..paths import Shape, attempt_dir
 from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
-                          hand_over, open_container)
+                          hand_over)
+from .naming import open_container
 from ..runrecord import LaunchRecordError, RunRef
 from ..scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
 from .commands import (block, command as _cmd, launch_lines, redo_launched,
@@ -492,7 +493,7 @@ class _Member:
     #: runs in; a run of points, its first walked point's; a benchmark's
     #: trial, its run.
     read_from: Path
-    #: The names of its stage's files (`materialize.run_names`): what its
+    #: The names of its stage's files (`naming.run_names`): what its
     #: launch record, and what it continues from, are named by.
     names: "RunNames"
     #: Its run's number, decided here (`runrecord.next_run`) and handed to
@@ -966,7 +967,7 @@ def _as_described(calc, job, *, described, written_at=None):
     (``_planned``)."""
     from ..deck_record import without_stamps
     from ..paths import attempt_index
-    from .materialize import run_names
+    from .naming import run_names
     from .errors import as_prep_error, step_errors
     from .planned import Plan
     from .errors import PrepError
@@ -1060,8 +1061,8 @@ def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str, shape,
     and a question to the scheduler says it already ran."""
     from .commands import command
     from ..paths import attempts_in
-    from .materialize import (bench_stage_of, job_dir_names, run_dir,
-                              run_names)
+    from .materialize import bench_stage_of, run_dir
+    from .naming import job_dir_names, run_names
     from ..runrecord import launch_record_path, next_run
     sh = shape
     names = run_names(jobset, job, sh)
@@ -1119,7 +1120,7 @@ def _plan_member(calc, job, *, writes: Plan,
     was said at the launch."""
     import functools
     from ..paths import attempts_in
-    from .materialize import job_dir_names, run_names
+    from .naming import job_dir_names, run_names
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     sh = calc.shape
     names = run_names(jobset, job, sh)
@@ -1201,7 +1202,7 @@ def _first_launch(calc, job, *, member, names: RunNames, container: Path,
     nothing is copied: the run's `.continued-from` is written with its
     launch record."""
     from ..runrecord import next_run
-    from .continuation import force_constant_stage
+    from .ladder import force_constant_stage
     from .gather import gather_into
     from .materialize import open_sweep_run, prepare_attempt
     from .ready import first_launch_takes
@@ -1329,7 +1330,8 @@ def _launch_again(calc, job, *, member, names: RunNames, container: Path,
         # it -- what cannot be taken is refused (a transport rung, a run
         # that is not this calculation's); a force-constant stage's run is
         # its prep's.
-        from .continuation import continuation_answer, force_constant_stage
+        from .continuation import continuation_answer
+        from .ladder import force_constant_stage
         if force_constant_stage(task, stage):
             raise SubmitError(
                 f"--from {from_attempt!r}: `{stage}`'s deck is written at "
@@ -1635,11 +1637,11 @@ def _refusal_kinds() -> tuple:
     """What the readers a plan asks raise for the person to fix, each its
     own kind, said as the launch's refusal (:func:`plan_launch`): a record
     of a run that does not read (R-L21), a plan's job no file can be named
-    for (`materialize.NamingError`), and a calculation's own
+    for (`naming.NamingError`), and a calculation's own
     `warm-files.toml` that does not read (`warmfiles.WarmFilesError`) --
     never a plain error of code, which stays one."""
     from ..warmfiles import WarmFilesError
-    from .materialize import NamingError
+    from .naming import NamingError
     return (LaunchRecordError, NamingError, WarmFilesError)
 
 
@@ -1657,7 +1659,7 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
         # job here as at every other surface, and the refusal carries the
         # typeable spellings.
         from ..identity import resolve_stage_ref
-        from .materialize import stage_refs
+        from .naming import stage_refs
         refs = stage_refs(jobset)
         try:
             only = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
@@ -1773,8 +1775,8 @@ def _the_group(calc, *, group, only,
     holds others -- a group goes whole the first time (R-L6)."""
     from ..identity import stage_key
     from .commands import launch_lines, prep_group_lines
-    from .group import (group_members, members_of, number_of, regrouped,
-                        same_members)
+    from .group import group_members, members_of, number_of, same_members
+    from .ready import regrouped
     jobset, base, task = calc.jobset, Path(calc.base), calc.task
     if group is None:
         if only is None:
@@ -2319,7 +2321,8 @@ def _all_launched(jobset: JobSet, base: Path, *, shape, count: int,
                   side: Optional[str] = None) -> SubmitError:
     """The refusal of a benchmark's walk with nothing left to run, and the
     next step: reading what its trials measured."""
-    from .materialize import bench_stage_of, job_dir_names
+    from .materialize import bench_stage_of
+    from .naming import job_dir_names
     dirs = job_dir_names(jobset, shape)
     stage = bench_stage_of(base, base / dirs[jobset.jobs[0].name])
     return SubmitError(

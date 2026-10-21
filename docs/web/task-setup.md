@@ -393,7 +393,7 @@ second stage needs nothing renamed or renumbered
 ([`stages.md § 6.5`](?doc=engines/stages.md)).
 
 **Names are words, and the ordinal is not part of the name.** A fresh
-optimization is one stage, `coarse`, with no overrides (`task.fresh_stages`);
+optimization is one stage, `coarse`, with no overrides (`jobset.ladder.fresh_stages`);
 the three tiers `coarse` / `medium` / `tight` (`config/stages.py::STAGE_NAMES`, the engine-neutral home),
 each with its preset ([`tuning.md § 4`](?doc=engines/tuning.md)), come with
 `jobset init --stage-strategy`.
@@ -886,7 +886,7 @@ because molbuilder writes it — the catalogue is `runfiles.WRITTEN`
 **Every name is composed, not spelled.** `/api/task-setup/prep-plan` calls
 `runfiles.manifest(label, stage, *, shape, engine, when, calculation)` — a
 rung's card on the label its files carry, the rung's own stem
-(`materialize.StageHome.label`: a transport lead's `<label>_L-electrode` /
+(`naming.StageHome.label`: a transport lead's `<label>_L-electrode` /
 `<label>_R-electrode`, [`job-contracts.md`](?doc=execution/job-contracts.md)
 § 2.1 rule 2), the calculation's group on the calculation's label with no
 stage — and the browser only lays the answer out; the route keeps no list of its own *(a

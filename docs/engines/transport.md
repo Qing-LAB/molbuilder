@@ -105,7 +105,7 @@ labels (§ 4). This is the design decision the rest of the feature rests on.
 Each lead's files are on its own stem, `<label>_L-electrode` /
 `<label>_R-electrode` — its `SystemLabel`, which the device deck names and
 SIESTA writes the `.TSHS` under — deck, output and the engine's files alike
-(`job-contracts.md` § 2.1 rule 2; `transport.stages.rung_label`).
+(`job-contracts.md` § 2.1 rule 2; `identity.rung_label`).
 
 ### 0.2 The k-point grids — what each stage samples, and why *(rewritten 2026-10-13)*
 
@@ -703,7 +703,7 @@ it is for the cited junction. **No usable record** is one of three: none yet
 named the other way round (`swap_electrodes`), or an older one whose junction
 composed again is another (below). A prep composes afresh — and writes the
 record again — only when there is no usable one and no stage is launched
-(`transport_rung.composed_for_prep`); the gather reads the same record, by
+(`gather.composed_for_prep`); the gather reads the same record, by
 the same one read (`transport_rung.junction_record`), and compares an older
 one in memory, writing nothing.
 
@@ -731,7 +731,7 @@ user, 2026-10-15: "i don't want to invalidate the previous calculation
 already launched"; one rule for every junction, decided the same day)*: its
 runs ran on it. A prep that finds no usable record while a stage is launched
 is refused and writes nothing, naming why and the state saved before the
-launched group's first launch (`transport_rung.no_usable_record`; R-P21);
+launched group's first launch (`gather.no_usable_record`; R-P21);
 while none is launched, it composes afresh and writes the record. The launched group's runs are taken by the next only when they ran
 the same engine input (§ 6.1's gates).
 
@@ -3107,7 +3107,7 @@ structure carries the labels' block.
 
 **What is said about how it ended.** The citation carries the run's conclusion
 line and what its output says it converged — *geometry yes* / *geometry NO*,
-the status verb's own reading (`jobset.runstatus.converged_of`) — into the
+the status verb's own reading (`RunStatus.converged_words`) — into the
 provenance (`slot-provenance.json`: `evidence`, `relaxation`) and onto the
 Transport tab's meta line, so a geometry that did not converge is cited
 knowingly: the geometry handed over is then the last step SIESTA wrote, not a

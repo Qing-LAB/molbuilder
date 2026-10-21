@@ -1098,8 +1098,9 @@ def api_task_setup_handover():
             }), 400
 
     from molbuilder.identity import normalise_id
-    from molbuilder.template import (template_filename as _template_filename,
-                                     template_with_values)
+    from molbuilder.template import template_with_values
+    from molbuilder.template_file import (
+        template_filename as _template_filename)
 
     # WHAT THIS CALCULATION IS CALLED — the identity the person typed, and the
     # destination folder only when they did not.
@@ -1195,7 +1196,7 @@ def api_task_setup_handover():
                           if not f["name"].endswith(".json")), "")
 
     from molbuilder.jobset.group import numbered_fresh
-    from molbuilder.task import fresh_stages
+    from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import derive_run, fresh_varies
     proposed = numbered_fresh(
         fresh_stages(calculation, engine,
@@ -1251,7 +1252,7 @@ def api_task_setup_handover():
     # it into task.json.
     handover["calculation"] = calculation
     # THE PROPOSED LADDER RIDES IT TOO, numbered: the fresh ladder's one
-    # owner (`task.fresh_stages` -- a vibration's own, read from the box;
+    # owner (`ladder.fresh_stages` -- a vibration's own, read from the box;
     # the ordinary one-stage start otherwise) through the one numbering
     # rule (`jobset.group.numbered_fresh`), as `jobset init` makes it.
     # Task setup shows it as what will be written; it re-derives nothing.
@@ -1268,7 +1269,7 @@ def api_task_setup_handover():
     return jsonify({
         "ok":            True,
         "label":         label,
-        # THE door (`template.template_filename`), not a literal suffix.
+        # THE door (`template_file.template_filename`), not a literal suffix.
         "template_name": _template_filename(label),
         "template_text": template_text,
         "handover_name": TASK_HANDOVER_NAME,
@@ -1500,7 +1501,7 @@ def api_task_setup_save():
     # refused here rather than at prep, on the cluster.  Same function the CLI runs (`validation.task.preflight`),
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
-    from molbuilder.template import of as _template_of
+    from molbuilder.template_file import of as _template_of
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
     try:
@@ -1794,15 +1795,15 @@ def _folder_template(folder, label, *, found=None, engine=None,
 
     ``found`` is the template as the calculation opened it (A16); with
     none, ``label`` is the hand-over's name and the door is asked
-    (`template.of`) -- ``None`` for a folder that is neither, which has no
+    (`template_file.of`) -- ``None`` for a folder that is neither, which has no
     template to show.  ``engine`` and ``kind``, a described folder's, add
     ``shared``: every value shared by every stage of that kind, echoed
     read-only with whose it is (`task-setup.md` § 3, `engines/template.md`
     § 6.6 obligation 3).
     """
-    from molbuilder.template import (SOURCE_WORDS, of as template_of,
-                                     read_template, select,
+    from molbuilder.template import (SOURCE_WORDS, read_template, select,
                                      shared_scope_words)
+    from molbuilder.template_file import of as template_of
     if found is None:
         if label is None:
             return {"ok": True, "name": None, "values": {}}
@@ -1991,7 +1992,7 @@ def api_task_setup_prep_plan():
     **The names come from the producer, never from the page.**  Flat and
     hierarchical name directories differently (§ 4), so a list composed in
     the browser would be a second answer free to disagree with the thing it
-    describes.  `materialize.stage_home` is the one namer (decision 27) and
+    describes.  `naming.stage_home` is the one namer (decision 27) and
     `Shape.stage_dir` the one layout, and this asks both.
 
     The allocation each stage would carry is `task.allocation`,
@@ -2009,7 +2010,7 @@ def api_task_setup_prep_plan():
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
@@ -2040,7 +2041,7 @@ def api_task_setup_prep_plan():
     # machine resolved -- so it reports the condition as WRITTEN, without
     # asking the enumerator, which needs a target.  THE FOLDER, when the page
     # names it (`dest`), is where the stages' numbers are read: a stage that
-    # has files keeps its number (`materialize.stage_home`, W38 F4), so the
+    # has files keeps its number (`naming.stage_home`, W38 F4), so the
     # plan names the folders prep will write, not the description's places.
     folder = None
     if body.get("dest"):
@@ -2168,7 +2169,7 @@ def _folder_continue_from(calc) -> dict:
 
 def _folder_attempts(calc) -> dict:
     """How many attempts each stage has on disk -- the payload."""
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.paths import Shape, attempts_in
     from molbuilder.runrecord import newest_run
     dest, task = calc.base, calc.task
@@ -2272,7 +2273,7 @@ def api_task_setup_folder():
     from molbuilder.calculation import NotACalculation, open as open_calc
     # A folder whose description or template does not read answers as
     # the parts say it: the description part in its reader's words, the
-    # template part naming the templates (`template.of`).
+    # template part naming the templates (`template_file.of`).
     try:
         _calc = open_calc(folder)
     except (NotACalculation, Exception):          # noqa: BLE001
@@ -2579,7 +2580,7 @@ def api_task_setup_commands():
         target = LOCAL_TARGET
     from_at_prep = prepared = False
     if picked and kind == "task":
-        from molbuilder.jobset.continuation import force_constant_stage
+        from molbuilder.jobset.ladder import force_constant_stage
         from molbuilder.calculation import open as open_calculation
         from molbuilder.jobset.ready import task_state
         try:

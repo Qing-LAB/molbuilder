@@ -322,25 +322,6 @@ class StructureRef:
     fingerprint: str = ""
 
 
-
-def fresh_stages(calculation: str, engine: str, *,
-                 already_relaxed: bool) -> "Tuple[Stage, ...]":
-    """THE LADDER A NEW DESCRIPTION STARTS WITH, before it is numbered --
-    the one rule, asked by `jobset init` and by the hand-over the parameter
-    tabs send (`web/handover-procedure.md`): a vibration's own ladder, read
-    from the person's one statement (`pyscf/stages.py::vibration_stages`,
-    `engines/vibration.md` § 2.2, § 5.2a); every other kind the ordinary
-    start -- ONE stage carrying no overrides, the calculation that is just
-    the template (`engines/stages.md` § 6.5), named by the shared ladder
-    vocabulary.  A transport calculation proposes nothing here: its rungs
-    are fixed by the kind (`fixed_by_kind`)."""
-    if calculation == "vibration":
-        from .pyscf.stages import vibration_stages
-        return tuple(vibration_stages(engine,
-                                      already_relaxed=bool(already_relaxed)))
-    from .config.stages import STAGE_NAMES
-    return (Stage(name=STAGE_NAMES[1], overrides={}),)
-
 @dataclass(frozen=True)
 class Stage:
     """§ 2 — a name, the cells that differ, and what this rung RUNS at when
@@ -734,11 +715,11 @@ class Task:
 
     def _label_tail(self) -> int:
         """What a rung adds to the label before its stage token -- a
-        transport lead's own stem (`transport.stages.lead_tail_bytes`);
+        transport lead's own stem (`identity.lead_tail_bytes`);
         nothing for every other calculation."""
         if str(self.calculation) != "transport":
             return 0
-        from .transport.stages import lead_tail_bytes
+        from .identity import lead_tail_bytes
         return lead_tail_bytes()
 
     def _stage_names(self) -> Tuple[str, ...]:
@@ -1369,17 +1350,11 @@ def derive_run(name: str, formula: str = "", *, created: str = "",
 
 
 def path_of(base) -> Path:
-    """``<base>/task.json`` -- the one place the description's name is
-    joined to its folder (`architecture.md` A16): for its writer, and for
-    `jobset migrate`, which reads it raw."""
-    return Path(base) / FILENAME
-
-
-def described(base) -> bool:
-    """Does the folder hold a description -- the owner's answer to *is this
-    a described calculation's folder*, without reading it (the ledger
-    writes in one only; a route offers a folder's parts by it)."""
-    return path_of(base).is_file()
+    """``<base>/task.json`` -- for its writer, and for `jobset migrate`,
+    which reads it raw (`architecture.md` A16): the ground floor's join of
+    the description's name to a folder (`calcdirs.description_path`)."""
+    from .calcdirs import description_path
+    return description_path(base)
 
 
 def of(base) -> Optional[Task]:
@@ -1405,11 +1380,11 @@ def from_text(text: str, said_as: str = FILENAME) -> Task:
 def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
     before = _written_before(obj) if isinstance(obj, Mapping) else []
     if before:
-        from .jobset.commands import command
+        from .identity import migrate_as_typed
         raise ValueError(
             f"{said_as} was written before every description stated "
             f"{' and '.join(before)}: "
-            f"`{command('migrate', base=base)}` rewrites it, "
+            f"`{migrate_as_typed(base)}` rewrites it, "
             f"every value kept and the old file beside the new.")
     return Task.from_dict(obj)
 

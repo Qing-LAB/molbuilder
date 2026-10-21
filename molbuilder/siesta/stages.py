@@ -107,7 +107,7 @@ def warm_for(label: str, eff,
     once ``--from`` names the source and both stages are in hand.
     """
     from ..identity import continues
-    from ..warmfiles import warm_declaration
+    from ..jobset.model import warm_declaration
     if not continues(eff):
         return []
     return warm_declaration("siesta", label, calculation, base_dir)

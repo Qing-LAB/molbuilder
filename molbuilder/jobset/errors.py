@@ -25,12 +25,17 @@ class PrepError(Exception):
     notes: tuple = ()
 
 
+class WrapperError(Exception):
+    """A run script cannot be written -- an unsupported extension, no
+    environment for the job, a missing script file -- raised by the run
+    script's writer (`runwrap`), said as a refusal by every prep door."""
+
+
 def user_errors() -> tuple:
     """The USER-FIXABLE refusal classes the steps raise, which every prep
     door says as a :class:`PrepError` (:func:`user_error_as_prep`)."""
     from ..issues import ValidationError
     from ..runtime_config import RuntimeConfigError
-    from ..runwrap import WrapperError
     return (ValidationError, RuntimeConfigError, WrapperError)
 
 def step_errors() -> tuple:
@@ -76,5 +81,5 @@ def user_error_as_prep():
         raise as_prep_error(exc) from exc
 
 
-__all__ = ["PrepError", "user_errors", "step_errors", "as_prep_error",
-           "user_error_as_prep"]
+__all__ = ["PrepError", "WrapperError", "user_errors", "step_errors",
+           "as_prep_error", "user_error_as_prep"]

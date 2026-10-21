@@ -53,7 +53,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
-from .template import template_filename as _template_filename
+from .template_file import template_filename as _template_filename
 from .template import template_with_values
 from .workingcopy_structure import StructureCodec
 
@@ -222,7 +222,7 @@ def refuse_described(dest, *, shown: Optional[str] = None) -> None:
     (`engines/transport.md` § 3.8.2a) -- before anything is read or
     written.  ``shown`` is the folder as the door's reader names it (the
     browser's, from the projects root); the path otherwise."""
-    from .task import described
+    from .calcdirs import described
     if described(dest):
         raise DescribeError(
             f"{shown or dest} already holds a calculation ({TASK_FILENAME}) -- one "

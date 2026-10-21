@@ -53,12 +53,12 @@ down a list, and a blank is visible.
 ```mermaid
 flowchart TB
     F7["<b>7 · surfaces</b> — ask, and show<br/><code>cli</code> · <code>web</code>"]
-    F6["<b>6 · observe</b> — read what happened, write nothing<br/><code>jobset/runstatus</code> · <code>parse/dirs</code>"]
+    F6["<b>6 · observe</b> — read what happened, write nothing<br/><code>jobset/runstatus</code> · <code>jobset/summarize</code>"]
     F5["<b>5 · launch</b> — start one program<br/><code>jobset/submit</code> · <code>jobset/agreement</code>"]
-    F4["<b>4 · layout</b> — folders, links, attempts<br/><code>jobset/materialize</code> · <code>jobset/shape</code>"]
-    F3["<b>3 · plan &amp; render</b> — values, and the text of every file<br/><code>resolve</code> · <code>jobset/model</code> · <code>siesta/stages</code> · <code>bench/grid</code><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
-    F2["<b>2 · description</b> — what the person asked for<br/><code>task</code> · <code>template</code>"]
-    F1["<b>1 · names &amp; plain facts</b><br/><code>identity</code> · <code>environment</code> · <code>persist</code>"]
+    F4["<b>4 · layout</b> — folders, attempts<br/><code>jobset/materialize</code> · <code>jobset/ready</code>"]
+    F3["<b>3 · plan &amp; render</b> — values, names, and the text of every file<br/><code>calculation</code> · <code>resolve</code> · <code>jobset/model</code> · <code>jobset/naming</code> · <code>siesta/stages</code> · <code>bench/grid</code><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
+    F2["<b>2 · description</b> — what the person asked for<br/><code>task</code> · <code>template_file</code>"]
+    F1["<b>1 · names &amp; plain facts</b><br/><code>identity</code> · <code>scheduler</code> · <code>persist</code> · <code>template</code> · <code>parse</code>"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
     PREP["<b>prep</b> — the conductor<br/><i>not a floor: it walks them</i>"]
     PREP -.->|"walks 1 → 4, in order"| F4
@@ -77,8 +77,8 @@ the partition a test can enforce cheaply:
 
 | import layer | floors | why the grain differs |
 |---|---|---|
-| **L1** | 1 · names & plain facts, the leaf half of 2, **and everything outside the floors** — the structure model, the chemistry, the config classes | things with no domain dependencies — a test can check "imports nothing above" cheaply and exactly |
-| **L2** | the rest of 2, and 3 · 4 · 5 · 6 | the verbs |
+| **L1** | most of 1 — the names, the catalogue, the machine's record, the warm-file vocabularies — and floor 2's description (`task`, `template_file`), **and the core outside the floors** — the structure model, the chemistry, the config classes | things with no domain dependencies — review checks "imports nothing above" against one list (`architecture.md` § 3) |
+| **L2** | floor 1's readers and records (`parse`, `runrecord`, `joblist`, `jobset`'s floor-1 modules), `runs` on 2, and 3 · 4 · 5 · 6 — and the verbs outside the floors (`checkpoint`, `transport`, `validation`) | the verbs |
 | **L3** | 7 · surfaces | `cli` · `web` |
 *(Six of the decision chain's twelve rows sit outside the floors altogether — the
 project tree, the structure model, the preflight and the validators, the wrapper
@@ -86,14 +86,14 @@ and the engine at run time. They are separately-owned contracts that hand this
 stack their results; `architecture.md` § 5.1 lists which.)*
 
 
-**One straddle, and it is deliberate.** Floor 2 holds `task` (L1) beside
-`template` (L2): a description must be readable by every surface without pulling
-in the engines, so `task` sits as a leaf; `template` imports the config classes
-and cannot. Recorded rather than smoothed over, because a reader who finds it and
-thinks it is a mistake will "fix" it and break the leaf posture.
+**The description is a leaf.** Floor 2's description, `task` and
+`template_file`, is L1: a description is readable by every surface without
+pulling in the engines; `runs`, the run a file belongs to, is L2 beside it.
+What a template SAYS -- the catalogue of every parameter and the template
+format -- is floor 1's `template`, which imports no engine either.
 
-> **L1/L2/L3 is the enforced coarse grain; the floors are the design.** The test
-> checks the partition it can check. The floors are what a reader reasons with.
+> **L1/L2/L3 is the enforced coarse grain; the floors are the design.** Review
+> keeps the partition (`architecture.md` § 3). The floors are what a reader reasons with.
 > Neither is a second scheme.
 
 ### 2.3 Two placements worth stating outright

@@ -36,6 +36,7 @@ from .runfiles import (RANK_LAUNCHER, RUN_COUNTER_GLOB, deck_roles,
 from .config_dir import is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them.
 from .identity import way_back_words
+from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
 from .runtime_info import THREAD_SOURCES
@@ -74,11 +75,6 @@ _SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 #: that states none).
 _ENGINE_OWN_SLACK_S = 5
 
-
-
-class WrapperError(Exception):
-    """Wrapper cannot be generated -- unsupported extension, no env
-    routing, missing script file, ..."""
 
 
 def _phys_cores_probe_block() -> str:
@@ -3921,14 +3917,13 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "transiesta.py":           "molbuilder.parse.engines.transiesta",
     "_section_rules.py":       "molbuilder.parse.engines._section_rules",
     "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
-    "end_lines.py":            "molbuilder.pyscf.end_lines",
     "emitter.py":              "molbuilder.trajectory_log.emitter",
     "keys.py":                 "molbuilder.trajectory_log.keys",
     "atom_permutation.py":     "molbuilder.atom_permutation",
     # THE STRUCTURE, WHOLE, in the result (engines/vibration.md § 6.10): the
     # result type builds and checks it through the one serialiser.
     "structure.py":            "molbuilder.structure",
-    "molstruct.py":            "molbuilder.sidecars.molstruct",
+    "structure_pair.py":       "molbuilder.structure_pair",
     # THE RESULT'S TWO FILES (engines/vibration.md § 6.10.5): the data
     # file's writer, the variable record it shares with the transport data
     # file, and the one atomic writer both files go through.
@@ -4014,8 +4009,8 @@ PYSCF_COMPANIONS: Dict[str, str] = {
     "structure.py":             "molbuilder.structure",
     "atom_permutation.py":      "molbuilder.atom_permutation",
     "molstruct.py":             "molbuilder.sidecars.molstruct",
+    "structure_pair.py":        "molbuilder.structure_pair",
     "relax_policy.py":          "molbuilder.pyscf.relax_policy",
-    "end_lines.py":             "molbuilder.pyscf.end_lines",
     "pyscf_vibration.py":       "molbuilder.spectra.pyscf_vibration",
     "normal_modes.py":          "molbuilder.spectra.normal_modes",
     "spectra_sidecar.py":       "molbuilder.sidecars.spectra",
@@ -4552,7 +4547,6 @@ def _validate_rendered_wrapper(text: str, script_path: Path) -> None:
 
 
 __all__ = [
-    "WrapperError",
     "render_run_wrapper",
     "write_run_wrapper",
     "render_sbatch",

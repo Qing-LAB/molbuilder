@@ -14,7 +14,7 @@ This module answers the group's questions, each in one place:
 * **does a stage build on another** (:func:`upstream_of`) -- the one fact
   the ladder already states: a transport rung's inputs
   (`transport.stages.stage_inputs`), a force-constant stage's `relax`, an
-  independent stage's stage before (`continuation.source_stage`) -- and so
+  independent stage's stage before (`ladder.source_stage`) -- and so
   **the numbers a new description takes** (:func:`default_groups`,
   :func:`numbered`) and **whether the stated ones keep it**
   (:func:`check_groups`);
@@ -70,7 +70,7 @@ def upstream_of(task, stage: str,
     if getattr(task, "calculation", None) == "transport":
         from ..transport.stages import inputs_of
         return {src for src, _f in inputs_of(task, stage)}
-    from .continuation import source_stage
+    from .ladder import source_stage
     src, _linked = source_stage(task, stage, template_text)
     return {src} if src else set()
 
@@ -84,7 +84,7 @@ def linked(task, stage: str,
     (`job-system.md` § 5.4)."""
     if getattr(task, "calculation", None) == "transport":
         return True
-    from .continuation import source_stage
+    from .ladder import source_stage
     return bool(source_stage(task, stage, template_text)[1])
 
 
@@ -152,7 +152,7 @@ def default_groups(task, template_text: Optional[str] = None
 class _Fresh:
     """A ladder before it is a description -- what :func:`default_groups`
     reads of one: the kind, the engine, the stages, and no run card (a
-    fresh ladder states none, `task.fresh_stages`)."""
+    fresh ladder states none, `ladder.fresh_stages`)."""
     calculation: str
     engine: str
     stages: tuple
@@ -163,7 +163,7 @@ class _Fresh:
 
 def numbered_fresh(stages, *, engine: str, calculation: str,
                    template_text: str):
-    """``stages``, a fresh ladder (`task.fresh_stages`), with every stage's
+    """``stages``, a fresh ladder (`ladder.fresh_stages`), with every stage's
     group stated by :func:`default_groups` -- the rule a description is
     numbered with, asked before any description holds the ladder: the
     hand-over's proposal (`web/handover-procedure.md`), which Task setup
@@ -352,7 +352,7 @@ def sequence_names(base, task, numbers: Sequence[int]) -> GroupNames:
     """The names of a sequence of groups' one job -- its header, walk, log
     and launch record in `launch/`: the label and every member's token,
     the groups in order (`runfiles.GroupNames.of_sequence`)."""
-    from .materialize import stage_home
+    from .naming import stage_home
     return GroupNames.of_sequence(task.label, [
         stage_home(base, task, n).token
         for g in sorted(numbers) for n in group_members(task, g)])
@@ -419,90 +419,15 @@ def group_members(task, number: int) -> List[str]:
     return [st.name for st in task.stages if st.group == number]
 
 
-def launched_without(calc, number: int) -> Optional[Tuple[str, List[str]]]:
-    """``(launched, joined)`` -- a stage of group ``number`` that was
-    launched, and the stages the group holds now that it was launched
-    without -- or ``None``.  A launched group's members are fixed
-    (`job-system.md`, *The task*).  A launch record that does not read
-    raises, as the one door does (`materialize.ever_launched`)."""
-    from ..identity import stage_key
-    from .materialize import ever_launched
-    task, jobset = calc.task, calc.jobset
-    held = group_members(task, number)
-    for m in held:
-        job = jobset.job(m) if jobset else None
-        if job is None or not ever_launched(calc, job):
-            continue
-        joined = [h for h in held if not any(
-            stage_key(h) == stage_key(x) for x in members_of(job))]
-        if joined:
-            return m, joined
-    return None
-
-
-def joined_launched(calc, number: int, launched: str,
-                    joined: List[str]) -> str:
-    """The way on for stages put into a launched group: a group of their own,
-    or the group formed anew from the state saved before its first launch."""
-    from .commands import redo_launched
-    said = ", ".join(f"`{h}`" for h in joined)
-    one = len(joined) == 1
-    return (f"group {number} holds {said} beside `{launched}`, which was "
-            f"launched without {'it' if one else 'them'} -- a launched "
-            f"group's members are fixed: give {said} a group of "
-            f"{'its' if one else 'their'} own (Task setup, or task.json), or, "
-            f"to form the group anew, "
-            + redo_launched(launched, calc=calc))
-
-
-def regrouped(calc, stage: str) -> Optional[str]:
-    """Why ``stage``'s prepared job (in ``jobset``) is no longer the
-    description's group -- the members it was prepared with, the group's
-    now, and the prep that forms the job again, every group it needs named
-    (:func:`formed_again`) -- or ``None``.  Groups are matched by their
-    members (`engines/stages.md` § 2): the ready door says it, and launch
-    refuses it.  Where a group that prep would name holds a stage beside one
-    launched without it, that is said instead (:func:`joined_launched`)."""
-    from ..identity import stage_key
-    from ..runrecord import LaunchRecordError
-    from .commands import block, prep_group_lines
-    task, jobset, base = calc.task, calc.jobset, calc.base
-    g = number_of(task, stage)
-    job = jobset.job(stage)
-    if g is None or job is None:
-        return None
-    members = group_members(task, g)
-    had = members_of(job)
-    if same_members(had, members):
-        return None
-    others = [m for m in had if stage_key(m) != stage_key(stage)]
-    was = (f"in one job with {', '.join(f'`{m}`' for m in others)}"
-           if others else "as a job of its own")
-    said = (f"`{stage}` was prepared {was}, and its group {g} is "
-            f"{', '.join(f'`{m}`' for m in members)} now -- groups are "
-            f"matched by their members")
-    numbers = formed_again(task, jobset.jobs, [g])
-    for n in numbers:
-        try:
-            hit = launched_without(calc, n)
-        except LaunchRecordError as exc:
-            return str(exc)
-        if hit:
-            return said + "; " + joined_launched(calc, n, *hit)
-    return (said + ", so its prep forms the job again "
-            "(engines/stages.md § 2):\n"
-            + block(prep_group_lines(numbers, base=base)))
-
-
 def header_of(calc, job):
     """The header of the job ``job`` is prepared in -- a group of several's,
     in the calculation's `launch/`, named by its members' own files, their
-    rows in ``calc``'s plan (`materialize.run_names`) -- or ``None`` for a
+    rows in ``calc``'s plan (`naming.run_names`) -- or ``None`` for a
     job of one.  What a prep removes when that job is formed again, or when
     a member's row leaves the plan."""
     from pathlib import Path
     from ..runfiles import LAUNCH_DIR
-    from .materialize import run_names
+    from .naming import run_names
     base, jobset, shape = calc.base, calc.jobset, calc.shape
     members = members_of(job)
     if len(members) < 2:
@@ -516,9 +441,9 @@ def header_of(calc, job):
 def names_for(base, task, members: Sequence[str]) -> GroupNames:
     """The names of the one job ``members`` make, as the description gives
     them -- its header, walker and log in `launch/`: the label and each
-    member's token (`materialize.stage_home`).  What prep writes and launch
+    member's token (`naming.stage_home`).  What prep writes and launch
     sends; a job already written is named by its rows (:func:`header_of`)."""
-    from .materialize import stage_home
+    from .naming import stage_home
     return GroupNames.of_stages(task.label, [stage_home(base, task, n).token
                                              for n in members])
 
@@ -527,6 +452,6 @@ __all__ = ["GroupError", "SHARED", "card_shares",
            "upstream_of", "linked", "may_join",
            "default_groups", "numbered",
            "check_groups", "envelope", "number_of", "named", "members_of",
-           "same_members", "formed_again", "regrouped", "header_of",
-           "group_members", "launched_without", "joined_launched",
+           "same_members", "formed_again", "header_of",
+           "group_members",
            "names_for", "own_request", "sequence_names", "sequence_request"]

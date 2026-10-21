@@ -5,8 +5,9 @@ Floor 3 (`execution/architecture.md` § 2.1).
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
+from ..scheduler.quantities import human_wall, mem_range
 from .model import AS_RESOURCE
 
 
@@ -55,7 +56,7 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     and a run is hours before anyone learns which one it got.  ``queues`` --
     the target's own, as its record holds them -- is the record's fact: a
     run naming none is shown them, their machines and the fit of ``asked``
-    on each -- the work's request (`ask.queue_table`, `submission.md` S5),
+    on each -- the work's request (:func:`queue_table`, `submission.md` S5),
     so one can be named; ``base``
     and ``target`` say
     which record that was, for the refusal that finds it lists none.
@@ -142,8 +143,7 @@ def no_queues_said(base, target, *, who: str = "",
 
 def _the_queues(asked, rows, engine: str) -> str:
     """The target's queues, their machines, and the work's fit on each --
-    what of its wall, memory, cores and GPUs it states (`ask.queue_table`)."""
-    from .ask import queue_table
+    what of its wall, memory, cores and GPUs it states (:func:`queue_table`)."""
     return queue_table(rows, request_of(asked,
                                         one_process=one_process(engine)))
 
@@ -257,5 +257,88 @@ def stated_line(sources) -> str:
     return f"no header -- {said}" if said else ""
 
 
+def queue_table(rows, request) -> str:
+    """**Every queue the target's record lists, its machines, and this job's
+    fit on each** (`scheduler.md` R4, R6).
+
+    The framework does not choose (user, 2026-08-23: *"just don't guess
+    shit"*).  It shows what exists and how the job sits on each, and the
+    person names one -- prep shows this when a run names none
+    (:func:`launch_refusal`).  Which queue to spend a day of wall-clock
+    in is a judgement about priority, contention and what else is running --
+    none of which is on the target's record, and all of which the person
+    has.
+
+    **Each queue is up to three kinds of line**::
+
+        1  htc   htc/public   4h   48-128   501-1511.2 GB   a100 x4, h100 x8, …
+             - 128 cores  x137 node(s)  503.2-1511.2 GB  a30, h200   <- the
+             - 48 cores  x69 node(s)  501-503.5 GB  a100, l40          machines,
+           64 cores · 900 GB fits 3 of 212 nodes of htc (1%): …     when several
+                                                                     <- the fit
+
+    The cores and memory columns are the **ranges** across the queue's
+    machines (`Domain.core_range`, `Domain.mem_range`), one number when
+    every machine is the same.
+    """
+    from ..scheduler.fit import domain_ceiling_s, fit
+    head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
+            f"{'cores':>8} {'memory':>14}  gpu")
+    lines = ["the target's record lists:", head]
+    for i, d in enumerate(rows, 1):
+        wall = human_wall(domain_ceiling_s(d))
+        dev = ", ".join(x.type + (f" x{x.per_node}" if x.per_node else "")
+                        for x in d.devices) or "-"
+        lines.append(
+            f"  {i:<2} {d.name:<12} {d.partition + '/' + (d.qos or '-'):<22} "
+            f"{wall:>9} {d.core_range:>8} {d.mem_range:>14}  {dev}")
+        for shape in _machine_lines(d):
+            lines.append(f"       {shape}")
+        lines.append(f"     {fit(d, request).line}")
+    return "\n".join(lines)
+
+
+def _machine_lines(row) -> List[str]:
+    """The machines a domain holds, **one line per SIZE**.
+
+    **A partition is a queue, not a machine type.**  Sol's ``htc`` is 48-,
+    64-, 96- and 128-core nodes under one name.  The ``cores`` column above
+    summarises them as a range; these lines are the machines themselves.
+
+    **Grouped by size, and that is not cosmetic.**  `sinfo` reports one row
+    per *gres group*, and on Sol `htc` has FOURTEEN -- nine of them 48-core
+    rows differing only in which card they carry.  Sizes are what a person
+    picking a machine is choosing between; the cards available AT each size
+    ride along, because that is the pairing no single figure could state:
+    on ``htc`` you can have 128 cores or you can have an A100, never both.
+
+    Nothing is printed for a domain that holds ONE size: the ``cores``
+    column already said it.
+    """
+    shapes = getattr(row, "node_types", None) or []
+    by_size: Dict[int, Dict[str, Any]] = {}
+    for t in shapes:
+        c = t.get("cores")
+        if not c:
+            continue
+        g = by_size.setdefault(int(c), {"nodes": 0, "dev": set(), "mem": []})
+        g["nodes"] += int(t.get("nodes") or 0)
+        g["dev"].update((t.get("gpu") or {}).keys())
+        if t.get("mem_gb"):
+            g["mem"].append(float(t["mem_gb"]))
+    if len(by_size) < 2:
+        return []
+    out = []
+    for c in sorted(by_size, reverse=True):
+        g = by_size[c]
+        bits = [f"{c:>4} cores", f"x{g['nodes']} node(s)"]
+        if g["mem"]:
+            bits.append(mem_range(g["mem"]))
+        if g["dev"]:
+            bits.append(", ".join(sorted(g["dev"])))
+        out.append("- " + "  ".join(bits))
+    return out
+
+
 __all__ = ["placed", "launch_refusal", "no_queues_said", "one_process",
-           "placement_line", "request_of", "stated_line"]
+           "placement_line", "queue_table", "request_of", "stated_line"]

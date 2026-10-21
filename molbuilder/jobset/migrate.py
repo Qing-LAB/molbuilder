@@ -61,7 +61,7 @@ from typing import (TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional,
 
 if TYPE_CHECKING:                      # annotations only
     from ..calculation import Calculation
-    from ..template import TemplateFile
+    from ..template_file import TemplateFile
 
 
 class MigrateError(ValueError):
@@ -273,7 +273,7 @@ class _Records:
     #: Each plan's body by its folder -- the root's and each sweep's bench
     #: container's (`materialize.sweep_set_dirs`) -- decided in place.
     jobsets: Dict[Path, dict]
-    #: The template (`template.of`), read by the first step that knows the
+    #: The template (`template_file.of`), read by the first step that knows the
     #: calculation's label -- derived, never stored (`Task.label`) -- and
     #: held for every later one; ``None`` when there is none.
     template: Optional["TemplateFile"] = None
@@ -284,11 +284,12 @@ class _Records:
 
     @classmethod
     def read(cls, base: Path) -> "_Records":
-        from ..calculation import refusal
+        from .. import calcdirs
         from .. import task as _task
+        from ..calculation import refusal
         from .materialize import sweep_set_dirs
         from .model import JobSet
-        if not _task.described(base):
+        if not calcdirs.described(base):
             raise MigrateError(refusal(base))
         obj = _read_raw(_task.path_of(base))
         jobsets: Dict[Path, dict] = {}
@@ -319,12 +320,12 @@ class _Records:
                            jobset=js)
 
     def template_for(self, label: str) -> Optional["TemplateFile"]:
-        """The calculation's template, read once (`template.of`); a folder
+        """The calculation's template, read once (`template_file.of`); a folder
         with two, or one under another name, is refused by name."""
         if not self._template_read:
-            from .. import template as _T
+            from ..template_file import of as template_of
             try:
-                self.template = _T.of(self.base, label)
+                self.template = template_of(self.base, label)
             except ValueError as exc:
                 raise MigrateError(str(exc)) from exc
             self._template_read = True
@@ -599,7 +600,7 @@ def _migrate_run_numbers(calc) -> Tuple[List[str], List[Tuple[Path, Path]]]:
     from ..runfiles import FIRST_ATTEMPT, RunNames, latest_run, parse
     from ..runrecord import unnumbered_files
     from .commands import way_back
-    from .materialize import ladder_homes
+    from .naming import ladder_homes
     said: List[str] = []
     moves: List[Tuple[Path, Path]] = []
     for home in ladder_homes(base, task):
@@ -635,7 +636,7 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
                                        "_Writes"]:
     """A transport lead's files named on the calculation's label; a lead's
     are on its own stem (`job-contracts.md` § 2.1 rule 2;
-    `transport.stages.rung_label`), the stem its engine files were always
+    `identity.rung_label`), the stem its engine files were always
     on.  Before 2.17.0 every file of a lead was on the label, and before
     2.23.2 prep's log of a lead's prep in the calculation's root was
     (`script-preparation.md` § 4.5: the log's stem is the deck's).  Each
@@ -652,7 +653,7 @@ def _migrate_lead_names(calc) -> Tuple[List[str], List[Tuple[Path, Path]],
     from ..runfiles import RunNames, find
     from ..runrecord import newest_run
     from .commands import way_back
-    from .materialize import ladder_homes
+    from .naming import ladder_homes
     from .model import FILENAME as JOBSET_FILENAME, JobSet
     import dataclasses
     said: List[str] = []

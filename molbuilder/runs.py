@@ -87,7 +87,7 @@ def _position(folder: Path, place: Place
     layout made (`paths`, `identity`): ``<NN>_<stage>/`` in the hierarchy,
     ``bench_<NN>_<stage>/`` at a flat root, a trial's ``bench-<point>/``
     relabelling its files (`paths.trial_label`)."""
-    from molbuilder.transport.stages import rung_label
+    from molbuilder.identity import rung_label
     label, stage, trial = place.task.label, None, False
     try:
         parts = folder.resolve().relative_to(place.root.resolve()).parts
@@ -626,6 +626,25 @@ def steps_of(run: Run, output) -> RunSteps:
         last=view.in_your_order(last.structure, output.name)[0])
 
 
+def saved_pair_row(path) -> Optional["tuple[str, str]"]:
+    """``(what, writer)`` for one half of a saved structure pair -- a
+    structure file with its sidecar beside it, or that sidecar with its
+    structure -- or ``None``.  The pairing is the codec's
+    (`sidecars.molstruct.sidecar_path_for`); a structure it opens is `.xyz`
+    or `.pdb`."""
+    from molbuilder.sidecars.molstruct import (GEOMETRY_SUFFIXES,
+                                               geometry_for, is_sidecar,
+                                               sidecar_path_for)
+    p = Path(path)
+    if is_sidecar(p):
+        if geometry_for(p) is not None:
+            return _rf.SAVED_PAIR_WHAT["sidecar"], _rf.SAVED_PAIR_WRITER
+        return None
+    if p.suffix in GEOMETRY_SUFFIXES and sidecar_path_for(p).is_file():
+        return _rf.SAVED_PAIR_WHAT["structure"], _rf.SAVED_PAIR_WRITER
+    return None
+
+
 def about(path) -> Dict[str, Any]:
     """WHAT A FILE IS -- its row of the catalogue, read back with its run's
     label (`runfiles.row_for`): ``{ours: True, what, writer, when, kind}``;
@@ -815,7 +834,7 @@ def _row_about(path: Path, label: Optional[str], *,
                unread: Optional[str] = None) -> Dict[str, Any]:
     """:func:`about`'s answer for a file whose folder's label is known -- or,
     with no label, a folder no calculation claims, where a saved structure
-    pair is molbuilder's (`runfiles.saved_pair_row`).  ``unread``: the folder
+    pair is molbuilder's (:func:`saved_pair_row`).  ``unread``: the folder
     IS a calculation's and its description does not read
     (`place_of`'s ``problem``) -- what the file is cannot be said, and the
     reader's words say why: ``{ours: None, unread}``, never ``ours: False``
@@ -824,7 +843,7 @@ def _row_about(path: Path, label: Optional[str], *,
         return {"ours": None, "unread": unread}
     row = _rf.row_for(path, label) if label else None
     if row is None:
-        saved = None if label else _rf.saved_pair_row(path)
+        saved = None if label else saved_pair_row(path)
         if saved is None:
             return {"ours": False}
         return {"ours": True, "what": saved[0], "writer": _in_words(saved[1]),
@@ -897,7 +916,7 @@ def _the_report(place: Place, attempts: List[str]) -> str:
     attempts.append("a transmission run's result is its calculation's "
                     "report at its point -- TBtrans writes no file a viewer "
                     "reads on its own (web/results.md 0.1)")
-    return str(Path(place.root) / _rf.TASK_FILE)
+    return str(calcdirs.description_path(place.root))
 
 
 def openable(directory) -> Tuple[Optional[str], List[str]]:
@@ -941,7 +960,7 @@ def _container_product(folder: Path, place: Place, label: str,
     is_root = place.root is not None \
         and folder.resolve() == Path(place.root).resolve()
     if is_root and place.task.calculation == "transport":
-        handle = folder / _rf.TASK_FILE
+        handle = calcdirs.description_path(folder)
         if claimed(str(handle)):
             attempts.append(f"*{_rf.TASK_FILE}: a transport calculation's "
                             f"report, composed on read from this folder")

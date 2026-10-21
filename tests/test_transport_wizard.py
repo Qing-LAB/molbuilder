@@ -214,7 +214,7 @@ def test_the_seam_verdict_is_measured_and_said(n_layers, verdict, severity):
     from molbuilder.runfiles import RunNames
     from molbuilder.siesta.input import spec_for
     from molbuilder.template import role_answers
-    from molbuilder.transport.stages import rung_label
+    from molbuilder.identity import rung_label
     m = extract_electrode_model(_au111_lead(n_layers), "L-electrode")
     seam = [n for n in m.notes if n.where == "lead.seam"]
     assert len(seam) == 1, f"exactly one seam note: {m.notes}"

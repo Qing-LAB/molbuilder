@@ -153,15 +153,6 @@ class GroupAnswer:
         return next((a.why for a in self.answers if a.why), None)
 
 
-def job_of(jobset, stage: str):
-    """The job ``stage`` is prepared as -- its row in the calculation's
-    plan, matched as every reader matches a stage's name
-    (`identity.stage_key`) -- or ``None``, as it is with no plan.  PREPARED
-    is that row (`job-system.md` § 5.0): the one door every reader asks,
-    with the plan as the verb read it (`JobSet.of`, A16)."""
-    return jobset.job(stage) if jobset is not None else None
-
-
 def held_by_sequence(calc, number: int, *, asked=None
                      ) -> Optional[Tuple[object, Optional[int], str]]:
     """THE ONE ANSWER to *does a sequence still going hold group ``number``*
@@ -215,7 +206,7 @@ def _sent_by(calc, stages, job) -> bool:
             return None
     went = when(job.launched_at)
     for st in stages:
-        row = job_of(calc.jobset, st)
+        row = calc.job(st)
         if row is None:
             continue
         try:
@@ -245,7 +236,7 @@ def launched_already(calc, stage: str) -> Optional[str]:
     read it (A16)."""
     from .commands import redo_launched
     from .materialize import ever_launched
-    job = job_of(calc.jobset, stage)
+    job = calc.job(stage)
     if job is None:
         return None
     from ..runrecord import LaunchRecordError
@@ -273,10 +264,88 @@ def launched_stage(calc) -> Optional[str]:
     if calc.jobset is None:
         return None
     for st in calc.task.stages:
-        job = job_of(calc.jobset, st.name)
+        job = calc.job(st.name)
         if job is not None and ever_launched(calc, job):
             return st.name
     return None
+
+
+def launched_without(calc, number: int) -> Optional[Tuple[str, List[str]]]:
+    """``(launched, joined)`` -- a stage of group ``number`` that was
+    launched, and the stages the group holds now that it was launched
+    without -- or ``None``.  A launched group's members are fixed
+    (`job-system.md`, *The task*).  A launch record that does not read
+    raises, as the one door does (`materialize.ever_launched`)."""
+    from ..identity import stage_key
+    from .group import group_members, members_of
+    from .materialize import ever_launched
+    task, jobset = calc.task, calc.jobset
+    held = group_members(task, number)
+    for m in held:
+        job = jobset.job(m) if jobset else None
+        if job is None or not ever_launched(calc, job):
+            continue
+        joined = [h for h in held if not any(
+            stage_key(h) == stage_key(x) for x in members_of(job))]
+        if joined:
+            return m, joined
+    return None
+
+
+def joined_launched(calc, number: int, launched: str,
+                    joined: List[str]) -> str:
+    """The way on for stages put into a launched group: a group of their own,
+    or the group formed anew from the state saved before its first launch."""
+    from .commands import redo_launched
+    said = ", ".join(f"`{h}`" for h in joined)
+    one = len(joined) == 1
+    return (f"group {number} holds {said} beside `{launched}`, which was "
+            f"launched without {'it' if one else 'them'} -- a launched "
+            f"group's members are fixed: give {said} a group of "
+            f"{'its' if one else 'their'} own (Task setup, or task.json), or, "
+            f"to form the group anew, "
+            + redo_launched(launched, calc=calc))
+
+
+def regrouped(calc, stage: str) -> Optional[str]:
+    """Why ``stage``'s prepared job (in ``calc``'s plan) is no longer the
+    description's group -- the members it was prepared with, the group's
+    now, and the prep that forms the job again, every group it needs named
+    (`group.formed_again`) -- or ``None``.  Groups are matched by their
+    members (`engines/stages.md` § 2): the ready door says it, and launch
+    refuses it.  Where a group that prep would name holds a stage beside one
+    launched without it, that is said instead (:func:`joined_launched`)."""
+    from ..identity import stage_key
+    from ..runrecord import LaunchRecordError
+    from .commands import block, prep_group_lines
+    from .group import (formed_again, group_members, members_of, number_of,
+                        same_members)
+    task, jobset, base = calc.task, calc.jobset, calc.base
+    g = number_of(task, stage)
+    job = jobset.job(stage)
+    if g is None or job is None:
+        return None
+    members = group_members(task, g)
+    had = members_of(job)
+    if same_members(had, members):
+        return None
+    others = [m for m in had if stage_key(m) != stage_key(stage)]
+    was = (f"in one job with {', '.join(f'`{m}`' for m in others)}"
+           if others else "as a job of its own")
+    said = (f"`{stage}` was prepared {was}, and its group {g} is "
+            f"{', '.join(f'`{m}`' for m in members)} now -- groups are "
+            f"matched by their members")
+    numbers = formed_again(task, jobset.jobs, [g])
+    for n in numbers:
+        try:
+            hit = launched_without(calc, n)
+        except LaunchRecordError as exc:
+            return str(exc)
+        if hit:
+            return said + "; " + joined_launched(calc, n, *hit)
+    return (said + ", so its prep forms the job again "
+            "(engines/stages.md § 2):\n"
+            + block(prep_group_lines(numbers, base=base)))
 
 
 def first_launch_takes(calc, stage: str, job, *,
@@ -298,9 +367,8 @@ def first_launch_takes(calc, stage: str, job, *,
     its newest run, its job -- is its plan's, the whole plan, never a set
     narrowed to what one launch sends."""
     import dataclasses
-    from .continuation import (Continuation, continuation_answer,
-                               force_constant_stage, read_run,
-                               relax_stage_of)
+    from .continuation import Continuation, continuation_answer, read_run
+    from .ladder import force_constant_stage, relax_stage_of
     from .materialize import continuation_files
     from .errors import PrepError, user_error_as_prep
     from .gather import gather_sources
@@ -436,7 +504,7 @@ def at_launch(calc, stage: str, *, job=None) -> List[dict]:
                  "line": f"at launch: takes {', '.join(fns)} from `{up}`'s "
                          f"newest run, which must have finished"}
                 for up, fns in by.items()]
-    from .continuation import stage_before
+    from .ladder import stage_before
     prev = stage_before(task, stage, calc.template_text)
     if prev is None:
         return []
@@ -455,7 +523,7 @@ def carried_from(calc, job, source: str) -> List[str]:
     (A16): a file conditioned on the pair is said only when both jobs are
     there to agree on it."""
     from .model import warm_carry
-    return warm_carry(job, job_of(calc.jobset, source))
+    return warm_carry(job, calc.job(source))
 
 
 def written_at_takes(cont, files=None) -> dict:
@@ -491,12 +559,13 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
     often than a prep or a launch.  ``calc`` is the calculation as the verb
     opened it (`calculation.open`, A16): its description, template and
     plan, read once."""
-    from .continuation import continuation_answer, force_constant_stage
+    from .continuation import continuation_answer
+    from .ladder import force_constant_stage
     from .materialize import ever_launched
     task, jobset = calc.task, calc.jobset
     from .group import number_of
     group = number_of(task, stage)
-    job = job_of(jobset, stage)
+    job = calc.job(stage)
     if job is not None:
         from .group import members_of
         members = members_of(job)
@@ -512,7 +581,6 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         if launched:
             return Readiness(stage, group, prepared=True, launched=True,
                              job_members=members)
-        from .group import regrouped
         why = regrouped(calc, stage)
         if why:
             return Readiness(stage, group, prepared=True, why=why,
@@ -536,7 +604,6 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
         # PUT INTO A LAUNCHED GROUP it was not launched with: its prep, and
         # its group's launch, are refused -- said here, with the way on.
         from ..runrecord import LaunchRecordError
-        from .group import joined_launched, launched_without
         try:
             hit = launched_without(calc, group)
         except LaunchRecordError as exc:
@@ -575,7 +642,7 @@ def _prepared_by_another(calc, job) -> Optional[str]:
     from .. import __version__
     from ..script_emit import molbuilder_words, written_by
     from ..transport.stages import point_folders
-    from .materialize import job_dir_names
+    from .naming import job_dir_names
     try:
         folder = (Path(calc.base)
                   / job_dir_names(calc.jobset, calc.shape)[job.name])
@@ -619,7 +686,7 @@ def _takes_lines(cont, gather) -> List[str]:
 def ladder(calc, *, verdict: bool = True) -> List[Readiness]:
     """Every stage of the description, in ladder order, with its answer --
     ``calc`` the calculation as the verb opened it (A16)."""
-    from .materialize import ladder_homes
+    from .naming import ladder_homes
     return [readiness(calc, h.name, verdict=verdict)
             for h in ladder_homes(calc.base, calc.task)]
 
@@ -706,7 +773,8 @@ def groups_text(gs: List[GroupAnswer]) -> str:
 
 
 __all__ = ["Readiness", "GroupAnswer", "TaskState", "task_state",
-           "readiness", "job_of", "launched_already", "launched_stage",
+           "readiness", "launched_already", "launched_without",
+           "joined_launched", "regrouped", "launched_stage",
            "first_launch_takes",
            "at_launch", "written_at_takes", "takes_sentence", "ladder", "groups", "prep_offer", "launch_offer",
            "groups_text"]

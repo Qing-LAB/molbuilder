@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import pytest
 
+from molbuilder import calcdirs
 from molbuilder import calculation as C
 from molbuilder import task as T
-from molbuilder import template as TP
+from molbuilder import template_file as TP
 from molbuilder.jobset.model import JobSet
 from support.road import describe_calculation
 
@@ -56,6 +57,6 @@ def test_each_records_door_answers_none_for_a_record_that_is_not_there(
     folder = tmp_path / "bare"
     folder.mkdir()
     assert T.of(folder) is None
-    assert not T.described(folder)
+    assert not calcdirs.described(folder)
     assert JobSet.of(folder) is None
     assert TP.of(folder, "anything") is None

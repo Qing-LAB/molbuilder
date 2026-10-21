@@ -231,7 +231,8 @@ def discover_points_from_jobset(calc, jobset) -> List[BenchPoint]:
     belongs to the stage that was named at the surface.
     """
     from ..paths import Shape
-    from .materialize import job_dir_names, run_dir
+    from .materialize import run_dir
+    from .naming import job_dir_names
     from .model import gpu_request
     bundle = Path(calc.base)
     dirs = job_dir_names(jobset, Shape.named(calc.task.shape))
@@ -270,7 +271,8 @@ def _winner_mechanism(calc, jobset, label: str) -> Dict:
     if job is None:
         return {}
     from ..paths import Shape
-    from .materialize import job_dir_names, run_dir
+    from .materialize import run_dir
+    from .naming import job_dir_names
     from ..runs import run_of
     _c = Path(calc.base) / job_dir_names(
         jobset, Shape.named(calc.task.shape))[label]

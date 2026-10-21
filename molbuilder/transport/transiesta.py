@@ -9,9 +9,6 @@ box) reach into:
 * :func:`_compute_cell_from_extents` and
   :func:`_find_electrode_regions` — reused by `transport/wizard.py`, whose
   `extract_electrode_model` derives the lead `compose.py` hands to prep.
-* :func:`electrode_hs_stem` — the ONE spelling of an electrode run's
-  identity, so the device deck's ``HS`` line and the electrode deck's
-  ``SystemLabel`` cannot disagree.
 * :func:`pole_count` — TranSIESTA's rule for how many poles an equilibrium
   pole ENERGY gives, written once for the settings gate's refusal and the
   count the device deck states beside the energy.
@@ -36,6 +33,7 @@ from .sort import (
     REGION_RIGHT_ELECTRODE,
 )
 from ..parse.engines import siesta_grammar as _G
+from ..identity import electrode_hs_stem
 from ..runfiles import compose
 from ..structure import Structure
 
@@ -76,19 +74,6 @@ LEAD_NAMES = tuple(_BLOCK_NAME[label] for label in ELECTRODE_LABELS)
 #: right, as its ``.AVTRANS`` names them (``L-R``): the one spelling the
 #: record and every reader of a transmission file ask for.
 LEAD_PAIR = "-".join(LEAD_NAMES)
-
-
-def electrode_hs_stem(job_name: str, label: str) -> str:
-    """The ONE spelling of an electrode run's identity — its SystemLabel,
-    and therefore the stem of the ``.TSHS`` the device deck references.
-
-    Two writers need it to agree byte-for-byte: the device deck's
-    ``TS.Elec.<name> HS`` line (below) and `jobset/prep.py`, which names
-    the electrode rung's ``SystemLabel`` with it so SIESTA writes exactly
-    the file the device will ask for (and `stages.stage_inputs` names the
-    ``.TSHS`` a rung consumes).
-    """
-    return f"{job_name}_{label}"
 
 
 def lead_gf_file(job_name: str, volts: float, lead: str) -> str:

@@ -16,20 +16,20 @@ from typing import Any, Dict, Optional, Union
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
-# Canonical home for both ``SCHEMA_VERSION`` (the on-disk version
-# constant) and ``MolstructJsonError`` is the write-side module so
-# read and write surfaces stay in lock-step.
+# ``SCHEMA_VERSION`` (the on-disk version constant) lives in the write-side
+# module, so read and write surfaces stay in lock-step; the pair's refusals
+# are `structure_pair`'s.
 from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
     SCHEMA_VERSION,
     ENVELOPE_KEYS,
     RETIRED_ENVELOPE_KEYS,
-    MolstructJsonError,
     is_geometry_hash,
     is_sidecar,
     normalise_selection_rules,
     structure_fields_via_dataclass,
 )
+from molbuilder.structure_pair import MolstructJsonError
 
 from ._helpers import build_sidecar_result
 

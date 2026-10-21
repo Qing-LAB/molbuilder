@@ -260,10 +260,13 @@ The file format is one half of the contract; the code that reads and writes it
 is the other, and its **dependencies are part of the design rather than an
 accident of imports.**
 
-**`molbuilder/template.py` imports the standard library and one internal
-module** — `persist.check_schema`, which checks the schema string at the top of
-the file. Nothing else. In particular it imports no engine, no web code, no
-filesystem walker and no scheduler.
+**`molbuilder/template.py` imports the standard library and the ground floor
+alone** (L1, floor 1) — `persist.check_schema`, which checks the schema string
+at the top of the file, `identity` and `paths` at its top, and inside the
+functions that need them `electronic_state`, `config.stages`, `kmesh` and the
+package root (its version). It
+imports no engine, no web code, no filesystem walker and no scheduler; the
+template FILE's name and read are `template_file`'s (floor 2).
 
 That is not minimalism for its own sake. It is what lets the same reader run in
 three places that could not otherwise share code: in a browser-facing server
@@ -2364,12 +2367,16 @@ flowchart TD
       CAT["<b>data/catalogue.template.toml</b><br/>every parameter · both engines"]
     end
 
-    subgraph F2["floor 2 · description — names no machine"]
+    subgraph F1T["floor 1 · the catalogue and the template format (template.py) — names no machine"]
       LOAD["template.load_catalogue()"]
       READ["template.read_template(text)<br/><i>→ Template(items)</i>"]
       SEL["template.select(t, engine=, category=, kind=, …)<br/>template.one(t, name, engine=)<br/><b>§ 8.0 — THE ONE READ API</b>"]
       TWV["template.template_with_values(config, engine=, calculation=, sources=)<br/><i>the catalogue, narrowed, with the answers</i>"]
-      TPL["<b>&lt;label&gt;.template.toml</b> + task.json"]
+      CFT["template.config_from_template(text, cls)<br/><i>narrow to the engine, rebuild the config</i>"]
+    end
+
+    subgraph F2["floor 2 · description — names no machine"]
+      TPL["<b>&lt;label&gt;.template.toml</b> + task.json<br/><i>its door: template_file.of · task.of</i>"]
     end
 
     subgraph F1["floor 1 · the machine"]
@@ -2379,7 +2386,6 @@ flowchart TD
     ASK["the run's ask — its run card (task.json's execution)<br/>or prep's flags<br/><i>ranks · threads · GPUs · memory</i>"]
 
     subgraph F3["floor 3 · plan — engine-agnostic"]
-      CFT["template.config_from_template(text, cls)<br/><i>narrow to the engine, rebuild the config</i>"]
       EFF["resolve.effective_config(cfg, overrides, where=)<br/><b>the ⊕ operator — stages.md § 4's one place</b>"]
       RES["resolve.resolve(text, task, cls, allocation=, stage=, sweep=, pins=, environment=)<br/><i>→ ParameterSet</i>"]
       RC["element.render_config()<br/><i>values ⊕ the allocation</i>"]
@@ -2407,11 +2413,11 @@ flowchart TD
 
 | # | call | floor | what it does | why it cannot be folded into its neighbour |
 |---|---|---|---|---|
-| 1 | `load_catalogue()` | 2 | reads the master file | — |
-| 2 | `read_template(text)` | 2 | parses and **refuses** a file that breaks § 3 | parsing is where a hand edit is caught; a reader that guessed would produce a different calculation silently |
-| 3 | `select` / `one` | 2 | the **only** read API (§ 8.0) | every other reader is a caller of these; a second reader is a second answer |
-| 4 | `template_with_values` | 2 | the catalogue → **this calculation's** template | § 4.3: the surface fills in answers to questions the catalogue already asked |
-| 5 | `config_from_template` | 3 | narrows to one engine, rebuilds the config | the deck writer takes an ordinary config, not a template (D4: `prep` **rebuilds and renders**, it never splices) |
+| 1 | `load_catalogue()` | 1 | reads the master file | — |
+| 2 | `read_template(text)` | 1 | parses and **refuses** a file that breaks § 3 | parsing is where a hand edit is caught; a reader that guessed would produce a different calculation silently |
+| 3 | `select` / `one` | 1 | the **only** read API (§ 8.0) | every other reader is a caller of these; a second reader is a second answer |
+| 4 | `template_with_values` | 1 | the catalogue → **this calculation's** template | § 4.3: the surface fills in answers to questions the catalogue already asked |
+| 5 | `config_from_template` | 1 (called at prep, floor 3) | narrows to one engine, rebuilds the config | the deck writer takes an ordinary config, not a template (D4: `prep` **rebuilds and renders**, it never splices) |
 | 6 | `effective_config` | 3 | **⊕** — the template's values plus a mapping of overrides | R1: what comes back is an ordinary config, so the shipped validator and emitter both take it unchanged and nothing downstream learns the word *stage* |
 | 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **allocation ⊇ sweep** holds — a point past the allocation refused (`_check_fits`), never clamped; the bench grid has already left such a cell out by name (`prep_inputs.bench_inputs`); the allocation's fit on the capability is said, never enforced ([`scheduler.md`](?doc=execution/scheduler.md) R6) |
 | 8 | `element.render_config()` | 3 | values **⊕ the allocation** | a deck records what it assumed in BENCH-MARKS; one rendered without a rank count says `mpi_np auto` and is then launched at 32 |

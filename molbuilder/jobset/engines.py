@@ -140,7 +140,7 @@ def pseudo_dir(base: Path, plan=None) -> Path:
     # answer § 1.4a exists to stop.  It reads back
     # as *support* rather than a stage, because the naming authority maps no
     # job to it; that is derived, not stored.
-    from .materialize import open_container
+    from .naming import open_container
     pdir = open_container(base, base / PSEUDO_DIRNAME, plan)
     for stray in plan.glob(base, "*.psml"):
         target = pdir / stray.name

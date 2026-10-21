@@ -245,7 +245,7 @@ def trial_label(label: str, point: str) -> str:
     THE ONE COMPOSER, and every reader asks it: prep's element label
     (`resolve._label_for`), the run door's reading of a trial's folder
     (`runs`), a trial's deck read back for its stage token
-    (`materialize`), and the job a status row reads (`runstatus`).
+    (`jobset.naming`), and the job a status row reads (`runstatus`).
     """
     return f"{label}-{point}"
 

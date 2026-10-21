@@ -161,7 +161,8 @@ def estimate_from(deck_text: str, n_orbitals: int) -> float:
 def _lead_orbitals(base, task) -> Dict[str, Optional[int]]:
     """Each lead's orbital count from its newest run's output (the reading
     pass's ``n_orbitals``), ``None`` where the lead has not run."""
-    from ..jobset.materialize import latest_attempt, stage_home
+    from ..jobset.materialize import latest_attempt
+    from ..jobset.naming import stage_home
     from ..parse import detect
     from ..runs import run_of
     out: Dict[str, Optional[int]] = {}
@@ -190,7 +191,7 @@ class _Unread(Exception):
 def _a_device_deck(base, task, stage_dir: Path) -> Optional[Path]:
     """One prepared device deck -- any point's, the first on disk."""
     from ..transport.stages import point_folders
-    from ..jobset.materialize import stage_home
+    from ..jobset.naming import stage_home
     names = stage_home(base, task, "device").names(task.shape)
     folders = [d for d, _pt in point_folders(base, task, "device")] or [stage_dir]
     for d in folders:
@@ -204,7 +205,7 @@ def _decks_per_voltage(base, task, stage_dir: Path) -> List[Tuple[float, Path]]:
     """One prepared device deck per voltage -- any frame's, the decks being
     the same across frames."""
     from ..transport.stages import point_folders
-    from ..jobset.materialize import stage_home
+    from ..jobset.naming import stage_home
     names = stage_home(base, task, "device").names(task.shape)
     seen: Dict[float, Path] = {}
     pts = point_folders(base, task, "device")

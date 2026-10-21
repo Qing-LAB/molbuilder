@@ -42,10 +42,10 @@ import numpy as np
 # log's reader converts with (`constants` says why there are two).
 try:                                        # inside molbuilder
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from ..pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
+    from .keys import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
+    from keys import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 
 
 # THE VOCABULARY IS `keys` (stdlib, travels with the monitor); this writer
@@ -261,8 +261,8 @@ class MolwatchEmitter:
         exception or Ctrl-C alike.  A process killed outright (SIGKILL, a
         power loss) writes neither, which reads correctly as a run not
         finished: not finished, whether slow or dead, which no file can tell
-        (`model/parse.md` § 2b, P-S1).  The words are the reader's own
-        (`end_lines`).  Installs an excepthook that remembers the exception
+        (`model/parse.md` § 2b, P-S1).  The words are the log's own
+        vocabulary's (`keys`).  Installs an excepthook that remembers the exception
         and hands it to Python's own, and an atexit hook; a failure to
         write never breaks the exit."""
         import atexit

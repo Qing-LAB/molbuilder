@@ -433,8 +433,7 @@ class RunStatus:
         """What the speaking output says the run converged -- ``("geometry",
         ok)`` for a relaxation, else ``("SCF", ok)`` -- or ``None`` when it
         says neither yet: the one scan's answer (:attr:`endings`), which a
-        reader decides on and words where it shows it
-        (`jobset.runstatus.converged_of`)."""
+        reader decides on (:attr:`converged_words` says it)."""
         end = (self.endings or {}).get(self.active_source) \
             if self.active_source else None
         if end is None:
@@ -444,6 +443,14 @@ class RunStatus:
         if end.scf_converged is not None:
             return ("SCF", bool(end.scf_converged))
         return None
+
+    @property
+    def converged_words(self) -> "Optional[str]":
+        """The verdict in the words a row shows it -- ``geometry yes``,
+        ``SCF NO`` -- or ``None`` when the output says neither yet.  For
+        showing; a reader that decides asks :attr:`verdict`."""
+        v = self.verdict
+        return None if v is None else f"{v[0]} " + ("yes" if v[1] else "NO")
 
 
 #: A caller that does not hold the attempt's launch record -- the monitor,

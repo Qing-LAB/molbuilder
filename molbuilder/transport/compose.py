@@ -15,7 +15,7 @@ deck** among them (the fdf that actually ran is the truth about a result;
 user ruling 2026-08-28).
 
 Pure composition: everything here reads the tree and returns objects;
-the caller (prep, `jobset.transport_rung.composed_for_prep`) owns what lands on
+the caller (prep, `jobset.gather.composed_for_prep`) owns what lands on
 disk where.
 """
 from __future__ import annotations
@@ -170,7 +170,7 @@ class CitedRun:
     exit_code: Optional[int] = None
     #: what the run's output says it converged -- ``"geometry yes"`` /
     #: ``"geometry NO"`` -- or ``None`` when it says neither
-    #: (`jobset.runstatus.converged_of`), for showing; and the verdict a
+    #: (`RunStatus.converged_words`), for showing; and the verdict a
     #: reader decides on, ``("geometry", ok)`` (`RunStatus.verdict`).
     converged: Optional[str] = None
     verdict: Optional[Tuple[str, bool]] = None
@@ -264,7 +264,6 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     # WHAT IT CONVERGED, the run door's reading of its output (the same the
     # status verb prints): carried into the provenance and said by the tab,
     # so a geometry that did not converge is cited knowingly.
-    from ..jobset.runstatus import converged_of
     from ..parse.dirs.rundir import run_state_of
     st = run_state_of(cite_dir, run.names, run.run)
     # A RUN THAT RELAXED NO GEOMETRY is not what transport cites (§ 3.1): a
@@ -277,7 +276,7 @@ def _classify_run(cite_dir: Path) -> CitedRun:
             f"so its last geometry is not a relaxed junction.  "
             f"{CITATION_CONDITION}.")
     return CitedRun(path=cite_dir, run=run, concluded=end.line,
-                    exit_code=end.code, converged=converged_of(st),
+                    exit_code=end.code, converged=st.converged_words,
                     verdict=st.verdict)
 
 
@@ -892,7 +891,7 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
     except ValueError as exc:
         # THE CODEC'S REFUSALS are ValueErrors -- a sidecar that does not
         # parse, one whose geometry pin is not the file's, an atom list that
-        # does not read (`sidecars.molstruct.MolstructJsonError` among them).
+        # does not read (`structure_pair.MolstructJsonError` among them).
         raise ComposeError(f"the composed junction, {path.name}, does not "
                            f"read: {exc}") from exc
     return RecordedJunction(

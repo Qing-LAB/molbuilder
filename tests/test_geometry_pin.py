@@ -77,6 +77,7 @@ from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED, RESTORED,
                                               StructureCodec)
 from support.road import (CO2, CO2_HELD_FIRST, co2_in_engine_order,
                           road_structure)
+from molbuilder.structure_pair import GeometryChangedError
 
 _TABLE = tomllib.loads(
     (Path(__file__).parent / "data" / "geometry_pin.toml").read_text())
@@ -211,7 +212,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
         return
 
     if "refused" in case:
-        with pytest.raises(molstruct.GeometryChangedError,
+        with pytest.raises(GeometryChangedError,
                            match=case["refused"].replace(".", r"\.")):
             StructureCodec().load(path)
         return

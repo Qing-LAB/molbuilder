@@ -514,7 +514,7 @@ would be a second home for one fact.
 
 **Everything else is derived, and that is checked rather than asserted.** Given
 `of`, the root holds `task.json` and `job-set.json`, and
-`materialize.job_dir_names` is *the naming authority* — a `{job → directory}`
+`naming.job_dir_names` is *the naming authority* — a `{job → directory}`
 map written by the same code that made the directories. Running the decode over
 a real three-calculation tree (2026-09-19): every stage container resolved to
 its job (`01_raman` → `raman`), every attempt to its job and index
@@ -908,7 +908,7 @@ shape. It creates the folder and every container above it that does not exist
 yet — the stage, a benchmark's `bench/`, a swept rung's `run-<n>/` — stamping
 each (§ 1.4a; invariant 6b); a submission's `launch/` is
 made and stamped a container by the prep or the send that first writes in it
-(`materialize.open_container`), and a device run's `tsgf/` is made with its
+(`naming.open_container`), and a device run's `tsgf/` is made with its
 run and stamped `scratch` (`materialize.open_scratch`). What goes in follows: `bring_files` copies
 in what a run runs from — the stage's deck, scripts and bundles; what a run
 takes from other runs is one hand-over, its files and its record
@@ -2372,7 +2372,7 @@ Before anything has run, reordering is free: numbers are assigned when the
 directories are produced, not when the rows are typed.
 
 **One door reads them, and its rule is this** *(W38 F4, built 2026-10-03 —
-`materialize.stage_home`, `execution/architecture.md` § 3.2)*: a stage that
+`naming.stage_home`, `execution/architecture.md` § 3.2)*: a stage that
 has files keeps the number they carry — its directory in the hierarchy, the
 token on its files in the flat shape (`paths.stages_in`); a stage that has
 none takes its place in the description when no folder holds that number,
@@ -2544,7 +2544,7 @@ module the job works around.
 | where does this stage live? | `Shape.stage_dir` |
 | which stage directories exist? | `stages_in`; a run's files, by its stem in either shape (`runfiles.stem`) |
 | where does a sweep live? | `bench_container`, `bench_containers_in`; a flat container's stage, `flat_bench_token` |
-| where does a trial run? | `trial_name`, `trial_point`; `materialize.trial_dir`, `trial_work_dir` |
+| where does a trial run? | `trial_name`, `trial_point`; `naming.trial_dir`, `materialize.trial_work_dir` |
 | what is a trial's label? | `trial_label` (§ 2.3.2) |
 | which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt`; the run a point's folder lies in, `run_folder_of` |
 
@@ -2554,17 +2554,14 @@ were built under the names above or not at all; a file's whole path is now
 the run door's, `Run.file(role)`.)*
 
 `runfiles` keeps the filename grammar it already owns correctly and is
-imported by `paths`, L1 to L1. `materialize` keeps JobSet-level assembly and
-delegates. `identity.stage_token` stays the one speller of `<NN>_<name>`.
+imported by `paths`, L1 to L1. The JobSet-level names are `jobset/naming.py`'s
+(floor 3), which `materialize` asks as it lays the tree out.
+`identity.stage_token` stays the one speller of `<NN>_<name>`.
 
-#### One import inverts, and it is a two-element tuple
+#### The shapes' names are `paths`'
 
-`Shape` is floor 2 today for a single reason: `from ..task import SHAPES`,
-where `SHAPES = ("flat", "hierarchical")`. That is a vocabulary constant, not
-a dependency of substance, and it is imported from `task` by exactly one
-module — `shape.py` itself. **`SHAPES` moves into `paths`, and `task` imports
-it from there.** With that one line reversed the whole naming-and-layout
-surface is stdlib-only.
+`SHAPES = ("flat", "hierarchical")` lives in `paths`, and `task` imports it
+from there: the whole naming-and-layout surface is stdlib-only.
 
 #### What it must never do
 
@@ -2697,7 +2694,7 @@ and in a remapped pair's sidecar, never a file of its own
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template.template_path` | `template.of` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template_file.template_path` | `template_file.of` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
@@ -2736,7 +2733,7 @@ root, told apart by `<base>`.
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | `runs.Run.report` | record |
 | `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each attempt | none | derived |
 | `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each attempt | none | derived |
-| `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's attempt, a bias point's, a benchmark trial's, and the containers above each -- `materialize.open_container`, a submission's `launch/` and `pseudos/`, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.read` | record |
+| `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's attempt, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/` and `pseudos/`, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.read` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
@@ -3123,7 +3120,7 @@ than no invariant, because it fails a directory that is working correctly.
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory this tree makes below the calculation root carries a
    `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by
-   the one opener (§ 1.6.2) and its two siblings (`materialize.open_container`,
+   the one opener (§ 1.6.2) and its two siblings (`naming.open_container`,
    `materialize.open_scratch`), a benchmark's folders, `launch/` and a device
    run's `tsgf/` (role `scratch`: the engine's scratch of the run above it,
    read alone, no run asked of it — [`engines/transport.md`](?doc=engines/transport.md)

@@ -587,7 +587,7 @@ def init_cmd(structure, bundle: str, shape: str,
     from ..chemistry import species_order
     from ..pyscf.stages import default_pyscf_stages
     from ..siesta.stages import default_siesta_stages
-    from ..task import fresh_stages
+    from .ladder import fresh_stages
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
@@ -686,7 +686,7 @@ def init_cmd(structure, bundle: str, shape: str,
                 calculation, engine,
                 already_relaxed=bool(_box.default if _box else False))
         else:
-            # THE FRESH LADDER'S ONE OWNER (`task.fresh_stages`), or the
+            # THE FRESH LADDER'S ONE OWNER (`ladder.fresh_stages`), or the
             # tiers a --stage-strategy names.
             stages = (tuple(_ladder(stage_strategy)) if stage_strategy
                       else fresh_stages(calculation, engine,
@@ -771,7 +771,7 @@ def status_cmd(stage, bundle: str) -> None:
     because a try is a directory and a launch is a record
     (project-layout.md § 1.5, § 1.6).
     """
-    from ..task import described as _described
+    from ..calcdirs import described as _described
     base = Path(bundle)
     if _described(base):
         # THE DESCRIPTION'S LADDER (job-system.md § 5.3, 2026-10-01): every
@@ -877,7 +877,7 @@ def _described_stage(stage, calc):
     if stage is None:
         return stage
     try:
-        from .materialize import ladder_homes
+        from .naming import ladder_homes
         return resolve_stage_ref(
             [StageRef(h.seq, h.name)
              for h in ladder_homes(calc.base, calc.task)], stage).name
@@ -888,12 +888,11 @@ def _described_stage(stage, calc):
 def _refuse_unprepared(calc, stage) -> None:
     """A stage the description holds and no prep has prepared is refused by
     NAME, with its prep and its launch -- what `status` says of it.
-    Prepared is the one door's answer (`ready.job_of`)."""
+    Prepared is the one door's answer (`Calculation.job`)."""
     from .commands import block, run_first
-    from .ready import job_of
     if stage is None:
         return
-    if job_of(calc.jobset, stage) is None:
+    if calc.job(stage) is None:
         raise click.ClickException(
             f"stage {stage!r} is not prepared yet -- prep it, then launch "
             f"it:\n" + block(run_first(stage, calc=calc)))
@@ -908,7 +907,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
     listed — § 6.5 gives every description a ladder, so there is always a
     stage to name and never a bare form to fall back to."""
     from ..paths import bench_container
-    from .materialize import stage_home
+    from .naming import stage_home
     from ..paths import Shape
     base, task = calc.base, calc.task
     sh = Shape.named(task.shape)
@@ -923,7 +922,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
         # THE STAGES WITH A BENCHMARK TO ACT ON -- a prepared one -- or, with
         # none, the prep that makes one.
         from .commands import command, name_a_stage
-        from .materialize import described_refs
+        from .naming import described_refs
         refs = described_refs(base, task)
         benched = [r for r in refs if JobSet.of(Path(base) / bench_container(
             sh, stage_home(base, task, r.name).token)) is not None]
@@ -1003,7 +1002,7 @@ def _resolve_stage_name(js, stage: str) -> str:
     """The job ``stage`` names, through the ONE resolver (§ 8f) -- the
     question every verb that takes a STAGE asks."""
     from ..identity import resolve_stage_ref
-    from .materialize import stage_refs
+    from .naming import stage_refs
     refs = stage_refs(js)
     try:
         return resolve_stage_ref([refs[j.name] for j in js.jobs], stage).name
@@ -1128,7 +1127,7 @@ def prep_cmd(kind: str, words, groups, bundle: str, from_attempt, env,
     except click.ClickException as e:
         # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 5.0, rule 3): the
         # verb's own, before the entry -- in a described calculation only.
-        from ..task import described as _described
+        from ..calcdirs import described as _described
         if _described(base):
             _ledger(base, "prep", "refused", kind=kind,
                     groups=list(groups) or None, reason=e.format_message())
@@ -1918,7 +1917,7 @@ def submit_cmd(kind: str, words, groups, stages, bundle: str, mode: str,
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
     except click.ClickException as e:
-        from ..task import described as _described
+        from ..calcdirs import described as _described
         if not dry_run and _described(bundle):
             _ledger(bundle, "launch", "refused", reason=e.format_message(),
                     **told)
@@ -2504,7 +2503,7 @@ def migrate_cmd(bundle: str) -> None:
     except MigrateError as exc:
         # A REFUSAL IS WRITTEN DOWN, in a described calculation's own ledger
         # (`architecture.md` § 2.1, floor 7).
-        from ..task import described as _described
+        from ..calcdirs import described as _described
         if _described(bundle):
             _ledger(bundle, "migrate", "refused", reason=str(exc))
         raise click.ClickException(str(exc)) from None

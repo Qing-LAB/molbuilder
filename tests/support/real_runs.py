@@ -75,10 +75,10 @@ class RealRun:
 
     def attempt(self, stage: str, n: int = 0) -> Path:
         """Attempt ``n`` of ``stage`` -- its folder, by molbuilder's own
-        doors (`jobset.materialize.stage_home`, `paths.attempt_dir`): the
+        doors (`jobset.naming.stage_home`, `paths.attempt_dir`): the
         handle every reader of the run takes, asking the run door for the
         rest (`runs.run_of`)."""
-        from molbuilder.jobset.materialize import stage_home
+        from molbuilder.jobset.naming import stage_home
         from molbuilder.paths import attempt_dir
         from molbuilder.runfiles import TASK_FILE
         from molbuilder.task import of as task_of

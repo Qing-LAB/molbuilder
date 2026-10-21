@@ -399,7 +399,8 @@ def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
     (`engines/transport.md` § 2a.11).  ``run`` is where the launch record
     lies; given, that run is read instead of the latest (the device run
     the transmission gathered, § 2a.12)."""
-    from ..jobset.materialize import latest_attempt, stage_home
+    from ..jobset.materialize import latest_attempt
+    from ..jobset.naming import stage_home
     from .stages import Point, frames_of, points_in, rung_points
     if run is None:
         run = latest_attempt(stage_home(base, task, stage).dir)
@@ -437,7 +438,7 @@ def _stage_facts(calc, label: str) -> List[Dict]:
       leads that disagree is a defect nothing else on the Results tab shows.
     * *transmission* -- has its own `points` / `pending` / `failed` blocks.
     """
-    from ..jobset.materialize import ladder_homes
+    from ..jobset.naming import ladder_homes
     from ..jobset.runstatus import jobset_status
     from .stages import STAGE_FACT, TRANSPORT_STAGES, frames_of, rung_points
 
@@ -484,7 +485,7 @@ def _stage_facts(calc, label: str) -> List[Dict]:
             from ..jobset.continuation import point_rows
             from ..runrecord import launch_record
             from .stages import products_of
-            from ..jobset.materialize import stage_home
+            from ..jobset.naming import stage_home
             _names = stage_home(base, task, name).names(task.shape)
             try:
                 points, _ = point_rows(
@@ -697,7 +698,7 @@ def _rung_points(base: Path, task, name: str, token: str,
     each point of a rung that runs per point, its state the run door's
     (`run_status`) and its own answer (:func:`_science`); ``run`` names the
     run to read instead of the latest."""
-    from ..jobset.materialize import stage_home
+    from ..jobset.naming import stage_home
     from ..runs import concluded
     names = stage_home(base, task, name).names(task.shape)
     out: List[Dict] = []
@@ -777,7 +778,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     the refusal -- unless ``partial``: the Results tab's read, where a
     ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
-    from ..jobset.materialize import stage_home
+    from ..jobset.naming import stage_home
     from ..parse.dirs.job import FINAL_STATES
     from ..parse.dirs.record import tbtrans_loop
     from ..parse.engines._run_ending import keep_reading, version_of

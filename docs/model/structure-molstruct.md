@@ -416,7 +416,7 @@ flowchart LR
 | `save(path, …)` | atomic write (temp sibling + `os.replace`) |
 | `load(path)` / `load_text(text)` | read + validate the version → a normalised metadata dict |
 | `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
-| `MolstructJsonError` / `MolstructPairingError` / `GeometryChangedError` | the payload is unreadable / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
+| `MolstructJsonError` / `MolstructPairingError` / `GeometryChangedError` — named once in `structure_pair` (L1, standard library, travelling with the codec and the structure), raised by the codec and, for a deck's block, by the structure | the payload is unreadable / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
 
 Callers do not touch the field list — `Structure`'s two metadata methods are the
 sole namers (`structure.md § 2.2`). The higher-level paired-file door

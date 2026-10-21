@@ -141,7 +141,7 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
 
 
 # THE PROPOSED LADDER RIDES THE HAND-OVER, numbered, made by the server's one
-# rule (`task.fresh_stages`, `jobset.group.numbered_fresh`): a vibration's
+# rule (`ladder.fresh_stages`, `jobset.group.numbered_fresh`): a vibration's
 # own ladder read from the box (`engines/vibration.md` § 2.2, § 5.2a), the
 # ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
 # 2.15.3 the page derived it in JavaScript, a second copy of the rule.

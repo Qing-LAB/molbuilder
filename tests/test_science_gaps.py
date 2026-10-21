@@ -42,7 +42,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.task import of as task_of
     from molbuilder.template import _emit, read_template
-    from molbuilder.template import of as template_of
+    from molbuilder.template_file import of as template_of
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "P" / "structure" / "a.xyz").write_text(

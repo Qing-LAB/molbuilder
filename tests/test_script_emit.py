@@ -12,6 +12,7 @@ import pytest
 from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
 from support.road import CO2, CO2_HELD_FIRST
+from molbuilder.structure_pair import MolstructPairingError
 
 
 # --------------------------------------------------------------------- #
@@ -636,7 +637,6 @@ def test_a_block_written_for_a_different_structure_is_refused():
     fixed. So the reader refuses rather than applying part of it.
     """
     from molbuilder import script_emit as sc
-    from molbuilder.sidecars.molstruct import MolstructPairingError
     from molbuilder.structure import Structure
     s, frozen, FROZEN = _junction_parts()
     blk = _block({"schema_version": 9, "n_atoms_total": s.n_atoms + 3,

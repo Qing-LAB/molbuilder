@@ -145,7 +145,7 @@ def test_the_sequence_runs_every_group_in_turn(road):
     stages = [st for _n, sts in road["groups"] for st in sts]
     assert [rows[s].state for s in stages] == ["finished"] * len(stages), \
         {s: (rows[s].state, rows[s].detail) for s in stages}
-    from molbuilder.jobset.materialize import run_names, stage_home
+    from molbuilder.jobset.naming import run_names, stage_home
     for before, after in zip(stages, stages[1:]):
         home = stage_home(road["whole"], calc.task, after)
         rec = launch_record(home.dir / "run-0",
@@ -162,7 +162,7 @@ def test_each_run_records_the_sequence_it_rode(road):
     Results tab reads (`computation.launch.sequence`)."""
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.group import sequence_names
-    from molbuilder.jobset.materialize import run_names, stage_home
+    from molbuilder.jobset.naming import run_names, stage_home
     from molbuilder.runrecord import launch_record
     calc = open_calculation(road["whole"])
     numbers = [n for n, _ in road["groups"]]

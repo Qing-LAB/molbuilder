@@ -13,6 +13,7 @@ if TYPE_CHECKING:                      # annotations only
 
 from typing import Dict, List
 
+from ..config.stages import VIBRATION_FREQ_STAGE, VIBRATION_RELAX_STAGE
 from ..jobset.model import WarmFile
 
 
@@ -47,7 +48,7 @@ def warm_for(label: str, eff,
     of the pair.
     """
     from ..identity import continues
-    from ..warmfiles import warm_declaration
+    from ..jobset.model import warm_declaration
     if not continues(eff):
         return []
     return warm_declaration("pyscf", label, calculation, base_dir)
@@ -105,16 +106,6 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
 #: (`engines/vibration.md` § 2.1): PySCF for the analytic Hessian and the
 #: strengths, SIESTA for the force-constant run.
 VIBRATION_ENGINES = ("pyscf", "siesta")
-
-#: The vibration ladder's two stage names (`engines/vibration.md` § 2.2,
-#: § 5.2a): the measurement, and the relaxation SIESTA runs before it when
-#: the person has not stated the structure is relaxed.  Spelled here and
-#: read everywhere else -- which deck a stage renders is asked of ``relax``
-#: alone (:func:`vibration_render_kind`), ``freq`` is the name the proposed
-#: ladder gives its force-constant stage, and the Task setup tab proposes
-#: both by the same words.
-VIBRATION_FREQ_STAGE = "freq"
-VIBRATION_RELAX_STAGE = "relax"
 
 
 def vibration_stages(engine: str, *, already_relaxed: bool) -> List["Stage"]:

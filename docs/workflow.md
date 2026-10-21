@@ -225,7 +225,7 @@ That is what stops two parts of the system disagreeing about what a file means.
 flowchart LR
     subgraph READ["reading"]
       A["<code>template.load_catalogue()</code><br/><i>the master list</i>"]
-      O["<code>calculation.open(base)</code><br/><i>the calculation, read once per verb:<br/>task.of · template.of · JobSet.of</i>"]
+      O["<code>calculation.open(base)</code><br/><i>the calculation, read once per verb:<br/>task.of · template_file.of · JobSet.of</i>"]
       B["<code>template.read_template(text)</code><br/><i>one calculation's answers</i>"]
       C["<code>task.of(base)</code><br/><i>the steps</i>"]
     end

@@ -7,6 +7,7 @@ import pytest
 
 from molbuilder import cell as cellmod
 from molbuilder.structure import Structure
+from molbuilder.structure_pair import MolstructJsonError
 
 
 def _two_slabs(struct, element, plane, size, *, gap=8.0, **kw):
@@ -142,7 +143,7 @@ class TestSidecarRoundTrip:
 
     def test_invalid_axis_kind_rejected_at_build(self):
         from molbuilder.sidecars import molstruct as ms
-        with pytest.raises(ms.MolstructJsonError, match="axis_kind"):
+        with pytest.raises(MolstructJsonError, match="axis_kind"):
             ms.to_dict({"axis_kind": ["periodic", "nope", "isolated"]},
                        n_atoms_total=1, geometry_hash="a" * 64)
 

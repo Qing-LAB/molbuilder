@@ -478,8 +478,12 @@ def _refuse_unnumbered(where: Path, names: "_rf.RunNames") -> None:
     old = [f.name for f in unnumbered_files(where, names)]
     if old:
         # A LAYER BELOW `jobset` says the command by its one spelling
-        # there (`identity.migrate_as_typed`).
-        from .identity import migrate_as_typed
+        # there (`identity.migrate_as_typed`) -- beside a job too, where
+        # `identity` travels with the monitor.
+        try:                                # inside molbuilder
+            from .identity import migrate_as_typed
+        except ImportError:                 # beside a job, in mb_monitor.pyz
+            from identity import migrate_as_typed
         raise LaunchRecordError(
             f"{', '.join(old)}: a flat stage's run files carry their run's "
             f"number (`<stem>-run<N>`), and these carry none -- which run "

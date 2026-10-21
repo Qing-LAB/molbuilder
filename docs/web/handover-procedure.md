@@ -227,7 +227,7 @@ The three prerequisites named here landed with the spectra migration
    is stated relaxed; on PySCF the relaxation is the deck's own Phase 0.
    **The hand-over carries that ladder, numbered** (`proposed_stages`, each
    entry as `task.json` states a stage), made by the server's one rule —
-   `task.fresh_stages`, which `jobset init` asks too, through
+   `jobset.ladder.fresh_stages`, which `jobset init` asks too, through
    `jobset.group.numbered_fresh` — and Task setup shows it as what will be
    written, deriving nothing *(until 2.15.3 the page re-derived it in
    JavaScript, a second copy of the rule)*. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the page copies it into `varies` and seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).

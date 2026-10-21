@@ -27,7 +27,8 @@ from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef, stage_key
 from ..paths import attempts_in
-from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, stage_refs)
+from .materialize import latest_attempt, run_dir
+from .naming import job_dir_names, run_names, stage_refs
 from ..runrecord import LaunchRecordError, launch_record
 from .commands import (block, command, launch_lines, launch_pending,
                        prep_group_lines)
@@ -64,7 +65,7 @@ class StageStatus:
     """One stage's status (read-only snapshot).
 
     **WHICH stage this is arrives as a whole :class:`~molbuilder.identity.
-    StageRef`, not as a loose name and a loose number.** Carrying the ref means the resolver in ``materialize`` is the only
+    StageRef`, not as a loose name and a loose number.** Carrying the ref means the resolver in ``naming`` is the only
     place one is ever made.
     """
     ref:        StageRef
@@ -322,7 +323,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                 "dir": str(folder.relative_to(root)),
                 "state": got.state,
                 "detail": got.detail,
-                "converged": converged_of(got),
+                "converged": got.converged_words,
                 # ROOT-RELATIVE: the file the row opens -- the run's own, or
                 # the root's task.json for a transmission point.
                 "opens": opens_rel,
@@ -330,15 +331,6 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                 "validation": _rel(report),
             })
     return rows
-
-
-def converged_of(st) -> Optional[str]:
-    """The converged column's words -- ``geometry yes``, ``SCF NO`` -- for
-    the run's verdict (`RunStatus.verdict`), or ``None`` when its output
-    says neither yet.  For showing; a reader that decides asks the
-    verdict."""
-    v = st.verdict
-    return None if v is None else f"{v[0]} " + ("yes" if v[1] else "NO")
 
 
 def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
@@ -400,7 +392,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
                 refs, shape) -> StageStatus:
     """One prepared job's status, read from where its attempts are."""
     d = base / dirs[job.name]
-    # WHICH FILES are this stage's: its stage's names (`materialize.
+    # WHICH FILES are this stage's: its stage's names (`naming.
     # run_names`) -- in either shape a flat folder holds every stage, an
     # attempt may hold several run indexes.  THE LABEL IS THIS JOB'S, NOT
     # THE JOBSET'S: a trial is relabelled with its point.
@@ -429,7 +421,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         # a record that does not read is the state `unreadable`, said.
         from ..runs import concluded
         st = concluded(observed, names, base=base)
-        state, detail, converged = st.state, st.detail, converged_of(st)
+        state, detail, converged = st.state, st.detail, st.converged_words
         launch = (None if state == "unreadable"
                   else launch_record(observed, names))
     if state == "pending":
@@ -528,7 +520,7 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
     if task is not None:
         # ONE KEY for a stage's name, in any case (`JobSet.job`): a stage
         # renamed in case only keeps its prepared job.
-        from .materialize import ladder_homes
+        from .naming import ladder_homes
         from .ready import task_state
         # THE READY DOOR'S ANSWERS, read once -- NO VERDICT: status names the
         # run, not its relaxation, and the table is read far more often than

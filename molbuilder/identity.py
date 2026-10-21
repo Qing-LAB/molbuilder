@@ -291,14 +291,20 @@ def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
             f"molbuilder checkpoint restore{p}")
 
 
-def migrate_as_typed(folder) -> str:
+def migrate_as_typed(folder=None) -> str:
     """The command that rewrites what an older molbuilder wrote in the
     calculation at ``folder`` (`jobset migrate`), the calculation named by
     its full path, which ``--bundle`` reads inside the projects tree -- the
     spelling a layer below the command composer says (the machine record's
-    refusal of an older copy, `scheduler.record.UnknownTarget`)."""
+    refusal of an older copy, `scheduler.record.UnknownTarget`; a
+    description written before a rule, `task.of`).  ``folder`` ``None`` is a
+    description read from its text, with no folder yet: the command is
+    typed in the calculation's folder."""
     import shlex
-    return f"molbuilder jobset migrate --bundle {shlex.quote(str(folder))}"
+    from pathlib import Path
+    return ("molbuilder jobset migrate"
+            + ("" if folder is None
+               else f" --bundle {shlex.quote(str(Path(folder).resolve()))}"))
 
 
 #: The state a LAUNCHED stage goes back to (`job-system.md`, *How the
@@ -422,8 +428,8 @@ class StageRef:
         Decision 28's first arm, made callable: *"before a produce it comes
         from the ladder's full list"*. The ordinal is the stage's place in
         that list counted from 1 (a stage removed after its prep keeps its
-        number on disk: `materialize.stage_home`'s rule, stated once). The after-produce arm — reading ``seq`` back off
-        the decks — is `jobset/materialize.py::stage_refs`, and A4 allows
+        number on disk: `naming.stage_home`'s rule, stated once). The after-produce arm — reading ``seq`` back off
+        the decks — is `jobset/naming.py::stage_refs`, and A4 allows
         exactly those two: the owner and the class's own method.
         """
         return tuple(cls(i, n) for i, n in enumerate(names, start=1))
@@ -615,11 +621,50 @@ def _cap_for(stage_names: Sequence[str]) -> int:
     """The cap, derived against a real ladder where one is known.  A rung
     that lengthens the label before its stage token -- a transport lead's
     ``_L-electrode`` -- is budgeted by the caller's ``label_tail``
-    (`normalise_id`), since this module imports no engine."""
+    (`normalise_id`; a lead's is :func:`lead_tail_bytes`)."""
     if not stage_names:
         return MAX_LABEL_BYTES
     longest = max(len(n) for n in stage_names)
     return _NAME_LIMIT - (len("_") + longest) - len(_LONGEST_EXTENSION)
+
+
+#: The regions a transport lead rung is cut on -- its stage name to its
+#: region label (`engines/transport.md` § 6.1).
+_LEAD_REGION_OF = {"electrode_L": "L-electrode", "electrode_R": "R-electrode"}
+
+
+def electrode_hs_stem(job_name: str, label: str) -> str:
+    """The ONE spelling of an electrode run's identity -- its SystemLabel,
+    and therefore the stem of the ``.TSHS`` the device deck references.
+
+    Two writers need it to agree byte-for-byte: the device deck's
+    ``TS.Elec.<name> HS`` line (`transport.transiesta`) and the electrode
+    rung's ``SystemLabel`` (:func:`rung_label`), so SIESTA writes exactly
+    the file the device will ask for (and `transport.stages.stage_inputs`
+    names the ``.TSHS`` a rung consumes).
+    """
+    return f"{job_name}_{label}"
+
+
+def rung_label(task_label: str, stage: Optional[str]) -> str:
+    """THE LABEL A RUNG'S FILES ARE NAMED ON (`job-contracts.md` § 2.1, rule
+    2): the calculation's own for every rung but a lead's, whose files --
+    the engine's ``.TSHS``, ``.DM``, ``.XV`` and ours alike -- are on the
+    lead's own stem, its ``SystemLabel`` (:func:`electrode_hs_stem`), which
+    the device deck's ``TS.Elec.<name> HS`` line names.  Asked by the
+    element's label (`resolve._label_for`), the job's names
+    (`jobset.naming.run_names`) and the run door's reading of a folder
+    (`runs._position`), so no reader composes a lead's name a second way.
+    ``stage`` is the rung's name; ``None`` -- no ladder -- is the label."""
+    region = _LEAD_REGION_OF.get(stage or "")
+    return electrode_hs_stem(task_label, region) if region else task_label
+
+
+def lead_tail_bytes() -> int:
+    """How much longer a lead's stem is than the calculation's label -- what
+    the label cap budgets for a transport calculation (:func:`_cap_for`)."""
+    return max(len(electrode_hs_stem("", r).encode("utf-8"))
+               for r in _LEAD_REGION_OF.values())
 
 
 def run_id(label: str, formula: str = "", *,
@@ -670,7 +715,8 @@ __all__ = ["LAUNCHED_WAY_BACK", "LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES",
            "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
-           "deck_launch", "is_ours", "launch_as_typed", "normalise_id",
+           "deck_launch", "electrode_hs_stem", "is_ours", "launch_as_typed",
+           "lead_tail_bytes", "normalise_id", "rung_label",
            "render_stage_choices",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",
            "stage_token", "way_back_words"]

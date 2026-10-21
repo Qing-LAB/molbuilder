@@ -975,8 +975,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`jobset init` and the Transport tab's describe "
                     "door (`describe.write_description`); the hand-over, "
                     "which the browser writes; `jobset migrate` -- each "
-                    "naming it with `template.template_path`",
-             door="template.of"),
+                    "naming it with `template_file.template_path`",
+             door="template_file.of"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).
     #
@@ -1416,7 +1416,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the code that makes the folder: prep and launch "
                     "(`materialize.open_run` -- a stage's attempt, a bias "
                     "point's, a benchmark trial's, and the containers above "
-                    "each -- `materialize.open_container`, a "
+                    "each -- `naming.open_container`, a "
                     "submission's `launch/` and `pseudos/`, and "
                     "`materialize.open_scratch`, a device run's `tsgf/`)",
              door="calcdirs.read"),
@@ -2075,7 +2075,7 @@ def fixed(level: Optional[str] = None,
 #: THE STRUCTURE PAIR A PERSON SAVES, in a storage topic -- `structure/` holds
 #: files, not calculations (`project-layout.md` § 2.6) -- so no row of the
 #: catalogue names it: its stem is the person's.  What the Results file card
-#: says of each half, read by :func:`saved_pair_row` (`web/results.md` § 3b).
+#: says of each half, read by `runs.saved_pair_row` (`web/results.md` § 3b).
 SAVED_PAIR_WRITER = ("Save on the Molbuilder tab, or Export on the Results "
                      "tab (`StructureCodec.write`)")
 SAVED_PAIR_WHAT = {
@@ -2085,24 +2085,6 @@ SAVED_PAIR_WHAT = {
     "sidecar": ("the sidecar of the structure beside it -- its cell, its "
                 "region labels and its recorded metadata"),
 }
-
-
-def saved_pair_row(path) -> Optional["tuple[str, str]"]:
-    """``(what, writer)`` for one half of a saved structure pair -- a
-    structure file with its sidecar beside it, or that sidecar with its
-    structure -- or ``None``.  The pairing is the codec's
-    (`sidecars.molstruct.sidecar_path_for`); a structure it opens is `.xyz`
-    or `.pdb`."""
-    from .sidecars.molstruct import (GEOMETRY_SUFFIXES, geometry_for,
-                                     is_sidecar, sidecar_path_for)
-    p = Path(path)
-    if is_sidecar(p):
-        if geometry_for(p) is not None:
-            return SAVED_PAIR_WHAT["sidecar"], SAVED_PAIR_WRITER
-        return None
-    if p.suffix in GEOMETRY_SUFFIXES and sidecar_path_for(p).is_file():
-        return SAVED_PAIR_WHAT["structure"], SAVED_PAIR_WRITER
-    return None
 
 
 def row_for(path, label: Optional[str] = None) -> Optional[Artifact]:

@@ -581,7 +581,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         # is this stage's fact, said in place of the box's describe-time
         # advice and of the input's own record (`sidecar.
         # _ladder_relaxation_findings`).
-        from ..pyscf.stages import VIBRATION_RELAX_STAGE
+        from ..config.stages import VIBRATION_RELAX_STAGE
         from .sidecar import check_relaxation_record
         issues.extend(check_relaxation_record(
             design if design is not None else struct, engine="siesta",

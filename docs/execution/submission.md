@@ -106,15 +106,14 @@ another queue is another benchmark (the user, 2026-10-17).
 
 ## 3. The three things, and where they live
 
-`jobset/ask.py` — and the CLI and the browser call the same three. *Two
-surfaces asking one question two ways is how they come to disagree about what
-was asked.*
+The CLI and the browser call the same three. *Two surfaces asking one question
+two ways is how they come to disagree about what was asked.*
 
 | | |
 |---|---|
-| `queue_table` | the queues the target's record lists, their machines, and the job's fit on each — shown in prep's refusal of a run that names none |
-| `gpu_share_notes` | what a run's GPU request means — its ranks over its GPUs — said at its prep |
-| `confirm` | the one interface — approve, or don't; for a run here, also approve the other way, in the foreground or in the background (`Said.other`, `job-system.md` § 6.0) |
+| `placement.queue_table` | the queues the target's record lists, their machines, and the job's fit on each — shown in prep's refusal of a run that names none; placement's, floor 3, which places the job on them |
+| `ask.gpu_share_notes` | what a run's GPU request means — its ranks over its GPUs — said at its prep |
+| `ask.confirm` | the one interface — approve, or don't; for a run here, also approve the other way, in the foreground or in the background (`Said.other`, `job-system.md` § 6.0) |
 
 *The one output is the launch entry's **plan** — the exact `sbatch` command
 of every submission and the header it sends, made once and then sent as it

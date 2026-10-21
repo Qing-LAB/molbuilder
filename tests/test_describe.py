@@ -326,7 +326,8 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path,
         "the bare name must resolve against the tree and the pseudo "
         "must travel with the calculation")
     # ...and the template says whose the folder is (`template.md` § 6.6).
-    from molbuilder.template import of as template_of, one
+    from molbuilder.template import one
+    from molbuilder.template_file import of as template_of
     calc = tree / "P" / "optimization" / "calc"
     written = read_template(template_of(
         calc, task_of(calc).label).text)
@@ -347,7 +348,7 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.template import catalogue, recommended_for, select
-    from molbuilder.template import of as template_of
+    from molbuilder.template_file import of as template_of
 
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)

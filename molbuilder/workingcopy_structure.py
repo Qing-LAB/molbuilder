@@ -49,9 +49,11 @@ from typing import List, NamedTuple, Sequence, Tuple
 try:                                        # inside molbuilder
     from .structure import REMAPPED_NOT_EDITED, Structure
     from .sidecars import molstruct
+    from .structure_pair import GeometryChangedError
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from structure import REMAPPED_NOT_EDITED, Structure
     import molstruct
+    from structure_pair import GeometryChangedError
 
 
 class StructurePair(NamedTuple):
@@ -179,7 +181,7 @@ class StructureCodec:
         names them in ``opened`` to open it instead, said in ``said_out``:
         THE PIN COMPARED (``structure-molstruct.md`` § 3) -- a sidecar whose
         geometry hash is not the file's, its atoms or cell changed after the
-        pair was written, :class:`molstruct.GeometryChangedError`,
+        pair was written, :class:`structure_pair.GeometryChangedError`,
         :data:`GEOMETRY_CHANGED` (a sidecar written before v13 states no
         hash, and its pair opens unchecked); and AN ENGINE'S OWN FILE OF A
         RUN WHOSE ORDER NOTHING STATES -- its deck written before the order
@@ -236,7 +238,7 @@ class StructureCodec:
             if pinned is not None and pinned != molstruct.geometry_hash(
                     text, fmt, payload["cell"], payload["axis_kind"]):
                 if GEOMETRY_CHANGED not in opened:
-                    raise molstruct.GeometryChangedError(
+                    raise GeometryChangedError(
                         geometry_changed_said(src.name))
                 said_out.append(read_notice(GEOMETRY_CHANGED,
                                             geometry_changed_said(src.name)))

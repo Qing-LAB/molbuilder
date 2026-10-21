@@ -10,8 +10,8 @@ with), the PySCF parser's sibling-log enrichment, and the cheap ending scan
 **Stdlib only, and travels** (`configuration.md`'s rule for the monitor's
 modules): it goes beside every job (`runwrap.MONITOR_COMPANIONS`), so the
 monitor reads a PySCF run's progress with the lines the Results tab reads it
-with, and what it imports of ours -- the physical constants, the PySCF end
-lines -- travels with it and is imported two ways.
+with, and what it imports of ours -- the physical constants, the log's own
+vocabulary (`trajectory_log.keys`) -- travels with it and is imported two ways.
 """
 from __future__ import annotations
 
@@ -20,10 +20,11 @@ from typing import Any, Dict, List, Optional
 
 try:                                        # inside molbuilder
     from ...constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from ...pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
+    from ...trajectory_log.keys import (FOOTER_CONCLUDED, FOOTER_ERROR,
+                                        FOOTER_RELAXED)
 except ImportError:                         # beside a job, in mb_monitor.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
+    from keys import FOOTER_CONCLUDED, FOOTER_ERROR, FOOTER_RELAXED
 
 # ---- The header ---------------------------------------------------------------
 HEADER = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
@@ -61,7 +62,7 @@ SCF_HISTORY_END = "scf_history end"
 PREVIEW_KIND = "initial_preview"
 
 # ---- The footer -----------------------------------------------------------------
-#: Rendered from the writer's own spelling (`pyscf/end_lines`).
+#: Rendered from the log's own vocabulary (`trajectory_log.keys`).
 ERROR = re.compile("^" + re.escape(FOOTER_ERROR) + r"\s*(.+)$", re.IGNORECASE)
 CONCLUDED = re.compile("^" + re.escape(FOOTER_CONCLUDED) + r"\s*(.+)$",
                        re.IGNORECASE)

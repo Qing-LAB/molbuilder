@@ -1186,7 +1186,7 @@ class Structure:
 
         ONE guard, and it is not about versions: a block whose
         ``n_atoms_total`` disagrees with this structure raises
-        ``sidecars.molstruct.MolstructPairingError`` -- labels are indexed
+        ``structure_pair.MolstructPairingError`` -- labels are indexed
         by atom position, so a block written for another structure would
         label the wrong atoms and say nothing.  The same error type as the
         sidecar's identical guard: one name for one condition.
@@ -1198,9 +1198,9 @@ class Structure:
         deck's named values are then the structure's rows and the first
         frame's, the steps after it carrying none."""
         try:                                        # inside molbuilder
-            from .sidecars.molstruct import MolstructPairingError
+            from .structure_pair import MolstructPairingError
         except ImportError:                         # beside a job, in a bundle
-            from molstruct import MolstructPairingError
+            from structure_pair import MolstructPairingError
         stated = payload.get("n_atoms_total")
         if stated is not None and self.n_atoms and stated != self.n_atoms:
             raise MolstructPairingError(

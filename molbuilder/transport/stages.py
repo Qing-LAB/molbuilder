@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
+from ..identity import rung_label
 from ..paths import KIND_ROLES
 from ..parse.engines import siesta_grammar as _G
 
@@ -244,7 +245,7 @@ def point_folders(base, task, stage: str, *, frames: Optional[int] = None
     (`engines/transport.md` § 2a.11).  ``frames`` is the cited set's count
     when the caller holds the junction (prep, before its record is on
     disk); else the record's (:func:`frames_of`)."""
-    from ..jobset.materialize import stage_home
+    from ..jobset.naming import stage_home
     stage_dir = stage_home(base, task, stage).dir
     n = frames if frames is not None else frames_of(base)
     return [(stage_dir / pt.rel, pt)
@@ -259,40 +260,14 @@ def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
             for pt in rung_points(task, stage, frames=frames_of(base))]
 
 
-#: The regions a lead rung is cut on -- its stage name to its region label.
-_LEAD_REGION_OF = {"electrode_L": "L-electrode", "electrode_R": "R-electrode"}
-
-
-def rung_label(task_label: str, stage: Optional[str]) -> str:
-    """THE LABEL A RUNG'S FILES ARE NAMED ON (`job-contracts.md` § 2.1, rule
-    2): the calculation's own for every rung but a lead's, whose files --
-    the engine's ``.TSHS``, ``.DM``, ``.XV`` and ours alike -- are on the
-    lead's own stem, its ``SystemLabel`` (`transiesta.electrode_hs_stem`),
-    which the device deck's ``TS.Elec.<name> HS`` line names.  Asked by the
-    element's label (`resolve._label_for`), the job's names
-    (`materialize.run_names`) and the run door's reading of a folder
-    (`runs._position`), so no reader composes a lead's name a second way.
-    ``stage`` is the rung's name; ``None`` -- no ladder -- is the label."""
-    from .transiesta import electrode_hs_stem
-    region = _LEAD_REGION_OF.get(stage or "")
-    return electrode_hs_stem(task_label, region) if region else task_label
-
-
-def lead_tail_bytes() -> int:
-    """How much longer a lead's stem is than the calculation's label -- what
-    the label cap budgets for a transport calculation (`identity._cap_for`)."""
-    from .transiesta import electrode_hs_stem
-    return max(len(electrode_hs_stem("", r).encode("utf-8"))
-               for r in _LEAD_REGION_OF.values())
-
-
 def stage_inputs(stage: str, task_label: str):
     """The ladder's DAG (§ 1, § 6.1), as data: ``[(upstream stage, filename)]`` this
     stage CONSUMES from the concluded attempts of the stages before it.
 
     The filenames are derived from the SystemLabel rules the renderers
     already fixed — the seed and device share the task's label, each
-    electrode's label IS its ``.TSHS`` stem (`rung_label`, one spelling) —
+    electrode's label IS its ``.TSHS`` stem (`identity.rung_label`, one
+    spelling) —
     so producer and consumer cannot disagree about a name.
 
     The seed's density starts the device's SCF (user, 2026-10-12: every
@@ -386,7 +361,7 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     """
     if stage not in ("seed", "device"):
         return []
-    from ..warmfiles import warm_declaration
+    from ..jobset.model import warm_declaration
     return warm_declaration("siesta", task_label, "transport", base_dir)
 
 

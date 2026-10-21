@@ -78,7 +78,8 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     if template:
         from molbuilder.config.pyscf import PySCFConfig
         from molbuilder.template import (config_from_template,
-                                         template_path, template_with_values)
+                                         template_with_values)
+        from molbuilder.template_file import template_path
         path = template_path(bundle, "H2")
         cfg = dataclasses.replace(
             config_from_template(path.read_text(), PySCFConfig), **template)

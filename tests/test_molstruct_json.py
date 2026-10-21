@@ -22,6 +22,7 @@ import pytest
 
 from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
+from molbuilder.structure_pair import MolstructJsonError
 
 #: A geometry hash's FORM -- what the sidecar's builder and reader check.
 #: Whether one matches its file is the read door's question
@@ -147,7 +148,7 @@ class TestToDict:
         it would surface as a constraint on a nonexistent atom -- the same class of
         staleness the geometry hash exists for (`structure-molstruct.md` § 3).
         """
-        with pytest.raises(msj.MolstructJsonError, match="out of range"):
+        with pytest.raises(MolstructJsonError, match="out of range"):
             msj.to_dict(
                 {"regions": {"L-electrode": [5]}},
                 n_atoms_total=3, geometry_hash=_HASH,
@@ -172,7 +173,7 @@ class TestToDict:
         nameless row in the filter panel, and rides into the script's ATOM-METADATA
         block (`job-contracts.md` § 3.4) as a region nothing can refer to.
         """
-        with pytest.raises(msj.MolstructJsonError, match="non-empty"):
+        with pytest.raises(MolstructJsonError, match="non-empty"):
             msj.to_dict(
                 {"regions": {"": [0]}},
                 n_atoms_total=3, geometry_hash=_HASH,
@@ -187,7 +188,7 @@ class TestToDict:
         pin would refuse every load instead of catching a real edit -- and a pin that
         fires always gets switched off.
         """
-        with pytest.raises(msj.MolstructJsonError, match="non-negative"):
+        with pytest.raises(MolstructJsonError, match="non-negative"):
             msj.to_dict(n_atoms_total=-1, geometry_hash=_HASH)
 
     def test_bad_hash_raises(self):
@@ -199,7 +200,7 @@ class TestToDict:
         caught; written through, it would be compared later and never match, turning
         the staleness check into an unconditional refusal.
         """
-        with pytest.raises(msj.MolstructJsonError, match="hex string"):
+        with pytest.raises(MolstructJsonError, match="hex string"):
             msj.to_dict(n_atoms_total=3, geometry_hash="short")
 
 
@@ -407,7 +408,7 @@ class TestLoadErrors:
         names the file, which is what tells a person WHICH pair is broken when a
         project holds dozens.
         """
-        with pytest.raises(msj.MolstructJsonError, match="failed to read"):
+        with pytest.raises(MolstructJsonError, match="failed to read"):
             msj.load(tmp_path / "missing.molstruct.json")
 
     def test_invalid_json(self, tmp_path):
@@ -421,7 +422,7 @@ class TestLoadErrors:
         """
         p = tmp_path / "bad.molstruct.json"
         p.write_text("{not json,,,")
-        with pytest.raises(msj.MolstructJsonError, match="not valid JSON"):
+        with pytest.raises(MolstructJsonError, match="not valid JSON"):
             msj.load(p)
 
     def test_top_level_must_be_object(self, tmp_path):
@@ -434,7 +435,7 @@ class TestLoadErrors:
         """
         p = tmp_path / "bad.molstruct.json"
         p.write_text('[1, 2, 3]')
-        with pytest.raises(msj.MolstructJsonError, match="must be an object"):
+        with pytest.raises(MolstructJsonError, match="must be an object"):
             msj.load(p)
 
 
@@ -454,7 +455,7 @@ class TestLoadErrors:
             "n_frames_total": 1,
             # geometry_hash missing
         }))
-        with pytest.raises(msj.MolstructJsonError, match="geometry_hash"):
+        with pytest.raises(MolstructJsonError, match="geometry_hash"):
             msj.load(p)
 
     def test_load_propagates_error_with_path(self, tmp_path):
@@ -473,7 +474,7 @@ class TestLoadErrors:
             "structure_hash": "b" * 32,
             "regions": {"L": [99]},  # out-of-range
         }))
-        with pytest.raises(msj.MolstructJsonError) as exc:
+        with pytest.raises(MolstructJsonError) as exc:
             msj.load(p)
         # Path AND the underlying invariant should both appear:
         assert str(p) in str(exc.value)
@@ -524,7 +525,7 @@ class TestApplyToStructure:
         """
         s = self._struct(n=3)
         data = msj.to_dict(n_atoms_total=4, geometry_hash=_HASH)
-        with pytest.raises(msj.MolstructJsonError, match="no longer point"):
+        with pytest.raises(MolstructJsonError, match="no longer point"):
             msj.apply_to_structure(s, data)
 
     def test_empty_sidecar_is_a_clean_reset(self, tmp_path):
@@ -573,7 +574,7 @@ class TestSchemaVersioning:
         p = tmp_path / "old.molstruct.json"
         p.write_text(_json.dumps(payload))
         # The set is `READABLE_VERSIONS`' to state; the message names it.
-        with pytest.raises(msj.MolstructJsonError, match=re.escape(
+        with pytest.raises(MolstructJsonError, match=re.escape(
                 f"reads versions {sorted(msj.READABLE_VERSIONS)} only")):
             msj.load(p)
 
@@ -651,7 +652,7 @@ class TestSelectionRules:
         labels are the ones in `regions`.
         """
         from molbuilder.selection import All, to_json as rule_to_json
-        with pytest.raises(msj.MolstructJsonError, match="doesn't match"):
+        with pytest.raises(MolstructJsonError, match="doesn't match"):
             msj.to_dict(
                 {"regions": {"L-electrode": [0]}},
                 n_atoms_total=6,
@@ -671,7 +672,7 @@ class TestSelectionRules:
         and raises when a generator later tries to re-evaluate it, far from the edit
         that caused it. `structure-molstruct.md` § 4.
         """
-        with pytest.raises(msj.MolstructJsonError, match="invalid rule"):
+        with pytest.raises(MolstructJsonError, match="invalid rule"):
             msj.to_dict(
                 {"regions": {"L-electrode": [0]}},
                 n_atoms_total=6,
@@ -834,7 +835,7 @@ class TestInfoBlock:
         `.tmp` from the atomic-replace path. Refusing in `to_dict` means nothing has
         touched the disk yet.
         """
-        with pytest.raises(msj.MolstructJsonError, match="JSON"):
+        with pytest.raises(MolstructJsonError, match="JSON"):
             msj.to_dict({"regions": {}}, n_atoms_total=1,
                         geometry_hash=_HASH,
                         info={"bad": object()})
@@ -868,7 +869,6 @@ class TestAnUnknownKeyIsRefused:
         """
         import json
         import numpy as np
-        from molbuilder.sidecars.molstruct import MolstructJsonError
         from molbuilder.structure import Structure
         from molbuilder.workingcopy_structure import StructureCodec
 

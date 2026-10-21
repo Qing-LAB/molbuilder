@@ -9,8 +9,6 @@ explained afterwards because nothing was invented.
 
 Everything that lives here, and it lives nowhere else:
 
-    queue_table      the queues the target's record lists, their machines,
-                     and the job's fit on each
     gpu_share_notes  what a GPU-sharing request means, stated once
     confirm          the one interface — approve, change, or skip
 
@@ -20,7 +18,7 @@ Everything that lives here, and it lives nowhere else:
     user states it, or prep refuses (`architecture.md` § 5.2).
 
 `scheduler.fit` is the one reading of "how does this fit": placement prints
-it, and `queue_table` renders it per queue (`scheduler.md` R6).
+it, and renders it per queue (`placement.queue_table`, `scheduler.md` R6).
 
 The command line asks through these.
 """
@@ -28,15 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
-
-if TYPE_CHECKING:
-    from ..scheduler.fit import Request
-
-# The two quantities a job asks for -- a wall and an amount of memory -- and
-# every dialect each is written in, live in `scheduler/quantities.py`:
-# a codec on a basic unit is L1; this module is L2 (`docs/design.md`).
-from ..scheduler.quantities import human_wall, mem_range
+from typing import List, Optional, Sequence, Tuple
 
 #: MPS's own hard ceiling -- more than this many processes cannot even
 #: ATTACH to one device (`engines/tuning.md` § 2.12, citing
@@ -48,89 +38,6 @@ MPS_MAX_CLIENTS_PER_DEVICE = 48
 #: § 2.12) -- a MEASURED literature figure: both feed
 #: `gpu_share_notes`, which INFORMS and never decides.
 GPU_TUNED_RANKS_PER_DEVICE = 4
-
-
-def queue_table(rows: Sequence, request: "Request") -> str:
-    """**Every queue the target's record lists, its machines, and this job's
-    fit on each** (`scheduler.md` R4, R6).
-
-    The framework does not choose (user, 2026-08-23: *"just don't guess
-    shit"*).  It shows what exists and how the job sits on each, and the
-    person names one -- prep shows this when a run names none
-    (`placement.launch_refusal`).  Which queue to spend a day of wall-clock
-    in is a judgement about priority, contention and what else is running --
-    none of which is on the target's record, and all of which the person
-    has.
-
-    **Each queue is up to three kinds of line**::
-
-        1  htc   htc/public   4h   48-128   501-1511.2 GB   a100 x4, h100 x8, …
-             - 128 cores  x137 node(s)  503.2-1511.2 GB  a30, h200   <- the
-             - 48 cores  x69 node(s)  501-503.5 GB  a100, l40          machines,
-           64 cores · 900 GB fits 3 of 212 nodes of htc (1%): …     when several
-                                                                     <- the fit
-
-    The cores and memory columns are the **ranges** across the queue's
-    machines (`Domain.core_range`, `Domain.mem_range`), one number when
-    every machine is the same.
-    """
-    from ..scheduler.fit import domain_ceiling_s, fit
-    head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
-            f"{'cores':>8} {'memory':>14}  gpu")
-    lines = ["the target's record lists:", head]
-    for i, d in enumerate(rows, 1):
-        wall = human_wall(domain_ceiling_s(d))
-        dev = ", ".join(x.type + (f" x{x.per_node}" if x.per_node else "")
-                        for x in d.devices) or "-"
-        lines.append(
-            f"  {i:<2} {d.name:<12} {d.partition + '/' + (d.qos or '-'):<22} "
-            f"{wall:>9} {d.core_range:>8} {d.mem_range:>14}  {dev}")
-        for shape in _machine_lines(d):
-            lines.append(f"       {shape}")
-        lines.append(f"     {fit(d, request).line}")
-    return "\n".join(lines)
-
-
-def _machine_lines(row) -> List[str]:
-    """The machines a domain holds, **one line per SIZE**.
-
-    **A partition is a queue, not a machine type.**  Sol's ``htc`` is 48-,
-    64-, 96- and 128-core nodes under one name.  The ``cores`` column above
-    summarises them as a range; these lines are the machines themselves.
-
-    **Grouped by size, and that is not cosmetic.**  `sinfo` reports one row
-    per *gres group*, and on Sol `htc` has FOURTEEN -- nine of them 48-core
-    rows differing only in which card they carry.  Sizes are what a person
-    picking a machine is choosing between; the cards available AT each size
-    ride along, because that is the pairing no single figure could state:
-    on ``htc`` you can have 128 cores or you can have an A100, never both.
-
-    Nothing is printed for a domain that holds ONE size: the ``cores``
-    column already said it.
-    """
-    shapes = getattr(row, "node_types", None) or []
-    by_size: Dict[int, Dict[str, Any]] = {}
-    for t in shapes:
-        c = t.get("cores")
-        if not c:
-            continue
-        g = by_size.setdefault(int(c), {"nodes": 0, "dev": set(), "mem": []})
-        g["nodes"] += int(t.get("nodes") or 0)
-        g["dev"].update((t.get("gpu") or {}).keys())
-        if t.get("mem_gb"):
-            g["mem"].append(float(t["mem_gb"]))
-    if len(by_size) < 2:
-        return []
-    out = []
-    for c in sorted(by_size, reverse=True):
-        g = by_size[c]
-        bits = [f"{c:>4} cores", f"x{g['nodes']} node(s)"]
-        if g["mem"]:
-            bits.append(mem_range(g["mem"]))
-        if g["dev"]:
-            bits.append(", ".join(sorted(g["dev"])))
-        out.append("- " + "  ".join(bits))
-    return out
 
 
 def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,

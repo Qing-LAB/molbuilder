@@ -84,6 +84,21 @@ def targets_said(convergence_targets) -> "list":
     return out
 
 
+#: The progress log's FOOTER, which a PySCF deck's exit hook appends to its
+#: `.molwatch.log` (`pyscf/input.py`) and `molwatch_grammar` reads: the error
+#: line when the run raised, then the concluded line.  Declared here, in the
+#: log's vocabulary, so the writer and the reader share one spelling.
+FOOTER_ERROR = "# error:"
+FOOTER_CONCLUDED = "# concluded:"
+#: ``# relaxed: yes|no`` -- whether the relaxation converged, written by the
+#: deck when its relaxation returns (`MolwatchEmitter.relaxed`), read by the
+#: progress log's ending (`_run_ending._molwatch_ending`) so a PySCF
+#: relaxation's *geometry yes / NO* is stated like SIESTA's
+#: (`web/results.md` § 2.4; 2026-10-18).
+FOOTER_RELAXED = "# relaxed:"
+
+
 __all__ = ["MAX_FORCE_TOL", "RMS_FORCE_TOL", "MAX_DISPL", "RMS_DISPL",
            "ENERGY_STEP_TOL", "MAX_SCF_ITER", "MAX_GEOM_ITER",
-           "LEAF_ROWS", "LEAF_KEYS", "targets_of", "targets_said"]
+           "LEAF_ROWS", "LEAF_KEYS", "targets_of", "targets_said",
+           "FOOTER_ERROR", "FOOTER_CONCLUDED", "FOOTER_RELAXED"]

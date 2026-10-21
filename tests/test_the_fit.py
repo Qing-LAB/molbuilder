@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.ask import queue_table
+from molbuilder.jobset.placement import queue_table
 from molbuilder.scheduler import Domain, Request, fit, parse_mem_gb
 from molbuilder.scheduler.place import Unplaceable, place
 

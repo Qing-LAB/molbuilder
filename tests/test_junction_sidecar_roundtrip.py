@@ -35,6 +35,7 @@ import pytest
 from molbuilder.sidecars import molstruct
 from molbuilder.structure import Structure
 from molbuilder.workingcopy_structure import StructureCodec
+from molbuilder.structure_pair import MolstructJsonError
 
 
 # --------------------------------------------------------------------- #
@@ -232,7 +233,7 @@ def test_a_sidecar_from_an_older_schema_is_refused_not_half_read(
     payload["frozen_atoms"] = payload["regions"].pop("frozen_atoms")   # v3 shape
     side.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(molstruct.MolstructJsonError, match="schema_version"):
+    with pytest.raises(MolstructJsonError, match="schema_version"):
         StructureCodec().read(target)
 
 
@@ -252,6 +253,6 @@ def test_a_key_this_version_does_not_read_is_refused_rather_than_dropped(
     payload["something_the_writer_believed_in"] = [1, 2, 3]
     side.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(molstruct.MolstructJsonError,
+    with pytest.raises(MolstructJsonError,
                        match="something_the_writer_believed_in"):
         StructureCodec().read(target)

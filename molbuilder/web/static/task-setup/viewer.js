@@ -3435,7 +3435,7 @@ function proposedFromHandover(over, shape) {
     const run = (over && over.run) || {};
     // THE KIND rides the hand-over, every kind, as task.json states it --
     // and so does THE PROPOSED LADDER, numbered, made by the server's one
-    // rule (`task.fresh_stages`, `jobset.group.numbered_fresh`; `engines/
+    // rule (`jobset.ladder.fresh_stages`, `jobset.group.numbered_fresh`; `engines/
     // vibration.md` § 2.2, § 5.2a; `engines/stages.md` § 6.5).  The page
     // shows it and derives nothing.
     const kind = over.calculation;

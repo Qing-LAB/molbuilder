@@ -818,7 +818,7 @@ def test_the_verb_renders_the_trial_decks_it_promises(calc):
     js = json.loads(
         (calc / "01_coarse" / "bench" / "job-set.json").read_text())
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
-    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.naming import job_dir_names
     from molbuilder.jobset.model import JobSet
     from molbuilder.paths import Shape
     _dirs = job_dir_names(JobSet.from_dict(js), Shape.named(open_calculation(calc).task.shape))
@@ -1023,7 +1023,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tree):
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
     # trial decks carry the rung's token like any other stage's trials
     for j in js["jobs"]:
-        from molbuilder.jobset.materialize import job_dir_names as _jdn
+        from molbuilder.jobset.naming import job_dir_names as _jdn
         from molbuilder.jobset.model import JobSet as _JS
         from molbuilder.paths import Shape as _Shape
         _dmap = _jdn(_JS.from_dict(js),

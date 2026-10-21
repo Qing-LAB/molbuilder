@@ -225,7 +225,7 @@ def test_cli_prep_is_described_only(tree):
 def test_stage_refs_reads_the_seq_off_the_deck_not_the_row():
     """The after-produce half: seq comes from each deck's token, so a disabled
     stage leaves 01/03 rather than being renumbered to the rows 0/1."""
-    from molbuilder.jobset.materialize import stage_refs
+    from molbuilder.jobset.naming import stage_refs
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     refs = stage_refs(js)
     assert (refs["coarse"].seq, refs["tight"].seq) == (1, 3)
@@ -235,7 +235,7 @@ def test_stage_refs_reads_the_seq_off_the_deck_not_the_row():
 def test_stage_refs_carries_the_jobs_name_not_the_tokens():
     """The CLI resolves to a name and then looks the JOB up by it, so a ref must
     never hand back a string this JobSet does not have."""
-    from molbuilder.jobset.materialize import stage_refs
+    from molbuilder.jobset.naming import stage_refs
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="ladder",
                 jobs=[Job(name="tight", script="JOB_03_renamed.fdf")])
@@ -456,7 +456,7 @@ def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
     """Depth 1.  This is what makes a flat `job-set.json` safe to emit: without
     it the bundle's own prep would build `01_coarse/`, `02_medium/` inside a
     calculation whose description says flat."""
-    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.naming import job_dir_names
     from molbuilder.paths import Shape
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
 
@@ -489,7 +489,7 @@ def test_the_surfaces_read_the_shape_from_the_description(tmp_path):
     is what a mutation found: a shape read as a constant left every test
     green.  The shape is the description's (`Shape.named(task.shape)`, A16).
     """
-    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.naming import job_dir_names
     from molbuilder.paths import Shape
     from molbuilder.task import of as task_of
 

@@ -6,7 +6,7 @@ its plan (``job-set.json``) once a prep wrote one.  Every verb that works on
 a calculation opens it HERE, once, and passes the object down -- prep, launch,
 status, summarize, the readiness doors, the Task setup tab's routes.  Each
 record is read by its owner's door, which takes the folder (`task.of`,
-`template.of`, `JobSet.of`); nothing here forms a path.  A plan with no
+`template_file.of`, `JobSet.of`); nothing here forms a path.  A plan with no
 description beside it is no calculation of molbuilder's: the verbs refuse
 it, and `launch`'s refusal says a hand-built sweep is launched and read by
 hand.
@@ -24,10 +24,10 @@ from pathlib import Path
 from typing import Optional
 
 from . import task as _task
-from . import template as _template
+from . import template_file as _template_file
 from .jobset.model import JobSet
 from .task import Task
-from .template import TemplateFile
+from .template_file import TemplateFile
 
 
 class NotACalculation(ValueError):
@@ -62,6 +62,13 @@ class Calculation:
         asked, never inferred from what is on disk."""
         from .paths import Shape
         return Shape.named(self.task.shape)
+
+    def job(self, stage: str):
+        """The job ``stage`` is prepared as -- its row in the plan
+        (`JobSet.job`, matched as every reader matches a stage's name), or
+        ``None``, as it is with no plan.  PREPARED is that row
+        (`job-system.md` § 5.0): the one door every reader asks."""
+        return self.jobset.job(stage) if self.jobset is not None else None
 
     def with_plan(self, jobset: Optional[JobSet]) -> "Calculation":
         """The same calculation with ``jobset`` as its plan -- what a prep
@@ -99,7 +106,7 @@ def _open(base) -> Optional[Calculation]:
     task = _task.of(base)
     if task is None:
         return None
-    template = _template.of(base, task.label)
+    template = _template_file.of(base, task.label)
     if template is None:
         return None
     return Calculation(base=base, task=task, template=template,
@@ -117,7 +124,7 @@ def refusal(base) -> str:
         return (f"{base} is a folder of the calculation at {root}; the "
                 f"verbs work on the calculation -- name that folder (the "
                 f"command line's `--bundle`).")
-    if _task.described(base):
+    if calcdirs.described(base):
         return (f"{base} holds {_task.FILENAME} but no template beside it "
                 f"-- a described calculation is the two together "
                 f"(project-layout.md § 2.1); run `molbuilder jobset init` "

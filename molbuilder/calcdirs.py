@@ -16,7 +16,7 @@ a container, and a hand-made folder with one ``.fdf`` in it is a run.
 
 **Two fields, and each earns its place** (§ 1.4a).  Everything else a reader
 might want — which stage, which attempt index, whether a container is a stage or
-support — is DERIVED from ``of`` through `jobset.materialize.job_dir_names`, the
+support — is DERIVED from ``of`` through `jobset.naming.job_dir_names`, the
 naming authority that wrote those directory names.  Measured over a real
 three-calculation tree before this module was written: every stage container
 resolved to its job, every attempt to its job and index, both shapes' roots
@@ -110,6 +110,23 @@ def read(directory) -> Optional[Placement]:
     return Placement(role=role, of=of)
 
 
+def description_path(directory) -> Path:
+    """``<directory>/task.json`` -- THE ONE PLACE the description's name, the
+    catalogue's (`runfiles.TASK_FILE`), is joined to a folder: the ground
+    floor's, so *is this a calculation's folder* is answered here
+    (:func:`described`) without reading the description; its writer and
+    `jobset migrate` reach it through its owner (`task.path_of`)."""
+    from .runfiles import TASK_FILE
+    return Path(directory) / TASK_FILE
+
+
+def described(directory) -> bool:
+    """Does ``directory`` hold a calculation's description -- is it a
+    calculation's root (`project-layout.md` § 1.4a, invariant 2)?  The
+    description is not read: its file is there or it is not."""
+    return description_path(directory).is_file()
+
+
 def root_of(directory) -> Optional[Path]:
     """The calculation root this directory belongs to, or ``None``.
 
@@ -126,8 +143,6 @@ def root_of(directory) -> Optional[Path]:
     attempt's calculation is not here* is the honest reading, where a search
     would have adopted whatever it found.
     """
-    from .task import described
-
     directory = Path(directory)
     if described(directory):
         return directory

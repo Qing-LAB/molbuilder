@@ -107,7 +107,7 @@ def _menu():
 
 
 def _table():
-    from molbuilder.jobset.ask import queue_table
+    from molbuilder.jobset.placement import queue_table
     return queue_table(_menu(), Request(ranks=64, walltime_s=4 * 3600,
                                         mem_gb=128))
 

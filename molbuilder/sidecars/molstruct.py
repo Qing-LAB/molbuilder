@@ -18,7 +18,7 @@ Public surface here
 * :data:`SCHEMA_VERSION`            — current on-disk schema.  The number
   lives ONLY on the constant below.
 * :exc:`MolstructJsonError`         — raised on malformed input or
-  invariant violations.  Canonical home; the read-side re-imports.
+  invariant violations; named in `structure_pair`, the pair's refusals.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct
   .json`` derivation.
 * :func:`geometry_hash`             — the pin: a geometry's atom lines and
@@ -186,42 +186,12 @@ SUFFIX = ".molstruct.json"
 GEOMETRY_SUFFIXES = (".xyz", ".pdb")
 
 
-class MolstructJsonError(ValueError):
-    """Sidecar JSON is malformed, refers to a different structure, or
-    fails an invariant check.  Distinct exception type so callers can
-    differentiate "user-error sidecar" from "I/O failure"."""
-
-
-class MolstructPairingError(MolstructJsonError):
-    """THIS METADATA IS NOT FOR THIS STRUCTURE -- the one condition above
-    that no surface may answer leniently.
-
-    `structure-molstruct.md` § 3: the atom and frame count, checked here on
-    apply, answers *does this metadata describe these atoms?* -- and the
-    answer is binary, because the metadata is
-    indexed by atom position and a near-miss mis-assigns every label after
-    the first inserted atom.  So § 2 says a mismatch "is refused, never
-    mis-applied", and `apply_to_structure` is documented as never partially
-    applying one.
-
-    Separate TYPE, not a separate message, because the surfaces above differ
-    on everything else.  A block whose *form* this build cannot read (a
-    pre-v7 run's top-level `frozen_atoms`) is a version fact: the in-script
-    block's surface answers it by loading without the labels and saying why,
-    since refusing there would leave a finished run unopenable and so
-    unfixable.  A block for a *different structure* is not a version fact and
-    gets no such leniency anywhere.
-    """
-
-
-class GeometryChangedError(MolstructJsonError):
-    """THESE ATOMS, AT OTHER COORDINATES: the sidecar's geometry hash is not
-    the file's -- its atom lines or the cell changed after the pair was
-    written, so its labels and cell may sit on the wrong atoms
-    (`structure-molstruct.md` § 3).  Not a :class:`MolstructPairingError`:
-    the labels still apply, atom for atom, so a door that only shows the
-    structure opens it, saying so, and the person saves it anew; every door
-    that builds something from it refuses."""
+# THE PAIR'S REFUSALS are the saved pair's own (`structure_pair`, L1), so the
+# structure raises the same pairing refusal for a deck's block.
+try:                                        # inside molbuilder
+    from ..structure_pair import MolstructJsonError, MolstructPairingError
+except ImportError:                         # beside a job, in a bundle
+    from structure_pair import MolstructJsonError, MolstructPairingError
 
 
 # --------------------------------------------------------------------- #
@@ -806,7 +776,7 @@ def load(sidecar_path, *, retired_out=None, stated_out=None):
     have a single ``molbuilder.sidecars.molstruct`` namespace that
     carries the full sidecar surface (read + write).  Local import
     avoids a module-load-time cycle: parse.sidecars.molstruct
-    imports MolstructJsonError + SCHEMA_VERSION from THIS module.
+    imports SCHEMA_VERSION from THIS module.
     ``retired_out`` is the reader's (a retired key that carried a value), and
     ``stated_out`` (every metadata field the file states, a null one among
     them).
@@ -832,9 +802,6 @@ __all__ = [
     "READABLE_VERSIONS",
     "frozen_atoms",
     "dumps",
-    "MolstructJsonError",
-    "MolstructPairingError",
-    "GeometryChangedError",
     "geometry_hash",
     "is_geometry_hash",
     "GEOMETRY_SUFFIXES",

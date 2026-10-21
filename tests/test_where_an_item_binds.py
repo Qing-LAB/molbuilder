@@ -88,7 +88,8 @@ def _transport(*, execution=None, on=None, rung_execution=None):
 def _template_beside(dest, engine, calculation, cfg):
     """The template the hand-over leaves beside the description, which the
     save reads for the checks that compare RESOLVED rungs."""
-    from molbuilder.template import template_path, template_with_values
+    from molbuilder.template import template_with_values
+    from molbuilder.template_file import template_path
     template_path(dest, "x").write_text(template_with_values(
         cfg, engine=engine, calculation=calculation), encoding="utf-8")
 
@@ -223,7 +224,8 @@ def test_the_templates_gpu_is_taken_by_the_rungs_that_read_it(
     from molbuilder.jobset.prep_inputs import run_inputs
     from molbuilder.resolve import resolve
     from molbuilder.task import FILENAME, of as task_of
-    from molbuilder.template import template_path, template_with_values
+    from molbuilder.template import template_with_values
+    from molbuilder.template_file import template_path
     d = isolated_projects_root / "J" / "transport" / "t"
     d.mkdir(parents=True)
     text = template_with_values(

@@ -589,7 +589,7 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
 
 def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
         web_client, described):
-    """`template.of` refuses a folder with two templates -- a leftover the
+    """`template_file.of` refuses a folder with two templates -- a leftover the
     person removes -- and the entry says so on both doors: a 400 with the
     sentence, and the terminal's `Error:`, never a 500 or a traceback."""
     calc = Path(described)

@@ -13,10 +13,20 @@ from typing import Dict, Tuple
 #: `*_STAGE_PRESETS` to build the shipped ladder.
 #: THE TIERS' NAMES, engine-neutral (`engines/stages.md` § 2: a stage name is
 #: the ladder's, not an engine's) -- read by both engines' ladders, by the
-#: fresh one-stage start (`task.fresh_stages`) and by the Task setup page's
+#: fresh one-stage start (`ladder.fresh_stages`) and by the Task setup page's
 #: presets door.  It lived in `config/siesta.py` as `SIESTA_STAGE_NAMES`
 #: until 2026-10-18, and PySCF's ladder imported it from there.
 STAGE_NAMES = {1: "coarse", 2: "medium", 3: "tight"}
+
+#: The vibration ladder's two stage names (`engines/vibration.md` § 2.2,
+#: § 5.2a): the measurement, and the relaxation SIESTA runs before it when
+#: the person has not stated the structure is relaxed.  Spelled here and
+#: read everywhere else -- which deck a stage renders is asked of ``relax``
+#: alone (`pyscf.stages.vibration_render_kind`), ``freq`` is the name the
+#: proposed ladder gives its force-constant stage, and the Task setup tab
+#: proposes both by the same words.
+VIBRATION_FREQ_STAGE = "freq"
+VIBRATION_RELAX_STAGE = "relax"
 
 STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
@@ -24,5 +34,6 @@ STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "vib-quality": (True,  True,  True),    # all three (TIGHT for vib/IR/NEB)
 }
 
-__all__ = ["STAGE_STRATEGY_PRESETS"]
+__all__ = ["STAGE_NAMES", "STAGE_STRATEGY_PRESETS", "VIBRATION_FREQ_STAGE",
+           "VIBRATION_RELAX_STAGE"]
 

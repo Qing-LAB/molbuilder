@@ -346,7 +346,8 @@ one answer, and every door below asks the same code. A consumer that scans for
 The marker strings live with their format: SIESTA's in the family's grammar
 (`siesta_grammar`, § 5d.5); the PySCF decks' end lines in `pyscf/end_lines.py`,
 which both decks print from (§ 5.5); the progress log's footer is read through
-`molwatch_grammar`. `parse/engines/_run_ending.py` imports them and owns the
+`molwatch_grammar`, its lines the log's own vocabulary (`trajectory_log.keys`),
+which the log's writer writes from. `parse/engines/_run_ending.py` imports them and owns the
 dispatch; its answer is one frozen record:
 
 | field | holds |
@@ -1058,7 +1059,7 @@ file is read by its own reader and § 5.1 picks the speaker.
 
 **A format molbuilder GENERATES does not get a sniffed reader.** Its end line
 is a string we print, so the **emitter's package declares the constant and the
-reader imports it** — the `ROLE_GEOM_TRAJ` pattern (`parse/dirs/rundir.py`).
+reader imports it** — the `ROLE_GEOM_TRAJ` pattern (`runfiles.ROLE_GEOM_TRAJ`, read by `parse/engines/pyscf.py`).
 The PySCF decks' two end lines are `pyscf/end_lines.py`'s: both decks print
 them, `_run_ending` imports them, and the module is stdlib so it travels with
 the monitor (§ 4a). The progress log's footer is read through

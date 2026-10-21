@@ -8,9 +8,9 @@ applied to a line.
 
 **Stdlib only, and nothing of ours**: this module travels beside every job
 (`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3), so the
-monitor reads how a PySCF run ended with the reader the Results tab uses --
-and beside every PySCF script (`runwrap.PYSCF_COMPANIONS`), whose
-progress-log writer writes the footer words from it.
+monitor reads how a PySCF run ended with the reader the Results tab uses.
+The progress log's footer lines are the log's own vocabulary
+(`trajectory_log.keys`).
 """
 
 #: The relaxation deck's (`pyscf/input.py`).  Reached only on the success
@@ -22,17 +22,3 @@ END_MARKER = "Job complete in"
 #: The spectrum deck's (`pyscf/vibration_emitters.py`), which does not print
 #: the relaxation deck's line.
 SPECTRUM_END_MARKER = "Total wall time:"
-
-
-#: The progress log's FOOTER, which a PySCF deck's exit hook appends to its
-#: `.molwatch.log` (`pyscf/input.py`) and `molwatch_grammar` reads: the error
-#: line when the run raised, then the concluded line.  Declared here, beside
-#: the decks' end lines, so the writer and the reader share one spelling.
-FOOTER_ERROR = "# error:"
-FOOTER_CONCLUDED = "# concluded:"
-#: ``# relaxed: yes|no`` -- whether the relaxation converged, written by the
-#: deck when its relaxation returns (`MolwatchEmitter.relaxed`), read by the
-#: progress log's ending (`_run_ending._molwatch_ending`) so a PySCF
-#: relaxation's *geometry yes / NO* is stated like SIESTA's
-#: (`web/results.md` § 2.4; 2026-10-18).
-FOOTER_RELAXED = "# relaxed:"

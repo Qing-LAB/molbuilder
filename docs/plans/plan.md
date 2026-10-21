@@ -74,7 +74,8 @@ download, § 1v), 2.25.1–2.25.2 (the transport review's two rounds), 2.26.0
 (a sequence of groups launched as one job, `job-system.md` § 6.0) — each a
 changelog row — and N3c, the wall and the *written as the job ended* warning
 written into the documents word for word (no move), and 2.26.1 (N3d: the
-e2e batch's older failures owned, three errors of ours among them).
+e2e batch's older failures owned, three errors of ours among them), and 2.26.2
+(N4: every fact on its floor, but the two record readers L1T-D1 holds).
 
 **On Sol, the user's:** `git pull` to 2.24.1, then `jobset prep task --group
 3` and `jobset launch task --group 3 --mode submit` on
@@ -94,10 +95,11 @@ TBtrans rank, from TBtrans's own `[memory]` lines and the monitor's peak
 (12.31 GB on 16 ranks) — 64 ranks ≈ 50 GB; its wall, from the local run's
 progress lines (≈ 150 h on 16 ranks of a 2016 Xeon), ≈ 37 h at most on 64.
 
-**What runs next** is § 0a's queue, *NOW*: the layers (§ 1t), what is computed vs how it runs (§ 1s), the
+**What runs next** is § 0a's queue, *NOW*: the layers' two open choices
+(§ 1t, L1T-D1/D2, the user's), what is computed vs how it runs (§ 1s), the
 memory suggestion (§ 1u) — then § 0a's steps 2–6.
 
-**Decisions that wait on the user** — SEQ-ALLOC, WAE, GKN, RL15, V1.9's
+**Decisions that wait on the user** — L1T-D1, L1T-D2 (§ 1t), SEQ-ALLOC, WAE, GKN, RL15, V1.9's
 remainder, F11's go, SCHED-R's advance signal (§ 0a). The question this
 handover carried — whether the run-setting keywords count in the same-input
 comparison — is answered by § 1s item 3 (they do not), built with § 1s.
@@ -241,6 +243,36 @@ shall we give this with a context?")*:
 
 **When**: N4 — each fact moved to its floor, both layer documents
 corrected, done when the scan reports none (§ 0a's queue, *NOW*).
+
+**Built in 2.26.2** (the changelog's row): every fact in the table on its
+floor — the names below the plan in `jobset/naming.py`, the ladder's rule in
+`jobset/ladder.py` (with the fresh ladder), launched-or-not asked from floor 4
+up (`ready.launched_without`, `regrouped`; `gather.composed_for_prep`), the
+way back and migrate sentences in `identity`, `Calculation.job` for
+`ready.job_of`, the catalogue as floor 1 (`template`) and the template file's
+door on 2 (`template_file`), `queue_table` in placement, the converged words
+`RunStatus.converged_words`, `WrapperError` in `jobset.errors`, `Calculation`
+on floor 3 (decision 3); and the L1 imports the scan found beside them —
+`warm_declaration` in `jobset.model` (so `warmfiles` is floor 1), the log's
+footer lines in `trajectory_log.keys`, the pair's refusals in
+`structure_pair`, `runs.saved_pair_row`, the lead stems in `identity`.
+**Decision 2, its first step**: `calcdirs.described` reads the description's
+file by its name, so the ground floor no longer asks `task`.  **Open, the
+user's** (§ 0a, *Decisions*): **L1T-D1** — the two readers decision 1 moves
+to their record's floor need a registration point the Results tab can rely
+on (nothing imports `jobset.model` at the web app's start): the surfaces
+register both at start, or the two stay in `parse` with their one
+in-function import, stated as the rule's exception; until then the scan
+reports exactly those two -- and the Results folder door's own join of
+`job-set.json` to a folder (`runs._container_product`, A16; found by the
+2.26.2 review) waits with them, since the floor-2 door has no floor-3 door
+to ask; and so do the transport record's and the displacement sweep's
+readers (`parse/sidecars/transport.py`, `fc_sweep.py`), which reach floors
+3--6 through modules no floor names.  **L1T-D2** — decision 2's whole answer, *where
+am I* with its context (the stage, run, point or benchmark a folder belongs
+to, read from the markers and the path), as `calcdirs.where`, `runs.place_of`
+built on it, and the sidebar, the Results tab and the checkpoint panel
+asking it — its own step.
 
 ## 1u. The memory a run needs — a suggestion beside the request *(2026-10-20; the user's yes: "yes, put it in the plan, but prioritize among all remaining issues" — N6 in § 0a's queue)*
 
@@ -405,7 +437,7 @@ below says.
 | **N3b** | **shipped 2.26.0** | **A sequence of groups — one job launching each group in turn** (`job-system.md` § 6.0, *A sequence of groups*): `prep task --group … --one-job` writes its one header (one queue, the largest request, the walls summed); `launch task --group A --group B …` sends one job whose walk runs each group's own launch on the job's node, each run recording the job it rides (`run.json`'s `sequence`); the job's address lists its groups; `status`, the Results tab and `jobs status` say a group *goes in job N*; the file catalogue's `{group}.launch.json` | the user, 2026-10-20: *"how about we allow submission of multiple groups in sequence for one job? … so the lower level logic stays the same"*; *"yes, write the contract, make sure parser, and jobset design are both correctly updated with framework and api level design/implmentation, result should understand this new structure"* |
 | **N3c** | **done 2026-10-21** — docs, no move | **The engine's wall and a file written as the job ended — is it documented?** Check that the work giving the engine its wall (SIESTA's `MaxWalltime` from the job's wall less its slack, `MB_WALL_S`, `running-a-job.md` § 3.6) and the check of a dependent file's write time against the engine's stop time — the warning that a file may have been cut off mid-write, a task or job stopped during its last write (the *written as the job ended* warning, `submit`'s `warned`) — are stated EXPLICITLY in the contract, the documents and the README: that they exist, their mechanism, and the exact message a person sees; a gap found is written in, a mismatch with the code reported. **Found and written in:** § 3.6 quoted none of the lines a person sees of the wall, gave the warning's scope as a stage launched again only (it is every launch that continues from a run's files, and the flat layout's files read in place), said it showed on "both doors" (it is the launch's two lines and the ledger; `status` and the browser do not compare), and quoted it with a dash the code does not print; now § 3.6 has every line word for word, the scope, the end it compares with (the closing record, to the whole second) and a run with none, and `siesta.md` § 8.9, `pyscf.md` § 3.9, `run-reports.md` § 2.1b, `job-system.md` § 5.4, the documents index and the README say it. No mismatch in the code; one question, WAE below | the user, 2026-10-20: *"there was a work on adding -wall time to engine, and correctly check the writing/access time of dependent file and the stop time of the engine to warn about potential corrupted writing (task/job stopped during last writing), see if this is correctly documented explicitly about its existence, mechanism, and message in the contract/document/README"* |
 | **N3d** | **shipped 2.26.1** | **The e2e batch's older failures, owned one by one** — found by 2.26.0's full `e2e` batch (500 tests, 2026-10-20) and failing the same on the pushed 2.25.2, so older than the sequence work: `test_bench_summary_inspector_e2e` (4: the page's polling), `test_inspector_registry_e2e` (7: the dropdown's headings, the error card, a viewer's teardown), `test_results_file_picker_e2e` (a rescan's parsing state), `test_siesta_run_in_the_viewer_e2e` (opened again and again), `test_vibration_e2e` (the monitor's status line no longer says *SCF iteration*, it says *SCF rows*), and a notebook test that differs from run to run. Each judged against its contract -- the code wrong, or the test asserting a rule no longer stated -- never called flaky; a timing one read wait by wait against the page code. **What they were** (the changelog's 2.26.1 row): three errors of ours -- a PySCF run's status line without its SCF iteration (2.21.0), a plain `.xyz` opened as a trajectory on the Results tab (2.16.3), a benchmark's folder opening nothing -- and tests mounting viewers without the server's answer they match on since 2.13.3; the notebook's one miss did not come back on its own, and its wait now says why when it fails | 2.26.0's batch; the user, 2026-10-20: *"push when all green"* -- these are not green, said so at the push |
-| **N4** | a last number | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's |
+| **N4** | **2.26.2**, all but L1T-D1/D2 | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's; two choices of how to build them wait (§ 1t, *Built in 2.26.2*) |
 | **N5** | a middle number | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 
@@ -439,7 +471,7 @@ the code when it is taken (§ 2's rule), and a step closes as a milestone does
 | **5** | **The documents** | the contracts brought to what is true, and made findable | § 7's four indexes (steps 2–4); § 8 row 13; M4's document sweep (§ 5q.5's list); § 5t P5 (the Makov-Payne script); § 5w.2's text sweep (after K9); E14 (two references checked into `references.bib`); TPL, SMALL and CARRY, each re-derived when taken |
 | **6** | **New science** | new things a person can do — each brought to the user as a design, with its science (`scientific-review`: the literature, the numbers, the cost), before any code | M10, from a vibration mode to the current (W42; V1.24, V1.26 — its decision owed, V1.27, V1.34) with V1.25, the mode-displaced frame set (its amplitude the user's); the vibration's other open rows (V1.12, V1.15, V1.17, V1.38; ~~V1.33~~, ~~V1.37~~ done 2.15.3 and 2.15.0); § 5e, a person's own engine text (W47); S13, transport's convergence sweep; K22, per-atom starting spins (the user's design word); § 9.2, ATOM as an optional pseudopotential check |
 
-**Decisions that wait on the user** *(2026-10-14; 2026-10-17; 2026-10-20; 2026-10-21)*: **SEQ-ALLOC** — a sequence of groups' one request (`group.sequence_request`): the largest rank count and the largest cores per rank taken apart, as 2.26.0 builds it, or the request of the group asking the most cores, whole; **WAE** — the *written as the job ended* check compares a file with its run's closing record, to the whole second: on the real-junction e2e's own runs (30 run folders, 2026-10-21) a normally ended run wrote the files a continuation takes (`.DM`, `.XV`, `.CG`) 1.1 s or more before it, so none was named, while one device point's `.TSHS` (gathered, not compared) fell in that second; read from the code, not observed, a write a kill cut in the last fifth of a second before a new second begins falls before the record's second and is not named — closing that needs the monitor to record the signal's time to the fraction of a second, a change brought only on the user's word; **GKN** — an
+**Decisions that wait on the user** *(2026-10-14; 2026-10-17; 2026-10-20; 2026-10-21)*: **L1T-D1**, **L1T-D2** — § 1t, *Built in 2.26.2*: who registers the two record readers, and *where am I* whole as its own step; **SEQ-ALLOC** — a sequence of groups' one request (`group.sequence_request`): the largest rank count and the largest cores per rank taken apart, as 2.26.0 builds it, or the request of the group asking the most cores, whole; **WAE** — the *written as the job ended* check compares a file with its run's closing record, to the whole second: on the real-junction e2e's own runs (30 run folders, 2026-10-21) a normally ended run wrote the files a continuation takes (`.DM`, `.XV`, `.CG`) 1.1 s or more before it, so none was named, while one device point's `.TSHS` (gathered, not compared) fell in that second; read from the code, not observed, a write a kill cut in the last fifth of a second before a new second begins falls before the record's second and is not named — closing that needs the monitor to record the signal's time to the fraction of a second, a change brought only on the user's word; **GKN** — an
 uneven ranks-over-GPUs cell in a benchmark (32 ranks on 3 GPUs): kept, by
 naming every trial by its total ranks (`G3N32C1`), or dropped as now; **RL15**
 — whether launch keeps its one check, at a first launch, that prep's files are
@@ -496,7 +528,9 @@ listed — stays here as step 3's detail:
 | # | area | item | from | state |
 |---|---|---|---|---|
 | **SCR-UI** | web / transport | **Two pages do not say the device's scratch as the contract does** (found by the 2.24.0 documents' verifiers, 2026-10-20): Task setup's stage row appends `r.tsgf` (`task-setup/viewer.js` ~2703) but the folder answer never sends it (`build._folder_ladder` sends stage, group, state, detail, why), so the `tsgf/` line `transport.md` § 2a.11 puts on the Task setup row never shows; the Results sidebar's place note has no `scratch` entry (`results/viewer.js` `PLACE_NOTE`), so *the engine's scratch of the run above* is not said | 2.24.0 review | open — the UI's, when the user takes it |
-| **TPL-L1** | engines / template | **`template.md` § 2.2's import rule** (stdlib and `persist` only) is broken by `template.py`, which imports `identity`, `paths`, `runfiles`, `pyscf.stages`, `kmesh` — part of § 1t's layering, or the rule restated | 2.24.0 docs sweep | open — with N4 (§ 1t) |
+| **TPL-L1** | engines / template | **`template.md` § 2.2's import rule** (stdlib and `persist` only) is broken by `template.py`, which imports `identity`, `paths`, `runfiles`, `pyscf.stages`, `kmesh` — part of § 1t's layering, or the rule restated | 2.24.0 docs sweep | **done 2.26.2** — `template.py` imports the ground floor alone, the rule restated in `template.md` |
+| **A4-SR** | jobset | **`StageRef` is built at three sites beside its resolver** -- `jobset/prep.py`, `jobset/_cli.py`, `jobset/runstatus.py` construct it directly, where A4 (`execution/architecture.md` § 3, § 7) names `stage_refs` and the resolver its builders | the 2.26.2 review (older than it) | open |
+| **SE-F** | layers | **`script_emit` is on no floor**: it writes decks (floor 3's work), and the deck-block readers in it (`read_provenance_block`, `same_calculation`, `atom_metadata_has_something`, `apply_atom_metadata`, and the parameters fence `read_parameters_fence`, `deck_values`) are asked by floors 1 and 2 (`parse.contract`, `parse.dirs.record`, `parse.dirs.setup`, `runs`) -- the readers belong with the blocks' grammar (`deck_record`, L1), and `script_emit` then on floor 3 | the 2.26.2 review | open |
 | **BENCH-2** | engines / bench | **BENCH-MARKS' field list is a second, hand-kept source**: `script_emit.SIESTA_BENCH_FIELDS` (e.g. `BlockSize` `pow2` there, `int` in the catalogue); only the type is checked against the catalogue (`tests/test_template_declarations.py`) | 2.24.0 docs sweep | open |
 | **DOC-SMALL** | various | **Small text errors in code found by the docs sweep**: `molbuilder jupyter --help` says a restart "does not destroy notebook state" while `serve_daemon` stops it; `web/app.py` cites "deployment.md § 1.3" (no such section); `ui-contract` § 1's stylesheet order broken in the index, spectra, modify and results pages; the ruler notice written twice (`modify/viewer.js` ~669, `periodicity.js` ~268); `checkpoint.js` ~982 cites L4 where the rule is L3; the zip export carrying an engine's scratch is § 1v's; dangling codes (D3–D5, `M5:`, the unit-11 review) in launch's comments | 2.24.0 docs sweep and review | open — step 3 (tidy) |
 | **RL42** | execution / launch | **R-L42 (a run script missing) is checked by two builders only** (`_plan_stage` run here, `_bench_trials`): a group's walk, a run of points' walk and a queue send meet it at run time — make it one check where every submission is built, or drop it as a launch-time re-check (the user's rule: prep decides, launch runs) | 2.24.0 launch review | open — the user's word |

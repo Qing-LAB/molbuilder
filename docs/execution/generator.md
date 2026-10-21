@@ -809,8 +809,8 @@ flowchart TB
     F5["<b>5 · launch</b><br/><code>jobset/submit</code>"]
     F4["<b>4 · layout</b><br/><code>jobset/materialize</code> · <code>jobset/gather</code>"]
     F3["<b>3 · plan &amp; render</b><br/><code>resolve</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
-    F2["<b>2 · description</b><br/><code>task</code> · <code>template</code>"]
-    F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>runfiles</code> · <code>paths</code> (<code>Shape</code>) · <code>scheduler/</code> · <code>parse</code>"]
+    F2["<b>2 · description</b><br/><code>task</code> · <code>template_file</code>"]
+    F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>runfiles</code> · <code>paths</code> (<code>Shape</code>) · <code>scheduler/</code> · <code>parse</code> · <code>template</code> (the catalogue)"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
 ```
 
@@ -819,7 +819,7 @@ flowchart TB
 
 | module | floor | what it owns | what it replaced |
 |---|:--:|---|---|
-| **`template.py`** | 2 | read and write `<label>.template.toml`; the `Item` type; narrow the catalogue to one engine and fill in values (`template_with_values`) | a template that was written by a CLI command and read back by nothing — `prep` now rebuilds the config from it |
+| **`template.py`** | 1 | the catalogue and the template format: the `Item` type; read a template (`read_template`), narrow the catalogue to one engine and fill in values (`template_with_values`) — its file's name and read are `template_file.py`'s, floor 2 | a template that was written by a CLI command and read back by nothing — `prep` now rebuilds the config from it |
 | **`resolve.py`** | 3 | template + task + `Environment` + **allocation** + sweep + pins (+ the specialisation's `MachineTranslation`) → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder (folding at step 6) |
 
 **`resolve` is the hinge, and it is where the duplication dies.** Everything
@@ -844,7 +844,8 @@ composes nothing. Its contract — including that the ask handed in is never
 
 | floor | may read | must never |
 |---|---|---|
-| 2 · `template` · `task` | its own files | know a machine exists |
+| 1 · `template` | the catalogue, and a template's text | know a machine exists |
+| 2 · `template_file` · `task` | its own files | know a machine exists |
 | 3 · `resolve` | template · task · `Environment` · the allocation · the sweep · the pins | write a file |
 | 3 · `model` | a `ParameterSet` | re-read the template |
 | 4 · `materialize` | a `JobSet` · `Shape` | re-resolve a parameter |

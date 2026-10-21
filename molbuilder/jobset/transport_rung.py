@@ -1,5 +1,6 @@
 """A TRANSPORT RUNG, built from the description as it reads now -- its
-junction composed from the citation (:func:`composed_for_prep`), the
+junction read from its record (:func:`junction_record`; composed from the
+citation by prep, `gather.composed_for_prep`), the
 template ⊕ the rung's overrides ⊕ its run card resolved
 (:func:`resolve_transport`), its structure and electronic state
 (:func:`transport_parts`), each deck's spec at its point
@@ -20,7 +21,7 @@ from pathlib import Path
 from ..pseudos import PSEUDO_DIRNAME
 from .engines import pseudo_dir, screen_pseudos
 from .errors import PrepError, user_error_as_prep
-from .materialize import stage_home
+from .naming import stage_home
 
 
 def provide_pseudos(struct, cfg, base: Path,
@@ -137,7 +138,7 @@ def transport_parts(task, stage: str, composed, config):
     upstream rung NOW (:func:`transport_rung`, plan § 5w K11, T-F30).
     """
     from ..transport.deck import SHAPE_OF_RUNG
-    from ..transport.stages import rung_label
+    from ..identity import rung_label
     # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
     # junction, and the lead taken out of it by its region label -- same
     # atoms, same relaxation, a subset rather than a geometry derived from
@@ -233,7 +234,7 @@ def compose_refusals() -> tuple:
     """What reading or composing a junction raises for the person to fix --
     the composition's, the sort's, the order record's and a cited run's
     deck record -- said by every door that asks as its refusal
-    (:class:`PrepError`): prep (:func:`composed_for_prep`) and the gather
+    (:class:`PrepError`): prep (`gather.composed_for_prep`) and the gather
     (`gather.composed_junction`) alike."""
     from ..atom_permutation import PermutationError
     from ..deck_record import DeckRecordUnreadable
@@ -264,85 +265,7 @@ def junction_record(calc):
     return composed, why, root
 
 
-def composed_for_prep(calc, plan, *, afresh: bool = True):
-    """The junction a transport calculation's rungs describe: the record
-    beside ``task.json`` when it is usable for THIS citation (the folder
-    travels, `project-layout.md` § 2.1) -- written again when its order was
-    found rather than read (`ComposedJunction.order_found`, a junction whose
-    sidecar states none) -- else composed afresh from the projects tree,
-    when ``afresh`` and no stage is launched.  With a stage launched, the
-    recorded junction is never replaced: its runs ran on it; `prep task`
-    with no group named writes only an order it found (``afresh`` false;
-    `engines/transport.md` § 1.1, *The first prep*).  Refused otherwise,
-    by state (:func:`no_usable_record`).
-
-    Written into ``plan`` (`jobset.planned.Plan`), with everything else this
-    prep writes, by one road (:func:`_written_and_read_back`)."""
-    from ..transport.compose import compose_junction
-    base, task = calc.base, calc.task
-    composed, why, root = junction_record(calc)
-    try:
-        if composed is not None:
-            # ITS ORDER FOUND (`engines/transport.md` § 1.1, *The first
-            # prep*): the record written again by its one writer -- the
-            # recorded junction's atoms, places, cell and labels as they
-            # were, its sidecar stating the order record.
-            return (_written_and_read_back(base, composed, plan, root=root,
-                                           task=task)
-                    if composed.order_found else composed)
-        refusal = no_usable_record(calc, why, root=root, afresh=afresh)
-        if refusal is not None:
-            raise PrepError(refusal)
-        return _written_and_read_back(
-            base, compose_junction(task.slots["junction"], tree_root=root,
-                                   swap_electrodes=task.swap_electrodes),
-            plan, root=root, task=task)
-    except compose_refusals() as exc:
-        raise PrepError(str(exc)) from exc
-
-
-def no_usable_record(calc, why, *, root, afresh: bool) -> "str | None":
-    """Why this calculation's junction is not composed afresh, by its state
-    -- in words, with the way on -- or ``None`` when it may be: no stage
-    launched, the projects tree here, and ``afresh``.  ``why`` is the
-    record read's reasons (`compose.load_compose_record`).  THE ONE
-    COMPOSER of this refusal, asked by prep (:func:`composed_for_prep`) and
-    by the gather, which never composes (``afresh`` false;
-    `gather.composed_junction`)."""
-    from ..runrecord import LaunchRecordError
-    from .commands import block, prep_group_lines, redo_launched
-    from .ready import launched_stage
-    base, task = calc.base, calc.task
-    reason = why[-1] if why else "there is no usable record"
-    try:
-        launched = launched_stage(calc)
-    except LaunchRecordError as exc:
-        return (f"this calculation's junction is not composed again: "
-                f"{reason}.  And {exc}")
-    if launched is not None:
-        # A LAUNCHED STAGE RAN ON THE JUNCTION RECORDED: never replaced,
-        # whatever made the record unusable.
-        return (f"this calculation's junction is not composed again: "
-                f"{reason}.  `{launched}` ran on the junction recorded, and a "
-                f"launched stage's junction is never replaced "
-                f"(engines/transport.md § 1.1); to compose it again, "
-                + redo_launched(launched, calc=calc))
-    if root is None:
-        return (f"this transport calculation cannot be composed here: "
-                f"{reason}.  And {base} is not inside a projects tree, so the "
-                f"citation {task.slots['junction']!r} cannot be resolved to "
-                f"compose afresh.  Prep once inside the tree that holds the "
-                f"cited junction -- the record then travels with the folder "
-                f"(engines/transport.md § 3.1).")
-    if not afresh:
-        numbers = sorted({st.group for st in task.stages})
-        return (f"this calculation's junction is not composed again here: "
-                f"{reason}.  It is composed by a prep of the calculation's "
-                f"groups --\n" + block(prep_group_lines(numbers, base=base)))
-    return None
-
-
-def _written_and_read_back(base, composed, plan, *, root, task):
+def written_and_read_back(base, composed, plan, *, root, task):
     """``composed``'s record, written by its one writer
     (`compose.write_compose_record`) to a temporary folder outside the
     calculation and READ BACK from there -- the same round trip a later prep
@@ -433,6 +356,7 @@ def at_bias(cfg, volts):
             else dataclasses.replace(cfg, bias_voltage_v=float(volts)))
 
 
-__all__ = ["provide_pseudos", "resolve_transport", "transport_parts", "scratch_dir_of",
-           "transport_rung", "transport_sources", "composed_for_prep",
+__all__ = ["provide_pseudos", "resolve_transport", "transport_parts",
+           "scratch_dir_of", "transport_rung", "transport_sources",
+           "compose_refusals", "junction_record", "written_and_read_back",
            "transport_spec", "at_frame", "at_point", "at_bias"]

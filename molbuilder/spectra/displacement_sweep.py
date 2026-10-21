@@ -109,7 +109,7 @@ def stages_share_a_directory(task) -> bool:
     ``<label>.FC`` and ``<label>.spectra.json`` and the second overwrites the
     first's result.  Asked of the layout (`paths.Shape.stage_dir`), the rule
     `prep` refuses a sweep by and `summarize` reads it by."""
-    from ..jobset.materialize import stage_home
+    from ..jobset.naming import stage_home
     from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
     shape = Shape.named(task.shape)
@@ -160,7 +160,8 @@ def collect_sweep(calc, *,
     from .results import mass_of
     from ..engine_atom_index import from_engine_index
     from ..jobset.commands import rollback
-    from ..jobset.materialize import latest_attempt, stage_home
+    from ..jobset.materialize import latest_attempt
+    from ..jobset.naming import stage_home
     from ..runs import concluded
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)

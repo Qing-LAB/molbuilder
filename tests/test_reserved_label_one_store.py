@@ -32,6 +32,7 @@ import pytest
 from molbuilder.sidecars import molstruct
 from molbuilder.structure import FROZEN_LABEL, Structure
 from molbuilder.workingcopy_structure import StructureCodec
+from molbuilder.structure_pair import MolstructJsonError
 
 
 def _labelled() -> Structure:
@@ -434,7 +435,7 @@ def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
     # The pre-v7 second key, put back by hand: the read door refuses it.
     molstruct.sidecar_path_for(target).write_text(
         json.dumps(dict(saved, frozen_atoms=[0])), "utf-8")
-    with pytest.raises(molstruct.MolstructJsonError,
+    with pytest.raises(MolstructJsonError,
                        match=r"\['frozen_atoms'\], which this version does "
                              r"not read"):
         StructureCodec().load(target)

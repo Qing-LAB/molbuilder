@@ -127,9 +127,9 @@ def require_activation(target: Optional[str], environment,
     machine succeeds at generate time and dies on the cluster hours later, on
     a path that exists only here (2026-08-24).
     """
+    from ..identity import checkpoint_words
     from ..scheduler.record import (LOCAL_TARGET, calculation_record,
                                     probe_command, probe_steps)
-    from .commands import rollback
     if (getattr(environment, "env_init", None) or {}).get("activation"):
         return
     here = target in (None, LOCAL_TARGET)
@@ -143,7 +143,8 @@ def require_activation(target: Optional[str], environment,
             f"calculation's first prep and is never replaced, so a probe does "
             f"not reach it (a copy taken before 2026-10-02 names it "
             f"`script_generation`).  Rename that key to `env_init` in it, or "
-            + rollback("the calculation's first prep", base=base)
+            f"go back to the state saved before the calculation's first prep "
+            f"({checkpoint_words(base)}) and prep anew."
             + ("" if here else f"  Name the machine again: --target {target}."))
     whose = "this machine's record" if here else f"the record of {target!r}"
     raise PrepError(

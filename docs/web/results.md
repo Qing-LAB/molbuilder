@@ -936,7 +936,7 @@ was.
 | the file is | the card says |
 |---|---|
 | **one molbuilder writes** — a row of the catalogue, read back with its run's label | what it holds, who writes it and when: *"the run ended on its own, with its exit code — written by the run script, as its last act"* |
-| **one half of a saved structure pair**, in a folder no calculation claims — a structure with its sidecar beside it, or that sidecar | what it holds and who saves it — Save on the Molbuilder tab, or Export on the Results tab (`runfiles.saved_pair_row`) |
+| **one half of a saved structure pair**, in a folder no calculation claims — a structure with its sidecar beside it, or that sidecar | what it holds and who saves it — Save on the Molbuilder tab, or Export on the Results tab (`runs.saved_pair_row`) |
 | **a file of a calculation whose description does not read** — its `task.json` refused by its reader, as one an older molbuilder wrote is | *whose file this is cannot be said here*, then the reader's own words — the way out among them (*`molbuilder jobset migrate --bundle …` rewrites it*) — never *not written by molbuilder*: the folder is a calculation's, and what its files are waits on its description *(the user, 2026-10-13: every file of three spectrum calculations described before the stage groups read as not molbuilder's)* |
 | **anything else** — the engine's, SLURM's, a person's | *not written by molbuilder* |
 

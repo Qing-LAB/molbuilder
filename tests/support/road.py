@@ -733,7 +733,7 @@ def _road_card_written(specs, bundle) -> None:
     (`<stamp>`) stands for any value."""
     import fnmatch
     import re
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import manifest
     from molbuilder.task import of as task_of
     task = task_of(bundle)
@@ -837,8 +837,9 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     if values:
         from molbuilder.config.pyscf import PySCFConfig
         from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.template import (config_from_template, template_path,
+        from molbuilder.template import (config_from_template,
                                          template_with_values)
+        from molbuilder.template_file import template_path
         cls = SiestaConfig if engine == "siesta" else PySCFConfig
         path = template_path(bundle, "H2")
         cfg = dataclasses.replace(
@@ -957,7 +958,7 @@ def _stage_names(bundle: Path, stage: str):
     """The names of ``stage``'s files -- the one composer's
     (`runfiles.RunNames`): on the calculation's label, its token, in its
     shape."""
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.runfiles import RunNames
     from molbuilder.task import of as task_of
     task = task_of(bundle)
@@ -980,7 +981,7 @@ def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
     the request its line sends, the header prep wrote read back by the
     header's reader (`Submission.request`): ``{shelf: its #SBATCH lines}``,
     in the order the shelves are sent; ``side`` is `--only`'s."""
-    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.jobset.naming import stage_home
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.submit import plan_launch
     from molbuilder.paths import Shape, bench_container
@@ -1033,7 +1034,7 @@ def _named(kind: str, stage, bundle, *, verb: str = "prep") -> tuple:
     # THE STAGE AS EVERY VERB RESOLVES IT -- a name in any case, or `#N`,
     # the number its folder carries (`identity.resolve_stage_ref`).
     from molbuilder.identity import StageRef, resolve_stage_ref
-    from molbuilder.jobset.materialize import ladder_homes
+    from molbuilder.jobset.naming import ladder_homes
     from molbuilder.task import of as task_of
     task = task_of(Path(bundle))
     refs = [StageRef(h.seq, h.name) for h in ladder_homes(Path(bundle), task)]
