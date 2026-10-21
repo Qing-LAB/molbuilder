@@ -42,7 +42,7 @@ say — never two answers to reconcile.
 | layer | what it is | where |
 |---|---|---|
 | one reader per file | each format's grammar and its one reading pass; the registry picks the reader for a path | § 4a, § 3 |
-| what a folder is | the directory parser: a run, a container or a folder not marked; which file is its result | § 5, `web/results.md` § 0 |
+| what a folder is | the directory parser: a run, a container, a run's scratch or a folder not marked; which file is its result | § 5, `web/results.md` § 0 |
 | one run's report | from that run's own files: its trajectory (§ 3), how it is doing (`status`, § 2b), what ran with what and how it went (`record`, § 5d) | `parse/dirs/`, `/api/watch/*` |
 | a higher level's report | a ladder, a benchmark, a transport calculation — each built by its own module from its rungs' or trials' files, through the same readers, and shown by its own presenter | `jobset/runstatus.py`, `jobset/summarize.py`, `transport/record.py` |
 
@@ -744,7 +744,7 @@ goes there; one that does not, does not**: `run_status` for one run,
 
 | field | the question | who reads it |
 |---|---|---|
-| `place` | what the folder is — a run, a container, or not ours — and its calculation | the Results page (the empty state, § 1.4a) |
+| `place` | what the folder is — a run, a container, a run's scratch, or not ours — its calculation, and where it sits: what it is, its stage, run, trial and point (`calcdirs.where`, `execution/project-layout.md` § 1.4a, *Where am I*) | the Results page (the empty state, § 1.4a) |
 | `engine` · `openable` | which engine ran — the description's; which file the viewer loads | `/api/results/dir` → the Results viewer |
 | `status` | how it is doing (`running-a-job.md` § 4.2) — the run the folder speaks for, `null` for a container or a folder not ours | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |

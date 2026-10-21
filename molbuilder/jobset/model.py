@@ -629,8 +629,8 @@ class JobSet:
         (`jobset.planned.Plan`) leaves it: what a prep planned into it
         before writing.  One written before every job key was is refused
         naming the command that rewrites it, its calculation by its folder --
-        found where the layout puts it: this folder, or one or two above
-        (a flat stage's bench folder, a hierarchical one's)."""
+        the root, or the one a benchmark's folder lies in
+        (`calcdirs.root_of`)."""
         import json
         from ..persist import read_json
         from .commands import command

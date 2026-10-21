@@ -160,8 +160,10 @@ def attempt_dir(container, n: int) -> Path:
 def run_folder_of(path) -> Optional[Path]:
     """The run folder ``path`` lies in -- ``04_device/run-1`` of
     ``04_device/run-1/f001/v0.2``: its parts up to its ``run-<n>``
-    (:func:`attempt_index`) -- or ``None`` when no part is one.  The one
-    reading of which run a file, or a point's folder, belongs to."""
+    (:func:`attempt_index`) -- or ``None`` when no part is one.  ``path`` is
+    RELATIVE to its calculation, as a record names a run; a folder on disk
+    asks where it is (`calcdirs.where`, its ``run_folder``), since an
+    absolute path's first ``run-<n>`` may lie above the calculation."""
     parts = Path(path).parts
     at = next((i for i, part in enumerate(parts)
                if attempt_index(part) is not None), None)

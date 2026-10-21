@@ -219,9 +219,8 @@ this be read"*), the HTTP refusals, and JSON.
 > silent, not loud: every trial reads `unknown`, every measurement is `None`,
 > and the page shows a sweep that looks like one which simply has not started.
 > So the route asks whose bench container the file's folder is
-> (`materialize.bench_owner`: the calculation root through its one door,
-> `calcdirs.root_of`, and the folder matched against that calculation's
-> declared bench containers), opens that calculation
+> (`materialize.bench_owner`: where the folder is, `calcdirs.where` — a
+> stage's benchmark, and its calculation), opens that calculation
 > (`calculation.open`), and composes the sweep from it
 > (`summarize.sweep_view(calc, jobset)`); a folder that is no stage's bench
 > container of a calculation molbuilder described is refused (400).

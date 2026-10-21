@@ -446,8 +446,11 @@ Every directory in this tree is one of two things:
 - a **run** — one invocation of the engine. It holds what that invocation
   produced, and nothing else holds that.
 
-A calculation is a container. A stage is a container. A benchmark bundle is a
-container. The leaves — `run-N/`, `bench-<knobs>/` — are runs.
+A hierarchical calculation is a container — a flat one is its own run
+(§ 1.3). A stage is a container. A benchmark bundle is a container. The leaves
+are runs: a stage's `run-N/` — or, where the stage runs
+per point, each point's folder in it — a hierarchical trial's `run-N/`, a flat
+calculation's `bench-<knobs>/`.
 
 **This is what makes everything downstream simple.** Setup is text, so git handles
 it entirely. Only a run holds anything big. There is no directory where the two
@@ -466,8 +469,8 @@ Nothing in the tree has to — but **a reader handed a path does**, and until th
 section it could not.*
 
 **The gap, and why no amount of care closed it.** Container-or-run is not
-decidable from the name. § 1.4's own closing paragraph settles that three times
-over: a **flat** calculation root *is* a run; a **hierarchical** stage directory
+decidable from the name. § 1.3 and § 1.4 settle that three times over: a
+**flat** calculation root *is* a run; a **hierarchical** stage directory
 is a container; "a hand-made directory with one `.fdf` in it" is a run. Same
 grammar, opposite answers. So every reader that wanted the answer guessed, and
 they did not guess alike — one assumed every directory was a run and reported a
@@ -512,41 +515,73 @@ would be a second home for one fact.
   own and `of` dangles; *"this attempt's calculation is not here"* is then the
   honest answer, where a search would have adopted whatever it found.
 
-**Everything else is derived, and that is checked rather than asserted.** Given
-`of`, the root holds `task.json` and `job-set.json`, and
-`naming.job_dir_names` is *the naming authority* — a `{job → directory}`
-map written by the same code that made the directories. Running the decode over
-a real three-calculation tree (2026-09-19): every stage container resolved to
-its job (`01_raman` → `raman`), every attempt to its job and index
-(`01_raman/run-0` → `raman`, 0), all five transport rungs, and both shapes' roots
-through `shape`. So a **stage name, an axis point and an attempt index are
-facts the tree already answers**, and storing them would be a second home for
-each — with the drift that always follows.
+**Everything else is read off the folder's place.** Given the root, what a
+folder is — a stage's, an attempt, a point's, a benchmark's, a trial, support —
+and the stage, run, trial and point it sits in are read off its path, in the
+names the layout gives its folders: `<NN>_<stage>` (`identity.parse_token`),
+`run-<n>` (`paths.attempt_index`), `bench-<point>` (`paths.trial_point`), the
+flat `bench_<NN>_<stage>` (`paths.flat_bench_token`), and the benchmark's and
+the launch folder's own names — the ground floor's, with no description or plan
+read, so one door answers it for every reader (*Where am I*, below). A **stage
+name, an attempt index, a trial's point and a point's folder are facts the
+tree's names already answer**, and storing them would be a second home for each
+— with the drift that always follows.
 
-**What the authority cannot answer, and why `role` is therefore stored.** The
-same map returns a *trial* as `<NN>_<name>/bench/bench-<point>` — an exact job
-match, structurally identical to a stage's own `<NN>_<name>`. § 1.4 calls the
-first a container and the second a run. Identical shape, opposite answers, and
-nothing in the tree distinguishes them: only the code that created the directory
-knew which it was making. That is the whole content of this record.
+**What the names cannot answer, and why `role` is therefore stored.** Container
+or run. A flat root is a run where a hierarchical one is a container; a flat
+trial's `bench-<point>/` is a run where a hierarchical one is a container
+holding its attempts (§ 1.5a); a swept rung's `run-<n>/` is a container holding
+its points' runs where a rung that runs once is a run
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). The same name,
+opposite answers: the shape and whether a rung sweeps decide, and they are the
+description's, which the ground floor does not read — only the code that
+created the directory knew which it was making. That is the whole content of
+this record.
 
 **`seq` is deliberately absent**, for the same one-home reason: invariant 4 puts
 a stage's `seq` on the directory name and says it is "read back off the
 artifacts, stored nowhere else".
 
-#### What the finer words become
+#### Where am I — one answer, with its context
 
-`stage`, `axis`, `trial` and *support* are not roles — they are derived
-readings of a `container` or a `run`, and each falls out of the authority:
+*(The user, 2026-10-20: "a folder could be a run dir, but its calculation
+information is in parent … shall we give this with a context?")* **One door
+answers where a folder is: `calcdirs.where(folder)` → `Where`**, the ground
+floor's, so every reader asks it — what a folder is in its calculation, with
+its description (`runs.place_of`, the run door's), the Results tab (`place`,
+[`web/results.md`](?doc=web/results.md) § 2.3), the checkpoint panel (*is
+this a calculation's folder*), a benchmark's summary and its verbs (*whose
+benchmark is this*, `materialize.bench_owner`, `bench_stage_of`):
 
-| a directory that is… | is read as | because |
+| field | what it says |
+|---|---|
+| `root` | the calculation's folder — the one `task.json` is in, or the one the folder's record names; `None` for a folder no calculation claims |
+| `what` | what the folder is, below — `None` for a folder no calculation claims |
+| `role` | its record's: `container`, `run` or `scratch` — `None` at the root, whose description's `shape` says it (`runs.place_of`: flat a run, hierarchical a container) |
+| `stage` | the stage it sits in, by its token — `01_coarse` |
+| `run` | the attempt's index — `0` of `run-0` |
+| `trial` | the benchmark trial's point — `G1K4C6` of `bench-G1K4C6` |
+| `point` | a point's folder, its path below the run or the stage — `v0.2`, `f001/v0.2` |
+| `run_folder` | the run's own `run-<n>/` the folder lies in — itself for an attempt, the one above a point's folder or a scratch folder: where the run's launch record lies |
+
+**What a folder is, read at its place:**
+
+| the folder | `what` | its role, as its creator stamps it |
 |---|---|---|
-| `container`, matching a job | that **stage** | the authority maps the job |
-| `container`, matching no job | **support** — `pseudos/`, a bench container | the authority has no job there |
-| `run`, under a stage's directory | an **attempt**, index from its name | the authority maps the parent |
-| `run`, matching a job itself | a **trial** | the authority maps it as a bench point |
-| `run`, and it IS the root | the flat shape's single run | `task.json`'s `shape` |
-| `scratch`, under a run | the run's **scratch folder** — read alone, no run asked of it, nothing in it opens | the role says it; the run above is the authority's |
+| the root — `task.json` is here | `calculation` | none: the shape says it |
+| `<NN>_<stage>/` | `stage` | container |
+| `run-<n>/`, below a stage or a trial | `attempt` | run — a container when its stage runs per point |
+| below a run of points — `f001/`, `v0.2/`, `f001/v0.2/` | `point` | run; a frame's folder above its voltages, a container |
+| below a stage, the folder prep renders a point's deck into | `point` | container |
+| a device run's `tsgf/` | `scratch` — read alone, no run asked of it, nothing in it opens | scratch, which says it |
+| `<NN>_<stage>/bench/`, the flat `bench_<NN>_<stage>/` | `benchmark` | container |
+| `bench-<point>/`, in a benchmark | `trial` | container, holding its attempts; flat, a run |
+| `pseudos/`, a `launch/` | `support` | container |
+
+**A folder states its place, or it has none.** It is read for a folder that
+says it — the root by its description, any other by its record — and nothing
+above a folder is searched for: one with neither, a folder a person made inside
+a run among them, answers an empty `Where` and is read alone (below).
 
 #### Absence narrows the answer; it does not refuse the directory
 
@@ -908,7 +943,8 @@ shape. It creates the folder and every container above it that does not exist
 yet — the stage, a benchmark's `bench/`, a swept rung's `run-<n>/` — stamping
 each (§ 1.4a; invariant 6b); a submission's `launch/` is
 made and stamped a container by the prep or the send that first writes in it
-(`naming.open_container`), and a device run's `tsgf/` is made with its
+(`naming.open_container`), as `pseudos/` and a point's folder below its stage
+are by the prep that writes them, and a device run's `tsgf/` is made with its
 run and stamped `scratch` (`materialize.open_scratch`). What goes in follows: `bring_files` copies
 in what a run runs from — the stage's deck, scripts and bundles; what a run
 takes from other runs is one hand-over, its files and its record
@@ -1945,7 +1981,7 @@ vocabulary names (`warmfiles.is_scratch`, S1).
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
 | ③ **calculation** | **the user** — whatever they type, `[A-Za-z0-9_-]+`. *(This row said "the run id" until 2026-08-16, contradicting § 1.1's own tree and `job-contracts.md` § 6.3, which is the cross-layer authority: the folder is not derived, and what makes it a calculation is the `task.json` inside it — `run-identity.md § 3.0`.)* | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
-| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
+| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable**; where its stage runs per point, the container of its points' runs (§ 1.4a) |
 | — **benchmark** | `bench`, inside the stage it measures | `prep bench <stage>` | its trials, the sweep's own `job-set.json`, and `bench-result.json` — a **container** |
 | — **trial** | `bench-<knobs>` (§ 4.4) | `prep bench` (its deck + wrapper), then the engine when launched | one measured point — its attempts kept as a stage's are (§ 1.5a), each carrying its `run.json` |
 
@@ -2546,7 +2582,7 @@ module the job works around.
 | where does a sweep live? | `bench_container`, `bench_containers_in`; a flat container's stage, `flat_bench_token` |
 | where does a trial run? | `trial_name`, `trial_point`; `naming.trial_dir`, `materialize.trial_work_dir` |
 | what is a trial's label? | `trial_label` (§ 2.3.2) |
-| which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt`; the run a point's folder lies in, `run_folder_of` |
+| which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt`; the run a path a record names lies in, `run_folder_of` — a folder on disk asks `calcdirs.where` (§ 1.4a) |
 
 *(This table named `paths.path_for`, `sweep_set_dirs`, `attempts` and a
 `trial_dir` in `paths` until 2026-10-04 — doors designed on 2026-09-08 that
@@ -2733,7 +2769,7 @@ root, told apart by `<base>`.
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | `runs.Run.report` | record |
 | `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each attempt | none | derived |
 | `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each attempt | none | derived |
-| `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's attempt, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/` and `pseudos/`, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.read` | record |
+| `calcdir.json` | what this folder is in its calculation — a container, a run, or a run's scratch folder — and where the calculation is | the code that makes the folder: prep and launch (`materialize.open_run` -- a stage's attempt, a bias point's, a benchmark trial's, and the containers above each -- `naming.open_container`, a submission's `launch/`, `pseudos/` and a point's folder below its stage, and `materialize.open_scratch`, a device run's `tsgf/`) | `calcdirs.where` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
@@ -2974,14 +3010,15 @@ other. A container holds setup: decks, wrappers, the description, links, the
 shared package. All text or small, all git's.
 
 **Which runs?** The ones this calculation owns: the calculation root itself when
-it is flat, otherwise each stage's `run-N/`. A benchmark's `bench-*/` is a run of
-a **nested container**, one level deeper, and its `.DM` is a capped-iteration
+it is flat, otherwise each stage's `run-N/`, with its points' folders where the
+stage runs per point. A benchmark's trials are runs of a **nested container**,
+one level deeper, and their `.DM` is a capped-iteration
 throwaway — so the calculation's archive does not reach it. What survives a
 benchmark is `bench-result.json`, text, which git tracks wherever it sits.
 
-So the rule is about **depth, not names**: a run directory is a direct child of a
-stage, or the root of a flat calculation. Nothing below that is this history's
-binary business.
+So the rule is about **depth, not names**: a run directory is a stage's
+`run-N/` or a point's folder in it, or the root of a flat calculation. Nothing
+in a nested container is this history's binary business.
 
 ### 6.2 Append-only — in the hierarchical shape only
 
@@ -3129,13 +3166,17 @@ than no invariant, because it fails a directory that is working correctly.
    makes them all, so Python can stamp them all. A directory carrying neither
    is not refused — it is read alone, and told so (§ 1.4a), which is what a
    tree written before this rule, or a run directory copied out of one, gets.
-   *Test:* prep a calculation in each shape and assert every directory it
-   created answers, and that the `role` in each record agrees with the name
-   grammar the creator used — two statements of one fact that cannot then
-   drift.
+   A point's folder below its stage, the one prep renders the point's deck
+   into, is a container among them. *Test:* a calculation prepared in each
+   shape, its first stage's benchmark too, and every folder prep made asked
+   where it is through the Results tab's door — its `what`, its role and the
+   stage, run and trial it sits in, one row each
+   (`tests/test_results_blueprint.py`); a transport calculation's points, in
+   the run and below the stage (`tests/test_transport_on_a_real_junction_e2e.py`).
 7. **[hierarchical] A shared file's source exists once, at ③** (`pseudos/`), and
    each stage and attempt receives a real copy of it, never a link (§ 1.5).
-8. **Every directory is a container or a run, never both** (§ 1.4). A run's
+8. **Every directory is a container or a run, never both** (§ 1.4) — but the
+   engine's scratch of the run above it, which is neither (§ 1.4a). A run's
    output stays inside it; nothing a run writes appears above it.
 8a. **[hierarchical] An attempt is immutable.** Once its launch has ended — warm
    retries included, which run within it (§ 1.6.1) — it never changes, and once archived
@@ -3175,7 +3216,7 @@ than no invariant, because it fails a directory that is working correctly.
     restore removes** (`checkpointing.md`, S1; `warmfiles.is_scratch`) — and
     that holds at every depth, so a stage's result is covered.
 16. **[both] The archive covers runs this calculation owns** — a flat root, or a
-    stage's `run-N/`. A nested container's runs (a benchmark's `bench-*/`) are
+    stage's `run-N/` with its points. A nested container's runs (a benchmark's trials) are
     not its business (§ 6.1). **Not held**: a save classifies every file by its
     size (`checkpointing.md` S1b), wherever it lies, and archives a trial's
     `.DM` like any other.

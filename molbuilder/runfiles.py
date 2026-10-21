@@ -1417,9 +1417,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`materialize.open_run` -- a stage's attempt, a bias "
                     "point's, a benchmark trial's, and the containers above "
                     "each -- `naming.open_container`, a "
-                    "submission's `launch/` and `pseudos/`, and "
+                    "submission's `launch/`, `pseudos/` and a point's "
+                    "folder below its stage, and "
                     "`materialize.open_scratch`, a device run's `tsgf/`)",
-             door="calcdirs.read"),
+             door="calcdirs.where"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
              when="prep", level="stage", kind="derived",

@@ -1078,7 +1078,7 @@ def _plan_trial(jobset: JobSet, base: Path, job, *, mode: str, shape,
         return (JobResult(job.name, [], "already run") if mode == "ask"
                 else JobResult(job.name, [], "skipped",
                                said="skipped -- already launched"))
-    stage = bench_stage_of(base, container)
+    stage = bench_stage_of(container)
     read_back = (command("summarize", "bench", stage, base=base)
                  if stage else "`summarize bench` on the sweep's stage")
     said = launch_record_path(where, names, FIRST_ATTEMPT)
@@ -2324,7 +2324,7 @@ def _all_launched(jobset: JobSet, base: Path, *, shape, count: int,
     from .materialize import bench_stage_of
     from .naming import job_dir_names
     dirs = job_dir_names(jobset, shape)
-    stage = bench_stage_of(base, base / dirs[jobset.jobs[0].name])
+    stage = bench_stage_of(base / dirs[jobset.jobs[0].name])
     return SubmitError(
         f"all {count} {side + ' ' if side else ''}trials are launched.  "
         f"next:\n    "

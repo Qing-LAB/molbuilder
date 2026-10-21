@@ -191,9 +191,8 @@ def api_results_dir():
     # the ones not prepared yet among them: a transport ladder is prepared rung
     # by rung, so the job-set grows while the description already names all
     # five.  `null` for a container that is not the root.
-    root = place["calculation"]
-    if (place["role"] == calcdirs.CONTAINER and root is not None
-            and Path(root).resolve() == directory.resolve()):
+    if (place["what"] == calcdirs.CALCULATION
+            and place["role"] == calcdirs.CONTAINER):
         from molbuilder.calculation import open as open_calculation
         from molbuilder.jobset.runstatus import every_run, jobset_status
         try:
@@ -226,10 +225,10 @@ def api_results_dir():
         "report":   got["report"],
         "point":    got["point"],
         "attempts": attempts,
-        # WHAT THIS DIRECTORY IS, and what it belongs to -- `null` when it
-        # does not say, which the page shows as *read alone* rather than
-        # hiding (§ 1.4a: absence narrows the answer, it does not refuse the
-        # directory).
+        # WHERE THIS DIRECTORY IS, and what it belongs to -- each field
+        # `null` when it does not say, which the page shows as *read alone*
+        # rather than hiding (§ 1.4a: absence narrows the answer, it does not
+        # refuse the directory).
         "place":    place,
         # `null` where there is no run: a container, or a folder holding no
         # run of ours.

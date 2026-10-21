@@ -559,7 +559,7 @@ def jobset_status(calc, *, sweep=None) -> JobSetStatus:
     bench_of = None
     if sweep is not None and jobset.jobs:
         from .materialize import bench_stage_of
-        bench_of = bench_stage_of(base, base / kw["dirs"][jobset.jobs[0].name])
+        bench_of = bench_stage_of(base / kw["dirs"][jobset.jobs[0].name])
     return JobSetStatus(
         name=(jobset.name if jobset is not None else task.label),
         engine=(jobset.engine if jobset is not None else str(task.engine)),
@@ -887,7 +887,7 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
     ours speaks for, is answered by its stage's row of `jobset status`,
     naming the newest run it reads; a run no longer on disk, and a
     calculation that does not read, are said."""
-    from ..calcdirs import CONTAINER, read as placed
+    from ..calcdirs import CONTAINER, where
     from ..runrecord import retried_to
     from ..runs import concluded, run_of
     base = Path(calculation)
@@ -907,8 +907,10 @@ def job_members(calculation, members: Dict[str, Dict[str, str]]
                         f"{run}, retried to {ran.names.run_name(reached)}",
                         _said(st.state, st.detail)))
             continue
-        place = placed(record.parent) if record.parent.is_dir() else None
-        if place is None or place.role != CONTAINER:
+        # WHERE ITS LAUNCH RECORD'S FOLDER IS (`calcdirs.where`): a run of
+        # points' run, a container.
+        if (not record.parent.is_dir()
+                or where(record.parent).role != CONTAINER):
             out.append((stage, run, "its run is not on disk"
                         if not record.exists()
                         else "its launch record names no run of ours"))

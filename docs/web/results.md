@@ -57,7 +57,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 | part | module | what it does |
 |---|---|---|
-| the folder's answer | `runs.py` — the run door's `folder_answer` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2), served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`) — a transmission run's, its calculation's report, with that report's own row (`report`) and the point it opens at (`point`, § 2); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
+| the folder's answer | `runs.py` — the run door's `folder_answer` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2), served by `web/blueprints/results.py::api_results_dir` | where the folder is (`place`: run · container · scratch · not marked; its calculation, what it is, and the stage, run, trial and point it sits in, the point as its folder — [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.4a, *Where am I*), its engine, the file to open (`openable`) — a transmission run's, its calculation's report, with that report's own row (`report`) and the point it opens at (`point`, § 2); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
 | the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder`, `record`, the folder's `files` and, for a transmission run's folder, its `point` |
 | the file card | `lib/results/file-card.js` (§ 3b) | what the file in hand is — the dropdown's, or one clicked in the sidebar inside the folder whose files the card holds (after a run is picked off the ladder, that run's folder): what it holds and who wrote it, or *not written by molbuilder* |
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
@@ -349,7 +349,10 @@ Two rules keep this from hiding anything:
 > `GET /api/results/dir` is the HTTP surface over the directory door, the run
 > door's `folder_answer` ([`model/parse.md`](?doc=model/parse.md) § 5) —
 > **one route, one question, one answer per directory.** It reports what the
-> directory IS (`runs.place_of`, as `place`), which engine ran (the
+> directory IS (`runs.place_of`, as `place`: its role, its calculation, what
+> it is, and the stage, run, trial and point it sits in — `calcdirs.where`,
+> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.4a,
+> *Where am I*), which engine ran (the
 > description's), which file a viewer should open (the run the folder speaks
 > for, its result), and — for a run — its
 > `status` (`run_status` with its launch record,

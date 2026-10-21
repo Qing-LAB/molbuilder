@@ -138,8 +138,8 @@ def pseudo_dir(base: Path, plan=None) -> Path:
     # package holds files, never a run.  Unstamped, it would report a
     # calculation *running* because it has no result file in it -- the
     # answer § 1.4a exists to stop.  It reads back
-    # as *support* rather than a stage, because the naming authority maps no
-    # job to it; that is derived, not stored.
+    # as *support* rather than a stage, because its place is no stage's
+    # (`calcdirs.where`); that is read off its name, not stored.
     from .naming import open_container
     pdir = open_container(base, base / PSEUDO_DIRNAME, plan)
     for stray in plan.glob(base, "*.psml"):

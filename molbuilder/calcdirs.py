@@ -10,24 +10,25 @@ Contract: `execution/project-layout.md` § 1.4a, invariant 6b.
 *container* or a *run*, and then said the quiet part: *"there is no directory
 where the two are mixed and something has to tell them apart."*  Nothing in the
 TREE has to.  **A reader handed a path does**, and could not — the answer is not
-decidable from the name, and § 1.4's own closing paragraph settles that three
-times over: a flat calculation root IS a run, a hierarchical stage directory is
+decidable from the name, and § 1.3 and § 1.4 settle that three times over: a
+flat calculation root IS a run, a hierarchical stage directory is
 a container, and a hand-made folder with one ``.fdf`` in it is a run.
 
 **Two fields, and each earns its place** (§ 1.4a).  Everything else a reader
-might want — which stage, which attempt index, whether a container is a stage or
-support — is DERIVED from ``of`` through `jobset.naming.job_dir_names`, the
-naming authority that wrote those directory names.  Measured over a real
-three-calculation tree before this module was written: every stage container
-resolved to its job, every attempt to its job and index, both shapes' roots
-through ``shape``.  A fact the tree already answers does not get a second home.
+might want — what the folder is (a stage's, a run's, a point's, a benchmark's),
+its stage, its run, its trial and its point — is READ OFF ITS PLACE in the names
+the layout gives its folders (`identity.parse_token`, `paths.attempt_index`,
+`trial_point`, `flat_bench_token`, the benchmark's and the launch folder's
+names): :func:`where`, the one answer.  A fact the tree's names already answer
+does not get a second home.
 
-**What the authority cannot answer, and so is stored here.**  It returns a bench
-trial as ``<NN>_<name>/bench/bench-<point>`` — an exact job match, structurally
-identical to a stage's own ``<NN>_<name>`` — and § 1.4 calls the first a
-container and the second a run.  Same shape, opposite answers, and only the code
-that created the directory knew which it was making.  That is the whole content
-of this record.
+**What the names cannot answer, and so is stored here.**  Container or run: a
+flat root is a run where a hierarchical one is a container; a flat trial's
+``bench-<point>/`` is a run where a hierarchical one holds its attempts; a swept
+rung's ``run-<n>/`` holds its points' runs where a rung that runs once is a run.
+The shape and whether a rung sweeps are the description's, which this floor does
+not read, and only the code that created the directory knew which it was making.
+That is the whole content of this record.
 
 **Absence is not a refusal** (§ 1.4a).  A directory with no record is read
 ALONE: its files, which a parser claims, which one to open, how its run ended.
@@ -41,7 +42,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
+from .identity import parse_token
+from .paths import BENCH_DIRNAME, attempt_index, flat_bench_token, trial_point
 from .persist import json_text, read_json
+from .runfiles import LAUNCH_DIR
 
 #: The record's filename.  VISIBLE, not dotted: it sits beside `task.json`,
 #: `job-set.json`, `run.json` and `environment.json`, and a person listing a
@@ -52,15 +56,32 @@ from .runfiles import CALCDIR_FILE as FILENAME  # noqa: E402 -- the catalogue's
 
 SCHEMA = "molbuilder/calcdir@1"
 
-#: § 1.4's own two words, and there is no third.  `stage`, `axis`, `trial` and
-#: *support* are DERIVED readings of these two (§ 1.4a) -- not roles.
+#: § 1.4's own two words.  What a folder IS -- a stage's, an attempt, a
+#: point's, a benchmark's, a trial's, support -- is READ OFF ITS PLACE
+#: (:func:`where`, § 1.4a) -- not a role.
 CONTAINER = "container"
 RUN = "run"
-#: The engine's scratch of the run above it -- a device run's ``tsgf/``
+#: The one folder that is neither: the engine's scratch of the run above it -- a device run's ``tsgf/``
 #: (`engines/transport.md` § 2a.11): read alone, no run asked of it
 #: (project-layout.md § 1.4a, invariant 6b).
 SCRATCH = "scratch"
 ROLES = (CONTAINER, RUN, SCRATCH)
+
+#: WHAT A FOLDER IS in its calculation (§ 1.4a, *Where am I*), read off its
+#: place in the layout's names: the calculation's root -- its description is
+#: there; a stage's folder, ``<NN>_<stage>/``; an attempt, ``run-<n>/`` -- a
+#: stage's or a hierarchical trial's; a point's folder -- below a run of
+#: points, or the one prep renders a point's deck into below its stage; the
+#: engine's scratch of the run above (the role's own word); a stage's
+#: benchmark, ``<NN>_<stage>/bench/`` or the flat ``bench_<NN>_<stage>/``; a
+#: trial, ``bench-<point>/``; support -- ``pseudos/``, a ``launch/``.
+CALCULATION = "calculation"
+STAGE = "stage"
+ATTEMPT = "attempt"
+POINT = "point"
+BENCHMARK = "benchmark"
+TRIAL = "trial"
+SUPPORT = "support"
 
 
 @dataclass(frozen=True)
@@ -82,9 +103,9 @@ def record(directory, *, role: str, root) -> Tuple[Path, str]:
     """
     if role not in ROLES:
         raise ValueError(
-            f"placement role must be one of {ROLES}, got {role!r} -- "
-            f"`stage`/`axis`/`trial`/support are DERIVED readings, not roles "
-            f"(project-layout.md § 1.4a)")
+            f"placement role must be one of {ROLES}, got {role!r} -- what a "
+            f"folder is (a stage's, an attempt, a point's, a trial...) is read "
+            f"off its place, not a role (project-layout.md § 1.4a)")
     directory = Path(directory)
     of = os.path.relpath(Path(root).resolve(), directory.resolve())
     return (directory / FILENAME,
@@ -141,13 +162,104 @@ def root_of(directory) -> Optional[Path]:
     ``None`` means neither, which is the read-alone case.  A dangling ``of``
     — an attempt copied out of its calculation — also answers ``None``: *this
     attempt's calculation is not here* is the honest reading, where a search
-    would have adopted whatever it found.
+    would have adopted whatever it found.  The root of :func:`where`'s
+    answer, which asks both.
     """
-    directory = Path(directory)
-    if described(directory):
-        return directory
-    said = read(directory)
+    return where(directory).root
+
+
+@dataclass(frozen=True)
+class Where:
+    """WHERE A FOLDER IS (`project-layout.md` § 1.4a, *Where am I*): the
+    calculation's ``root``; ``what`` the folder is -- :data:`CALCULATION`,
+    :data:`STAGE`, :data:`ATTEMPT`, :data:`POINT`, :data:`SCRATCH`,
+    :data:`BENCHMARK`, :data:`TRIAL` or :data:`SUPPORT`; ``role``, its
+    record's (``None`` at the root, whose description's shape says it); and
+    where it sits -- the ``stage`` token (``01_coarse``), the ``run`` index,
+    the benchmark ``trial``'s point, and for a point's folder the ``point``,
+    its path below the run or the stage (``f001/v0.2``); ``run_folder``, the
+    run's own ``run-<n>/`` it lies in -- itself for an attempt, the one above
+    a point's folder or a scratch folder -- where a launch record lies.  A
+    folder no
+    calculation claims -- with neither `task.json` nor a `calcdir.json`
+    naming its root -- has none of them."""
+    root: Optional[Path] = None
+    what: Optional[str] = None
+    role: Optional[str] = None
+    stage: Optional[str] = None
+    run: Optional[int] = None
+    trial: Optional[str] = None
+    point: Optional[str] = None
+    run_folder: Optional[Path] = None
+
+
+def where(directory) -> Where:
+    """WHERE ``directory`` IS in its calculation -- the one answer (§ 1.4a,
+    *Where am I*).  The root, as :func:`root_of` says it; what the folder
+    is, its record's role read at its place in the layout's names: below the root a
+    stage's ``<NN>_<stage>/``, a flat benchmark's ``bench_<NN>_<stage>/`` or
+    support; below a stage its attempts ``run-<n>/``, its benchmark
+    ``bench/``, its ``launch/``, else a point prep renders into; below a
+    benchmark its trials ``bench-<point>/`` and its ``launch/``; below a
+    trial its attempts; below an attempt its points, or its scratch, as its
+    role says.  A folder that states no place -- no `task.json`, no
+    `calcdir.json` naming its root -- answers an empty :class:`Where`: it is
+    read alone, nothing above it searched for (§ 1.4a: a directory states
+    its place, nothing infers it)."""
+    d = Path(directory)
+    # THE ROOT, the two ways a folder says it (:func:`root_of`): its
+    # description is here, or its record names the folder it is in.
+    if described(d):
+        return Where(root=d, what=CALCULATION)
+    said = read(d)
     if said is None:
-        return None
-    root = (directory / said.of).resolve()
-    return root if described(root) else None
+        return Where()
+    root = (d / said.of).resolve()
+    if not described(root):
+        return Where()
+    role = said.role
+    try:
+        parts = d.resolve().relative_to(root).parts
+    except ValueError:
+        return Where(root=root, role=role)
+    stage = run = trial = None
+    below = []
+    deep = 0          # how many of the parts reach the run's own folder
+    at: Optional[str] = CALCULATION
+    for i, name in enumerate(parts, start=1):
+        if at == CALCULATION:
+            bench_of = flat_bench_token(name)
+            if bench_of:
+                stage, at = bench_of, BENCHMARK
+            elif parse_token(name):
+                stage, at = name, STAGE
+            else:
+                at = SUPPORT
+        elif at == STAGE:
+            n = attempt_index(name)
+            if n is not None:
+                run, at, deep = n, ATTEMPT, i
+            elif name == BENCH_DIRNAME:
+                at = BENCHMARK
+            elif name == LAUNCH_DIR:
+                at = SUPPORT
+            else:
+                at = POINT
+                below.append(name)
+        elif at == BENCHMARK:
+            point = trial_point(name)
+            trial, at = (point, TRIAL) if point else (trial, SUPPORT)
+        elif at == TRIAL:
+            n = attempt_index(name)
+            if n is not None:
+                run, at, deep = n, ATTEMPT, i
+            else:
+                at = None
+        elif at in (ATTEMPT, POINT):
+            at = POINT
+            below.append(name)
+    what = SCRATCH if role == SCRATCH else at
+    return Where(root=root, what=what, role=role, stage=stage, run=run,
+                 trial=trial,
+                 point="/".join(below) if what == POINT else None,
+                 run_folder=root.joinpath(*parts[:deep]) if deep else None)

@@ -171,11 +171,11 @@ def api_checkpoint_state():
             # IS THIS A FOLDER CHECKPOINTS ARE FOR -- the question the panel
             # has to answer BEFORE it can offer to set one up, and the one
             # thing `initialized` cannot say (a calculation with no repo yet
-            # is exactly the case the Set-up button exists for).  A
-            # calculation root is declared by `task.json`
-            # (`project-layout.md` invariant 2), which is what `calcdirs`
-            # reads.
-            "is_calculation": calcdirs.root_of(path) == path,
+            # is exactly the case the Set-up button exists for).  Where the
+            # folder is, the one answer (`calcdirs.where`, `project-layout.md`
+            # § 1.4a): a calculation's root is the folder its `task.json` is
+            # in (invariant 2).
+            "is_calculation": calcdirs.where(path).what == calcdirs.CALCULATION,
             "initialized":   status.initialized,
             "standing_at":   _state_json(here) if here else None,
             "clean":         status.clean,

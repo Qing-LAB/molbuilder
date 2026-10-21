@@ -81,42 +81,31 @@ def sweep_set_dirs(bundle) -> "List[Path]":
     return [base / rel for rel, _tok in _bench_containers_in(base)]
 
 
-def bench_stage_of(base, where) -> "Optional[str]":
+def bench_stage_of(folder) -> "Optional[str]":
     """The stage a sweep measures, by its name -- read off where the sweep
-    lives: the bench container that holds ``where`` (the container itself,
-    or a trial in it), through the layout's search half
-    (`paths.bench_containers_in`), so both layouts answer.  A refusal or a
-    status names the stage's own verbs with it, never a ``<stage>``.
-    ``None`` for a sweep in no stage's container -- a hand-built one."""
+    lives (`calcdirs.where`): the benchmark ``folder`` is, or the one its
+    trial is in, in either layout.  A refusal or a status names the stage's
+    own verbs with it, never a ``<stage>``.  ``None`` for a sweep in no
+    stage's benchmark -- a hand-built one."""
     from ..identity import command_stage
-    try:
-        rel = Path(where).resolve().relative_to(Path(base).resolve())
-    except (ValueError, OSError):
+    at = calcdirs.where(folder)
+    if at.stage is None or (at.what != calcdirs.BENCHMARK
+                            and at.trial is None):
         return None
-    for name, token in _bench_containers_in(base):
-        if rel == Path(name) or Path(name) in rel.parents:
-            return command_stage(token)
-    return None
+    return command_stage(at.stage)
 
 
 def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     """``(calculation folder, stage name)`` when ``folder`` IS a stage's
-    bench container -- the declared one of the calculation one level up
-    (flat's ``bench_<NN>_<stage>``) or two (the hierarchy's
-    ``<NN>_<stage>/bench``), through the layout's search half -- else
+    benchmark -- the flat ``bench_<NN>_<stage>`` or the hierarchy's
+    ``<NN>_<stage>/bench``, by where it is (`calcdirs.where`) -- else
     ``None``.  A sweep's own job-set names its trials from the calculation,
     so a reader standing in its container reads them from there."""
     from ..identity import command_stage
-    # THE CALCULATION ROOT through its one door (`calcdirs.root_of`): the
-    # container is stamped, so the root answers from any depth.
-    f = Path(folder).resolve()
-    calc = calcdirs.root_of(f)
-    if calc is not None:
-        rel = f.relative_to(calc.resolve())
-        for name, token in _bench_containers_in(calc):
-            if Path(name) == rel:
-                return calc, command_stage(token)
-    return None
+    at = calcdirs.where(folder)
+    if at.what != calcdirs.BENCHMARK:
+        return None
+    return at.root, command_stage(at.stage)
 
 
 @dataclass(frozen=True)
@@ -788,9 +777,9 @@ def prepare_attempt(calc, stage_name: str, *,
     if not is_new:
         empty_run(attempt, plan)
     # THE ONE OPENER (`open_run`): the attempt and every container down to
-    # it, each saying what it is, which is not recoverable later: a bench trial's
-    # directory is structurally identical to a stage's own, and § 1.4 calls
-    # one a run and the other a container.
+    # it, each saying what it is -- container or run, which no name says:
+    # the shape and whether a rung sweeps decide (`project-layout.md`
+    # § 1.4a).
     open_run(base, attempt, plan)
     # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
     # § 2a.11): the rung declares it (`Job.scratch_dir`).

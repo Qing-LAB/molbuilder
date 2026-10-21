@@ -1756,7 +1756,11 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     task = task_of(run.bundle)
     device = run.bundle / "04_device" / "run-0"
     folder = device / "tsgf"
-    assert folder.is_dir() and calcdirs.read(folder).role == calcdirs.SCRATCH
+    assert folder.is_dir() and calcdirs.where(folder).what == calcdirs.SCRATCH
+    # ...and the walk's machinery beside the runs is the stage's support,
+    # never a point (`project-layout.md` § 1.4a, *Where am I*).
+    assert calcdirs.where(run.bundle / "04_device" / "launch").what \
+        == calcdirs.SUPPORT
     assert [p.name for p in folder.iterdir() if ".TSGF" in p.name] == []
     log = next((run.bundle / "04_device" / "launch").glob("*.log")).read_text()
     lines = [ln.split("] ", 1)[1] for ln in log.splitlines() if "] [" not in ln
@@ -2276,7 +2280,10 @@ def test_a_transmission_runs_folder_opens_its_report_at_its_point(
     § 2).  The silent failure, measured on a real run 2026-10-16: the folder
     opened the progress log the wrapper writes at launch -- one preview
     frame, never updated by TBtrans -- and a transmission running for days
-    showed a structure and no plot."""
+    showed a structure and no plot.  The folder and the one prep rendered
+    the point's deck into say where they are (`project-layout.md` § 1.4a,
+    invariant 6b): a folder prep made with no `calcdir.json` is read as *not
+    marked*."""
     calc, folder, point = _transmission_point(junction, row)
     said = _results_dir(junction, monkeypatch, folder)
     assert Path(said["openable"]).resolve() == (calc / "task.json").resolve(), (
@@ -2284,6 +2291,19 @@ def test_a_transmission_runs_folder_opens_its_report_at_its_point(
     assert said["report"]["path"] == said["openable"], said["report"]
     assert said["report"]["parser"] == "transport-task", said["report"]
     assert said["point"] == point, said["point"]
+    # WHERE THE FOLDER IS (`project-layout.md` § 1.4a, *Where am I*): a point
+    # of the stage's run -- and its twin below the stage, the folder prep
+    # rendered the point's deck into, a container that says so (invariant 6b).
+    rel = folder.relative_to(calc / "05_transmission" / "run-0").as_posix()
+    where = ("what", "role", "stage", "run", "trial", "point")
+    assert {k: said["place"][k] for k in where} == {
+        "what": "point", "role": "run", "stage": "05_transmission", "run": 0,
+        "trial": None, "point": rel}, said["place"]
+    prepared = _results_dir(junction, monkeypatch,
+                            calc / "05_transmission" / rel)["place"]
+    assert {k: prepared[k] for k in where} == {
+        "what": "point", "role": "container", "stage": "05_transmission",
+        "run": None, "trial": None, "point": rel}, prepared
 
 
 @pytest.mark.parametrize("row", _TRANSMISSION_POINTS,

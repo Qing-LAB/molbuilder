@@ -277,8 +277,9 @@ def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
 
 def open_container(base, folder, plan) -> Path:
     """Make ``folder`` -- one that holds files and never a run: a
-    submission's ``launch/``, the calculation's ``pseudos/`` -- and say it
-    is a container, with every directory above it (§ 1.4a).  Returns
+    submission's ``launch/``, the calculation's ``pseudos/``, a point's
+    folder below its stage, which prep renders the point's deck into -- and
+    say it is a container, with every directory above it (§ 1.4a).  Returns
     ``folder``."""
     base, folder = Path(base), Path(folder)
     plan.folder(folder)

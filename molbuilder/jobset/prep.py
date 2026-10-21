@@ -42,7 +42,8 @@ from .. import calcdirs
 from .. import script_emit as _sc
 from ..paths import Shape
 from .materialize import materialize
-from .naming import job_dir_names, run_names, stage_home, ladder_homes
+from .naming import (job_dir_names, ladder_homes, open_container,
+                     run_names, stage_home)
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
@@ -1181,7 +1182,14 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # each placed by the engine where its own deck puts it.
             spec_at: dict = {}
             for _out, _point in (list(rung.points) or [(_jdir, None)]):
-                plan.folder(_out)
+                # A POINT'S FOLDER BELOW ITS STAGE says what it is, as every
+                # folder this tree makes below the root does
+                # (`project-layout.md` invariant 6b): a container, holding
+                # the point's deck and run script every run copies.
+                if _point is not None:
+                    open_container(base, _out, plan)
+                else:
+                    plan.folder(_out)
                 _at = rung.at_point(cfg, _point)
                 _struct = (rung.struct_at(_point)
                            if rung.struct_at is not None
@@ -1387,7 +1395,6 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # walls summed (`group.envelope`) -- launch sends it as it is.
         from ..runfiles import GroupNames
         from .group import envelope
-        from .naming import open_container, run_names
         job = js.job(stage)
         walk = walk_header_of(
             home.dir, GroupNames.of_points(
@@ -1419,7 +1426,6 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # § 6.0): its trials' shared request -- launch walks the trials
         # still to run and sends it as it is.
         from ..runfiles import LAUNCH_DIR
-        from .naming import open_container
         from .shelves import ShelfError, shelf_request, shelves_of
         try:
             shelves = [(names, shelf_request(trials), trials)
@@ -3026,7 +3032,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                environment, emit_sbatch=emit_sbatch)
             had = set(the_plan.writes())
             if got is not None:
-                from .naming import open_container
                 open_container(base, base / LAUNCH_DIR, the_plan)
                 headers[n] = got.path
                 the_plan.text(got.path, got.text)
@@ -3058,7 +3063,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                                         points_of, environment,
                                         emit_sbatch=emit_sbatch)
             if got is not None:
-                from .naming import open_container
                 open_container(base, base / LAUNCH_DIR, the_plan)
                 the_plan.text(got.path, got.text)
             else:

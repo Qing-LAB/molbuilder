@@ -275,9 +275,10 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     # record that does not read is the state `unreadable`, said, never taken
     # for a run that stopped (`runs.concluded`, which asks the scheduler
     # once where it can, `running-a-job.md` § 4.2).
-    from ..paths import run_folder_of
+    # THE RUN'S OWN FOLDER, where its launch record lies (`calcdirs.where`).
+    from ..calcdirs import where
     st = _concluded(attempt, names, base=base, run=run,
-                   launched_in=run_folder_of(attempt))
+                   launched_in=where(attempt).run_folder)
     state, detail = st.state, st.detail
     rec = None
     if verdict:

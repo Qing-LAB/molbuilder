@@ -6,9 +6,9 @@ belongs to, and its files*; *the description*); `execution/project-layout.md`
 (the run a folder speaks for); `web/results.md` § 3b (the file card).
 
 Floor 2 (`architecture.md` § 2.1): it reads the description, through its one
-door (`task.of`), and composes floor 1's doors -- `calcdirs` for a
-folder's own record, `paths` and `identity` for the names a layout gives its
-folders, `runfiles` for the names a run gives its files, `runrecord` and
+door (`task.of`), and composes floor 1's doors -- `calcdirs` for where a
+folder is (`calcdirs.where`), `paths` and `identity` for the names a layout
+gives its folders, `runfiles` for the names a run gives its files, `runrecord` and
 `parse.dirs` for what a run's records and outputs say.  So nothing below it
 knows a calculation, which is what `parse/` and `calcdirs` must not
 (`architecture.md` § 2.1).
@@ -27,8 +27,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
-from molbuilder.paths import (attempt_index, flat_bench_token, trial_label,
-                              trial_point)
+from molbuilder.paths import attempt_dir, attempt_index, trial_label
 
 if TYPE_CHECKING:
     from molbuilder.transport.stages import Point
@@ -41,15 +40,33 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class Place:
     """What a folder is in its calculation (`project-layout.md` § 1.4a):
-    ``role`` -- ``container`` or ``run``, ``None`` when nothing says -- the
-    calculation's ``root`` and its description, ``task``, read once.  A
-    folder no calculation claims has none of them: it holds no run of ours
-    and is read alone.  ``problem`` is a description that does not read, in
-    its reader's words."""
-    role: Optional[str] = None
-    root: Optional[Path] = None
+    ``where`` -- the ground floor's answer (`calcdirs.where`): the
+    calculation's root, what the folder is, the stage, run, trial and point
+    it sits in -- and the description, ``task``, read once.  A folder no
+    calculation claims has neither: it holds no run of ours and is read
+    alone.  ``problem`` is a description that does not read, in its
+    reader's words."""
+    where: calcdirs.Where = field(default_factory=calcdirs.Where)
     task: Any = None
     problem: Optional[str] = None
+
+    @property
+    def root(self) -> Optional[Path]:
+        """The calculation's folder, ``None`` for a folder none claims."""
+        return self.where.root
+
+    @property
+    def role(self) -> Optional[str]:
+        """``container``, ``run`` or ``scratch`` (`project-layout.md`
+        § 1.4a): at the root, the description's ``shape`` says it -- flat, a
+        run; hierarchical, a container -- below it, the folder's own
+        `calcdir.json`; ``None`` when nothing says."""
+        if self.where.what == calcdirs.CALCULATION:
+            if self.task is None:
+                return None
+            return (calcdirs.RUN if self.task.shape == "flat"
+                    else calcdirs.CONTAINER)
+        return self.where.role
 
     @property
     def ours(self) -> bool:
@@ -58,55 +75,35 @@ class Place:
 
 
 def place_of(directory) -> Place:
-    """What ``directory`` is (`project-layout.md` § 1.4a): the calculation
-    root, which its description's ``shape`` says is a run (flat) or a
-    container (hierarchical), or a folder below it, which its own
-    `calcdir.json` says.  **The description is read through its one door,
-    `task.of`** (`architecture.md` § 3.2, A16)."""
+    """What ``directory`` is (`project-layout.md` § 1.4a): where it is
+    (`calcdirs.where`), with its calculation's description.  **The
+    description is read through its one door, `task.of`**
+    (`architecture.md` § 3.2, A16)."""
     from molbuilder.task import of as task_of
-    d = Path(directory)
-    root = calcdirs.root_of(d)
-    if root is None:
-        return Place()
+    at = calcdirs.where(directory)
+    if at.root is None:
+        return Place(where=at)
     try:
-        task = task_of(root)
+        task = task_of(at.root)
     except Exception as exc:                               # noqa: BLE001
-        return Place(root=root, problem=str(exc))
-    if d.resolve() == root.resolve():
-        role = calcdirs.RUN if task.shape == "flat" else calcdirs.CONTAINER
-    else:
-        said = calcdirs.read(d)
-        role = said.role if said is not None else None
-    return Place(role=role, root=root, task=task)
+        return Place(where=at, problem=str(exc))
+    return Place(where=at, task=task)
 
 
-def _position(folder: Path, place: Place
-              ) -> Tuple[str, Optional[str], bool]:
-    """The label a folder's files are named on, the stage its path names,
-    and whether it is a benchmark trial's -- read off the folders the
-    layout made (`paths`, `identity`): ``<NN>_<stage>/`` in the hierarchy,
-    ``bench_<NN>_<stage>/`` at a flat root, a trial's ``bench-<point>/``
-    relabelling its files (`paths.trial_label`)."""
+def _position(place: Place) -> Tuple[str, Optional[str], bool]:
+    """The label a folder's files are named on, the stage it sits in, and
+    whether it is a benchmark trial's -- read off where it is
+    (`calcdirs.where`): a stage's files on the rung's label, a trial's
+    relabelled with its point (`paths.trial_label`)."""
     from molbuilder.identity import rung_label
-    label, stage, trial = place.task.label, None, False
-    try:
-        parts = folder.resolve().relative_to(place.root.resolve()).parts
-    except ValueError:
-        return label, None, False
-    for part in parts:
-        bench_of = flat_bench_token(part)
-        if bench_of:
-            stage = bench_of
-        elif parse_token(part):
-            stage = part
-        if stage is not None and (bench_of or parse_token(part)):
-            # A LEAD'S FILES ARE ON ITS OWN STEM (`rung_label`, the one
-            # door prep named them by).
-            label = rung_label(place.task.label, parse_token(stage)[1])
-        point = trial_point(part)
-        if point:
-            label, trial = trial_label(label, point), True
-    return label, stage, trial
+    at, label = place.where, place.task.label
+    if at.stage is not None:
+        # A LEAD'S FILES ARE ON ITS OWN STEM (`rung_label`, the one door
+        # prep named them by).
+        label = rung_label(label, parse_token(at.stage)[1])
+    if at.trial is not None:
+        label = trial_label(label, at.trial)
+    return label, at.stage, at.trial is not None
 
 
 def _ordinal(stage: Optional[str]) -> int:
@@ -182,14 +179,11 @@ class Run:
     def launched_in(self) -> Optional[Path]:
         """THE FOLDER THIS RUN'S LAUNCH RECORD LIES IN -- its own ``run-<n>``
         folder, which for a run of points is the one above the point's
-        folder (`paths.run_folder_of`, the one reading); ``None`` where no
-        part of the folder is one (a flat root's stage).  What every reader
-        of the run's state passes to `rundir.run_state_of`
-        (`running-a-job.md` § 4.2); two readers passed nothing until
-        2026-10-18, so a queued point read *not launched* and a point the
-        scheduler cut read *running* for ever."""
-        from .paths import run_folder_of
-        return run_folder_of(self.folder)
+        folder: where the folder is (`calcdirs.where`, its ``run_folder``);
+        ``None`` where it lies in none (a flat root's stage).  What every
+        reader of the run's state passes to `rundir.run_state_of`
+        (`running-a-job.md` § 4.2)."""
+        return self.place.where.run_folder
 
     @property
     def names(self) -> "_rf.RunNames":
@@ -327,7 +321,7 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
     place = place_of(folder)
     if not place.ours or place.role != calcdirs.RUN:
         return None
-    label, named, trial = _position(folder, place)
+    label, named, trial = _position(place)
     stage = named or stage
     run = None
     if not p.is_dir():
@@ -656,7 +650,7 @@ def about(path) -> Dict[str, Any]:
     place = place_of(folder)
     if not place.ours:
         return _row_about(p, None, unread=place.problem)
-    label, _stage, _trial = _position(folder, place)
+    label, _stage, _trial = _position(place)
     return _row_about(p, label)
 
 
@@ -883,30 +877,31 @@ def transmission_point(folder) -> Optional["Point"]:
     ``None`` for any other folder.  TBtrans writes no file a viewer reads on
     its own, so such a folder's result is its calculation's report at that
     point (`web/results.md` § 0.1, § 2): the one rule :func:`openable` and
-    the ladder's run rows answer by.  Read off the folder's own tokens --
-    ``<NN>_transmission/run-<n>/<point>`` (`engines/transport.md` § 2a.11)
-    -- against the rung's points (`transport.stages.points_in`)."""
+    the ladder's run rows answer by.  Read off where the folder is
+    (`calcdirs.where`) -- ``<NN>_transmission/run-<n>/<point>``
+    (`engines/transport.md` § 2a.11) -- against the rung's points
+    (`transport.stages.points_in`)."""
     from .transport.stages import Point, points_in
-    d = Path(folder)
-    place = place_of(d)
-    if (not place.ours or place.root is None
-            or place.task.calculation != "transport"):
+    place = place_of(folder)
+    if not place.ours or place.task.calculation != "transport":
+        return None
+    at = place.where
+    if (at.stage is None or parse_token(at.stage)[1] != "transmission"
+            or at.run is None or at.trial is not None):
+        return None
+    if at.what == calcdirs.ATTEMPT:
+        rel: Tuple[str, ...] = ()
+    elif at.what == calcdirs.POINT:
+        rel = Path(at.point).parts
+    else:
         return None
     root = Path(place.root)
-    try:
-        parts = d.resolve().relative_to(root.resolve()).parts
-    except ValueError:
-        return None
-    if (len(parts) < 2 or (parse_token(parts[0]) or (None, None))[1]
-            != "transmission" or attempt_index(parts[1]) is None):
-        return None
-    rel = parts[2:]
-    points = points_in(root / parts[0] / parts[1], place.task,
+    points = points_in(attempt_dir(root / at.stage, at.run), place.task,
                        "transmission", base=root)
     if not points:
         return Point() if not rel else None
-    return next((pt for _at, pt in points if Path(pt.rel).parts == rel),
-                None)
+    return next((pt for _folder, pt in points
+                 if Path(pt.rel).parts == rel), None)
 
 
 def _the_report(place: Place, attempts: List[str]) -> str:
@@ -932,7 +927,7 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
     if not place.ours:
         return openable_in(str(d))
     attempts: List[str] = [f"calculation: {place.task.calculation}"]
-    label, stage, _trial = _position(d, place)
+    label, stage, _trial = _position(place)
     if place.role == calcdirs.CONTAINER:
         return _container_product(d, place, label, stage, attempts), attempts
     if place.role == calcdirs.RUN and transmission_point(d) is not None:
@@ -957,9 +952,8 @@ def _container_product(folder: Path, place: Place, label: str,
     other container: the first result role the calculation produces that is
     present (`_openable`)."""
     from molbuilder.parse.dirs.rundir import claimed
-    is_root = place.root is not None \
-        and folder.resolve() == Path(place.root).resolve()
-    if is_root and place.task.calculation == "transport":
+    if (place.where.what == calcdirs.CALCULATION
+            and place.task.calculation == "transport"):
         handle = calcdirs.description_path(folder)
         if claimed(str(handle)):
             attempts.append(f"*{_rf.TASK_FILE}: a transport calculation's "
@@ -1034,13 +1028,16 @@ def folder_answer(directory) -> Dict[str, Any]:
         engine = engine_of(str(d))
         chosen, trail = openable_in(str(d))
         attempts += trail
-        attempts.append(
-            "this folder is not marked as part of a calculation, so only what "
-            "is in it is shown (project-layout.md § 1.4a)")
+        if place.root is None:
+            # A CALCULATION'S FOLDER WHOSE DESCRIPTION DOES NOT READ is read
+            # alone too, its reader's words said above -- never *not marked*.
+            attempts.append(
+                "this folder is not marked as part of a calculation, so only "
+                "what is in it is shown (project-layout.md § 1.4a)")
     else:
         engine = place.task.engine
         calc = place.task.calculation
-        label, stage, _trial = _position(d, place)
+        label, stage, _trial = _position(place)
         attempts.append(f"calculation: {calc}")
         if place.role == calcdirs.RUN:
             from molbuilder.runrecord import LaunchRecordError
@@ -1079,21 +1076,16 @@ def folder_answer(directory) -> Dict[str, Any]:
                 "the engine's scratch of the run above (its leads' surface "
                 "Green's function files, one voltage's pair at a time): "
                 "nothing in it opens (engines/transport.md § 2a.11)")
-        elif place.role == calcdirs.CONTAINER:
+        else:
+            # A CONTAINER: a folder of a calculation of ours is a run, a run's
+            # scratch or a container -- its own record says, at the root its
+            # description's shape (`Place.role`); one that says nothing is no
+            # calculation's (`calcdirs.where`).
             chosen = _container_product(d, place, label, stage, attempts)
             attempts.append(
                 "this directory is a container, not a run -- it has no run "
                 "state; its runs are the directories below it "
                 "(project-layout.md § 1.4)")
-        else:
-            # INSIDE A CALCULATION, AND NOTHING SAYS WHAT IT IS -- no
-            # `calcdir.json` (a `pseudos/`, a folder a person made): its files
-            # are read with the calculation's label, and no run is asked of it.
-            chosen = _openable(d, label, stage, calc, attempts)
-            attempts.append(
-                "nothing marks this folder in its calculation (no "
-                "calcdir.json), so only what is in it is shown "
-                "(project-layout.md § 1.4a)")
     files = [_file_row(entry, label, place)
              for entry in sorted(d.iterdir(), key=lambda e: e.name)
              if entry.is_file()]
@@ -1103,8 +1095,13 @@ def folder_answer(directory) -> Dict[str, Any]:
     report = None
     if chosen is not None and Path(chosen).parent != d:
         report = dict(_file_row(Path(chosen), label, place), path=chosen)
+    # WHERE THE FOLDER IS, whole (`calcdirs.where`): its role, its
+    # calculation, what it is, and the stage, run, trial and point it sits in.
+    at = place.where
     return {"place": {"role": place.role,
-                      "calculation": str(place.root) if place.root else None},
+                      "calculation": str(place.root) if place.root else None,
+                      "what": at.what, "stage": at.stage, "run": at.run,
+                      "trial": at.trial, "point": at.point},
             "engine": engine,
             "openable": chosen,
             "report": report,

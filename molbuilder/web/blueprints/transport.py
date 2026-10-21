@@ -296,10 +296,11 @@ def api_transport_record() -> Any:
         return jsonify({"ok": False, "error": f"nothing at {raw}"}), 404
     base = Path(path) if path.is_dir() else Path(path).parent
     # THE FOLDER'S CALCULATION through its one door (`calculation.open`,
-    # A16), opened once: a folder below the root answers with the root.
+    # A16), opened once: a folder below the root answers with the root, where
+    # it is (`calcdirs.where`).
     from molbuilder import calcdirs
     from molbuilder.calculation import NotACalculation, open as open_calc
-    root = calcdirs.root_of(base)
+    root = calcdirs.where(base).root
     try:
         calc = open_calc(root if root is not None else base)
     except (NotACalculation, OSError, ValueError) as exc:
@@ -353,7 +354,7 @@ def api_transport_pdos() -> Any:
         return jsonify({"ok": False, "error": (
             f"the request does not read: {exc}")}), 400
     try:
-        got = selection_pdos(base, task, point, atoms,
+        got = selection_pdos(place.root, task, point, atoms,
                              str(request.args.get("orbitals") or "all"),
                              frame=frame)
     except RecordError as exc:

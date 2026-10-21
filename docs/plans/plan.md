@@ -74,8 +74,10 @@ download, § 1v), 2.25.1–2.25.2 (the transport review's two rounds), 2.26.0
 (a sequence of groups launched as one job, `job-system.md` § 6.0) — each a
 changelog row — and N3c, the wall and the *written as the job ended* warning
 written into the documents word for word (no move), and 2.26.1 (N3d: the
-e2e batch's older failures owned, three errors of ours among them), and 2.26.2
-(N4: every fact on its floor, but the two record readers L1T-D1 holds).
+e2e batch's older failures owned, three errors of ours among them), 2.26.2
+(N4: every fact on its floor, but the two record readers L1T-D1 holds),
+2.26.3 (L1T-D1: those readers on their records' floors) and 2.26.4 (L1T-D2:
+*where am I*, one ground-floor answer with its context).
 
 **On Sol, the user's:** `git pull` to 2.24.1, then `jobset prep task --group
 3` and `jobset launch task --group 3 --mode submit` on
@@ -95,9 +97,8 @@ TBtrans rank, from TBtrans's own `[memory]` lines and the monitor's peak
 (12.31 GB on 16 ranks) — 64 ranks ≈ 50 GB; its wall, from the local run's
 progress lines (≈ 150 h on 16 ranks of a 2016 Xeon), ≈ 37 h at most on 64.
 
-**What runs next** is § 0a's queue, *NOW*: *where am I* whole (§ 1t,
-L1T-D2, the user's yes 2026-10-21), what is computed vs how it runs (§ 1s), the
-memory suggestion (§ 1u) — then § 0a's steps 2–6.
+**What runs next** is § 0a's queue, *NOW*: what is computed vs how it runs
+(§ 1s), the memory suggestion (§ 1u) — then § 0a's steps 2–6.
 
 **Decisions that wait on the user** — SEQ-ALLOC, WAE, GKN, RL15, V1.9's
 remainder, F11's go, SCHED-R's advance signal (§ 0a). The question this
@@ -266,12 +267,23 @@ and the displacement sweep's readers ask their writers' schema names in
 modules no floor names (`transport.record`, `spectra.displacement_sweep`):
 no floor rule judges them.  The Results folder door's join of
 `job-set.json` to a folder (`runs._container_product`, A16) stays, its
-floor-3 door out of a floor-2 module's reach.  **Next, the user's yes the
-same day**: **L1T-D2** — decision 2's whole answer, *where
-am I* with its context (the stage, run, point or benchmark a folder belongs
-to, read from the markers and the path), as `calcdirs.where`, `runs.place_of`
-built on it, and the sidebar, the Results tab and the checkpoint panel
-asking it — its own step.
+floor-3 door out of a floor-2 module's reach.  **L1T-D2, built in 2.26.4**
+*(the user's yes the same day)*: decision 2's whole answer, *where am I* with
+its context, is `calcdirs.where` (floor 1) — the calculation's folder, what
+the folder is, its record's role, and the stage, run, trial and point it sits
+in, read off its place in the layout's names (`project-layout.md` § 1.4a);
+`runs.place_of` is built on it (the Results tab's `place` carries it whole),
+the checkpoint panel in the sidebar asks it, and so do the transport record's
+route and a benchmark's owner and stage (`materialize.bench_owner`,
+`bench_stage_of`).  A point's folder below its stage, the one prep renders
+the point's deck into, now carries its record (invariant 6b, which it broke).
+**Left, the user's to say**: the Results page's note for a calculation's ROOT
+whose description does not read still says *not marked as part of a
+calculation* (`results/viewer.js`, `PLACE_NOTE_UNKNOWN` -- a page's words; the
+trail beside it says the reader's).  `Where.root` is the folder as given at a
+root and resolved below it, as `root_of` always answered; every reader compares
+resolved paths, and one spelling would change the paths printed under a
+symlinked projects folder -- no visible change today.
 
 ## 1u. The memory a run needs — a suggestion beside the request *(2026-10-20; the user's yes: "yes, put it in the plan, but prioritize among all remaining issues" — N6 in § 0a's queue)*
 
@@ -436,7 +448,7 @@ below says.
 | **N3b** | **shipped 2.26.0** | **A sequence of groups — one job launching each group in turn** (`job-system.md` § 6.0, *A sequence of groups*): `prep task --group … --one-job` writes its one header (one queue, the largest request, the walls summed); `launch task --group A --group B …` sends one job whose walk runs each group's own launch on the job's node, each run recording the job it rides (`run.json`'s `sequence`); the job's address lists its groups; `status`, the Results tab and `jobs status` say a group *goes in job N*; the file catalogue's `{group}.launch.json` | the user, 2026-10-20: *"how about we allow submission of multiple groups in sequence for one job? … so the lower level logic stays the same"*; *"yes, write the contract, make sure parser, and jobset design are both correctly updated with framework and api level design/implmentation, result should understand this new structure"* |
 | **N3c** | **done 2026-10-21** — docs, no move | **The engine's wall and a file written as the job ended — is it documented?** Check that the work giving the engine its wall (SIESTA's `MaxWalltime` from the job's wall less its slack, `MB_WALL_S`, `running-a-job.md` § 3.6) and the check of a dependent file's write time against the engine's stop time — the warning that a file may have been cut off mid-write, a task or job stopped during its last write (the *written as the job ended* warning, `submit`'s `warned`) — are stated EXPLICITLY in the contract, the documents and the README: that they exist, their mechanism, and the exact message a person sees; a gap found is written in, a mismatch with the code reported. **Found and written in:** § 3.6 quoted none of the lines a person sees of the wall, gave the warning's scope as a stage launched again only (it is every launch that continues from a run's files, and the flat layout's files read in place), said it showed on "both doors" (it is the launch's two lines and the ledger; `status` and the browser do not compare), and quoted it with a dash the code does not print; now § 3.6 has every line word for word, the scope, the end it compares with (the closing record, to the whole second) and a run with none, and `siesta.md` § 8.9, `pyscf.md` § 3.9, `run-reports.md` § 2.1b, `job-system.md` § 5.4, the documents index and the README say it. No mismatch in the code; one question, WAE below | the user, 2026-10-20: *"there was a work on adding -wall time to engine, and correctly check the writing/access time of dependent file and the stop time of the engine to warn about potential corrupted writing (task/job stopped during last writing), see if this is correctly documented explicitly about its existence, mechanism, and message in the contract/document/README"* |
 | **N3d** | **shipped 2.26.1** | **The e2e batch's older failures, owned one by one** — found by 2.26.0's full `e2e` batch (500 tests, 2026-10-20) and failing the same on the pushed 2.25.2, so older than the sequence work: `test_bench_summary_inspector_e2e` (4: the page's polling), `test_inspector_registry_e2e` (7: the dropdown's headings, the error card, a viewer's teardown), `test_results_file_picker_e2e` (a rescan's parsing state), `test_siesta_run_in_the_viewer_e2e` (opened again and again), `test_vibration_e2e` (the monitor's status line no longer says *SCF iteration*, it says *SCF rows*), and a notebook test that differs from run to run. Each judged against its contract -- the code wrong, or the test asserting a rule no longer stated -- never called flaky; a timing one read wait by wait against the page code. **What they were** (the changelog's 2.26.1 row): three errors of ours -- a PySCF run's status line without its SCF iteration (2.21.0), a plain `.xyz` opened as a trajectory on the Results tab (2.16.3), a benchmark's folder opening nothing -- and tests mounting viewers without the server's answer they match on since 2.13.3; the notebook's one miss did not come back on its own, and its wait now says why when it fails | 2.26.0's batch; the user, 2026-10-20: *"push when all green"* -- these are not green, said so at the push |
-| **N4** | **2.26.2**, L1T-D1 **2.26.3**; L1T-D2 next | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
+| **N4** | **2.26.2**, L1T-D1 **2.26.3**, L1T-D2 **2.26.4** | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's, and their two choices of how (the user, 2026-10-21) |
 | **N5** | a middle number | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
 

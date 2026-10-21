@@ -506,8 +506,6 @@ class TestTheContractEndpoint:
         assert got.exit_code == 0, got.output
 
         body = client.get("/api/results/dir?path=" + str(bundle)).get_json()
-        assert body["place"]["role"] == "container", (
-            "a hierarchical root is a container (§ 1.4)")
         assert body["status"] is None and body["record"] is None, (
             "a container is not a run")
         assert body["ladder"] is not None, "a calculation root has a ladder"
@@ -523,7 +521,6 @@ class TestTheContractEndpoint:
 
         attempt = bundle / "01_coarse" / "run-0"
         body = client.get("/api/results/dir?path=" + str(attempt)).get_json()
-        assert body["place"]["role"] == "run"
         assert (body["status"]["state"], body["status"]["detail"]) == (
             "pending", "prepared, not launched (no launch record)"), body["status"]
         about = {f["name"]: f["about"] for f in body["files"]}
@@ -536,8 +533,89 @@ class TestTheContractEndpoint:
         trial = sorted((bundle / "01_coarse" / "bench").glob("bench-*"))[0]
         body = client.get("/api/results/dir?path="
                           + str(trial / "run-0")).get_json()
-        assert body["place"]["role"] == "run", body["place"]
         assert body["status"]["state"] == "pending", body["status"]
+
+    #: WHERE EACH FOLDER PREP MAKES IS (`project-layout.md` § 1.4a, *Where am
+    #: I*; invariant 6b; `web/results.md` § 2.3, `place`) -- an H2
+    #: relaxation's first group and its first stage's benchmark, prepared in
+    #: each shape: ``(shape, folder, what, role, stage, run, trial)``, the
+    #: folder relative to the calculation, ``bench-*`` a trial and ``*`` its
+    #: point.  Every folder prep made answers one row, and every row a folder.
+    EVERY_FOLDER = [
+        ("hierarchical", "", "calculation", "container", None, None, None),
+        ("hierarchical", "pseudos", "support", "container", None, None, None),
+        ("hierarchical", "01_coarse", "stage", "container", "01_coarse",
+         None, None),
+        ("hierarchical", "01_coarse/run-0", "attempt", "run", "01_coarse",
+         0, None),
+        ("hierarchical", "01_coarse/bench", "benchmark", "container",
+         "01_coarse", None, None),
+        ("hierarchical", "01_coarse/bench/bench-*", "trial", "container",
+         "01_coarse", None, "*"),
+        ("hierarchical", "01_coarse/bench/bench-*/run-0", "attempt", "run",
+         "01_coarse", 0, "*"),
+        ("flat", "", "calculation", "run", None, None, None),
+        ("flat", "pseudos", "support", "container", None, None, None),
+        ("flat", "bench_01_coarse", "benchmark", "container", "01_coarse",
+         None, None),
+        ("flat", "bench_01_coarse/bench-*", "trial", "run", "01_coarse",
+         None, "*"),
+    ]
+
+    @pytest.mark.parametrize("shape", ["hierarchical", "flat"])
+    def test_every_folder_prep_makes_says_where_it_is(
+            self, isolated, tmp_path, monkeypatch, shape):
+        """Through the road -- `jobset init`, `prep task` and `prep bench`
+        of an H2 relaxation, no engine run -- every folder prep made answers
+        the Results tab's door with where it is: its calculation, what it
+        is, its role, and the stage, run and trial it sits in
+        (`project-layout.md` § 1.4a, *Where am I*; `web/results.md` § 2.3).
+        The silent failures: a folder read as another stage's or trial's has
+        its files read on the wrong label, none of them molbuilder's; a
+        benchmark's folder not read as one, its summary refused; a folder
+        prep made with no `calcdir.json` (invariant 6b), read as *not
+        marked*, its run never asked.
+
+        MUTATION THIS MUST FAIL AGAINST: a trial read as support (the
+        benchmark's child rule), an attempt's index not read, the flat
+        benchmark not read at the root, a folder an opener left unstamped."""
+        from fnmatch import fnmatch
+        from pathlib import Path
+        from conftest import write_machine_record
+        from support.road import describe_calculation, jobset
+        _root, client = isolated
+        write_machine_record()
+        bundle = describe_calculation(tmp_path, monkeypatch, shape=shape)
+        for verb in (("task", "--group", "1"), ("bench", "coarse")):
+            got = jobset("prep", *verb, "--bundle", bundle, "--target", "this")
+            assert got.exit_code == 0, got.output
+        rows = [row[1:] for row in self.EVERY_FOLDER if row[0] == shape]
+        # The folders prep made -- not the saved history's own.
+        folders = [bundle] + sorted(
+            p for p in bundle.rglob("*") if p.is_dir() and not any(
+                part.startswith(".") for part in p.relative_to(bundle).parts))
+        answered = set()
+        for folder in folders:
+            rel = "" if folder == bundle else folder.relative_to(
+                bundle).as_posix()
+            row = next((r for r in rows if fnmatch(rel, r[0])
+                        and rel.count("/") == r[0].count("/")), None)
+            assert row is not None, f"prep made {rel!r}, and no row says it"
+            answered.add(row[0])
+            pattern, what, role, stage, run, trial = row
+            if trial == "*":
+                trial = next(part for part in rel.split("/")
+                             if part.startswith("bench-"))[len("bench-"):]
+            place = client.get(
+                "/api/results/dir?path=" + str(folder)).get_json()["place"]
+            assert Path(place["calculation"]).resolve() == bundle.resolve(), (
+                rel, place)
+            assert {k: place[k] for k in ("what", "role", "stage", "run",
+                                          "trial", "point")} == {
+                "what": what, "role": role, "stage": stage, "run": run,
+                "trial": trial, "point": None}, (rel, place)
+        assert answered == {r[0] for r in rows}, (
+            "a row no folder answered", sorted({r[0] for r in rows} - answered))
 
 
     def test_no_deck_answers_null(self, isolated):
