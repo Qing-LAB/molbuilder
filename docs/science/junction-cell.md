@@ -410,7 +410,7 @@ period `p` that is decidable without any lattice arithmetic:
 | the image lands on | verdict | what you are told |
 |---|---|---|
 | layer `N − p` | `continues` | the crystal carries on — the spacing and the nearest-atom gap, as numbers |
-| the top layer | `eclipsed` | stacking repeats instead of advancing — § 4's head-on contact |
+| the top layer | `eclipsed` | stacking repeats instead of advancing — § 4's head-on contact; asked after the row above, so a stack of period one (a chain, every layer on one site, whose layer `N − 1` IS the top one) continues |
 | layer `N − 2` | `twin` | right bond length, reversed stacking — the case a distance check passes |
 | — (an open face) | `vacuum` | **not a warning.** An open face is what a slab calculation wants |
 
@@ -507,11 +507,15 @@ from; then **evenly spaced**, which is the call above.
 > | **5** | **`twin`** | 2.94 Å, stacking reversed |
 > | 6 | `continues` | 2.94 Å |
 >
-> So a 4-layer lead is not bulk, and it composes. `extract_electrode_model`
-> runs `cell.classify_seam` on every lead and puts the verdict — with the
-> layer count named as the cause — in `ElectrodeModel.notes`, which
-> `/api/transport/describe_attempt` prefixes with the block name and draws on
-> the card. *(Until 2026-09-20 the note instead told the reader to "VERIFY …
+> So a 4-layer lead is not bulk, and it composes. One rule,
+> `wizard.seam_finding`, runs `cell.classify_seam` on every lead and words the
+> verdict — with the layer count named as the cause — as a finding:
+> information where the seam continues, a warning where it does not or a
+> block thinner than one period cannot say. `extract_electrode_model` keeps
+> it in `ElectrodeModel.notes`, which `/api/transport/describe_attempt`
+> prefixes with the block name and draws on the card at its weight; the lead
+> rung's settings gate asks the same rule at every prep, which prints it and
+> writes it into the lead deck's `.validation.txt`. *(Until 2026-09-20 the note instead told the reader to "VERIFY …
 > a multiple of 3 for FCC(111) ABC" — homework, about a quantity this module
 > already measures — and no reader looked at `ElectrodeModel.notes` at all,
 > so it was computed on every compose and dropped. The person owns the

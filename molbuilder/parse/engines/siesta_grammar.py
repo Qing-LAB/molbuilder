@@ -525,6 +525,10 @@ PROPOR_MARKER = "propor: error"
 #: ``OUT_OF_TIME: Time is up.`` -- how SIESTA stops at its ``MaxWalltime``
 #: (`siesta_forces.F90`, `siesta_move.F`, 5.4.2), its restart state saved.
 OUT_OF_TIME_MARKER = "out_of_time:"
+#: The line ``die`` ends with: it prints its REASON, then this
+#: (``Src/siesta_handlers_m.F90``; tbtrans's ``tbt_handlers_m.F90`` alike) --
+#: so the reason is the line before it.
+DIE_MARKER = "stopping program from node"
 
 FATAL_MARKERS: Tuple[Tuple[str, str], ...] = (
     # Out of memory is called out from the generic aborts because it is the
@@ -542,7 +546,7 @@ FATAL_MARKERS: Tuple[Tuple[str, str], ...] = (
     # SCF_NOT_CONV warning it prints first (`running-a-job.md` § 3.6).
     (OUT_OF_TIME_MARKER,             "stopped"),
     (PROPOR_MARKER,                  "stopped"),
-    ("stopping program from node",   "stopped"),
+    (DIE_MARKER,                     "stopped"),
     ("siesta died",                  "stopped"),
     ("abnormal_termination",         "stopped"),
 )
@@ -566,11 +570,46 @@ CAUSE_WORDS = {
                         "restart state saved; a launch again continues "
                         "from it",
     PROPOR_MARKER: "MPI rank distribution error (propor)",
-    "stopping program from node": "a rank stopped the run",
+    DIE_MARKER: "a rank stopped the run",
     "siesta died": "the engine died",
     "abnormal_termination": "abnormal termination",
     SCF_NOT_CONV_MARKER: "SCF non-convergence (required to converge)",
 }
+#: WHAT AN ENGINE'S STOP MESSAGE MAY MEAN, for the person reading the result
+#: (`engines/transport.md` § 6.3): ``(the message's words, lower case; the
+#: hint)``.  Said beside the engine's own words, never in their place: the
+#: engine judged, and molbuilder says where to look (user, 2026-10-20: "don't
+#: do the job of the engine").
+STOP_MEANINGS: Tuple[Tuple[str, str], ...] = (
+    # `ts_electrode.F90` `check_connectivity`, at the device's start.
+    ("electrode connectivity is not perfect",
+     "a lead's Hamiltonian reaches past its neighbouring cell, so the lead "
+     "block is thinner than the reach of its orbitals and projectors, and "
+     "TranSIESTA builds a lead's self-energy from neighbouring cells only; "
+     "the lines above it in the output name the atoms that reach across.  "
+     "Label more electrode layers on the junction (a whole stacking period "
+     "more), relax it again and cite that run (engines/transport.md 7.1)"),
+    # `tbt_init.F90`, at the transmission's start.
+    ("gamma calculation while you request transmission k-points",
+     "the device ran at the Gamma point alone (kgrid 1 x 1 in the "
+     "electrode plane), so its Hamiltonian was saved for that one k-point; "
+     "leave tbt_k_grid blank or 1 1 1, or raise kgrid in the electrode "
+     "plane and run the seed, the leads and the device again "
+     "(engines/transport.md 0.3b)"),
+)
+
+
+def stop_line(raw: str) -> str:
+    """A stop message as a result says it: the engine's line, its first 200
+    characters, and -- where :data:`STOP_MEANINGS` knows it -- what it may
+    mean."""
+    low = raw.lower()
+    means = next((words for said, words in STOP_MEANINGS if said in low),
+                 None)
+    return raw.strip()[:200] + (f" -- what it may mean: {means}" if means
+                                else "")
+
+
 #: WHEN ``SCF_NOT_CONV:`` IS THE CAUSE OF DEATH, SIESTA says so on the line:
 #: under ``SCF.MustConverge`` it prints ``SCF_NOT_CONV: SCF did not converge
 #: in maximum number of steps (required).`` and dies

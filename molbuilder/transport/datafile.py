@@ -335,7 +335,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     from ..ncdata import as_bytes, empty, in_memory, write_group
     from ..persist import write_bytes
     from .compose import recorded_junction
-    from .record import order_unstated_said
+    from .record import iv_notes_placed, order_unstated_said
     from .stages import (TRANSPORT_STAGES, frame_token, frames_of,
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
@@ -488,7 +488,11 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     if iv.get("kt_ev") is not None:
         attrs["iv_kt_ev"] = float(iv["kt_ev"])
         attrs["iv_window_ev"] = [float(x) for x in iv["window_ev"]]
-    attrs["iv_notes"] = json.dumps(iv.get("notes") or {})
+    # EACH NOTE PLACED BY ITS FRAME AND VOLTAGE (`record.iv_notes_placed`):
+    # the record keys them by its table's rows, an axis this file has not.
+    attrs["iv_notes"] = json.dumps([
+        {**n, "frame": 0 if n["frame"] is None else int(n["frame"])}
+        for n in iv_notes_placed(iv)])
     # THE LEADS COMPARED, THE FERMI FRAMES, EACH RUN'S TOLERANCES (§ 2a.12).
     leads_agree = record.get("leads") or {}
     for key, name in (("differ_ev", "leads_ef_differ_ev"),

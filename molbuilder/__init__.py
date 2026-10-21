@@ -40,7 +40,7 @@ from .structure import Structure
 #: moves with every change to what molbuilder writes into a file, with its
 #: line in `docs/process/changelog.md`; the first with a release the user
 #: declares (`process/conventions.md` § 2, *Versioning*).
-__version__ = "2.25.1"
+__version__ = "2.25.2"
 
 #: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
 #: any module inside the package, so whatever it imports loads under every

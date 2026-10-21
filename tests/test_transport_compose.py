@@ -103,6 +103,7 @@ def test_a_leads_periodic_seam_is_measured(n_layers, verdict):
     from molbuilder.transport.wizard import extract_electrode_model
     device = _au_lead_junction(n_layers)
     for lead in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
-        seam = [n for n in extract_electrode_model(device, lead).notes
-                if "periodic seam" in n]
+        seam = [n.message for n in extract_electrode_model(device,
+                                                           lead).notes
+                if n.where == "lead.seam"]
         assert len(seam) == 1 and verdict in seam[0], (lead, seam)

@@ -501,10 +501,8 @@ def _run_geometry(cited: CitedRun, kinds):
 
 
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
-                                 held_by_relaxation=None, ion_dir=None,
-                                 ion_why=None):
-    """Extract both leads from the sorted device, then measure the one
-    § 3 condition that needs files from outside the structure.
+                                 held_by_relaxation=None):
+    """Extract both leads from the sorted device.
 
     What a lead must BE is `wizard.extract_electrode_model`'s question
     -- every atom frozen, unmoved if a starting geometry is given,
@@ -512,15 +510,12 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     model.  This passes the inputs through and turns the refusal into a
     `ComposeError`.
 
-    What stays is the principal-layer condition, because it is the one
-    that cannot be answered from the structure: it compares the orbital
-    INTERACTION RANGE against the lead's PERIOD (§ 3's own wording) and
-    the ranges are READ, never guessed — SIESTA leaves ``<El>.ion``
-    beside every run, and *ion_dir* (the cited directory) is where they
-    are looked for.  No readable ``.ion`` for an element -> the condition
-    is honestly UNVERIFIED (a note on the model; TranSIESTA verifies lead
-    connectivity itself at run time), never a refusal on a number nobody
-    measured.
+    Whether a lead is thick enough for its Hamiltonian's reach -- the
+    principal-layer condition -- is TranSIESTA's own check, at the
+    device's start (`ts_electrode.F90` ``check_connectivity``); its stop
+    is said with what it means (`siesta_grammar.STOP_MEANINGS`), and
+    nothing here judges it (user, 2026-10-20: "don't do the job of the
+    engine").
 
     *prior_positions* is the geometry the cited relaxation STARTED from,
     in your order, or ``None`` when there is none to compare against — the
@@ -533,7 +528,6 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     answer (`Structure.your_indices`), never by their place in TranSIESTA's
     deck order (`engine_atom_index`).
     """
-    from ..parse.ion import max_orbital_rc_ang
     # BOTH BLOCKS, THEN RAISE, so a junction with two broken blocks is
     # fixed and re-relaxed once, not once per block.
     models, refusals = [], []
@@ -552,62 +546,7 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
         raise ComposeError(
             "neither labeled electrode block can serve as a lead. "
             + "  ".join(f"({i}) {r}." for i, r in enumerate(refusals, 1)))
-    models = tuple(models)
-    for model in models:
-        # Tiling is the extraction's: `cell.bulk_z_period` refuses an
-        # unevenly spaced block, so a model that exists has tiled.  The
-        # principal-layer condition below needs its period, which is why
-        # that order is structural rather than a choice made here.
-        # Thick enough -- the principal-layer condition.  Two orbitals
-        # couple within rc_i + rc_j of each other.  The nearest atoms
-        # of NEXT-NEAREST lead cells are separated along transport by
-        # 2*period - span (the top of cell n to the bottom of cell
-        # n+2); their true 3-D distance is at least that, so gating on
-        # the axial separation is the conservative side.  The
-        # self-energy stays adjacent-cell-only iff the range fits.
-        # (Written as 2*period - span, NOT period + interlayer: the
-        # two agree only while the period is DERIVED as span +
-        # interlayer, and an explicitly overridden z-period breaks
-        # that identity.)
-        elems = sorted(set(model.elements))
-        rc = {el: (max_orbital_rc_ang(Path(ion_dir) / f"{el}.ion")
-                   if ion_dir is not None else None)
-              for el in elems}
-        unread = sorted(el for el, r in rc.items() if r is None)
-        if unread:
-            # THE CAUSE, NAMED: a citation that no longer resolves is said
-            # as that (`ion_why`), not as unreadable `.ion` files.
-            model.notes.append(
-                f"principal-layer condition UNVERIFIED for the "
-                f"{model.label} block: "
-                + (f"its citation could not be resolved -- {ion_why}"
-                   if ion_dir is None and ion_why else
-                   f"no readable {', '.join(el + '.ion' for el in unread)} "
-                   f"beside the citation to read the orbital ranges from")
-                + ".  TranSIESTA verifies lead connectivity itself at run "
-                f"time.")
-        else:
-            reach = 2.0 * max(rc.values())
-            gap = 2.0 * model.z_period - model.z_span
-            if reach > gap:
-                raise ComposeError(
-                    f"the orbital interaction range {reach:.2f} A "
-                    f"(2 x max orbital cutoff, read from "
-                    f"{', '.join(el + '.ion' for el in elems)}) exceeds "
-                    f"the {gap:.2f} A between next-nearest "
-                    f"{model.label} cells (period "
-                    f"{model.z_period:.2f} A, block span "
-                    f"{model.z_span:.2f} A) -- the self-energy would "
-                    f"couple beyond adjacent cells "
-                    f"(engines/transport.md 3).  Label more electrode "
-                    f"layers on the junction and re-relax, or re-label "
-                    f"and re-cite.")
-            model.notes.append(
-                f"principal-layer condition MEASURED: orbital reach "
-                f"{reach:.2f} A fits the {gap:.2f} A between "
-                f"next-nearest cells (from "
-                f"{', '.join(el + '.ion' for el in elems)}).")
-    return models
+    return tuple(models)
 
 
 def _with_swapped_leads(struct, source_name: str):
@@ -731,7 +670,7 @@ def compose_junction(citation: str, *, tree_root,
     parts = (_pair_parts(cited, swap_electrodes)
              if isinstance(cited, CitedPair)
              else _run_parts(cited, citation, swap_electrodes))
-    relaxed, start, ion_dir, deck_text, files, said = parts
+    relaxed, start, deck_text, files, said = parts
     held = _held_by_its_relaxation(relaxed)
     # THE JUNCTION ENTERS THIS CALCULATION (`structure-periodicity.md` § 6.0):
     # the engine's origin of a cited run's coordinates is not carried into
@@ -752,7 +691,7 @@ def compose_junction(citation: str, *, tree_root,
     # the sorted device with itself there, through the device's own answer
     # (`Structure.your_indices`).
     elec_l, elec_r = _extract_and_gate_electrodes(
-        dev, prior_positions=start, held_by_relaxation=held, ion_dir=ion_dir)
+        dev, prior_positions=start, held_by_relaxation=held)
 
     provenance = {
         # WHICH KIND was cited (§ 3.1): it decides which files the record
@@ -781,11 +720,11 @@ def compose_junction(citation: str, *, tree_root,
 
 
 def _pair_parts(cited: CitedPair, swap_electrodes: bool):
-    """A cited pair, ready to sort: ``(junction, start, ion_dir, deck_text,
-    files, said)`` -- every frame with its labels (the swap applied to this
+    """A cited pair, ready to sort: ``(junction, start, deck_text, files,
+    said)`` -- every frame with its labels (the swap applied to this
     calculation's copy), no starting geometry (a pair holds the one it was
-    saved with), no ``.ion`` directory and no deck (none beside a pair), its
-    two files' hashes, and its frame count for the record."""
+    saved with), no deck (none beside a pair), its two files' hashes, and
+    its frame count for the record."""
     struct, source = labeled_citation_structure(cited)
     if swap_electrodes:
         struct = _with_swapped_leads(struct, Path(source).name)
@@ -795,17 +734,16 @@ def _pair_parts(cited: CitedPair, swap_electrodes: bool):
             f"the cited pair {cited.path.name} {_bad} -- a junction needs its "
             f"lattice (science/junction-cell.md).")
     files = {f.name: _sha256(f) for f in (cited.path, cited.sidecar)}
-    return struct, None, None, None, files, {"frames": cited.n_frames}
+    return struct, None, None, files, {"frames": cited.n_frames}
 
 
 def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
-    """A cited run, ready to sort: ``(junction, start, ion_dir, deck_text,
-    files, said)`` -- what it left, read through the run door
+    """A cited run, ready to sort: ``(junction, start, deck_text, files,
+    said)`` -- what it left, read through the run door
     (:func:`_run_geometry`): its last geometry step with its labels and
     record, and its first step's coordinates for the lead gate's *frozen
-    means unmoved*; the run's folder for the ``.ion`` files; its deck
-    verbatim, the record's copy; the hashes of the output read and of the
-    deck; and how the run ended."""
+    means unmoved*; its deck verbatim, the record's copy; the hashes of the
+    output read and of the deck; and how the run ended."""
     if cited.concluded is None:
         raise ComposeError(
             f"the cited relaxation {citation!r} has not CONCLUDED -- it is "
@@ -844,7 +782,7 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
         "relaxation": {"converged": cited.converged,
                        "exit_code": cited.exit_code},
     }
-    return struct, start, cited.path, deck.read_text(encoding="utf-8"), files, said
+    return struct, start, deck.read_text(encoding="utf-8"), files, said
 
 
 def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
@@ -1044,13 +982,9 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     no longer carries, and the provenance records that it passed when the
     copy was made.
 
-    *tree_root* is what keeps the principal-layer half of those gates
-    working here: the orbital ranges live in a CITED run's ``.ion`` files,
-    which the travelled folder does not carry.  Without it the condition
-    degrades honestly to UNVERIFIED (a note on the model) rather than
-    silently passing.  With it, a cited PAIR is held to the bytes it was
-    composed from (§ 3.1): one edited since is refused by name, because the
-    seed and the leads already ran on what it said then.
+    *tree_root* holds a cited PAIR to the bytes it was composed from
+    (§ 3.1): one edited since is refused by name, because the seed and the
+    leads already ran on what it said then.
     """
     base_dir = Path(base_dir)
     # WHICH FORM decides which files the record needs, and the form is
@@ -1122,26 +1056,20 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                        f"{differs}")
         dev = dev.replace(atom_order=composed.junction.atom_order)
         order_found = True
-    ion_dir = None
-    ion_why = None
     if tree_root is not None:
         try:
-            cited_path, cited = resolve_citation(citation, Path(tree_root))
-        except ComposeError as exc:
-            cited = None        # the citation moved: UNVERIFIED, and said why
-            ion_why = str(exc)
+            _cited_path, cited = resolve_citation(citation, Path(tree_root))
+        except ComposeError:
+            cited = None        # the citation moved: the record stands alone
         if isinstance(cited, CitedPair):
             _pair_unchanged(cited, provenance, citation)
-        elif cited is not None:
-            ion_dir = cited_path
     # NO `prior_positions` HERE, and that is not an omission: this
     # rebuilds from a junction that was already composed, and the
     # geometry the relaxation started from is not part of the record --
     # the unmoved comparison ran when the record was written.  The frozen
     # DECLARATION is asked separately and does re-run here, as does
     # even-spacing.  Both need only the structure.
-    elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir,
-                                                  ion_why=ion_why)
+    elec_l, elec_r = _extract_and_gate_electrodes(dev)
     deck_text = deck_path.read_text(encoding="utf-8") if kind == "run" else None
     return ComposedJunction(
         junction=dev,

@@ -349,6 +349,26 @@ def linear_response_iv(energies: List[float], trans: List[float],
             "window_ev": [lo, hi], "notes": notes}
 
 
+def iv_notes_placed(iv: Dict) -> List[Dict]:
+    """The I-V's notes, each with the frame and the voltage it is about --
+    a voltage's (keyed by its row of the table, :func:`linear_response_iv`)
+    with both, a frame's own (keyed by the frame: its 0 V transmission not
+    run) with ``bias_v`` ``None``: how a file with no row axis states them
+    (`transport/datafile.py`, `engines/transport.md` § 2a.12)."""
+    from .stages import frame_token
+    notes = iv.get("notes") or {}
+    volts = list(iv.get("voltages_v") or ())
+    frames = list(iv.get("frame") or [None] * len(volts))
+    out = [{"frame": f, "bias_v": v, "note": notes[str(k)]}
+           for k, (f, v) in enumerate(zip(frames, volts))
+           if str(k) in notes]
+    for f in dict.fromkeys(frames):
+        key = frame_token(f) if f is not None else "all"
+        if key in notes:
+            out.append({"frame": f, "bias_v": None, "note": notes[key]})
+    return out
+
+
 def conductance_g0(energies: List[float], trans: List[float]
                    ) -> Optional[float]:
     """T interpolated at E = 0 (the grid is E − E_F) — G(E_F) in G0."""
@@ -788,6 +808,22 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # point at once).
     rung = next(f for f in stages if f["stage"] == "transmission")
     opened = False                        # an attempt open: it is prepared
+    # WHETHER EACH RUN OF POINTS HAS ENDED, by the one rule the status door
+    # asks (`continuation.points_state`) -- read once a run: a point a
+    # stopped walk never reached is no point still to come.
+    ended_runs: Dict[str, bool] = {}
+
+    def _run_ended(run) -> bool:
+        key = str(run)
+        if key not in ended_runs:
+            from ..jobset.continuation import stage_run_state
+            try:
+                state, _said = stage_run_state(base, task, "transmission",
+                                               run)
+            except (OSError, ValueError, KeyError):
+                state = "unreadable"
+            ended_runs[key] = state in ("finished", "failed")
+        return ended_runs[key]
     for pt, where, run in result_folders(base, task, "transmission"):
         # WHICH POINT, on every entry: its frame (``None`` with no frame
         # axis), its folder below the run, and in words.
@@ -822,8 +858,12 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                            "state": "unreadable", "why": st.detail})
             continue
         if st.state != "finished":
-            entry = {**at, "attempt": rel, "state": st.state,
-                     "why": st.detail}
+            unreached = (st.state in ("pending", "queued")
+                         and _run_ended(run))
+            entry = {**at, "attempt": rel,
+                     "state": "failed" if unreached else st.state,
+                     "why": ("the walk ended before it reached this point"
+                             if unreached else st.detail)}
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans_loop`, `model/parse.md` § 5d.1b, § 5d.5).
@@ -836,7 +876,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                     **({"estimated_at": progress["estimated_at"]}
                        if "estimated_at" in progress else {})}
             (pending if st.state in ("pending", "queued", "running")
-             else failed).append(entry)
+             and not unreached else failed).append(entry)
             continue
         # WHAT TBTRANS WROTE, through the family's one reader -- a point
         # that does not read is that point's failure, said in its words; the

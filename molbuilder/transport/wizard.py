@@ -41,8 +41,9 @@ What the USER must still verify (warned, not guaranteed)
   slab tiles seamlessly under uniform spacing, and **warn** that the user
   must confirm it matches the real bulk lattice (e.g. the layer count is a
   whole stacking period — a multiple of 3 for FCC(111) ABC).
-* **Thickness vs the principal layer (I11):** reported here;
-  `transport/compose.py` gates on it.
+* **Thickness vs the principal layer (I11):** TranSIESTA's own check, at
+  the device's start; its stop is said with what it means
+  (`siesta_grammar.STOP_MEANINGS`), never judged here.
 
 This is the geometry derivation only; it does NOT run SIESTA or write a
 deck.
@@ -57,6 +58,7 @@ import numpy as np
 
 from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
                     detect_layers)
+from ..issues import Issue
 from ..structure import Structure
 from .sort import ELECTRODE_LABELS
 from .transiesta import (
@@ -64,6 +66,9 @@ from .transiesta import (
     _find_electrode_regions,
 )
 
+#: Where a seam verdict is filed (`Issue.where`), on the card and in a lead
+#: deck's `.validation.txt` alike.
+SEAM_WHERE = "lead.seam"
 
 
 @dataclass
@@ -94,7 +99,10 @@ class ElectrodeModel:
     #: and is `isolated, isolated` -- and `as_structure` must not assert the
     #: first about the second (user, 2026-09-23).
     transverse_kind: Tuple[str, str] = ("periodic", "periodic")
-    notes: List[str] = field(default_factory=list)
+    #: What was measured of this lead, each with its weight -- its period
+    #: and its seam (:func:`seam_finding`): ``warn`` where the lead may not
+    #: be the bulk crystal the self-energy needs, ``info`` otherwise.
+    notes: List[Issue] = field(default_factory=list)
 
     def as_structure(self) -> Structure:
         """The lead as an ordinary :class:`~molbuilder.structure.Structure`,
@@ -181,8 +189,13 @@ class ElectrodeModel:
 FROZEN_TOL_ANG = 1e-3
 
 
-def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
-    """What this lead's periodic boundary does to the crystal, measured.
+def seam_finding(pos, cell) -> Issue:
+    """What this lead's periodic boundary does to the crystal, measured --
+    ``info`` where it continues the crystal, ``warn`` where it does not or
+    cannot be told.  THE ONE RULE AND ITS WORDS, asked by the lead's model
+    (the Transport card) and by the lead rung's settings gate (prep's
+    report and the deck's `.validation.txt`,
+    `validation._validate_transport_kind`).
 
     A lead tiles along z, so its top layer meets its own bottom layer one
     cell up.  Whether that seam continues the crystal is a layer-COUNT
@@ -196,12 +209,13 @@ def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
     for the electrode orientation.  A faulted seam is wrong for a bulk
     lead and the person is the one who knows whether they meant it.
     """
-    cell = np.array([lat_a, lat_b, [0.0, 0.0, float(zper)]], dtype=float)
+    cell = np.asarray(cell, dtype=float).reshape(3, 3)
     try:
         v = classify_seam(pos, cell)
     except Exception as exc:                       # noqa: BLE001
-        return (f"the periodic seam could not be classified ({exc}); "
-                f"the lead's tiling is UNCHECKED")
+        return Issue("warn", f"the periodic seam could not be classified "
+                             f"({exc}); the lead's tiling is UNCHECKED",
+                     where=SEAM_WHERE)
     n_layers = len(detect_layers(pos[:, 2], LAYER_TOL_ANG))
     if n_layers < 3:
         # TWO LAYERS CANNOT SAY.  A,B is fcc and hcp alike -- the block
@@ -212,23 +226,27 @@ def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
         # and nothing on the lead path knows which plane it is.  So the
         # limit is stated rather than a verdict asserted.
         plural = "layer" if n_layers == 1 else "layers"
-        return (f"the periodic seam is UNDETERMINED: a block of "
+        return Issue("warn", f"the periodic seam is UNDETERMINED: a block of "
                 f"{n_layers} {plural} carries fewer stacking registries "
                 f"than one period, so it cannot say which crystal it "
                 f"tiles into -- ABAB and ABC agree on everything it "
                 f"contains, which on fcc(111) is the difference between "
                 f"gold and hcp.  A lead that states its own stacking is "
                 f"at least one whole period thick (3 layers for (111); "
-                f"junction-cell.md § 3.1).")
+                f"junction-cell.md § 3.1).", where=SEAM_WHERE)
     if v.verdict == "continues":
-        per = f" (stacking period {v.period} layers)" if v.period else ""
-        return (f"the periodic seam CONTINUES the crystal{per}: the layer "
-                f"one cell up sits where the stacking says it should, "
-                f"{v.gap:.3f} Å from the top layer.")
-    return (f"the periodic seam is {v.verdict.upper()} — {v.message}.  "
-            f"This lead is what TranSIESTA turns into the self-energy, so "
-            f"a faulted seam is a faulted bulk Hamiltonian.  Not refused: "
-            f"you may mean it (junction-cell.md § 3.1).")
+        per = (f" (stacking period {v.period} "
+               f"layer{'' if v.period == 1 else 's'})" if v.period else "")
+        return Issue("info", f"the periodic seam CONTINUES the crystal{per}: "
+                             f"the layer one cell up sits where the stacking "
+                             f"says it should, {v.gap:.3f} Å from the top "
+                             f"layer.", where=SEAM_WHERE)
+    return Issue("warn", f"the periodic seam is {v.verdict.upper()} — "
+                         f"{v.message}.  This lead is what TranSIESTA turns "
+                         f"into the self-energy, so a faulted seam is a "
+                         f"faulted bulk Hamiltonian.  Not refused: you may "
+                         f"mean it (junction-cell.md § 3.1).",
+                 where=SEAM_WHERE)
 
 
 def _spacing_or_refuse(layer_z, label: str):
@@ -389,14 +407,14 @@ def extract_electrode_model(
     pos[:, 2] = pos[:, 2] - float(min(layer_z)) if layer_z else pos[:, 2]
     layer_z = [lz - float(min(layer_z)) for lz in layer_z] if layer_z else []
 
-    notes: List[str] = []
+    notes: List[Issue] = []
     zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
     z_span = float(layer_z[-1] - layer_z[0])
-    notes.append(
-        f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
-        f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.")
-
-    notes.append(_seam_note(pos, lat_a, lat_b, zper))
+    notes.append(Issue(
+        "info", f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
+                f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.",
+        where="lead.period"))
+    notes.append(seam_finding(pos, [lat_a, lat_b, [0.0, 0.0, float(zper)]]))
 
 
     # THE DEVICE'S OWN ANSWER, not a guess: the lead tiles the same
@@ -418,5 +436,7 @@ def extract_electrode_model(
 __all__ = [
     "ElectrodeModel",
     "FROZEN_TOL_ANG",
+    "SEAM_WHERE",
     "extract_electrode_model",
+    "seam_finding",
 ]

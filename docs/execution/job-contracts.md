@@ -2142,7 +2142,7 @@ Its readers, each asking with the calculation's folder:
 * the **run script** — its banner's warm detection and its `--cold` help, a
   list written into the script when `prep` renders it, never read at import;
 * the **bias sweep's hand-forward** — each point takes what a continuing
-  device takes from the point before it: the device job's own declaration,
+  device takes from the point it starts from: the device job's own declaration,
   which `prep` recorded from this door (it spelled `.TSDE` by hand until
   2026-10-03);
 * `STAGE-PLAN.md`'s **warm-files line** — which file answered;

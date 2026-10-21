@@ -191,6 +191,11 @@ class SiestaReader:
         self._active: Optional[SectionRule] = None
         self._in_input_echo = False
         self._line_no = 0
+        #: THE LAST LINE THAT SAID SOMETHING, and the one before this line:
+        #: ``die``'s reason is the line before its marker
+        #: (`siesta_grammar.DIE_MARKER`).
+        self._last_said: Optional[str] = None
+        self._said_before: Optional[str] = None
         self._rules = compile_rules(self._rule_table())
 
     # ---- warnings ---------------------------------------------------------
@@ -210,6 +215,9 @@ class SiestaReader:
         """Read one line of the output (without its newline)."""
         self._line_no = line_no if line_no is not None else self._line_no + 1
         line_no = self._line_no
+        self._said_before = self._last_said
+        if line.strip():
+            self._last_said = line
         # Active multi-line section?  Run its ``consume`` first.  CONTINUE /
         # END_SECTION skip to the next line; END_BUBBLE leaves the section
         # AND re-feeds this line through the scan-state rules below.
@@ -265,6 +273,7 @@ class SiestaReader:
         output's end does not continue into another file."""
         self._in_input_echo = False
         self._active = None
+        self._last_said = self._said_before = None
         return self
 
     # ---- a step ------------------------------------------------------------
@@ -393,12 +402,17 @@ class SiestaReader:
             # A held ``SCF_NOT_CONV:`` outranks even that -- it IS the
             # original cause -- except at the wall, where SIESTA prints the
             # SCF warning on its way out and the wall is the cause.
+            # A `die` ends on its marker, its REASON the line before
+            # (`siesta_grammar.DIE_MARKER`) -- said with what it may mean
+            # (`siesta_grammar.stop_line`).
             if marker == _G.OUT_OF_TIME_MARKER:
                 self.cause = marker
-                self.error_message = line.strip()[:200]
+                self.error_message = _G.stop_line(line)
             elif self.error_message is None:
+                said = (self._said_before if marker == _G.DIE_MARKER
+                        and self._said_before is not None else line)
                 self.error_message = (self._scf_not_conv_line
-                                      or line.strip()[:200])
+                                      or _G.stop_line(said))
         return _handler
 
     # SCF-block convergence flags.  Two distinct SIESTA emit forms:

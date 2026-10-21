@@ -36,3 +36,22 @@ def test_a_vocabulary_row_in_another_unit_is_refused_by_name(reader):
             fill_data_file({}, {}, s, {}, [], lambda v, vs: 0)
         else:
             answer(s)
+
+
+@pytest.mark.parametrize("reader", ["record", "page"])
+def test_a_unitless_row_written_with_the_dimensionless_unit_reads(reader):
+    """§ 2.2f: a name with no unit (—) may be written with ``1``, the
+    dimensionless unit the data file itself writes for it -- never refused
+    as another unit (the data file asks the same `check_units`, above)."""
+    from molbuilder.frame_average import answer, average_block
+    from molbuilder.frameset import read
+    from molbuilder.structure import Structure
+    s = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
+    s = s.with_frames([s.positions, s.positions])
+    s.set_customized("weight", 0.5, unit="1", frame=0)
+    s.set_customized("weight", 0.5, unit="1", frame=1)
+    if reader == "record":
+        assert average_block(2, read(s), [], [],
+                             lambda a, b: a == b)["weights"] == [0.5, 0.5]
+    else:
+        assert answer(s)["definition"]["weights"] == [0.5, 0.5]

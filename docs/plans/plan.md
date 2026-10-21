@@ -181,7 +181,7 @@ runs. Nothing in one is read as the other.*
 
 **When**: N5, contract first — § 0a's queue, *NOW*.
 
-## 1t. The layers, measured — every upward import *(2026-10-20; the two rule conflicts and `Calculation`'s floor await the user's yes — N4 in § 0a's queue)*
+## 1t. The layers, measured — every upward import *(2026-10-20; the three decisions the user's, given 2026-10-20 — N4 in § 0a's queue)*
 
 *(the user, 2026-10-20: "my challenge to you is to make sure your design of
 this is correctly arranged through framework and well separated layers such
@@ -216,10 +216,29 @@ its record's floor, registered into the parse registry, which imports none**;
 `calcdirs.root_of` (1) asks `task.described` (2) — **"is this folder
 described" is a name fact, moved to floor 1, `task` asking it**.
 
+**Decided** *(the user, 2026-10-20: "go with your recommendations … but i
+suggest your decision 2 could allow a more flexible decision making process.
+a folder could be a run dir, but its calculation information is in parent …
+shall we give this with a context?")*:
+
+1. **The Results tab's readers of `task.json` and `job-set.json` sit on their
+   record's floor**, each reading through its owner's door, registered into
+   the parse registry, which imports none of them.
+2. **"Where am I" is one ground-floor answer, with its context** — not a
+   yes/no *is this folder described*: the calculation's folder, what this
+   folder is (the calculation itself, a stage's folder, a run, a point of a
+   run, a scratch folder, a benchmark's), and the stage and run it belongs
+   to — read from the folder markers every folder molbuilder makes carries
+   (`calcdir.json`, `calcdirs.read`) and the root's description file's name.
+   *"Is this a calculation folder"* is one field of it.  The sidebar, the
+   Results tab, the checkpoint panel and `task` ask it.  The `jobset` verbs
+   keep pointing to the calculation's folder when run inside one of its
+   folders; letting them act on it from there is a choice for later.
+3. **`Calculation` sits on floor 3**, with the plan it holds; nothing below
+   opens a whole calculation.
+
 **When**: N4 — each fact moved to its floor, both layer documents
-corrected, done when the scan reports none (§ 0a's queue, *NOW*). The two
-rule conflicts and `Calculation`'s floor are the user's before it starts; if
-they are still open then, the other eleven rows are built and those wait.
+corrected, done when the scan reports none (§ 0a's queue, *NOW*).
 
 ## 1u. The memory a run needs — a suggestion beside the request *(2026-10-20; the user's yes: "yes, put it in the plan, but prioritize among all remaining issues" — N6 in § 0a's queue)*
 
@@ -380,7 +399,7 @@ below says.
 | **N1** | with N2 — **shipped 2.24.1** | **The 2.24.0 documents sweep** — every contract, command line, printed line and diagram brought to what 2.24.0 does; five readers, one set of files each, every diff read; then five fresh verifiers against a frozen copy of 2.24.0's code (22 false claims, no rule deleted), corrected with N2's own changes, as one commit | the user, 2026-10-20: *"update document … updated systematically"*; *"go with your two choices, continue, complete the current review and fixes first"* — in progress |
 | **N2** | **shipped 2.24.1** | **The 2.24.0 review's errors** (two fresh reviewers, 2026-10-20, and N1's readers). *Checkpoint*: one answer to *is this the engine's scratch* — the shipped vocabularies' `scratch` rows, needing no engine recorded — asked by the checkpoint, `jobset scratch`, the walk's take-over, the walk's emptying (its `rm` rendered from it, not `*.TSGF*`) and `status`'s `tsgf/` line (a history begun with no engine archives the pair today); a restore removes the scratch as it removes every file the target does not hold, so `tsgf/` comes back empty and no stray `run-N/` is left (as `transport.md` § 2a.11 says); scratch an older save tracked leaves git before `git add` and `status` never names it; the pruning after the state is recorded, from each archive's MANIFEST, and never failing a save; the save before an act decides *already saved* by content (§ 7.2: a save checksums); a restore asks no configuration (I2a); `checkpoint config` names the scratch; the big files untracked a few hundred paths a call; the save's fingerprints and a restore's verify side by side. *Launch*: the *written as the job ended* warning against the run whose files lie there (flat layout); a calculation's broken `warm-files.toml` a refusal, not a traceback; a header with no wall refused in R-L16's words; every ledger line carrying what the verb was told; `--gather` refused on a rung that gathers nothing; the refusals with no R-L row given one; a stage matched by its one key; `jobset scratch`'s *is this run going* through the jobs door, a run it cannot read kept. *Text*: the docstrings and help lines N1's readers found stale. Two choices in it are Claude's, said so they can be overruled: the scratch list needs no engine (no other engine writes `*.TSGFL`); a restore removes scratch (no later run reads a pair — `transport.md` § 2a.11, *Launched again*) | errors in what just shipped, on the road Sol runs; the walk's part is checked by the real-junction e2e, which alone reaches it |
 | **N2b** | **shipped 2.25.0** | **The folder download** (§ 1v): the size said and asked before anything is built, `rsync` named for a large folder; the saved history and the engines' scratch left out; the zip streamed, stored, with its exact length — no file in `/tmp` | the user's yes, 2026-10-20 (*"yes, go with your recommendation, add it to the plan"*), after a download of `AuBDTAu` (200 GB) built 8.6 GB of zip in `/tmp` on a root disk with 42 GB free before the server was restarted; placed before N3 because it can fill the system disk |
-| **N3** | round 1 **shipped 2.25.1**; round 2 next | **The transport review** — `transport.md` and the frame-set contract read whole against the code, two fresh rounds; each error fixed as a last-number move | the user's yes, 2026-10-19 (the first two reviewers were cut off); placed here because it looks for wrong results on the road the user runs on Sol, which § 0a puts first |
+| **N3** | **shipped** — round 1 in 2.25.1, round 2 in 2.25.2 | **The transport review** — `transport.md` and the frame-set contract read whole against the code, two fresh rounds; each error fixed as a last-number move | the user's yes, 2026-10-19 (the first two reviewers were cut off); placed here because it looks for wrong results on the road the user runs on Sol, which § 0a puts first |
 | **N4** | a last number | **The layers** (§ 1t) | agreed 2026-10-20; its three decisions are the user's |
 | **N5** | a middle number | **What is computed vs how it runs** (§ 1s), contract first | agreed 2026-10-20 |
 | **N6** | a middle number | **The memory a run needs** (§ 1u), contract first, then (a), (b), (c) | the user's feature, 2026-10-20; after § 1s, which moves the request it sits beside; ahead of steps 2–3, *features before framework polish* (the user, 2026-10-18) |
@@ -476,7 +495,7 @@ listed — stays here as step 3's detail:
 | **BENCH-2** | engines / bench | **BENCH-MARKS' field list is a second, hand-kept source**: `script_emit.SIESTA_BENCH_FIELDS` (e.g. `BlockSize` `pow2` there, `int` in the catalogue); only the type is checked against the catalogue (`tests/test_template_declarations.py`) | 2.24.0 docs sweep | open |
 | **DOC-SMALL** | various | **Small text errors in code found by the docs sweep**: `molbuilder jupyter --help` says a restart "does not destroy notebook state" while `serve_daemon` stops it; `web/app.py` cites "deployment.md § 1.3" (no such section); `ui-contract` § 1's stylesheet order broken in the index, spectra, modify and results pages; the ruler notice written twice (`modify/viewer.js` ~669, `periodicity.js` ~268); `checkpoint.js` ~982 cites L4 where the rule is L3; the zip export carrying an engine's scratch is § 1v's; dangling codes (D3–D5, `M5:`, the unit-11 review) in launch's comments | 2.24.0 docs sweep and review | open — step 3 (tidy) |
 | **RL42** | execution / launch | **R-L42 (a run script missing) is checked by two builders only** (`_plan_stage` run here, `_bench_trials`): a group's walk, a run of points' walk and a queue send meet it at run time — make it one check where every submission is built, or drop it as a launch-time re-check (the user's rule: prep decides, launch runs) | 2.24.0 launch review | open — the user's word |
-| **LEAD-TOL** | transport / frames | **A frame set's lead check is looser than TranSIESTA's** (N3 round 1, 2026-10-20): `compose._frames_keep_the_leads` allows each electrode atom 1e-3 Å (its distance) from frame 0; TranSIESTA allows 1e-3 Å per component of each atom's place relative to the first electrode atom (`TS.Elecs.Coord.Eps`, `m_ts_options.F90`). Two lead atoms nudged opposite ways by just under the tolerance pass prep and stop the device at its start -- loud, after the queue wait; a frame set from a mode with the leads held never does it | N3 | open -- the engine's rule beside ours, when a set meets it |
+| **LEAD-TOL** | transport / frames | **A frame set's lead check is looser than TranSIESTA's** (N3 round 1, 2026-10-20): `compose._frames_keep_the_leads` allows each electrode atom 1e-3 Å (its distance) from frame 0; TranSIESTA allows 1e-3 Å per component of each atom's place relative to the first electrode atom (`TS.Elecs.Coord.Eps`, `m_ts_options.F90`). Two lead atoms nudged opposite ways by just under the tolerance pass prep and stop the device at its start -- loud, after the queue wait; a frame set from a mode with the leads held never does it | N3 | **closed** -- the engine's own check, not ours (user, 2026-10-20: *"don't do the job of the engine"*) |
 | **GATHER-WARM** | transport | **A warm `--gather` relaunch of a run of points takes its done points over with their old inputs** (N3 round 1, U1): the run's points then rest on two upstream runs, and the record reads every point's device facts from the run the first point names (`record.gathered_device_run`); the deck-agreement gate holds, so the difference is at SCF tolerance. Whether a warm `--gather` may take points over at all is the user's | N3 | open -- the user's word |
 | **E13** | engine / science | **The first real junction walk — BDT–Au on Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5 — archived 2026-09-10 — and E7) and the browser and deck walks (W12 — archived 2026-09-10 — and E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | **the Sol half only** — after § 5u step 4; the workstation half ran 2026-09-29 (the Au–BDT–Au ladder to T(E) on `claude-au-bdt-au`, TD8's acceptance ladder) and is archived *(2026-10-08)* · *Re-checked 2026-10-09:* open — the Sol half only; the workstation half closed by TD8 and Q15's run E. |
 | **E14** | science / references | **Reed 2006 and Stokbro 2003 into `science/references.bib`.** `engines/transport.md` § 8 cites both (and Solomon 2008 beside them); none is in the `.bib`, and the rule is that an entry is added when a passage cites it. The 2026-10-08 archive reason — *no live document cites them* — was untrue | roadmap § 7.3 | **reopened 2026-10-09** — each entry checked against the paper before it goes in (§ 7.3) |

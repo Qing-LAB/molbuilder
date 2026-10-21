@@ -60,6 +60,13 @@ class Row:
     words: str
     page_unit: Optional[str]
 
+    @property
+    def unit_spelled(self) -> str:
+        """Its unit as a file spells it -- ``"1"``, the dimensionless unit,
+        for a number without one: the data file's ``units``, and what a
+        frame set's ``unit`` field may say (:func:`check_units`)."""
+        return self.unit or "1"
+
 
 #: THE VOCABULARY -- `model/structure.md` § 2.2f's table: the rows a mode's
 #: frame set is written in, and how a page says each.
@@ -348,12 +355,13 @@ def check_units(rows) -> None:
             known = vocabulary.get(r["name"])
             unit = r.get("unit")
             if (known is not None and unit not in (None, "")
-                    and str(unit) != str(known.unit)):
+                    and str(unit) != known.unit_spelled):
                 raise AverageError(
                     f"the frame set's row {r['name']!r} is written with the "
                     f"unit {unit!r}; the vocabulary's name means "
-                    f"{known.unit!r} (model/structure.md 2.2f) -- write the "
-                    f"value in that unit, or give the row another name")
+                    f"{known.unit_spelled!r} (model/structure.md 2.2f) -- "
+                    f"write the value in that unit, or give the row another "
+                    f"name")
 
 
 def _said(name: str, unit: Any, vocabulary: Dict[str, Row],
@@ -455,7 +463,7 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
                    "as the structure states it; the record says so when the "
                    "weights do not sum to 1"),
     }
-    return tuple(Var(r.name, ("frame",), r.kind, r.unit or "1",
+    return tuple(Var(r.name, ("frame",), r.kind, r.unit_spelled,
                      words[r.name][0], words[r.name][1]
                      + " (model/structure.md 2.2f; the fill value where the "
                        "frame states none)", auxiliary=True)

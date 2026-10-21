@@ -622,12 +622,14 @@ a number, there is no average and a warning says so; weights that do not sum
 to 1 (within `frameset.WEIGHT_SUM_TOLERANCE`, 10⁻⁶) are averaged as written,
 with a warning. Nothing is refused for a row.
 
-**Every other row is its maker's** — the structure's rows and each frame's,
-any `info` and any channel: carried exactly as written into the calculation's
-record and data file, and shown on the pages — a row of the vocabulary below
-in its words, any other by its name and unit as written; never computed
-from, and checked for one thing alone, a vocabulary name's unit (below)
-(`frameset.read`, the one reader).
+**Every other row is its maker's** — the structure's rows and each frame's:
+carried exactly as written into the calculation's record and data file, and
+shown on the pages — a row of the vocabulary below in its words, any other by
+its name and unit as written; never computed from, and checked for one thing
+alone, a vocabulary name's unit (below) (`frameset.read`, the one reader). Of
+`info` and the channels, the mode's own two travel with the rows —
+`info.vibration` and the `mass_amu` channel (below); any other stays the
+structure's and is not carried.
 
 **A mode's frame set, as its maker writes it** — the vocabulary the frame
 generator writes ([`engines/vibration.md`](?doc=engines/vibration.md)
@@ -636,7 +638,8 @@ post-process, `molbuilder/frame_average.py` (`ROWS`, `MASS_CHANNEL`,
 `INFO_KEY`): the names a page says in words, the frame rows the data file keeps
 as variables of their own, the structure rows as its attributes. The names
 carry their units; a row's `unit` field, when written, spells the same unit in
-ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom` — and one of these names
+ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`, and `1` for a name with
+none (—), the dimensionless unit the data file writes — and one of these names
 written with another unit is refused by name when the rows are read for a
 record, a data file or a page (`frame_average.check_units`, asked by
 `average_block`, `fill_data_file` and `answer`): the one check made on a

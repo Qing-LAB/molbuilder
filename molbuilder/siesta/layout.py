@@ -455,11 +455,13 @@ def check_rules(text: str, struct=None, cfg=None):
     a writer bug -- every other validator in this tree takes ``(struct, cfg)``
     and runs before emission.
 
-    **No keyword twice with different values.**  libfdf takes the FIRST match and ignores the rest
-    (``fdf_locate`` walks from the top and stops), so a duplicate does not
-    conflict loudly -- it silently wins, and the later line a person edited is
-    the one being ignored.  That is the worst kind of wrong: the deck reads as
-    though it says what you meant.
+    **No keyword twice with different values -- a block's name among
+    them.**  libfdf takes the FIRST match and ignores the rest
+    (``fdf_locate`` and ``fdf_block`` walk from the top and stop), so a
+    duplicate does not conflict loudly -- it silently wins, and the later
+    line or block a person typed (their USER-CUSTOM zone) is the one being
+    ignored.  That is the worst kind of wrong: the deck reads as though it
+    says what you meant.
 
     **The identity is the one that was stamped.**  Every warm file is keyed by
     ``SystemLabel``; a deck carrying a different one finds nothing and starts
@@ -476,18 +478,33 @@ def check_rules(text: str, struct=None, cfg=None):
     out = []
     code = [ln.split("#", 1)[0].rstrip() for ln in text.splitlines()]
 
-    # -- one keyword, one line ------------------------------------------
+    # -- one keyword, one line; one block, one body ----------------------
     seen: dict = {}
-    in_block = False
+    blocks: dict = {}
+    in_block, block, body = False, None, []
     for ln in code:
         low = ln.strip().lower()
         if low.startswith("%block"):
-            in_block = True
+            name = (ln.split() + [""])[1]
+            in_block, block, body = True, (fdf_key(name), name), []
             continue
         if low.startswith("%endblock"):
-            in_block = False
+            if block is not None:
+                text_of = "\n".join(body)
+                if block[0] in blocks and blocks[block[0]][1] != text_of:
+                    out.append(Issue(
+                        "error",
+                        f"%block {block[1]} is written twice with different "
+                        f"rows; libfdf takes the first, so the second is "
+                        f"silently ignored",
+                        where="deck.duplicate_keyword"))
+                blocks.setdefault(block[0], (block[1], text_of))
+            in_block, block = False, None
             continue
-        if in_block or not ln.strip():
+        if in_block:
+            body.append(" ".join(ln.split()))
+            continue
+        if not ln.strip():
             continue
         key = ln.split()[0]
         # fdf's keyword rule, from the one module that owns it.  A gate
@@ -503,6 +520,14 @@ def check_rules(text: str, struct=None, cfg=None):
                 f"so the second is silently ignored",
                 where="deck.duplicate_keyword"))
         seen.setdefault(norm, (key, value))
+    for norm, (key, _value) in seen.items():
+        if norm in blocks:
+            out.append(Issue(
+                "error",
+                f"{key} is written both as a line and as %block "
+                f"{blocks[norm][0]}; libfdf reads one of them, and the other "
+                f"is silently ignored",
+                where="deck.duplicate_keyword"))
 
     # -- the identity that was stamped ----------------------------------
     label = getattr(cfg, "system_label", None)

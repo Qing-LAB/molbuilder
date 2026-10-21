@@ -283,7 +283,8 @@ B8)*.
    stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer
    ([`science/validation.md`](?doc=science/validation.md) § 4.1): each lead's
-   seam and principal-layer measurements as information, an inverted
+   period as information and seam at its weight (a warning where it does not
+   continue the crystal), an inverted
    labelling (`L-electrode` the high-z block) as a warning — never a refusal,
    the junction cites and runs — with a *Swap L-electrode and R-electrode*
    button offering the rename as **this calculation's own** (`swap_electrodes`

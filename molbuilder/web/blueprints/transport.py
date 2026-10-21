@@ -97,8 +97,8 @@ def api_transport_describe_attempt() -> Any:
     frames and the deck its record names, then what its recorded
     contract states.  What its composition
     MEASURED rides ``findings`` -- rows of the one finding vocabulary
-    (`science/validation.md` § 4.1 R2): each lead's seam and
-    principal-layer measurements as ``info``, the electrode orientation
+    (`science/validation.md` § 4.1 R2): each lead's period and seam at
+    their weight (`wizard.seam_finding`), the electrode orientation
     as ``warn``, a composition refusal as ``error`` -- so the tab
     renders them through the one renderer, never a run-on string.
     ``structure`` carries the cited junction's labeled structure for
@@ -218,16 +218,17 @@ def api_transport_describe_attempt() -> Any:
         # it can act on without matching prose.
         for note in composed.notes:
             findings.append(Issue("warn", note))
-        # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model` and
-        # the compose gate measure the periodic seam and the
-        # principal-layer condition into `ElectrodeModel.notes`, the one
-        # place that says whether a lead is really bulk; a condition that
-        # FAILS is the gate's refusal, so what reaches here is measured
+        # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model`
+        # measures each lead's period and periodic seam into
+        # `ElectrodeModel.notes`, each at its weight; a lead that cannot
+        # be one is the gate's refusal, so what reaches here is measured
         # and reported.  Labelled, because "the seam is ECLIPSED" is
         # useless without which end.
         for model in (composed.electrode_left, composed.electrode_right):
             for note in (model.notes if model is not None else ()):
-                findings.append(Issue("info", f"{model.label}: {note}"))
+                findings.append(Issue(note.severity,
+                                      f"{model.label}: {note.message}",
+                                      where=note.where))
         if (electrode_orientation(composed.junction)
                 == ORDER_INVERTED):
             fix = "swap_electrodes"

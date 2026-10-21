@@ -181,7 +181,7 @@ that file's own door:
 | | **unreadable** | its launch record is there and does not read | `run.json` | § 5.3 | `runrecord.launch_record` |
 | | *converged* — its own column, never the state | the engine's own output says so | `<base>-run<N>.out` | § 5.3 | the same scan |
 | a point of a run of points | **done** / **not done** | its run finished, converged, and left what the rungs after it take | its marker, its output, those files | § 5.3, § 5.4 | `continuation.done` |
-| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going; queued: no point the run walks itself has started; else finished: every point's run finished, converged or not; failed: a point's run did not finish — it failed, or the walk stopped before it — the first point not done named | its `run.json`, its points' files (the row above), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`) — `status` and the gather ask it alike |
+| a run of points | **queued** / **running** / **finished** / **failed** | running: a point is running, or the walk is between two points while a job launched from this machine that holds the run is going; queued: no point the run walks itself has started and its job is not over (cancelled in the queue, or a process that died before its first point, is a run that ended); else finished: every point's run finished, converged or not; failed: a point's run did not finish — it failed, or the walk stopped before it — the first point not done named | its `run.json`, its points' files (the row above), the jobs launched from this machine (§ 6.0a) | § 5.3 | `continuation.points_state` (`joblist.is_going`, else the run door's `runs.concluded`) — `status`, the gather, `jobset scratch` and the transport record ask it alike |
 
 **What a run started from is a record, not a state**: `.continued-from` —
 the one run it continues from — and `.gathered-from` — a transport rung's
@@ -332,11 +332,16 @@ a `run-N` a launch again opened — *opened by a launch whose send was refused*
 — `--stage`, the stage launched again alone. A first send refused saved the
 folder's state first; the next one saves it again when anything changed, and
 the way back is the state saved before the first launch that went. **A run of points** (a stage that
-sweeps the bias) is one run, its state one rule that `status` and the gather
-both ask (`continuation.points_state`): *running* while a point runs, or
+sweeps the bias) is one run, its state one rule that `status`, the gather,
+`jobset scratch` and the transport record all ask (`continuation.points_state`,
+`continuation.stage_run_state` for any stage's run): *running* while a point runs, or
 between two points while a job launched from this machine that holds the run
 is going (`joblist.is_going`, § 6.0a — said *(between two points)*);
-*queued* while no point the run walks itself has started; else *finished*
+*queued* while no point the run walks itself has started and its job is not
+over — asked once of the job, else of the run door, which asks the scheduler
+and writes its answer (`running-a-job.md` § 4.2): a job cancelled in the
+queue, or a process that died before its first point, is a run that ended,
+*— its job ended before any point started*; else *finished*
 once every point's run finished, converged or not — the *converged* column
 says *SCF NO* when one did not — or *failed* when a point's run did not
 finish, naming the first point not done. A walk that stopped among its
@@ -2532,7 +2537,8 @@ id, or beside a run left in the background, which is then named by its pid,
 **What it is doing is read fresh, each time** — one fact, one source, one
 answer (`joblist.is_going`), which `molbuilder jobs` asks of each job,
 `jobset scratch` of each job of its calculation (§ 5.3), and a run of
-points' state of the job that holds it (`continuation.points_state`): a run
+points' state of the job that holds it (`continuation.points_state`, whether
+it is between two points or ended before its first): a run
 here is going while its process is (the same host, pid and start — a machine
 with no `/proc` says it cannot tell); a queue job while the scheduler lists
 it in a state not ended, said with that state and the scheduler's reason for

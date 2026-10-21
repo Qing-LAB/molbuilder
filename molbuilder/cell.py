@@ -1180,6 +1180,15 @@ def classify_seam(positions, cell) -> SeamVerdict:
                    if _coincide(stack[0][:, :2], stack[p][:, :2])
                    < SEAM_STEP_TOL_ANG), None)
 
+    # CONTINUES FIRST: the image on layer ``N - period`` is the crystal's
+    # own repeat -- and where the period is one layer (a chain, every layer
+    # on one site), that layer IS the top one, so "the same sites" is the
+    # crystal carrying on, never an eclipse.
+    if period is not None \
+            and _coincide(stack[N - period][:, :2], up[:, :2]) \
+            < SEAM_STEP_TOL_ANG:
+        return SeamVerdict(
+"continues", gap, z_room, *pair, period=period)
     if _coincide(top[:, :2], up[:, :2]) < SEAM_STEP_TOL_ANG:
         return SeamVerdict(
 "eclipsed", gap, z_room, *pair, period=period,
@@ -1188,11 +1197,6 @@ def classify_seam(positions, cell) -> SeamVerdict:
                      + _failing_condition(N, period) +
                      ".  Wrong for a periodic crystal, harmless in a "
                      "relaxation whose outer layers are frozen"))
-    if period is not None \
-            and _coincide(stack[N - period][:, :2], up[:, :2]) \
-            < SEAM_STEP_TOL_ANG:
-        return SeamVerdict(
-"continues", gap, z_room, *pair, period=period)
     if N >= 2 and _coincide(sets[-2][:, :2], up[:, :2]) < SEAM_STEP_TOL_ANG:
         return SeamVerdict(
 "twin", gap, z_room, *pair, period=period,

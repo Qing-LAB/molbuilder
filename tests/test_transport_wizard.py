@@ -197,16 +197,40 @@ def _au111_lead(n_layers):
     return st
 
 
-@pytest.mark.parametrize("n_layers,verdict", [
-    (3, "CONTINUES"), (4, "ECLIPSED"), (5, "TWIN"), (6, "CONTINUES"),
+@pytest.mark.parametrize("n_layers,verdict,severity", [
+    (3, "CONTINUES", "info"), (4, "ECLIPSED", "warn"), (5, "TWIN", "warn"),
+    (6, "CONTINUES", "info"),
 ])
-def test_the_seam_verdict_is_measured_and_said(n_layers, verdict):
+def test_the_seam_verdict_is_measured_and_said(n_layers, verdict, severity):
     """The whole table, because the interesting half is the failures and
-    a test on 3 and 6 alone would pass with the check deleted."""
+    a test on 3 and 6 alone would pass with the check deleted -- said on
+    the Transport card (the lead's notes) AND in the lead deck's own
+    findings, which prep prints and writes into its `.validation.txt`
+    (`engines/transport.md` § 7.1: measured and reported): a person who
+    never opens the card is told the same, at the same weight."""
+    import dataclasses
+    from molbuilder import script_emit as _sc
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.runfiles import RunNames
+    from molbuilder.siesta.input import spec_for
+    from molbuilder.template import role_answers
+    from molbuilder.transport.stages import rung_label
     m = extract_electrode_model(_au111_lead(n_layers), "L-electrode")
-    seam = [n for n in m.notes if "periodic seam" in n]
+    seam = [n for n in m.notes if n.where == "lead.seam"]
     assert len(seam) == 1, f"exactly one seam note: {m.notes}"
-    assert verdict in seam[0], f"{n_layers} layers -> {seam[0]}"
+    assert verdict in seam[0].message, f"{n_layers} layers -> {seam[0]}"
+    assert seam[0].severity == severity, seam[0]
+    lead, label = m.as_structure(), rung_label("j", "electrode_L")
+    cfg = dataclasses.replace(
+        SiestaConfig(system_label=label),
+        **role_answers("siesta", "transport", "electrode_L"))
+    spec = spec_for(lead, cfg, calculation="transport",
+                    names=RunNames.of(label, "02_electrode_L",
+                                      "hierarchical"))
+    said = [i for i in _sc.render_deck(spec, lead, cfg).findings
+            if i.where == "lead.seam"]
+    assert [(i.severity, i.message) for i in said] == [
+        (seam[0].severity, seam[0].message)], said
 
 
 def test_a_faulted_seam_is_REPORTED_not_refused():
@@ -221,7 +245,7 @@ def test_the_faulted_seam_note_names_the_LAYER_COUNT_as_the_cause():
     """'Your seam is eclipsed' is not actionable; 'four layers is not a
     whole number of 3-layer periods' is."""
     m = extract_electrode_model(_au111_lead(4), "L-electrode")
-    note = next(n for n in m.notes if "periodic seam" in n)
+    note = next(n.message for n in m.notes if n.where == "lead.seam")
     assert "LAYER COUNT" in note and "4 layers" in note and "3-layer" in note, note
 
 

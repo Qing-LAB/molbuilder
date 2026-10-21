@@ -467,7 +467,7 @@ a lead's value (`validation/task.py`, `_values_in_bounds`), both through
 |---|---|---|
 | **one k-point along a direction the electrodes repeat in** — the shared grid, or a transmission grid the person set, at 1 along x or y while the structure repeats there. Never said for a direction that does not repeat (a chain or a wire in a box, where one point is exact), and one point is a legitimate quick first test | A single k-point in the electrode plane treats every sideways copy of the cell as in phase, so the metal's bands are seen at one place only. The warning's words name the remedy: the benchmark used 4 × 4 for a cell about 9 Å wide | with Γ alone, "a (unphysical) peak at the Fermi level" (an H₂ junction), and the conductance of benzenedithiol between gold raised from 0.24 to 0.37 G₀ [`Strange2008`]; the Γ-only error dominates the error from the cell's periodic images in a 3 × 3 supercell [`Thygesen2005`]; with TranSIESTA on an Au(111) junction the conductance was "more sensitive to the reciprocal-space sampling grid than the quality of the basis set", moving by up to a factor of five over the parameters tried [`Hoft2007`] |
 | **a transmission grid the person set coarser than the shared grid** along x or y (2026-10-13) | T(E) needs at least the k-points the density was converged on, and usually many more; most likely the shared grid was raised and the transmission's was left behind. A transmission grid left blank is three times the shared grid and is never coarser | tbtrans's sampling "should generally be much denser" [`SiestaManual542`] |
-| **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell. tbtrans stops in its set-up — *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16) — only when its grid's first k-point is not k = 0: its test reads that one point (`m_tbt_kpoint.F90`, `setup_kpoint_grid`). A grid whose first point is k = 0 — 2 × 2, or 1 × N, by tbtrans's own ordering — runs on, every k-point given the k = 0 Hamiltonian, and its T(E) is invalid. Warned, never refused — what to do is the person's *(user, 2026-10-17; 2026-10-20: "warn, worded truly")*: the words say both outcomes and name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check, on the grid's first point; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
+| **a transmission grid the person set above the Γ point while the shared grid is Γ alone** (2026-10-17) | A device run at Γ alone writes its Hamiltonian with no supercell. tbtrans stops in its set-up — *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`; measured on the road's junction, 2026-10-16) — only when its grid's first k-point is not k = 0: its test reads that one point (`m_tbt_kpoint.F90`, `setup_kpoint_grid`). The grid starts at k = 0 whenever a count in the electrode plane is 1 or 2 (`find_kgrid.F`: the lowest index along an axis is −(n−1)/2, and time reversal starts one axis at 0) — 2 × 2, 1 × N, N × 1, 2 × N, N × 2 — and then tbtrans runs on, every k-point given the k = 0 Hamiltonian, and its T(E) is invalid; it stops only when both counts are 3 or more. Warned, never refused — what to do is the person's *(user, 2026-10-17; 2026-10-20: "warn, worded truly")*: the words say both outcomes and name sampling the shared grid in the electrode plane (x, y) and running the device again, or the transmission at 1 1 1 | the engine's own check, on the grid's first point; tbtrans's message names SIESTA's `ForceAuxCell`, which molbuilder does not write |
 | **the leads' k-points along z outside 50–200** | outside the item's recommended range. Below 50 is under the manual's floor — a floor, not a proof of convergence: only raising the count and seeing the lead's Fermi level stay put shows it has settled. Above 200 the two lead runs cost more | "at least >50 should easily be reachable" [`SiestaManual542`] |
 
 **The Γ-device warning, by example.** Two settings meet here: `kgrid`, the
@@ -491,8 +491,8 @@ k = 0 Hamiltonian, and writes a T(E) that is invalid:
 | `4 4 1` | `12 12 1` | runs |
 | `1 1 1` | blank, or `1 1 1` | runs, at one k-point (the one-point warning) |
 | `1 4 1` | `4 4 1` | runs: the device samples more than one k-point, so its Hamiltonian is saved whole |
-| **`1 1 1`** | **above 1, its first k-point not k = 0, e.g. `4 4 1`** | **prep warns; tbtrans stops as it starts** |
-| **`1 1 1`** | **above 1, its first k-point k = 0: `2 2 1`, or 1 × N such as `1 4 1`** | **prep warns; tbtrans runs on with the k = 0 Hamiltonian at every k-point, and its T(E) is invalid** |
+| **`1 1 1`** | **above 1, both counts in the electrode plane 3 or more, e.g. `4 4 1`** | **prep warns; tbtrans stops as it starts** |
+| **`1 1 1`** | **above 1, a count of 1 or 2 along x or y: `2 2 1`, `1 4 1`, `4 2 1`** | **prep warns; tbtrans runs on with the k = 0 Hamiltonian at every k-point, and its T(E) is invalid** |
 
 So it is said only of a transmission grid set by hand above 1 on a
 calculation whose shared grid is `1 1 1` — a quick test on a small junction,
@@ -693,7 +693,9 @@ The transport calculation cites the finished relaxation, and its first prep
 composes it: the atoms sorted so each lead is one contiguous range — how
 TranSIESTA identifies an electrode (§ 2a.14) — and each lead's bulk cell cut
 from its labeled block, its cross-section the junction's (I6) and its period
-along the wire the crystal's own repeat (§ 7.1). Nothing about a lead is typed
+along the wire the span of its layers plus one layer spacing — the crystal's own
+repeat only when the layer count is a whole stacking period, which the lead's
+seam verdict says (§ 7.1). Nothing about a lead is typed
 by a person: it is derived from the labels (§ 4). The composition is written as
 a record beside `task.json`, and **every later prep reads that record** while
 it is for the cited junction. **No usable record** is one of three: none yet
@@ -793,7 +795,9 @@ Hamiltonian and Fermi level that Σ is made of — which is why there must be
 many of them; and its grid in the electrode plane must be the device's because
 the lead is the bulk of the device's electrode region, which TranSIESTA
 checks. The lead must be at least a principal layer thick — Σ assumes a lead cell couples only to its
-neighbours (I11) — and its cell is the device's electrode block atom for atom,
+neighbours (I11), which TranSIESTA checks as the device starts, stopping with
+*Electrode connectivity is not perfect*, said in the result with what it means
+(§ 6.3) — and its cell is the device's electrode block atom for atom,
 so Σ attaches where it belongs (I10).
 
 #### Step 4 — the device: the open-boundary cycle, at each bias *(TranSIESTA; § 2, § 4, § 6.1c, § 2a.11)*
@@ -928,7 +932,7 @@ device's sweep run whole, each point its own point's H (§ 2a.11).
 
 `summarize task` composes `<label>.transport.json` from the rungs' records: T(E,
 V) per point and spin channel; T(E_F) and the conductance, the E_F reference
-checked; the I–V, its treatment named and its current the junction's total; the
+asserted (TBtrans's convention, below); the I–V, its treatment named and its current the junction's total; the
 DOS and eigenchannels TBtrans was asked for; and the provenance — which
 relaxation, which lead runs, which device run, and what each point started
 from. And the caveat that goes with any DFT-NEGF conductance: plain GGA puts the
@@ -1003,8 +1007,8 @@ Three consequences drive **every** parameter choice:
 > GGA-NEGF result; closing the gap to experiment needs beyond-DFT corrections
 > (**scissors / DFT+Σ** — rigidly shifting the DFT levels, or adding a self-energy
 > correction — or hybrid functionals). molbuilder's job is to surface this caveat
-> honestly rather than imply DFT-NEGF == experiment; the results layer that will
-> carry the flag is still landing (§ 8).
+> honestly rather than imply DFT-NEGF == experiment; every transport record
+> carries it (§ 1.1, *The record*).
 
 ---
 
@@ -1425,7 +1429,7 @@ refuse to let them be reported as the same thing:
 - **Energy sweep** — one converged device, tbtrans evaluates T(E) across the
   window. Cheap, and it is what each frame gives under the low-bias
   approximation.
-- **Bias sweep** — the device NEGF SCF is **run at each voltage**, each point starting from the converged point before it (§ 2a.10, § 2a.11),
+- **Bias sweep** — the device NEGF SCF is **run at each voltage**, each point starting from the closest converged voltage before it (§ 2a.10, § 2a.11),
   because the potential drop reshapes the molecular levels. T is then a function
   of both, T(E, V).
 
@@ -1484,9 +1488,12 @@ calculation done")* — `⅔, ⅙, ⅙` for three frames — and **computes with
 alone** (§ 2a.12's average), where every frame states one; weights that do not
 sum to 1 are averaged as written, with a warning *(user, 2026-10-09: "all
 weights should add up to 1 that's an explicit rule within error tolerance")*;
-frames that do not each state one have no average, said. Every other row,
-`info` and channel is carried as written into its record and data file and
-shown on the pages; the one check made on them is a vocabulary name's unit —
+frames that do not each state one have no average, said. Every other row is
+carried as written into its record and data file and shown on the pages, and
+so are the mode's own two beside the rows — `info.vibration` (the data file
+keeps its run and result fingerprint) and the `mass_amu` channel; another
+`info` key or channel stays the structure's and is not carried. The one check
+made on the rows is a vocabulary name's unit —
 a row of the mode's vocabulary written with another unit is refused by name
 wherever the rows are read for a record, a data file or a page
 (`frame_average.check_units`, [`model/structure.md`](?doc=model/structure.md)
@@ -1802,7 +1809,10 @@ outputs. A point has no record of its own beyond that: *queued*, *running*,
 *finished* and *failed* are the **run's**, read from the run's launch record,
 its points' files — each point's run by the one status door — and the jobs
 launched from this machine, by one rule (`continuation.points_state`, *One
-door for each place* below; `job-system.md`, *What marks each state*).
+door for each place* below; `job-system.md`, *What marks each state*). Every
+reader asks it — `status`, the gather, `jobset scratch`, the record: a point
+the ended walk never reached is listed failed in the record, *the walk ended
+before it reached this point*, never one still to come.
 
 **The walk.** `launch task` sends one job walking the run's points not done —
 **voltage by voltage, every frame's point at a voltage before the next
@@ -1810,8 +1820,9 @@ voltage** (*What a run's points share*, below: the leads' files are the
 round's). Each point starts as it would on the first walk — **every point not
 done is redone from the same start**: the 0 V point from the seed's density
 (its own copy, taken from the seed's run); a later point from the converged density (`.TSDE`) of
-the closest done point before it, or of the point before it in this walk — the
-manual's *"copy the TSDE from the closest, previously, calculated bias"*. The
+the voltage closest to it among the points before it in its frame's list —
+taken over, or walked earlier in this walk; the later of two equally close —
+the manual's *"copy the TSDE from the closest, previously, calculated bias"*. The
 start of every point is decided when the launch is planned and written beside it,
 so the record says what each point started from: a point that starts from
 another point names it in its `.continued-from`; the 0 V point starts from what
@@ -1883,7 +1894,11 @@ run's state, by one rule the gather asks too (`continuation.points_state`) —
 *running* while a point runs, or between two points while a job launched
 from this machine that holds the run is going (`joblist.is_going`, the answer
 `molbuilder jobs` gives); *queued* while no point the run walks itself has
-started (a point taken over is the earlier run's); else its points' verdict
+started (a point taken over is the earlier run's) and its job is not over —
+one cancelled in the queue, or a process that died before its first point, is
+a run that ended, its points' verdict *— its job ended before any point
+started*, asked once of that job or else of the run door, which asks the
+scheduler and writes its answer (`running-a-job.md` § 4.2); else its points' verdict
 (`continuation.points_verdict`): *finished* when every point's run finished,
 converged or not, which the converged column says (*SCF NO* when a point did
 not converge), or *failed* when a point's run did not finish, naming the
@@ -1945,7 +1960,7 @@ walk, the done-door, `status` and the record ask it, and none asks which axis
 it is.
 
 **Where a frame differs from a voltage, and why.** A voltage starts from the
-converged point before it, because the potential drop reshapes the levels a
+closest converged voltage before it, because the potential drop reshapes the levels a
 little at a time; frames are **independent** — each a geometry in its own
 right — so **each frame's first point starts from the seed's density** (its
 own copy, taken from the seed's run, its `.gathered-from`), never from
@@ -2418,7 +2433,9 @@ file it was read from. The file says what it is: `schema`
 (`molbuilder/transport-data@2`), the label, the treatment, the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
 (`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
-and `iv_notes`, the voltages the window does not reach); wherever the
+and `iv_notes`, JSON, each note with the `frame` and the `bias_v` it is
+about — the voltages the window does not reach, and a frame's own note (its
+0 V transmission not run) with `bias_v` null); wherever the
 structure states rows, the vocabulary's structure rows and `info.vibration`
 where it states them, every row as written (`structure_rows`, JSON), what is
 said of the weights (`frame_warnings`), and where every frame states a weight
@@ -2508,7 +2525,9 @@ The Results tab opens it at the calculation's root through its description,
 **The provenance is what was gathered**, read from each rung's `.gathered-from`
 — never the newest run by file time — and, for a sweep's points, what each
 started from, read from each point's `.continued-from` (§ 2a.11). The device
-facts shown beside a transmission are the device run the transmission gathered.
+facts shown beside a transmission are the device run its first point gathered
+(`record.gathered_device_run`); a point taken over by a warm `--gather` launch
+keeps the device run it was computed on, which its own `.gathered-from` names.
 
 ### 2a.13 The full map
 
@@ -3003,10 +3022,8 @@ per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
 the frame, before anything runs; its rows are carried as written, a
 vocabulary name's unit the one thing checked of them, where they are read for
 a record, a data file or a page ([`model/structure.md`](?doc=model/structure.md) § 2.2f). The pair's axis kinds are its own across the transport axis, and z
-is transport (§ 5 I8). The principal-layer condition reads the orbital ranges
-from the `.ion` files SIESTA leaves beside a run; a pair has none beside it,
-so the condition is *unverified* on the lead's notes, and TranSIESTA checks
-the leads' connectivity itself when it runs.
+is transport (§ 5 I8). The principal-layer condition is TranSIESTA's own
+check, for a cited run and a cited pair alike (§ 6.3).
 
 **A frame set runs its seed and both leads on frame 0** (§ 2a.9: electrodes
 once, seed once); its device and transmission run per frame, a point each
@@ -4262,7 +4279,7 @@ run.
 | I8 | One k-point along z (kz = 1) | seed, device, transmission | the device and the transmission are open along z — the leads' self-energies stand in for everything beyond the cell — and both engines force one k-point there; the seed's density is only their starting point (§ 0.2) | **fixed** — the stage's k-point grid writes 1; `kmesh.fixed` through `template.why_not` refuses another value on every door |
 | I9 | The leads' k-points along z: many (converged) | electrode | a lead is a *periodic bulk* run along z, and a thin lead cell has a long Brillouin zone (BZ) along z, which few k-points sample coarsely; the lead's H and E_F are what every self-energy is built from (§ 0.2) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 50 (`range`, the manual's floor) and above 200, on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
-| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of a cited run's `.ion` files; a cited pair has none beside it, so the lead's note says *unverified* and TranSIESTA checks the leads' connectivity when it runs (§ 3.1) |
+| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | **TranSIESTA's own check**, as the device starts (`ts_electrode.F90` `check_connectivity`): it stops with *Electrode connectivity is not perfect*, which the result says with what it means (§ 6.3); molbuilder does not judge it *(user, 2026-10-20: "don't do the job of the engine")* |
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
 | P2 | the transmission window reaches the bias window — the energies TBtrans samples on `transmission_emin_ev … emax_ev` reach ±(\|V\|/2 + 5 kT), both leads' Fermi tails at μ = ±V/2 | the transmission; the description | TBtrans integrates the current over the energies it samples and says nothing when they cut it short | **`config.transmission_emax_ev`** — one rule, `record.window_short_of`, on the energies TBtrans samples: the transmission deck's gate (**error**, its own V) and the description's preflight (**error**, the largest listed V, the resolved transmission rung's window, point count and temperature) ask it with `record.sampled_window` — the mid-rule's first and last energy, half a spacing inside each edge — and the record with the energies the run wrote (a voltage it does not integrate is blank with the reach named) (§ 2a.10; 2026-10-08) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
@@ -4276,9 +4293,7 @@ the device's, extracted by `compose`, so I2/I10 hold; and the lead takes the
 device's lateral vectors verbatim (I6). I7 is one shared `kgrid` every rung's
 mesh reads. I13 is a `role` item on the electrode rung. I8 is the mesh's fixed
 component, refused on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1),
-and **I11 is held BETTER** by `compose.py`, which reads real orbital ranges from
-a cited run's `.ion` files and refuses with the numbers — retiring the ~12 Å
-floor `preflight.py` used, which passes a 4.8 Å three-layer Au block.
+and I11 is TranSIESTA's own check, its stop said with what it means (§ 6.3).
 
 I9 and I12 were the two held only by the verb, and were re-homed to
 `_validate_transport_kind` on 2026-09-17 — the one validator keyed on the
@@ -4304,7 +4319,7 @@ to format.)
 auditable, not asserted): the open boundary (I8) and the basis continuity
 (I5) to Brandbyge 2002; the bulk lead's sampling (I9), the lateral cell and the
 shared k-point grid in the electrode plane (I6/I7),
-and `electrode.thickness` (I11, principal-layer screening) to Papior 2017; the
+and the principal layer (I11, TranSIESTA's own check) to Papior 2017; the
 numerical contract `contract.{xc,meshcutoff,energyshift}` (I1/I3/I4) to Soler 2002;
 and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
 
@@ -4320,11 +4335,11 @@ be.
 
 | Layer | Module | Role |
 |---|---|---|
-| Composition | `transport/compose.py` | citation — a run read through the run door (`runs.view_of`), or a pair's frames — → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + sidecars, and a cited run's `junction.cited.fdf`). Holds I11 — it reads real orbital ranges from a cited run's `.ion` files and refuses a lead thinner than its own principal layer |
+| Composition | `transport/compose.py` | citation — a run read through the run door (`runs.view_of`), or a pair's frames — → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + sidecars, and a cited run's `junction.cited.fdf`) |
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the per-rung bags (`stages_for_transport`), the bias points and the containers each rung runs in; it renders no deck (`transport/deck.py` tables the shapes) |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
-| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
+| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c); on the device, which reads them, the pole energy's 20-pole floor and the temperature's 10 K floor (§ 6.1c); on the transmission, its window against the bias window (P2, § 2a.10). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run reads as **pending**, never as a failure |
 | The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames, and a mode's vocabulary and assumptions (§ 2a.12, § 3.8.1) — called by the record, the data file and the describe door |
@@ -4914,7 +4929,9 @@ it counts a pole — *"TranSiesta electronic temperature \*must\* be larger than
 that is refused too. The range the form offers is 1–40 eV: 10 eV gives fewer
 than 20 poles above 1847 K, and the electronic temperature runs to 5000 K,
 where 27.1 eV is needed. It is
-the device's alone (`stages = ["device"]`): `tbtrans` integrates no density.
+the device's alone (`stages = ["device"]`): `tbtrans` integrates no density —
+and the two floors are judged on the device's deck alone (`template.reads`),
+so a template value the device's own tab sets right refuses no other rung.
 **The 10 eV is interim** — M3 P4's stated contour (`contour.eq` inside the
 chemical potential's block, W35 decision 2) replaces it, and the first
 device run may say sooner.
@@ -5118,6 +5135,21 @@ out at hop 7 states none, so the rule centres it in its own cell. Until 2026-09-
 
 ---
 
+### 6.3 When an engine stops — what its message may mean *(user, 2026-10-20: "don't do the job of the engine"; "just leave hint and information … to note user what error message could mean"; "this could be in result?")*
+
+An engine's own checks are the engine's: prep does not repeat them. When a
+run stops, the result says why in the engine's words — a SIESTA or TBtrans
+`die` prints its reason, then *Stopping Program from Node*, and the reading
+pass keeps the reason ([`model/parse.md`](?doc=model/parse.md) § 2b) — and,
+where molbuilder knows the message, what it may mean: `status`, the Results
+tab and the transport record's failed points say it, from one table
+(`siesta_grammar.STOP_MEANINGS`):
+
+| the engine says | what it may mean |
+|---|---|
+| *Electrode connectivity is not perfect* — TranSIESTA, as the device starts (`ts_electrode.F90` `check_connectivity`) | a lead's Hamiltonian reaches past its neighbouring cell: the lead block is thinner than the reach of its orbitals and projectors (I11), and TranSIESTA builds a lead's self-energy from neighbouring cells only. The lines above it in the output name the atoms that reach across. Label more electrode layers on the junction (a whole stacking period more), relax it again and cite that run (§ 7.1) |
+| *Transiesta calculation was a Gamma calculation while you request transmission k-points* — TBtrans, as it starts (`tbt_init.F90`) | the device ran at the Γ point alone, so its Hamiltonian was saved for that one k-point: leave `tbt_k_grid` blank or 1 1 1, or raise `kgrid` in the electrode plane and run the seed, the leads and the device again (§ 0.3b) |
+
 ## 7. The scientific baseline
 
 A defensible starting point (**all values to be convergence-tested**, per § 5's
@@ -5227,9 +5259,12 @@ layer count is not a multiple of 3 tiles into a **twin** (4 or 7 layers give
 something worse — an eclipsed, head-on contact), so Σ then describes a faulted
 crystal rather than bulk gold. Six layers in the electrode region satisfies it;
 four does not. **This is measured and reported, never enforced** (the rule the
-electrode orientation follows): `extract_electrode_model` classifies the lead's
-periodic seam and the card says `CONTINUES`, `ECLIPSED` or `TWIN`, naming the
-layer count as the cause. A faulted seam composes — you may mean it — but it is
+electrode orientation follows): one rule classifies the lead's periodic seam
+and words it (`wizard.seam_finding`) — `CONTINUES` as information; `ECLIPSED`,
+`TWIN`, or undetermined (a block thinner than one period) as a warning, naming
+the layer count as the cause — said on the Transport card and by the lead rung's
+settings gate at every prep, printed and written into the lead deck's
+`.validation.txt`. A faulted seam composes — you may mean it — but it is
 a faulted bulk Hamiltonian, because this lead is what becomes the self-energy.
 (`--z-period` used to be advertised here as the override; that flag went with
 `molbuilder transport electrode` on 2026-09-17.)

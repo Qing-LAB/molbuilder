@@ -226,7 +226,6 @@ engine or listed for a reader**, and nothing else.
 | PySCF's emitters | — | they write atoms in the structure's own order and declare no species table. Nothing to order |
 | **`Structure.formula`** | ❌ **never** | it is an **identifier**, not chemistry: compared for equality, normalised into a run id (`run-identity.md` § 2.0a) and recorded in `task.json` as a witness. Its own docstring says so. Re-ordering it would change every run id, and the alphabetical order is what makes it a stable key |
 | `chemistry.analyze_structure` | ❌ | its sort exists to make a **pick** deterministic — the first open-d metal decides the detection table's row (`electronic_state.recommend`), and a frozenset's hash order varies per process. Reordering would change which metal decides, for no gain |
-| `compose.py`'s `.ion` lookup | ❌ | builds a dict; the order never surfaces |
 
 **The test that distinguishes them:** is this list *shown* — to an engine as a
 declaration, or to a person as a list of elements? Then it is species order.

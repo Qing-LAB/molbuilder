@@ -379,9 +379,11 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
         # at the one point k = 0 writes its Hamiltonian with no supercell.
         # tbtrans stops in its set-up (`tbt_init.F90`) only when its grid's
         # FIRST k-point is not k = 0 -- its test reads that one point
-        # (`m_tbt_kpoint.F90`, `setup_kpoint_grid`); a grid whose first point
-        # is k = 0 (2 x 2, 1 x N by its own ordering) runs on, every k-point
-        # given the k = 0 Hamiltonian, its T(E) invalid.  Warned, never
+        # (`m_tbt_kpoint.F90`, `setup_kpoint_grid`); its grid starts at k = 0
+        # whenever a count in the electrode plane is 1 or 2 (`find_kgrid.F`:
+        # the lowest index is -(n-1)/2, and time reversal starts one axis at
+        # 0), and then it runs on, every k-point given the k = 0
+        # Hamiltonian, its T(E) invalid.  Warned, never
         # refused (user, 2026-10-17; 2026-10-20: "warn, worded truly").
         if (all(a.count == 1 and a.shift % 1.0 == 0.0 for a in scf.axes)
                 and any(a.count > 1 or a.shift % 1.0 != 0.0
@@ -394,10 +396,11 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 f"saves its Hamiltonian in a form that works at that one "
                 f"point.  tbtrans stops as it starts (\"Transiesta "
                 f"calculation was a Gamma calculation while you request "
-                f"transmission k-points\") only when its grid's first "
-                f"k-point is not k = 0; where it is (a 2 x 2 or 1 x N grid), "
-                f"tbtrans runs on with the k = 0 Hamiltonian at every "
-                f"k-point, and its T(E) is invalid.  Raise kgrid in the "
+                f"transmission k-points\") only when both its counts in the "
+                f"electrode plane are 3 or more; with a 1 or a 2 along x or "
+                f"y its grid starts at k = 0 and tbtrans runs on with the "
+                f"k = 0 Hamiltonian at every k-point, and its T(E) is "
+                f"invalid.  Raise kgrid in the "
                 f"electrode plane (x, y) -- "
                 f"it re-runs the seed, the leads and the device -- or leave "
                 f"tbt_k_grid blank or 1 1 1 (engines/transport.md 0.3b)",

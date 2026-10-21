@@ -104,18 +104,26 @@ def _fdf(**over):
             struct, cfg)
 
 
-def test_a_keyword_written_twice_is_refused_because_libfdf_takes_the_first():
+@pytest.mark.parametrize("typed", [
+    "MeshCutoff 999.0 Ry",
+    # A BLOCK typed in a person's USER-CUSTOM zone that the deck already
+    # writes: ``fdf_block`` takes the first as ``fdf_locate`` does.
+    "%block ChemicalSpeciesLabel\n 1 8 X\n%endblock ChemicalSpeciesLabel",
+])
+def test_a_keyword_written_twice_is_refused_because_libfdf_takes_the_first(
+        typed):
     """The worst kind of wrong: the deck reads as though it says what it
-    meant.  ``fdf_locate`` walks from the top and stops at the first match,
-    so a keyword written twice does not conflict loudly -- the first silently
-    wins, and the later line is the one ignored.
+    meant.  ``fdf_locate`` and ``fdf_block`` walk from the top and stop at
+    the first match, so a keyword or a block written twice does not conflict
+    loudly -- the first silently wins, and the later one, a person's, is the
+    one ignored.
 
     API-level: a refusal the road cannot reach -- prep writes no deck with a
     keyword twice, so the check is handed one here."""
     from molbuilder.siesta.layout import check_rules
 
     text, struct, cfg = _fdf()
-    issues = check_rules(text + "\nMeshCutoff 999.0 Ry", struct, cfg)
+    issues = check_rules(text + "\n" + typed, struct, cfg)
     assert [i for i in issues if "twice" in i.message], issues
 
 

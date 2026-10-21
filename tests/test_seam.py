@@ -55,6 +55,18 @@ class TestAWholeNumberOfPeriodsContinues:
             f"fcc({plane}) x{n_layers} (period {period}) came back "
             f"{verdict.verdict!r} / period {verdict.period}")
 
+    @pytest.mark.parametrize("n_layers", range(2, 10))
+    def test_a_chain_continues_at_every_count(self, n_layers):
+        """A stack of period one -- a chain, every layer on one site, the
+        transport e2e's hydrogen lead -- continues at any count: the layer
+        one cell up lands on the top layer's site, which IS the layer one
+        period below it, never an eclipse."""
+        d = 0.9
+        pos = np.array([[0.0, 0.0, i * d] for i in range(n_layers)])
+        verdict = classify_seam(pos, [[10.0, 0, 0], [0, 10.0, 0],
+                                      [0, 0, n_layers * d]])
+        assert (verdict.verdict, verdict.period) == ("continues", 1), verdict
+
     def test_a_slab_too_thin_to_have_a_stacking_says_so(self):
         """Two layers of (111) are `A,B` -- fcc and hcp alike.
 

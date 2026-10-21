@@ -958,14 +958,73 @@ def points_state(run, names, task, stage: str, *, launch, products, base
     if all(p["opened"] and p["state"] in ("pending", "queued")
            for p in _walked_here(pts, run, base)):
         # NOTHING THIS RUN WALKS HAS RUN YET -- the points it took over
-        # from an earlier run are that run's, done before it was sent.
-        jid = (launch or {}).get("job_id")
-        return "queued", (f"queued as job {jid}" if jid
-                          else "launched, nothing run yet"), pts
+        # from an earlier run are that run's, done before it was sent --
+        # unless its job is over: cancelled in the queue, or a process
+        # that died before its first point.
+        if not _ended_before_a_point(base, run, names):
+            jid = (launch or {}).get("job_id")
+            return "queued", (f"queued as job {jid}" if jid
+                              else "launched, nothing run yet"), pts
+        state, detail = points_verdict(pts)
+        return state, (detail + " -- its job ended before any point "
+                       "started"), pts
     if any(not p["done"] for p in pts) and _walk_going(base, run):
         return "running", summary + " (between two points)", pts
     state, detail = points_verdict(pts)
     return state, detail, pts
+
+
+def _ended_before_a_point(base, run, names) -> bool:
+    """Whether a run of points none of whose points started has ended --
+    asked once of what knows: a job launched from this machine that holds
+    the run (`joblist.is_going`), else the run door, which asks the
+    scheduler where the job was sent from here and writes its answer into
+    the launch record (`runs.concluded`, `running-a-job.md` § 4.2);
+    ``False`` where neither can tell."""
+    from ..joblist import Asked, Job, every, is_going
+    from ..parse.dirs.job import LIVE_STATES
+    from ..paths import run_folder_of
+    from ..runrecord import RunRef
+    from ..runs import concluded
+    want = RunRef.at(base, run)
+    asked = Asked()
+    for job in every():
+        if (not isinstance(job, Job)
+                or Path(job.calculation) != Path(base).resolve()):
+            continue
+        if any(str(run_folder_of(m["run"]) or m["run"]) == str(want)
+               for m in job.members.values()):
+            going = is_going(job, asked)[0]
+            if going is not None:
+                return not going
+    try:
+        return concluded(run, names, base=base,
+                         launched_in=run).state not in LIVE_STATES
+    except (OSError, ValueError):
+        return False
+
+
+def stage_run_state(base, task, stage: str, run) -> "Tuple[str, str]":
+    """``(state, detail)`` of one run of ``stage`` -- THE ONE DOOR for a
+    run's state, whichever kind: a run of points by :func:`points_state`,
+    any other run by the run door (:func:`read_run`).  Asked by `jobset
+    scratch` of each run that holds an engine's scratch."""
+    from ..runrecord import launch_record
+    from ..transport.stages import frames_of, products_of, rung_points
+    from .materialize import stage_home
+    names = stage_home(base, task, stage).names(task.shape)
+    if rung_points(task, stage, frames=frames_of(base)):
+        launch = launch_record(run, names)
+        if launch is None:
+            return "pending", "prepared, not launched"
+        state, detail, _rows = points_state(
+            run, names, task, stage, launch=launch,
+            products=products_of(stage, task.label, base_dir=base),
+            base=base)
+        return state, detail
+    _ended, state, _conv, detail = read_run(base, task, stage, run,
+                                            verdict=False)
+    return state, detail
 
 
 def _walk_going(base, run) -> bool:

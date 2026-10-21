@@ -248,10 +248,8 @@ def junction_record(calc):
     reasons a record found is not usable (`compose.load_compose_record`).
     The one read of it, by prep and the gather; refused as
     :func:`compose_refusals` say.  The tree root is resolved BEFORE the
-    record is loaded: the reload re-runs the § 3 lead gates, and their
-    principal-layer half reads the CITED directory's own .ion files, which
-    the travelled folder does not carry -- absent (the folder moved out of
-    its tree), that half degrades to UNVERIFIED honestly."""
+    record is loaded: the reload holds a cited pair to the bytes it was
+    composed from (`compose.load_compose_record`)."""
     from ..projects import find_projects_root
     from ..transport.compose import load_compose_record
     base, task = calc.base, calc.task

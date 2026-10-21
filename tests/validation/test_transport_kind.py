@@ -124,6 +124,21 @@ class TestThePoleEnergyIsTiedToTheTemperature:
         assert not _find(validate(junction, cfg, calculation="transport"),
                          "config.negf_eq_pole_ev", "error")
 
+    @pytest.mark.parametrize("rung,refused", [("device", True),
+                                              ("seed", False),
+                                              ("electrode_L", False),
+                                              ("transmission", False)])
+    def test_judged_on_the_rung_that_reads_it(self, junction, rung, refused):
+        """§ 6.1c: the pole energy is the device's alone (`stages =
+        ["device"]`).  A template value under the floor, set right on the
+        device's own tab, stays on the other rungs, which never write it --
+        and must not refuse them."""
+        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
+                           negf_eq_pole_ev=1.5, electronic_temperature=300.0)
+        found = _find(validate(junction, cfg, calculation="transport",
+                               rung=rung), "config.negf_eq_pole_ev", "error")
+        assert bool(found) is refused, (rung, found)
+
 
 class TestTheCellWrapsAlongTransport:
     """I12.

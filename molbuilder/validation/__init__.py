@@ -417,9 +417,17 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     #
     # AND THE TEMPERATURE HAS ITS OWN FLOOR: TranSIESTA stops below 10 K
     # before any pole is counted (`transiesta.MIN_TS_TEMPERATURE_K`).
+    #
+    # JUDGED ON THE RUNG THAT READS IT -- the device's (the catalogue's
+    # ``stages``, asked through `template.reads`, `template.md` § 6.4): the
+    # template's value stays on a rung that never writes it, and that rung
+    # is never refused for it.  With no rung named, judged as it stands.
+    from ..template import engine_name, items_of, reads
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
-    if pole is not None:
+    pole_item = items_of(cfg).get("negf_eq_pole_ev")
+    if pole is not None and (rung is None or pole_item is None or reads(
+            pole_item, engine_name(type(cfg)), "transport", rung)):
         from ..transport.transiesta import (MIN_EQ_POLES,
                                             MIN_TS_TEMPERATURE_K, pole_count,
                                             pole_energy_for)
@@ -502,6 +510,15 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
         # labelled junction's relaxation (`sidecar.check_junction_boundary`).
         out += check_junction_boundary(struct, _cell, severity="error",
                                        whole_structure_is_the_lead=True)
+        # A LEAD RUNG'S SEAM (`junction-cell.md` § 3.1, `engines/transport.md`
+        # § 7.1): whether the lead tiles into the bulk crystal -- a room of
+        # one spacing can still be a twin or an eclipse -- measured and
+        # reported, never refused, by the rule the Transport card asks
+        # (`wizard.seam_finding`); TranSIESTA checks no registry.
+        from ..transport.deck import SHAPE_OF_RUNG
+        if SHAPE_OF_RUNG.get(rung) == "electrode":
+            from ..transport.wizard import seam_finding
+            out.append(seam_finding(struct.positions, _cell))
         # THE LEAD: the electrode-labelled atoms of a junction, one list per
         # lead; an electrode rung's structure IS the lead and carries no
         # labels, so all of it.

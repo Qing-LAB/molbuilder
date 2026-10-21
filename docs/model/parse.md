@@ -357,7 +357,7 @@ dispatch; its answer is one frozen record:
 | `relaxed` | `True` on `outcoor: Relaxed …`, `False` on `outcoor: Final (unrelaxed) …`, `None` for a run that relaxes nothing |
 | `doing` | **where a run still going is, in words** — the one sentence the monitor's status line and the run door's *running* detail say it in, composed by the reading pass's one rule (`SiestaReader._where_words`, read by its `now()` and its `finish()` alike; the words `parse/engines/transiesta.py`'s): the row in flight's phase and iteration, *periodic SCF iteration 3*, *negf SCF iteration 12* (`scf_words`); or, until a TranSIESTA device's first SCF row, its set-up (`setup_words`, from the `transiesta` facts): *checking the leads' cells* · *computing the R lead's surface Green's function (estimated 49.170 GB)* · *the L lead's surface Green's function computed* · *the leads' surface Green's functions computed* — or *reused*, a later frame's point at the same voltage reading the run's files (`engines/transport.md` § 2a.11) · *…; the charge distribution at the switch*, where a point starting from a `.TSDE` goes at once (a first point's periodic rows speak between its leads' files and that line). `None` when the output states none of it, and for a TBtrans output once its set-up speaks: its loop is `tbtrans.loop_words`'s, said where a surface asks for it (§ 5d.5), never set-up words — a transmission checks the leads' cells too and computes no file, so the set-up would read *checking the leads' cells* through its whole loop. *(user, 2026-10-19: Sol's device job spent its hours computing the leads' Green's functions, its row saying only* running*)* |
 | `cause` | what stopped it: the FIRST fatal line's marker — the lines after it are SIESTA's `die` cascade, and an out-of-memory marker outranks the rest — or `scf_not_conv` when SIESTA states the SCF's failure fatal, `(required)` |
-| `error_message` | the sentence a person reads: the `SCF_NOT_CONV:` line when it came before the stop — it names the cause, the fatal lines after it are `die`'s cascade — else the first fatal line; for PySCF, the exception line |
+| `error_message` | the sentence a person reads: the `SCF_NOT_CONV:` line when it came before the stop — it names the cause, the fatal lines after it are `die`'s cascade — else the first fatal line, or where that is `die`'s own *Stopping Program from Node*, its reason, the line before it (`siesta_grammar.DIE_MARKER`); with what it may mean where the one table knows the message (`siesta_grammar.STOP_MEANINGS`, [`engines/transport.md`](?doc=engines/transport.md) § 6.3); for PySCF, the exception line |
 | `max_force` · `max_force_all` · `stress_voigt_kbar` · `forces_not_computed` | what the run's last step stated of its forces and stress — the reading pass's `now()` keys of those names (§ 4a), read with the ending in the one pass; `None` for an output that states none (a PySCF output, a progress log) |
 
 `_run_ending.CONCLUDED` — `ended`, `stopped`, `out_of_memory` — is *the run is
@@ -409,6 +409,12 @@ propor's refusal of the orbital distribution
   propor: ERROR: IMAX = 0
   Stopping Program from Node:    3
   -> run_state "stopped", cause "propor: error" -- the first fatal line; the rest is die's cascade
+
+TranSIESTA's own check of a lead, as the device starts
+  Electrode connectivity is not perfect, refer to the manual for achieving a perfect electrode.
+  Stopping Program from Node:    0
+  -> run_state "stopped", cause "stopping program from node", error_message the reason
+     -- what it may mean: a lead's Hamiltonian reaches past its neighbouring cell ...
 ```
 
 ## 3. The registry + public API
@@ -508,7 +514,6 @@ molbuilder/parse/
 │                  #   contract_of  — the electronic contract its deck states (§ 5b)
 │                  #   engine_of    — WHICH ENGINE RAN (`running-a-job.md` § 4.2)
 ├── fdf.py         # a SIESTA deck read back, by fdf's own label rule
-├── ion.py         # SIESTA .ion basis reach (read by transport/compose.py)
 ├── _log.py        # parse-side logging helper
 │
 ├── engines/       # engine output → FileParsers, over the reading layer (§ 4a)

@@ -2467,11 +2467,12 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
     the newest launched run is taken over (its files copied, its
     `.continued-from` naming the run that computed it, one hop) and the
     rest are walked; cold, or at a first launch, every point.  Each walked
-    point starts from the point before it IN ITS FRAME, in bias order --
-    the files the calculation's `along` row names and the rung itself
-    declares (a device's `.TSDE`), copied just before it runs -- or, a
-    frame's first, from its own gathered inputs: frames never start from
-    one another (§ 2a.9 *Both axes*).  A rung that hands nothing forward
+    point starts from the closest voltage computed before it IN ITS FRAME
+    (taken over, or walked earlier in this walk) -- the files the
+    calculation's `along` row names and the rung itself declares (a
+    device's `.TSDE`), copied just before it runs -- or, a frame's first,
+    from its own gathered inputs: frames never start from one another
+    (§ 2a.9 *Both axes*).  A rung that hands nothing forward
     (the transmission) walks on past a point that fails; one that does ends
     that frame's chain there, and the walk goes on with the other frames.
     THE WALK RUNS ROUND BY ROUND -- every frame's point at a voltage before
@@ -2537,14 +2538,22 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, machine, mode: str,
             plan.writes)
     # THE WALK: round by round -- every frame's point at a voltage, then the
     # next voltage (`engines/transport.md` § 2a.11) -- a point's start the
-    # point before it in ITS frame (§ 2a.9), which ran a round earlier.
+    # closest voltage before it in ITS frame (§ 2a.9), which ran a round
+    # earlier or was taken over.
     order = [pt for _p, pt in m.points]
     rounds = list(dict.fromkeys(pt.volts for pt in order))
 
     def _before(pt):
+        # THE CLOSEST VOLTAGE ALREADY COMPUTED, in this frame
+        # (`engines/transport.md` § 1.1; the SIESTA manual: "copy the TSDE
+        # from the closest, previously, calculated bias") -- of the points
+        # before it in the list, the nearest in volts, the later on a tie.
         mine = [q for q in order if q.frame == pt.frame]
-        k = mine.index(pt)
-        return mine[k - 1] if k > 0 else None
+        earlier = mine[:mine.index(pt)]
+        if not earlier:
+            return None
+        return min(reversed(earlier),
+                   key=lambda q: abs(float(q.volts) - float(pt.volts)))
     walked.sort(key=lambda pp: (rounds.index(pp[1].volts),
                                 order.index(pp[1])))
     # THE RUN'S SCRATCH FOLDER, emptied as each round begins -- before the

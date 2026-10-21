@@ -949,7 +949,7 @@ def scratch_answer(calc) -> ScratchAnswer:
     from ..joblist import Asked, Job, every, is_going
     from ..parse.dirs.job import LIVE_STATES
     from ..paths import run_folder_of
-    from .continuation import read_run
+    from .continuation import stage_run_state
     from .materialize import scratch_in
     base = Path(calc.base)
     found = scratch_in(calc)
@@ -989,8 +989,10 @@ def scratch_answer(calc) -> ScratchAnswer:
             why = held.get(ref)
             if why is None:
                 try:
-                    _ended, state, _conv, detail = read_run(
-                        base, calc.task, f.stage, f.run, verdict=False)
+                    # THE RUN'S STATE BY ITS KIND'S RULE -- a run of points
+                    # by its points (`continuation.stage_run_state`).
+                    state, detail = stage_run_state(base, calc.task,
+                                                    f.stage, f.run)
                 except (OSError, ValueError, KeyError) as exc:
                     why = f"its state does not read: {exc}"
                 else:
